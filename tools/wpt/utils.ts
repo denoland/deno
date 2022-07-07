@@ -53,7 +53,7 @@ export interface ManifestTestOptions {
 const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");
 
 export async function updateManifest() {
-  const proc = runPy(
+  const status = await runPy(
     [
       "wpt",
       "manifest",
@@ -64,8 +64,7 @@ export async function updateManifest() {
       ...(rebuild ? ["--rebuild"] : []),
     ],
     {},
-  );
-  const status = await proc.status();
+  ).status;
   assert(status.success, "updating wpt manifest should succeed");
 }
 
@@ -119,23 +118,26 @@ export function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-export function runPy(
+export function runPy<T extends Omit<Deno.SpawnOptions, "cwd">>(
   args: string[],
-  options: Omit<Omit<Deno.RunOptions, "cmd">, "cwd">,
-): Deno.Process {
+  options: T,
+): Deno.Child<T> {
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
-  return Deno.run({
-    cmd: [cmd, ...args],
-    cwd: join(ROOT_PATH, "./test_util/wpt/"),
+  return Deno.spawnChild(cmd, {
+    args,
+    stdout: "inherit",
+    stderr: "inherit",
     ...options,
+    cwd: join(ROOT_PATH, "./test_util/wpt/"),
   });
 }
 
 export async function checkPy3Available() {
-  const proc = runPy(["--version"], { stdout: "piped" });
-  const status = await proc.status();
+  const { status, stdout } = await runPy(["--version"], {
+    stdout: "piped",
+  }).output();
   assert(status.success, "failed to run python --version");
-  const output = new TextDecoder().decode(await proc.output());
+  const output = new TextDecoder().decode(stdout);
   assert(
     output.includes("Python 3."),
     `The ${
@@ -146,12 +148,12 @@ export async function checkPy3Available() {
 
 export async function cargoBuild() {
   if (binary) return;
-  const proc = Deno.run({
-    cmd: ["cargo", "build", ...(release ? ["--release"] : [])],
+  const { status } = await Deno.spawn("cargo", {
+    args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  const status = await proc.status();
-  proc.close();
   assert(status.success, "cargo build failed");
 }
 
@@ -173,22 +175,17 @@ export async function generateRunInfo(): Promise<unknown> {
     "darwin": "mac",
     "linux": "linux",
   };
-  const proc = Deno.run({
-    cmd: ["git", "rev-parse", "HEAD"],
+  const proc = await Deno.spawn("git", {
+    args: ["rev-parse", "HEAD"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
-    stdout: "piped",
+    stderr: "inherit",
   });
-  await proc.status();
-  const revision = (new TextDecoder().decode(await proc.output())).trim();
-  proc.close();
-  const proc2 = Deno.run({
-    cmd: [denoBinary(), "eval", "console.log(JSON.stringify(Deno.version))"],
+  const revision = (new TextDecoder().decode(proc.stdout)).trim();
+  const proc2 = await Deno.spawn(denoBinary(), {
+    args: ["eval", "console.log(JSON.stringify(Deno.version))"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
-    stdout: "piped",
   });
-  await proc2.status();
-  const version = JSON.parse(new TextDecoder().decode(await proc2.output()));
-  proc2.close();
+  const version = JSON.parse(new TextDecoder().decode(proc2.stdout));
   const runInfo = {
     "os": oses[Deno.build.os],
     "processor": Deno.build.arch,

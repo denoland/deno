@@ -71,3 +71,18 @@ Deno.test(async function permissionURL() {
     command: new URL(".", import.meta.url),
   });
 });
+
+Deno.test(async function permissionDescriptorValidation() {
+  for (const value of [undefined, null, {}]) {
+    for (const method of ["query", "request", "revoke"]) {
+      await assertRejects(
+        async () => {
+          // deno-lint-ignore no-explicit-any
+          await (Deno.permissions as any)[method](value as any);
+        },
+        TypeError,
+        '"undefined" is not a valid permission name',
+      );
+    }
+  }
+});

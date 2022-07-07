@@ -149,6 +149,7 @@ where
   let mut row = vec![v8::null(scope).into(); resource.1];
   let values: Vec<v8::Local<v8::Value>> = rows
     .map(|r| {
+      #[allow(clippy::needless_range_loop)]
       for index in 0..resource.1 {
         let value: rusqlite::types::ValueRef = r.get_ref_unwrap(index);
         row[index] = match value {
@@ -164,7 +165,7 @@ where
               .unwrap()
               .into()
           }
-          rusqlite::types::ValueRef::Blob(b) => todo!(),
+          rusqlite::types::ValueRef::Blob(_b) => todo!(),
         };
       }
       Ok(v8::Array::new_with_elements(scope, &row).into())

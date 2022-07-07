@@ -170,9 +170,6 @@
   // Create copy of isNaN
   primordials[isNaN.name] = isNaN;
 
-  // Create copy of queueMicrotask
-  primordials["queueMicrotask"] = queueMicrotask;
-
   // Create copies of URI handling functions
   [
     decodeURI,
@@ -280,6 +277,7 @@
     ArrayPrototypeForEach,
     FunctionPrototypeCall,
     Map,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectSetPrototypeOf,
     Promise,
@@ -455,6 +453,20 @@
         .finally(onFinally)
         .then(a, b)
     );
+
+  // Create getter and setter for `queueMicrotask`, it hasn't been bound yet.
+  let queueMicrotask = undefined;
+  ObjectDefineProperty(primordials, "queueMicrotask", {
+    get() {
+      return queueMicrotask;
+    },
+  });
+  primordials.setQueueMicrotask = (value) => {
+    if (queueMicrotask !== undefined) {
+      throw new Error("queueMicrotask is already defined");
+    }
+    queueMicrotask = value;
+  };
 
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);

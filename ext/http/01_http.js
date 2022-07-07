@@ -81,7 +81,7 @@
       return this.#rid;
     }
 
-    /** @returns {Promise<ResponseEvent | null>} */
+    /** @returns {Promise<RequestEvent | null>} */
     async nextRequest() {
       let nextRequest;
       try {
@@ -111,7 +111,7 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const [streamRid, method, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -126,7 +126,7 @@
       const innerRequest = newInnerRequest(
         method,
         url,
-        headersList,
+        () => core.opSync("op_http_headers", streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -270,11 +270,12 @@
             throw new TypeError("Unreachable");
           }
           const resourceRid = getReadableStreamRid(respBody);
+          let reader;
           if (resourceRid) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
-            const reader = respBody.getReader(); // Aquire JS lock.
+            reader = respBody.getReader(); // Aquire JS lock.
             try {
               await core.opAsync(
                 "op_http_write_resource",
@@ -296,7 +297,7 @@
               throw error;
             }
           } else {
-            const reader = respBody.getReader();
+            reader = respBody.getReader();
             while (true) {
               const { value, done } = await reader.read();
               if (done) break;
@@ -356,32 +357,18 @@
 
           httpConn.close();
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", wsRid);
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
 
-            ws[_readyState] = WebSocket.CLOSED;
-
-            const errEvent = new ErrorEvent("error");
-            ws.dispatchEvent(errEvent);
-
-            const event = new CloseEvent("close");
-            ws.dispatchEvent(event);
-
-            core.tryClose(wsRid);
-          } else {
-            ws[_readyState] = WebSocket.OPEN;
-            const event = new Event("open");
-            ws.dispatchEvent(event);
-
-            ws[_eventLoop]();
-            if (ws[_idleTimeoutDuration]) {
-              ws.addEventListener(
-                "close",
-                () => clearTimeout(ws[_idleTimeoutTimeout]),
-              );
-            }
-            ws[_serverHandleIdleTimeout]();
+          ws[_eventLoop]();
+          if (ws[_idleTimeoutDuration]) {
+            ws.addEventListener(
+              "close",
+              () => clearTimeout(ws[_idleTimeoutTimeout]),
+            );
           }
+          ws[_serverHandleIdleTimeout]();
         }
       } finally {
         if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {

@@ -1,44 +1,40 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache;
-use crate::cache::CacherLoader;
+use crate::args::BenchFlags;
+use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
-use crate::emit;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::BenchFlags;
-use crate::flags::Flags;
-use crate::flags::TypeCheckMode;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
-use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::tools::test::format_test_error;
+use crate::tools::test::TestFilter;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_basic;
+use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -46,12 +42,6 @@ use tokio::sync::mpsc::UnboundedSender;
 struct BenchSpecifierOptions {
   compat_mode: bool,
   filter: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum BenchOutput {
-  Console(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -67,46 +57,32 @@ pub struct BenchPlan {
 #[serde(rename_all = "camelCase")]
 pub enum BenchEvent {
   Plan(BenchPlan),
-  Output(BenchOutput),
-  Wait(BenchMetadata),
-  Result(String, BenchResult),
+  Output(String),
+  Register(BenchDescription),
+  Wait(usize),
+  Result(usize, BenchResult),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
-  Ok(BenchMeasurement),
-  Failed(BenchFailure),
+  Ok(BenchStats),
+  Failed(Box<JsError>),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct BenchReport {
   pub total: usize,
   pub failed: usize,
-  pub failures: Vec<BenchFailure>,
-  pub measurements: Vec<BenchMeasurement>,
+  pub failures: Vec<(BenchDescription, Box<JsError>)>,
+  pub measurements: Vec<(BenchDescription, BenchStats)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
-pub struct BenchMetadata {
+pub struct BenchDescription {
+  pub id: usize,
   pub name: String,
   pub origin: String,
-  pub baseline: bool,
-  pub group: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BenchMeasurement {
-  pub name: String,
-  pub baseline: bool,
-  pub stats: BenchStats,
-  pub group: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BenchFailure {
-  pub name: String,
-  pub error: String,
   pub baseline: bool,
   pub group: Option<String>,
 }
@@ -142,9 +118,10 @@ pub trait BenchReporter {
   fn report_group_summary(&mut self);
   fn report_plan(&mut self, plan: &BenchPlan);
   fn report_end(&mut self, report: &BenchReport);
-  fn report_wait(&mut self, wait: &BenchMetadata);
-  fn report_output(&mut self, output: &BenchOutput);
-  fn report_result(&mut self, result: &BenchResult);
+  fn report_register(&mut self, desc: &BenchDescription);
+  fn report_wait(&mut self, desc: &BenchDescription);
+  fn report_output(&mut self, output: &str);
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult);
 }
 
 struct ConsoleReporter {
@@ -152,8 +129,8 @@ struct ConsoleReporter {
   show_output: bool,
   has_ungrouped: bool,
   group: Option<String>,
-  baseline: Option<BenchMeasurement>,
-  group_measurements: Vec<BenchMeasurement>,
+  baseline: bool,
+  group_measurements: Vec<(BenchDescription, BenchStats)>,
   options: Option<mitata::reporter::Options>,
 }
 
@@ -163,7 +140,7 @@ impl ConsoleReporter {
       show_output,
       group: None,
       options: None,
-      baseline: None,
+      baseline: false,
       name: String::new(),
       has_ungrouped: false,
       group_measurements: Vec::new(),
@@ -181,7 +158,7 @@ impl BenchReporter for ConsoleReporter {
     self.report_group_summary();
 
     self.group = None;
-    self.baseline = None;
+    self.baseline = false;
     self.name = String::new();
     self.group_measurements.clear();
     self.options = Some(mitata::reporter::Options::new(
@@ -218,10 +195,12 @@ impl BenchReporter for ConsoleReporter {
     );
   }
 
-  fn report_wait(&mut self, wait: &BenchMetadata) {
-    self.name = wait.name.clone();
+  fn report_register(&mut self, _desc: &BenchDescription) {}
 
-    match &wait.group {
+  fn report_wait(&mut self, desc: &BenchDescription) {
+    self.name = desc.name.clone();
+
+    match &desc.group {
       None => {
         self.has_ungrouped = true;
       }
@@ -249,56 +228,52 @@ impl BenchReporter for ConsoleReporter {
     }
   }
 
-  fn report_output(&mut self, output: &BenchOutput) {
+  fn report_output(&mut self, output: &str) {
     if self.show_output {
-      match output {
-        BenchOutput::Console(line) => {
-          print!("{} {}", colors::gray(format!("{}:", self.name)), line)
-        }
-      }
+      print!("{} {}", colors::gray(format!("{}:", self.name)), output)
     }
   }
 
-  fn report_result(&mut self, result: &BenchResult) {
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
     let options = self.options.as_ref().unwrap();
 
     match result {
-      BenchResult::Ok(bench) => {
-        let mut bench = bench.to_owned();
+      BenchResult::Ok(stats) => {
+        let mut desc = desc.clone();
 
-        if bench.baseline && self.baseline.is_none() {
-          self.baseline = Some(bench.clone());
+        if desc.baseline && !self.baseline {
+          self.baseline = true;
         } else {
-          bench.baseline = false;
+          desc.baseline = false;
         }
-
-        self.group_measurements.push(bench.clone());
 
         println!(
           "{}",
           mitata::reporter::benchmark(
-            &bench.name,
+            &desc.name,
             &mitata::reporter::BenchmarkStats {
-              avg: bench.stats.avg,
-              min: bench.stats.min,
-              max: bench.stats.max,
-              p75: bench.stats.p75,
-              p99: bench.stats.p99,
-              p995: bench.stats.p995,
+              avg: stats.avg,
+              min: stats.min,
+              max: stats.max,
+              p75: stats.p75,
+              p99: stats.p99,
+              p995: stats.p995,
             },
             options
           )
         );
+
+        self.group_measurements.push((desc, stats.clone()));
       }
 
-      BenchResult::Failed(failure) => {
+      BenchResult::Failed(js_error) => {
         println!(
           "{}",
           mitata::reporter::benchmark_error(
-            &failure.name,
+            &desc.name,
             &mitata::reporter::Error {
               stack: None,
-              message: failure.error.clone(),
+              message: format_test_error(js_error),
             },
             options
           )
@@ -314,8 +289,7 @@ impl BenchReporter for ConsoleReporter {
     };
 
     if 2 <= self.group_measurements.len()
-      && (self.group.is_some()
-        || (self.group.is_none() && self.baseline.is_some()))
+      && (self.group.is_some() || (self.group.is_none() && self.baseline))
     {
       println!(
         "\n{}",
@@ -323,18 +297,18 @@ impl BenchReporter for ConsoleReporter {
           &self
             .group_measurements
             .iter()
-            .map(|b| mitata::reporter::GroupBenchmark {
-              name: b.name.clone(),
-              baseline: b.baseline,
-              group: b.group.as_deref().unwrap_or("").to_owned(),
+            .map(|(d, s)| mitata::reporter::GroupBenchmark {
+              name: d.name.clone(),
+              baseline: d.baseline,
+              group: d.group.as_deref().unwrap_or("").to_owned(),
 
               stats: mitata::reporter::BenchmarkStats {
-                avg: b.stats.avg,
-                min: b.stats.min,
-                max: b.stats.max,
-                p75: b.stats.p75,
-                p99: b.stats.p99,
-                p995: b.stats.p995,
+                avg: s.avg,
+                min: s.min,
+                max: s.max,
+                p75: s.p75,
+                p99: s.p99,
+                p995: s.p995,
               },
             })
             .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
@@ -343,7 +317,7 @@ impl BenchReporter for ConsoleReporter {
       );
     }
 
-    self.baseline = None;
+    self.baseline = false;
     self.group_measurements.clear();
   }
 
@@ -357,8 +331,8 @@ async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let lib = ps.options.ts_type_lib_window();
   ps.prepare_module_load(
     specifiers,
     false,
@@ -380,13 +354,23 @@ async fn bench_specifier(
   channel: UnboundedSender<BenchEvent>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
+  let filter = TestFilter::from_flag(&options.filter);
   let mut worker = create_main_worker(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(channel.clone(), ps.flags.unstable)],
+    vec![ops::bench::init(
+      channel.clone(),
+      filter,
+      ps.options.unstable(),
+    )],
     Default::default(),
   );
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    r#"Deno[Deno.internal].enableTestAndBench()"#,
+  )?;
 
   if options.compat_mode {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
@@ -413,16 +397,17 @@ async fn bench_specifier(
 
   let bench_result = worker.js_runtime.execute_script(
     &located_script_name!(),
-    &format!(
-      r#"Deno[Deno.internal].runBenchmarks({})"#,
-      json!({
-        "filter": options.filter,
-      }),
-    ),
+    r#"Deno[Deno.internal].runBenchmarks()"#,
   )?;
 
   worker.js_runtime.resolve_value(bench_result).await?;
 
+  loop {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
 
   Ok(())
@@ -435,7 +420,7 @@ async fn bench_specifiers(
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags.log_level;
+  let log_level = ps.options.log_level();
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
@@ -462,6 +447,7 @@ async fn bench_specifiers(
       let mut used_only = false;
       let mut report = BenchReport::new();
       let mut reporter = create_reporter(log_level != Some(Level::Error));
+      let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
         match event {
@@ -474,27 +460,32 @@ async fn bench_specifiers(
             reporter.report_plan(&plan);
           }
 
-          BenchEvent::Wait(metadata) => {
-            reporter.report_wait(&metadata);
+          BenchEvent::Register(desc) => {
+            reporter.report_register(&desc);
+            benches.insert(desc.id, desc);
+          }
+
+          BenchEvent::Wait(id) => {
+            reporter.report_wait(benches.get(&id).unwrap());
           }
 
           BenchEvent::Output(output) => {
             reporter.report_output(&output);
           }
 
-          BenchEvent::Result(_origin, result) => {
-            match &result {
-              BenchResult::Ok(bench) => {
-                report.measurements.push(bench.clone());
+          BenchEvent::Result(id, result) => {
+            let desc = benches.get(&id).unwrap();
+            reporter.report_result(desc, &result);
+            match result {
+              BenchResult::Ok(stats) => {
+                report.measurements.push((desc.clone(), stats));
               }
 
               BenchResult::Failed(failure) => {
                 report.failed += 1;
-                report.failures.push(failure.clone());
+                report.failures.push((desc.clone(), failure));
               }
             };
-
-            reporter.report_result(&result);
           }
         }
       }
@@ -531,8 +522,9 @@ pub async fn run_benchmarks(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
   let specifiers = collect_specifiers(
     bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     &bench_flags.ignore.clone(),
@@ -543,15 +535,9 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  let lib = if ps.flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-  check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib).await?;
-
-  let compat = ps.flags.compat;
+  let compat = ps.options.compat();
   bench_specifiers(
     ps,
     permissions,
@@ -571,51 +557,23 @@ pub async fn run_benchmarks_with_watch(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
-
-  let lib = if flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
 
   let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = bench_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
+  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false);
+    let ps = ps.clone();
 
     async move {
       let bench_modules =
@@ -630,33 +588,15 @@ pub async fn run_benchmarks_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = if let Some(result) = maybe_imports {
-        result?
-      } else {
-        None
-      };
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        bench_modules
-          .iter()
-          .map(|s| (s.clone(), ModuleKind::Esm))
-          .collect(),
-        false,
-        maybe_imports,
-        cache.as_mut_loader(),
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      graph_valid(&graph, !no_check, check_js)?;
+      let graph = ps
+        .create_graph(
+          bench_modules
+            .iter()
+            .map(|s| (s.clone(), ModuleKind::Esm))
+            .collect(),
+        )
+        .await?;
+      graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
@@ -746,11 +686,9 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let flags = flags.clone();
     let filter = bench_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
-    let lib = lib.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -762,19 +700,14 @@ pub async fn run_benchmarks_with_watch(
           .cloned()
           .collect::<Vec<ModuleSpecifier>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib)
-        .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      bench_specifiers(
-        ps,
-        permissions.clone(),
-        specifiers,
-        BenchSpecifierOptions {
-          compat_mode: flags.compat,
-          filter: filter.clone(),
-        },
-      )
-      .await?;
+      let specifier_options = BenchSpecifierOptions {
+        compat_mode: ps.options.compat(),
+        filter: filter.clone(),
+      };
+      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
+        .await?;
 
       Ok(())
     }
@@ -785,7 +718,7 @@ pub async fn run_benchmarks_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen: !ps.options.no_clear_screen(),
     },
   )
   .await?;
