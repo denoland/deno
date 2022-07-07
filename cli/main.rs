@@ -9,7 +9,6 @@ mod compat;
 mod deno_dir;
 mod diagnostics;
 mod diff;
-mod disk_cache;
 mod display;
 mod emit;
 mod errors;
@@ -59,6 +58,7 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
+use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
@@ -661,19 +661,20 @@ async fn create_graph_and_maybe_check(
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let check_result = emit::check_and_maybe_emit(
+    // todo: don't use anything on failure
+    let cache =
+      TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path())?;
+    let check_result = emit::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &ps.dir.gen_cache,
+      &cache,
       emit::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
-        emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
-        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);

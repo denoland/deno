@@ -75,7 +75,8 @@ declare global {
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
-    | ProvideCallHierarchyOutgoingCalls;
+    | ProvideCallHierarchyOutgoingCalls
+    | RestartRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -252,7 +253,7 @@ declare global {
     position: number;
   }
 
-  interface Restart {
+  interface RestartRequest extends BaseLanguageServerRequest {
     method: "restart";
   }
 }

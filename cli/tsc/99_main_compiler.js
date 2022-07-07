@@ -338,13 +338,9 @@ delete Object.prototype.__proto__;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      let maybeSpecifiers;
-      if (sourceFiles) {
-        maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-      }
       return core.opSync(
         "op_emit",
-        { maybeSpecifiers, fileName, data },
+        { fileName, data },
       );
     },
     getCurrentDirectory() {
@@ -557,16 +553,22 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const { diagnostics: emitDiagnostics } = program.emit();
-
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...program.getSyntacticDiagnostics(),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-      ...emitDiagnostics,
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+
+    // emit the tsbuildinfo file
+    program.emitBuildInfo(host.writeFile, {
+      isCancellationRequested: false,
+      throwIfCancellationRequested() {
+        // do nothing
+      },
+    });
+
     performanceProgram({ program });
 
     core.opSync("op_respond", {

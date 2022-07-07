@@ -162,8 +162,10 @@ impl GraphData {
     }
   }
 
-  pub fn entries(&self) -> HashMap<&ModuleSpecifier, &ModuleEntry> {
-    self.modules.iter().collect()
+  pub fn entries(
+    &self,
+  ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
+    self.modules.iter()
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.

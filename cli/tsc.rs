@@ -252,8 +252,6 @@ pub struct Request {
 pub struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
-  /// Any files that were emitted during the check.
-  pub emitted_files: Vec<EmittedFile>,
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
@@ -263,7 +261,6 @@ pub struct Response {
 #[derive(Debug)]
 struct State {
   hash_data: Vec<Vec<u8>>,
-  emitted_files: Vec<EmittedFile>,
   graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
@@ -283,7 +280,6 @@ impl State {
   ) -> Self {
     State {
       hash_data,
-      emitted_files: Default::default(),
       graph_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
@@ -337,10 +333,6 @@ struct EmitArgs {
   /// The _internal_ filename for the file.  This will be used to determine how
   /// the file is cached and stored.
   file_name: String,
-  /// A string representation of the specifier that was associated with a
-  /// module.  This should be present on every module that represents a module
-  /// that was requested to be transformed.
-  maybe_specifiers: Option<Vec<String>>,
 }
 
 #[op]
@@ -349,43 +341,9 @@ fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
     _ => {
-      let media_type = MediaType::from(&args.file_name);
-      let media_type = if matches!(
-        media_type,
-        MediaType::JavaScript
-          | MediaType::Mjs
-          | MediaType::Cjs
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::SourceMap
-          | MediaType::TsBuildInfo
-      ) {
-        media_type
-      } else {
-        MediaType::JavaScript
-      };
-      state.emitted_files.push(EmittedFile {
-        data: args.data,
-        maybe_specifiers: if let Some(specifiers) = &args.maybe_specifiers {
-          let specifiers = specifiers
-            .iter()
-            .map(|s| {
-              if let Some(data_specifier) = state.remapped_specifiers.get(s) {
-                data_specifier.clone()
-              } else if let Some(remapped_specifier) = state.root_map.get(s) {
-                remapped_specifier.clone()
-              } else {
-                normalize_specifier(s).unwrap()
-              }
-            })
-            .collect();
-          Some(specifiers)
-        } else {
-          None
-        },
-        media_type,
-      })
+      if cfg!(debug_assertions) {
+        panic!("Unhandled emit write: {}", args.file_name);
+      }
     }
   }
 
@@ -703,13 +661,11 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
   if let Some(response) = state.maybe_response {
     let diagnostics = response.diagnostics;
-    let emitted_files = state.emitted_files;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
     let stats = response.stats;
 
     Ok(Response {
       diagnostics,
-      emitted_files,
       maybe_tsbuildinfo,
       stats,
     })
@@ -908,64 +864,6 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_emit() {
-    let mut state = setup(None, None, None).await;
-    let actual = op_emit::call(
-      &mut state,
-      EmitArgs {
-        data: "some file content".to_string(),
-        file_name: "cache:///some/file.js".to_string(),
-        maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
-      },
-    );
-    assert!(actual);
-    let state = state.borrow::<State>();
-    assert_eq!(state.emitted_files.len(), 1);
-    assert!(state.maybe_tsbuildinfo.is_none());
-    assert_eq!(
-      state.emitted_files[0],
-      EmittedFile {
-        data: "some file content".to_string(),
-        maybe_specifiers: Some(vec![resolve_url_or_path(
-          "file:///some/file.ts"
-        )
-        .unwrap()]),
-        media_type: MediaType::JavaScript,
-      }
-    );
-  }
-
-  #[tokio::test]
-  async fn test_emit_strange_specifier() {
-    let mut state = setup(None, None, None).await;
-    let actual = op_emit::call(
-      &mut state,
-      EmitArgs {
-        data: "some file content".to_string(),
-        file_name: "deno:///some.file.ts?q=.json".to_string(),
-        maybe_specifiers: Some(
-          vec!["file:///some/file.ts?q=.json".to_string()],
-        ),
-      },
-    );
-    assert!(actual);
-    let state = state.borrow::<State>();
-    assert_eq!(state.emitted_files.len(), 1);
-    assert!(state.maybe_tsbuildinfo.is_none());
-    assert_eq!(
-      state.emitted_files[0],
-      EmittedFile {
-        data: "some file content".to_string(),
-        maybe_specifiers: Some(vec![resolve_url_or_path(
-          "file:///some/file.ts?q=.json"
-        )
-        .unwrap()]),
-        media_type: MediaType::JavaScript,
-      }
-    );
-  }
-
-  #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
     let actual = op_emit::call(
@@ -973,12 +871,10 @@ mod tests {
       EmitArgs {
         data: "some file content".to_string(),
         file_name: "deno:///.tsbuildinfo".to_string(),
-        maybe_specifiers: None,
       },
     );
     assert!(actual);
     let state = state.borrow::<State>();
-    assert_eq!(state.emitted_files.len(), 0);
     assert_eq!(
       state.maybe_tsbuildinfo,
       Some("some file content".to_string())
@@ -1169,7 +1065,6 @@ mod tests {
       .expect("exec should not have errored");
     eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
-    assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1182,7 +1077,6 @@ mod tests {
       .expect("exec should not have errored");
     eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
-    assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
