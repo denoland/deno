@@ -2674,8 +2674,8 @@ itest!(js_root_with_ts_check {
 #[test]
 fn check_local_then_remote() {
   let _http_guard = util::http_server();
-  let mut deno_cmd = util::deno_cmd();
-  let output = deno_cmd
+  let deno_dir = util::new_deno_dir();
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check")
@@ -2685,7 +2685,7 @@ fn check_local_then_remote() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  let output = util::deno_cmd_with_deno_dir(deno_cmd.deno_dir())
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check=all")
