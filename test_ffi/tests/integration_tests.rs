@@ -179,6 +179,16 @@ fn event_loop_integration() {
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
+  // TODO(aapoalas): The order of logging in thread safe callbacks is
+  // unexpected: The callback logs synchronously and creates an asynchronous
+  // logging task, which then gets called synchronously before the callback
+  // actually yields to the calling thread. This is in contrast to what the
+  // logging would look like if the call was coming from within Deno itself,
+  // and may lead users to unknowingly run heavy asynchronous tasks from thread
+  // safe callbacks synchronously.
+  // The fix would be to make sure microtasks are only run after the event loop
+  // middleware that polls them has completed its work. This just does not seem
+  // to work properly with Linux release builds.
   let expected = "\
     SYNCHRONOUS\n\
     Sync\n\
