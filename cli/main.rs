@@ -106,6 +106,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 fn create_web_worker_preload_module_callback(
   ps: ProcState,
 ) -> Arc<PreloadModuleCb> {
