@@ -8,10 +8,13 @@
 declare namespace Deno {
   export namespace sqlite {
     export interface Statement {
-      // TODO(bartlomieju): improve typings
-      run(...arg: any): any;
-      // TODO(bartlomieju): improve typings
+      /** Execute a query with provided arguments, without returning
+       * anything. */
+      run(...arg: any): void;
+
+      /** Execute a query with provided arguments, returning rows. */
       query(...arg: any): any;
+
       /** Dispose the statement. After calling this function
        * statement is no longer usable.
        */
