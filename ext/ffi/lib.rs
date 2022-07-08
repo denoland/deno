@@ -657,7 +657,12 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::F32 => fast_api::Type::Float32,
       NativeType::F64 => fast_api::Type::Float64,
       NativeType::Void => fast_api::Type::Void,
-      NativeType::Function | NativeType::Pointer | NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize => {
+      NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize => {
         panic!("Cannot be fast api")
       }
     }
@@ -665,7 +670,15 @@ impl From<&NativeType> for fast_api::Type {
 }
 
 fn is_fast_api(rv: NativeType) -> bool {
-  !matches!(rv, NativeType::Function | NativeType::Pointer | NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize)
+  !matches!(
+    rv,
+    NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize
+  )
 }
 
 // Create a JavaScript function for synchronous FFI call to
