@@ -227,6 +227,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --turbo_fast_api_calls",
   );
 
   if predictable {
