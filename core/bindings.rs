@@ -22,12 +22,6 @@ pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
       v8::ExternalReference {
         function: call_console.map_fn_to(),
       },
-      v8::ExternalReference {
-        function: slow_add.map_fn_to(),
-      },
-      v8::ExternalReference {
-        pointer: FastAdd.raw() as _,
-      },
     ])
   });
 
@@ -93,15 +87,7 @@ pub fn initialize_context<'s>(
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs);
-    {
-      // Fast API op for benchmarking.
-      let key = v8::String::new(scope, "op_add_fast").unwrap();
-      let template =
-        v8::FunctionTemplate::builder(slow_add).build_fast(scope, FastAdd);
-      let val = template.get_function(scope).unwrap();
-      val.set_name(key);
-      ops_obj.set(scope, key.into(), val.into());
-    }
+
     return scope.escape(context);
   }
 
@@ -124,7 +110,7 @@ fn initialize_ops(
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
-    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
+    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr, &ctx.decl.fast_fn);
   }
 }
 
@@ -173,13 +159,17 @@ pub fn set_func_raw(
   name: &'static str,
   callback: v8::FunctionCallback,
   external_data: *const c_void,
+  fast_function: &Option<Box<dyn FastFunction<Signature = ()>>>,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
-  let val = v8::Function::builder_raw(callback)
-    .data(external.into())
-    .build(scope)
-    .unwrap();
+  let builder = v8::FunctionTemplate::builder_raw(callback).data(external.into());
+  let templ = if let Some(fast_function) = fast_function {
+    builder.build_fast(scope, &**fast_function)
+  } else {
+    builder.build(scope)
+  };
+  let val = templ.get_function(scope).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
 }

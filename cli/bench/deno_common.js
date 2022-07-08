@@ -5,8 +5,6 @@ Deno.bench("date_now", { n: 5e5 }, () => {
   Date.now();
 });
 
-// Void ops measure op-overhead
-Deno.bench("op_void_sync", { n: 1e7 }, () => Deno.core.opSync("op_void_sync"));
 
 // Fast API calls
 {
@@ -20,6 +18,13 @@ Deno.bench("op_void_sync", { n: 1e7 }, () => Deno.core.opSync("op_void_sync"));
   Deno.bench("op_add_fast", { n: 1e7 }, () => add(1, 2));
   Deno.bench("add_js", { n: 1e7 }, () => addJS(1, 2));  
 }
+
+const { op_void_sync } = Deno.core.ops;
+function sync() { return op_void_sync(); }
+sync(); // Warmup
+
+// Void ops measure op-overhead
+Deno.bench("op_void_sync", { n: 1e7 }, () => sync());
 
 Deno.bench(
   "op_void_async",

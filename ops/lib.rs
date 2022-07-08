@@ -5,6 +5,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
+use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
 use regex::Regex;
@@ -102,7 +103,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
-  let (fast_impl, fast_field) = codegen_fast_impl(&core, &func, name);
+  let (fast_impl, fast_field) = codegen_fast_impl(&core, &func, name, is_async);
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
   // Generate wrapper
@@ -268,44 +269,35 @@ fn codegen_fast_impl(
   core: &TokenStream2,
   f: &syn::ItemFn,
   name: &syn::Ident,
+  is_async: bool,
 ) -> (TokenStream2, TokenStream2) {
   let fast_info = can_be_fast_api(core, f);
-
-  let sig = &f.sig;
-  let inputs = &sig.inputs;
-  let output = &sig.output;
-  if let Some((args, ret)) = fast_info {
-    return (
-      quote! {
-        impl #core::v8::fast_api::FastFunction for #name {
-          type Signature = fn (#inputs)  #output;
-          fn function(&self) -> Self::Signature {
-            Self::call
+  // TODO(@littledivy): Fast async calls.
+  if !is_async {
+    if let Some((args, ret)) = fast_info {
+      return (
+        quote! {
+          impl #core::v8::fast_api::FastFunction for #name {
+            type Signature = ();
+            fn function(&self) -> Self::Signature {}
+            fn raw(&self) -> *const ::std::ffi::c_void {
+              unsafe { ::std::mem::transmute_copy(&Self::call) }
+            }
+            fn args(&self) -> &'static [#core::v8::fast_api::Type] {
+              &[ #args ]
+            }
+            fn return_type(&self) -> #core::v8::fast_api::CType {
+              #ret
+            }
           }
-          fn args(&self) -> &'static [#core::v8::fast_api::Type] {
-            &[ #args ]
-          }
-          fn return_type(&self) -> #core::v8::fast_api::CType {
-            #ret
-          }
-        }
-      },
-      quote! { Some(Box::new(#name)) },
-    );
+        },
+        quote! { Some(Box::new(#name)) },
+      );
+    }
   }
 
   // Default impl to satisfy generic bounds for non-fast ops
-  (
-    quote! {
-      impl #core::v8::fast_api::FastFunction for #name {
-        type Signature = fn();
-        fn function(&self) -> Self::Signature {
-          || {}
-        }
-      }
-    },
-    quote! { None },
-  )
+  (quote! {}, quote! { None })
 }
 
 /// Generate the body of a v8 func for a sync op
@@ -354,7 +346,7 @@ fn can_be_fast_api(
   let inputs = &f.sig.inputs;
   let output = &f.sig.output;
 
-  let ret = match is_fast_scalar(core, output) {
+  let ret = match is_fast_scalar(core, output, true) {
     Some(ret) => ret,
     None => return None,
   };
@@ -367,7 +359,7 @@ fn can_be_fast_api(
       syn::FnArg::Typed(pat) => &pat.ty,
       _ => unreachable!(),
     };
-    match is_fast_scalar(core, ty) {
+    match is_fast_scalar(core, ty, false) {
       None => match is_fast_arg_sequence(core, ty) {
         Some(arg) => {
           needs_recv = true;
@@ -394,12 +386,12 @@ fn is_fast_arg_sequence(
 ) -> Option<TokenStream2> {
   if is_fast_typed_array(&ty) {
     return Some(
-      quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::Type::Uint32) },
+      quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) },
     );
   }
   if is_local_array(&ty) {
     return Some(
-      quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::Type::Void) },
+      quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::CType::Void) },
     );
   }
   None
@@ -421,18 +413,24 @@ fn is_fast_typed_array(arg: impl ToTokens) -> bool {
 fn is_fast_scalar(
   core: &TokenStream2,
   ty: impl ToTokens,
+  is_ret: bool,
 ) -> Option<TokenStream2> {
+  let cty = if is_ret {
+    quote! { CType }
+  } else {
+    quote! { Type }
+  };
   if is_resource_id(&ty) {
-    return Some(quote! { #core::v8::fast_api::Type::Uint32 });
+    return Some(quote! { #core::v8::fast_api::#cty::Uint32 });
   }
   if is_void(&ty) {
-    return Some(quote! { #core::v8::fast_api::Type::Void });
+    return Some(quote! { #core::v8::fast_api::#cty::Void });
   }
   match tokens(&ty).as_str() {
-    "u8" | "u16" | "u32" => Some(quote! { #core::v8::fast_api::Type::Uint32 }),
-    "i8" | "i16" | "i32" => Some(quote! { #core::v8::fast_api::Type::Int32 }),
-    "f32" => Some(quote! { #core::v8::fast_api::Type::Float32 }),
-    "f64" => Some(quote! { #core::v8::fast_api::Type::Float64 }),
+    "u8" | "u16" | "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
+    "i8" | "i16" | "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
+    "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
+    "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
     _ => None,
   }
 }
