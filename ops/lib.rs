@@ -102,6 +102,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
+  let (fast_impl, fast_field) = codegen_fast_impl(&core, &func, name);
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
   // Generate wrapper
@@ -129,6 +130,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           name: Self::name(),
           v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
           enabled: true,
+          fast_fn: #fast_field,
           is_async: #is_async,
           is_unstable: #is_unstable,
           is_v8: #is_v8,
@@ -147,6 +149,8 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
         #v8_body
       }
     }
+
+    #fast_impl
   }.into()
 }
 
@@ -260,6 +264,50 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
   }
 }
 
+fn codegen_fast_impl(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  name: &syn::Ident,
+) -> (TokenStream2, TokenStream2) {
+  let fast_info = can_be_fast_api(core, f);
+
+  let sig = &f.sig;
+  let inputs = &sig.inputs;
+  let output = &sig.output;
+  if let Some((args, ret)) = fast_info {
+    return (
+      quote! {
+        impl #core::v8::fast_api::FastFunction for #name {
+          type Signature = fn (#inputs)  #output;
+          fn function(&self) -> Self::Signature {
+            Self::call
+          }
+          fn args(&self) -> &'static [#core::v8::fast_api::Type] {
+            &[ #args ]
+          }
+          fn return_type(&self) -> #core::v8::fast_api::CType {
+            #ret
+          }
+        }
+      },
+      quote! { Some(Box::new(#name)) },
+    );
+  }
+
+  // Default impl to satisfy generic bounds for non-fast ops
+  (
+    quote! {
+      impl #core::v8::fast_api::FastFunction for #name {
+        type Signature = fn();
+        fn function(&self) -> Self::Signature {
+          || {}
+        }
+      }
+    },
+    quote! { None },
+  )
+}
+
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(
   core: &TokenStream2,
@@ -277,7 +325,6 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
@@ -300,39 +347,62 @@ fn codegen_v8_sync(
   }
 }
 
-fn can_be_fast_api(f: &syn::ItemFn) -> bool {
+fn can_be_fast_api(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+) -> Option<(TokenStream2, TokenStream2)> {
   let inputs = &f.sig.inputs;
   let output = &f.sig.output;
 
-  if !is_fast_rv(output) {
-    return false;
-  }
+  let ret = match is_fast_scalar(core, output) {
+    Some(ret) => ret,
+    None => return None,
+  };
 
   // need a reciever for sequence types.
   let mut needs_recv = false;
-  let mut fast_api = false;
+  let mut args = vec![];
   for input in inputs {
     let ty = match input {
       syn::FnArg::Typed(pat) => &pat.ty,
       _ => unreachable!(),
     };
-    match is_fast_arg_scalar(ty) {
-      false if is_fast_arg_sequence(ty) == true => {
-        needs_recv = true;
-      }
-      false => return false,
-      _ => {
-        fast_api = true;
+    match is_fast_scalar(core, ty) {
+      None => match is_fast_arg_sequence(core, ty) {
+        Some(arg) => {
+          needs_recv = true;
+          args.push(arg);
+        }
+        None => return None,
+      },
+      Some(arg) => {
+        args.push(arg);
       }
     }
   }
 
-  fast_api
+  let args = args
+    .iter()
+    .fold(quote! {}, |acc, new| quote! { #acc, #new });
+  Some((args, ret))
 }
 
 // A v8::Local<v8::Array> or FastApiTypedArray<T>
-fn is_fast_arg_sequence(ty: impl ToTokens) -> bool {
-  is_fast_typed_array(ty) || is_local_array(ty)
+fn is_fast_arg_sequence(
+  core: &TokenStream2,
+  ty: impl ToTokens,
+) -> Option<TokenStream2> {
+  if is_fast_typed_array(&ty) {
+    return Some(
+      quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::Type::Uint32) },
+    );
+  }
+  if is_local_array(&ty) {
+    return Some(
+      quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::Type::Void) },
+    );
+  }
+  None
 }
 
 fn is_local_array(arg: impl ToTokens) -> bool {
@@ -348,19 +418,23 @@ fn is_fast_typed_array(arg: impl ToTokens) -> bool {
   RE.is_match(&tokens(arg))
 }
 
-fn is_fast_arg_scalar(ty: impl ToTokens) -> bool {
-  ["u8", "i8", "i16", "u16", "i32", "u32"]
-    .iter()
-    .any(|&s| tokens(&ty) == s)
-    || is_resource_id(&ty)
-}
-
-fn is_fast_rv(ty: impl ToTokens) -> bool {
-  is_void(&ty)
-    || ["u8", "i8", "i16", "u16", "i32", "u32"]
-      .iter()
-      .any(|&s| tokens(&ty) == s)
-    || is_resource_id(&ty)
+fn is_fast_scalar(
+  core: &TokenStream2,
+  ty: impl ToTokens,
+) -> Option<TokenStream2> {
+  if is_resource_id(&ty) {
+    return Some(quote! { #core::v8::fast_api::Type::Uint32 });
+  }
+  if is_void(&ty) {
+    return Some(quote! { #core::v8::fast_api::Type::Void });
+  }
+  match tokens(&ty).as_str() {
+    "u8" | "u16" | "u32" => Some(quote! { #core::v8::fast_api::Type::Uint32 }),
+    "i8" | "i16" | "i32" => Some(quote! { #core::v8::fast_api::Type::Int32 }),
+    "f32" => Some(quote! { #core::v8::fast_api::Type::Float32 }),
+    "f64" => Some(quote! { #core::v8::fast_api::Type::Float64 }),
+    _ => None,
+  }
 }
 
 fn codegen_args(
