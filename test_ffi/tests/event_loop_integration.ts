@@ -33,7 +33,7 @@ const tripleLogCallback = () => {
   setTimeout(() => {
     console.log("Timeout");
     callback.unref();
-  });
+  }, 10);
 };
 
 const callback = new Deno.UnsafeCallback(
