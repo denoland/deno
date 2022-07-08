@@ -37,6 +37,14 @@ fn bench_op_nop(b: &mut Bencher) {
   bench_js_sync(b, r#"Deno.core.opSync("op_nop", null, null, null);"#, setup);
 }
 
+fn bench_op_add_fast(b: &mut Bencher) {
+  bench_js_sync(b, r#"add(1, 2);"#, setup);
+}
+
+fn bench_op_baseline(b: &mut Bencher) {
+  bench_js_sync(b, r#""#, setup);
+}
+
 fn bench_op_async(b: &mut Bencher) {
   bench_js_async(b, r#"Deno.core.opAsync("op_pi_async", null);"#, setup);
 }
@@ -49,6 +57,8 @@ benchmark_group!(
   benches,
   bench_op_pi_json,
   bench_op_nop,
+  bench_op_add_fast,
+  bench_op_baseline,
   bench_op_async,
   bench_is_proxy
 );

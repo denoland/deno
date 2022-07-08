@@ -300,6 +300,69 @@ fn codegen_v8_sync(
   }
 }
 
+fn can_be_fast_api(f: &syn::ItemFn) -> bool {
+  let inputs = &f.sig.inputs;
+  let output = &f.sig.output;
+
+  if !is_fast_rv(output) {
+    return false;
+  }
+
+  // need a reciever for sequence types.
+  let mut needs_recv = false;
+  let mut fast_api = false;
+  for input in inputs {
+    let ty = match input {
+      syn::FnArg::Typed(pat) => &pat.ty,
+      _ => unreachable!(),
+    };
+    match is_fast_arg_scalar(ty) {
+      false if is_fast_arg_sequence(ty) == true => {
+        needs_recv = true;
+      }
+      false => return false,
+      _ => {
+        fast_api = true;
+      }
+    }
+  }
+
+  fast_api
+}
+
+// A v8::Local<v8::Array> or FastApiTypedArray<T>
+fn is_fast_arg_sequence(ty: impl ToTokens) -> bool {
+  is_fast_typed_array(ty) || is_local_array(ty)
+}
+
+fn is_local_array(arg: impl ToTokens) -> bool {
+  static RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^v8::Local<v8::Array>$").unwrap());
+  RE.is_match(&tokens(arg))
+}
+
+fn is_fast_typed_array(arg: impl ToTokens) -> bool {
+  static RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#": (?:deno_core :: )?FastApiTypedArray$"#).unwrap()
+  });
+  RE.is_match(&tokens(arg))
+}
+
+fn is_fast_arg_scalar(ty: impl ToTokens) -> bool {
+  ["u8", "i8", "i16", "u16", "i32", "u32"]
+    .iter()
+    .any(|&s| tokens(&ty) == s)
+    || is_resource_id(&ty)
+}
+
+fn is_fast_rv(ty: impl ToTokens) -> bool {
+  is_void(&ty)
+    || ["u8", "i8", "i16", "u16", "i32", "u32"]
+      .iter()
+      .any(|&s| tokens(&ty) == s)
+    || is_resource_id(&ty)
+}
+
 fn codegen_args(
   core: &TokenStream2,
   f: &syn::ItemFn,
