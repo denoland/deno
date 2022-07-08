@@ -11,6 +11,7 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const dylib = Deno.dlopen(libPath, {
   "nop": { parameters: [], result: "void" },
+  "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -220,228 +221,288 @@ const dylib = Deno.dlopen(libPath, {
   },
 });
 
+const { nop } = dylib.symbols;
 Deno.bench("nop()", () => {
-  dylib.symbols.nop();
+  nop();
 });
 
+const { add_u32 } = dylib.symbols;
+Deno.bench("add_u32()", () => {
+  add_u32(1, 2);
+});
+
+const { nop_u8 } = dylib.symbols;
 Deno.bench("nop_u8()", () => {
-  dylib.symbols.nop_u8(100);
+  nop_u8(100);
 });
 
+const { nop_i8 } = dylib.symbols;
 Deno.bench("nop_i8()", () => {
-  dylib.symbols.nop_i8(100);
+  nop_i8(100);
 });
 
+const { nop_u16 } = dylib.symbols;
 Deno.bench("nop_u16()", () => {
-  dylib.symbols.nop_u16(100);
+  nop_u16(100);
 });
 
+const { nop_i16 } = dylib.symbols;
 Deno.bench("nop_i16()", () => {
-  dylib.symbols.nop_i16(100);
+  nop_i16(100);
 });
 
+const { nop_u32 } = dylib.symbols;
 Deno.bench("nop_u32()", () => {
-  dylib.symbols.nop_u32(100);
+  nop_u32(100);
 });
 
+const { nop_i32 } = dylib.symbols;
 Deno.bench("nop_i32()", () => {
-  dylib.symbols.nop_i32(100);
+  nop_i32(100);
 });
 
+const { nop_u64 } = dylib.symbols;
 Deno.bench("nop_u64()", () => {
-  dylib.symbols.nop_u64(100);
+  nop_u64(100);
 });
 
+const { nop_i64 } = dylib.symbols;
 Deno.bench("nop_i64()", () => {
-  dylib.symbols.nop_i64(100);
+  nop_i64(100);
 });
 
+const { nop_usize } = dylib.symbols;
 Deno.bench("nop_usize()", () => {
-  dylib.symbols.nop_usize(100);
+  nop_usize(100n);
 });
 
+const { nop_isize } = dylib.symbols;
 Deno.bench("nop_isize()", () => {
-  dylib.symbols.nop_isize(100);
+  nop_isize(100n);
 });
 
+const { nop_f32 } = dylib.symbols;
 Deno.bench("nop_f32()", () => {
-  dylib.symbols.nop_f32(100);
+  nop_f32(100.1);
 });
 
+const { nop_f64 } = dylib.symbols;
 Deno.bench("nop_f64()", () => {
-  dylib.symbols.nop_f64(100);
+  nop_f64(100.1);
 });
 
+const { nop_buffer } = dylib.symbols;
 const buffer = new Uint8Array(8).fill(5);
 Deno.bench("nop_buffer()", () => {
-  dylib.symbols.nop_buffer(buffer);
+  nop_buffer(buffer);
 });
 
+const { return_u8 } = dylib.symbols;
 Deno.bench("return_u8()", () => {
-  dylib.symbols.return_u8();
+  return_u8();
 });
 
+const { return_i8 } = dylib.symbols;
 Deno.bench("return_i8()", () => {
-  dylib.symbols.return_i8();
+  return_i8();
 });
 
+const { return_u16 } = dylib.symbols;
 Deno.bench("return_u16()", () => {
-  dylib.symbols.return_u16();
+  return_u16();
 });
 
+const { return_i16 } = dylib.symbols;
 Deno.bench("return_i16()", () => {
-  dylib.symbols.return_i16();
+  return_i16();
 });
 
+const { return_u32 } = dylib.symbols;
 Deno.bench("return_u32()", () => {
-  dylib.symbols.return_u32();
+  return_u32();
 });
 
+const { return_i32 } = dylib.symbols;
 Deno.bench("return_i32()", () => {
-  dylib.symbols.return_i32();
+  return_i32();
 });
 
+const { return_u64 } = dylib.symbols;
 Deno.bench("return_u64()", () => {
-  dylib.symbols.return_u64();
+  return_u64();
 });
 
+const { return_i64 } = dylib.symbols;
 Deno.bench("return_i64()", () => {
-  dylib.symbols.return_i64();
+  return_i64();
 });
 
+const { return_usize } = dylib.symbols;
 Deno.bench("return_usize()", () => {
-  dylib.symbols.return_usize();
+  return_usize();
 });
 
+const { return_isize } = dylib.symbols;
 Deno.bench("return_isize()", () => {
-  dylib.symbols.return_isize();
+  return_isize();
 });
 
+const { return_f32 } = dylib.symbols;
 Deno.bench("return_f32()", () => {
-  dylib.symbols.return_f32();
+  return_f32();
 });
 
+const { return_f64 } = dylib.symbols;
 Deno.bench("return_f64()", () => {
-  dylib.symbols.return_f64();
+  return_f64();
 });
 
+const { return_buffer } = dylib.symbols;
 Deno.bench("return_buffer()", () => {
-  dylib.symbols.return_buffer();
+  return_buffer();
 });
 
 // Nonblocking calls
 
+const { nop_nonblocking } = dylib.symbols;
 Deno.bench("nop_nonblocking()", async () => {
-  await dylib.symbols.nop_nonblocking();
+  await nop_nonblocking();
 });
 
+const { nop_u8_nonblocking } = dylib.symbols;
 Deno.bench("nop_u8_nonblocking()", async () => {
-  await dylib.symbols.nop_u8_nonblocking(100);
+  await nop_u8_nonblocking(100);
 });
 
+const { nop_i8_nonblocking } = dylib.symbols;
 Deno.bench("nop_i8_nonblocking()", async () => {
-  await dylib.symbols.nop_i8_nonblocking(100);
+  await nop_i8_nonblocking(100);
 });
 
+const { nop_u16_nonblocking } = dylib.symbols;
 Deno.bench("nop_u16_nonblocking()", async () => {
-  await dylib.symbols.nop_u16_nonblocking(100);
+  await nop_u16_nonblocking(100);
 });
 
+const { nop_i16_nonblocking } = dylib.symbols;
 Deno.bench("nop_i16_nonblocking()", async () => {
-  await dylib.symbols.nop_i16_nonblocking(100);
+  await nop_i16_nonblocking(100);
 });
 
+const { nop_u32_nonblocking } = dylib.symbols;
 Deno.bench("nop_u32_nonblocking()", async () => {
-  await dylib.symbols.nop_u32_nonblocking(100);
+  await nop_u32_nonblocking(100);
 });
 
+const { nop_i32_nonblocking } = dylib.symbols;
 Deno.bench("nop_i32_nonblocking()", async () => {
-  await dylib.symbols.nop_i32_nonblocking(100);
+  await nop_i32_nonblocking(100);
 });
 
+const { nop_u64_nonblocking } = dylib.symbols;
 Deno.bench("nop_u64_nonblocking()", async () => {
-  await dylib.symbols.nop_u64_nonblocking(100);
+  await nop_u64_nonblocking(100);
 });
 
+const { nop_i64_nonblocking } = dylib.symbols;
 Deno.bench("nop_i64_nonblocking()", async () => {
-  await dylib.symbols.nop_i64_nonblocking(100);
+  await nop_i64_nonblocking(100);
 });
 
+const { nop_usize_nonblocking } = dylib.symbols;
 Deno.bench("nop_usize_nonblocking()", async () => {
-  await dylib.symbols.nop_usize_nonblocking(100);
+  await nop_usize_nonblocking(100);
 });
 
+const { nop_isize_nonblocking } = dylib.symbols;
 Deno.bench("nop_isize_nonblocking()", async () => {
-  await dylib.symbols.nop_isize_nonblocking(100);
+  await nop_isize_nonblocking(100);
 });
 
+const { nop_f32_nonblocking } = dylib.symbols;
 Deno.bench("nop_f32_nonblocking()", async () => {
-  await dylib.symbols.nop_f32_nonblocking(100);
+  await nop_f32_nonblocking(100);
 });
 
+const { nop_f64_nonblocking } = dylib.symbols;
 Deno.bench("nop_f64_nonblocking()", async () => {
-  await dylib.symbols.nop_f64_nonblocking(100);
+  await nop_f64_nonblocking(100);
 });
 
+const { nop_buffer_nonblocking } = dylib.symbols;
 Deno.bench("nop_buffer_nonblocking()", async () => {
-  await dylib.symbols.nop_buffer_nonblocking(buffer);
+  await nop_buffer_nonblocking(buffer);
 });
 
+const { return_u8_nonblocking } = dylib.symbols;
 Deno.bench("return_u8_nonblocking()", async () => {
-  await dylib.symbols.return_u8_nonblocking();
+  await return_u8_nonblocking();
 });
 
+const { return_i8_nonblocking } = dylib.symbols;
 Deno.bench("return_i8_nonblocking()", async () => {
-  await dylib.symbols.return_i8_nonblocking();
+  await return_i8_nonblocking();
 });
 
+const { return_u16_nonblocking } = dylib.symbols;
 Deno.bench("return_u16_nonblocking()", async () => {
-  await dylib.symbols.return_u16_nonblocking();
+  await return_u16_nonblocking();
 });
 
+const { return_i16_nonblocking } = dylib.symbols;
 Deno.bench("return_i16_nonblocking()", async () => {
-  await dylib.symbols.return_i16_nonblocking();
+  await return_i16_nonblocking();
 });
 
+const { return_u32_nonblocking } = dylib.symbols;
 Deno.bench("return_u32_nonblocking()", async () => {
-  await dylib.symbols.return_u32_nonblocking();
+  await return_u32_nonblocking();
 });
 
+const { return_i32_nonblocking } = dylib.symbols;
 Deno.bench("return_i32_nonblocking()", async () => {
-  await dylib.symbols.return_i32_nonblocking();
+  await return_i32_nonblocking();
 });
 
+const { return_u64_nonblocking } = dylib.symbols;
 Deno.bench("return_u64_nonblocking()", async () => {
-  await dylib.symbols.return_u64_nonblocking();
+  await return_u64_nonblocking();
 });
 
+const { return_i64_nonblocking } = dylib.symbols;
 Deno.bench("return_i64_nonblocking()", async () => {
-  await dylib.symbols.return_i64_nonblocking();
+  await return_i64_nonblocking();
 });
 
+const { return_usize_nonblocking } = dylib.symbols;
 Deno.bench("return_usize_nonblocking()", async () => {
-  await dylib.symbols.return_usize_nonblocking();
+  await return_usize_nonblocking();
 });
 
+const { return_isize_nonblocking } = dylib.symbols;
 Deno.bench("return_isize_nonblocking()", async () => {
-  await dylib.symbols.return_isize_nonblocking();
+  await return_isize_nonblocking();
 });
 
+const { return_f32_nonblocking } = dylib.symbols;
 Deno.bench("return_f32_nonblocking()", async () => {
-  await dylib.symbols.return_f32_nonblocking();
+  await return_f32_nonblocking();
 });
 
+const { return_f64_nonblocking } = dylib.symbols;
 Deno.bench("return_f64_nonblocking()", async () => {
-  await dylib.symbols.return_f64_nonblocking();
+  await return_f64_nonblocking();
 });
 
+const { return_buffer_nonblocking } = dylib.symbols;
 Deno.bench("return_buffer_nonblocking()", async () => {
-  await dylib.symbols.return_buffer_nonblocking();
+  await return_buffer_nonblocking();
 });
 
+const { nop_many_parameters } = dylib.symbols;
 const buffer2 = new Uint8Array(8).fill(25);
 Deno.bench("nop_many_parameters()", () => {
-  dylib.symbols.nop_many_parameters(
+  nop_many_parameters(
     135,
     47,
     356,
@@ -471,8 +532,9 @@ Deno.bench("nop_many_parameters()", () => {
   );
 });
 
+const { nop_many_parameters_nonblocking } = dylib.symbols;
 Deno.bench("nop_many_parameters_nonblocking()", () => {
-  dylib.symbols.nop_many_parameters_nonblocking(
+  nop_many_parameters_nonblocking(
     135,
     47,
     356,
