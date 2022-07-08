@@ -1307,20 +1307,7 @@ unsafe fn do_ffi_callback(
   }
 
   let recv = v8::undefined(&mut scope);
-  let policy = isolate.get_microtasks_policy();
-  if policy == v8::MicrotasksPolicy::Auto {
-    // Set the microtask policy to explicit so that callbacks can create promises
-    // without those getting executed before the callback returns. Without this
-    // thread safe callbacks would need to use `setTimeout()` to enqueue work. With this
-    // a `Promise.resolve().then()` can be used to enqueue work to be run directly on the
-    // next event loop tick.
-    isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-  }
   let call_result = func.call(&mut scope, recv.into(), &params);
-  if policy == v8::MicrotasksPolicy::Auto {
-    // After calling, set microtasks policy back to auto.
-    isolate.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
-  }
   std::mem::forget(callback);
 
   if call_result.is_none() {
