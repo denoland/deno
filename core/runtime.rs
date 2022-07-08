@@ -227,6 +227,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --turbo_fast_api_calls",
   );
 
   if predictable {
@@ -2307,23 +2308,13 @@ pub mod tests {
 
   #[test]
   fn terminate_execution_webassembly() {
-    let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
-
-    let terminator_thread = std::thread::spawn(move || {
-      // allow deno to boot and run
-      std::thread::sleep(std::time::Duration::from_millis(1000));
-
-      // terminate execution
-      let ok = v8_isolate_handle.terminate_execution();
-      assert!(ok);
-    });
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let v8_isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
     // Run an infinite loop in Webassemby code, which should be terminated.
-    isolate.execute_script("infinite_wasm_loop.js",
+    let promise = runtime.execute_script("infinite_wasm_loop.js",
                                  r#"
                                  (async () => {
-                                 console.log("Begin");
                                   const wasmCode = new Uint8Array([
                                       0,    97,   115,  109,  1,    0,    0,    0,    1,   4,    1,
                                       96,   0,    0,    3,    2,    1,    0,    7,    17,  1,    13,
@@ -2332,23 +2323,31 @@ pub mod tests {
                                       12,   0,    11,   11,
                                   ]);
                                   const wasmModule = await WebAssembly.compile(wasmCode);
-                                  const wasmInstance = new WebAssembly.Instance(wasmModule);
-                                  wasmInstance.exports.infinite_loop();
-                                  })();
-                                      "#).expect("wasm infinite loop failed");
-    match futures::executor::block_on(isolate.run_event_loop(false)) {
-      Ok(_) => panic!("execution should be terminated"),
-      Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
-      }
-    }
+                                  globalThis.wasmInstance = new WebAssembly.Instance(wasmModule);
+                                  })()
+                                      "#).unwrap();
+    futures::executor::block_on(runtime.resolve_value(promise)).unwrap();
+    let terminator_thread = std::thread::spawn(move || {
+      std::thread::sleep(std::time::Duration::from_millis(1000));
+
+      // terminate execution
+      let ok = v8_isolate_handle.terminate_execution();
+      assert!(ok);
+    });
+    let err = runtime
+      .execute_script(
+        "infinite_wasm_loop2.js",
+        "globalThis.wasmInstance.exports.infinite_loop();",
+      )
+      .unwrap_err();
+    assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
     // Cancel the execution-terminating exception in order to allow script
     // execution again.
-    let ok = isolate.v8_isolate().cancel_terminate_execution();
+    let ok = runtime.v8_isolate().cancel_terminate_execution();
     assert!(ok);
 
     // Verify that the isolate usable again.
-    isolate
+    runtime
       .execute_script("simple.js", "1 + 1")
       .expect("execution should be possible again");
 

@@ -10,6 +10,7 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::v8::fast_api;
 use std::sync::mpsc::sync_channel;
 
 use deno_core::serde_json::json;
@@ -604,7 +605,7 @@ where
         match foreign_fn.non_blocking {
           // Generate functions for synchronous calls.
           Some(false) | None => {
-            let function = make_sync_fn(scope, Box::leak(sym));
+            let function = make_sync_fn(scope, sym);
             obj.set(scope, func_key.into(), function.into());
           }
           // This optimization is not yet supported for non-blocking calls.
@@ -623,13 +624,91 @@ where
   ))
 }
 
+pub struct FfiFastCallTemplate {
+  args: Box<[fast_api::Type]>,
+  ret: fast_api::CType,
+  symbol_ptr: *const c_void,
+}
+
+impl fast_api::FastFunction for FfiFastCallTemplate {
+  type Signature = ();
+  fn function(&self) -> Self::Signature {}
+
+  fn raw(&self) -> *const c_void {
+    self.symbol_ptr
+  }
+  fn args(&self) -> &'static [fast_api::Type] {
+    Box::leak(self.args.clone())
+  }
+  fn return_type(&self) -> fast_api::CType {
+    self.ret
+  }
+}
+
+impl From<&NativeType> for fast_api::Type {
+  fn from(native_type: &NativeType) -> Self {
+    match native_type {
+      NativeType::U8 | NativeType::U16 | NativeType::U32 => {
+        fast_api::Type::Uint32
+      }
+      NativeType::I8 | NativeType::I16 | NativeType::I32 => {
+        fast_api::Type::Int32
+      }
+      NativeType::F32 => fast_api::Type::Float32,
+      NativeType::F64 => fast_api::Type::Float64,
+      NativeType::Void => fast_api::Type::Void,
+      NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize => {
+        panic!("Cannot be fast api")
+      }
+    }
+  }
+}
+
+fn is_fast_api(rv: NativeType) -> bool {
+  !matches!(
+    rv,
+    NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize
+  )
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: *mut Symbol,
+  sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let func = v8::Function::builder(
+  let mut fast_ffi_templ = None;
+
+  if !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
+    && is_fast_api(sym.result_type)
+  {
+    let mut args = sym
+      .parameter_types
+      .iter()
+      .map(|t| t.into())
+      .collect::<Vec<_>>();
+    if args.is_empty() {
+      args.push(fast_api::Type::V8Value);
+    }
+    fast_ffi_templ = Some(FfiFastCallTemplate {
+      args: args.into_boxed_slice(),
+      ret: (&fast_api::Type::from(&sym.result_type)).into(),
+      symbol_ptr: sym.ptr.as_ptr() as *const c_void,
+    });
+  }
+
+  let sym = Box::leak(sym);
+  let builder = v8::FunctionTemplate::builder(
     |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
@@ -650,9 +729,14 @@ fn make_sync_fn<'s>(
       };
     },
   )
-  .data(v8::External::new(scope, sym as *mut _).into())
-  .build(scope)
-  .unwrap();
+  .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
+
+  let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
+    builder.build_fast(scope, fast_ffi_templ)
+  } else {
+    builder.build(scope)
+  };
+  let func = func.get_function(scope).unwrap();
 
   let weak = v8::Weak::with_finalizer(
     scope,
