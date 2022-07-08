@@ -39,7 +39,7 @@ pub struct ConnResource {
 
 impl Resource for ConnResource {
   fn name(&self) -> Cow<str> {
-    "connResource".into()
+    "sqliteConnection".into()
   }
 }
 
@@ -47,7 +47,7 @@ pub struct StmtResource(RefCell<CachedStatement<'static>>, usize);
 
 impl Resource for StmtResource {
   fn name(&self) -> Cow<str> {
-    "stmtResource".into()
+    "sqliteStatement".into()
   }
 }
 
@@ -57,8 +57,8 @@ fn op_sqlite_open(
   path: String,
 ) -> Result<ResourceId, AnyError> {
   let conn = Connection::open(&path)?;
-  let handle = state.resource_table.add(ConnResource { conn });
-  Ok(handle)
+  let rid = state.resource_table.add(ConnResource { conn });
+  Ok(rid)
 }
 
 #[op]

@@ -4,29 +4,69 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { TypeError } = window.__bootstrap.primordials;
   class Statement {
-    #handle;
+    #rid;
+    #closed;
+
     constructor(conn, sql) {
-      this.#handle = core.opSync("op_sqlite_prepare", conn, sql);
+      this.#rid = core.opSync("op_sqlite_prepare", conn, sql);
+      this.#closed = false;
     }
 
     run(...args) {
-      return core.opSync("op_sqlite_run", this.#handle, args);
+      if (this.#closed) {
+        throw new TypeError("Statement has already been disposed.");
+      }
+      return core.opSync("op_sqlite_run", this.#rid, args);
     }
 
     query(...args) {
-      return core.opSync("op_sqlite_query", this.#handle, args);
+      if (this.#closed) {
+        throw new TypeError("Statement has already been disposed.");
+      }
+      return core.opSync("op_sqlite_query", this.#rid, args);
+    }
+
+    close() {
+      if (this.#closed) {
+        return;
+      }
+      core.close(this.#rid);
+      this.#closed = true;
     }
   }
 
   class Connection {
     #rid;
+    #statements;
+    #closed;
+
     constructor(specifier, _flags) {
       this.#rid = core.opSync("op_sqlite_open", specifier);
+      this.#statements = [];
+      this.#closed = false;
     }
 
     prepare(sql) {
-      return new Statement(this.#rid, sql);
+      if (this.#closed) {
+        throw new TypeError("Connection has already been closed.");
+      }
+      const s = new Statement(this.#rid, sql);
+      this.#statements.push(s);
+      return s;
+    }
+
+    close() {
+      if (this.#closed) {
+        return;
+      }
+
+      for (const stmt of this.#statements) {
+        stmt.close();
+      }
+      core.close(this.#rid);
+      this.#closed = true;
     }
   }
 
