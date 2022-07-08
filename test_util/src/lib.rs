@@ -1664,8 +1664,14 @@ pub fn new_deno_dir() -> TempDir {
 
 pub struct DenoCmd {
   // keep the deno dir directory alive for the duration of the command
-  _deno_dir: TempDir,
+  deno_dir: TempDir,
   cmd: Command,
+}
+
+impl DenoCmd {
+  pub fn deno_dir(&self) -> &TempDir {
+    &self.deno_dir
+  }
 }
 
 impl Deref for DenoCmd {
@@ -1692,7 +1698,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
   let mut cmd = Command::new(exe_path);
   cmd.env("DENO_DIR", deno_dir.path());
   DenoCmd {
-    _deno_dir: deno_dir.clone(),
+    deno_dir: deno_dir.clone(),
     cmd,
   }
 }
