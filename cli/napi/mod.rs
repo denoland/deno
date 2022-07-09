@@ -2,6 +2,7 @@
 
 #![allow(unused_mut)]
 #![allow(non_camel_case_types)]
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 //! Symbols to be exported are now defined in this JSON file.
 //! The `#[napi_sym]` macro checks for missing entries and panics.

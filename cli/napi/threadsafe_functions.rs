@@ -177,8 +177,7 @@ fn napi_call_threadsafe_function(
   is_blocking: napi_threadsafe_function_call_mode,
 ) -> Result {
   let tsfn: &TsFn = &*(func as *const TsFn);
-  let _func = tsfn.call(data, is_blocking != 0);
-
+  tsfn.call(data, is_blocking != 0);
   Ok(())
 }
 
