@@ -220,6 +220,8 @@ fn napi_create_dataview(
   result: *mut napi_value,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
+  check_arg!(data);
+  check_arg!(result);
   let value = v8::ArrayBuffer::new(&mut env.scope(), len);
   if !data.is_null() {
     *data = get_array_buffer_ptr(value);

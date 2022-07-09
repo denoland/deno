@@ -52,23 +52,21 @@ fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
 // TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_add_env_cleanup_hook(
-  env: *mut Env,
+  _env: *mut Env,
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  Ok(())
+  unimplemented!("napi_add_env_cleanup_hook is currently not supported");
 }
 
 // TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_remove_env_cleanup_hook(
-  env: *mut Env,
+  _env: *mut Env,
   _hook: extern "C" fn(*const c_void),
   _data: *const c_void,
 ) -> Result {
-  let _env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  Ok(())
+  unimplemented!("napi_remove_env_cleanup_hook is currently not supported");
 }
 
 #[napi_sym::napi_sym]
