@@ -164,10 +164,12 @@ const dylib = Deno.dlopen(libPath, {
   call_stored_function: {
     parameters: [],
     result: "void",
+    callback: true,
   },
   call_stored_function_2: {
     parameters: ["u8"],
     result: "void",
+    callback: true,
   },
   // Statics
   "static_u32": {
@@ -372,12 +374,14 @@ assertThrows(
   "hi",
 );
 
+const { call_stored_function } = dylib.symbols;
+
 dylib.symbols.call_fn_ptr(ptr(logCallback));
 dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
 dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
 dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
 dylib.symbols.store_function(ptr(logCallback));
-dylib.symbols.call_stored_function();
+call_stored_function();
 dylib.symbols.store_function_2(ptr(add10Callback));
 dylib.symbols.call_stored_function_2(20);
 
