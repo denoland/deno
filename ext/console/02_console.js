@@ -2139,7 +2139,7 @@
       label = String(label);
 
       if (!MapPrototypeHas(timerMap, label)) {
-        this.warn(`Timer '${label}' does not exists`);
+        this.warn(`Timer '${label}' does not exist`);
         return;
       }
 
