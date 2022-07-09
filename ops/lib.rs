@@ -5,7 +5,6 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
-use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
 use regex::Regex;
@@ -281,7 +280,7 @@ fn codegen_fast_impl(
             type Signature = ();
             fn function(&self) -> Self::Signature {}
             fn raw(&self) -> *const ::std::ffi::c_void {
-              unsafe { ::std::mem::transmute_copy(&Self::call) }
+              Self::call as *const _
             }
             fn args(&self) -> &'static [#core::v8::fast_api::Type] {
               &[ #args ]
@@ -344,15 +343,16 @@ fn can_be_fast_api(
   f: &syn::ItemFn,
 ) -> Option<(TokenStream2, TokenStream2)> {
   let inputs = &f.sig.inputs;
-  let output = &f.sig.output;
-
-  let ret = match is_fast_scalar(core, output, true) {
-    Some(ret) => ret,
-    None => return None,
+  let ret = match &f.sig.output {
+    syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),
+    syn::ReturnType::Type(_, ty) => match is_fast_scalar(core, ty, true) {
+      Some(ret) => ret,
+      None => return None,
+    },
   };
 
   // need a reciever for sequence types.
-  let mut needs_recv = false;
+  let mut needs_recv = inputs.is_empty();
   let mut args = vec![];
   for input in inputs {
     let ty = match input {
@@ -373,10 +373,16 @@ fn can_be_fast_api(
     }
   }
 
+  if needs_recv {
+    args.insert(0, quote! { #core::v8::fast_api::Type::V8Value });
+  }
+
   let args = args
     .iter()
-    .fold(quote! {}, |acc, new| quote! { #acc, #new });
-  Some((args, ret))
+    .map(|arg| format!("{}", arg))
+    .collect::<Vec<_>>()
+    .join(", ");
+  Some((args.parse().unwrap(), ret))
 }
 
 // A v8::Local<v8::Array> or FastApiTypedArray<T>

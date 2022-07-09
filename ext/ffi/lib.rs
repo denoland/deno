@@ -742,7 +742,7 @@ fn make_sync_fn<'s>(
   .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
 
   let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
-    builder.build_fast(scope, fast_ffi_templ)
+    builder.build_fast(scope, &fast_ffi_templ)
   } else {
     builder.build(scope)
   };

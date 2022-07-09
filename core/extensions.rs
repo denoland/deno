@@ -35,7 +35,7 @@ impl OpDecl {
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops: Option<Vec<OpDecl>>,
+  pub ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,

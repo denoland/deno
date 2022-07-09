@@ -8,21 +8,21 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 
 // Fast API calls
 {
-  const { op_add_fast } = Deno.core.ops;
+  const { op_add } = Deno.core.ops;
   function add(a, b) {
-    return op_add_fast(a, b);
+    return op_add(a, b);
   }
   function addJS(a, b) {
     return a + b;
   }
-  Deno.bench("op_add_fast", { n: 1e7 }, () => add(1, 2));
+  Deno.bench("op_add", { n: 1e7 }, () => add(1, 2));
   Deno.bench("add_js", { n: 1e7 }, () => addJS(1, 2));  
 }
 
 const { op_void_sync } = Deno.core.ops;
 function sync() { return op_void_sync(); }
 sync(); // Warmup
-
+console.log(sync());
 // Void ops measure op-overhead
 Deno.bench("op_void_sync", { n: 1e7 }, () => sync());
 

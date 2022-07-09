@@ -9,19 +9,31 @@ use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
 use crate::JsRuntime;
 use log::debug;
-use once_cell::sync::Lazy;
 use std::option::Option;
 use std::os::raw::c_void;
-use v8::fast_api;
 use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
-pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
-  Lazy::new(|| {
-    v8::ExternalReferences::new(&[v8::ExternalReference {
-      function: call_console.map_fn_to(),
-    }])
-  });
+pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
+  let mut references = vec![v8::ExternalReference {
+    function: call_console.map_fn_to(),
+  }];
+
+  for ctx in ops {
+    let ctx_ptr = ctx as *const OpCtx as _;
+    references.push(v8::ExternalReference { pointer: ctx_ptr });
+    references.push(v8::ExternalReference {
+      function: ctx.decl.v8_fn_ptr,
+    });
+    if let Some(fast_fn) = &ctx.decl.fast_fn {
+      references.push(v8::ExternalReference {
+        pointer: fast_fn.raw() as _,
+      });
+    }
+  }
+
+  v8::ExternalReferences::new(&references)
+}
 
 // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
 pub fn script_origin<'a>(
@@ -84,7 +96,7 @@ pub fn initialize_context<'s>(
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-    initialize_ops(scope, ops_obj, op_ctxs);
+    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
 
     return scope.escape(context);
   }
@@ -97,7 +109,7 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
-  initialize_ops(scope, ops_obj, op_ctxs);
+  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
   scope.escape(context)
 }
 
@@ -105,6 +117,7 @@ fn initialize_ops(
   scope: &mut v8::HandleScope,
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
+  snapshot_loaded: bool,
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
@@ -115,33 +128,9 @@ fn initialize_ops(
       ctx.decl.v8_fn_ptr,
       ctx_ptr,
       &ctx.decl.fast_fn,
+      snapshot_loaded,
     );
   }
-}
-
-// Testing fast API calls
-struct FastAdd;
-impl fast_api::FastFunction for FastAdd {
-  type Signature = fn(a: i32, b: i32) -> i32;
-  fn function(&self) -> Self::Signature {
-    |a, b| a + b
-  }
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[fast_api::Type::Uint32, fast_api::Type::Uint32]
-  }
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Uint32
-  }
-}
-
-fn slow_add(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let a = args.get(0).int32_value(scope).unwrap();
-  let b = args.get(1).int32_value(scope).unwrap();
-  rv.set(v8::Integer::new(scope, a + b).into());
 }
 
 pub fn set_func(
@@ -165,13 +154,18 @@ pub fn set_func_raw(
   callback: v8::FunctionCallback,
   external_data: *const c_void,
   fast_function: &Option<Box<dyn FastFunction<Signature = ()>>>,
+  snapshot_loaded: bool,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
   let builder =
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
-    builder.build_fast(scope, &**fast_function)
+    if !snapshot_loaded {
+      builder.build(scope)
+    } else {
+      builder.build_fast(scope, &**fast_function)
+    }
   } else {
     builder.build(scope)
   };
