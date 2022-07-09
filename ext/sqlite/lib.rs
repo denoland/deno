@@ -176,7 +176,3 @@ where
     v8_value: v8::Array::new_with_elements(scope, &values).into(),
   })
 }
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_sqlite.d.ts")
-}

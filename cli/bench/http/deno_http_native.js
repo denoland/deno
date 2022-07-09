@@ -9,6 +9,7 @@ const encoder = new TextEncoder();
 const body = encoder.encode("Hello World");
 
 for await (const conn of listener) {
+  conn.setNoDelay(false);
   (async () => {
     const requests = Deno.serveHttp(conn);
     for await (const event of requests) {

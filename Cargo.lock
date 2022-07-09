@@ -793,6 +793,7 @@ dependencies = [
  "deno_lint",
  "deno_net",
  "deno_runtime",
+ "deno_sqlite",
  "deno_task_shell",
  "deno_url",
  "deno_web",
