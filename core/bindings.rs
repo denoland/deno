@@ -18,11 +18,9 @@ use v8::MapFnTo;
 
 pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
   Lazy::new(|| {
-    v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: call_console.map_fn_to(),
-      },
-    ])
+    v8::ExternalReferences::new(&[v8::ExternalReference {
+      function: call_console.map_fn_to(),
+    }])
   });
 
 // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
@@ -110,7 +108,14 @@ fn initialize_ops(
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
-    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr, &ctx.decl.fast_fn);
+    set_func_raw(
+      scope,
+      ops_obj,
+      ctx.decl.name,
+      ctx.decl.v8_fn_ptr,
+      ctx_ptr,
+      &ctx.decl.fast_fn,
+    );
   }
 }
 
@@ -163,7 +168,8 @@ pub fn set_func_raw(
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
-  let builder = v8::FunctionTemplate::builder_raw(callback).data(external.into());
+  let builder =
+    v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
     builder.build_fast(scope, &**fast_function)
   } else {
