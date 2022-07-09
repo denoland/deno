@@ -59,6 +59,8 @@
    * @property {string[]} urlList
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    * @property {Blob | null} blobUrlEntry
+   * @property {string} referrer
+   * @property {ReferrerPolicy} referrerPolicy
    */
 
   /**
@@ -83,6 +85,11 @@
       urlList: [url],
       clientRid: null,
       blobUrlEntry,
+      // https://fetch.spec.whatwg.org/#dom-request
+      // 13.5
+      referrer: "client",
+      // 13.6
+      referrerPolicy: "",
       url() {
         return this.urlList[0];
       },
@@ -117,6 +124,8 @@
       urlList: request.urlList,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
+      referrer: request.referrer,
+      referrerPolicy: request.referrerPolicy,
       url() {
         return this.urlList[0];
       },
@@ -221,6 +230,36 @@
 
       // 12.
       // TODO(lucacasonato): create a copy of `request`
+
+      // https://fetch.spec.whatwg.org/#dom-request
+      // 14.
+      if (init.referrer !== undefined) {
+        // 14.1.
+        let referrer = init.referrer;
+        // 14.2.
+        if (referrer === "") {
+          referrer = "no-referrer";
+          // 14.3
+        } else {
+          // 14.3.1. 14.3.2
+          const parsedReferrer = new URL(referrer);
+          // 14.3.3.
+          // TODO(sevenwithawp): add check for parsedReferrer’s origin is not same origin with origin
+          if (/^about:(\/\/)?client$/.test(parsedReferrer)) {
+            referrer = "client";
+          } else {
+            // 14.3.4.
+            referrer = parsedReferrer;
+          }
+        }
+        request.referrer = referrer;
+      }
+
+      // https://fetch.spec.whatwg.org/#dom-request
+      // 15.
+      if (init.referrerPolicy !== undefined) {
+        request.referrerPolicy = init.referrerPolicy;
+      }
 
       // 22.
       if (init.redirect !== undefined) {
@@ -356,6 +395,25 @@
       return this[_signal];
     }
 
+    get referrer() {
+      webidl.assertBranded(this, RequestPrototype);
+
+      // https://fetch.spec.whatwg.org/#dom-request-referrer
+      switch (this[_request].referrer) {
+        case "no-referrer":
+          return "";
+        case "client":
+          return "about:client";
+        default:
+          return this[_request].referrer.toString();
+      }
+    }
+
+    get referrerPolicy() {
+      webidl.assertBranded(this, RequestPrototype);
+      return this[_request].referrerPolicy;
+    }
+
     clone() {
       webidl.assertBranded(this, RequestPrototype);
       if (this[_body] && this[_body].unusable()) {
@@ -381,6 +439,8 @@
           "method",
           "redirect",
           "url",
+          "referrer",
+          "referrerPolicy",
         ],
       }));
     }
@@ -412,6 +472,20 @@
       "manual",
     ],
   );
+  webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
+    "ReferrerPolicy",
+    [
+      "",
+      "no-referrer",
+      "no-referrer-when-downgrade",
+      "origin",
+      "origin-when-cross-origin",
+      "same-origin",
+      "strict-origin",
+      "strict-origin-when-cross-origin",
+      "unsafe-url",
+    ],
+  );
   webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
     "RequestInit",
     [
@@ -431,6 +505,8 @@
         ),
       },
       { key: "client", converter: webidl.converters.any },
+      { key: "referrer", converter: webidl.converters.ByteString },
+      { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
     ],
   );
 

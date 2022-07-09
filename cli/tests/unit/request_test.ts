@@ -1,5 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertStringIncludes } from "./test_util.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "./test_util.ts";
 
 Deno.test(async function fromInit() {
   const req = new Request("http://foo/", {
@@ -63,8 +67,72 @@ Deno.test(function customInspectFunction() {
   headers: Headers {},
   method: "GET",
   redirect: "follow",
-  url: "https://example.com/"
+  url: "https://example.com/",
+  referrer: "about:client",
+  referrerPolicy: ""
 }`,
   );
   assertStringIncludes(Deno.inspect(Request.prototype), "Request");
+});
+
+Deno.test(function requestReferrerEmpty() {
+  assertEquals(
+    new Request("https://google.com", { referrer: "" }).referrer,
+    "",
+  );
+});
+
+Deno.test(function requestReferrerAboutClient() {
+  assertEquals(
+    new Request("https://google.com").referrer,
+    "about:client",
+  );
+});
+
+Deno.test(function requestReferrerCustom() {
+  assertEquals(
+    new Request("https://google.com", { referrer: "https://google.com" })
+      .referrer,
+    "https://google.com/",
+  );
+});
+
+Deno.test(function requestReferrerTypeError() {
+  assertThrows(
+    () => {
+      new Request("https://google.com", { referrer: "aaa" });
+    },
+    TypeError,
+  );
+});
+
+Deno.test(function requestReferrerPolicy() {
+  [
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "origin",
+    "origin-when-cross-origin",
+    "same-origin",
+    "strict-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+  ].forEach((rp: string) => {
+    assertEquals(
+      new Request("https://google.com", {
+        referrerPolicy: rp as ReferrerPolicy,
+      }).referrerPolicy,
+      rp,
+    );
+  });
+});
+
+Deno.test(function requestReferrerPolicyTypeError() {
+  assertThrows(
+    () => {
+      // @ts-ignore Testing invalid referrerPolicy
+      new Request("https://google.com", { referrerPolicy: "aaa" });
+    },
+    TypeError,
+  );
 });
