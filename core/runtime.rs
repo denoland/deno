@@ -227,6 +227,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --turbo_fast_api_calls",
   );
 
   if predictable {
@@ -479,7 +480,7 @@ impl JsRuntime {
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {
-    self.global_realm().handle_scope(self)
+    self.global_realm().handle_scope(self.v8_isolate())
   }
 
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
@@ -512,7 +513,7 @@ impl JsRuntime {
       let js_files = m.init_js();
       for (filename, source) in js_files {
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self, filename, source)?;
+        realm.execute_script(self.v8_isolate(), filename, source)?;
       }
     }
     // Restore extensions
@@ -666,7 +667,9 @@ impl JsRuntime {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    self.global_realm().execute_script(self, name, source_code)
+    self
+      .global_realm()
+      .execute_script(self.v8_isolate(), name, source_code)
   }
 
   /// Takes a snapshot. The isolate should have been created with will_snapshot
@@ -923,8 +926,7 @@ impl JsRuntime {
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let state = state_rc.borrow();
-      let op_state = state.op_state.clone();
+      let op_state = state_rc.borrow().op_state.clone();
       for f in &self.event_loop_middlewares {
         if f(op_state.clone(), cx) {
           maybe_scheduling = true;
@@ -1877,7 +1879,7 @@ impl JsRuntime {
 /// # Panics
 ///
 /// Every method of [`JsRealm`] will panic if you call if with a reference to a
-/// [`JsRuntime`] other than the one that corresponds to the current context.
+/// [`v8::Isolate`] other than the one that corresponds to the current context.
 ///
 /// # Lifetime of the realm
 ///
@@ -1896,16 +1898,16 @@ impl JsRealm {
 
   pub fn handle_scope<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(runtime.v8_isolate(), &self.0)
+    v8::HandleScope::with_context(isolate, &self.0)
   }
 
   pub fn global_object<'s>(
     &self,
-    runtime: &'s mut JsRuntime,
+    isolate: &'s mut v8::Isolate,
   ) -> v8::Local<'s, v8::Object> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
     self.0.open(scope).global(scope)
   }
 
@@ -1923,11 +1925,11 @@ impl JsRealm {
   /// `Error` can usually be downcast to `JsError`.
   pub fn execute_script(
     &self,
-    runtime: &mut JsRuntime,
+    isolate: &mut v8::Isolate,
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(runtime);
+    let scope = &mut self.handle_scope(isolate);
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
@@ -2305,23 +2307,13 @@ pub mod tests {
 
   #[test]
   fn terminate_execution_webassembly() {
-    let (mut isolate, _dispatch_count) = setup(Mode::Async);
-    let v8_isolate_handle = isolate.v8_isolate().thread_safe_handle();
-
-    let terminator_thread = std::thread::spawn(move || {
-      // allow deno to boot and run
-      std::thread::sleep(std::time::Duration::from_millis(1000));
-
-      // terminate execution
-      let ok = v8_isolate_handle.terminate_execution();
-      assert!(ok);
-    });
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let v8_isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
     // Run an infinite loop in Webassemby code, which should be terminated.
-    isolate.execute_script("infinite_wasm_loop.js",
+    let promise = runtime.execute_script("infinite_wasm_loop.js",
                                  r#"
                                  (async () => {
-                                 console.log("Begin");
                                   const wasmCode = new Uint8Array([
                                       0,    97,   115,  109,  1,    0,    0,    0,    1,   4,    1,
                                       96,   0,    0,    3,    2,    1,    0,    7,    17,  1,    13,
@@ -2330,23 +2322,31 @@ pub mod tests {
                                       12,   0,    11,   11,
                                   ]);
                                   const wasmModule = await WebAssembly.compile(wasmCode);
-                                  const wasmInstance = new WebAssembly.Instance(wasmModule);
-                                  wasmInstance.exports.infinite_loop();
-                                  })();
-                                      "#).expect("wasm infinite loop failed");
-    match futures::executor::block_on(isolate.run_event_loop(false)) {
-      Ok(_) => panic!("execution should be terminated"),
-      Err(e) => {
-        assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
-      }
-    }
+                                  globalThis.wasmInstance = new WebAssembly.Instance(wasmModule);
+                                  })()
+                                      "#).unwrap();
+    futures::executor::block_on(runtime.resolve_value(promise)).unwrap();
+    let terminator_thread = std::thread::spawn(move || {
+      std::thread::sleep(std::time::Duration::from_millis(1000));
+
+      // terminate execution
+      let ok = v8_isolate_handle.terminate_execution();
+      assert!(ok);
+    });
+    let err = runtime
+      .execute_script(
+        "infinite_wasm_loop2.js",
+        "globalThis.wasmInstance.exports.infinite_loop();",
+      )
+      .unwrap_err();
+    assert_eq!(err.to_string(), "Uncaught Error: execution terminated");
     // Cancel the execution-terminating exception in order to allow script
     // execution again.
-    let ok = isolate.v8_isolate().cancel_terminate_execution();
+    let ok = runtime.v8_isolate().cancel_terminate_execution();
     assert!(ok);
 
     // Verify that the isolate usable again.
-    isolate
+    runtime
       .execute_script("simple.js", "1 + 1")
       .expect("execution should be possible again");
 
@@ -3441,11 +3441,12 @@ assertEquals(1, notify_return_value);
 
     let realm = runtime.create_realm().unwrap();
     assert_ne!(realm.context(), &main_context);
-    assert_ne!(realm.global_object(&mut runtime), main_global);
+    assert_ne!(realm.global_object(runtime.v8_isolate()), main_global);
 
     let main_object = runtime.execute_script("", "Object").unwrap();
-    let realm_object =
-      realm.execute_script(&mut runtime, "", "Object").unwrap();
+    let realm_object = realm
+      .execute_script(runtime.v8_isolate(), "", "Object")
+      .unwrap();
     assert_ne!(main_object, realm_object);
   }
 
@@ -3462,10 +3463,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3492,10 +3493,10 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(&mut runtime, "", "Deno.core.opSync('op_test')")
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.opSync('op_test')")
       .unwrap();
 
-    let scope = &mut realm.handle_scope(&mut runtime);
+    let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
 
@@ -3528,7 +3529,7 @@ assertEquals(1, notify_return_value);
     for realm in [runtime.global_realm(), new_realm].into_iter() {
       let ret = realm
         .execute_script(
-          &mut runtime,
+          runtime.v8_isolate(),
           "",
           r#"
             const buf = Deno.core.opSync("op_test", false);

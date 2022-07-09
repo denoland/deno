@@ -63,7 +63,7 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+  pub fn new(flags: Flags, maybe_config_file: Option<ConfigFile>) -> Self {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
@@ -74,15 +74,20 @@ impl CliOptions {
       };
       let msg =
         format!("DANGER: TLS certificate validation is disabled {}", domains);
+      // use eprintln instead of log::warn so this always gets shown
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let maybe_config_file = ConfigFile::discover(&flags)?;
-    Ok(Self {
+    Self {
       maybe_config_file,
       flags,
       overrides: Default::default(),
-    })
+    }
+  }
+
+  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+    let maybe_config_file = ConfigFile::discover(&flags)?;
+    Ok(Self::new(flags, maybe_config_file))
   }
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
@@ -340,7 +345,7 @@ fn resolve_import_map_specifier(
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
       if config_file.to_import_map_path().is_some() {
-        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", crate::colors::yellow("Warning"), config_file.specifier);
+        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
     let specifier = deno_core::resolve_url_or_path(import_map_path)

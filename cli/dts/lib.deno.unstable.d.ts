@@ -4,6 +4,8 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
+  export {}; // stop default export type behavior
+
   export interface BenchDefinition {
     fn: () => void | Promise<void>;
     name: string;
@@ -428,6 +430,8 @@ declare namespace Deno {
     result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
     nonblocking?: NonBlocking;
+    /** When true, function calls can safely callback into JS or trigger a GC event. Default is `false`. */
+    callback?: boolean;
   }
 
   export interface ForeignStatic<Type extends NativeType = NativeType> {
