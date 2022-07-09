@@ -227,6 +227,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --turbo_fast_api_calls",
   );
 
   if predictable {
@@ -951,10 +952,7 @@ impl JsRuntime {
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let op_state = {
-        let state = state_rc.borrow();
-        state.op_state.clone()
-      };
+      let op_state = state_rc.borrow().op_state.clone();
       for f in &self.event_loop_middlewares {
         if f(op_state.clone(), cx) {
           maybe_scheduling = true;

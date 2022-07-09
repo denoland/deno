@@ -156,3 +156,50 @@ fn thread_safe_callback() {
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
+
+#[test]
+fn event_loop_integration() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/event_loop_integration.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  // TODO(aapoalas): The order of logging in thread safe callbacks is
+  // unexpected: The callback logs synchronously and creates an asynchronous
+  // logging task, which then gets called synchronously before the callback
+  // actually yields to the calling thread. This is in contrast to what the
+  // logging would look like if the call was coming from within Deno itself,
+  // and may lead users to unknowingly run heavy asynchronous tasks from thread
+  // safe callbacks synchronously.
+  // The fix would be to make sure microtasks are only run after the event loop
+  // middleware that polls them has completed its work. This just does not seem
+  // to work properly with Linux release builds.
+  let expected = "\
+    SYNCHRONOUS\n\
+    Sync\n\
+    STORED_FUNCTION called\n\
+    Async\n\
+    Timeout\n\
+    THREAD SAFE\n\
+    Sync\n\
+    Async\n\
+    STORED_FUNCTION called\n\
+    Timeout\n";
+  assert_eq!(stdout, expected);
+  assert_eq!(stderr, "");
+}
