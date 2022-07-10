@@ -1,0 +1,140 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use crate::NativeType;
+use crate::{tcc::Context, Symbol};
+use std::ffi::c_void;
+use std::ffi::CString;
+use std::fmt::Write as _;
+
+pub(crate) struct Allocation {
+  pub addr: *mut c_void,
+  _ctx: Context,
+  _sym: Box<Symbol>,
+}
+
+macro_rules! cstr {
+  ($st:expr) => {
+    &CString::new($st).unwrap()
+  };
+}
+
+fn native_to_c(ty: &NativeType) -> &'static str {
+  match ty {
+    NativeType::U8 | NativeType::U16 | NativeType::U32 => "unsigned int",
+    NativeType::I8 | NativeType::I16 | NativeType::I32 => "int",
+    NativeType::Void => "void",
+    NativeType::F32 => "float",
+    NativeType::F64 => "double",
+    _ => unimplemented!(),
+  }
+}
+
+pub(crate) fn codegen(sym: &crate::Symbol) -> String {
+  let mut c = String::new();
+  let ret = native_to_c(&sym.result_type);
+
+  // extern <return_type> func(
+  c += "\nextern ";
+  c += ret;
+  c += " func(";
+  // <param_type> p0, <param_type> p1, ...);
+  for (i, ty) in sym.parameter_types.iter().enumerate() {
+    if i > 0 {
+      c += ", ";
+    }
+    c += native_to_c(ty);
+    let _ = write!(c, " p{i}");
+  }
+  c += ");\n\n";
+
+  // void* recv, <param_type> p0, <param_type> p1, ...);
+  c += ret;
+  c += " func_trampoline(";
+  c += "void* recv";
+  for (i, ty) in sym.parameter_types.iter().enumerate() {
+    c += ", ";
+    c += native_to_c(ty);
+    let _ = write!(c, " p{i}");
+  }
+  c += ") {\n";
+  // return func(p0, p1, ...);
+  c += "  return func(";
+  for (i, _) in sym.parameter_types.iter().enumerate() {
+    if i > 0 {
+      c += ", ";
+    }
+    let _ = write!(c, "p{i}");
+  }
+  c += ");\n}\n\n";
+  c
+}
+
+pub(crate) unsafe fn gen_trampoline(
+  sym: Box<crate::Symbol>,
+) -> Result<Box<Allocation>, ()> {
+  let mut ctx = Context::new()?;
+  ctx.set_options(cstr!("-nostdlib"));
+  ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void);
+  let c = codegen(&sym);
+
+  ctx.compile_string(cstr!(c))?;
+  let alloc = Allocation {
+    addr: ctx.relocate_and_get_symbol(cstr!("func_trampoline"))?,
+    _ctx: ctx,
+    _sym: sym,
+  };
+  Ok(Box::new(alloc))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use libffi::middle::Type;
+  use std::ptr::null_mut;
+
+  fn codegen(parameters: Vec<NativeType>, ret: NativeType) -> String {
+    let sym = Box::new(crate::Symbol {
+      cif: libffi::middle::Cif::new(vec![], Type::void()),
+      ptr: libffi::middle::CodePtr(null_mut()),
+      parameter_types: parameters,
+      result_type: ret,
+    });
+    super::codegen(&sym)
+  }
+
+  #[test]
+  fn test_gen_trampoline_nullptr() {
+    let sym = crate::Symbol {
+      cif: libffi::middle::Cif::new(vec![], Type::void()),
+      ptr: libffi::middle::CodePtr(null_mut()),
+      parameter_types: vec![NativeType::U32, NativeType::U32],
+      result_type: NativeType::Void,
+    };
+    // undefined symbol _func
+    assert!(unsafe { gen_trampoline(Box::new(sym)) }.is_err());
+  }
+
+  #[test]
+  fn test_gen_trampoline() {
+    assert_eq!(
+      codegen(vec![], NativeType::Void),
+      "\nextern void func();\n\nvoid func_trampoline(void* recv) {\n  return func();\n}\n\n"
+    );
+    assert_eq!(
+      codegen(vec![NativeType::U32, NativeType::U32], NativeType::U32),
+      "\nextern unsigned int func(unsigned int p0, unsigned int p1);\n\nunsigned int func_trampoline(void* recv, unsigned int p0, unsigned int p1) {\n  return func(p0, p1);\n}\n\n"
+    );
+    assert_eq!(
+      codegen(vec![NativeType::I32, NativeType::I32], NativeType::I32),
+      "\nextern int func(int p0, int p1);\n\nint func_trampoline(void* recv, int p0, int p1) {\n  return func(p0, p1);\n}\n\n"
+    );
+    assert_eq!(
+      codegen(vec![NativeType::F32, NativeType::F32], NativeType::F32),
+      "\nextern float func(float p0, float p1);\n\nfloat func_trampoline(void* recv, float p0, float p1) {\n  return func(p0, p1);\n}\n\n"
+    );
+    assert_eq!(
+      codegen(vec![NativeType::F64, NativeType::F64], NativeType::F64),
+      "\nextern double func(double p0, double p1);\n\ndouble func_trampoline(void* recv, double p0, double p1) {\n  return func(p0, p1);\n}\n\n"
+    );
+  }
+}

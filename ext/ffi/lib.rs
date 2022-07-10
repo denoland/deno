@@ -39,6 +39,9 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 
+mod jit_trampoline;
+mod tcc;
+
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
 }
@@ -687,24 +690,29 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let mut fast_ffi_templ = None;
-
+  let mut fast_ffi_templ = None; // Fast FFI call template.
   if !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
     && is_fast_api(sym.result_type)
   {
+    let ret = fast_api::Type::from(&sym.result_type);
+
     let mut args = sym
       .parameter_types
       .iter()
       .map(|t| t.into())
       .collect::<Vec<_>>();
-    if args.is_empty() {
-      args.push(fast_api::Type::V8Value);
-    }
+    // recv
+    args.insert(0, fast_api::Type::V8Value);
+    let symbol_trampoline =
+      unsafe { jit_trampoline::gen_trampoline(sym.clone()) }
+        .expect("gen_trampoline");
     fast_ffi_templ = Some(FfiFastCallTemplate {
       args: args.into_boxed_slice(),
-      ret: (&fast_api::Type::from(&sym.result_type)).into(),
-      symbol_ptr: sym.ptr.as_ptr() as *const c_void,
+      ret: (&ret).into(),
+      symbol_ptr: symbol_trampoline.addr,
     });
+    // Leak.
+    Box::leak(symbol_trampoline);
   }
 
   let sym = Box::leak(sym);
