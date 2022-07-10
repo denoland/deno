@@ -3572,7 +3572,7 @@ fn lsp_completions_auto_import() {
   assert!(maybe_err.is_none());
   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
     assert!(!list.is_incomplete);
-    if list.items.iter().find(|item| item.label == "foo").is_none() {
+    if !list.items.iter().any(|item| item.label == "foo") {
       panic!("completions items missing 'foo' symbol");
     }
   } else {

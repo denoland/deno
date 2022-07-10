@@ -1768,7 +1768,7 @@ impl Inner {
         if let Some(context) = &params.context {
           (
             context.trigger_character.clone(),
-            Some(context.trigger_kind.clone().into()),
+            Some(context.trigger_kind.into()),
           )
         } else {
           (None, None)

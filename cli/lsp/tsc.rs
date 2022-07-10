@@ -2978,7 +2978,7 @@ impl From<&CompletionItemData> for GetCompletionDetailsArgs {
   fn from(item_data: &CompletionItemData) -> Self {
     Self {
       specifier: item_data.specifier.clone(),
-      position: item_data.position.clone(),
+      position: item_data.position,
       name: item_data.name.clone(),
       source: item_data.source.clone(),
       preferences: None,
