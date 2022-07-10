@@ -130,11 +130,22 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["function"],
     result: "void",
   },
+  call_fn_ptr_thread_safe: {
+    name: "call_fn_ptr",
+    parameters: ["function"],
+    result: "void",
+    nonblocking: true,
+  },
   call_fn_ptr_many_parameters: {
     parameters: ["function"],
     result: "void",
   },
   call_fn_ptr_return_u8: {
+    parameters: ["function"],
+    result: "void",
+  },
+  call_fn_ptr_return_u8_thread_safe: {
+    name: "call_fn_ptr_return_u8",
     parameters: ["function"],
     result: "void",
   },
@@ -153,10 +164,12 @@ const dylib = Deno.dlopen(libPath, {
   call_stored_function: {
     parameters: [],
     result: "void",
+    callback: true,
   },
   call_stored_function_2: {
     parameters: ["u8"],
     result: "void",
+    callback: true,
   },
   // Statics
   "static_u32": {
@@ -203,6 +216,10 @@ console.log(stringPtrview.getCString(11));
 console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+const emptyBuffer = new BigUint64Array(0);
+console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
+const emptySlice = into.subarray(6);
+console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
@@ -292,14 +309,15 @@ console.log("After sleep_blocking");
 console.log(performance.now() - start >= 100);
 
 start = performance.now();
-dylib.symbols.sleep_nonblocking(100).then(() => {
+const promise_2 = dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
-  // Close after task is complete.
-  cleanup();
 });
 console.log("Before");
 console.log(performance.now() - start < 100);
+
+// Await to make sure `sleep_nonblocking` calls and logs before we proceed
+await promise_2;
 
 // Test calls with callback parameters
 const logCallback = new Deno.UnsafeCallback(
@@ -356,12 +374,14 @@ assertThrows(
   "hi",
 );
 
+const { call_stored_function } = dylib.symbols;
+
 dylib.symbols.call_fn_ptr(ptr(logCallback));
 dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
 dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
 dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
 dylib.symbols.store_function(ptr(logCallback));
-dylib.symbols.call_stored_function();
+call_stored_function();
 dylib.symbols.store_function_2(ptr(add10Callback));
 dylib.symbols.call_stored_function_2(20);
 
@@ -376,6 +396,24 @@ dylib.symbols.store_function(ptr(nestedCallback));
 dylib.symbols.store_function(null);
 dylib.symbols.store_function_2(null);
 
+let counter = 0;
+const addToFooCallback = new Deno.UnsafeCallback({
+  parameters: [],
+  result: "void",
+}, () => counter++);
+
+// Test thread safe callbacks
+console.log("Thread safe call counter:", counter);
+addToFooCallback.ref();
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+addToFooCallback.unref();
+logCallback.ref();
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+logCallback.unref();
+console.log("Thread safe call counter:", counter);
+returnU8Callback.ref();
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
 console.log("Static i64:", dylib.symbols.static_i64);
@@ -386,7 +424,7 @@ console.log(
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 
-function cleanup() {
+(function cleanup() {
   dylib.close();
   throwCallback.close();
   logCallback.close();
@@ -395,6 +433,7 @@ function cleanup() {
   returnBufferCallback.close();
   add10Callback.close();
   nestedCallback.close();
+  addToFooCallback.close();
 
   const resourcesPost = Deno.resources();
 
@@ -409,4 +448,4 @@ After: ${postStr}`,
   }
 
   console.log("Correct number of resources");
-}
+})();

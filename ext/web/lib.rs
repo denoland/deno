@@ -124,74 +124,44 @@ pub fn init<P: TimersPermission + 'static>(
 
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
-  let mut input = input.into_bytes();
-  input.retain(|c| !c.is_ascii_whitespace());
-  Ok(b64_decode(&input)?.into())
+  let mut s = input.into_bytes();
+  let decoded_len = forgiving_base64_decode(&mut s)?;
+  s.truncate(decoded_len);
+  Ok(s.into())
 }
 
 #[op]
 fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
-  s.retain(|c| !c.is_ascii_whitespace());
-
-  // If padding is expected, fail if not 4-byte aligned
-  if s.len() % 4 != 0 && (s.ends_with(b"==") || s.ends_with(b"=")) {
-    return Err(
-      DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
-    );
-  }
-
-  Ok(b64_decode(&s)?.into())
+  let decoded_len = forgiving_base64_decode(&mut s)?;
+  s.truncate(decoded_len);
+  Ok(s)
 }
 
-fn b64_decode(input: &[u8]) -> Result<Vec<u8>, AnyError> {
-  // "If the length of input divides by 4 leaving no remainder, then:
-  //  if input ends with one or two U+003D EQUALS SIGN (=) characters,
-  //  remove them from input."
-  let input = match input.len() % 4 == 0 {
-    true if input.ends_with(b"==") => &input[..input.len() - 2],
-    true if input.ends_with(b"=") => &input[..input.len() - 1],
-    _ => input,
-  };
-
-  // "If the length of input divides by 4 leaving a remainder of 1,
-  //  throw an InvalidCharacterError exception and abort these steps."
-  if input.len() % 4 == 1 {
-    return Err(
-      DomExceptionInvalidCharacterError::new("Failed to decode base64.").into(),
-    );
-  }
-
-  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
-    .decode_allow_trailing_bits(true);
-  let out = base64::decode_config(input, cfg).map_err(|err| match err {
-    base64::DecodeError::InvalidByte(_, _) => {
-      DomExceptionInvalidCharacterError::new(
-        "Failed to decode base64: invalid character",
-      )
-    }
-    _ => DomExceptionInvalidCharacterError::new(&format!(
-      "Failed to decode base64: {:?}",
-      err
-    )),
-  })?;
-
-  Ok(out)
+/// See <https://infra.spec.whatwg.org/#forgiving-base64>
+#[inline]
+fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
+  let error: _ =
+    || DomExceptionInvalidCharacterError::new("Failed to decode base64");
+  let decoded = base64_simd::Base64::forgiving_decode_inplace(input)
+    .map_err(|_| error())?;
+  Ok(decoded.len())
 }
 
 #[op]
 fn op_base64_encode(s: ZeroCopyBuf) -> String {
-  b64_encode(&s)
+  forgiving_base64_encode(s.as_ref())
 }
 
 #[op]
 fn op_base64_btoa(s: ByteString) -> String {
-  b64_encode(s)
+  forgiving_base64_encode(s.as_ref())
 }
 
-fn b64_encode(s: impl AsRef<[u8]>) -> String {
-  let cfg = base64::Config::new(base64::CharacterSet::Standard, true)
-    .decode_allow_trailing_bits(true);
-  base64::encode_config(s.as_ref(), cfg)
+/// See <https://infra.spec.whatwg.org/#forgiving-base64>
+#[inline]
+fn forgiving_base64_encode(s: &[u8]) -> String {
+  const BASE64_STANDARD: base64_simd::Base64 = base64_simd::Base64::STANDARD;
+  BASE64_STANDARD.encode_to_boxed_str(s).into_string()
 }
 
 #[derive(Deserialize)]

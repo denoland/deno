@@ -14,7 +14,6 @@ use futures::task::noop_waker;
 use futures::Future;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -160,9 +159,7 @@ impl OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
-      tracker: OpsTracker {
-        ops: UnsafeCell::new(vec![Default::default(); ops_count]),
-      },
+      tracker: OpsTracker::new(ops_count),
     }
   }
 }

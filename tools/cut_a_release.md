@@ -42,9 +42,8 @@ Before starting the process write a message in company's #general channel:
    2. Manually run `./_tools/release/01_bump_version.ts --minor`
       1. Ensure the version in `version.ts` is updated correctly.
       2. Ensure `Releases.md` is updated correctly.
-      3. Ensure all the tests pass with the latest build
-         - Use
-           `../deno/target/release/deno test --doc --unstable --allow-all --ignore=node/`
+      3. Ensure all the tests pass with the latest build (examine the repo for
+         what the command is and run the local built deno binary)
    3. Open a PR with the changes and continue with the steps below.
    </details>
 

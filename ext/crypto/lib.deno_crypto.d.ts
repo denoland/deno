@@ -275,7 +275,11 @@ interface SubtleCrypto {
     length: number,
   ): Promise<ArrayBuffer>;
   deriveKey(
-    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    algorithm:
+      | AlgorithmIdentifier
+      | HkdfParams
+      | Pbkdf2Params
+      | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     derivedKeyType:
       | AlgorithmIdentifier

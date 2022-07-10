@@ -2,7 +2,7 @@
 
 //! This module provides feature to upgrade deno executable
 
-use crate::flags::UpgradeFlags;
+use crate::args::UpgradeFlags;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;

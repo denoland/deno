@@ -201,6 +201,7 @@
   }
 
   class UnsafeCallback {
+    #refcount;
     #rid;
     definition;
     callback;
@@ -217,13 +218,32 @@
         definition,
         callback,
       );
+      this.#refcount = 0;
       this.#rid = rid;
       this.pointer = pointer;
       this.definition = definition;
       this.callback = callback;
     }
 
+    ref() {
+      if (this.#refcount++ === 0) {
+        core.opSync("op_ffi_unsafe_callback_ref", true);
+      }
+    }
+
+    unref() {
+      // Only decrement refcount if it is positive, and only
+      // unref the callback if refcount reaches zero.
+      if (this.#refcount > 0 && --this.#refcount === 0) {
+        core.opSync("op_ffi_unsafe_callback_ref", false);
+      }
+    }
+
     close() {
+      if (this.#refcount) {
+        this.#refcount = 0;
+        core.opSync("op_ffi_unsafe_callback_ref", false);
+      }
       core.close(this.#rid);
     }
   }
@@ -235,8 +255,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      this.#rid = core.opSync("op_ffi_load", { path, symbols });
-
+      [this.#rid, this.symbols] = core.opSync("op_ffi_load", { path, symbols });
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
           const type = symbols[symbol].type;
@@ -267,48 +286,37 @@
         }
 
         const isNonBlocking = symbols[symbol].nonblocking;
-        const resultType = symbols[symbol].result;
-
-        let fn;
         if (isNonBlocking) {
+          const resultType = symbols[symbol].result;
           const needsUnpacking = isReturnedAsBigInt(resultType);
-          fn = (...parameters) => {
-            const promise = core.opAsync(
-              "op_ffi_call_nonblocking",
-              this.#rid,
-              symbol,
-              parameters,
-            );
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value: (...parameters) => {
+                const promise = core.opAsync(
+                  "op_ffi_call_nonblocking",
+                  this.#rid,
+                  symbol,
+                  parameters,
+                );
 
-            if (needsUnpacking) {
-              return PromisePrototypeThen(
-                promise,
-                (result) => unpackNonblockingReturnValue(resultType, result),
-              );
-            }
+                if (needsUnpacking) {
+                  return PromisePrototypeThen(
+                    promise,
+                    (result) =>
+                      unpackNonblockingReturnValue(resultType, result),
+                  );
+                }
 
-            return promise;
-          };
-        } else {
-          fn = (...parameters) =>
-            core.opSync(
-              "op_ffi_call",
-              this.#rid,
-              symbol,
-              parameters,
-            );
+                return promise;
+              },
+              writable: false,
+            },
+          );
         }
-
-        ObjectDefineProperty(
-          this.symbols,
-          symbol,
-          {
-            configurable: false,
-            enumerable: true,
-            value: fn,
-            writable: false,
-          },
-        );
       }
     }
 

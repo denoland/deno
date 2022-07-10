@@ -17,7 +17,7 @@ use super::text::LineIndex;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -2618,7 +2618,7 @@ fn op_script_version(
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions: vec![init_extension(performance)],
-    startup_snapshot: Some(deno_snapshots::tsc_snapshot()),
+    startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
 }
@@ -2871,6 +2871,9 @@ pub enum RequestMethod {
   ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
   /// Resolve outgoing call hierarchy items for a specific position.
   ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
+
+  // Special request, used only internally by the LSP
+  Restart,
 }
 
 impl RequestMethod {
@@ -3084,6 +3087,10 @@ impl RequestMethod {
           "position": position
         })
       }
+      RequestMethod::Restart => json!({
+        "id": id,
+        "method": "restart",
+      }),
     }
   }
 }

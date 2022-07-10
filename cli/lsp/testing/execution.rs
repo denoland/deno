@@ -4,10 +4,10 @@ use super::definitions::TestDefinition;
 use super::definitions::TestDefinitions;
 use super::lsp_custom;
 
+use crate::args::flags_from_vec;
+use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::create_main_worker;
-use crate::emit;
-use crate::flags;
 use crate::located_script_name;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -225,6 +225,12 @@ async fn test_specifier(
 
     worker.js_runtime.resolve_value(test_result).await?;
 
+    loop {
+      if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+        break;
+      }
+      worker.run_event_loop(false).await?;
+    }
     worker.dispatch_unload_event(&located_script_name!())?;
   }
 
@@ -306,11 +312,10 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags =
-      flags::flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let ps = proc_state::ProcState::build(Arc::new(flags)).await?;
+    let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
+    let ps = proc_state::ProcState::build(flags).await?;
     let permissions =
-      Permissions::from_options(&ps.flags.permissions_options());
+      Permissions::from_options(&ps.options.permissions_options());
     test::check_specifiers(
       &ps,
       permissions.clone(),
@@ -319,7 +324,6 @@ impl TestRun {
         .iter()
         .map(|s| (s.clone(), test::TestMode::Executable))
         .collect(),
-      emit::TypeLib::DenoWindow,
     )
     .await?;
 
@@ -327,7 +331,7 @@ impl TestRun {
     let sender = TestEventSender::new(sender);
 
     let (concurrent_jobs, fail_fast) =
-      if let flags::DenoSubcommand::Test(test_flags) = &ps.flags.subcommand {
+      if let DenoSubcommand::Test(test_flags) = ps.options.sub_command() {
         (
           test_flags.concurrent_jobs.into(),
           test_flags.fail_fast.map(|count| count.into()),
