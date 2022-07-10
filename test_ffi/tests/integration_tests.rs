@@ -101,6 +101,11 @@ fn basic() {
     Static i64: -1242464576485n\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
+    arrayBuffer.byteLength: 4\n\
+    uint32Array.length: 1\n\
+    uint32Array[0]: 42\n\
+    uint32Array[0] after mutation: 55\n\
+    Static ptr value after mutation: 55\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
