@@ -10,12 +10,13 @@ fn build_tcc() {
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
   #[cfg(target_os = "windows")]
   {
-    let mut build_tcc_bat =
-      Command::new(tcc_src.join("win32").join("build-tcc.bat"));
-    build_tcc_bat.current_dir(&out_dir).args(&["-c", "cl"]);
+    let mut build_tcc_bat = Command::new("cmd");
+    build_tcc_bat
+      .current_dir(tcc_src.join("win32").join("build-tcc.bat"))
+      .args(&["-c", "cl", "-i", out_dir.to_str().unwrap()]);
     let status = build_tcc_bat.status().unwrap();
     if !status.success() {
-      eprintln!("Fail to configure: {:?}", status);
+      eprintln!("Fail to run build-tcc.bat: {:?}", status);
       exit(1);
     }
   }
