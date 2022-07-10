@@ -527,7 +527,7 @@ declare namespace Deno {
     /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
     getCString(offset?: number): string;
     /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
-    getArrayBuffer(byteLength: number): ArrayBuffer;
+    getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
     copyInto(destination: TypedArray, offset?: number): void;
   }

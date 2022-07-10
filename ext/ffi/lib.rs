@@ -1900,6 +1900,7 @@ fn op_ffi_get_buf<FP, 'scope>(
   state: &mut deno_core::OpState,
   src: serde_v8::Value<'scope>,
   len: usize,
+  offset: isize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1912,6 +1913,13 @@ where
   let value = v8::Local::<v8::BigInt>::try_from(src.v8_value)
     .map_err(|_| type_error("Invalid FFI pointer value, expected BigInt"))?;
   let ptr = value.u64_value().0 as usize as *mut c_void;
+  if std::ptr::eq(ptr, std::ptr::null()) {
+    return Err(type_error("Invalid FFI pointer value, got nullptr"));
+  }
+
+  // SAFETY: This is not safe. We just trust the user to know what they're doing.
+  let ptr = unsafe { ptr.offset(offset) };
+
   // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
   let backing_store = unsafe {
     v8::ArrayBuffer::new_backing_store_from_ptr(
