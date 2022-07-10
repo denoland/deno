@@ -1,3 +1,4 @@
+use crate::JsRealm;
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::is_instance_of_error;
@@ -62,14 +63,16 @@ fn to_v8_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  JsRealm::state_from_scope(scope, |context_state| {
+    context_state.unrefed_ops.remove(&promise_id);
+  });
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  JsRealm::state_from_scope(scope, |context_state| {
+    context_state.unrefed_ops.insert(promise_id);
+  });
 }
 
 #[op(v8)]
