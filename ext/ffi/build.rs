@@ -12,9 +12,12 @@ fn build_tcc() {
   {
     let mut build_tcc_bat = Command::new("cmd");
     let win32_dir = tcc_src.join("win32");
-    build_tcc_bat
-      .current_dir(&win32_dir)
-      .args(&["/C", "build-tcc.bat"]);
+    build_tcc_bat.current_dir(&win32_dir).args(&[
+      "/C",
+      "build-tcc.bat",
+      "-c",
+      "cl",
+    ]);
     let status = build_tcc_bat.status().unwrap();
     if !status.success() {
       eprintln!("Fail to run build-tcc.bat: {:?}", status);
