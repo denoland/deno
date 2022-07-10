@@ -76,8 +76,9 @@ impl TsFn {
       self.sender.unbounded_send(call).unwrap();
     } else if let Some(_js_func) = js_func {
       let call = Box::new(move || {
-        // TODO(@littledivy): Call js_func.
-        // let _func = js_func.open(scope);
+        let func = js_func.open(scope);
+        let undefined = v8::undefined(scope);
+        func.call(scope, undefined, &[]);
         // Receiver might have been already dropped
         let _ = tx.send(());
       });

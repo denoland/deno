@@ -992,7 +992,7 @@ fn napi_add_finalizer(
   _finalize_hint: *const c_void,
   _result: *mut napi_ref,
 ) -> Result {
-  Ok(())
+  unimplemented!("napi_add_finalizer is not yet supported.");
 }
 
 #[napi_sym::napi_sym]
@@ -1050,7 +1050,6 @@ fn napi_close_handle_scope(env: *mut Env, scope: napi_handle_scope) -> Result {
     return Err(Error::HandleScopeMismatch);
   }
   let _scope = &mut *(scope as *mut v8::HandleScope);
-  // drop(scope);
   env.open_handle_scopes -= 1;
   Ok(())
 }
