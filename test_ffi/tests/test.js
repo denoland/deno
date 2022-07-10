@@ -166,10 +166,12 @@ const dylib = Deno.dlopen(libPath, {
   call_stored_function: {
     parameters: [],
     result: "void",
+    callback: true,
   },
   call_stored_function_2: {
     parameters: ["u8"],
     result: "void",
+    callback: true,
   },
   // Statics
   "static_u32": {
@@ -384,14 +386,16 @@ assertThrows(
   "hi",
 );
 
-symbols.call_fn_ptr(ptr(logCallback));
-symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
-symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
-symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
-symbols.store_function(ptr(logCallback));
-symbols.call_stored_function();
-symbols.store_function_2(ptr(add10Callback));
-symbols.call_stored_function_2(20);
+const { call_stored_function } = dylib.symbols;
+
+dylib.symbols.call_fn_ptr(ptr(logCallback));
+dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
+dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
+dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
+dylib.symbols.store_function(ptr(logCallback));
+call_stored_function();
+dylib.symbols.store_function_2(ptr(add10Callback));
+dylib.symbols.call_stored_function_2(20);
 
 const nestedCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },

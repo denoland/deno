@@ -75,6 +75,7 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  can_callback: bool,
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
@@ -436,6 +437,13 @@ struct ForeignFunction {
   result: NativeType,
   #[serde(rename = "nonblocking")]
   non_blocking: Option<bool>,
+  #[serde(rename = "callback")]
+  #[serde(default = "default_callback")]
+  callback: bool,
+}
+
+fn default_callback() -> bool {
+  false
 }
 
 // ForeignStatic's name and type fields are read and used by
@@ -602,6 +610,7 @@ where
           ptr,
           parameter_types: foreign_fn.parameters,
           result_type: foreign_fn.result,
+          can_callback: foreign_fn.callback,
         });
 
         resource.symbols.insert(symbol_key, sym.clone());
@@ -690,8 +699,10 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let mut fast_ffi_templ = None; // Fast FFI call template.
-  if !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
+  let mut fast_ffi_templ = None;
+
+  if !sym.can_callback
+    && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
     && is_fast_api(sym.result_type)
   {
     let ret = fast_api::Type::from(&sym.result_type);
@@ -949,6 +960,7 @@ where
     result_type,
     cif,
     ptr: fun_ptr,
+    ..
   } = symbol;
   let mut ffi_args: Vec<NativeValue> =
     Vec::with_capacity(parameter_types.len());
@@ -1822,6 +1834,7 @@ fn op_ffi_call_nonblocking<'scope>(
       ptr,
       parameter_types,
       result_type,
+      ..
     } = symbol.clone();
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
