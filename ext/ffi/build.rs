@@ -8,7 +8,7 @@ use std::process::Command;
 fn build_tcc() {
   let tcc_src = env::current_dir().unwrap().join("tinycc");
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-
+  println!("tcc_src: {:?}", tcc_src);
   let mut configure = Command::new(tcc_src.join("configure"));
   configure.current_dir(&out_dir);
   configure.args(&["--enable-static", "--extra-cflags=-fPIC -O3 -g -static"]);
