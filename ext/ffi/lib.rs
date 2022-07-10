@@ -1885,11 +1885,12 @@ where
   }
 }
 
-#[op]
-fn op_ffi_cstr_read<FP>(
+#[op(v8)]
+fn op_ffi_cstr_read<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   ptr: u64,
-) -> Result<String, AnyError>
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1898,10 +1899,15 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_char;
-  // SAFETY: ptr is user provided
-  // lifetime validity is not an issue because we allocate a new string.
-  Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
+  // SAFETY: Pointer is user provided.
+  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+  let value: v8::Local<v8::Value> =
+    v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
+      .ok_or_else(|| {
+        type_error("Invalid CString pointer, string exceeds max length")
+      })?
+      .into();
+  Ok(value.into())
 }
 
 #[op]
