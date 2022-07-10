@@ -666,19 +666,18 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::F32 => fast_api::Type::Float32,
       NativeType::F64 => fast_api::Type::Float64,
       NativeType::Void => fast_api::Type::Void,
-      NativeType::Function
-      | NativeType::Pointer
-      | NativeType::I64
+      NativeType::I64
       | NativeType::ISize
       | NativeType::U64
-      | NativeType::USize => {
+      | NativeType::USize => fast_api::Type::Uint64,
+      NativeType::Function | NativeType::Pointer => {
         panic!("Cannot be fast api")
       }
     }
   }
 }
 
-fn is_fast_api(rv: NativeType) -> bool {
+fn is_fast_api_rv(rv: NativeType) -> bool {
   !matches!(
     rv,
     NativeType::Function
@@ -690,6 +689,10 @@ fn is_fast_api(rv: NativeType) -> bool {
   )
 }
 
+fn is_fast_api_arg(rv: NativeType) -> bool {
+  !matches!(rv, NativeType::Function | NativeType::Pointer)
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
@@ -699,8 +702,8 @@ fn make_sync_fn<'s>(
   let mut fast_ffi_templ = None;
 
   if !sym.can_callback
-    && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
-    && is_fast_api(sym.result_type)
+    && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
+    && is_fast_api_rv(sym.result_type)
   {
     let mut args = sym
       .parameter_types
