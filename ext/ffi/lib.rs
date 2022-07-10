@@ -1843,7 +1843,7 @@ fn op_ffi_call_nonblocking<'scope>(
 fn op_ffi_ptr_of<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  buf: ZeroCopyBuf,
+  buf: serde_v8::Value<'scope>,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1852,8 +1852,33 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  let pointer = if let Ok(value) =
+    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
+  {
+    let backing_store = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .get_backing_store();
+    let byte_offset = value.byte_offset();
+    if byte_offset > 0 {
+      &backing_store[byte_offset..] as *const _ as *const u8
+    } else {
+      &backing_store[..] as *const _ as *const u8
+    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
+  {
+    let backing_store = value.get_backing_store();
+    &backing_store[..] as *const _ as *const u8
+  } else {
+    return Err(type_error(
+      "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
+    ));
+  };
+
   let big_int: v8::Local<v8::Value> =
-    v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
+    v8::BigInt::new_from_u64(scope, pointer as u64).into();
   Ok(big_int.into())
 }
 
