@@ -46,9 +46,8 @@ fn build_tcc() {
       eprintln!("Fail to make: {:?}", status);
       exit(1);
     }
-
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
   }
+  println!("cargo:rustc-link-search=native={}", out_dir.display());
   println!("cargo:rerun-if-changed={}", tcc_src.display());
 }
 
