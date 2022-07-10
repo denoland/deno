@@ -98,6 +98,7 @@ mod tests {
       ptr: libffi::middle::CodePtr(null_mut()),
       parameter_types: parameters,
       result_type: ret,
+      can_callback: false,
     });
     super::codegen(&sym)
   }
@@ -109,6 +110,7 @@ mod tests {
       ptr: libffi::middle::CodePtr(null_mut()),
       parameter_types: vec![NativeType::U32, NativeType::U32],
       result_type: NativeType::Void,
+      can_callback: false,
     };
     // undefined symbol _func
     assert!(unsafe { gen_trampoline(Box::new(sym)) }.is_err());
