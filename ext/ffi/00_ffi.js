@@ -106,7 +106,11 @@
     }
 
     getArrayBuffer(byteLength, offset = 0) {
-      return core.opSync("op_ffi_get_buf", this.pointer, byteLength, offset);
+      return core.opSync(
+        "op_ffi_get_buf",
+        this.pointer + BigInt(offset),
+        byteLength,
+      );
     }
 
     copyInto(destination, offset = 0) {

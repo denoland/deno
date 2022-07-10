@@ -1900,7 +1900,6 @@ fn op_ffi_get_buf<FP, 'scope>(
   state: &mut deno_core::OpState,
   src: serde_v8::Value<'scope>,
   len: usize,
-  offset: isize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1916,9 +1915,6 @@ where
   if std::ptr::eq(ptr, std::ptr::null()) {
     return Err(type_error("Invalid FFI pointer value, got nullptr"));
   }
-
-  // SAFETY: This is not safe. We just trust the user to know what they're doing.
-  let ptr = unsafe { ptr.offset(offset) };
 
   // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
   let backing_store = unsafe {
