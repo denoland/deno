@@ -11,17 +11,16 @@ fn build_tcc() {
   #[cfg(target_os = "windows")]
   {
     let mut build_tcc_bat = Command::new("cmd");
-    build_tcc_bat.current_dir(tcc_src.join("win32")).args(&[
-      "/C",
-      "build-tcc.bat",
-      "-i",
-      out_dir.to_str().unwrap(),
-    ]);
+    let win32_dir = tcc_src.join("win32");
+    build_tcc_bat
+      .current_dir(&win32_dir)
+      .args(&["/C", "build-tcc.bat"]);
     let status = build_tcc_bat.status().unwrap();
     if !status.success() {
       eprintln!("Fail to run build-tcc.bat: {:?}", status);
       exit(1);
     }
+    println!("cargo:rustc-link-search=native={}", win32_dir.display());
   }
   #[cfg(not(target_os = "windows"))]
   {
