@@ -20,8 +20,8 @@ macro_rules! cstr {
 
 fn native_to_c(ty: &NativeType) -> &'static str {
   match ty {
-    NativeType::U8 | NativeType::U16 | NativeType::U32 => "unsigned int",
-    NativeType::I8 | NativeType::I16 | NativeType::I32 => "int",
+    NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
+    NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
@@ -30,7 +30,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
 }
 
 pub(crate) fn codegen(sym: &crate::Symbol) -> String {
-  let mut c = String::new();
+  let mut c = String::from("#include <stdint.h>\n");
   let ret = native_to_c(&sym.result_type);
 
   // extern <return_type> func(

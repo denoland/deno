@@ -8,30 +8,43 @@ use std::process::Command;
 fn build_tcc() {
   let tcc_src = env::current_dir().unwrap().join("tinycc");
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-  println!("tcc_src: {:?}", tcc_src);
-  let mut configure = Command::new(tcc_src.join("configure"));
-  configure.current_dir(&out_dir);
-  configure.args(&["--enable-static", "--extra-cflags=-fPIC -O3 -g -static"]);
-  let status = configure.status().unwrap();
-  if !status.success() {
-    eprintln!("Fail to configure: {:?}", status);
-    exit(1);
+  #[cfg(target_os = "windows")]
+  {
+    let mut build_tcc_bat =
+      Command::new(tcc_src.join("win32").join("build-tcc.bat"));
+    build_tcc_bat.current_dir(&tcc_src).args(&["-c", "cl"]);
+    let status = build_tcc_bat.status().unwrap();
+    if !status.success() {
+      eprintln!("Fail to configure: {:?}", status);
+      exit(1);
+    }
   }
+  #[cfg(not(target_os = "windows"))]
+  {
+    let mut configure = Command::new(tcc_src.join("configure"));
+    configure.current_dir(&out_dir);
+    configure.args(&["--enable-static", "--extra-cflags=-fPIC -O3 -g -static"]);
+    let status = configure.status().unwrap();
+    if !status.success() {
+      eprintln!("Fail to configure: {:?}", status);
+      exit(1);
+    }
 
-  let mut make = Command::new("make");
-  make.current_dir(&out_dir).arg(format!(
-    "-j{}",
-    env::var("NUM_JOBS").unwrap_or_else(|_| String::from("1"))
-  ));
-  make.args(&["libtcc.a"]);
-  let status = make.status().unwrap();
+    let mut make = Command::new("make");
+    make.current_dir(&out_dir).arg(format!(
+      "-j{}",
+      env::var("NUM_JOBS").unwrap_or_else(|_| String::from("1"))
+    ));
+    make.args(&["libtcc.a"]);
+    let status = make.status().unwrap();
 
-  if !status.success() {
-    eprintln!("Fail to make: {:?}", status);
-    exit(1);
+    if !status.success() {
+      eprintln!("Fail to make: {:?}", status);
+      exit(1);
+    }
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
   }
-
-  println!("cargo:rustc-link-search=native={}", out_dir.display());
   println!("cargo:rerun-if-changed={}", tcc_src.display());
 }
 
