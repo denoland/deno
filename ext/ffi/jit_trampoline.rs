@@ -121,23 +121,23 @@ mod tests {
   fn test_gen_trampoline() {
     assert_eq!(
       codegen(vec![], NativeType::Void),
-      "\nextern void func();\n\nvoid func_trampoline(void* recv) {\n  return func();\n}\n\n"
+      "#include <stdint.h>\n\nextern void func();\n\nvoid func_trampoline(void* recv) {\n  return func();\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::U32, NativeType::U32], NativeType::U32),
-      "\nextern unsigned int func(unsigned int p0, unsigned int p1);\n\nunsigned int func_trampoline(void* recv, unsigned int p0, unsigned int p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern unsigned int func(unsigned int p0, unsigned int p1);\n\nunsigned int func_trampoline(void* recv, unsigned int p0, unsigned int p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::I32, NativeType::I32], NativeType::I32),
-      "\nextern int func(int p0, int p1);\n\nint func_trampoline(void* recv, int p0, int p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern int func(int p0, int p1);\n\nint func_trampoline(void* recv, int p0, int p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::F32, NativeType::F32], NativeType::F32),
-      "\nextern float func(float p0, float p1);\n\nfloat func_trampoline(void* recv, float p0, float p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern float func(float p0, float p1);\n\nfloat func_trampoline(void* recv, float p0, float p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::F64, NativeType::F64], NativeType::F64),
-      "\nextern double func(double p0, double p1);\n\ndouble func_trampoline(void* recv, double p0, double p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern double func(double p0, double p1);\n\ndouble func_trampoline(void* recv, double p0, double p1) {\n  return func(p0, p1);\n}\n\n"
     );
   }
 }

@@ -12,7 +12,7 @@ fn build_tcc() {
   {
     let mut build_tcc_bat =
       Command::new(tcc_src.join("win32").join("build-tcc.bat"));
-    build_tcc_bat.current_dir(&tcc_src).args(&["-c", "cl"]);
+    build_tcc_bat.current_dir(&out_dir).args(&["-c", "cl"]);
     let status = build_tcc_bat.status().unwrap();
     if !status.success() {
       eprintln!("Fail to configure: {:?}", status);
