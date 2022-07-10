@@ -271,16 +271,32 @@ fn codegen_fast_impl(
   is_async: bool,
 ) -> (TokenStream2, TokenStream2) {
   let fast_info = can_be_fast_api(core, f);
-  // TODO(@littledivy): Fast async calls.
   if !is_async {
     if let Some((args, ret)) = fast_info {
+      let raw_block = if is_async {
+        let inputs = &f.sig.inputs;
+        // TODO(@littledivy): Fast async calls.
+        quote! { 
+          fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #inputs) {
+            let op_ctx = recv.get_aligned_pointer_from_internal_field(0);
+            let op_id = op_ctx.op_id;
+            #core::_ops::queue_async_op(scope, async move {
+              let result = Self::call(#args);
+              (__promise_id, __op_id, #core::_ops::OpResult::Ok(result))
+            });
+          }
+          func as *const _
+        }
+      } else {
+        quote! { Self::call as *const _ }
+      };
       return (
         quote! {
           impl #core::v8::fast_api::FastFunction for #name {
             type Signature = ();
             fn function(&self) -> Self::Signature {}
             fn raw(&self) -> *const ::std::ffi::c_void {
-              Self::call as *const _
+              #raw_block
             }
             fn args(&self) -> &'static [#core::v8::fast_api::Type] {
               &[ #args ]
