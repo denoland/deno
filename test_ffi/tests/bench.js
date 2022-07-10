@@ -563,3 +563,7 @@ Deno.bench("nop_many_parameters_nonblocking()", () => {
     buffer2,
   );
 });
+
+Deno.bench("Deno.UnsafePointer.of", () => {
+  Deno.UnsafePointer.of(buffer);
+});
