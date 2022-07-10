@@ -475,6 +475,7 @@ impl JsRuntime {
     if !self.built_from_snapshot {
       self.init_extension_js(&realm)?;
     }
+
     Ok(realm)
   }
 
@@ -3551,6 +3552,71 @@ assertEquals(1, notify_return_value);
         )
         .unwrap();
       assert!(ret.open(runtime.v8_isolate()).is_true());
+    }
+  }
+
+  #[tokio::test]
+  async fn js_realm_async_ops() {
+    // Test that returning a ZeroCopyBuf and throwing an exception from a async
+    // op result in objects with prototypes from the right realm. Note that we
+    // don't test the result of returning structs, because they will be
+    // serialized to objects with null prototype.
+
+    #[op]
+    async fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
+      if !fail {
+        Ok(ZeroCopyBuf::empty())
+      } else {
+        Err(crate::error::type_error("Test"))
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![Extension::builder().ops(vec![op_test::decl()]).build()],
+      get_error_class_fn: Some(&|error| {
+        crate::error::get_custom_error_class(error).unwrap()
+      }),
+      ..Default::default()
+    });
+
+    let global_realm = runtime.global_realm();
+    let new_realm = runtime.create_realm().unwrap();
+
+    let mut rets = vec![];
+
+    // Test in both realms
+    for realm in [global_realm, new_realm].into_iter() {
+      let ret = realm
+        .execute_script(
+          runtime.v8_isolate(),
+          "",
+          r#"
+              (async function () {
+                const buf = await Deno.core.opAsync("op_test", false);
+                let err;
+                try {
+                  await Deno.core.opAsync("op_test", true);
+                } catch(e) {
+                  err = e;
+                }
+                return buf instanceof Uint8Array && buf.byteLength === 0 &&
+                       err instanceof TypeError && err.message === "Test" ;
+              })();
+            "#,
+        )
+        .unwrap();
+      rets.push((realm, ret));
+    }
+
+    runtime.run_event_loop(false).await.unwrap();
+
+    for ret in rets {
+      let scope = &mut ret.0.handle_scope(runtime.v8_isolate());
+      let value = v8::Local::new(scope, ret.1);
+      let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+      let result = promise.result(scope);
+
+      assert!(result.is_boolean() && result.is_true());
     }
   }
 }
