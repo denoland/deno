@@ -106,16 +106,40 @@
       );
     }
 
+    static getCString(pointer) {
+      return core.opSync(
+        "op_ffi_cstr_read",
+        pointer,
+      );
+    }
+
     getArrayBuffer(byteLength, offset = 0) {
       const uint8array = new Uint8Array(byteLength);
       this.copyInto(uint8array, offset);
       return uint8array.buffer;
     }
 
+    static getArrayBuffer(pointer, byteLength) {
+      return core.opSync(
+        "op_ffi_get_buf",
+        pointer,
+        byteLength,
+      );
+    }
+
     copyInto(destination, offset = 0) {
       core.opSync(
         "op_ffi_buf_copy_into",
         this.pointer + BigInt(offset),
+        destination,
+        destination.byteLength,
+      );
+    }
+
+    static copyInto(pointer, destination) {
+      core.opSync(
+        "op_ffi_buf_copy_into",
+        pointer,
         destination,
         destination.byteLength,
       );
