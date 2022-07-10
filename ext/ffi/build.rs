@@ -21,6 +21,12 @@ fn build_tcc() {
       exit(1);
     }
     println!("cargo:rustc-link-search=native={}", win32_dir.display());
+    // check if libtcc.lib exists
+    let libtcc_lib = win32_dir.join("libtcc.lib");
+    if !libtcc_lib.exists() {
+      eprintln!("libtcc.lib not found");
+      exit(1);
+    }
   }
   #[cfg(not(target_os = "windows"))]
   {
