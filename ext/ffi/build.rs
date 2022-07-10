@@ -14,8 +14,6 @@ fn build_tcc() {
     build_tcc_bat.current_dir(tcc_src.join("win32")).args(&[
       "/C",
       "build-tcc.bat",
-      "-c",
-      "cl",
       "-i",
       out_dir.to_str().unwrap(),
     ]);
