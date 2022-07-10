@@ -5,7 +5,6 @@ use std::{
   marker::PhantomData,
   os::raw::{c_char, c_int, c_void},
   ptr::null_mut,
-  sync::atomic::{AtomicBool, Ordering},
 };
 
 #[repr(C)]
@@ -30,8 +29,6 @@ extern "C" {
   pub fn tcc_get_symbol(s: *mut TCCState, name: *const c_char) -> *mut c_void;
 }
 
-static GUARD: AtomicBool = AtomicBool::new(true);
-
 /// Compilation context.
 pub struct Context {
   inner: *mut TCCState,
@@ -41,10 +38,12 @@ pub struct Context {
 
 impl Context {
   pub fn new() -> Result<Self, ()> {
+    // SAFETY: There is one context per thread.
     let inner = unsafe { tcc_new() };
     if inner.is_null() {
       Err(())
     } else {
+      // SAFETY: set output to memory.
       let ret =
         unsafe { tcc_set_output_type(inner, TCC_OUTPUT_MEMORY as c_int) };
       assert_eq!(ret, 0);
@@ -57,6 +56,7 @@ impl Context {
   }
 
   pub fn set_options(&mut self, option: &CStr) -> &mut Self {
+    // SAFETY: option is a null-terminated C string.
     unsafe {
       tcc_set_options(self.inner, option.as_ptr());
     }
@@ -64,6 +64,7 @@ impl Context {
   }
 
   pub fn compile_string(&mut self, p: &CStr) -> Result<(), ()> {
+    // SAFETY: p is a null-terminated C string.
     let ret = unsafe { tcc_compile_string(self.inner, p.as_ptr()) };
     if ret == 0 {
       Ok(())
@@ -76,6 +77,7 @@ impl Context {
   ///
   /// Symbol need satisfy ABI requirement.
   pub unsafe fn add_symbol(&mut self, sym: &CStr, val: *const c_void) {
+    // SAFETY: sym is a null-terminated C string.
     let ret = tcc_add_symbol(self.inner, sym.as_ptr(), val);
     assert_eq!(ret, 0);
   }
@@ -84,21 +86,24 @@ impl Context {
     &mut self,
     sym: &CStr,
   ) -> Result<*mut c_void, ()> {
-    // pass null ptr to get required length
+    // SAFETY: pass null ptr to get required length
     let len = unsafe { tcc_relocate(self.inner, null_mut()) };
     if len == -1 {
       return Err(());
     };
     let mut bin = Vec::with_capacity(len as usize);
+    // SAFETY: bin is allocated up to len.
     let ret =
       unsafe { tcc_relocate(self.inner, bin.as_mut_ptr() as *mut c_void) };
     if ret != 0 {
       return Err(());
     }
+    // SAFETY: if ret == 0, bin is initialized.
     unsafe {
       bin.set_len(len as usize);
     }
     self.bin = Some(bin);
+    // SAFETY: sym is a null-terminated C string.
     let addr = unsafe { tcc_get_symbol(self.inner, sym.as_ptr()) };
     Ok(addr)
   }
@@ -106,7 +111,7 @@ impl Context {
 
 impl Drop for Context {
   fn drop(&mut self) {
-    GUARD.store(true, Ordering::SeqCst);
+    // SAFETY: delete state from tcc_new()
     unsafe { tcc_delete(self.inner) };
   }
 }

@@ -715,8 +715,7 @@ fn make_sync_fn<'s>(
     // recv
     args.insert(0, fast_api::Type::V8Value);
     let symbol_trampoline =
-      unsafe { jit_trampoline::gen_trampoline(sym.clone()) }
-        .expect("gen_trampoline");
+      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
     fast_ffi_templ = Some(FfiFastCallTemplate {
       args: args.into_boxed_slice(),
       ret: (&ret).into(),

@@ -69,12 +69,13 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   c
 }
 
-pub(crate) unsafe fn gen_trampoline(
+pub(crate) fn gen_trampoline(
   sym: Box<crate::Symbol>,
 ) -> Result<Box<Allocation>, ()> {
   let mut ctx = Context::new()?;
   ctx.set_options(cstr!("-nostdlib"));
-  ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void);
+  // SAFETY: symbol satisfies ABI requirement.
+  unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
   let c = codegen(&sym);
 
   ctx.compile_string(cstr!(c))?;
@@ -113,7 +114,7 @@ mod tests {
       can_callback: false,
     };
     // undefined symbol _func
-    assert!(unsafe { gen_trampoline(Box::new(sym)) }.is_err());
+    assert!(gen_trampoline(Box::new(sym)).is_err());
   }
 
   #[test]
