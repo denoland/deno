@@ -125,11 +125,11 @@ mod tests {
     );
     assert_eq!(
       codegen(vec![NativeType::U32, NativeType::U32], NativeType::U32),
-      "#include <stdint.h>\n\nextern unsigned int func(unsigned int p0, unsigned int p1);\n\nunsigned int func_trampoline(void* recv, unsigned int p0, unsigned int p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern uint32_t func(uint32_t p0, uint32_t p1);\n\nuint32_t func_trampoline(void* recv, uint32_t p0, uint32_t p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::I32, NativeType::I32], NativeType::I32),
-      "#include <stdint.h>\n\nextern int func(int p0, int p1);\n\nint func_trampoline(void* recv, int p0, int p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern int32_t func(int32_t p0, int32_t p1);\n\nint func_trampoline(void* recv, int32_t p0, int32_t p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::F32, NativeType::F32], NativeType::F32),
