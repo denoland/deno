@@ -43,8 +43,8 @@ impl Context {
     if inner.is_null() {
       Err(())
     } else {
-      // SAFETY: set output to memory.
       let ret =
+        // SAFETY: set output to memory.
         unsafe { tcc_set_output_type(inner, TCC_OUTPUT_MEMORY as c_int) };
       assert_eq!(ret, 0);
       Ok(Self {
@@ -92,8 +92,8 @@ impl Context {
       return Err(());
     };
     let mut bin = Vec::with_capacity(len as usize);
-    // SAFETY: bin is allocated up to len.
     let ret =
+      // SAFETY: bin is allocated up to len.
       unsafe { tcc_relocate(self.inner, bin.as_mut_ptr() as *mut c_void) };
     if ret != 0 {
       return Err(());
