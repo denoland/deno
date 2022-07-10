@@ -3,7 +3,7 @@ import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 const tmpDir = Deno.makeTempDirSync();
 
 Deno.test("Sqlite", () => {
-  const conn = new Deno.sqlite.Connection(tmpDir + "/inserts.db");
+  const conn = new Deno.sqlite.Database(tmpDir + "/inserts.db");
   {
     // Pragmas
     const smth = conn.prepare(

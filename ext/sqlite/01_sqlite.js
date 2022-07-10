@@ -37,7 +37,7 @@
     }
   }
 
-  class Connection {
+  class Database {
     #rid;
     #statements;
     #closed;
@@ -50,7 +50,7 @@
 
     prepare(sql) {
       if (this.#closed) {
-        throw new TypeError("Connection has already been closed.");
+        throw new TypeError("Database has already been closed.");
       }
       const s = new Statement(this.#rid, sql);
       this.#statements.push(s);
@@ -71,6 +71,6 @@
   }
 
   window.__bootstrap.sqlite = {
-    Connection,
+    Database,
   };
 })(this);

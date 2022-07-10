@@ -33,13 +33,13 @@ pub fn init() -> Extension {
     .build()
 }
 
-pub struct ConnResource {
+pub struct DatabaseResource {
   conn: Connection,
 }
 
-impl Resource for ConnResource {
+impl Resource for DatabaseResource {
   fn name(&self) -> Cow<str> {
-    "sqliteConnection".into()
+    "sqliteDatabase".into()
   }
 }
 
@@ -56,8 +56,13 @@ fn op_sqlite_open(
   state: &mut OpState,
   path: String,
 ) -> Result<ResourceId, AnyError> {
-  let conn = Connection::open(&path)?;
-  let rid = state.resource_table.add(ConnResource { conn });
+  // TODO(bartlomieju): handle options
+  let conn = if path == ":memory:" {
+    Connection::open_in_memory()?
+  } else {
+    Connection::open(&path)?
+  };
+  let rid = state.resource_table.add(DatabaseResource { conn });
   Ok(rid)
 }
 
@@ -67,8 +72,9 @@ fn op_sqlite_prepare(
   handle: ResourceId,
   sql: String,
 ) -> Result<ResourceId, AnyError> {
-  let resource =
-    Box::leak(Box::new(state.resource_table.get::<ConnResource>(handle)?));
+  let resource = Box::leak(Box::new(
+    state.resource_table.get::<DatabaseResource>(handle)?,
+  ));
   let stmt = resource.conn.prepare_cached(&sql)?;
   let count = stmt.column_count();
   let rid = state

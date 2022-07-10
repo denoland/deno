@@ -1255,9 +1255,20 @@ declare namespace Deno {
       close(): void;
     }
 
-    export class Connection {
-      /** Open an SQLite database at the specified path. */
-      constructor(path: string);
+    export class Database {
+      /** Open an SQLite database.
+       *
+       * If path equals to ":memory:", then
+       * an in-memory database will be opened. In-memory databases don't
+       * require any permissions.
+       *
+       * Requires --allow-read permissions for all modes and `--allow-write`
+       * for non-readonly modes.
+       */
+      constructor(
+        path: string,
+        options?: { readonly?: boolean; create?: boolean },
+      );
 
       /** Closes the connection and disposes all statements
             created using this connection.*/
