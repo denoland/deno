@@ -254,14 +254,18 @@ where
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
-      || lowercase_path.starts_with("file://")
     {
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
       continue;
     }
 
-    let p = normalize_path(&root_path.join(path));
+    let p = if lowercase_path.starts_with("file://") {
+      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
+    } else {
+      root_path.join(path)
+    };
+    let p = normalize_path(&p);
     if p.is_dir() {
       let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
@@ -663,6 +667,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
+    let predicate = |path: &Path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    };
+
     let result = collect_specifiers(
       vec![
         "http://localhost:8080".to_string(),
@@ -670,13 +682,7 @@ mod tests {
         "https://localhost:8080".to_string(),
       ],
       &[ignore_dir_path],
-      |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      },
+      predicate,
     )
     .unwrap();
 
@@ -698,7 +704,38 @@ mod tests {
     ]
     .iter()
     .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<ModuleSpecifier>>();
+    .collect::<Vec<_>>();
+
+    assert_eq!(result, expected);
+
+    let scheme = if cfg!(target_os = "windows") {
+      "file:///"
+    } else {
+      "file://"
+    };
+    let result = collect_specifiers(
+      vec![format!(
+        "{}{}",
+        scheme,
+        root_dir_path
+          .join("child")
+          .to_str()
+          .unwrap()
+          .replace('\\', "/")
+      )],
+      &[],
+      predicate,
+    )
+    .unwrap();
+
+    let expected: Vec<ModuleSpecifier> = [
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<_>>();
 
     assert_eq!(result, expected);
   }
