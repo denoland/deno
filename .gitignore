@@ -1,7 +1,6 @@
 *.orig
 *.pyc
 *.swp
-.env
 
 /.cargo_home/
 /.idea/
