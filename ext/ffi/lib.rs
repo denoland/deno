@@ -77,6 +77,7 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  #[allow(dead_code)]
   can_callback: bool,
 }
 
@@ -683,6 +684,7 @@ impl From<&NativeType> for fast_api::Type {
   }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn is_fast_api(rv: NativeType) -> bool {
   !matches!(
     rv,
@@ -701,7 +703,11 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
+  #[cfg(not(target_os = "windows"))]
   let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
+
+  #[cfg(target_os = "windows")]
+  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
 
   #[cfg(not(target_os = "windows"))]
   let mut fast_allocations: Option<*mut ()> = None;
