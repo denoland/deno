@@ -37,7 +37,7 @@ deno_webgpu = { version = "0.61.0", path = "../ext/webgpu" }
 deno_websocket = { version = "0.65.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.55.0", path = "../ext/webstorage" }
 regex = "=1.5.6"
-serde = { version = "=1.0.136", features = ["derive"] }
+serde = { version = "=1.0.139", features = ["derive"] }
 zstd = '=0.11.1'
 
 [target.'cfg(windows)'.build-dependencies]
@@ -45,12 +45,12 @@ winapi = "=0.3.9"
 winres = "=0.1.12"
 
 [dependencies]
-deno_ast = { version = "0.16.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
+deno_ast = { version = "0.17.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.142.0", path = "../core" }
-deno_doc = "0.36.0"
-deno_emit = "0.3.0"
-deno_graph = "0.28.0"
-deno_lint = { version = "0.31.0", features = ["docs"] }
+deno_doc = "0.38.0"
+deno_emit = "0.4.0"
+deno_graph = "0.29.0"
+deno_lint = { version = "0.32.0", features = ["docs"] }
 deno_runtime = { version = "0.68.0", path = "../runtime" }
 deno_task_shell = "0.4.0"
 
@@ -65,10 +65,10 @@ data-url = "=0.1.1"
 dissimilar = "=1.0.3"
 dprint-plugin-json = "=0.15.3"
 dprint-plugin-markdown = "=0.13.3"
-dprint-plugin-typescript = "=0.69.5"
+dprint-plugin-typescript = "=0.69.6"
 encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
-eszip = "=0.21.0"
+eszip = "=0.22.0"
 fancy-regex = "=0.9.0"
 http = "=0.2.6"
 import_map = "=0.11.0"
@@ -90,7 +90,7 @@ rustyline = { version = "=9.1.2", default-features = false }
 rustyline-derive = "=0.6.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 semver-parser = "=0.10.2"
-serde = { version = "=1.0.136", features = ["derive"] }
+serde = { version = "=1.0.139", features = ["derive"] }
 serde_repr = "=0.1.8"
 shell-escape = "=0.1.5"
 text-size = "=1.1.0"
