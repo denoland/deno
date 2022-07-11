@@ -87,12 +87,14 @@
       return this.#stdin;
     }
 
+    #stdoutPromiseId;
     #stdoutRid;
     #stdout = null;
     get stdout() {
       return this.#stdout;
     }
 
+    #stderrPromiseId;
     #stderrRid;
     #stderr = null;
     get stderr() {
@@ -121,12 +123,16 @@
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = readableStreamForRid(stdoutRid);
+        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
+          this.#stdoutPromiseId = promise[promiseIdSymbol];
+        });
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = readableStreamForRid(stderrRid);
+        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
+          this.#stderrPromiseId = promise[promiseIdSymbol];
+        });
       }
 
       const onAbort = () => this.kill("SIGTERM");
@@ -180,10 +186,14 @@
 
     ref() {
       core.refOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
     }
 
     unref() {
       core.unrefOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
     }
   }
 

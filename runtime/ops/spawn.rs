@@ -187,7 +187,6 @@ fn op_spawn_child(
   args: SpawnArgs,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(create_command(state, args)?);
-  command.kill_on_drop(false);
 
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");

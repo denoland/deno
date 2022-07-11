@@ -4,7 +4,8 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-  assertThrows, execCode,
+  assertThrows,
+  execCode,
 } from "./test_util.ts";
 
 Deno.test(
