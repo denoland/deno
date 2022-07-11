@@ -138,10 +138,6 @@ mod test {
     let ops = CString::new("-nostdlib").unwrap();
     ctx.set_options(&ops);
     assert!(ctx.compile_string(&p).is_ok());
-    let relocated = ctx.relocate_and_get_symbol(&sym).unwrap();
-
-    // SAFETY: relocated is a pointer to a function.
-    let add: fn(c_int, c_int) -> c_int = unsafe { transmute(relocated) };
-    assert_eq!(add(1, 1), 2);
+    ctx.relocate_and_get_symbol(&sym).unwrap();
   }
 }
