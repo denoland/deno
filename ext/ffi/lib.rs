@@ -77,6 +77,7 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  // This is dead code only on Windows
   #[allow(dead_code)]
   can_callback: bool,
 }
