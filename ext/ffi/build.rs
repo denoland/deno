@@ -12,7 +12,7 @@ fn build_tcc() {
     .to_path_buf();
   #[cfg(target_os = "windows")]
   {
-    let tcc_path = root.join("third_party").join("prebuilt").join("win");
+    let tcc_path = root.join("../third_party").join("prebuilt").join("win");
     println!("cargo:rustc-link-search=native={}", tcc_path.display());
   }
   #[cfg(not(target_os = "windows"))]
