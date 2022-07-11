@@ -298,7 +298,7 @@
      * @param {BodyInit | null} body
      * @param {ResponseInit} init
      */
-    constructor(body = null, init = {}) {
+    constructor(body = null, init = undefined) {
       const prefix = "Failed to construct 'Response'";
       body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,

@@ -224,6 +224,20 @@ pub extern "C" fn call_stored_function_thread_safe() {
   });
 }
 
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe_and_log() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+      println!("STORED_FUNCTION called");
+    }
+  });
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}

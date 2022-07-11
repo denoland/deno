@@ -9,7 +9,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -2822,7 +2822,7 @@ impl Inner {
     // todo(dsherret): why is running this on a new thread necessary? It does
     // a compile error otherwise.
     let handle = tokio::task::spawn_blocking(|| {
-      run_basic(
+      run_local(
         async move { create_graph_for_caching(cli_options, roots).await },
       )
     });

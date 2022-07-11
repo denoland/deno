@@ -5,7 +5,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
-use crate::tokio_util::run_basic;
+use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -733,5 +733,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_basic(fut)
+  run_local(fut)
 }
