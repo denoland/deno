@@ -944,7 +944,7 @@ impl JsRuntime {
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
-    if !pending_state.is_pending() {
+    if !pending_state.is_pending() && !maybe_scheduling {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
       }
