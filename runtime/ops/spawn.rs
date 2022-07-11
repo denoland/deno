@@ -187,6 +187,10 @@ fn op_spawn_child(
   args: SpawnArgs,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(create_command(state, args)?);
+  // TODO(@crowlkats): allow detaching processes.
+  //  currently deno will orphan a process when exiting with an error or Deno.exit()
+  // We want to kill child when it's closed
+  command.kill_on_drop(true);
 
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");

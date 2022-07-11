@@ -5,7 +5,6 @@ import {
   assertRejects,
   assertStringIncludes,
   assertThrows,
-  execCode,
 } from "./test_util.ts";
 
 Deno.test(
@@ -297,28 +296,6 @@ Deno.test(
     }
   },
 );
-
-/*Deno.test(
-  { permissions: { run: true, read: true } },
-  async function spawnUnref() {
-    const [statusCode, output] = await execCode(`
-      const child = Deno.spawnChild(Deno.execPath(), {
-        args: [
-          "eval",
-          "--unstable",
-          "setTimeout(() => console.log(1), 3000);",
-        ],
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      console.log(0);
-      child.unref();
-      child.status.then(() => Deno.exit(1));
-    `);
-    assertEquals(statusCode, 0);
-    assertEquals(output, "0\n");
-  },
-);*/
 
 Deno.test(
   { permissions: { read: true, run: false } },
