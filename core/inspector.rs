@@ -485,6 +485,8 @@ impl task::ArcWake for InspectorWaker {
             _isolate: &mut v8::Isolate,
             arg: *mut c_void,
           ) {
+            // SAFETY: `InspectorWaker` is owned by `JsRuntimeInspector`, so the
+            // pointer to the latter is valid as long as waker is alive.
             let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
             let _ = inspector.poll_sessions(None);
           }
@@ -521,6 +523,8 @@ impl InspectorSession {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
@@ -544,6 +548,8 @@ impl InspectorSession {
     msg: String,
   ) {
     let msg = v8::inspector::StringView::from(msg.as_bytes());
+    // SAFETY: `InspectorSession` is the only owner of `v8_session_ptr`, so
+    // the pointer is valid for as long the struct.
     unsafe {
       (*v8_session_ptr).dispatch_protocol_message(msg);
     };
@@ -731,6 +737,9 @@ impl LocalInspectorSession {
 fn new_box_with<T>(new_fn: impl FnOnce(*mut T) -> T) -> Box<T> {
   let b = Box::new(MaybeUninit::<T>::uninit());
   let p = Box::into_raw(b) as *mut T;
-  unsafe { ptr::write(p, new_fn(p)) };
-  unsafe { Box::from_raw(p) }
+  // SAFETY: memory layout for `T` is ensured on first line of this function
+  unsafe {
+    ptr::write(p, new_fn(p));
+    Box::from_raw(p)
+  }
 }

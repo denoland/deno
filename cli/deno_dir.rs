@@ -76,7 +76,13 @@ mod dirs {
   pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
       .and_then(|h| if h.is_empty() { None } else { Some(h) })
-      .or_else(|| unsafe { fallback() })
+      .or_else(|| {
+        // TODO(bartlomieju):
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          fallback()
+        }
+      })
       .map(PathBuf::from)
   }
 

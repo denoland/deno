@@ -5,7 +5,7 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 
-use crate::config_file::ConfigFile;
+use crate::args::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;

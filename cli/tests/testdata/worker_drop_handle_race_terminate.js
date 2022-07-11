@@ -13,10 +13,10 @@ const WORKER2 = getCodeBlobUrl(`
   console.log("Worker 2");
   self.postMessage(undefined);
 
-  // We sleep for slightly under 2 seconds in order to make sure that worker 1
-  // has closed, and that this worker's thread finishes normally rather than
-  // being killed (which happens 2 seconds after calling terminate).
-  Deno.sleepSync(1800);
+  // We sleep synchronously for slightly under 2 seconds in order to make sure
+  // that worker 1 has closed, and that this worker's thread finishes normally
+  // rather than being killed (which happens 2 seconds after calling terminate).
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1800);
   console.log("Finished sleeping in worker 2");
 `);
 

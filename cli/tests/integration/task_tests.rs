@@ -12,6 +12,13 @@ itest!(task_no_args {
   exit_code: 1,
 });
 
+itest!(task_cwd {
+  args: "task -q --config task/deno.json --cwd .. echo_cwd",
+  output: "task/task_cwd.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 0,
+});
+
 itest!(task_non_existent {
   args: "task --config task/deno.json non_existent",
   output: "task/task_non_existent.out",

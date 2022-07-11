@@ -275,7 +275,11 @@ interface SubtleCrypto {
     length: number,
   ): Promise<ArrayBuffer>;
   deriveKey(
-    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    algorithm:
+      | AlgorithmIdentifier
+      | HkdfParams
+      | Pbkdf2Params
+      | EcdhKeyDeriveParams,
     baseKey: CryptoKey,
     derivedKeyType:
       | AlgorithmIdentifier
@@ -326,8 +330,8 @@ declare interface Crypto {
       | Uint16Array
       | Uint32Array
       | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
+      | BigInt64Array
+      | BigUint64Array
       | DataView
       | null,
   >(
