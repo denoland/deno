@@ -90,7 +90,7 @@ use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::PreloadModuleCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -1392,7 +1392,7 @@ pub fn main() {
     exit_code
   };
 
-  let exit_code = unwrap_or_exit(run_basic(exit_code));
+  let exit_code = unwrap_or_exit(run_local(exit_code));
 
   std::process::exit(exit_code);
 }
