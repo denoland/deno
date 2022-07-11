@@ -120,19 +120,6 @@ mod tests {
   }
 
   #[test]
-  fn test_gen_trampoline_nullptr() {
-    let sym = crate::Symbol {
-      cif: libffi::middle::Cif::new(vec![], Type::void()),
-      ptr: libffi::middle::CodePtr(null_mut()),
-      parameter_types: vec![NativeType::U32, NativeType::U32],
-      result_type: NativeType::Void,
-      can_callback: false,
-    };
-    // undefined symbol _func
-    assert!(gen_trampoline(Box::new(sym)).is_err());
-  }
-
-  #[test]
   fn test_gen_trampoline() {
     assert_eq!(
       codegen(vec![], NativeType::Void),
