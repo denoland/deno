@@ -7,19 +7,19 @@ use std::process::Command;
 
 fn build_tcc() {
   let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")));
-  #[cfg(target_os = "windows")]
   {
-    let tcc_path = root
-      .parent()
-      .unwrap()
-      .to_path_buf()
-      .parent()
-      .unwrap()
-      .to_path_buf()
-      .join("third_party")
-      .join("prebuilt")
-      .join("win");
-    println!("cargo:rustc-link-search=native={}", tcc_path.display());
+    // TODO(@littledivy): Windows support for fast call.
+    // let tcc_path = root
+    //   .parent()
+    //   .unwrap()
+    //   .to_path_buf()
+    //   .parent()
+    //   .unwrap()
+    //   .to_path_buf()
+    //   .join("third_party")
+    //   .join("prebuilt")
+    //   .join("win");
+    // println!("cargo:rustc-link-search=native={}", tcc_path.display());
   }
   #[cfg(not(target_os = "windows"))]
   {

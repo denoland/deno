@@ -39,7 +39,9 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 
+#[cfg(not(target_os = "windows"))]
 mod jit_trampoline;
+#[cfg(not(target_os = "windows"))]
 mod tcc;
 
 thread_local! {
@@ -701,6 +703,7 @@ fn make_sync_fn<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let mut fast_ffi_templ = None;
 
+  #[cfg(not(target_os = "windows"))]
   if !sym.can_callback
     && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
     && is_fast_api(sym.result_type)
