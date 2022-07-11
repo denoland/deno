@@ -125,7 +125,7 @@ mod test {
     let p = CString::new(
       r#"
       #include <stdint.h>
-      int32_t add(int32_t a, int32_t b){
+      int32_t add(int32_t a, int32_t b) {
           return a + b;
       }
       "#
@@ -135,6 +135,8 @@ mod test {
     let sym = CString::new("add".as_bytes()).unwrap();
 
     let mut ctx = Compiler::new().unwrap();
+    let ops = CString::new("-nostdlib").unwrap();
+    ctx.set_options(&ops);
     assert!(ctx.compile_string(&p).is_ok());
     let relocated = ctx.relocate_and_get_symbol(&sym).unwrap();
 
