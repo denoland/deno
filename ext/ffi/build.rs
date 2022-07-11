@@ -17,7 +17,8 @@ fn build_tcc() {
   }
   #[cfg(not(target_os = "windows"))]
   {
-    let tcc_src = root.join("ext").join("ffi").join("tinycc");
+    let tcc_src = root.join("ffi").join("tinycc");
+    dbg!(&tcc_src);
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let mut configure = Command::new(tcc_src.join("configure"));
     configure.current_dir(&out_dir);
