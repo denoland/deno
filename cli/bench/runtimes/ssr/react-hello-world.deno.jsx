@@ -13,7 +13,7 @@ const App = () => (
 const headers = {
   headers: {
     "Content-Type": "text/html",
-    "Cache-Control": "no-transform" // disables response body auto compression, see https://deno.land/manual/runtime/http_server_apis#automatic-body-compression
+    "Cache-Control": "no-transform", // disables response body auto compression, see https://deno.land/manual/runtime/http_server_apis#automatic-body-compression
   },
 };
 
@@ -21,5 +21,5 @@ await serve(
   async (req) => {
     return new Response(await renderToReadableStream(<App />), headers);
   },
-  { port: 8080 }
+  { port: 8080 },
 );

@@ -1,8 +1,7 @@
 {
-    "tasks": {
-      "deno": "deno run --allow-net ./react-hello-world.deno.jsx",
-      "bun": "bun run ./bun/react-hello-world.jsx",
-      "node": "node ./node/react-hello-world.node.js"
-    }
+  "tasks": {
+    "deno": "deno run --allow-net ./react-hello-world.deno.jsx",
+    "bun": "bun run ./bun/react-hello-world.jsx",
+    "node": "node ./node/react-hello-world.node.js"
   }
-  
+}

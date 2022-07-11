@@ -25,7 +25,7 @@ http
         // Something errored before we could complete the shell so we emit an alternative shell.
         res.statusCode = 500;
         res.send(
-          '<!doctype html><p>Loading...</p><script src="clientrender.js"></script>'
+          '<!doctype html><p>Loading...</p><script src="clientrender.js"></script>',
         );
       },
       onAllReady() {
@@ -43,3 +43,4 @@ http
     });
   })
   .listen(9080);
+console.log("Listening on http://localhost:9080");

@@ -1,11 +1,11 @@
 var { renderToReadableStream } = import.meta.require(
-  "./reactdom-bun.js"
+  "./reactdom-bun.js",
 );
 
 const headers = {
   headers: {
     "Content-Type": "text/html",
-    "Cache-Control": "no-transform" // set to match the Deno benchmark, which requires this for an apples to apples comparison
+    "Cache-Control": "no-transform", // set to match the Deno benchmark, which requires this for an apples to apples comparison
   },
 };
 

@@ -1,7 +1,8 @@
-import { bench, group, run } from "mitata";
-import { dlopen, suffix } from "bun:ffi";
+import { bench, run } from "mitata";
+import { dlopen } from "bun:ffi";
+import path from "path";
 
-const libName = `./ffi.dylib`;
+const libName = path.join(__dirname, "./ffi.dylib");
 const {
   symbols: {
     add,

@@ -1,6 +1,6 @@
 import { bench, run } from "https://esm.run/mitata";
 
-const libName = `./ffi.dylib`;
+const libName = new URL("./ffi.dylib", import.meta.url);
 // Open library and define exported symbols
 const dylib = Deno.dlopen(
   libName,
