@@ -1,0 +1,7 @@
+{
+    "tasks": {
+        "build": "clang -mtune=native -O3 -shared ./ffi.c -o ffi.dylib",
+        "deno": "deno run --allow-ffi --allow-net --allow-run --unstable ffi.deno.js",
+        "bun": "bun run ffi.bun.js"
+    }
+}

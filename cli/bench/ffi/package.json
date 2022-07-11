@@ -1,0 +1,6 @@
+{
+  "name": "bench",
+  "dependencies": {
+    "mitata": "^0.0.14"
+  }
+}
