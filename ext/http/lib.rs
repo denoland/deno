@@ -164,7 +164,7 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<HttpStreamResource>, AnyError> {
+  ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
     let fut = async {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
@@ -173,8 +173,24 @@ impl HttpConnResource {
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
       let request = request_rx.await.ok()?;
-      let stream = HttpStreamResource::new(self, request, response_tx);
-      Some(stream)
+
+      let accept_encoding = {
+        let encodings = fly_accept_encoding::encodings_iter(request.headers())
+          .filter(|r| {
+            matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
+          });
+
+        fly_accept_encoding::preferred(encodings)
+          .ok()
+          .flatten()
+          .unwrap_or(Encoding::Identity)
+      };
+
+      let method = request.method().to_string();
+      let url = req_url(&request, self.scheme, &self.addr);
+      let stream =
+        HttpStreamResource::new(self, request, response_tx, accept_encoding);
+      Some((stream, method, url))
     };
 
     async {
@@ -191,14 +207,6 @@ impl HttpConnResource {
   /// A future that completes when this HTTP connection is closed or errors.
   async fn closed(&self) -> Result<(), AnyError> {
     self.closed_fut.clone().map_err(AnyError::from).await
-  }
-
-  fn scheme(&self) -> &'static str {
-    self.scheme
-  }
-
-  fn addr(&self) -> &HttpSocketAddr {
-    &self.addr
   }
 }
 
@@ -299,7 +307,7 @@ pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: RefCell<Encoding>,
+  accept_encoding: Encoding,
   cancel_handle: CancelHandle,
 }
 
@@ -308,12 +316,13 @@ impl HttpStreamResource {
     conn: &Rc<HttpConnResource>,
     request: Request<Body>,
     response_tx: oneshot::Sender<Response<Body>>,
+    accept_encoding: Encoding,
   ) -> Self {
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
-      accept_encoding: RefCell::new(Encoding::Identity),
+      accept_encoding,
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -377,37 +386,16 @@ async fn op_http_accept(
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
-  let stream = match conn.accept().await {
-    Ok(Some(stream)) => Rc::new(stream),
-    Ok(None) => return Ok(None),
-    Err(err) => return Err(err),
-  };
-
-  let rd = RcRef::map(&stream, |r| &r.rd).borrow().await;
-  let request = match &*rd {
-    HttpRequestReader::Headers(request) => request,
-    _ => unreachable!(),
-  };
-
-  stream.accept_encoding.replace({
-    let encodings = fly_accept_encoding::encodings_iter(request.headers())
-      .filter(|r| {
-        matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-      });
-
-    fly_accept_encoding::preferred(encodings)
-      .ok()
-      .flatten()
-      .unwrap_or(Encoding::Identity)
-  });
-
-  let method = request.method().to_string();
-  let url = req_url(request, conn.scheme(), conn.addr());
-
-  let stream_rid = state.borrow_mut().resource_table.add_rc(stream);
-
-  let r = NextRequestResponse(stream_rid, method, url);
-  Ok(Some(r))
+  match conn.accept().await {
+    Ok(Some((stream, method, url))) => {
+      let stream_rid =
+        state.borrow_mut().resource_table.add_rc(Rc::new(stream));
+      let r = NextRequestResponse(stream_rid, method, url);
+      Ok(Some(r))
+    }
+    Ok(None) => Ok(None),
+    Err(err) => Err(err),
+  }
 }
 
 fn req_url(
@@ -503,7 +491,7 @@ async fn op_http_write_headers(
     .get::<HttpStreamResource>(rid)?;
 
   // Track supported encoding
-  let encoding = *stream.accept_encoding.borrow();
+  let encoding = stream.accept_encoding;
 
   let mut builder = Response::builder();
   // SAFETY: can not fail, since a fresh Builder is non-errored
