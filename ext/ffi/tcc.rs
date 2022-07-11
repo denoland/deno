@@ -30,13 +30,13 @@ extern "C" {
 }
 
 /// Compilation context.
-pub struct Context {
+pub struct Compiler {
   inner: *mut TCCState,
   _phantom: PhantomData<TCCState>,
   pub bin: Option<Vec<u8>>,
 }
 
-impl Context {
+impl Compiler {
   pub fn new() -> Result<Self, ()> {
     // SAFETY: There is one context per thread.
     let inner = unsafe { tcc_new() };
@@ -74,7 +74,6 @@ impl Context {
   }
 
   /// # Safety
-  ///
   /// Symbol need satisfy ABI requirement.
   pub unsafe fn add_symbol(&mut self, sym: &CStr, val: *const c_void) {
     // SAFETY: sym is a null-terminated C string.
@@ -109,9 +108,37 @@ impl Context {
   }
 }
 
-impl Drop for Context {
+impl Drop for Compiler {
   fn drop(&mut self) {
     // SAFETY: delete state from tcc_new()
     unsafe { tcc_delete(self.inner) };
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  use std::{ffi::CString, intrinsics::transmute};
+
+  #[test]
+  fn test_compiler_jit() {
+    let p = CString::new(
+      r#"
+      #include <stdint.h>
+      int32_t add(int32_t a, int32_t b){
+          return a + b;
+      }
+      "#
+      .as_bytes(),
+    )
+    .unwrap();
+    let sym = CString::new("add".as_bytes()).unwrap();
+
+    let mut ctx = Compiler::new().unwrap();
+    assert!(ctx.compile_string(&p).is_ok());
+    let relocated = ctx.relocate_and_get_symbol(&sym).unwrap();
+
+    let add: fn(c_int, c_int) -> c_int = unsafe { transmute(relocated) };
+    assert_eq!(add(1, 1), 2);
   }
 }

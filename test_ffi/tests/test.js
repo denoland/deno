@@ -184,19 +184,18 @@ const dylib = Deno.dlopen(libPath, {
     type: "pointer",
   },
 });
-
 const { symbols } = dylib;
 
 symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
-symbols.print_buffer(buffer, buffer.length);
+dylib.symbols.print_buffer(buffer, buffer.length);
 // Test subarrays
 const subarray = buffer.subarray(3);
-symbols.print_buffer(subarray, subarray.length - 2);
-symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
-const ptr0 = symbols.return_buffer();
-symbols.print_buffer(ptr0, 8);
+dylib.symbols.print_buffer(subarray, subarray.length - 2);
+dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
+const ptr0 = dylib.symbols.return_buffer();
+dylib.symbols.print_buffer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
 const into2 = new Uint8Array(3);
@@ -217,22 +216,22 @@ const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
 console.log(stringPtrview.getCString(11));
-console.log(Boolean(symbols.is_null_ptr(ptr0)));
-console.log(Boolean(symbols.is_null_ptr(null)));
-console.log(Boolean(symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
+console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
+console.log(Boolean(dylib.symbols.is_null_ptr(null)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 const emptyBuffer = new BigUint64Array(0);
-console.log(Boolean(symbols.is_null_ptr(emptyBuffer)));
+console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
 const emptySlice = into.subarray(6);
-console.log(Boolean(symbols.is_null_ptr(emptySlice)));
+console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
 
-const addU32Ptr = symbols.get_add_u32_ptr();
+const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
   parameters: ["u32", "u32"],
   result: "u32",
 });
 console.log(addU32.call(123, 456));
 
-const sleepBlockingPtr = symbols.get_sleep_blocking_ptr();
+const sleepBlockingPtr = dylib.symbols.get_sleep_blocking_ptr();
 const sleepNonBlocking = new Deno.UnsafeFnPointer(sleepBlockingPtr, {
   nonblocking: true,
   parameters: ["u64"],
@@ -252,34 +251,34 @@ console.log(addU32Fast(123, 456));
 %OptimizeFunctionOnNextCall(addU32Fast);
 console.log(addU32Fast(123, 456));
 
-console.log(symbols.add_i32(123, 456));
-console.log(symbols.add_u64(0xffffffffn, 0xffffffffn));
-console.log(symbols.add_i64(-0xffffffffn, -0xffffffffn));
-console.log(symbols.add_usize(0xffffffffn, 0xffffffffn));
-console.log(symbols.add_isize(-0xffffffffn, -0xffffffffn));
-console.log(symbols.add_f32(123.123, 456.789));
-console.log(symbols.add_f64(123.123, 456.789));
+console.log(dylib.symbols.add_i32(123, 456));
+console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
+console.log(dylib.symbols.add_i64(-0xffffffffn, -0xffffffffn));
+console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
+console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
+console.log(dylib.symbols.add_f32(123.123, 456.789));
+console.log(dylib.symbols.add_f64(123.123, 456.789));
 
 // Test adders as nonblocking calls
-console.log(await symbols.add_i32_nonblocking(123, 456));
-console.log(await symbols.add_u64_nonblocking(0xffffffffn, 0xffffffffn));
+console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
+console.log(await dylib.symbols.add_u64_nonblocking(0xffffffffn, 0xffffffffn));
 console.log(
-  await symbols.add_i64_nonblocking(-0xffffffffn, -0xffffffffn),
+  await dylib.symbols.add_i64_nonblocking(-0xffffffffn, -0xffffffffn),
 );
 console.log(
-  await symbols.add_usize_nonblocking(0xffffffffn, 0xffffffffn),
+  await dylib.symbols.add_usize_nonblocking(0xffffffffn, 0xffffffffn),
 );
 console.log(
-  await symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn),
+  await dylib.symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn),
 );
-console.log(await symbols.add_f32_nonblocking(123.123, 456.789));
-console.log(await symbols.add_f64_nonblocking(123.123, 456.789));
+console.log(await dylib.symbols.add_f32_nonblocking(123.123, 456.789));
+console.log(await dylib.symbols.add_f64_nonblocking(123.123, 456.789));
 
 // test mutating sync calls
 
 function test_fill_buffer(fillValue, arr) {
   let buf = new Uint8Array(arr);
-  symbols.fill_buffer(fillValue, buf, buf.length);
+  dylib.symbols.fill_buffer(fillValue, buf, buf.length);
   for (let i = 0; i < buf.length; i++) {
     if (buf[i] !== fillValue) {
       throw new Error(`Found '${buf[i]}' in buffer, expected '${fillValue}'.`);
@@ -310,18 +309,18 @@ function deferred() {
 
 const promise = deferred();
 const buffer3 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
+dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
   promise.resolve();
 });
 await promise;
 
 let start = performance.now();
-symbols.sleep_blocking(100);
+dylib.symbols.sleep_blocking(100);
 console.log("After sleep_blocking");
 console.log(performance.now() - start >= 100);
 
 start = performance.now();
-const promise_2 = symbols.sleep_nonblocking(100).then(() => {
+const promise_2 = dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
   console.log(performance.now() - start >= 100);
 });
@@ -380,7 +379,7 @@ const throwCallback = new Deno.UnsafeCallback({
 
 assertThrows(
   () => {
-    symbols.call_fn_ptr(ptr(throwCallback));
+    dylib.symbols.call_fn_ptr(ptr(throwCallback));
   },
   TypeError,
   "hi",
@@ -400,13 +399,13 @@ dylib.symbols.call_stored_function_2(20);
 const nestedCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
-    symbols.call_stored_function_2(10);
+    dylib.symbols.call_stored_function_2(10);
   },
 );
-symbols.store_function(ptr(nestedCallback));
+dylib.symbols.store_function(ptr(nestedCallback));
 
-symbols.store_function(null);
-symbols.store_function_2(null);
+dylib.symbols.store_function(null);
+dylib.symbols.store_function_2(null);
 
 let counter = 0;
 const addToFooCallback = new Deno.UnsafeCallback({
@@ -417,23 +416,23 @@ const addToFooCallback = new Deno.UnsafeCallback({
 // Test thread safe callbacks
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
-await symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
 addToFooCallback.unref();
 logCallback.ref();
-await symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
 logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
-await symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
 
 // Test statics
-console.log("Static u32:", symbols.static_u32);
-console.log("Static i64:", symbols.static_i64);
+console.log("Static u32:", dylib.symbols.static_u32);
+console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
-  typeof symbols.static_ptr === "bigint",
+  typeof dylib.symbols.static_ptr === "bigint",
 );
-const view = new Deno.UnsafePointerView(symbols.static_ptr);
+const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 
 (function cleanup() {

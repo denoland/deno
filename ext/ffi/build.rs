@@ -53,12 +53,11 @@ fn build_tcc() {
   }
 }
 
+#[cfg(target_os = "windows")]
+fn main() {}
+
+#[cfg(not(target_os = "windows"))]
 fn main() {
   build_tcc();
-  let target = env::var("TARGET").unwrap();
-  if target.contains("msvc") {
-    println!("cargo:rustc-link-lib=static=libtcc");
-  } else {
-    println!("cargo:rustc-link-lib=static=tcc");
-  }
+  println!("cargo:rustc-link-lib=static=tcc");
 }

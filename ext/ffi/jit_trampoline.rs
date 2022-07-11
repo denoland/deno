@@ -1,14 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::NativeType;
-use crate::{tcc::Context, Symbol};
+use crate::{tcc::Compiler, Symbol};
 use std::ffi::c_void;
 use std::ffi::CString;
 use std::fmt::Write as _;
 
 pub(crate) struct Allocation {
   pub addr: *mut c_void,
-  _ctx: Context,
+  _ctx: Compiler,
   _sym: Box<Symbol>,
 }
 
@@ -16,6 +16,17 @@ macro_rules! cstr {
   ($st:expr) => {
     &CString::new($st).unwrap()
   };
+}
+
+fn native_arg_to_c(ty: &NativeType) -> &'static str {
+  match ty {
+    NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
+    NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
+    NativeType::Void => "void",
+    NativeType::F32 => "float",
+    NativeType::F64 => "double",
+    _ => unimplemented!(),
+  }
 }
 
 fn native_to_c(ty: &NativeType) -> &'static str {
@@ -57,7 +68,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   c += "void* recv";
   for (i, ty) in sym.parameter_types.iter().enumerate() {
     c += ", ";
-    c += native_to_c(ty);
+    c += native_arg_to_c(ty);
     let _ = write!(c, " p{i}");
   }
   c += ") {\n";
@@ -76,7 +87,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
 pub(crate) fn gen_trampoline(
   sym: Box<crate::Symbol>,
 ) -> Result<Box<Allocation>, ()> {
-  let mut ctx = Context::new()?;
+  let mut ctx = Compiler::new()?;
   ctx.set_options(cstr!("-nostdlib"));
   // SAFETY: symbol satisfies ABI requirement.
   unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
@@ -143,5 +154,13 @@ mod tests {
       codegen(vec![NativeType::F64, NativeType::F64], NativeType::F64),
       "#include <stdint.h>\n\nextern double func(double p0, double p1);\n\ndouble func_trampoline(void* recv, double p0, double p1) {\n  return func(p0, p1);\n}\n\n"
     );
+  }
+
+  #[test]
+  fn test_gen_trampoline_implicit_cast() {
+    assert_eq!(
+      codegen(vec![NativeType::I8, NativeType::U8], NativeType::I8),
+      "#include <stdint.h>\n\nextern int8_t func(int8_t p0, uint8_t p1);\n\nint8_t func_trampoline(void* recv, int32_t p0, uint32_t p1) {\n  return func(p0, p1);\n}\n\n"
+    )
   }
 }
