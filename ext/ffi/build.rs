@@ -1,12 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
-use std::path::PathBuf;
-use std::process::exit;
-use std::process::Command;
 
 fn build_tcc() {
-  let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")));
   {
     // TODO(@littledivy): Windows support for fast call.
     // let tcc_path = root
@@ -23,6 +19,11 @@ fn build_tcc() {
   }
   #[cfg(not(target_os = "windows"))]
   {
+    use std::path::PathBuf;
+    use std::process::exit;
+    use std::process::Command;
+
+    let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")));
     let tcc_src = root.join("tinycc");
     dbg!(&tcc_src);
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());

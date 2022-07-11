@@ -704,7 +704,7 @@ fn make_sync_fn<'s>(
   let mut fast_ffi_templ = None;
 
   #[cfg(not(target_os = "windows"))]
-  let mut fast_allocations = None;
+  let mut fast_allocations: Option<*mut ()> = None;
   #[cfg(not(target_os = "windows"))]
   if !sym.can_callback
     && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
@@ -726,7 +726,7 @@ fn make_sync_fn<'s>(
       ret: (&ret).into(),
       symbol_ptr: symbol_trampoline.addr,
     });
-    fast_allocations = Some(Box::into_raw(symbol_trampoline));
+    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
   }
 
   let sym = Box::leak(sym);
@@ -770,7 +770,7 @@ fn make_sync_fn<'s>(
         Box::from_raw(sym);
         #[cfg(not(target_os = "windows"))]
         if let Some(fast_allocations) = fast_allocations {
-          Box::from_raw(fast_allocations);
+          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
         }
       }
     }),
