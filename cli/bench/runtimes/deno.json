@@ -1,0 +1,17 @@
+{
+    "tasks": {
+      "ffi:build": "clang -mtune=native -O3 -shared ./ffi/ffi.c -o ./ffi/ffi.dylib",
+      
+      "ffi:bun": "bun run ./ffi/ffi.bun.js",
+      "ffi:deno": "deno run --allow-ffi --allow-net --allow-run --unstable ./ffi/ffi.deno.js",
+
+      "ssr:bun": "bun run ./ssr/react-hello-world.bun.jsx",
+      "ssr:deno": "deno run --allow-net ./ssr/react-hello-world.deno.jsx",
+      "ssr:node": "node ./ssr/react-hello-world.node.js",
+
+      "sqlite:bun": "bun run ./sqlite/query.bun.js",
+      "sqlite::deno": "deno run --allow-net --allow-run --allow-read --allow-write ./sqlite/query.deno.js",
+      "sqlite:node": "node ./sqlite/query.better-sqlite3.mjs"
+    }
+  }
+  

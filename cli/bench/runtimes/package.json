@@ -1,0 +1,12 @@
+{
+  "name": "bench",
+  "dependencies": {
+    "mitata": "^0.0.14",
+    "esbuild": "^0.14.49",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "scripts": {
+    "ssr:node:transpile": "NODE_ENV=production esbuild --bundle ./react-hello-world.node.jsx --platform=node --minify --outfile=./react-hello-world.node.js"
+  }
+}
