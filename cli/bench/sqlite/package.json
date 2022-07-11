@@ -1,0 +1,7 @@
+{
+  "name": "bench",
+  "dependencies": {
+    "better-sqlite3": "^7.5.1",
+    "mitata": "^0.0.14"
+  }
+}

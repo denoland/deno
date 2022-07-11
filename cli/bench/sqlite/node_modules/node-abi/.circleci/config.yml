@@ -1,0 +1,63 @@
+step-restore-cache: &step-restore-cache
+  restore_cache:
+    keys:
+      - v1-dependencies-{{ arch }}-{{ checksum "yarn.lock" }}
+      - v1-dependencies-{{ arch }}
+
+steps-test: &steps-test
+  steps:
+    - checkout
+    - *step-restore-cache
+    - run: yarn --frozen-lockfile
+    - save_cache:
+        paths:
+          - node_modules
+        key: v1-dependencies-{{ arch }}-{{ checksum "yarn.lock" }}
+    - run: yarn test
+
+version: 2.1
+jobs:
+  test-linux-10:
+    docker:
+      - image: circleci/node:10
+    <<: *steps-test
+  test-linux-12:
+    docker:
+      - image: circleci/node:12
+    <<: *steps-test
+  test-linux-14:
+    docker:
+      - image: circleci/node:14
+    <<: *steps-test
+  test-linux-16:
+    docker:
+      - image: circleci/node:16
+    <<: *steps-test
+
+  release:
+    docker:
+      - image: circleci/node:14.15
+    steps:
+      - checkout
+      - *step-restore-cache
+      - run: yarn --frozen-lockfile
+      - run: npx semantic-release@17.4.5
+workflows:
+  version: 2
+  test_and_release:
+    # Run test jobs first, release only when all the test jobs are successful
+    jobs:
+      - test-linux-10
+      - test-linux-12
+      - test-linux-14
+      - test-linux-16
+      - release:
+          requires:
+            - test-linux-10
+            - test-linux-12
+            - test-linux-14
+            - test-linux-16
+          filters:
+            branches:
+              only:
+                - main

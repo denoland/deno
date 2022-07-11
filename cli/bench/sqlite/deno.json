@@ -1,0 +1,8 @@
+{
+    "tasks": {
+      "deno": "deno run --allow-net --allow-run --allow-read --allow-write ./query.deno.js",
+      "bun": "bun run ./query.bun.js",
+      "node": "node ./query.better-sqlite3.mjs"
+    }
+  }
+  
