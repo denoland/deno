@@ -336,7 +336,12 @@ pub fn check(
     CheckHashResult::Hash(hash) => hash,
   };
   // do not type check if we know this is type checked
-  if cache.has_check_hash(check_hash) {
+  if !(options.reload
+    && !roots
+      .iter()
+      .all(|r| options.reload_exclusions.contains(&r.0)))
+    && cache.has_check_hash(check_hash)
+  {
     return Ok(Default::default());
   }
 
