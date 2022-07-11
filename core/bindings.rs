@@ -283,7 +283,7 @@ fn import_meta_resolve(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  if args.length() == 2 && !args.get(1).is_string() {
+  if args.length() > 1 {
     return throw_type_error(scope, "Invalid arguments");
   }
 
@@ -293,10 +293,7 @@ fn import_meta_resolve(
     return throw_type_error(tc_scope, "Invalid arguments");
   }
   let specifier = maybe_arg_str.unwrap();
-  let referrer = if args.length() == 2 {
-    let str = v8::Local::<v8::String>::try_from(args.get(1)).unwrap();
-    str.to_rust_string_lossy(tc_scope)
-  } else {
+  let referrer = {
     let receiver = args.this();
     let url_key = v8::String::new(tc_scope, "url").unwrap();
     let url_prop = receiver.get(tc_scope, url_key.into()).unwrap();
