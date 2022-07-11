@@ -6,14 +6,24 @@
       "kind": 19,
       "detail": "(local)",
       "sortText": "1",
-      "insertText": "."
+      "insertText": ".",
+      "commitCharacters": [
+        "\"",
+        "'",
+        "/"
+      ]
     },
     {
       "label": "..",
       "kind": 19,
       "detail": "(local)",
       "sortText": "1",
-      "insertText": ".."
+      "insertText": "..",
+      "commitCharacters": [
+        "\"",
+        "'",
+        "/"
+      ]
     },
     {
       "label": "http://localhost:4545",

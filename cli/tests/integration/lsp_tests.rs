@@ -774,35 +774,40 @@ fn lsp_import_map_import_completions() {
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": "."
+          "insertText": ".",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "..",
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": ".."
+          "insertText": "..",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "std",
-          "insertText": "std"
+          "insertText": "std",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
           "sortText": "fs",
-          "insertText": "fs"
+          "insertText": "fs",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "/~",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "/~",
-          "insertText": "/~"
+          "insertText": "/~",
+          "commitCharacters": ["\"", "'", "/"],
         }
       ]
     }))
@@ -883,7 +888,8 @@ fn lsp_import_map_import_completions() {
               }
             },
             "newText": "/~/b.ts"
-          }
+          },
+          "commitCharacters": ["\"", "'", "/"],
         }
       ]
     }))
@@ -3490,6 +3496,7 @@ fn lsp_completions_optional() {
           "sortText": "11",
           "filterText": "b",
           "insertText": "b",
+          "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
               "specifier": "file:///a/file.ts",
