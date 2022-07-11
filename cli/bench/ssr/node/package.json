@@ -1,0 +1,16 @@
+{
+  "name": "ssr_test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "transpile": "NODE_ENV=production esbuild --bundle ./react-hello-world.node.jsx --platform=node --minify --outfile=./react-hello-world.node.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "esbuild": "^0.14.49",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
