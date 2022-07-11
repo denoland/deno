@@ -305,7 +305,8 @@ pub struct CheckOptions {
   pub ts_config: TsConfig,
   /// If true, `Check <specifier>` will be written to stdout for each root.
   pub log_checks: bool,
-  /// If true, valid `.tsbuildinfo` files will be ignored.
+  /// If true, valid `.tsbuildinfo` files will be ignored and type checking
+  /// will always occur.
   pub reload: bool,
 }
 
@@ -335,13 +336,9 @@ pub fn check(
     CheckHashResult::NoFiles => return Ok(Default::default()),
     CheckHashResult::Hash(hash) => hash,
   };
+
   // do not type check if we know this is type checked
-  if !(options.reload
-    && !roots
-      .iter()
-      .all(|r| options.reload_exclusions.contains(&r.0)))
-    && cache.has_check_hash(check_hash)
-  {
+  if !options.reload && cache.has_check_hash(check_hash) {
     return Ok(Default::default());
   }
 

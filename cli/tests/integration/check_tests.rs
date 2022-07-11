@@ -78,3 +78,30 @@ fn cache_switching_config_then_no_config() {
     stderr.contains("Check")
   }
 }
+
+#[test]
+fn reload_flag() {
+  let deno_dir = util::new_deno_dir();
+  assert!(does_type_checking(&deno_dir, false));
+  assert!(!does_type_checking(&deno_dir, false));
+  assert!(does_type_checking(&deno_dir, true));
+  assert!(does_type_checking(&deno_dir, true));
+  assert!(!does_type_checking(&deno_dir, false));
+
+  fn does_type_checking(deno_dir: &util::TempDir, reload: bool) -> bool {
+    let mut cmd = util::deno_cmd_with_deno_dir(deno_dir);
+    cmd
+      .current_dir(util::testdata_path())
+      .stderr(Stdio::piped())
+      .arg("check")
+      .arg("check/cache_config_on_off/main.ts");
+    if reload {
+      cmd.arg("--reload");
+    }
+    let output = cmd.spawn().unwrap().wait_with_output().unwrap();
+    assert!(output.status.success());
+
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    stderr.contains("Check")
+  }
+}
