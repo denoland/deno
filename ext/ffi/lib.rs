@@ -766,10 +766,12 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe { Box::from_raw(sym) };
-      #[cfg(not(target_os = "windows"))]
-      if let Some(fast_allocations) = fast_allocations {
-        unsafe { Box::from_raw(fast_allocations) };
+      unsafe {
+        Box::from_raw(sym);
+        #[cfg(not(target_os = "windows"))]
+        if let Some(fast_allocations) = fast_allocations {
+          Box::from_raw(fast_allocations);
+        }
       }
     }),
   );
