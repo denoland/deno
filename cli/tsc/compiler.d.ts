@@ -83,10 +83,6 @@ declare global {
     method: string;
   }
 
-  interface Restart extends BaseLanguageServerRequest {
-    method: "restart";
-  }
-
   interface ConfigureRequest extends BaseLanguageServerRequest {
     method: "configure";
     // deno-lint-ignore no-explicit-any
@@ -258,7 +254,7 @@ declare global {
     position: number;
   }
 
-  interface Restart {
+  interface Restart extends BaseLanguageServerRequest {
     method: "restart";
   }
 }
