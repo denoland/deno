@@ -94,7 +94,7 @@ serde = { version = "=1.0.139", features = ["derive"] }
 serde_repr = "=0.1.8"
 shell-escape = "=0.1.5"
 text-size = "=1.1.0"
-text_lines = "=0.4.1"
+text_lines = "=0.6.0"
 tokio = { version = "=1.19", features = ["full"] }
 tokio-util = "=0.7.2"
 tower-lsp = "=0.17.0"
