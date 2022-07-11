@@ -147,7 +147,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 #[derive(Default)]
 pub(crate) struct ContextState {
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
+  js_recv_cb: Option<v8::Global<v8::Function>>,
   // TODO(andreubotella): Move the rest of Option<Global<Function>> fields from
   // JsRuntimeState to this struct.
   pub(crate) unrefed_ops: HashSet<i32>,
@@ -157,7 +157,7 @@ pub(crate) struct ContextState {
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   global_realm: Option<JsRealm>,
-  pub(crate) known_realms: Vec<v8::Weak<v8::Context>>,
+  known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
