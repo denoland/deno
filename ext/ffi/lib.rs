@@ -701,7 +701,7 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let mut fast_ffi_templ = None;
+  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
 
   #[cfg(not(target_os = "windows"))]
   let mut fast_allocations: Option<*mut ()> = None;
