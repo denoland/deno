@@ -704,6 +704,8 @@ fn make_sync_fn<'s>(
   let mut fast_ffi_templ = None;
 
   #[cfg(not(target_os = "windows"))]
+  let mut fast_allocations = None;
+  #[cfg(not(target_os = "windows"))]
   if !sym.can_callback
     && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
     && is_fast_api(sym.result_type)
@@ -724,8 +726,7 @@ fn make_sync_fn<'s>(
       ret: (&ret).into(),
       symbol_ptr: symbol_trampoline.addr,
     });
-    // Leak.
-    Box::leak(symbol_trampoline);
+    fast_allocations = Some(Box::into_raw(symbol_trampoline));
   }
 
   let sym = Box::leak(sym);
@@ -766,6 +767,10 @@ fn make_sync_fn<'s>(
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
       unsafe { Box::from_raw(sym) };
+      #[cfg(not(target_os = "windows"))]
+      if let Some(fast_allocations) = fast_allocations {
+        unsafe { Box::from_raw(fast_allocations) };
+      }
     }),
   );
 
