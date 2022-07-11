@@ -6,18 +6,24 @@ use std::process::exit;
 use std::process::Command;
 
 fn build_tcc() {
-  let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-    .parent()
-    .unwrap()
-    .to_path_buf();
+  let root = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")));
   #[cfg(target_os = "windows")]
   {
-    let tcc_path = root.join("../third_party").join("prebuilt").join("win");
+    let tcc_path = root
+      .parent()
+      .unwrap()
+      .to_path_buf()
+      .parent()
+      .unwrap()
+      .to_path_buf()
+      .join("third_party")
+      .join("prebuilt")
+      .join("win");
     println!("cargo:rustc-link-search=native={}", tcc_path.display());
   }
   #[cfg(not(target_os = "windows"))]
   {
-    let tcc_src = root.join("ffi").join("tinycc");
+    let tcc_src = root.join("tinycc");
     dbg!(&tcc_src);
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let mut configure = Command::new(tcc_src.join("configure"));

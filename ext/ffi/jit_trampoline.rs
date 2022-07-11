@@ -20,8 +20,12 @@ macro_rules! cstr {
 
 fn native_to_c(ty: &NativeType) -> &'static str {
   match ty {
-    NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
-    NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
+    NativeType::U8 => "uint8_t",
+    NativeType::U16 => "uint16_t",
+    NativeType::U32 => "uint32_t",
+    NativeType::I8 => "int8_t",
+    NativeType::I16 => "uint16_t",
+    NativeType::I32 => "int32_t",
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
