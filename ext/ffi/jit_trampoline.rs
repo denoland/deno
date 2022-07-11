@@ -133,7 +133,7 @@ mod tests {
     );
     assert_eq!(
       codegen(vec![NativeType::I32, NativeType::I32], NativeType::I32),
-      "#include <stdint.h>\n\nextern int32_t func(int32_t p0, int32_t p1);\n\nint func_trampoline(void* recv, int32_t p0, int32_t p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern int32_t func(int32_t p0, int32_t p1);\n\nint32_t func_trampoline(void* recv, int32_t p0, int32_t p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::F32, NativeType::F32], NativeType::F32),
