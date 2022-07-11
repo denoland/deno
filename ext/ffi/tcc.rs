@@ -118,7 +118,7 @@ impl Drop for Compiler {
 #[cfg(test)]
 mod test {
   use super::*;
-  use std::{ffi::CString, mem::transmute};
+  use std::ffi::CString;
 
   #[test]
   fn test_compiler_jit() {
