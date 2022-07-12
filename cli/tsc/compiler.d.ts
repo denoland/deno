@@ -50,6 +50,7 @@ declare global {
   }
 
   type LanguageServerRequest =
+    | Restart
     | ConfigureRequest
     | FindRenameLocationsRequest
     | GetAssets
@@ -75,8 +76,6 @@ declare global {
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
-    | ProvideCallHierarchyOutgoingCalls
-    | RestartRequest;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -139,7 +138,8 @@ declare global {
       position: number;
       name: string;
       source?: string;
-      data?: unknown;
+      preferences?: ts.UserPreferences;
+      data?: ts.CompletionEntryData;
     };
   }
 
@@ -253,7 +253,7 @@ declare global {
     position: number;
   }
 
-  interface RestartRequest extends BaseLanguageServerRequest {
+  interface Restart extends BaseLanguageServerRequest {
     method: "restart";
   }
 }
