@@ -16,7 +16,7 @@ use std::time::SystemTime;
 mod http;
 mod lsp;
 mod metrics;
-mod ssr;
+mod runtimes;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -393,6 +393,10 @@ struct BenchResult {
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
+  runtimes_ssr_rps: HashMap<String, i64>,
+  runtimes_ssr_max_latency: HashMap<String, i64>,
+  runtimes_sqlite: HashMap<String, HashMap<String, f64>>,
+  runtimes_ffi: HashMap<String, HashMap<String, f64>>,
 }
 
 #[tokio::main]
@@ -406,7 +410,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
-    "ssr",
+    "runtimes",
     "strace",
     "mem_usage",
   ];
@@ -498,21 +502,29 @@ async fn main() -> Result<()> {
     new_data.max_latency = max_latency;
   }
 
-  if benchmarks.contains(&"ssr") && cfg!(not(target_os = "windows")) {
-    let stats = ssr::benchmark()?;
+  if benchmarks.contains(&"runtimes") && cfg!(not(target_os = "windows")) {
+    let stats = runtimes::ssr()?;
     let req_per_sec = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
-    reporter.write("req_per_sec", &req_per_sec);
-    new_data.req_per_sec = req_per_sec;
+    reporter.write("runtimes_ssr_rps", &req_per_sec);
+    new_data.runtimes_ssr_rps = req_per_sec;
     let max_latency = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency))
       .collect();
 
-    reporter.write("max_latency", &max_latency);
-    new_data.max_latency = max_latency;
+    reporter.write("runtimes_ssr_max_latency", &max_latency);
+    new_data.runtimes_ssr_max_latency = max_latency;
+
+    let sqlite = runtimes::sqlite()?;
+    reporter.write("runtimes_sqlite", &sqlite);
+    new_data.runtimes_sqlite = sqlite;
+
+    let ffi = runtimes::ffi()?;
+    reporter.write("runtimes_ffi", &ffi);
+    new_data.runtimes_ffi = ffi;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {
