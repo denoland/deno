@@ -155,7 +155,7 @@ mod tests {
     );
     assert_eq!(
       codegen(vec![NativeType::ISize, NativeType::U64], NativeType::Void),
-      "#include <stdint.h>\n\nextern void func(int64_t p0, uint64_t p1);\n\nvoid func_trampoline(void* recv, uint64_t p0, uint64_t p1) {\n  return func(p0, p1);\n}\n\n"
+      "#include <stdint.h>\n\nextern void func(int64_t p0, uint64_t p1);\n\nvoid func_trampoline(void* recv, int64_t p0, uint64_t p1) {\n  return func(p0, p1);\n}\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::USize, NativeType::USize], NativeType::U32),
