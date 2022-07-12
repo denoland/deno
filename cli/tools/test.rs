@@ -816,13 +816,6 @@ async fn test_specifier(
 
   worker.js_runtime.resolve_value(test_result).await?;
 
-  loop {
-    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
-
   worker.dispatch_unload_event(&located_script_name!())?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {

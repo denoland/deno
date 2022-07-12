@@ -267,7 +267,6 @@
     destructureError: opSync.bind(null, "op_destructure_error"),
     terminate: opSync.bind(null, "op_terminate"),
     opNames: opSync.bind(null, "op_op_names"),
-    eventLoopHasMoreWork: opSync.bind(null, "op_event_loop_has_more_work"),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

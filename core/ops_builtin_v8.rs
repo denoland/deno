@@ -47,7 +47,6 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_op_names::decl(),
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
-    op_event_loop_has_more_work::decl(),
   ]
 }
 
@@ -786,9 +785,4 @@ fn op_set_format_exception_callback<'a>(
   let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
-}
-
-#[op(v8)]
-fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
-  JsRuntime::event_loop_pending_state(scope).is_pending()
 }
