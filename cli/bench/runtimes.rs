@@ -3,6 +3,7 @@
 use super::Result;
 use std::collections::HashMap;
 use std::path::Path;
+use test_util::strip_ansi_codes;
 pub use test_util::{parse_wrk_output, parse_deno_bench_output, WrkOutput as HttpBenchmarkResult};
 use crate::http::{get_port, run};
 use std::process::Stdio;
@@ -105,12 +106,11 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
     
   // node 
   {
-    let path = runtimes_dir.join("./sqlite/query.better-sqlite3.mjs").to_str().unwrap().to_string();
     res.insert(
       "node".to_string(),
       parse_deno_bench_output(&run_and_collect_output(
         "node",
-        vec![&path],
+        vec!["./sqlite/query.better-sqlite3.mjs"],
         &runtimes_dir
       )),
     );
@@ -118,8 +118,6 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
 
   // bun <path> <port>
   {
-    let path = runtimes_dir.join("./sqlite/query.bun.mjs").to_str().unwrap().to_string();
-
     // Bun does not support Windows.
     #[cfg(target_arch = "x86_64")]
     #[cfg(not(target_vendor = "apple"))]
@@ -135,7 +133,7 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
       "bun".to_string(),
       parse_deno_bench_output(&run_and_collect_output(
         bun_exe.to_str().unwrap(),
-        vec![&path],
+        vec!["run", "./sqlite/query.bun.js"],
         &runtimes_dir
       )),
     );
@@ -143,12 +141,11 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
   
   // deno run -A --unstable <path> <addr>
   {
-    let path = runtimes_dir.join("./sqlite/query.deno.mjs").to_str().unwrap().to_string();
     res.insert(
       "deno".to_string(),
       parse_deno_bench_output(&run_and_collect_output(
         deno_exe,
-        vec!["run", "--allow-all", "--unstable", &path],
+        vec!["bench", "--allow-all", "--unstable", "./sqlite/query.deno.js"],
         &runtimes_dir
       )),
     );
@@ -157,9 +154,53 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
   Ok(res)
 }
 
-// pub fn ffi() -> Result<HashMap<String, HashMap<String, f64>>> {
+pub fn ffi() -> Result<HashMap<String, HashMap<String, f64>>> {
+  let deno_exe = test_util::deno_exe_path();
+  let deno_exe = deno_exe.to_str().unwrap();
 
-// }
+  let mut res = HashMap::new();
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let runtimes_dir = manifest_dir.join("bench").join("runtimes");
+    
+  // TODO(bartlomieju): node
+
+  // bun <path> <port>
+  {
+    // Bun does not support Windows.
+    #[cfg(target_arch = "x86_64")]
+    #[cfg(not(target_vendor = "apple"))]
+    let bun_exe = test_util::prebuilt_tool_path("bun");
+    #[cfg(target_vendor = "apple")]
+    #[cfg(target_arch = "x86_64")]
+    let bun_exe = test_util::prebuilt_tool_path("bun-x64");
+    #[cfg(target_vendor = "apple")]
+    #[cfg(target_arch = "aarch64")]
+    let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
+
+    res.insert(
+      "bun".to_string(),
+      parse_deno_bench_output(&run_and_collect_output(
+        bun_exe.to_str().unwrap(),
+        vec!["run", "./ffi/ffi.bun.js"],
+        &runtimes_dir
+      )),
+    );
+  }
+  
+  // deno run -A --unstable <path> <addr>
+  {
+    res.insert(
+      "deno".to_string(),
+      parse_deno_bench_output(&run_and_collect_output(
+        deno_exe,
+        vec!["bench", "--allow-all", "--unstable", "./ffi/ffi.deno.js"],
+        &runtimes_dir
+      )),
+    );
+  }
+
+  Ok(res)
+}
 
 fn run_and_collect_output(
   bin: &str,
@@ -167,11 +208,9 @@ fn run_and_collect_output(
   cwd: &Path
 ) -> String {
   let mut command = Command::new(bin);
-
   command
     .args(args)
     .current_dir(cwd)
-    .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
   let process = command
@@ -180,9 +219,10 @@ fn run_and_collect_output(
   let Output {
     stdout,
     stderr,
-    status: _,
+    status,
   } = process.wait_with_output().expect("failed to wait on child");
-  eprintln!("{}", String::from_utf8(stderr).unwrap());
-  // assert!(stderr.is_empty());
-  String::from_utf8(stdout).unwrap()
+  assert!(status.success());
+  let _stderr = String::from_utf8(stderr).unwrap();
+  let stdout = String::from_utf8(stdout).unwrap();
+  strip_ansi_codes(&stdout).to_string()
 }

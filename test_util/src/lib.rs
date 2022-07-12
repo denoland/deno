@@ -2048,7 +2048,7 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
 pub fn parse_deno_bench_output(output: &str) -> HashMap<String, f64> {
   lazy_static! {
     static ref ROW_RX: Regex =
-      Regex::new(r"((\S+\s)*)\s*(\d+.\d+) ([a-z]+)/iter").unwrap();
+      Regex::new(r"^(.*)\s+(\d+.\d+) ([a-zµ]+)/iter").unwrap();
   }
 
   let mut res = HashMap::new();
@@ -2056,7 +2056,7 @@ pub fn parse_deno_bench_output(output: &str) -> HashMap<String, f64> {
   let mut seen_lines = false;
 
   for line in output.lines() {
-    if !line.starts_with("benchmark") {
+    if !seen_benchmark && !line.starts_with("benchmark") {
       continue;
     }
 
@@ -2070,18 +2070,19 @@ pub fn parse_deno_bench_output(output: &str) -> HashMap<String, f64> {
     }
 
     let row_cap = ROW_RX.captures(line).unwrap();
-    let name = row_cap.get(1).unwrap();
-    let avg = row_cap.get(3).unwrap();
-    let unit = row_cap.get(4).unwrap();
+    let name = row_cap.get(1).unwrap().as_str().trim();
+    let avg = row_cap.get(2).unwrap();
+    let unit = row_cap.get(3).unwrap();
 
     let avg_value = str::parse::<f64>(avg.as_str()).unwrap()
       * match unit.as_str() {
         "ms" => 1.0,
-        "µs" => 0.001,
+        "µs" => 0.000001,
+        "ns" => 0.001,
         "s" => 1000.0,
         _ => unreachable!(),
       };
-    res.insert(name.as_str().to_string(), avg_value);
+    res.insert(name.to_string(), avg_value);
   }
 
   res

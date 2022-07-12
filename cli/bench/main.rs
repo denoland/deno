@@ -511,21 +511,25 @@ async fn main() -> Result<()> {
       .collect();
     reporter.write("runtimes_ssr_rps", &req_per_sec);
     new_data.runtimes_ssr_rps = req_per_sec;
+    
     let max_latency = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency))
       .collect();
-
     reporter.write("runtimes_ssr_max_latency", &max_latency);
     new_data.runtimes_ssr_max_latency = max_latency;
 
     let sqlite = runtimes::sqlite()?;
-    reporter.write("runtimes_sqlite", &sqlite);
+    for (name, data) in sqlite.iter() {
+      reporter.write_one("runtimes_sqlite", name, &data);
+    }
     new_data.runtimes_sqlite = sqlite;
 
-    // let ffi = runtimes::ffi()?;
-    // reporter.write("runtimes_ffi", &ffi);
-    // new_data.runtimes_ffi = ffi;
+    let ffi = runtimes::ffi()?;
+    for (name, data) in ffi.iter() {
+      reporter.write_one("runtimes_ffi", name, &data);
+    }
+    new_data.runtimes_ffi = ffi;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

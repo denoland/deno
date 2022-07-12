@@ -1,6 +1,11 @@
 const libName = new URL("./ffi.dylib", import.meta.url);
 // Open library and define exported symbols
-const dylib = Deno.dlopen(
+const {
+  symbols: {
+    add,
+    noop,
+  }
+} = Deno.dlopen(
   libName,
   {
     "add": { parameters: ["isize", "isize"], result: "isize" },
@@ -10,16 +15,16 @@ const dylib = Deno.dlopen(
 
 {
   Deno.bench("add(50, 51)", () => {
-    dylib.symbols.add(50, 51);
+    add(50, 51);
   });
 }
 
 {
   Deno.bench("noop()", () => {
-    dylib.symbols.noop();
+    noop();
   });
 }
 
-if (dylib.symbols.add(50, 51) !== 101n) {
+if (add(50, 51) !== 101n) {
   throw new Error("add(50, 51) !== 101");
 }
