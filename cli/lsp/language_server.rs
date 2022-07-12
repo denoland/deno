@@ -9,7 +9,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
@@ -1764,11 +1764,15 @@ impl Inner {
       Some(response)
     } else {
       let line_index = asset_or_doc.line_index();
-      let trigger_character = if let Some(context) = &params.context {
-        context.trigger_character.clone()
-      } else {
-        None
-      };
+      let (trigger_character, trigger_kind) =
+        if let Some(context) = &params.context {
+          (
+            context.trigger_character.clone(),
+            Some(context.trigger_kind.into()),
+          )
+        } else {
+          (None, None)
+        };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
       let req = tsc::RequestMethod::GetCompletions((
@@ -1776,14 +1780,30 @@ impl Inner {
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
-            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
-            include_automatic_optional_chain_completions: Some(true),
-            provide_refactor_not_applicable_reason: Some(true),
-            include_completions_with_insert_text: Some(true),
             allow_incomplete_completions: Some(true),
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            import_module_specifier_ending: Some(
+              tsc::ImportModuleSpecifierEnding::Index,
+            ),
+            include_automatic_optional_chain_completions: Some(true),
+            include_completions_for_import_statements: Some(
+              self.config.get_workspace_settings().suggest.auto_imports,
+            ),
+            include_completions_for_module_exports: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(true),
+            include_completions_with_class_member_snippets: Some(true),
+            include_completions_with_insert_text: Some(true),
+            include_completions_with_snippet_text: Some(true),
+            jsx_attribute_completion_style: Some(
+              tsc::JsxAttributeCompletionStyle::Auto,
+            ),
+            provide_prefix_and_suffix_text_for_rename: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
+            use_label_details_in_completion_entries: Some(true),
             ..Default::default()
           },
           trigger_character,
+          trigger_kind,
         },
       ));
       let snapshot = self.snapshot();
@@ -1822,7 +1842,8 @@ impl Inner {
             "Could not decode data field of completion item.",
           )
         })?;
-      if let Some(data) = data.tsc {
+      if let Some(data) = &data.tsc {
+        let specifier = data.specifier.clone();
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
         let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
           self.ts_server.request(self.snapshot(), req).await.map_err(
@@ -1832,7 +1853,15 @@ impl Inner {
             },
           )?;
         if let Some(completion_info) = maybe_completion_info {
-          completion_info.as_completion_item(&params, self)
+          completion_info
+            .as_completion_item(&params, data, &specifier, self)
+            .map_err(|err| {
+              error!(
+                "Failed to serialize virtual_text_document response: {}",
+                err
+              );
+              LspError::internal_error()
+            })?
         } else {
           error!(
             "Received an undefined response from tsc for completion details."
@@ -2822,7 +2851,7 @@ impl Inner {
     // todo(dsherret): why is running this on a new thread necessary? It does
     // a compile error otherwise.
     let handle = tokio::task::spawn_blocking(|| {
-      run_basic(
+      run_local(
         async move { create_graph_for_caching(cli_options, roots).await },
       )
     });

@@ -790,23 +790,5 @@ fn op_set_format_exception_callback<'a>(
 
 #[op(v8)]
 fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
-  let state_rc = JsRuntime::state(scope);
-  let module_map_rc = JsRuntime::module_map(scope);
-  let state = state_rc.borrow_mut();
-  let module_map = module_map_rc.borrow();
-
-  let has_pending_refed_ops = state.pending_ops.len() > state.unrefed_ops.len();
-  let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-  let has_pending_dyn_module_evaluation =
-    !state.pending_dyn_mod_evaluate.is_empty();
-  let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-  let has_pending_background_tasks = scope.has_pending_background_tasks();
-  let has_tick_scheduled = state.has_tick_scheduled;
-
-  has_pending_refed_ops
-    || has_pending_dyn_imports
-    || has_pending_dyn_module_evaluation
-    || has_pending_module_evaluation
-    || has_pending_background_tasks
-    || has_tick_scheduled
+  JsRuntime::event_loop_pending_state(scope).is_pending()
 }

@@ -28,7 +28,7 @@ use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
@@ -434,7 +434,7 @@ async fn bench_specifiers(
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
 
-      run_basic(future)
+      run_local(future)
     })
   });
 
