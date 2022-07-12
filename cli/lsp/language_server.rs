@@ -122,8 +122,6 @@ pub struct Inner {
   maybe_import_map_uri: Option<Url>,
   /// An optional configuration for linter which has been taken from specified config file.
   pub maybe_lint_config: Option<LintConfig>,
-  /// An optional configuration for the test subcommand which has been taken from specified config file.
-  pub maybe_test_config: Option<TestConfig>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -258,7 +256,6 @@ impl Inner {
       maybe_import_map_uri: None,
       maybe_lint_config: None,
       maybe_fmt_config: None,
-      maybe_test_config: None,
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
@@ -635,17 +632,10 @@ impl Inner {
           anyhow!("Unable to update formatter configuration: {:?}", err)
         })?
         .unwrap_or_default();
-      let test_config = config_file
-        .to_test_config()
-        .map_err(|err| {
-          anyhow!("Unable to update test configuration: {:?}", err)
-        })?
-        .unwrap_or_default();
 
       self.maybe_config_file = Some(config_file);
       self.maybe_lint_config = Some(lint_config);
       self.maybe_fmt_config = Some(fmt_config);
-      self.maybe_test_config = Some(test_config);
     }
 
     Ok(())
