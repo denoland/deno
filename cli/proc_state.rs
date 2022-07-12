@@ -663,22 +663,22 @@ impl SourceMapGetter for ProcState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      self.file_fetcher.get_source(&specifier).map(|out| {
-        // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using_terminator() instead of .split())
-        let lines: Vec<&str> = out.source.split('\n').collect();
-        if line_number >= lines.len() {
-          format!(
-            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-            crate::colors::yellow("Warning"), line_number + 1,
-          )
-        } else {
-          lines[line_number].to_string()
-        }
-      })
+    let graph_data = self.graph_data.read();
+    let specifier = graph_data.follow_redirect(&resolve_url(file_name).ok()?);
+    let code = match graph_data.get(&specifier) {
+      Some(ModuleEntry::Module { code, .. }) => code,
+      _ => return None,
+    };
+    // Do NOT use .lines(): it skips the terminating empty line.
+    // (due to internally using_terminator() instead of .split())
+    let lines: Vec<&str> = code.split('\n').collect();
+    if line_number >= lines.len() {
+      Some(format!(
+        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+        crate::colors::yellow("Warning"), line_number + 1,
+      ))
     } else {
-      None
+      Some(lines[line_number].to_string())
     }
   }
 }

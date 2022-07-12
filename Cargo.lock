@@ -838,7 +838,7 @@ dependencies = [
  "tempfile",
  "test_util",
  "text-size",
- "text_lines",
+ "text_lines 0.6.0",
  "tokio",
  "tokio-util",
  "tower-lsp",
@@ -881,7 +881,7 @@ dependencies = [
  "swc_ecma_transforms_typescript",
  "swc_ecma_utils",
  "swc_ecma_visit",
- "text_lines",
+ "text_lines 0.4.1",
  "url 2.2.2",
 ]
 
@@ -1370,7 +1370,7 @@ dependencies = [
  "dprint-core",
  "jsonc-parser",
  "serde",
- "text_lines",
+ "text_lines 0.4.1",
 ]
 
 [[package]]
@@ -1412,7 +1412,7 @@ dependencies = [
  "swc_common",
  "swc_ecma_ast",
  "swc_ecma_parser",
- "text_lines",
+ "text_lines 0.4.1",
 ]
 
 [[package]]
@@ -4579,6 +4579,12 @@ checksum = "e49e3c53dd04de8b8e8390bc4fab57f6db7af7d33b086fe411803e6351c9f9f9"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "text_lines"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd5828de7deaa782e1dd713006ae96b3bee32d3279b79eb67ecf8072c059bcf"
 
 [[package]]
 name = "textwrap"

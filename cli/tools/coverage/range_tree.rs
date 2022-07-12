@@ -134,8 +134,8 @@ impl<'rt> RangeTree<'rt> {
     while let Some((cur, parent_count)) = stack.pop() {
       let count: i64 = parent_count + cur.delta;
       ranges.push(CoverageRange {
-        start_offset: cur.start,
-        end_offset: cur.end,
+        start_char_offset: cur.start,
+        end_char_offset: cur.end,
         count,
       });
       for child in cur.children.iter().rev() {
@@ -165,14 +165,14 @@ impl<'rt> RangeTree<'rt> {
   ) -> Option<&'a mut RangeTree<'a>> {
     let has_range: bool = match ranges.peek() {
       None => false,
-      Some(range) => range.start_offset < parent_end,
+      Some(range) => range.start_char_offset < parent_end,
     };
     if !has_range {
       return None;
     }
     let range = ranges.next().unwrap();
-    let start: usize = range.start_offset;
-    let end: usize = range.end_offset;
+    let start: usize = range.start_char_offset;
+    let end: usize = range.end_char_offset;
     let count: i64 = range.count;
     let delta: i64 = count - parent_count;
     let mut children: Vec<&mut RangeTree> = Vec::new();
@@ -193,8 +193,8 @@ mod tests {
   fn from_sorted_ranges_empty() {
     let rta = RangeTreeArena::new();
     let inputs: Vec<CoverageRange> = vec![CoverageRange {
-      start_offset: 0,
-      end_offset: 9,
+      start_char_offset: 0,
+      end_char_offset: 9,
       count: 1,
     }];
     let actual: Option<&mut RangeTree> =

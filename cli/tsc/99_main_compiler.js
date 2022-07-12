@@ -718,10 +718,9 @@ delete Object.prototype.__proto__;
             request.args.specifier,
             request.args.position,
             request.args.name,
-            undefined,
+            {},
             request.args.source,
-            undefined,
-            // @ts-expect-error this exists in 4.3 but not part of the d.ts
+            request.args.preferences,
             request.args.data,
           ),
         );
