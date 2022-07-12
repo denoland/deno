@@ -31,6 +31,7 @@ static FILE_PROTO_RE: Lazy<Regex> =
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
 const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
+const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +183,9 @@ pub async fn get_import_completions(
         detail: Some("(local)".to_string()),
         sort_text: Some("1".to_string()),
         insert_text: Some(s.to_string()),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
         ..Default::default()
       })
       .collect();
@@ -231,6 +235,9 @@ fn get_base_import_map_completions(
         detail: Some("(import map)".to_string()),
         sort_text: Some(label.clone()),
         insert_text: Some(label),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
         ..Default::default()
       }
     })
@@ -284,6 +291,9 @@ fn get_import_map_completions(
                     sort_text: Some("1".to_string()),
                     filter_text: Some(new_text),
                     text_edit,
+                    commit_characters: Some(
+                      IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                    ),
                     ..Default::default()
                   })
                 } else {
@@ -311,6 +321,9 @@ fn get_import_map_completions(
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
             text_edit,
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+            ),
             ..Default::default()
           });
         }
@@ -382,6 +395,9 @@ fn get_local_completions(
               filter_text,
               sort_text: Some("1".to_string()),
               text_edit,
+              commit_characters: Some(
+                IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+              ),
               ..Default::default()
             }),
             Ok(file_type) if file_type.is_file() => {
@@ -393,6 +409,9 @@ fn get_local_completions(
                   filter_text,
                   sort_text: Some("1".to_string()),
                   text_edit,
+                  commit_characters: Some(
+                    IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                  ),
                   ..Default::default()
                 })
               } else {
@@ -463,6 +482,9 @@ fn get_workspace_completions(
           detail,
           sort_text: Some("1".to_string()),
           text_edit,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
           ..Default::default()
         })
       } else {
@@ -484,7 +506,7 @@ fn get_workspace_completions(
 /// assert_eq!(relative_specifier(&specifier, &base), "../b.ts");
 /// ```
 ///
-fn relative_specifier(
+pub fn relative_specifier(
   specifier: &ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> String {
@@ -812,6 +834,9 @@ mod tests {
           },
           new_text: "https://deno.land/x/a/b/c.ts".to_string(),
         })),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+        ),
         ..Default::default()
       }]
     );

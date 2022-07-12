@@ -2357,12 +2357,6 @@ itest!(long_data_url_formatting {
   exit_code: 1,
 });
 
-itest!(eval_context_throw_with_conflicting_source {
-  args: "run eval_context_throw_with_conflicting_source.ts",
-  output: "eval_context_throw_with_conflicting_source.ts.out",
-  exit_code: 1,
-});
-
 itest!(eval_context_throw_dom_exception {
   args: "run eval_context_throw_dom_exception.js",
   output: "eval_context_throw_dom_exception.js.out",

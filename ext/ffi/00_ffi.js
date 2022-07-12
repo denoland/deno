@@ -232,7 +232,9 @@
     }
 
     unref() {
-      if (--this.#refcount === 0) {
+      // Only decrement refcount if it is positive, and only
+      // unref the callback if refcount reaches zero.
+      if (this.#refcount > 0 && --this.#refcount === 0) {
         core.opSync("op_ffi_unsafe_callback_ref", false);
       }
     }
