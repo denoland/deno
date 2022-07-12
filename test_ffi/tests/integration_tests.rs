@@ -68,15 +68,15 @@ fn basic() {
     579\n\
     8589934590n\n\
     -8589934590n\n\
-    8589934590n\n\
-    -8589934590n\n\
+    8589934590\n\
+    -8589934590\n\
     579.9119873046875\n\
     579.912\n\
     579\n\
-    8589934590n\n\
-    -8589934590n\n\
-    8589934590n\n\
-    -8589934590n\n\
+    8589934590\n\
+    -8589934590\n\
+    8589934590\n\
+    -8589934590\n\
     579.9119873046875\n\
     579.912\n\
     After sleep_blocking\n\
@@ -86,7 +86,7 @@ fn basic() {
     After\n\
     true\n\
     logCallback\n\
-    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    1 -1 2 -2 3 -3 4 -4 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\
@@ -98,7 +98,7 @@ fn basic() {
     Thread safe call counter: 1\n\
     u8: 8\n\
     Static u32: 42\n\
-    Static i64: -1242464576485n\n\
+    Static i64: -1242464576485\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
     Correct number of resources\n";

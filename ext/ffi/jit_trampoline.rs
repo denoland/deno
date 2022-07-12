@@ -22,12 +22,14 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
   match ty {
     NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
     NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
-    NativeType::U64 | NativeType::USize => "uint64_t",
-    NativeType::I64 | NativeType::ISize => "int64_t",
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
-    _ => unimplemented!(),
+    NativeType::U64 => "uint64_t",
+    NativeType::I64 => "int64_t",
+    NativeType::ISize => "intptr_t",
+    NativeType::USize => "uintptr_t",
+    NativeType::Pointer | NativeType::Function => "void*",
   }
 }
 
@@ -42,9 +44,11 @@ fn native_to_c(ty: &NativeType) -> &'static str {
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
-    NativeType::U64 | NativeType::USize => "uint64_t",
-    NativeType::I64 | NativeType::ISize => "int64_t",
-    _ => unimplemented!(),
+    NativeType::U64 => "uint64_t",
+    NativeType::I64 => "int64_t",
+    NativeType::ISize => "intptr_t",
+    NativeType::USize => "uintptr_t",
+    NativeType::Pointer | NativeType::Function => "void*",
   }
 }
 
