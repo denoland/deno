@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::disk_cache::DiskCache;
+use crate::cache::DiskCache;
+
 use std::path::PathBuf;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
@@ -55,6 +56,12 @@ impl DenoDir {
   pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("lint_incremental_cache_v1")
+  }
+
+  /// Path for the incremental cache used for linting.
+  pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("check_cache_v1")
   }
 }
 
