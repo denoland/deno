@@ -221,8 +221,8 @@ fn run_and_collect_output(
     stderr,
     status,
   } = process.wait_with_output().expect("failed to wait on child");
-  assert!(status.success());
-  let _stderr = String::from_utf8(stderr).unwrap();
+  let stderr = String::from_utf8(stderr).unwrap();
+  assert!(status.success(), "Failed to run {}, error: {}", bin, stderr);
   let stdout = String::from_utf8(stdout).unwrap();
   strip_ansi_codes(&stdout).to_string()
 }
