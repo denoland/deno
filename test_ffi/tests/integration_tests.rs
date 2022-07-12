@@ -30,6 +30,7 @@ fn basic() {
     .arg("--allow-read")
     .arg("--unstable")
     .arg("--quiet")
+    .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
@@ -60,6 +61,7 @@ fn basic() {
     false\n\
     579\n\
     true\n\
+    579\n\
     579\n\
     579\n\
     8589934590n\n\
