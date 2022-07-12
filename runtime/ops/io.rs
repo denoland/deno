@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::bail;
+use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -23,14 +23,11 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-
-use crate::task_queue::TaskQueue;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -45,47 +42,35 @@ use {
 // alive for the duration of the application since the last handle/fd
 // being dropped will close the corresponding pipe.
 #[cfg(unix)]
-static STDIN_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
-  unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(0))) }
+  unsafe { StdFile::from_raw_fd(0) }
 });
 #[cfg(unix)]
-static STDOUT_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
-  unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(1))) }
+  unsafe { StdFile::from_raw_fd(1) }
 });
 #[cfg(unix)]
-static STDERR_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
   unsafe { Arc::new(Mutex::new(StdFile::from_raw_fd(2))) }
 });
 
 #[cfg(windows)]
-static STDIN_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdin
-  unsafe {
-    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
-      winbase::STD_INPUT_HANDLE,
-    ))))
-  }
+  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDOUT_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stdout
-  unsafe {
-    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
-      winbase::STD_OUTPUT_HANDLE,
-    ))))
-  }
+  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
 });
 #[cfg(windows)]
-static STDERR_HANDLE: Lazy<Arc<Mutex<StdFile>>> = Lazy::new(|| {
+static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
   // SAFETY: corresponds to OS stderr
-  unsafe {
-    Arc::new(Mutex::new(StdFile::from_raw_handle(GetStdHandle(
-      winbase::STD_ERROR_HANDLE,
-    ))))
-  }
+  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
 });
 
 pub fn init() -> Extension {
@@ -141,7 +126,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
       t.add(StdFileResource::stdio(
         match stdio.stdin {
           StdioPipe::Inherit => {
-            StdFileResourceInner::Stdin(STDIN_HANDLE.clone())
+            StdFileResourceInner::Stdin(STDIN_HANDLE.try_clone().unwrap())
           }
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
@@ -149,14 +134,18 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
       ));
       t.add(StdFileResource::stdio(
         match stdio.stdout {
-          StdioPipe::Inherit => StdFileResourceInner::Stdout,
+          StdioPipe::Inherit => {
+            StdFileResourceInner::Stdout(STDOUT_HANDLE.try_clone().unwrap())
+          }
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
         "stdout",
       ));
       t.add(StdFileResource::stdio(
         match stdio.stderr {
-          StdioPipe::Inherit => StdFileResourceInner::Stderr,
+          StdioPipe::Inherit => {
+            StdFileResourceInner::Stderr(STDERR_HANDLE.try_clone().unwrap())
+          }
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
         },
         "stderr",
@@ -320,37 +309,28 @@ impl Resource for ChildStderrResource {
   }
 }
 
-#[derive(Clone)]
 enum StdFileResourceInner {
-  File(Arc<Mutex<StdFile>>),
-  Stdin(Arc<Mutex<StdFile>>),
-  // Ideally we would store stdio as an StdFile, but we get some Windows
-  // specific functionality for free by using Rust std's wrappers. So we
-  // take a bit of a complexity hit here in order to not have to duplicate
-  // the functionality in Rust's std/src/sys/windows/stdio.rs
-  Stdout,
-  Stderr,
+  File(StdFile),
+  Stdin(StdFile),
+  // For stdout and stderr, we sometimes instead use std::io::stdout() directly,
+  // because we get some Windows specific functionality for free by using Rust
+  // std's wrappers. So we take a bit of a complexity hit in order to not
+  // have to duplicate the functionality in Rust's std/src/sys/windows/stdio.rs
+  Stdout(StdFile),
+  Stderr(StdFile),
 }
 
 impl StdFileResourceInner {
   pub fn file(fs_file: StdFile) -> Self {
-    StdFileResourceInner::File(Arc::new(Mutex::new(fs_file)))
+    StdFileResourceInner::File(fs_file)
   }
 
-  pub fn with_file<R>(&self, f: impl FnOnce(&mut StdFile) -> R) -> R {
+  pub fn with_file<R>(&mut self, f: impl FnOnce(&mut StdFile) -> R) -> R {
     match self {
-      Self::File(file) | Self::Stdin(file) => {
-        let mut file = file.lock();
-        f(&mut file)
-      }
-      Self::Stdout => {
-        let mut stdout = STDOUT_HANDLE.lock();
-        f(&mut stdout)
-      }
-      Self::Stderr => {
-        let mut stderr = STDERR_HANDLE.lock();
-        f(&mut stderr)
-      }
+      Self::File(file)
+      | Self::Stdin(file)
+      | Self::Stdout(file)
+      | Self::Stderr(file) => f(file),
     }
   }
 
@@ -365,15 +345,15 @@ impl StdFileResourceInner {
     // that we get solved for free by using Rust's stdio wrappers (see
     // std/src/sys/windows/stdio.rs in Rust's source code).
     match self {
-      Self::File(file) => Ok(file.lock().write(buf)?),
+      Self::File(file) => Ok(file.write(buf)?),
       Self::Stdin(_) => bail!("cannot write to stdin."),
-      Self::Stdout => {
+      Self::Stdout(_) => {
         let mut stdout = std::io::stdout().lock();
         let nwritten = stdout.write(buf)?;
         stdout.flush()?;
         Ok(nwritten)
       }
-      Self::Stderr => {
+      Self::Stderr(_) => {
         let mut stderr = std::io::stderr().lock();
         let nwritten = stderr.write(buf)?;
         stderr.flush()?;
@@ -386,9 +366,8 @@ impl StdFileResourceInner {
 impl Read for StdFileResourceInner {
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self {
-      Self::File(file) | Self::Stdin(file) => file.lock().read(buf),
-      Self::Stdout => Err(ErrorKind::Unsupported.into()),
-      Self::Stderr => Err(ErrorKind::Unsupported.into()),
+      Self::File(file) | Self::Stdin(file) => file.read(buf),
+      Self::Stdout(_) | Self::Stderr(_) => Err(ErrorKind::Unsupported.into()),
     }
   }
 }
@@ -396,31 +375,27 @@ impl Read for StdFileResourceInner {
 impl Write for StdFileResourceInner {
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
     match self {
-      Self::File(file) => file.lock().write(buf),
+      Self::File(file) => file.write(buf),
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
-      Self::Stdout => std::io::stdout().write(buf),
-      Self::Stderr => std::io::stderr().write(buf),
+      // ignore the file and write using Rust's helpers
+      // (see comment at definition)
+      Self::Stdout(_) => std::io::stdout().write(buf),
+      Self::Stderr(_) => std::io::stderr().write(buf),
     }
   }
 
   fn flush(&mut self) -> std::io::Result<()> {
     match self {
-      Self::File(file) => file.lock().flush(),
+      Self::File(file) => file.flush(),
       Self::Stdin(_) => Err(ErrorKind::Unsupported.into()),
-      Self::Stdout => std::io::stdout().flush(),
-      Self::Stderr => std::io::stderr().flush(),
+      Self::Stdout(_) => std::io::stdout().flush(),
+      Self::Stderr(_) => std::io::stderr().flush(),
     }
   }
 }
 
 pub struct StdFileResource {
-  inner: StdFileResourceInner,
-  /// This is used to help synchronize asynchronous reads and writes
-  /// so they happen in order.
-  /// We use a separate sync primitive here instead of putting the
-  /// StdFile inside an async mutex because we still need to be
-  /// able to access it synchronously.
-  task_queue: TaskQueue,
+  inner: AsyncRefCell<Option<StdFileResourceInner>>,
   metadata: RefCell<FileMetadata>,
   name: String,
 }
@@ -428,8 +403,7 @@ pub struct StdFileResource {
 impl StdFileResource {
   fn stdio(inner: StdFileResourceInner, name: &str) -> Self {
     Self {
-      inner,
-      task_queue: TaskQueue::new(),
+      inner: AsyncRefCell::new(Some(inner)),
       metadata: Default::default(),
       name: name.to_string(),
     }
@@ -437,53 +411,75 @@ impl StdFileResource {
 
   pub fn fs_file(fs_file: StdFile) -> Self {
     Self {
-      inner: StdFileResourceInner::file(fs_file),
-      task_queue: TaskQueue::new(),
+      inner: AsyncRefCell::new(Some(StdFileResourceInner::file(fs_file))),
       metadata: Default::default(),
       name: "fsFile".to_string(),
     }
+  }
+
+  fn with_inner<TResult>(
+    self: Rc<Self>,
+    action: impl FnOnce(&mut StdFileResourceInner) -> Result<TResult, AnyError>,
+  ) -> Result<TResult, AnyError> {
+    match RcRef::map(&self, |r| &r.inner).try_borrow_mut() {
+      Some(mut inner_borrow) => {
+        let mut inner = inner_borrow.take().unwrap();
+        let result = action(&mut inner);
+        inner_borrow.replace(inner);
+        result
+      }
+      None => Err(resource_unavailable()),
+    }
+  }
+
+  async fn with_inner_blocking_task<F, R: Send + 'static>(
+    self: Rc<Self>,
+    action: F,
+  ) -> R
+  where
+    F: FnOnce(&mut StdFileResourceInner) -> R + Send + 'static,
+  {
+    let mut inner_borrow = RcRef::map(&self, |r| &r.inner).borrow_mut().await;
+    let mut inner = inner_borrow.take().unwrap();
+    let (inner, result) = tokio::task::spawn_blocking(move || {
+      let result = action(&mut inner);
+      (inner, result)
+    })
+    .await
+    .unwrap();
+    inner_borrow.replace(inner);
+    result
   }
 
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
-    let mut inner = self.inner.clone();
     self
-      .task_queue
-      .queue(async {
-        tokio::task::spawn_blocking(
-          move || -> Result<(usize, ZeroCopyBuf), AnyError> {
-            Ok((inner.read(&mut buf)?, buf))
-          },
-        )
-        .await?
-      })
+      .with_inner_blocking_task(
+        move |inner| -> Result<(usize, ZeroCopyBuf), AnyError> {
+          Ok((inner.read(&mut buf)?, buf))
+        },
+      )
       .await
   }
 
   async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
-    let mut inner = self.inner.clone();
     self
-      .task_queue
-      .queue(async {
-        tokio::task::spawn_blocking(move || inner.write_and_maybe_flush(&buf))
-          .await?
-          .map_err(AnyError::from)
-      })
+      .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
       .await
   }
 
-  fn with_inner<F, R>(
+  fn with_resource<F, R>(
     state: &mut OpState,
     rid: ResourceId,
-    mut f: F,
+    f: F,
   ) -> Result<R, AnyError>
   where
-    F: FnMut(StdFileResourceInner) -> Result<R, AnyError>,
+    F: FnOnce(Rc<StdFileResource>) -> Result<R, AnyError>,
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    f(resource.inner.clone())
+    f(resource)
   }
 
   pub fn with_file<F, R>(
@@ -494,8 +490,9 @@ impl StdFileResource {
   where
     F: FnOnce(&mut StdFile) -> Result<R, AnyError>,
   {
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    resource.inner.with_file(f)
+    Self::with_resource(state, rid, move |resource| {
+      resource.with_inner(move |inner| inner.with_file(f))
+    })
   }
 
   pub fn with_file_and_metadata<F, R>(
@@ -508,7 +505,15 @@ impl StdFileResource {
   {
     let resource = state.resource_table.get::<StdFileResource>(rid)?;
     let mut meta_data = resource.metadata.borrow_mut();
-    resource.inner.with_file(|file| f(file, &mut meta_data))
+    match RcRef::map(&resource, |r| &r.inner).try_borrow_mut() {
+      Some(mut inner_borrow) => {
+        let mut inner = inner_borrow.take().unwrap();
+        let result = inner.with_file(|file| f(file, &mut meta_data));
+        inner_borrow.replace(inner);
+        result
+      }
+      None => Err(resource_unavailable()),
+    }
   }
 
   pub async fn with_file_blocking_task<F, R: Send + 'static>(
@@ -524,12 +529,8 @@ impl StdFileResource {
       .resource_table
       .get::<StdFileResource>(rid)?;
 
-    let inner = resource.inner.clone();
     resource
-      .task_queue
-      .queue(async {
-        tokio::task::spawn_blocking(move || inner.with_file(f)).await?
-      })
+      .with_inner_blocking_task(move |inner| inner.with_file(f))
       .await
   }
 
@@ -546,12 +547,14 @@ impl StdFileResource {
     state: &mut OpState,
     rid: u32,
   ) -> Result<std::process::Stdio, AnyError> {
-    Self::with_inner(state, rid, |inner| match inner {
-      StdFileResourceInner::File(file) => {
-        let file = file.lock().try_clone()?;
-        Ok(file.into())
-      }
-      _ => Ok(std::process::Stdio::inherit()),
+    Self::with_resource(state, rid, |resource| {
+      resource.with_inner(|inner| match inner {
+        StdFileResourceInner::File(file) => {
+          let file = file.try_clone()?;
+          Ok(file.into())
+        }
+        _ => Ok(std::process::Stdio::inherit()),
+      })
     })
   }
 }
@@ -581,10 +584,12 @@ pub fn op_print(
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
-  StdFileResource::with_inner(state, rid, move |mut inner| {
-    inner.write_all(msg.as_bytes())?;
-    inner.flush().unwrap();
-    Ok(())
+  StdFileResource::with_resource(state, rid, move |resource| {
+    resource.with_inner(|inner| {
+      inner.write_all(msg.as_bytes())?;
+      inner.flush().unwrap();
+      Ok(())
+    })
   })
 }
 
@@ -594,11 +599,13 @@ fn op_read_sync(
   rid: ResourceId,
   mut buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  StdFileResource::with_inner(state, rid, move |mut inner| {
-    inner
-      .read(&mut buf)
-      .map(|n: usize| n as u32)
-      .map_err(AnyError::from)
+  StdFileResource::with_resource(state, rid, move |resource| {
+    resource.with_inner(|inner| {
+      inner
+        .read(&mut buf)
+        .map(|n: usize| n as u32)
+        .map_err(AnyError::from)
+    })
   })
 }
 
@@ -608,10 +615,12 @@ fn op_write_sync(
   rid: ResourceId,
   buf: ZeroCopyBuf,
 ) -> Result<u32, AnyError> {
-  StdFileResource::with_inner(state, rid, move |mut inner| {
-    inner
-      .write_and_maybe_flush(&buf)
-      .map(|nwritten: usize| nwritten as u32)
-      .map_err(AnyError::from)
+  StdFileResource::with_resource(state, rid, move |resource| {
+    resource.with_inner(|inner| {
+      inner
+        .write_and_maybe_flush(&buf)
+        .map(|nwritten: usize| nwritten as u32)
+        .map_err(AnyError::from)
+    })
   })
 }
