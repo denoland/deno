@@ -562,12 +562,8 @@ delete Object.prototype.__proto__;
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
 
     // emit the tsbuildinfo file
-    program.emitBuildInfo(host.writeFile, {
-      isCancellationRequested: false,
-      throwIfCancellationRequested() {
-        // do nothing
-      },
-    });
+    // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
+    program.emitBuildInfo(host.writeFile);
 
     performanceProgram({ program });
 
