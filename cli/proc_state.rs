@@ -431,19 +431,20 @@ impl ProcState {
     let type_checking_task =
       if self.options.type_check_mode() != TypeCheckMode::None {
         let maybe_config_specifier = self.options.maybe_config_file_specifier();
+        let roots = roots.clone();
         let options = emit::CheckOptions {
           type_check_mode: self.options.type_check_mode(),
           debug: self.options.log_level() == Some(log::Level::Debug),
           maybe_config_specifier,
           ts_config: ts_config_result.ts_config.clone(),
           log_checks: true,
-          reload: self.options.reload_flag(),
+          reload: self.options.reload_flag()
+            && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
         };
         // todo(THIS PR): don't use a cache on failure
         let check_cache =
           TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path())?;
         let graph_data = self.graph_data.clone();
-        let roots = roots.clone();
         Some(tokio::task::spawn_blocking(move || {
           emit::check(&roots, graph_data, &check_cache, options)
         }))

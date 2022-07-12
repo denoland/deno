@@ -81,6 +81,7 @@ fn cache_switching_config_then_no_config() {
 
 #[test]
 fn reload_flag() {
+  // should do type checking whenever someone specifies --reload
   let deno_dir = util::new_deno_dir();
   assert!(does_type_checking(&deno_dir, false));
   assert!(!does_type_checking(&deno_dir, false));
