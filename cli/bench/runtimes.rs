@@ -9,18 +9,26 @@ use std::process::Stdio;
 use std::process::Command;
 use std::process::Output;
 
+pub fn setup() {
+  let deno_exe = test_util::deno_exe_path();
+  let deno_exe = deno_exe.to_str().unwrap();
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let runtimes_dir = manifest_dir.join("bench").join("runtimes");
+  run_and_collect_output(deno_exe, vec!["task", "setup"], &runtimes_dir);
+}
+
 pub fn ssr() -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
   let deno_exe = deno_exe.to_str().unwrap();
 
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let runtimes_dir = manifest_dir.join("bench").join("runtimes_dir");
+  let runtimes_dir = manifest_dir.join("bench").join("runtimes");
     
   // node <path> <port>
   {
     let port = get_port();
-    let path = runtimes_dir.join("ssr/react-hello-world-node.js").to_str().unwrap().to_string();
+    let path = runtimes_dir.join("ssr/react-hello-world.node.js").to_str().unwrap().to_string();
     res.insert(
       "node".to_string(),
       run(
@@ -33,10 +41,10 @@ pub fn ssr() -> Result<HashMap<String, HttpBenchmarkResult>> {
     );
   } 
 
-  // bun <path> <port>
+  // bun run <path> <port>
   {
     let port = get_port();
-    let path = runtimes_dir.join("ssr/react-hello-world-bun.js").to_str().unwrap().to_string();
+    let path = runtimes_dir.join("ssr/react-hello-world.bun.jsx").to_str().unwrap().to_string();
 
     // Bun does not support Windows.
     #[cfg(target_arch = "x86_64")]
@@ -52,7 +60,7 @@ pub fn ssr() -> Result<HashMap<String, HttpBenchmarkResult>> {
     res.insert(
       "bun".to_string(),
       run(
-        &[bun_exe.to_str().unwrap(), &path, &port.to_string()],
+        &[bun_exe.to_str().unwrap(), "run", &path, &port.to_string()],
         port,
         None,
         None,
@@ -64,7 +72,7 @@ pub fn ssr() -> Result<HashMap<String, HttpBenchmarkResult>> {
   // deno run -A --unstable <path> <addr>
   {
     let port = get_port();
-    let path = runtimes_dir.join("ssr/react-hello-world-deno.js").to_str().unwrap().to_string();
+    let path = runtimes_dir.join("ssr/react-hello-world.deno.jsx").to_str().unwrap().to_string();
     res.insert(
       "deno".to_string(),
       run(
@@ -93,7 +101,7 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
 
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let runtimes_dir = manifest_dir.join("bench").join("runtimes_dir");
+  let runtimes_dir = manifest_dir.join("bench").join("runtimes");
     
   // node 
   {
@@ -174,6 +182,7 @@ fn run_and_collect_output(
     stderr,
     status: _,
   } = process.wait_with_output().expect("failed to wait on child");
-  assert!(stderr.is_empty());
+  eprintln!("{}", String::from_utf8(stderr).unwrap());
+  // assert!(stderr.is_empty());
   String::from_utf8(stdout).unwrap()
 }

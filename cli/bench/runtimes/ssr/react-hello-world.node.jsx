@@ -1,4 +1,5 @@
 // react-ssr.tsx
+const port = process.argv[2] || 4544;
 import { renderToPipeableStream } from "react-dom/server.node";
 import React from "react";
 const http = require("http");
@@ -42,5 +43,5 @@ http
       },
     });
   })
-  .listen(9080);
-console.log("Listening on http://localhost:9080");
+  .listen(Number(port));
+console.log(`Listening on http://localhost:${port}`);

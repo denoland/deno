@@ -1,7 +1,7 @@
 var { renderToReadableStream } = import.meta.require(
   "./reactdom-bun.js",
 );
-const port = Bun.argv[2] || "4545";
+const port = Bun.argv[3] || "4545";
 
 const headers = {
   headers: {

@@ -503,6 +503,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"runtimes") && cfg!(not(target_os = "windows")) {
+    runtimes::setup();
     let stats = runtimes::ssr()?;
     let req_per_sec = stats
       .iter()
