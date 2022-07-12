@@ -75,7 +75,8 @@ declare global {
     | GetSupportedCodeFixes
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
-    | ProvideCallHierarchyIncomingCalls;
+    | ProvideCallHierarchyIncomingCalls
+    | ProvideCallHierarchyOutgoingCalls;
 
   interface BaseLanguageServerRequest {
     id: number;
