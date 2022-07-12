@@ -80,13 +80,13 @@ impl Reporter {
       .unwrap();
   }
 
-  pub fn write<T: serde::Serialize + Copy>(
+  pub fn write<T: serde::Serialize + Clone>(
     &mut self,
     type_: &str,
     hashmap: &HashMap<String, T>,
   ) {
     for (name, value) in hashmap {
-      self.write_one(type_, name, *value);
+      self.write_one(type_, name, value.clone());
     }
   }
 

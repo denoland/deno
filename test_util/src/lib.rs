@@ -2059,7 +2059,7 @@ pub fn parse_deno_bench_output(output: &str) -> HashMap<String, f64> {
     if !line.starts_with("benchmark") {
       continue;
     }
-    
+
     if !seen_benchmark {
       seen_benchmark = true;
       continue;

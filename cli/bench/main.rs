@@ -394,7 +394,7 @@ struct BenchResult {
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
   runtimes_ssr_rps: HashMap<String, i64>,
-  runtimes_ssr_max_latency: HashMap<String, i64>,
+  runtimes_ssr_max_latency: HashMap<String, f64>,
   runtimes_sqlite: HashMap<String, HashMap<String, f64>>,
   runtimes_ffi: HashMap<String, HashMap<String, f64>>,
 }
@@ -522,9 +522,9 @@ async fn main() -> Result<()> {
     reporter.write("runtimes_sqlite", &sqlite);
     new_data.runtimes_sqlite = sqlite;
 
-    let ffi = runtimes::ffi()?;
-    reporter.write("runtimes_ffi", &ffi);
-    new_data.runtimes_ffi = ffi;
+    // let ffi = runtimes::ffi()?;
+    // reporter.write("runtimes_ffi", &ffi);
+    // new_data.runtimes_ffi = ffi;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

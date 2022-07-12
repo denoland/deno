@@ -3,8 +3,11 @@
 use super::Result;
 use std::collections::HashMap;
 use std::path::Path;
-pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
+pub use test_util::{parse_wrk_output, parse_deno_bench_output, WrkOutput as HttpBenchmarkResult};
 use crate::http::{get_port, run};
+use std::process::Stdio;
+use std::process::Command;
+use std::process::Output;
 
 pub fn ssr() -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
@@ -94,24 +97,20 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
     
   // node 
   {
-    let port = get_port();
     let path = runtimes_dir.join("./sqlite/query.better-sqlite3.mjs").to_str().unwrap().to_string();
     res.insert(
       "node".to_string(),
-      run(
-        &["node", &path],
-        port,
-        None,
-        None,
-        None,
-      )?,
+      parse_deno_bench_output(&run_and_collect_output(
+        "node",
+        vec![&path],
+        &runtimes_dir
+      )),
     );
   } 
 
   // bun <path> <port>
   {
-    let port = get_port();
-    let path = runtimes_dir.join("ssr/react-hello-world-bun.js").to_str().unwrap().to_string();
+    let path = runtimes_dir.join("./sqlite/query.bun.mjs").to_str().unwrap().to_string();
 
     // Bun does not support Windows.
     #[cfg(target_arch = "x86_64")]
@@ -126,42 +125,55 @@ pub fn sqlite() -> Result<HashMap<String, HashMap<String, f64>>> {
 
     res.insert(
       "bun".to_string(),
-      run(
-        &[bun_exe.to_str().unwrap(), &path, &port.to_string()],
-        port,
-        None,
-        None,
-        None,
-      )?,
+      parse_deno_bench_output(&run_and_collect_output(
+        bun_exe.to_str().unwrap(),
+        vec![&path],
+        &runtimes_dir
+      )),
     );
   }
   
   // deno run -A --unstable <path> <addr>
   {
-    let port = get_port();
-    let path = runtimes_dir.join("ssr/react-hello-world-deno.js").to_str().unwrap().to_string();
+    let path = runtimes_dir.join("./sqlite/query.deno.mjs").to_str().unwrap().to_string();
     res.insert(
       "deno".to_string(),
-      run(
-        &[
-          deno_exe,
-          "run",
-          "--allow-all",
-          "--unstable",
-          &path,
-          &port.to_string(),
-        ],
-        port,
-        None,
-        None,
-        None,
-      )?,
+      parse_deno_bench_output(&run_and_collect_output(
+        deno_exe,
+        vec!["run", "--allow-all", "--unstable", &path],
+        &runtimes_dir
+      )),
     );
   }
 
   Ok(res)
 }
 
-pub fn ffi() -> Result<HashMap<String, HashMap<String, f64>>> {
+// pub fn ffi() -> Result<HashMap<String, HashMap<String, f64>>> {
 
+// }
+
+fn run_and_collect_output(
+  bin: &str,
+  args: Vec<&str>,
+  cwd: &Path
+) -> String {
+  let mut command = Command::new(bin);
+
+  command
+    .args(args)
+    .current_dir(cwd)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+  let process = command
+    .spawn()
+    .expect("failed to spawn script");
+  let Output {
+    stdout,
+    stderr,
+    status: _,
+  } = process.wait_with_output().expect("failed to wait on child");
+  assert!(stderr.is_empty());
+  String::from_utf8(stdout).unwrap()
 }
