@@ -814,7 +814,6 @@ dependencies = [
  "http",
  "import_map",
  "indexmap",
- "itertools",
  "jsonc-parser",
  "libc",
  "log 0.4.17",
