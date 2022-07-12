@@ -38,6 +38,7 @@
     "cli/tsc/*typescript.js",
     "gh-pages",
     "target",
+    "test_ffi/tests/test.js",
     "test_util/std",
     "test_util/wpt",
     "third_party",
