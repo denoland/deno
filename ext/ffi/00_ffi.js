@@ -108,7 +108,7 @@
     getArrayBuffer(byteLength, offset = 0) {
       return core.opSync(
         "op_ffi_get_buf",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
         byteLength,
       );
     }
