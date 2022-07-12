@@ -1,6 +1,7 @@
 import { renderToReadableStream } from "https://esm.run/react-dom/server";
 import { serve } from "https://deno.land/std@0.146.0/http/server.ts";
 import * as React from "https://esm.run/react";
+const port = Deno.args[0] || 8080;
 
 const App = () => (
   <html>
@@ -21,5 +22,5 @@ await serve(
   async (req) => {
     return new Response(await renderToReadableStream(<App />), headers);
   },
-  { port: 8080 },
+  { port: Number(port) },
 );

@@ -112,7 +112,7 @@ pub fn benchmark(
   Ok(res)
 }
 
-fn run(
+pub fn run(
   server_cmd: &[&str],
   port: u16,
   env: Option<Vec<(String, String)>>,
@@ -177,7 +177,7 @@ fn run(
 }
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
-fn get_port() -> u16 {
+pub fn get_port() -> u16 {
   let p = NEXT_PORT.load(Ordering::SeqCst);
   NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
   p

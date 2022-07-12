@@ -16,6 +16,7 @@ use std::time::SystemTime;
 mod http;
 mod lsp;
 mod metrics;
+mod ssr;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -405,6 +406,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "ssr",
     "strace",
     "mem_usage",
   ];
@@ -481,6 +483,23 @@ async fn main() -> Result<()> {
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
     let stats = http::benchmark(&target_dir)?;
+    let req_per_sec = stats
+      .iter()
+      .map(|(name, result)| (name.clone(), result.requests as i64))
+      .collect();
+    reporter.write("req_per_sec", &req_per_sec);
+    new_data.req_per_sec = req_per_sec;
+    let max_latency = stats
+      .iter()
+      .map(|(name, result)| (name.clone(), result.latency))
+      .collect();
+
+    reporter.write("max_latency", &max_latency);
+    new_data.max_latency = max_latency;
+  }
+
+  if benchmarks.contains(&"ssr") && cfg!(not(target_os = "windows")) {
+    let stats = ssr::benchmark()?;
     let req_per_sec = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))

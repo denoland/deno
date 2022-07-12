@@ -1,6 +1,7 @@
 var { renderToReadableStream } = import.meta.require(
   "./reactdom-bun.js",
 );
+const port = Bun.argv[2] || "4545";
 
 const headers = {
   headers: {
@@ -21,4 +22,5 @@ export default {
   async fetch(req) {
     return new Response(await renderToReadableStream(<App />), headers);
   },
+  port: Number(port),
 };
