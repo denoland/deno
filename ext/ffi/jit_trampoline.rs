@@ -22,6 +22,10 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
   match ty {
     NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
     NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
+    NativeType::U64
+    | NativeType::I64
+    | NativeType::USize
+    | NativeType::ISize => "uint64_t",
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
@@ -40,6 +44,8 @@ fn native_to_c(ty: &NativeType) -> &'static str {
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
+    NativeType::U64 | NativeType::USize => "uint64_t",
+    NativeType::I64 | NativeType::ISize => "int64_t",
     _ => unimplemented!(),
   }
 }
@@ -148,6 +154,14 @@ mod tests {
     assert_eq!(
       codegen(vec![NativeType::I8, NativeType::U8], NativeType::I8),
       "#include <stdint.h>\n\nextern int8_t func(int8_t p0, uint8_t p1);\n\nint8_t func_trampoline(void* recv, int32_t p0, uint32_t p1) {\n  return func(p0, p1);\n}\n\n"
-    )
+    );
+    assert_eq!(
+      codegen(vec![NativeType::ISize, NativeType::U64], NativeType::Void),
+      "#include <stdint.h>\n\nextern void func(int64_t p0, uint64_t p1);\n\nvoid func_trampoline(void* recv, uint64_t p0, uint64_t p1) {\n  return func(p0, p1);\n}\n\n"
+    );
+    assert_eq!(
+      codegen(vec![NativeType::USize, NativeType::USize], NativeType::U32),
+      "#include <stdint.h>\n\nextern uint32_t func(uint64_t p0, uint64_t p1);\n\nuint32_t func_trampoline(void* recv, uint64_t p0, uint64_t p1) {\n  return func(p0, p1);\n}\n\n"
+    );
   }
 }

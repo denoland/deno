@@ -75,6 +75,11 @@ pub extern "C" fn add_usize(a: usize, b: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn add_usize_fast(a: usize, b: usize) -> u32 {
+  (a + b) as u32
+}
+
+#[no_mangle]
 pub extern "C" fn add_isize(a: isize, b: isize) -> isize {
   a + b
 }
