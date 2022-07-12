@@ -937,38 +937,23 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    let mut state = state_rc.borrow_mut();
-    let module_map = module_map_rc.borrow();
-
-    let has_pending_refed_ops =
-      state.pending_ops.len() > state.unrefed_ops.len();
-    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-    let has_pending_dyn_module_evaluation =
-      !state.pending_dyn_mod_evaluate.is_empty();
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-    let has_pending_background_tasks =
-      self.v8_isolate().has_pending_background_tasks();
-    let has_tick_scheduled = state.has_tick_scheduled;
+    let pending_state = Self::event_loop_pending_state(self.v8_isolate());
     let inspector_has_active_sessions = self
       .inspector
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
-    if !has_pending_refed_ops
-      && !has_pending_dyn_imports
-      && !has_pending_dyn_module_evaluation
-      && !has_pending_module_evaluation
-      && !has_pending_background_tasks
-      && !has_tick_scheduled
-      && !maybe_scheduling
-    {
+    if !pending_state.is_pending() && !maybe_scheduling {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
       }
 
       return Poll::Ready(Ok(()));
     }
+
+    let mut state = state_rc.borrow_mut();
+    let module_map = module_map_rc.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -978,19 +963,19 @@ impl JsRuntime {
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
     if state.have_unpolled_ops
-      || has_pending_background_tasks
-      || has_tick_scheduled
+      || pending_state.has_pending_background_tasks
+      || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
       state.waker.wake();
     }
 
-    if has_pending_module_evaluation {
-      if has_pending_refed_ops
-        || has_pending_dyn_imports
-        || has_pending_dyn_module_evaluation
-        || has_pending_background_tasks
-        || has_tick_scheduled
+    if pending_state.has_pending_module_evaluation {
+      if pending_state.has_pending_refed_ops
+        || pending_state.has_pending_dyn_imports
+        || pending_state.has_pending_dyn_module_evaluation
+        || pending_state.has_pending_background_tasks
+        || pending_state.has_tick_scheduled
         || maybe_scheduling
       {
         // pass, will be polled again
@@ -1000,11 +985,11 @@ impl JsRuntime {
       }
     }
 
-    if has_pending_dyn_module_evaluation {
-      if has_pending_refed_ops
-        || has_pending_dyn_imports
-        || has_pending_background_tasks
-        || has_tick_scheduled
+    if pending_state.has_pending_dyn_module_evaluation {
+      if pending_state.has_pending_refed_ops
+        || pending_state.has_pending_dyn_imports
+        || pending_state.has_pending_background_tasks
+        || pending_state.has_tick_scheduled
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
@@ -1030,28 +1015,44 @@ Pending dynamic modules:\n".to_string();
     Poll::Pending
   }
 
-  pub fn event_loop_has_work(&mut self) -> bool {
-    let state_rc = Self::state(self.v8_isolate());
-    let module_map_rc = Self::module_map(self.v8_isolate());
+  pub(crate) fn event_loop_pending_state(
+    isolate: &mut v8::Isolate,
+  ) -> EventLoopPendingState {
+    let state_rc = Self::state(isolate);
+    let module_map_rc = Self::module_map(isolate);
     let state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
-    let has_pending_refed_ops =
-      state.pending_ops.len() > state.unrefed_ops.len();
-    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-    let has_pending_dyn_module_evaluation =
-      !state.pending_dyn_mod_evaluate.is_empty();
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-    let has_pending_background_tasks =
-      self.v8_isolate().has_pending_background_tasks();
-    let has_tick_scheduled = state.has_tick_scheduled;
+    EventLoopPendingState {
+      has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
+      has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
+      has_pending_dyn_module_evaluation: !state
+        .pending_dyn_mod_evaluate
+        .is_empty(),
+      has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
+      has_pending_background_tasks: isolate.has_pending_background_tasks(),
+      has_tick_scheduled: state.has_tick_scheduled,
+    }
+  }
+}
 
-    has_pending_refed_ops
-      || has_pending_dyn_imports
-      || has_pending_dyn_module_evaluation
-      || has_pending_module_evaluation
-      || has_pending_background_tasks
-      || has_tick_scheduled
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct EventLoopPendingState {
+  has_pending_refed_ops: bool,
+  has_pending_dyn_imports: bool,
+  has_pending_dyn_module_evaluation: bool,
+  has_pending_module_evaluation: bool,
+  has_pending_background_tasks: bool,
+  has_tick_scheduled: bool,
+}
+impl EventLoopPendingState {
+  pub fn is_pending(&self) -> bool {
+    self.has_pending_refed_ops
+      || self.has_pending_dyn_imports
+      || self.has_pending_dyn_module_evaluation
+      || self.has_pending_module_evaluation
+      || self.has_pending_background_tasks
+      || self.has_tick_scheduled
   }
 }
 
