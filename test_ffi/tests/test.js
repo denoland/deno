@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
+// Run using cargo test or `--v8-options=--allow-natives-syntax`
+
 import { assertThrows } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -53,6 +55,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
   "add_i64": { parameters: ["i64", "i64"], result: "i64" },
   "add_usize": { parameters: ["usize", "usize"], result: "usize" },
+  "add_usize_fast": { parameters: ["usize", "usize"], result: "u32" },
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
@@ -182,8 +185,9 @@ const dylib = Deno.dlopen(libPath, {
     type: "pointer",
   },
 });
+const { symbols } = dylib;
 
-dylib.symbols.printSomething();
+symbols.printSomething();
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 const buffer2 = new Uint8Array([9, 10]);
 dylib.symbols.print_buffer(buffer, buffer.length);
@@ -238,7 +242,21 @@ const before = performance.now();
 await sleepNonBlocking.call(100);
 console.log(performance.now() - before >= 100);
 
-console.log(dylib.symbols.add_u32(123, 456));
+const { add_u32, add_usize_fast } = symbols;
+function addU32Fast(a, b) {
+  return add_u32(a, b);
+};
+
+%PrepareFunctionForOptimization(addU32Fast);
+console.log(addU32Fast(123, 456));
+%OptimizeFunctionOnNextCall(addU32Fast);
+console.log(addU32Fast(123, 456));
+
+function addU64Fast(a, b) { return add_usize_fast(a, b); };
+%PrepareFunctionForOptimization(addU64Fast);
+console.log(addU64Fast(2, 3));
+%OptimizeFunctionOnNextCall(addU64Fast);
+console.log(addU64Fast(2, 3));
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
