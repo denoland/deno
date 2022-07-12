@@ -62,7 +62,6 @@ use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::args::FmtConfig;
 use crate::args::LintConfig;
-use crate::args::TestConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
