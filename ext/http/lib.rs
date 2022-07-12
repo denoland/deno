@@ -44,6 +44,7 @@ use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
+use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
 use serde::Serialize;
@@ -341,7 +342,7 @@ impl Resource for HttpStreamResource {
 /// The read half of an HTTP stream.
 pub enum HttpRequestReader {
   Headers(Request<Body>),
-  Body(Peekable<Body>),
+  Body(HeaderMap<HeaderValue>, Peekable<Body>),
   Closed,
 }
 
@@ -450,7 +451,7 @@ fn req_url(
 }
 
 fn req_headers(
-  req: &hyper::Request<hyper::Body>,
+  header_map: &HeaderMap<HeaderValue>,
 ) -> Vec<(ByteString, ByteString)> {
   // We treat cookies specially, because we don't want them to get them
   // mangled by the `Headers` object in JS. What we do is take all cookie
@@ -459,8 +460,8 @@ fn req_headers(
   let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
 
-  let mut headers = Vec::with_capacity(req.headers().len());
-  for (name, value) in req.headers().iter() {
+  let mut headers = Vec::with_capacity(header_map.len());
+  for (name, value) in header_map.iter() {
     if name == hyper::header::COOKIE {
       cookies.push(value.as_bytes());
     } else {
@@ -557,7 +558,8 @@ fn op_http_headers(
     .try_borrow()
     .ok_or_else(|| http_error("already in use"))?;
   match &*rd {
-    HttpRequestReader::Headers(request) => Ok(req_headers(request)),
+    HttpRequestReader::Headers(request) => Ok(req_headers(request.headers())),
+    HttpRequestReader::Body(headers, _) => Ok(req_headers(headers)),
     _ => unreachable!(),
   }
 }
@@ -829,13 +831,13 @@ async fn op_http_read(
   let body = loop {
     match &mut *rd {
       HttpRequestReader::Headers(_) => {}
-      HttpRequestReader::Body(body) => break body,
+      HttpRequestReader::Body(_, body) => break body,
       HttpRequestReader::Closed => return Ok(0),
     }
     match take(&mut *rd) {
       HttpRequestReader::Headers(request) => {
-        let body = request.into_body().peekable();
-        *rd = HttpRequestReader::Body(body);
+        let (parts, body) = request.into_parts();
+        *rd = HttpRequestReader::Body(parts.headers, body.peekable());
       }
       _ => unreachable!(),
     };

@@ -2,6 +2,7 @@
 
 use crate::args::CoverageFlags;
 use crate::args::Flags;
+use crate::cache::EmitCache;
 use crate::colors;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
@@ -676,16 +677,9 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let emit_path = ps
-          .dir
-          .gen_cache
-          .get_cache_filename_with_extension(&file.specifier, "js")
-          .unwrap_or_else(|| {
-            unreachable!("Unable to get cache filename: {}", &file.specifier)
-          });
-        match ps.dir.gen_cache.get(&emit_path) {
-          Ok(b) => String::from_utf8(b).unwrap(),
-          Err(_) => {
+        match ps.dir.gen_cache.get_emit_text(&file.specifier) {
+          Some(source) => source,
+          None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
               Before generating coverage report, run `deno test --coverage` to ensure consistent state.",

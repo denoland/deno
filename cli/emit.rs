@@ -9,8 +9,9 @@ use crate::args::ConfigFile;
 use crate::args::EmitConfigOptions;
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
-use crate::cache::CacheType;
-use crate::cache::Cacher;
+use crate::cache::EmitCache;
+use crate::cache::SpecifierEmitCacheData;
+use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
@@ -35,96 +36,11 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::result;
 use std::sync::Arc;
 use std::time::Instant;
-
-/// Emit cache for a single file.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SpecifierEmitCacheData {
-  pub source_hash: String,
-  pub text: String,
-  pub map: Option<String>,
-}
-
-pub trait EmitCache {
-  /// Gets the emit data from the cache.
-  fn get_emit_data(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<SpecifierEmitCacheData>;
-  /// Gets the stored hash of the source of the provider specifier
-  /// to tell if the emit is out of sync with the source.
-  /// TODO(13302): this is actually not reliable and should be removed
-  /// once switching to an sqlite db
-  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  /// Gets the emitted JavaScript of the TypeScript source.
-  /// TODO(13302): remove this once switching to an sqlite db
-  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  /// Sets the emit data in the cache.
-  fn set_emit_data(
-    &self,
-    specifier: ModuleSpecifier,
-    data: SpecifierEmitCacheData,
-  ) -> Result<(), AnyError>;
-  /// Gets the .tsbuildinfo file from the cache.
-  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String>;
-  /// Sets the .tsbuildinfo file in the cache.
-  fn set_tsbuildinfo(
-    &self,
-    specifier: ModuleSpecifier,
-    text: String,
-  ) -> Result<(), AnyError>;
-}
-
-impl<T: Cacher> EmitCache for T {
-  fn get_emit_data(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<SpecifierEmitCacheData> {
-    Some(SpecifierEmitCacheData {
-      source_hash: self.get_source_hash(specifier)?,
-      text: self.get_emit_text(specifier)?,
-      map: self.get(CacheType::SourceMap, specifier),
-    })
-  }
-
-  fn get_source_hash(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.get(CacheType::Version, specifier)
-  }
-
-  fn get_emit_text(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.get(CacheType::Emit, specifier)
-  }
-
-  fn set_emit_data(
-    &self,
-    specifier: ModuleSpecifier,
-    data: SpecifierEmitCacheData,
-  ) -> Result<(), AnyError> {
-    self.set(CacheType::Version, &specifier, data.source_hash)?;
-    self.set(CacheType::Emit, &specifier, data.text)?;
-    if let Some(map) = data.map {
-      self.set(CacheType::SourceMap, &specifier, map)?;
-    }
-    Ok(())
-  }
-
-  fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.get(CacheType::TypeScriptBuildInfo, specifier)
-  }
-
-  fn set_tsbuildinfo(
-    &self,
-    specifier: ModuleSpecifier,
-    text: String,
-  ) -> Result<(), AnyError> {
-    self.set(CacheType::TypeScriptBuildInfo, &specifier, text)
-  }
-}
 
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -236,13 +152,17 @@ pub fn get_ts_config_for_emit(
       let mut ts_config = TsConfig::new(json!({
         "allowJs": true,
         "allowSyntheticDefaultImports": true,
+        "checkJs": false,
         "experimentalDecorators": true,
         "incremental": true,
         "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
         "isolatedModules": true,
         "lib": lib,
         "module": "esnext",
         "resolveJsonModule": true,
+        "sourceMap": false,
         "strict": true,
         "target": "esnext",
         "tsBuildInfoFile": "deno:///.tsbuildinfo",
@@ -378,10 +298,6 @@ pub struct CheckOptions {
   pub type_check_mode: TypeCheckMode,
   /// Set the debug flag on the TypeScript type checker.
   pub debug: bool,
-  /// If true, any files emitted will be cached, even if there are diagnostics
-  /// produced. If false, if there are diagnostics, caching emitted files will
-  /// be skipped.
-  pub emit_with_diagnostics: bool,
   /// The module specifier to the configuration file, passed to tsc so that
   /// configuration related diagnostics are properly formed.
   pub maybe_config_specifier: Option<ModuleSpecifier>,
@@ -389,46 +305,43 @@ pub struct CheckOptions {
   pub ts_config: TsConfig,
   /// If true, `Check <specifier>` will be written to stdout for each root.
   pub log_checks: bool,
-  /// If true, valid existing emits and `.tsbuildinfo` files will be ignored.
+  /// If true, valid `.tsbuildinfo` files will be ignored and type checking
+  /// will always occur.
   pub reload: bool,
-  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
-/// The result of a check or emit of a module graph. Note that the actual
-/// emitted sources are stored in the cache and are not returned in the result.
+/// The result of a check of a module graph.
 #[derive(Debug, Default)]
-pub struct CheckEmitResult {
+pub struct CheckResult {
   pub diagnostics: Diagnostics,
   pub stats: Stats,
 }
 
-/// Given a set of roots and graph data, type check the module graph and
-/// optionally emit modules, updating the cache as appropriate. Emitting is
-/// determined by the `ts_config` supplied in the options, and if emitting, the
-/// files are stored in the cache.
+/// Given a set of roots and graph data, type check the module graph.
 ///
 /// It is expected that it is determined if a check and/or emit is validated
 /// before the function is called.
-pub fn check_and_maybe_emit(
+pub fn check(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
-  cache: &dyn EmitCache,
+  cache: &TypeCheckCache,
   options: CheckOptions,
-) -> Result<CheckEmitResult, AnyError> {
+) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
   let segment_graph_data = {
     let graph_data = graph_data.read();
     graph_data.graph_segment(roots).unwrap()
   };
-  if valid_emit(
-    &segment_graph_data,
-    cache,
-    &options.ts_config,
-    options.reload,
-    &options.reload_exclusions,
-  ) {
+  let check_hash = match get_check_hash(&segment_graph_data, &options) {
+    CheckHashResult::NoFiles => return Ok(Default::default()),
+    CheckHashResult::Hash(hash) => hash,
+  };
+
+  // do not type check if we know this is type checked
+  if !options.reload && cache.has_check_hash(check_hash) {
     return Ok(Default::default());
   }
+
   let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
   if options.log_checks {
     for (root, _) in roots {
@@ -454,12 +367,11 @@ pub fn check_and_maybe_emit(
     options.ts_config.as_bytes(),
     version::deno().as_bytes().to_owned(),
   ];
-  let config_bytes = options.ts_config.as_bytes();
 
   let response = tsc::exec(tsc::Request {
     config: options.ts_config,
     debug: options.debug,
-    graph_data: graph_data.clone(),
+    graph_data,
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
     maybe_tsbuildinfo,
@@ -478,105 +390,15 @@ pub fn check_and_maybe_emit(
     response.diagnostics
   };
 
-  // sometimes we want to emit when there are diagnostics, and sometimes we
-  // don't. tsc will always return an emit if there are diagnostics
-  if (diagnostics.is_empty() || options.emit_with_diagnostics)
-    && !response.emitted_files.is_empty()
-  {
-    if let Some(info) = &response.maybe_tsbuildinfo {
-      // while we retrieve the build info for just the first module, it can be
-      // used for all the roots in the graph, so we will cache it for all roots
-      for (root, _) in roots {
-        cache.set_tsbuildinfo(root.clone(), info.to_string())?;
-      }
-    }
-
-    struct SpecifierEmitData {
-      pub version_hash: String,
-      pub text: Option<String>,
-      pub map: Option<String>,
-    }
-
-    impl SpecifierEmitData {
-      fn into_cache_data(self) -> Option<SpecifierEmitCacheData> {
-        self.text.map(|text| SpecifierEmitCacheData {
-          source_hash: self.version_hash,
-          text,
-          map: self.map,
-        })
-      }
-    }
-
-    // combine the emitted files into groups based on their specifier and media type
-    let mut emit_data_items: HashMap<ModuleSpecifier, SpecifierEmitData> =
-      HashMap::with_capacity(response.emitted_files.len());
-    for emit in response.emitted_files.into_iter() {
-      if let Some(specifiers) = emit.maybe_specifiers {
-        assert!(specifiers.len() == 1);
-        // The emitted specifier might not be the file specifier we want, so we
-        // resolve it via the graph.
-        let graph_data = graph_data.read();
-        let specifier = graph_data.follow_redirect(&specifiers[0]);
-        let (source_bytes, media_type, ts_check) =
-          match graph_data.get(&specifier) {
-            Some(ModuleEntry::Module {
-              code,
-              media_type,
-              ts_check,
-              ..
-            }) => (code.as_bytes(), *media_type, *ts_check),
-            _ => {
-              log::debug!("skipping emit for {}", specifier);
-              continue;
-            }
-          };
-        // Sometimes if `tsc` sees a CommonJS file or a JSON module, it will
-        // _helpfully_ output it, which we don't really want to do unless
-        // someone has enabled check_js.
-        if matches!(media_type, MediaType::Json)
-          || (!check_js
-            && !ts_check
-            && matches!(
-              media_type,
-              MediaType::JavaScript | MediaType::Cjs | MediaType::Mjs
-            ))
-        {
-          log::debug!("skipping emit for {}", specifier);
-          continue;
-        }
-
-        let mut emit_data_item = emit_data_items
-          .entry(specifier.clone())
-          .or_insert_with(|| SpecifierEmitData {
-            version_hash: get_version(source_bytes, &config_bytes),
-            text: None,
-            map: None,
-          });
-
-        match emit.media_type {
-          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-            emit_data_item.text = Some(emit.data);
-          }
-          MediaType::SourceMap => {
-            emit_data_item.map = Some(emit.data);
-          }
-          _ => unreachable!(
-            "unexpected media_type {} {}",
-            emit.media_type, specifier
-          ),
-        }
-      }
-    }
-
-    // now insert these items into the cache
-    for (specifier, data) in emit_data_items.into_iter() {
-      if let Some(cache_data) = data.into_cache_data() {
-        cache.set_emit_data(specifier, cache_data)?;
-      }
-    }
+  if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
+    cache.set_tsbuildinfo(&roots[0].0, &tsbuildinfo);
   }
 
-  Ok(CheckEmitResult {
+  if diagnostics.is_empty() {
+    cache.add_check_hash(check_hash);
+  }
+
+  Ok(CheckResult {
     diagnostics,
     stats: response.stats,
   })
@@ -590,12 +412,12 @@ pub struct EmitOptions {
 
 /// Given a module graph, emit any appropriate modules and cache them.
 // TODO(nayeemrmn): This would ideally take `GraphData` like
-// `check_and_maybe_emit()`, but the AST isn't stored in that. Cleanup.
+// `check()`, but the AST isn't stored in that. Cleanup.
 pub fn emit(
   graph: &ModuleGraph,
   cache: &dyn EmitCache,
   options: EmitOptions,
-) -> Result<CheckEmitResult, AnyError> {
+) -> Result<CheckResult, AnyError> {
   let start = Instant::now();
   let config_bytes = options.ts_config.as_bytes();
   let include_js = options.ts_config.get_check_js();
@@ -623,7 +445,7 @@ pub fn emit(
     let transpiled_source = module
       .maybe_parsed_source
       .as_ref()
-      .map(|ps| ps.transpile(&emit_options))
+      .map(|source| source.transpile(&emit_options))
       .unwrap()?;
     emit_count += 1;
     cache.set_emit_data(
@@ -642,26 +464,41 @@ pub fn emit(
     ("Total time".to_string(), start.elapsed().as_millis() as u32),
   ]);
 
-  Ok(CheckEmitResult {
+  Ok(CheckResult {
     diagnostics: Diagnostics::default(),
     stats,
   })
 }
 
-/// Check a module graph to determine if the graph contains anything that
-/// is required to be emitted to be valid. It determines what modules in the
-/// graph are emittable and for those that are emittable, if there is currently
-/// a valid emit in the cache.
-fn valid_emit(
+enum CheckHashResult {
+  Hash(u64),
+  NoFiles,
+}
+
+/// Gets a hash of the inputs for type checking. This can then
+/// be used to tell
+fn get_check_hash(
   graph_data: &GraphData,
-  cache: &dyn EmitCache,
-  ts_config: &TsConfig,
-  reload: bool,
-  reload_exclusions: &HashSet<ModuleSpecifier>,
-) -> bool {
-  let config_bytes = ts_config.as_bytes();
-  let check_js = ts_config.get_check_js();
-  for (specifier, module_entry) in graph_data.entries() {
+  options: &CheckOptions,
+) -> CheckHashResult {
+  // twox hash is insecure, but fast so it works for our purposes
+  use std::hash::Hasher;
+  use twox_hash::XxHash64;
+
+  let mut hasher = XxHash64::default();
+  hasher.write_u8(match options.type_check_mode {
+    TypeCheckMode::All => 0,
+    TypeCheckMode::Local => 1,
+    TypeCheckMode::None => 2,
+  });
+  hasher.write(&options.ts_config.as_bytes());
+
+  let check_js = options.ts_config.get_check_js();
+  let mut sorted_entries = graph_data.entries().collect::<Vec<_>>();
+  sorted_entries.sort_by_key(|(s, _)| s.as_str()); // make it deterministic
+  let mut has_file = false;
+  let mut has_file_to_type_check = false;
+  for (specifier, module_entry) in sorted_entries {
     if let ModuleEntry::Module {
       code,
       media_type,
@@ -669,13 +506,26 @@ fn valid_emit(
       ..
     } = module_entry
     {
+      if *ts_check {
+        has_file_to_type_check = true;
+      }
+
       match media_type {
         MediaType::TypeScript
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
         | MediaType::Mts
         | MediaType::Cts
-        | MediaType::Tsx
-        | MediaType::Jsx => {}
-        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+        | MediaType::Tsx => {
+          has_file = true;
+          has_file_to_type_check = true;
+        }
+        MediaType::JavaScript
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Jsx => {
+          has_file = true;
           if !check_js && !ts_check {
             continue;
           }
@@ -683,25 +533,20 @@ fn valid_emit(
         MediaType::Json
         | MediaType::TsBuildInfo
         | MediaType::SourceMap
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
         | MediaType::Wasm
         | MediaType::Unknown => continue,
       }
-      if reload && !reload_exclusions.contains(specifier) {
-        return false;
-      }
-      if let Some(source_hash) = cache.get_source_hash(specifier) {
-        if source_hash != get_version(code.as_bytes(), &config_bytes) {
-          return false;
-        }
-      } else {
-        return false;
-      }
+      hasher.write(specifier.as_str().as_bytes());
+      hasher.write(code.as_bytes());
     }
   }
-  true
+
+  if !has_file || !check_js && !has_file_to_type_check {
+    // no files to type check
+    CheckHashResult::NoFiles
+  } else {
+    CheckHashResult::Hash(hasher.finish())
+  }
 }
 
 /// An adapter struct to make a deno_graph::ModuleGraphError display as expected
