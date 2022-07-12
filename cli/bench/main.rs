@@ -505,18 +505,22 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"runtimes") && cfg!(not(target_os = "windows")) {
     runtimes::setup();
     let stats = runtimes::ssr()?;
-    let req_per_sec = stats
+    let req_per_sec: HashMap<String, i64> = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
-    reporter.write("runtimes_ssr_rps", &req_per_sec);
+    for (name, data) in req_per_sec.iter() {
+      reporter.write_one("runtimes_ssr_rps", name, &data);
+    }
     new_data.runtimes_ssr_rps = req_per_sec;
     
-    let max_latency = stats
+    let max_latency: HashMap<String, f64> = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency))
       .collect();
-    reporter.write("runtimes_ssr_max_latency", &max_latency);
+    for (name, data) in max_latency.iter() {
+      reporter.write_one("runtimes_ssr_max_latency", name, &data);
+    }
     new_data.runtimes_ssr_max_latency = max_latency;
 
     let sqlite = runtimes::sqlite()?;
