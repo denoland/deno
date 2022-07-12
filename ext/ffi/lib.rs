@@ -893,6 +893,328 @@ fn make_sync_fn<'s>(
   weak.to_local(scope).unwrap()
 }
 
+#[inline]
+fn ffi_parse_u8_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let u8_value = v8::Local::<v8::Uint32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI u8 type, expected unsigned integer"))?
+    .value() as u8;
+  Ok(NativeValue { u8_value })
+}
+
+#[inline]
+fn ffi_parse_i8_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let i8_value = v8::Local::<v8::Int32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI i8 type, expected integer"))?
+    .value() as i8;
+  Ok(NativeValue { i8_value })
+}
+
+#[inline]
+fn ffi_parse_u16_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let u16_value = v8::Local::<v8::Uint32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI u16 type, expected unsigned integer"))?
+    .value() as u16;
+  Ok(NativeValue { u16_value })
+}
+
+#[inline]
+fn ffi_parse_i16_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let i16_value = v8::Local::<v8::Int32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI i16 type, expected integer"))?
+    .value() as i16;
+  Ok(NativeValue { i16_value })
+}
+
+#[inline]
+fn ffi_parse_u32_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let u32_value = v8::Local::<v8::Uint32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI u32 type, expected unsigned integer"))?
+    .value() as u32;
+  Ok(NativeValue { u32_value })
+}
+
+#[inline]
+fn ffi_parse_i32_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let i32_value = v8::Local::<v8::Int32>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
+    .value() as i32;
+  Ok(NativeValue { i32_value })
+}
+
+#[inline]
+fn ffi_parse_u64_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
+  // 2. Number: Common, supported by Fast API, so let that be the optimal case.
+  let u64_value: u64 = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg)
+  {
+    value.u64_value().0
+  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+    value.integer_value(scope).unwrap() as u64
+  } else {
+    return Err(type_error(
+      "Invalid FFI u64 type, expected unsigned integer",
+    ));
+  };
+  Ok(NativeValue { u64_value })
+}
+
+#[inline]
+fn ffi_parse_i64_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
+  // 2. Number: Common, supported by Fast API, so let that be the optimal case.
+  let i64_value: i64 = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg)
+  {
+    value.i64_value().0
+  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+    value.integer_value(scope).unwrap() as i64
+  } else {
+    return Err(type_error("Invalid FFI i64 type, expected integer"));
+  };
+  Ok(NativeValue { i64_value })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "32")]
+fn ffi_parse_usize_arg(
+  _scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // No support for BigInt input values, as they're entirely unnecessary on 32 bit systems and shouldn't appear anywhere.
+  let usize_value: usize =
+    if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
+      value.value() as usize
+    } else {
+      return Err(type_error(
+        "Invalid FFI usize type, expected unsigned integer",
+      ));
+    };
+  Ok(NativeValue { usize_value })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "32")]
+fn ffi_parse_isize_arg(
+  _scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // No support for BigInt input values, as they're entirely unnecessary on 32 bit systems and shouldn't appear anywhere.
+  let isize_value: isize =
+    if let Ok(value) = v8::Local::<v8::Int32>::try_from(arg) {
+      value.value() as isize
+    } else {
+      return Err(type_error("Invalid FFI isize type, expected integer"));
+    };
+  Ok(NativeValue { isize_value })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "64")]
+fn ffi_parse_usize_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
+  // 2. Number: Common, supported by Fast API, so let that be the optimal case.
+  let usize_value: usize =
+    if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
+      value.u64_value().0 as usize
+    } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+      value.integer_value(scope).unwrap() as usize
+    } else {
+      return Err(type_error("Invalid FFI usize type, expected integer"));
+    };
+  Ok(NativeValue { usize_value })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "64")]
+fn ffi_parse_isize_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
+  // 2. Number: Common, supported by Fast API, so let that be the optimal case.
+  let isize_value: isize =
+    if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
+      value.i64_value().0 as isize
+    } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+      value.integer_value(scope).unwrap() as isize
+    } else {
+      return Err(type_error("Invalid FFI isize type, expected integer"));
+    };
+  Ok(NativeValue { isize_value })
+}
+
+#[inline]
+fn ffi_parse_f32_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let f32_value = v8::Local::<v8::Number>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI f32 type, expected number"))?
+    .value() as f32;
+  Ok(NativeValue { f32_value })
+}
+
+#[inline]
+fn ffi_parse_f64_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let f64_value = v8::Local::<v8::Number>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
+    .value() as f64;
+  Ok(NativeValue { f64_value })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "32")]
+fn ffi_parse_pointer_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. ArrayBufferView: Common and not supported by Fast API, optimise this case.
+  // 2. Uint32: Common and supported by Fast API, optimise this second.
+  // 3. ArrayBuffer: Fairly common and not supported by Fast API.
+  // 4. Null: Very uncommon / can be represented by a 0.
+  let pointer = if let Ok(value) =
+    v8::Local::<v8::ArrayBufferView>::try_from(arg)
+  {
+    let byte_offset = value.byte_offset();
+    let backing_store = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .get_backing_store();
+    if byte_offset > 0 {
+      &backing_store[byte_offset..] as *const _ as *const u8
+    } else {
+      &backing_store[..] as *const _ as *const u8
+    }
+  } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
+    value.value() as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    let backing_store = value.get_backing_store();
+    &backing_store[..] as *const _ as *const u8
+  } else if arg.is_null() {
+    ptr::null()
+  } else {
+    return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
+  };
+  Ok(NativeValue { pointer })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "64")]
+fn ffi_parse_pointer_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. ArrayBufferView: Common and not supported by Fast API, optimise this case.
+  // 2. BigInt: Uncommon and not supported by Fast API, optimise this case as second.
+  // 3. Number: Common and supported by Fast API, optimise the common case third.
+  // 4. ArrayBuffer: Fairly common and not supported by Fast API.
+  // 5. Null: Very uncommon / can be represented by a 0.
+  let pointer = if let Ok(value) =
+    v8::Local::<v8::ArrayBufferView>::try_from(arg)
+  {
+    let byte_offset = value.byte_offset();
+    let backing_store = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .get_backing_store();
+    if byte_offset > 0 {
+      &backing_store[byte_offset..] as *const _ as *const u8
+    } else {
+      &backing_store[..] as *const _ as *const u8
+    }
+  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
+    value.u64_value().0 as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+    value.integer_value(scope).unwrap() as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
+    let backing_store = value.get_backing_store();
+    &backing_store[..] as *const _ as *const u8
+  } else if arg.is_null() {
+    ptr::null()
+  } else {
+    return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
+  };
+  Ok(NativeValue { pointer })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "32")]
+fn ffi_parse_function_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
+  // 2. Uint32: Common and supported by Fast API, optimise this case as second.
+  // 3. Null: Very uncommon / can be represented by a 0.
+  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
+    value.u64_value().0 as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
+    value.value() as usize as *const u8
+  } else if arg.is_null() {
+    ptr::null()
+  } else {
+    return Err(type_error(
+      "Invalid FFI function type, expected null, integer, or BigInt",
+    ));
+  };
+  Ok(NativeValue { pointer })
+}
+
+#[inline]
+#[cfg(target_pointer_width = "64")]
+fn ffi_parse_function_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
+  // 2. Number: Common and supported by Fast API, optimise this case as second.
+  // 3. Null: Very uncommon / can be represented by a 0.
+  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
+    value.u64_value().0 as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
+    value.integer_value(scope).unwrap() as usize as *const u8
+  } else if arg.is_null() {
+    ptr::null()
+  } else {
+    return Err(type_error(
+      "Invalid FFI function type, expected null, integer, or BigInt",
+    ));
+  };
+  Ok(NativeValue { pointer })
+}
+
 fn ffi_parse_args<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   args: serde_v8::Value<'scope>,
@@ -913,150 +1235,50 @@ where
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get_index(scope, index as u32).unwrap();
     match native_type {
-      NativeType::Void => {
-        unreachable!();
-      }
       NativeType::U8 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u8 type, expected integer"))?
-          .value() as u8;
-        ffi_args.push(NativeValue { u8_value: value });
+        ffi_args.push(ffi_parse_u8_arg(value)?);
       }
       NativeType::I8 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i8 type, expected integer"))?
-          .value() as i8;
-        ffi_args.push(NativeValue { i8_value: value });
+        ffi_args.push(ffi_parse_i8_arg(value)?);
       }
       NativeType::U16 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u16 type, expected integer"))?
-          .value() as u16;
-        ffi_args.push(NativeValue { u16_value: value });
+        ffi_args.push(ffi_parse_u16_arg(value)?);
       }
       NativeType::I16 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i16 type, expected integer"))?
-          .value() as i16;
-        ffi_args.push(NativeValue { i16_value: value });
+        ffi_args.push(ffi_parse_i16_arg(value)?);
       }
       NativeType::U32 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u32 type, expected integer"))?
-          .value() as u32;
-        ffi_args.push(NativeValue { u32_value: value });
+        ffi_args.push(ffi_parse_u32_arg(value)?);
       }
       NativeType::I32 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
-          .value() as i32;
-        ffi_args.push(NativeValue { i32_value: value });
+        ffi_args.push(ffi_parse_i32_arg(value)?);
       }
       NativeType::U64 => {
-        let value: u64 =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as u64
-          } else {
-            return Err(type_error("Invalid FFI u64 type, expected integer"));
-          };
-        ffi_args.push(NativeValue { u64_value: value });
+        ffi_args.push(ffi_parse_u64_arg(scope, value)?);
       }
       NativeType::I64 => {
-        let value: i64 =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.i64_value().0
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as i64
-          } else {
-            return Err(type_error("Invalid FFI i64 type, expected integer"));
-          };
-        ffi_args.push(NativeValue { i64_value: value });
+        ffi_args.push(ffi_parse_i64_arg(scope, value)?);
       }
       NativeType::USize => {
-        let value: usize =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0 as usize
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as usize
-          } else {
-            return Err(type_error("Invalid FFI usize type, expected integer"));
-          };
-        ffi_args.push(NativeValue { usize_value: value });
+        ffi_args.push(ffi_parse_usize_arg(scope, value)?);
       }
       NativeType::ISize => {
-        let value: isize =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.i64_value().0 as isize
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as isize
-          } else {
-            return Err(type_error("Invalid FFI isize type, expected integer"));
-          };
-        ffi_args.push(NativeValue { isize_value: value });
+        ffi_args.push(ffi_parse_isize_arg(scope, value)?);
       }
       NativeType::F32 => {
-        let value = v8::Local::<v8::Number>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI f32 type, expected number"))?
-          .value() as f32;
-        ffi_args.push(NativeValue { f32_value: value });
+        ffi_args.push(ffi_parse_f32_arg(value)?);
       }
       NativeType::F64 => {
-        let value = v8::Local::<v8::Number>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
-          .value() as f64;
-        ffi_args.push(NativeValue { f64_value: value });
+        ffi_args.push(ffi_parse_f64_arg(value)?);
       }
       NativeType::Pointer => {
-        let pointer = if let Ok(value) =
-          v8::Local::<v8::BigInt>::try_from(value)
-        {
-          value.u64_value().0 as usize as *const u8
-        } else if let Ok(value) =
-          v8::Local::<v8::ArrayBufferView>::try_from(value)
-        {
-          let byte_offset = value.byte_offset();
-          let backing_store = value
-            .buffer(scope)
-            .ok_or_else(|| {
-              type_error(
-                "Invalid FFI ArrayBufferView, expected data in the buffer",
-              )
-            })?
-            .get_backing_store();
-          if byte_offset > 0 {
-            &backing_store[byte_offset..] as *const _ as *const u8
-          } else {
-            &backing_store[..] as *const _ as *const u8
-          }
-        } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-          value.value() as usize as *const u8
-        } else if value.is_null() {
-          ptr::null()
-        } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
-        {
-          let backing_store = value.get_backing_store();
-          &backing_store[..] as *const _ as *const u8
-        } else {
-          return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
-        };
-        ffi_args.push(NativeValue { pointer });
+        ffi_args.push(ffi_parse_pointer_arg(scope, value)?);
       }
       NativeType::Function => {
-        let pointer =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0 as usize as *const u8
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as usize as *const u8
-          } else if value.is_null() {
-            ptr::null()
-          } else {
-            return Err(type_error(
-              "Invalid FFI function type, expected null, integer, or BigInt",
-            ));
-          };
-        ffi_args.push(NativeValue { pointer });
+        ffi_args.push(ffi_parse_function_arg(scope, value)?);
+      }
+      NativeType::Void => {
+        unreachable!();
       }
     }
   }
@@ -1086,160 +1308,50 @@ where
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get(index as i32);
     match native_type {
-      NativeType::Void => {
-        unreachable!();
-      }
       NativeType::U8 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u8 type, expected integer"))?
-          .value() as u8;
-        ffi_args.push(NativeValue { u8_value: value });
+        ffi_args.push(ffi_parse_u8_arg(value)?);
       }
       NativeType::I8 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i8 type, expected integer"))?
-          .value() as i8;
-
-        ffi_args.push(NativeValue { i8_value: value });
+        ffi_args.push(ffi_parse_i8_arg(value)?);
       }
       NativeType::U16 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u16 type, expected integer"))?
-          .value() as u16;
-
-        ffi_args.push(NativeValue { u16_value: value });
+        ffi_args.push(ffi_parse_u16_arg(value)?);
       }
       NativeType::I16 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i16 type, expected integer"))?
-          .value() as i16;
-
-        ffi_args.push(NativeValue { i16_value: value });
+        ffi_args.push(ffi_parse_i16_arg(value)?);
       }
       NativeType::U32 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI u32 type, expected integer"))?
-          .value() as u32;
-
-        ffi_args.push(NativeValue { u32_value: value });
+        ffi_args.push(ffi_parse_u32_arg(value)?);
       }
       NativeType::I32 => {
-        let value = v8::Local::<v8::Integer>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
-          .value() as i32;
-
-        ffi_args.push(NativeValue { i32_value: value });
+        ffi_args.push(ffi_parse_i32_arg(value)?);
       }
       NativeType::U64 => {
-        let value: u64 =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as u64
-          } else {
-            return Err(type_error("Invalid FFI u64 type, expected integer"));
-          };
-
-        ffi_args.push(NativeValue { u64_value: value });
+        ffi_args.push(ffi_parse_u64_arg(scope, value)?);
       }
       NativeType::I64 => {
-        let value: i64 =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.i64_value().0
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as i64
-          } else {
-            return Err(type_error("Invalid FFI i64 type, expected integer"));
-          };
-
-        ffi_args.push(NativeValue { i64_value: value });
+        ffi_args.push(ffi_parse_i64_arg(scope, value)?);
       }
       NativeType::USize => {
-        let value: usize =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0 as usize
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as usize
-          } else {
-            return Err(type_error("Invalid FFI usize type, expected integer"));
-          };
-
-        ffi_args.push(NativeValue { usize_value: value });
+        ffi_args.push(ffi_parse_usize_arg(scope, value)?);
       }
       NativeType::ISize => {
-        let value: isize =
-          if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.i64_value().0 as isize
-          } else if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as isize
-          } else {
-            return Err(type_error("Invalid FFI isize type, expected integer"));
-          };
-
-        ffi_args.push(NativeValue { isize_value: value });
+        ffi_args.push(ffi_parse_isize_arg(scope, value)?);
       }
       NativeType::F32 => {
-        let value = v8::Local::<v8::Number>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI f32 type, expected number"))?
-          .value() as f32;
-
-        ffi_args.push(NativeValue { f32_value: value });
+        ffi_args.push(ffi_parse_f32_arg(value)?);
       }
       NativeType::F64 => {
-        let value = v8::Local::<v8::Number>::try_from(value)
-          .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
-          .value() as f64;
-        ffi_args.push(NativeValue { f64_value: value });
+        ffi_args.push(ffi_parse_f64_arg(value)?);
       }
       NativeType::Pointer => {
-        let pointer = if let Ok(value) =
-          v8::Local::<v8::Number>::try_from(value)
-        {
-          value.value() as usize as *const u8
-        } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-          value.u64_value().0 as usize as *const u8
-        } else if let Ok(value) =
-          v8::Local::<v8::ArrayBufferView>::try_from(value)
-        {
-          let byte_offset = value.byte_offset();
-          let backing_store = value
-            .buffer(scope)
-            .ok_or_else(|| {
-              type_error(
-                "Invalid FFI ArrayBufferView, expected data in the buffer",
-              )
-            })?
-            .get_backing_store();
-          if byte_offset > 0 {
-            &backing_store[byte_offset..] as *const _ as *const u8
-          } else {
-            &backing_store[..] as *const _ as *const u8
-          }
-        } else if value.is_null() {
-          ptr::null()
-        } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value)
-        {
-          let backing_store = value.get_backing_store();
-          &backing_store[..] as *const _ as *const u8
-        } else {
-          return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
-        };
-        ffi_args.push(NativeValue { pointer });
+        ffi_args.push(ffi_parse_pointer_arg(scope, value)?);
       }
       NativeType::Function => {
-        let pointer =
-          if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
-            value.value() as usize as *const u8
-          } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-            value.u64_value().0 as usize as *const u8
-          } else if value.is_null() {
-            ptr::null()
-          } else {
-            return Err(type_error(
-              "Invalid FFI function type, expected null, integer, or BigInt",
-            ));
-          };
-        ffi_args.push(NativeValue { pointer })
+        ffi_args.push(ffi_parse_function_arg(scope, value)?);
+      }
+      NativeType::Void => {
+        unreachable!();
       }
     }
   }
@@ -1460,8 +1572,8 @@ unsafe fn do_ffi_callback(
   // it somehow cannot change the values that the loop sees, even if they both
   // refer the same `let bool_value`.
   let mut cb_scope = v8::CallbackScope::new(context);
-  let mut scope = v8::HandleScope::new(&mut cb_scope);
-  let func = callback.open(&mut scope);
+  let scope = &mut v8::HandleScope::new(&mut cb_scope);
+  let func = callback.open(scope);
   let result = result as *mut c_void;
   let repr: &[*mut ffi_type] =
     std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
@@ -1473,68 +1585,68 @@ unsafe fn do_ffi_callback(
     let value: v8::Local<v8::Value> = match (*(*repr)).type_ as _ {
       FFI_TYPE_FLOAT => {
         let value = *((*val) as *const f32);
-        v8::Number::new(&mut scope, value as f64).into()
+        v8::Number::new(scope, value as f64).into()
       }
       FFI_TYPE_DOUBLE => {
         let value = *((*val) as *const f64);
-        v8::Number::new(&mut scope, value).into()
+        v8::Number::new(scope, value).into()
       }
       FFI_TYPE_SINT8 => {
         let value = *((*val) as *const i8);
-        v8::Integer::new(&mut scope, value as i32).into()
+        v8::Integer::new(scope, value as i32).into()
       }
       FFI_TYPE_UINT8 => {
         let value = *((*val) as *const u8);
-        v8::Integer::new_from_unsigned(&mut scope, value as u32).into()
+        v8::Integer::new_from_unsigned(scope, value as u32).into()
       }
       FFI_TYPE_SINT16 => {
         let value = *((*val) as *const i16);
-        v8::Integer::new(&mut scope, value as i32).into()
+        v8::Integer::new(scope, value as i32).into()
       }
       FFI_TYPE_UINT16 => {
         let value = *((*val) as *const u16);
-        v8::Integer::new_from_unsigned(&mut scope, value as u32).into()
+        v8::Integer::new_from_unsigned(scope, value as u32).into()
       }
       FFI_TYPE_INT | FFI_TYPE_SINT32 => {
         let value = *((*val) as *const i32);
-        v8::Integer::new(&mut scope, value).into()
+        v8::Integer::new(scope, value).into()
       }
       FFI_TYPE_UINT32 => {
         let value = *((*val) as *const u32);
-        v8::Integer::new_from_unsigned(&mut scope, value).into()
+        v8::Integer::new_from_unsigned(scope, value).into()
       }
       FFI_TYPE_SINT64 => {
         let result = *((*val) as *const i64);
         if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
         {
-          v8::BigInt::new_from_i64(&mut scope, result).into()
+          v8::BigInt::new_from_i64(scope, result).into()
         } else {
-          v8::Number::new(&mut scope, result as f64).into()
+          v8::Number::new(scope, result as f64).into()
         }
       }
       FFI_TYPE_UINT64 => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
-          v8::BigInt::new_from_u64(&mut scope, result).into()
+          v8::BigInt::new_from_u64(scope, result).into()
         } else {
-          v8::Number::new(&mut scope, result as f64).into()
+          v8::Number::new(scope, result as f64).into()
         }
       }
       #[cfg(target_pointer_width = "32")]
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
         let result = *((*val) as *const u32);
-        v8::Integer::new_from_unsigned(&mut scope, result).into()
+        v8::Integer::new_from_unsigned(scope, result).into()
       }
       #[cfg(target_pointer_width = "64")]
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
-          v8::BigInt::new_from_u64(&mut scope, result).into()
+          v8::BigInt::new_from_u64(scope, result).into()
         } else {
-          v8::Number::new(&mut scope, result as f64).into()
+          v8::Number::new(scope, result as f64).into()
         }
       }
-      FFI_TYPE_VOID => v8::undefined(&mut scope).into(),
+      FFI_TYPE_VOID => v8::undefined(scope).into(),
       _ => {
         unreachable!()
       }
@@ -1542,8 +1654,8 @@ unsafe fn do_ffi_callback(
     params.push(value);
   }
 
-  let recv = v8::undefined(&mut scope);
-  let call_result = func.call(&mut scope, recv.into(), &params);
+  let recv = v8::undefined(scope);
+  let call_result = func.call(scope, recv.into(), &params);
   std::mem::forget(callback);
 
   if call_result.is_none() {
@@ -1592,7 +1704,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, probably UB.
         value
-          .int32_value(&mut scope)
+          .int32_value(scope)
           .expect("Unable to deserialize result parameter.") as i32
       };
       *(result as *mut i32) = value;
@@ -1603,7 +1715,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, probably UB.
         value
-          .number_value(&mut scope)
+          .number_value(scope)
           .expect("Unable to deserialize result parameter.") as f32
       };
       *(result as *mut f32) = value;
@@ -1614,7 +1726,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, probably UB.
         value
-          .number_value(&mut scope)
+          .number_value(scope)
           .expect("Unable to deserialize result parameter.")
       };
       *(result as *mut f64) = value;
@@ -1625,7 +1737,7 @@ unsafe fn do_ffi_callback(
       {
         let byte_offset = value.byte_offset();
         let backing_store = value
-          .buffer(&mut scope)
+          .buffer(scope)
           .expect("Unable to deserialize result parameter.")
           .get_backing_store();
         if byte_offset > 0 {
@@ -1646,7 +1758,7 @@ unsafe fn do_ffi_callback(
         // Fallthrough: Probably someone returned a number but this could
         // also be eg. a string. This is essentially UB.
         value
-          .integer_value(&mut scope)
+          .integer_value(scope)
           .expect("Unable to deserialize result parameter.") as usize
           as *const u8
       };
@@ -1658,7 +1770,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, essentially UB.
         value
-          .int32_value(&mut scope)
+          .int32_value(scope)
           .expect("Unable to deserialize result parameter.") as i8
       };
       *(result as *mut i8) = value;
@@ -1669,7 +1781,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, essentially UB.
         value
-          .uint32_value(&mut scope)
+          .uint32_value(scope)
           .expect("Unable to deserialize result parameter.") as u8
       };
       *(result as *mut u8) = value;
@@ -1680,7 +1792,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, essentially UB.
         value
-          .int32_value(&mut scope)
+          .int32_value(scope)
           .expect("Unable to deserialize result parameter.") as i16
       };
       *(result as *mut i16) = value;
@@ -1691,7 +1803,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, essentially UB.
         value
-          .uint32_value(&mut scope)
+          .uint32_value(scope)
           .expect("Unable to deserialize result parameter.") as u16
       };
       *(result as *mut u16) = value;
@@ -1702,7 +1814,7 @@ unsafe fn do_ffi_callback(
       } else {
         // Fallthrough, essentially UB.
         value
-          .uint32_value(&mut scope)
+          .uint32_value(scope)
           .expect("Unable to deserialize result parameter.")
       };
       *(result as *mut u32) = value;
@@ -1714,7 +1826,7 @@ unsafe fn do_ffi_callback(
         *(result as *mut i64) = value.value();
       } else {
         *(result as *mut i64) = value
-          .integer_value(&mut scope)
+          .integer_value(scope)
           .expect("Unable to deserialize result parameter.")
           as i64;
       }
@@ -1726,7 +1838,7 @@ unsafe fn do_ffi_callback(
         *(result as *mut u64) = value.value() as u64;
       } else {
         *(result as *mut u64) = value
-          .integer_value(&mut scope)
+          .integer_value(scope)
           .expect("Unable to deserialize result parameter.")
           as u64;
       }
