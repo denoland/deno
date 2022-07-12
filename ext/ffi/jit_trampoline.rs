@@ -184,16 +184,16 @@ mod tests {
     assert_eq!(
       codegen(vec![NativeType::ISize, NativeType::U64], NativeType::Void),
       "#include <stdint.h>\n\n\
-      extern void func(int64_t p0, uint64_t p1);\n\n\
-      void func_trampoline(void* recv, int64_t p0, uint64_t p1) {\
+      extern void func(intptr_t p0, uint64_t p1);\n\n\
+      void func_trampoline(void* recv, intptr_t p0, uint64_t p1) {\
         \n  return func(p0, p1);\n\
       }\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::USize, NativeType::USize], NativeType::U32),
       "#include <stdint.h>\n\n\
-      extern uint32_t func(uint64_t p0, uint64_t p1);\n\n\
-      uint32_t func_trampoline(void* recv, uint64_t p0, uint64_t p1) {\
+      extern uint32_t func(uintptr_t p0, uintptr_t p1);\n\n\
+      uint32_t func_trampoline(void* recv, uintptr_t p0, uintptr_t p1) {\
         \n  return func(p0, p1);\n\
       }\n\n"
     );
