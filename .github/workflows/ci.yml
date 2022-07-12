@@ -100,7 +100,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v2
         with:
-          node-version: 17
+          node-version: 18
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
