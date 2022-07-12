@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
@@ -357,17 +358,28 @@ impl StdFileResourceInner {
     &mut self,
     buf: &[u8],
   ) -> Result<usize, AnyError> {
-    let nwritten = self.write(buf)?;
-    if !matches!(self, StdFileResourceInner::File(_)) {
-      // Rust will line buffer and we don't want that behavior
-      // (see https://github.com/denoland/deno/issues/948), so flush.
-      // Although an alternative solution could be to bypass Rust's std by
-      // using the raw fds/handles, it will cause encoding issues on Windows
-      // that we get solved for free by using Rust's stdio wrappers (see
-      // std/src/sys/windows/stdio.rs in Rust's source code).
-      self.flush()?;
+    // Rust will line buffer and we don't want that behavior
+    // (see https://github.com/denoland/deno/issues/948), so flush stdout and stderr.
+    // Although an alternative solution could be to bypass Rust's std by
+    // using the raw fds/handles, it will cause encoding issues on Windows
+    // that we get solved for free by using Rust's stdio wrappers (see
+    // std/src/sys/windows/stdio.rs in Rust's source code).
+    match self {
+      Self::File(file) => Ok(file.lock().write(buf)?),
+      Self::Stdin(_) => bail!("cannot write to stdin."),
+      Self::Stdout => {
+        let mut stdout = std::io::stdout().lock();
+        let nwritten = stdout.write(buf)?;
+        stdout.flush()?;
+        Ok(nwritten)
+      }
+      Self::Stderr => {
+        let mut stderr = std::io::stderr().lock();
+        let nwritten = stderr.write(buf)?;
+        stderr.flush()?;
+        Ok(nwritten)
+      }
     }
-    Ok(nwritten)
   }
 }
 
