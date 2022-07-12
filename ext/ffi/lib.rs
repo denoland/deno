@@ -673,10 +673,8 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::F32 => fast_api::Type::Float32,
       NativeType::F64 => fast_api::Type::Float64,
       NativeType::Void => fast_api::Type::Void,
-      NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize => fast_api::Type::Uint64,
+      NativeType::I64 | NativeType::ISize => fast_api::Type::Int64,
+      NativeType::U64 | NativeType::USize => fast_api::Type::Uint64,
       NativeType::Function | NativeType::Pointer => {
         panic!("Cannot be fast api")
       }
