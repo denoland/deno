@@ -85,7 +85,7 @@ Deno.test(
       const httpConn = Deno.serveHttp(conn);
       const e = await httpConn.nextRequest();
       assert(e);
-      const { request, respondWith } = e;
+      const { request } = e;
       await request.text();
       headers = request.headers;
       httpConn.close();
