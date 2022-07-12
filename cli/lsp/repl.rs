@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use itertools::Itertools;
 use std::collections::HashMap;
 
 use deno_ast::LineAndColumnIndex;
@@ -41,6 +42,8 @@ use super::config::WorkspaceSettings;
 pub struct ReplCompletionItem {
   pub new_text: String,
   pub range: std::ops::Range<usize>,
+  pub sort_text: Option<String>,
+  pub label: String,
 }
 
 pub struct ReplLanguageServer {
@@ -157,9 +160,18 @@ impl ReplLanguageServer {
           CompletionTextEdit::Edit(edit) => Some(ReplCompletionItem {
             new_text: edit.new_text,
             range: lsp_range_to_std_range(&text_info, &edit.range),
+            sort_text: item.sort_text,
+            label: item.label,
           }),
           CompletionTextEdit::InsertAndReplace(_) => None,
         })
+      })
+      .sorted_by_key(|item| {
+        if let Some(sort_text) = &item.sort_text {
+          sort_text.clone()
+        } else {
+          item.label.clone()
+        }
       })
       .filter(|item| {
         // filter the results to only exact matches
