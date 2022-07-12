@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::bail;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -346,7 +345,9 @@ impl StdFileResourceInner {
     // std/src/sys/windows/stdio.rs in Rust's source code).
     match self {
       Self::File(file) => Ok(file.write(buf)?),
-      Self::Stdin(_) => bail!("cannot write to stdin."),
+      Self::Stdin(_) => {
+        Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
+      }
       Self::Stdout(_) => {
         // bypass the file and use std::io::stdout()
         let mut stdout = std::io::stdout().lock();
@@ -372,7 +373,9 @@ impl StdFileResourceInner {
     // so that we can acquire the locks once and do both actions
     match self {
       Self::File(file) => Ok(file.write_all(buf)?),
-      Self::Stdin(_) => bail!("cannot write to stdin."),
+      Self::Stdin(_) => {
+        Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
+      }
       Self::Stdout(_) => {
         // bypass the file and use std::io::stdout()
         let mut stdout = std::io::stdout().lock();
