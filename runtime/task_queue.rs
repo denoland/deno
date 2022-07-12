@@ -1,11 +1,10 @@
+use deno_core::futures::task::AtomicWaker;
+use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use std::collections::LinkedList;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-
-use crate::futures::task::AtomicWaker;
-use crate::futures::Future;
-use crate::parking_lot::Mutex;
 
 #[derive(Default)]
 struct TaskQueueTaskWaker {
@@ -113,10 +112,11 @@ impl Future for TaskQueuePermitAcquire {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::futures;
+  use deno_core::parking_lot::Mutex;
   use std::sync::Arc;
 
   use super::TaskQueue;
-  use crate::parking_lot::Mutex;
 
   #[tokio::test]
   async fn task_queue_runs_one_after_other() {

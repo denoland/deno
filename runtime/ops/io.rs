@@ -13,7 +13,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::TaskQueue;
 use deno_core::ZeroCopyBuf;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -29,6 +28,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
+
+use crate::task_queue::TaskQueue;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -498,7 +499,7 @@ impl StdFileResource {
     resource.inner.with_file(|file| f(file, &mut meta_data))
   }
 
-  pub async fn with_file_async<F, R: Send + 'static>(
+  pub async fn with_file_blocking_task<F, R: Send + 'static>(
     state: Rc<RefCell<OpState>>,
     rid: ResourceId,
     f: F,

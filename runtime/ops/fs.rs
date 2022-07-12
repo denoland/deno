@@ -334,7 +334,7 @@ async fn op_seek_async(
 ) -> Result<u64, AnyError> {
   let (rid, seek_from) = seek_helper(args)?;
 
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.seek(seek_from).map_err(AnyError::from)
   })
   .await
@@ -355,7 +355,7 @@ async fn op_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.sync_data().map_err(AnyError::from)
   })
   .await
@@ -373,7 +373,7 @@ async fn op_fsync_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.sync_all().map_err(AnyError::from)
   })
   .await
@@ -396,7 +396,7 @@ async fn op_fstat_async(
   rid: ResourceId,
 ) -> Result<FsStat, AnyError> {
   let metadata =
-    StdFileResource::with_file_async(state, rid, move |std_file| {
+    StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
       std_file.metadata().map_err(AnyError::from)
     })
     .await?;
@@ -431,7 +431,7 @@ async fn op_flock_async(
   use fs3::FileExt;
   super::check_unstable2(&state, "Deno.flock");
 
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     if exclusive {
       std_file.lock_exclusive()?;
     } else {
@@ -464,7 +464,7 @@ async fn op_funlock_async(
   use fs3::FileExt;
   super::check_unstable2(&state, "Deno.funlock");
 
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.unlock()?;
     Ok(())
   })
@@ -1538,7 +1538,7 @@ async fn op_ftruncate_async(
   let rid = args.rid;
   let len = args.len as u64;
 
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.set_len(len)?;
     Ok(())
   })
@@ -1822,7 +1822,7 @@ async fn op_futime_async(
   let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
   let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
 
-  StdFileResource::with_file_async(state, rid, move |std_file| {
+  StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))?;
     Ok(())
   })

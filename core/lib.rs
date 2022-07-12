@@ -18,7 +18,6 @@ mod ops_metrics;
 mod resources;
 mod runtime;
 mod source_map;
-mod task_queue;
 
 // Re-exports
 pub use anyhow;
@@ -103,8 +102,6 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
 pub use crate::source_map::SourceMapGetter;
-pub use crate::task_queue::TaskQueue;
-pub use crate::task_queue::TaskQueuePermit;
 pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
