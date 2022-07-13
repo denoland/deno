@@ -5,11 +5,12 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::EmitCache;
+use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
 use crate::emit;
-use crate::emit::EmitCache;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
@@ -394,7 +395,7 @@ impl ProcState {
     // should be skipped.
     let reload_exclusions: HashSet<ModuleSpecifier> = {
       let graph_data = self.graph_data.read();
-      graph_data.entries().into_keys().cloned().collect()
+      graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
     {
@@ -426,36 +427,45 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    if self.options.type_check_mode() == TypeCheckMode::None {
-      let options = emit::EmitOptions {
-        ts_config: ts_config_result.ts_config,
-        reload: self.options.reload_flag(),
-        reload_exclusions,
+    // start type checking if necessary
+    let type_checking_task =
+      if self.options.type_check_mode() != TypeCheckMode::None {
+        let maybe_config_specifier = self.options.maybe_config_file_specifier();
+        let roots = roots.clone();
+        let options = emit::CheckOptions {
+          type_check_mode: self.options.type_check_mode(),
+          debug: self.options.log_level() == Some(log::Level::Debug),
+          maybe_config_specifier,
+          ts_config: ts_config_result.ts_config.clone(),
+          log_checks: true,
+          reload: self.options.reload_flag()
+            && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
+        };
+        // todo(THIS PR): don't use a cache on failure
+        let check_cache =
+          TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
+        let graph_data = self.graph_data.clone();
+        Some(tokio::task::spawn_blocking(move || {
+          emit::check(&roots, graph_data, &check_cache, options)
+        }))
+      } else {
+        None
       };
-      let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
-      log::debug!("{}", emit_result.stats);
-    } else {
-      let maybe_config_specifier = self.options.maybe_config_file_specifier();
-      let options = emit::CheckOptions {
-        type_check_mode: self.options.type_check_mode(),
-        debug: self.options.log_level() == Some(log::Level::Debug),
-        emit_with_diagnostics: false,
-        maybe_config_specifier,
-        ts_config: ts_config_result.ts_config,
-        log_checks: true,
-        reload: self.options.reload_flag(),
-        reload_exclusions,
-      };
-      let emit_result = emit::check_and_maybe_emit(
-        &roots,
-        self.graph_data.clone(),
-        &self.dir.gen_cache,
-        options,
-      )?;
-      if !emit_result.diagnostics.is_empty() {
-        return Err(anyhow!(emit_result.diagnostics));
+
+    let options = emit::EmitOptions {
+      ts_config: ts_config_result.ts_config,
+      reload: self.options.reload_flag(),
+      reload_exclusions,
+    };
+    let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
+    log::debug!("{}", emit_result.stats);
+
+    if let Some(type_checking_task) = type_checking_task {
+      let type_check_result = type_checking_task.await??;
+      if !type_check_result.diagnostics.is_empty() {
+        return Err(anyhow!(type_check_result.diagnostics));
       }
-      log::debug!("{}", emit_result.stats);
+      log::debug!("{}", type_check_result.stats);
     }
 
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -663,22 +673,22 @@ impl SourceMapGetter for ProcState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      self.file_fetcher.get_source(&specifier).map(|out| {
-        // Do NOT use .lines(): it skips the terminating empty line.
-        // (due to internally using_terminator() instead of .split())
-        let lines: Vec<&str> = out.source.split('\n').collect();
-        if line_number >= lines.len() {
-          format!(
-            "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-            crate::colors::yellow("Warning"), line_number + 1,
-          )
-        } else {
-          lines[line_number].to_string()
-        }
-      })
+    let graph_data = self.graph_data.read();
+    let specifier = graph_data.follow_redirect(&resolve_url(file_name).ok()?);
+    let code = match graph_data.get(&specifier) {
+      Some(ModuleEntry::Module { code, .. }) => code,
+      _ => return None,
+    };
+    // Do NOT use .lines(): it skips the terminating empty line.
+    // (due to internally using_terminator() instead of .split())
+    let lines: Vec<&str> = code.split('\n').collect();
+    if line_number >= lines.len() {
+      Some(format!(
+        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
+        crate::colors::yellow("Warning"), line_number + 1,
+      ))
     } else {
-      None
+      Some(lines[line_number].to_string())
     }
   }
 }

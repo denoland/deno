@@ -263,6 +263,38 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { write: true } },
+  async function writeSyncWhileAsyncFails() {
+    const tempDir = await Deno.makeTempDir();
+    try {
+      const filePath = tempDir + "/file.txt";
+      const file = await Deno.open(filePath, { create: true, write: true });
+      const rid = file.rid;
+      try {
+        // set a file lock so the async write will be held up
+        await Deno.flock(rid, true);
+        let p: Promise<number> | undefined;
+        try {
+          p = Deno.write(rid, new TextEncoder().encode("test"));
+          assertThrows(
+            () => Deno.writeSync(rid, new TextEncoder().encode("test")),
+            Error,
+            "Resource is unavailable because it is in use by a promise",
+          );
+        } finally {
+          await Deno.funlock(rid);
+        }
+        await p;
+      } finally {
+        file.close();
+      }
+    } finally {
+      Deno.removeSync(tempDir, { recursive: true });
+    }
+  },
+);
+
 Deno.test(async function openOptions() {
   const filename = "cli/tests/testdata/fixture.json";
   await assertRejects(

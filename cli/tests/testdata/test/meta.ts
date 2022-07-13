@@ -1,2 +1,7 @@
-console.log("import.meta.main: %s", import.meta.main);
-console.log("import.meta.url: %s", import.meta.url);
+const main = import.meta.main;
+const url = import.meta.url;
+
+Deno.test("check values", () => {
+  console.log("import.meta.main: %s", main);
+  console.log("import.meta.url: %s", url);
+});

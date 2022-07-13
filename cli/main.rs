@@ -9,7 +9,6 @@ mod compat;
 mod deno_dir;
 mod diagnostics;
 mod diff;
-mod disk_cache;
 mod display;
 mod emit;
 mod errors;
@@ -59,6 +58,7 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
+use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
@@ -90,7 +90,7 @@ use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::PreloadModuleCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -181,7 +181,6 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
-      startup_snapshot: Some(deno_snapshots::cli_snapshot()),
     };
 
     WebWorker::bootstrap_from_options(
@@ -263,7 +262,6 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    startup_snapshot: Some(deno_snapshots::cli_snapshot()),
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)
@@ -663,19 +661,18 @@ async fn create_graph_and_maybe_check(
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let check_result = emit::check_and_maybe_emit(
+    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
+    let check_result = emit::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &ps.dir.gen_cache,
+      &cache,
       emit::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
-        emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
-        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);
@@ -1394,7 +1391,7 @@ pub fn main() {
     exit_code
   };
 
-  let exit_code = unwrap_or_exit(run_basic(exit_code));
+  let exit_code = unwrap_or_exit(run_local(exit_code));
 
   std::process::exit(exit_code);
 }

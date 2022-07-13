@@ -5,7 +5,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
-use crate::tokio_util::run_basic;
+use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -335,7 +335,6 @@ pub struct WebWorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
-  pub startup_snapshot: Option<deno_core::Snapshot>,
 }
 
 impl WebWorker {
@@ -428,8 +427,6 @@ impl WebWorker {
       ops::tty::init(),
       deno_http::init(),
       ops::http::init(),
-      // Runtime JS
-      js::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -439,7 +436,7 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: options.startup_snapshot.take(),
+      startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -736,5 +733,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_basic(fut)
+  run_local(fut)
 }

@@ -331,9 +331,7 @@ declare interface Crypto {
       | Uint32Array
       | Uint8ClampedArray
       | BigInt64Array
-      | BigUint64Array
-      | DataView
-      | null,
+      | BigUint64Array,
   >(
     array: T,
   ): T;
