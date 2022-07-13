@@ -67,7 +67,7 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleCodeSource, AnyError> {
     let graph_data = self.ps.graph_data.read();
-    let found_url = graph_data.follow_redirect(&specifier);
+    let found_url = graph_data.follow_redirect(specifier);
     match graph_data.get(&found_url) {
       Some(ModuleEntry::Module {
         code,
@@ -81,7 +81,7 @@ impl CliModuleLoader {
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
+            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
             {
               source.to_owned()
             } else {
@@ -98,7 +98,7 @@ impl CliModuleLoader {
             let parsed_source = maybe_parsed_source.as_ref().unwrap(); // should always be set
             emit_parsed_source(
               &self.emit_cache,
-              &specifier,
+              specifier,
               parsed_source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
@@ -252,7 +252,7 @@ impl SourceMapGetter for CliModuleLoader {
 
 fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
   static PREFIX: &str = "//# sourceMappingURL=data:application/json;base64,";
-  let last_line = code.rsplitn(2, |u| u == '\n').next().unwrap();
+  let last_line = code.rsplit(|u| u == '\n').next().unwrap();
   if last_line.starts_with(PREFIX) {
     let input = last_line.split_at(PREFIX.len()).1;
     let decoded_map = base64::decode(input)

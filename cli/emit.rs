@@ -261,7 +261,7 @@ pub fn emit_parsed_source(
       return Ok(emit_data.text);
     }
   }
-  let transpiled_source = parsed_source.transpile(&emit_options)?;
+  let transpiled_source = parsed_source.transpile(emit_options)?;
   let cache_data = SpecifierEmitCacheData {
     source_hash,
     text: transpiled_source.text,
