@@ -119,7 +119,7 @@ pub enum TsConfigType {
   Bundle,
   /// Return a configuration to use tsc to type check and optionally emit. This
   /// is independent of either bundling or just emitting via swc
-  Check { lib: TsTypeLib, tsc_emit: bool },
+  Check { lib: TsTypeLib },
   /// Return a configuration to use swc to emit single module files.
   Emit,
 }
@@ -148,44 +148,33 @@ pub fn get_ts_config_for_emit(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     })),
-    TsConfigType::Check { tsc_emit, lib } => {
-      let mut ts_config = TsConfig::new(json!({
-        "allowJs": true,
-        "allowSyntheticDefaultImports": true,
-        "checkJs": false,
-        "experimentalDecorators": true,
-        "incremental": true,
-        "jsx": "react",
-        "jsxFactory": "React.createElement",
-        "jsxFragmentFactory": "React.Fragment",
-        "isolatedModules": true,
-        "lib": lib,
-        "module": "esnext",
-        "resolveJsonModule": true,
-        "sourceMap": false,
-        "strict": true,
-        "target": "esnext",
-        "tsBuildInfoFile": "deno:///.tsbuildinfo",
-        "useDefineForClassFields": true,
-        // TODO(@kitsonk) remove for Deno 2.0
-        "useUnknownInCatchVariables": false,
-      }));
-      if tsc_emit {
-        ts_config.merge(&json!({
-          "emitDecoratorMetadata": false,
-          "importsNotUsedAsValues": "remove",
-          "inlineSourceMap": true,
-          "inlineSources": true,
-          "outDir": "deno://",
-          "removeComments": true,
-        }));
-      } else {
-        ts_config.merge(&json!({
-          "noEmit": true,
-        }));
-      }
-      ts_config
-    }
+    TsConfigType::Check { lib } => TsConfig::new(json!({
+      "allowJs": true,
+      "allowSyntheticDefaultImports": true,
+      "checkJs": false,
+      "emitDecoratorMetadata": false,
+      "experimentalDecorators": true,
+      "incremental": true,
+      "jsx": "react",
+      "jsxFactory": "React.createElement",
+      "jsxFragmentFactory": "React.Fragment",
+      "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
+      "isolatedModules": true,
+      "lib": lib,
+      "module": "esnext",
+      "moduleDetection": "force",
+      "noEmit": true,
+      "resolveJsonModule": true,
+      "sourceMap": false,
+      "strict": true,
+      "target": "esnext",
+      "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 2.0
+      "useUnknownInCatchVariables": false,
+    })),
     TsConfigType::Emit => TsConfig::new(json!({
       "checkJs": false,
       "emitDecoratorMetadata": false,
@@ -201,9 +190,6 @@ pub fn get_ts_config_for_emit(
   };
   let maybe_ignored_options =
     ts_config.merge_tsconfig_from_config_file(maybe_config_file)?;
-  ts_config.merge(&json!({
-    "moduleDetection": "force",
-  }));
   Ok(TsConfigWithIgnoredOptions {
     ts_config,
     maybe_ignored_options,
