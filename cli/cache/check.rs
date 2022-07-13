@@ -20,11 +20,22 @@ impl TypeCheckCache {
     match Self::try_new(db_file_path) {
       Ok(cache) => cache,
       Err(err) => {
-        log::debug!("Creating the type checking cache failed.\n{:#}", err);
-        // Maybe the cache file is corrupt. Attempt to remove
-        // the cache file for next time
-        let _ = std::fs::remove_file(db_file_path);
-        Self(None)
+        log::debug!("Creating type checking cache failed.\n{:#}", err);
+        // Maybe the cache file is corrupt. Attempt to remove the cache file
+        // then attempt to recreate again. Otherwise, use null object pattern.
+        match std::fs::remove_file(db_file_path) {
+          Ok(_) => match Self::try_new(db_file_path) {
+            Ok(cache) => cache,
+            Err(err) => {
+              log::debug!(
+                "Creating type checking cache failed twice.\n{:#}",
+                err
+              );
+              Self(None)
+            }
+          },
+          Err(_) => Self(None),
+        }
       }
     }
   }
