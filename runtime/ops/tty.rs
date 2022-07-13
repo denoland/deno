@@ -82,82 +82,85 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-
     if cbreak {
       return Err(deno_core::error::not_supported());
     }
 
-    let std_file = resource.std_file();
-    let std_file = std_file.lock(); // hold the lock
-    let handle = std_file.as_raw_handle();
+    StdFileResource::with_file(state, rid, move |std_file| {
+      let handle = std_file.as_raw_handle();
 
-    if handle == handleapi::INVALID_HANDLE_VALUE {
-      return Err(Error::last_os_error().into());
-    } else if handle.is_null() {
-      return Err(custom_error("ReferenceError", "null handle"));
-    }
-    let mut original_mode: DWORD = 0;
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
-      return Err(Error::last_os_error().into());
-    }
-    let new_mode = if is_raw {
-      original_mode & !RAW_MODE_MASK
-    } else {
-      original_mode | RAW_MODE_MASK
-    };
-    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-      return Err(Error::last_os_error().into());
-    }
+      if handle == handleapi::INVALID_HANDLE_VALUE {
+        return Err(Error::last_os_error().into());
+      } else if handle.is_null() {
+        return Err(custom_error("ReferenceError", "null handle"));
+      }
+      let mut original_mode: DWORD = 0;
+      if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
+        == FALSE
+      {
+        return Err(Error::last_os_error().into());
+      }
+      let new_mode = if is_raw {
+        original_mode & !RAW_MODE_MASK
+      } else {
+        original_mode | RAW_MODE_MASK
+      };
+      if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+        return Err(Error::last_os_error().into());
+      }
 
-    Ok(())
+      Ok(())
+    })
   }
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource = state.resource_table.get::<StdFileResource>(rid)?;
-    let std_file = resource.std_file();
-    let raw_fd = std_file.lock().as_raw_fd();
-    let mut meta_data = resource.metadata_mut();
-    let maybe_tty_mode = &mut meta_data.tty.mode;
+    StdFileResource::with_file_and_metadata(
+      state,
+      rid,
+      move |std_file, meta_data| {
+        let raw_fd = std_file.as_raw_fd();
+        let maybe_tty_mode = &mut meta_data.tty.mode;
 
-    if is_raw {
-      if maybe_tty_mode.is_none() {
-        // Save original mode.
-        let original_mode = termios::tcgetattr(raw_fd)?;
-        maybe_tty_mode.replace(original_mode);
-      }
+        if is_raw {
+          if maybe_tty_mode.is_none() {
+            // Save original mode.
+            let original_mode = termios::tcgetattr(raw_fd)?;
+            maybe_tty_mode.replace(original_mode);
+          }
 
-      let mut raw = maybe_tty_mode.clone().unwrap();
+          let mut raw = maybe_tty_mode.clone().unwrap();
 
-      raw.input_flags &= !(termios::InputFlags::BRKINT
-        | termios::InputFlags::ICRNL
-        | termios::InputFlags::INPCK
-        | termios::InputFlags::ISTRIP
-        | termios::InputFlags::IXON);
+          raw.input_flags &= !(termios::InputFlags::BRKINT
+            | termios::InputFlags::ICRNL
+            | termios::InputFlags::INPCK
+            | termios::InputFlags::ISTRIP
+            | termios::InputFlags::IXON);
 
-      raw.control_flags |= termios::ControlFlags::CS8;
+          raw.control_flags |= termios::ControlFlags::CS8;
 
-      raw.local_flags &= !(termios::LocalFlags::ECHO
-        | termios::LocalFlags::ICANON
-        | termios::LocalFlags::IEXTEN);
-      if !cbreak {
-        raw.local_flags &= !(termios::LocalFlags::ISIG);
-      }
-      raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
-      raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
-      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-    } else {
-      // Try restore saved mode.
-      if let Some(mode) = maybe_tty_mode.take() {
-        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
-      }
-    }
+          raw.local_flags &= !(termios::LocalFlags::ECHO
+            | termios::LocalFlags::ICANON
+            | termios::LocalFlags::IEXTEN);
+          if !cbreak {
+            raw.local_flags &= !(termios::LocalFlags::ISIG);
+          }
+          raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] =
+            1;
+          raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] =
+            0;
+          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+        } else {
+          // Try restore saved mode.
+          if let Some(mode) = maybe_tty_mode.take() {
+            termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+          }
+        }
 
-    Ok(())
+        Ok(())
+      },
+    )
   }
 }
 
