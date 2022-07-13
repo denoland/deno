@@ -3,7 +3,6 @@
 use std::path::Path;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
@@ -14,21 +13,45 @@ use super::common::run_sqlite_pragma;
 ///
 /// This simply stores a hash of the inputs of each successful type check
 /// and only clears them out when changing CLI versions.
-pub struct TypeCheckCache {
-  conn: Connection,
-}
+pub struct TypeCheckCache(Option<Connection>);
 
 impl TypeCheckCache {
-  pub fn new(db_file_path: &Path) -> Result<Self, AnyError> {
-    let conn = Connection::open(db_file_path).with_context(|| {
-      format!(
-        concat!(
-          "Error opening type checking cache at {} -- ",
-          "Perhaps it's corrupt. Maybe try deleting it."
-        ),
-        db_file_path.display()
-      )
-    })?;
+  pub fn new(db_file_path: &Path) -> Self {
+    match Self::try_new(db_file_path) {
+      Ok(cache) => cache,
+      Err(err) => {
+        log::debug!(
+          concat!(
+            "Failed creating internal type checking cache. ",
+            "Recreating...\n\nError details:\n{:#}",
+          ),
+          err
+        );
+        // Maybe the cache file is corrupt. Attempt to remove the cache file
+        // then attempt to recreate again. Otherwise, use null object pattern.
+        match std::fs::remove_file(db_file_path) {
+          Ok(_) => match Self::try_new(db_file_path) {
+            Ok(cache) => cache,
+            Err(err) => {
+              log::debug!(
+                concat!(
+                  "Unable to create internal cache for type checking. ",
+                  "This will reduce the performance of type checking.\n\n",
+                  "Error details:\n{:#}",
+                ),
+                err
+              );
+              Self(None)
+            }
+          },
+          Err(_) => Self(None),
+        }
+      }
+    }
+  }
+
+  fn try_new(db_file_path: &Path) -> Result<Self, AnyError> {
+    let conn = Connection::open(db_file_path)?;
     Self::from_connection(conn, crate::version::deno())
   }
 
@@ -39,7 +62,7 @@ impl TypeCheckCache {
     run_sqlite_pragma(&conn)?;
     create_tables(&conn, cli_version)?;
 
-    Ok(Self { conn })
+    Ok(Self(Some(conn)))
   }
 
   pub fn has_check_hash(&self, hash: u64) -> bool {
@@ -58,8 +81,12 @@ impl TypeCheckCache {
   }
 
   fn hash_check_hash_result(&self, hash: u64) -> Result<bool, AnyError> {
+    let conn = match &self.0 {
+      Some(conn) => conn,
+      None => return Ok(false),
+    };
     let query = "SELECT * FROM checkcache WHERE check_hash=?1 LIMIT 1";
-    let mut stmt = self.conn.prepare_cached(query)?;
+    let mut stmt = conn.prepare_cached(query)?;
     Ok(stmt.exists(params![hash.to_string()])?)
   }
 
@@ -74,19 +101,26 @@ impl TypeCheckCache {
   }
 
   fn add_check_hash_result(&self, check_hash: u64) -> Result<(), AnyError> {
+    let conn = match &self.0 {
+      Some(conn) => conn,
+      None => return Ok(()),
+    };
     let sql = "
     INSERT OR REPLACE INTO
       checkcache (check_hash)
     VALUES
       (?1)";
-    let mut stmt = self.conn.prepare_cached(sql)?;
+    let mut stmt = conn.prepare_cached(sql)?;
     stmt.execute(params![&check_hash.to_string(),])?;
     Ok(())
   }
 
   pub fn get_tsbuildinfo(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let mut stmt = self
-      .conn
+    let conn = match &self.0 {
+      Some(conn) => conn,
+      None => return None,
+    };
+    let mut stmt = conn
       .prepare_cached("SELECT text FROM tsbuildinfo WHERE specifier=?1 LIMIT 1")
       .ok()?;
     let mut rows = stmt.query(params![specifier.to_string()]).ok()?;
@@ -111,7 +145,11 @@ impl TypeCheckCache {
     specifier: &ModuleSpecifier,
     text: &str,
   ) -> Result<(), AnyError> {
-    let mut stmt = self.conn.prepare_cached(
+    let conn = match &self.0 {
+      Some(conn) => conn,
+      None => return Ok(()),
+    };
+    let mut stmt = conn.prepare_cached(
       "INSERT OR REPLACE INTO tsbuildinfo (specifier, text) VALUES (?1, ?2)",
     )?;
     stmt.execute(params![specifier.to_string(), text])?;
@@ -185,7 +223,7 @@ mod test {
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
 
     // try changing the cli version (should clear)
-    let conn = cache.conn;
+    let conn = cache.0.unwrap();
     let cache =
       TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
     assert!(!cache.has_check_hash(1));
@@ -196,7 +234,7 @@ mod test {
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
 
     // recreating the cache should not remove the data because the CLI version and state hash is the same
-    let conn = cache.conn;
+    let conn = cache.0.unwrap();
     let cache =
       TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
     assert!(cache.has_check_hash(1));

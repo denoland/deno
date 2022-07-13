@@ -104,9 +104,16 @@ fn to_narrow_lsp_range(
       column_index: range.end.character,
     })
     .as_byte_index(text_info.range().start);
+  let start_byte_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
+      line_index: range.start.line,
+      column_index: range.start.character,
+    })
+    .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
+  let is_empty = end_byte_index - 1 == start_byte_index;
   let has_trailing_quote =
-    matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
+    !is_empty && matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
