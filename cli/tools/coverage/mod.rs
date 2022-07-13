@@ -5,7 +5,6 @@ use crate::args::Flags;
 use crate::cache::EmitCache;
 use crate::colors;
 use crate::fs_util::collect_files;
-use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 
@@ -18,7 +17,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::SourceMapGetter;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -606,7 +604,7 @@ pub async fn cover_files(
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let module_loader = CliModuleLoader::new(ps.clone());
+  let emit_cache = EmitCache::new(&ps.dir.emit_cache_db_file_path());
 
   let script_coverages =
     collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
@@ -667,15 +665,39 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let transpiled_source =
-      module_loader.load_prepared_module(&file.specifier)?.code;
+    let (transpiled_source, maybe_source_map) = match file.media_type {
+      MediaType::JavaScript
+      | MediaType::Unknown
+      | MediaType::Cjs
+      | MediaType::Mjs
+      | MediaType::Json => (file.source.as_ref().to_string(), None),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => ("".to_string(), None),
+      MediaType::TypeScript
+      | MediaType::Jsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx => {
+        match emit_cache.get_emit_data(&file.specifier) {
+          Some(data) => (data.text, data.map),
+          None => {
+            return Err(anyhow!(
+              "Missing transpiled source code for: \"{}\".
+              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+              file.specifier,
+            ))
+          }
+        }
+      }
+      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
+        unreachable!()
+      }
+    };
     let original_source = &file.source;
-    let maybe_source_map = module_loader.get_source_map(&script_coverage.url);
 
     let coverage_report = generate_coverage_report(
       &script_coverage,
       &transpiled_source,
-      &maybe_source_map,
+      &maybe_source_map.map(|t| t.into_bytes()),
       &out_mode,
     );
 

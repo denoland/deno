@@ -3,10 +3,7 @@
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
-use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -22,39 +19,11 @@ mod emit;
 mod incremental;
 
 pub use check::TypeCheckCache;
+pub use common::FastInsecureHash;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use emit::SpecifierEmitCacheData;
 pub use incremental::IncrementalCache;
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct EmitMetadata {
-  pub version_hash: String,
-}
-
-pub enum CacheType {
-  Emit,
-  SourceMap,
-  Version,
-}
-
-/// A trait which provides a concise implementation to getting and setting
-/// values in a cache.
-pub trait Cacher {
-  /// Get a value from the cache.
-  fn get(
-    &self,
-    cache_type: CacheType,
-    specifier: &ModuleSpecifier,
-  ) -> Option<String>;
-  /// Set a value in the cache.
-  fn set(
-    &self,
-    cache_type: CacheType,
-    specifier: &ModuleSpecifier,
-    value: String,
-  ) -> Result<(), AnyError>;
-}
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.

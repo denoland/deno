@@ -10,6 +10,7 @@ use crate::args::EmitConfigOptions;
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::EmitCache;
+use crate::cache::FastInsecureHash;
 use crate::cache::SpecifierEmitCacheData;
 use crate::cache::TypeCheckCache;
 use crate::colors;
@@ -115,8 +116,8 @@ pub enum TsConfigType {
   /// Return a configuration for bundling, using swc to emit the bundle. This is
   /// independent of type checking.
   Bundle,
-  /// Return a configuration to use tsc to type check and optionally emit. This
-  /// is independent of either bundling or just emitting via swc
+  /// Return a configuration to use tsc to type check. This
+  /// is independent of either bundling or emitting via swc.
   Check { lib: TsTypeLib },
   /// Return a configuration to use swc to emit single module files.
   Emit,
@@ -248,12 +249,13 @@ pub fn emit_parsed_source(
   specifier: &ModuleSpecifier,
   parsed_source: &ParsedSource,
   emit_options: &deno_ast::EmitOptions,
-  emit_config_hash: &str,
+  emit_config_hash: u64,
 ) -> Result<String, AnyError> {
-  let source_hash = get_source_hash_for_emit(
-    parsed_source.text_info().text_str(),
-    emit_config_hash,
-  );
+  let source_hash = FastInsecureHash::new()
+    .write_str(parsed_source.text_info().text_str())
+    .write_u64(emit_config_hash)
+    .finish();
+
   if let Some(emit_data) = cache.get_emit_data(specifier) {
     if emit_data.source_hash == source_hash {
       return Ok(emit_data.text);
@@ -267,40 +269,6 @@ pub fn emit_parsed_source(
   };
   cache.set_emit_data(specifier, &cache_data);
   Ok(cache_data.text)
-}
-
-/// A hashing function that takes the source code, version and optionally a
-/// user provided config and generates a string hash which can be stored to
-/// determine if the cached emit is valid or not.
-fn get_source_hash_for_emit(source_text: &str, emit_config_hash: &str) -> u64 {
-  // twox hash is insecure, but fast so it works for our purposes
-  use std::hash::Hasher;
-  use twox_hash::XxHash64;
-
-  let mut hasher = XxHash64::default();
-  hasher.write(source_text.as_bytes());
-  hasher.write(emit_config_hash.as_bytes());
-  hasher.finish()
-}
-
-/// Determine if a given module kind and media type is emittable or not.
-pub fn is_emittable(
-  kind: &ModuleKind,
-  media_type: &MediaType,
-  include_js: bool,
-) -> bool {
-  if matches!(kind, ModuleKind::Synthetic) {
-    return false;
-  }
-  match &media_type {
-    MediaType::TypeScript
-    | MediaType::Mts
-    | MediaType::Cts
-    | MediaType::Tsx
-    | MediaType::Jsx => true,
-    MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => include_js,
-    _ => false,
-  }
 }
 
 /// Options for performing a check of a module graph. Note that the decision to

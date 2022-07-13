@@ -5,6 +5,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::FastInsecureHash;
 use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -22,7 +23,6 @@ use crate::lockfile::Lockfile;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
@@ -30,14 +30,10 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
-use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
-use deno_core::ModuleType;
 use deno_core::SharedArrayBufferStore;
-use deno_core::SourceMapGetter;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -69,6 +65,8 @@ pub struct Inner {
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
+  pub emit_options: deno_ast::EmitOptions,
+  pub emit_options_hash: u64,
   pub graph_data: Arc<RwLock<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
@@ -210,10 +208,21 @@ impl ProcState {
         file_paths: Arc::new(Mutex::new(vec![])),
       });
 
+    let ts_config_result =
+      cli_options.resolve_ts_config_for_emit(TsConfigType::Emit)?;
+    if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
+      log::warn!("{}", ignored_options);
+    }
+
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
       options: cli_options,
+      emit_options_hash: FastInsecureHash::new()
+        // todo: use hash of emit options instead as it's more specific
+        .write(&ts_config_result.ts_config.as_bytes())
+        .finish(),
+      emit_options: ts_config_result.ts_config.into(),
       file_fetcher,
       graph_data: Default::default(),
       lockfile,
@@ -409,19 +418,6 @@ impl ProcState {
         .unwrap()?;
     }
 
-    let config_type = if self.options.type_check_mode() == TypeCheckMode::None {
-      TsConfigType::Emit
-    } else {
-      TsConfigType::Check { lib }
-    };
-
-    let ts_config_result =
-      self.options.resolve_ts_config_for_emit(config_type)?;
-
-    if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-      log::warn!("{}", ignored_options);
-    }
-
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
@@ -430,7 +426,10 @@ impl ProcState {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
-        ts_config: ts_config_result.ts_config,
+        ts_config: self
+          .options
+          .resolve_ts_config_for_emit(TsConfigType::Check { lib })?
+          .ts_config,
         log_checks: true,
         reload: self.options.reload_flag()
           && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),

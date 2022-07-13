@@ -39,8 +39,6 @@ pub struct CliModuleLoader {
   pub ps: ProcState,
   // the emit cache can only be used on one thread due to sqlite constraints
   emit_cache: EmitCache,
-  emit_options: deno_ast::EmitOptions,
-  emit_options_hash: String,
 }
 
 impl CliModuleLoader {
@@ -103,7 +101,7 @@ impl CliModuleLoader {
               &specifier,
               parsed_source,
               &self.ps.emit_options,
-              &self.ps.emit_options_hash,
+              self.ps.emit_options_hash,
             )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
