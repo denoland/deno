@@ -185,6 +185,11 @@ fn pty_complete_imports() {
     let output = console.read_all_output();
     assert_contains!(output, "Hello World");
   });
+
+  // does not panic when tabbing when empty
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("import '\t");
+  });
 }
 
 #[test]

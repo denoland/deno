@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::disk_cache::DiskCache;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
@@ -16,6 +15,18 @@ use deno_graph::source::Loader;
 use deno_runtime::permissions::Permissions;
 use std::sync::Arc;
 
+mod check;
+mod common;
+mod disk_cache;
+mod emit;
+mod incremental;
+
+pub use check::TypeCheckCache;
+pub use disk_cache::DiskCache;
+pub use emit::EmitCache;
+pub use emit::SpecifierEmitCacheData;
+pub use incremental::IncrementalCache;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EmitMetadata {
   pub version_hash: String,
@@ -24,7 +35,6 @@ pub struct EmitMetadata {
 pub enum CacheType {
   Emit,
   SourceMap,
-  TypeScriptBuildInfo,
   Version,
 }
 
