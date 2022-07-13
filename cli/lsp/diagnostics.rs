@@ -869,6 +869,9 @@ fn diagnose_resolved(
   }
 }
 
+/// Generate diagnostics related to a dependency. The dependency is analyzed to
+/// determine if it can be remapped to the active import map as well as surface
+/// any diagnostics related to the resolved code or type dependency.
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
@@ -959,11 +962,13 @@ mod tests {
   use crate::lsp::language_server::StateSnapshot;
   use std::path::Path;
   use std::path::PathBuf;
+  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_state_snapshot(
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
+    maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
     let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
@@ -976,8 +981,17 @@ mod tests {
         (*source).into(),
       );
     }
+    let maybe_import_map = maybe_import_map.map(|(base, json_string)| {
+      let base_url = ModuleSpecifier::parse(base).unwrap();
+      let result = import_map::parse_from_json(&base_url, json_string).unwrap();
+      if !result.diagnostics.is_empty() {
+        panic!("unexpected import map diagnostics");
+      }
+      Arc::new(result.import_map)
+    });
     StateSnapshot {
       documents,
+      maybe_import_map,
       ..Default::default()
     }
   }
@@ -999,9 +1013,11 @@ mod tests {
   fn setup(
     temp_dir: &TempDir,
     sources: &[(&str, &str, i32, LanguageId)],
+    maybe_import_map: Option<(&str, &str)>,
   ) -> (StateSnapshot, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let state_snapshot = mock_state_snapshot(sources, &location);
+    let state_snapshot =
+      mock_state_snapshot(sources, &location, maybe_import_map);
     (state_snapshot, location)
   }
 
@@ -1020,6 +1036,7 @@ let c: number = "a";
         1,
         LanguageId::TypeScript,
       )],
+      None,
     );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
@@ -1114,6 +1131,7 @@ let c: number = "a";
         1,
         LanguageId::TypeScript,
       )],
+      None,
     );
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
@@ -1127,5 +1145,131 @@ let c: number = "a";
         .unwrap();
     // should be none because it's cancelled
     assert_eq!(diagnostics.len(), 0);
+  }
+
+  #[tokio::test]
+  async fn test_deno_diagnostics_with_import_map() {
+    let temp_dir = TempDir::new();
+    let (snapshot, _) = setup(
+      &temp_dir,
+      &[
+        ("file:///std/testing/asserts.ts", "export function assert() {}", 1, LanguageId::TypeScript),
+        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\n", 1, LanguageId::TypeScript),
+      ],
+      Some(("file:///a/import-map.json", r#"{
+        "imports": {
+          "/~/std/": "../std/"
+        }
+      }"#)),
+    );
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          "file:///std/testing/asserts.ts",
+          1,
+          []
+        ],
+        [
+          "file:///a/file.ts",
+          1,
+          [
+            {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 23
+                },
+                "end": {
+                  "line": 0,
+                  "character": 50
+                }
+              },
+              "severity": 4,
+              "code": "import-map-remap",
+              "source": "deno",
+              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+              "data": {
+                "from": "../std/testing/asserts.ts",
+                "to": "/~/std/testing/asserts.ts"
+              }
+            }
+          ]
+        ]
+      ])
+    );
+  }
+
+  #[test]
+  fn test_get_code_action_import_map_remap() {
+    let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
+    let result = DenoDiagnostic::get_code_action(&specifier, &lsp::Diagnostic {
+      range: lsp::Range {
+        start: lsp::Position { line: 0, character: 23 },
+        end: lsp::Position { line: 0, character: 50 },
+      },
+      severity: Some(lsp::DiagnosticSeverity::HINT),
+      code: Some(lsp::NumberOrString::String("import-map-remap".to_string())),
+      source: Some("deno".to_string()),
+      message: "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.".to_string(),
+      data: Some(json!({
+        "from": "../std/testing/asserts.ts",
+        "to": "/~/std/testing/asserts.ts"
+      })),
+      ..Default::default()
+    });
+    assert!(result.is_ok());
+    let actual = result.unwrap();
+    assert_eq!(
+      json!(actual),
+      json!({
+        "title": "Update \"../std/testing/asserts.ts\" to \"/~/std/testing/asserts.ts\" to use import map.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 23
+              },
+              "end": {
+                "line": 0,
+                "character": 50
+              }
+            },
+            "severity": 4,
+            "code": "import-map-remap",
+            "source": "deno",
+            "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+            "data": {
+              "from": "../std/testing/asserts.ts",
+              "to": "/~/std/testing/asserts.ts"
+            }
+          }
+        ],
+        "edit": {
+          "changes": {
+            "file:///a/file.ts": [
+              {
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 50
+                  }
+                },
+                "newText": "\"/~/std/testing/asserts.ts\""
+              }
+            ]
+          }
+        }
+      })
+    );
   }
 }
