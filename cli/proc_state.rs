@@ -443,7 +443,7 @@ impl ProcState {
         };
         // todo(THIS PR): don't use a cache on failure
         let check_cache =
-          TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path())?;
+          TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
         let graph_data = self.graph_data.clone();
         Some(tokio::task::spawn_blocking(move || {
           emit::check(&roots, graph_data, &check_cache, options)

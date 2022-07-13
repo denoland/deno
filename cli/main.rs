@@ -661,9 +661,7 @@ async fn create_graph_and_maybe_check(
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    // todo: don't use anything on failure
-    let cache =
-      TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path())?;
+    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
     let check_result = emit::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
