@@ -5,6 +5,7 @@ use crate::args::Flags;
 use crate::cache::EmitCache;
 use crate::colors;
 use crate::fs_util::collect_files;
+use crate::module_loader::CliModuleLoader;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
 
@@ -605,6 +606,7 @@ pub async fn cover_files(
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
+  let module_loader = CliModuleLoader::new(ps.clone());
 
   let script_coverages =
     collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
@@ -665,36 +667,10 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let transpiled_source = match file.media_type {
-      MediaType::JavaScript
-      | MediaType::Unknown
-      | MediaType::Cjs
-      | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().to_string(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
-      MediaType::TypeScript
-      | MediaType::Jsx
-      | MediaType::Mts
-      | MediaType::Cts
-      | MediaType::Tsx => {
-        match ps.dir.gen_cache.get_emit_text(&file.specifier) {
-          Some(source) => source,
-          None => {
-            return Err(anyhow!(
-              "Missing transpiled source code for: \"{}\".
-              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-              file.specifier,
-            ))
-          }
-        }
-      }
-      MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
-        unreachable!()
-      }
-    };
-
+    let transpiled_source =
+      module_loader.load_prepared_module(&file.specifier)?.code;
     let original_source = &file.source;
-    let maybe_source_map = ps.get_source_map(&script_coverage.url);
+    let maybe_source_map = module_loader.get_source_map(&script_coverage.url);
 
     let coverage_report = generate_coverage_report(
       &script_coverage,

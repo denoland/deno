@@ -59,7 +59,6 @@ pub trait Cacher {
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  disk_cache: DiskCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: Permissions,
@@ -67,7 +66,6 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    disk_cache: DiskCache,
     file_fetcher: FileFetcher,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
@@ -75,7 +73,6 @@ impl FetchCacher {
     let file_fetcher = Arc::new(file_fetcher);
 
     Self {
-      disk_cache,
       dynamic_permissions,
       file_fetcher,
       root_permissions,
@@ -87,21 +84,11 @@ impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
-      let location = &self.disk_cache.location;
-      let emit = self
-        .disk_cache
-        .get_cache_filename_with_extension(specifier, "js")
-        .map(|p| location.join(p))
-        .filter(|p| p.is_file());
-      let map = self
-        .disk_cache
-        .get_cache_filename_with_extension(specifier, "js.map")
-        .map(|p| location.join(p))
-        .filter(|p| p.is_file());
       Some(CacheInfo {
         local: Some(local),
-        emit,
-        map,
+        // we no longer store the emit and map in their own files
+        emit: None,
+        map: None,
       })
     } else {
       None

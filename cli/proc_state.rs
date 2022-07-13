@@ -5,7 +5,6 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
-use crate::cache::EmitCache;
 use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -70,7 +69,7 @@ pub struct Inner {
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
-  graph_data: Arc<RwLock<GraphData>>,
+  pub graph_data: Arc<RwLock<GraphData>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -300,7 +299,6 @@ impl ProcState {
       }
     }
     let mut cache = cache::FetchCacher::new(
-      self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
       root_permissions.clone(),
       dynamic_permissions.clone(),
@@ -427,45 +425,28 @@ impl ProcState {
       log::warn!("{}", ignored_options);
     }
 
-    // start type checking if necessary
-    let type_checking_task =
-      if self.options.type_check_mode() != TypeCheckMode::None {
-        let maybe_config_specifier = self.options.maybe_config_file_specifier();
-        let roots = roots.clone();
-        let options = emit::CheckOptions {
-          type_check_mode: self.options.type_check_mode(),
-          debug: self.options.log_level() == Some(log::Level::Debug),
-          maybe_config_specifier,
-          ts_config: ts_config_result.ts_config.clone(),
-          log_checks: true,
-          reload: self.options.reload_flag()
-            && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
-        };
-        // todo(THIS PR): don't use a cache on failure
-        let check_cache =
-          TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
-        let graph_data = self.graph_data.clone();
-        Some(tokio::task::spawn_blocking(move || {
-          emit::check(&roots, graph_data, &check_cache, options)
-        }))
-      } else {
-        None
+    // type check if necessary
+    if self.options.type_check_mode() != TypeCheckMode::None {
+      let maybe_config_specifier = self.options.maybe_config_file_specifier();
+      let roots = roots.clone();
+      let options = emit::CheckOptions {
+        type_check_mode: self.options.type_check_mode(),
+        debug: self.options.log_level() == Some(log::Level::Debug),
+        maybe_config_specifier,
+        ts_config: ts_config_result.ts_config,
+        log_checks: true,
+        reload: self.options.reload_flag()
+          && !roots.iter().all(|r| reload_exclusions.contains(&r.0)),
       };
-
-    let options = emit::EmitOptions {
-      ts_config: ts_config_result.ts_config,
-      reload: self.options.reload_flag(),
-      reload_exclusions,
-    };
-    let emit_result = emit::emit(&graph, &self.dir.gen_cache, options)?;
-    log::debug!("{}", emit_result.stats);
-
-    if let Some(type_checking_task) = type_checking_task {
-      let type_check_result = type_checking_task.await??;
-      if !type_check_result.diagnostics.is_empty() {
-        return Err(anyhow!(type_check_result.diagnostics));
+      let check_cache =
+        TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
+      let graph_data = self.graph_data.clone();
+      let check_result =
+        emit::check(&roots, graph_data, &check_cache, options)?;
+      if !check_result.diagnostics.is_empty() {
+        return Err(anyhow!(check_result.diagnostics));
       }
-      log::debug!("{}", type_check_result.stats);
+      log::debug!("{}", check_result.stats);
     }
 
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -534,80 +515,11 @@ impl ProcState {
     }
   }
 
-  pub fn load(
-    &self,
-    specifier: ModuleSpecifier,
-    maybe_referrer: Option<ModuleSpecifier>,
-    is_dynamic: bool,
-  ) -> Result<ModuleSource, AnyError> {
-    log::debug!(
-      "specifier: {} maybe_referrer: {} is_dynamic: {}",
-      specifier,
-      maybe_referrer
-        .as_ref()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "<none>".to_string()),
-      is_dynamic
-    );
-
-    let graph_data = self.graph_data.read();
-    let found_url = graph_data.follow_redirect(&specifier);
-    match graph_data.get(&found_url) {
-      Some(ModuleEntry::Module {
-        code, media_type, ..
-      }) => {
-        let code = match media_type {
-          MediaType::JavaScript
-          | MediaType::Unknown
-          | MediaType::Cjs
-          | MediaType::Mjs
-          | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(&specifier)
-            {
-              source.to_owned()
-            } else {
-              code.to_string()
-            }
-          }
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
-          MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx
-          | MediaType::Tsx => {
-            let cached_text = self.dir.gen_cache.get_emit_text(&found_url);
-            match cached_text {
-              Some(text) => text,
-              None => unreachable!("Unexpected missing emit: {}\n\nTry reloading with the --reload CLI flag or deleting your DENO_DIR.", found_url),
-            }
-          }
-          MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
-            panic!("Unexpected media type {} for {}", media_type, found_url)
-          }
-        };
-        Ok(ModuleSource {
-          code: code.into_bytes().into_boxed_slice(),
-          module_url_specified: specifier.to_string(),
-          module_url_found: found_url.to_string(),
-          module_type: match media_type {
-            MediaType::Json => ModuleType::Json,
-            _ => ModuleType::JavaScript,
-          },
-        })
-      }
-      _ => Err(anyhow!(
-        "Loading unprepared module: {}",
-        specifier.to_string()
-      )),
-    }
-  }
-
   pub async fn create_graph(
     &self,
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = cache::FetchCacher::new(
-      self.dir.gen_cache.clone(),
       self.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
@@ -644,55 +556,6 @@ impl ProcState {
   }
 }
 
-// TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
-// else, like a refactored file_fetcher.
-impl SourceMapGetter for ProcState {
-  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      match specifier.scheme() {
-        // we should only be looking for emits for schemes that denote external
-        // modules, which the disk_cache supports
-        "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
-        _ => return None,
-      }
-      if let Some(cache_data) = self.dir.gen_cache.get_emit_data(&specifier) {
-        source_map_from_code(cache_data.text.as_bytes())
-          .or_else(|| cache_data.map.map(|t| t.into_bytes()))
-      } else if let Ok(source) = self.load(specifier, None, false) {
-        source_map_from_code(&source.code)
-      } else {
-        None
-      }
-    } else {
-      None
-    }
-  }
-
-  fn get_source_line(
-    &self,
-    file_name: &str,
-    line_number: usize,
-  ) -> Option<String> {
-    let graph_data = self.graph_data.read();
-    let specifier = graph_data.follow_redirect(&resolve_url(file_name).ok()?);
-    let code = match graph_data.get(&specifier) {
-      Some(ModuleEntry::Module { code, .. }) => code,
-      _ => return None,
-    };
-    // Do NOT use .lines(): it skips the terminating empty line.
-    // (due to internally using_terminator() instead of .split())
-    let lines: Vec<&str> = code.split('\n').collect();
-    if line_number >= lines.len() {
-      Some(format!(
-        "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"), line_number + 1,
-      ))
-    } else {
-      Some(lines[line_number].to_string())
-    }
-  }
-}
-
 pub fn import_map_from_text(
   specifier: &Url,
   json_text: &str,
@@ -715,19 +578,6 @@ pub fn import_map_from_text(
     );
   }
   Ok(result.import_map)
-}
-
-fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
-  static PREFIX: &[u8] = b"//# sourceMappingURL=data:application/json;base64,";
-  let last_line = code.rsplitn(2, |u| u == &b'\n').next().unwrap();
-  if last_line.starts_with(PREFIX) {
-    let input = last_line.split_at(PREFIX.len()).1;
-    let decoded_map = base64::decode(input)
-      .expect("Unable to decode source map from emitted file.");
-    Some(decoded_map)
-  } else {
-    None
-  }
 }
 
 #[derive(Debug)]

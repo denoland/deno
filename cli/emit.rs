@@ -22,6 +22,7 @@ use crate::version;
 use deno_ast::swc::bundler::Hook;
 use deno_ast::swc::bundler::ModuleRecord;
 use deno_ast::swc::common::Span;
+use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
@@ -32,15 +33,12 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
-use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
-use std::collections::HashSet;
 use std::fmt;
 use std::result;
 use std::sync::Arc;
-use std::time::Instant;
 
 /// A structure representing stats from an emit operation for a graph.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -259,15 +257,44 @@ fn get_tsc_roots(
   }
 }
 
+pub fn emit_parsed_source(
+  cache: &EmitCache,
+  specifier: &ModuleSpecifier,
+  parsed_source: &ParsedSource,
+  emit_options: &deno_ast::EmitOptions,
+  emit_config_hash: &str,
+) -> Result<String, AnyError> {
+  let source_hash = get_source_hash_for_emit(
+    parsed_source.text_info().text_str(),
+    emit_config_hash,
+  );
+  if let Some(emit_data) = cache.get_emit_data(specifier) {
+    if emit_data.source_hash == source_hash {
+      return Ok(emit_data.text);
+    }
+  }
+  let transpiled_source = parsed_source.transpile(&emit_options)?;
+  let cache_data = SpecifierEmitCacheData {
+    source_hash,
+    text: transpiled_source.text,
+    map: transpiled_source.source_map,
+  };
+  cache.set_emit_data(specifier, &cache_data);
+  Ok(cache_data.text)
+}
+
 /// A hashing function that takes the source code, version and optionally a
 /// user provided config and generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
-fn get_version(source_bytes: &[u8], config_bytes: &[u8]) -> String {
-  crate::checksum::gen(&[
-    source_bytes,
-    version::deno().as_bytes(),
-    config_bytes,
-  ])
+fn get_source_hash_for_emit(source_text: &str, emit_config_hash: &str) -> u64 {
+  // twox hash is insecure, but fast so it works for our purposes
+  use std::hash::Hasher;
+  use twox_hash::XxHash64;
+
+  let mut hasher = XxHash64::default();
+  hasher.write(source_text.as_bytes());
+  hasher.write(emit_config_hash.as_bytes());
+  hasher.finish()
 }
 
 /// Determine if a given module kind and media type is emittable or not.
@@ -401,72 +428,6 @@ pub fn check(
   Ok(CheckResult {
     diagnostics,
     stats: response.stats,
-  })
-}
-
-pub struct EmitOptions {
-  pub ts_config: TsConfig,
-  pub reload: bool,
-  pub reload_exclusions: HashSet<ModuleSpecifier>,
-}
-
-/// Given a module graph, emit any appropriate modules and cache them.
-// TODO(nayeemrmn): This would ideally take `GraphData` like
-// `check()`, but the AST isn't stored in that. Cleanup.
-pub fn emit(
-  graph: &ModuleGraph,
-  cache: &dyn EmitCache,
-  options: EmitOptions,
-) -> Result<CheckResult, AnyError> {
-  let start = Instant::now();
-  let config_bytes = options.ts_config.as_bytes();
-  let include_js = options.ts_config.get_check_js();
-  let emit_options = options.ts_config.into();
-
-  let mut emit_count = 0_u32;
-  let mut file_count = 0_u32;
-  for module in graph.modules() {
-    file_count += 1;
-    if !is_emittable(&module.kind, &module.media_type, include_js) {
-      continue;
-    }
-    let needs_reload =
-      options.reload && !options.reload_exclusions.contains(&module.specifier);
-    let version = get_version(
-      module.maybe_source.as_ref().map(|s| s.as_bytes()).unwrap(),
-      &config_bytes,
-    );
-    let is_valid = cache
-      .get_source_hash(&module.specifier)
-      .map_or(false, |v| v == version);
-    if is_valid && !needs_reload {
-      continue;
-    }
-    let transpiled_source = module
-      .maybe_parsed_source
-      .as_ref()
-      .map(|source| source.transpile(&emit_options))
-      .unwrap()?;
-    emit_count += 1;
-    cache.set_emit_data(
-      module.specifier.clone(),
-      SpecifierEmitCacheData {
-        source_hash: version,
-        text: transpiled_source.text,
-        map: transpiled_source.source_map,
-      },
-    )?;
-  }
-
-  let stats = Stats(vec![
-    ("Files".to_string(), file_count),
-    ("Emitted".to_string(), emit_count),
-    ("Total time".to_string(), start.elapsed().as_millis() as u32),
-  ]);
-
-  Ok(CheckResult {
-    diagnostics: Diagnostics::default(),
-    stats,
   })
 }
 
