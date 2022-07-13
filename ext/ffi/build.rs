@@ -2,7 +2,36 @@
 
 use std::env;
 
-fn build_tcc() {
+#[cfg(not(target_os = "windows"))]
+fn static_lib_path() -> Option<String> {
+  env::var("DENO_FFI_LIBTCC").ok()
+}
+
+fn setup_tcc() {
+  #[cfg(not(target_os = "windows"))]
+  {
+    let lib_path = static_lib_path();
+
+    match lib_path {
+      Some(path) => {
+        println!("static lib path: {}", path);
+        cargo_conf(&path, &path);
+      }
+      None => {
+        let (lib_path, src) = build_tcc();
+        cargo_conf(&lib_path, &src);
+      }
+    }
+  }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cargo_conf(lib_path: &String, update_path: &String) {
+  println!("cargo:rustc-link-search=native={}", lib_path);
+  println!("cargo:rerun-if-changed={}", update_path);
+}
+
+fn build_tcc() -> (String, String) {
   {
     // TODO(@littledivy): Windows support for fast call.
     // let tcc_path = root
@@ -48,8 +77,7 @@ fn build_tcc() {
       eprintln!("Fail to make: {:?}", status);
       exit(1);
     }
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
-    println!("cargo:rerun-if-changed={}", tcc_src.display());
+    (out_dir.display().to_string(), tcc_src.display().to_string())
   }
 }
 
@@ -58,6 +86,6 @@ fn main() {}
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
-  build_tcc();
+  setup_tcc();
   println!("cargo:rustc-link-lib=static=tcc");
 }
