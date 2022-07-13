@@ -118,48 +118,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "useDefineForClassFields",
 ];
 
-pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
-  "assumeChangesOnlyAffectDirectDependencies",
-  "build",
-  "charset",
-  "composite",
-  "diagnostics",
-  "disableSizeLimit",
-  "emitBOM",
-  "extendedDiagnostics",
-  "forceConsistentCasingInFileNames",
-  "generateCpuProfile",
-  "help",
-  "incremental",
-  "init",
-  "isolatedModules",
-  "listEmittedFiles",
-  "listFiles",
-  "mapRoot",
-  "maxNodeModuleJsDepth",
-  "moduleResolution",
-  "newLine",
-  "noEmit",
-  "noEmitOnError",
-  "out",
-  "outDir",
-  "outFile",
-  "preserveSymlinks",
-  "preserveWatchOutput",
-  "pretty",
-  "project",
-  "resolveJsonModule",
-  "showConfig",
-  "skipDefaultLibCheck",
-  "stripInternal",
-  "traceResolution",
-  "tsBuildInfoFile",
-  "typeRoots",
-  "useDefineForClassFields",
-  "version",
-  "watch",
-];
-
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
   match (a, b) {
@@ -177,16 +135,13 @@ pub fn json_merge(a: &mut Value, b: &Value) {
 fn parse_compiler_options(
   compiler_options: &HashMap<String, Value>,
   maybe_specifier: Option<ModuleSpecifier>,
-  is_runtime: bool,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   let mut filtered: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if (!is_runtime && IGNORED_COMPILER_OPTIONS.contains(&key))
-      || IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
-    {
+    if IGNORED_COMPILER_OPTIONS.contains(&key) {
       items.push(key.to_string());
     } else {
       filtered.insert(key.to_string(), value.to_owned());
@@ -260,19 +215,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Take a map of compiler options, filtering out any that are ignored, then
-  /// merge it with the current configuration, returning any options that might
-  /// have been ignored.
-  pub fn merge_user_config(
-    &mut self,
-    user_options: &HashMap<String, Value>,
-  ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
-    let (value, maybe_ignored_options) =
-      parse_compiler_options(user_options, None, true)?;
-    self.merge(&value);
-    Ok(maybe_ignored_options)
   }
 }
 
@@ -585,7 +527,7 @@ impl ConfigFile {
       let options: HashMap<String, Value> =
         serde_json::from_value(compiler_options)
           .context("compilerOptions should be an object")?;
-      parse_compiler_options(&options, Some(self.specifier.to_owned()), false)
+      parse_compiler_options(&options, Some(self.specifier.to_owned()))
     } else {
       Ok((json!({}), None))
     }
@@ -908,38 +850,6 @@ mod tests {
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, &config_specifier).is_err());
-  }
-
-  #[test]
-  fn test_tsconfig_merge_user_options() {
-    let mut tsconfig = TsConfig::new(json!({
-      "target": "esnext",
-      "module": "esnext",
-    }));
-    let user_options = serde_json::from_value(json!({
-      "target": "es6",
-      "build": true,
-      "strict": false,
-    }))
-    .expect("could not convert to hashmap");
-    let maybe_ignored_options = tsconfig
-      .merge_user_config(&user_options)
-      .expect("could not merge options");
-    assert_eq!(
-      tsconfig.0,
-      json!({
-        "module": "esnext",
-        "target": "es6",
-        "strict": false,
-      })
-    );
-    assert_eq!(
-      maybe_ignored_options,
-      Some(IgnoredCompilerOptions {
-        items: vec!["build".to_string()],
-        maybe_specifier: None
-      })
-    );
   }
 
   #[test]

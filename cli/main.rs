@@ -654,7 +654,6 @@ async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =
       ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
-        tsc_emit: false,
         lib: ps.options.ts_type_lib_window(),
       })?;
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
