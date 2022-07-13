@@ -2189,8 +2189,7 @@ dependencies = [
 [[package]]
 name = "import_map"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56412f1bd26e60515f59f172e4c8620240fae7a0943b4d9996fe638df55a2891"
+source = "git+https://github.com/kitsonk/import_map.git?branch=fix_use_raw_key#be8954da3b95babca8ccf92cc0fecf089719f7a6"
 dependencies = [
  "indexmap",
  "log 0.4.17",
