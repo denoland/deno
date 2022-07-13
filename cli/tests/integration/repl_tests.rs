@@ -188,7 +188,7 @@ fn pty_complete_imports() {
 
   // does not panic when tabbing when empty
   util::with_pty(&["repl"], |mut console| {
-    console.write_line("import '\t'");
+    console.write_line("import '\t");
   });
 }
 
