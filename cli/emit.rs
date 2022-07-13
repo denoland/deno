@@ -567,36 +567,3 @@ impl From<TsConfig> for deno_ast::EmitOptions {
     }
   }
 }
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_is_emittable() {
-    assert!(is_emittable(
-      &ModuleKind::Esm,
-      &MediaType::TypeScript,
-      false
-    ));
-    assert!(!is_emittable(
-      &ModuleKind::Synthetic,
-      &MediaType::TypeScript,
-      false
-    ));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dts, false));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dcts, false));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Dmts, false));
-    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Tsx, false));
-    assert!(!is_emittable(
-      &ModuleKind::Esm,
-      &MediaType::JavaScript,
-      false
-    ));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Cjs, false));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Mjs, false));
-    assert!(is_emittable(&ModuleKind::Esm, &MediaType::JavaScript, true));
-    assert!(is_emittable(&ModuleKind::Esm, &MediaType::Jsx, false));
-    assert!(!is_emittable(&ModuleKind::Esm, &MediaType::Json, false));
-  }
-}

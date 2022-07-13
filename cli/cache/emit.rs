@@ -86,7 +86,7 @@ impl EmitCache {
     let row = rows.next().ok().flatten()?;
 
     Some(SpecifierEmitCacheData {
-      source_hash: row.get(0).ok()?,
+      source_hash: row.get::<usize, String>(0).ok()?.parse::<u64>().ok()?,
       text: row.get(1).ok()?,
       map: row.get(2).ok()?,
     })
@@ -122,7 +122,7 @@ impl EmitCache {
     )?;
     stmt.execute(params![
       specifier.to_string(),
-      &data.source_hash,
+      &data.source_hash.to_string(),
       &data.text,
       &data.map,
     ])?;

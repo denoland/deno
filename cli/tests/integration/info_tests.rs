@@ -1,40 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use test_util as util;
-use test_util::TempDir;
-
-#[test]
-fn info_with_compiled_source() {
-  let _g = util::http_server();
-  let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
-  let t = TempDir::new();
-
-  let mut deno = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(&module_path)
-    .spawn()
-    .unwrap();
-  let status = deno.wait().unwrap();
-  assert!(status.success());
-
-  let output = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .env("NO_COLOR", "1")
-    .current_dir(util::testdata_path())
-    .arg("info")
-    .arg(&module_path)
-    .output()
-    .unwrap();
-
-  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
-  eprintln!("{}", str_output);
-  // check the output of the test.ts program.
-  assert!(str_output.contains("emit: "));
-  assert_eq!(output.stderr, b"");
-}
 
 itest!(_022_info_flag_script {
   args: "info http://127.0.0.1:4545/019_media_types.ts",
