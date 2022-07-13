@@ -789,6 +789,36 @@ fn run_watch_with_import_map_and_relative_paths() {
 }
 
 #[test]
+fn run_watch_error_messages() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(
+    &file_to_watch,
+    "throw SyntaxError(`outer`, {cause: TypeError(`inner`)})",
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines);
+  wait_contains("error: Uncaught SyntaxError: outer", &mut stderr_lines);
+  wait_contains("Caused by: TypeError: inner", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+
+  check_alive_then_kill(child);
+}
+
+#[test]
 fn test_watch() {
   let t = TempDir::new();
 
