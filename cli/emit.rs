@@ -244,6 +244,16 @@ fn get_tsc_roots(
   }
 }
 
+/// A hashing function that takes the source code, version and optionally a
+/// user provided config and generates a string hash which can be stored to
+/// determine if the cached emit is valid or not.
+pub fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
+  FastInsecureHash::new()
+    .write_str(source_text)
+    .write_u64(emit_options_hash)
+    .finish()
+}
+
 pub fn emit_parsed_source(
   cache: &EmitCache,
   specifier: &ModuleSpecifier,
@@ -251,23 +261,18 @@ pub fn emit_parsed_source(
   emit_options: &deno_ast::EmitOptions,
   emit_config_hash: u64,
 ) -> Result<String, AnyError> {
-  let source_hash = FastInsecureHash::new()
-    .write_str(parsed_source.text_info().text_str())
-    .write_u64(emit_config_hash)
-    .finish();
+  let source_hash =
+    get_source_hash(parsed_source.text_info().text_str(), emit_config_hash);
 
-  if let Some(emit_data) = cache.get_emit_data(specifier) {
-    if emit_data.source_hash == source_hash {
-      return Ok(emit_data.text);
-    }
+  if let Some(emit_data) = cache.get_emit_data(specifier, Some(source_hash)) {
+    return Ok(emit_data.text);
   }
   let transpiled_source = parsed_source.transpile(emit_options)?;
   let cache_data = SpecifierEmitCacheData {
-    source_hash,
     text: transpiled_source.text,
     map: transpiled_source.source_map,
   };
-  cache.set_emit_data(specifier, &cache_data);
+  cache.set_emit_data(specifier, source_hash, &cache_data);
   Ok(cache_data.text)
 }
 

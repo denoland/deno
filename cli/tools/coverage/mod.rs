@@ -4,6 +4,7 @@ use crate::args::CoverageFlags;
 use crate::args::Flags;
 use crate::cache::EmitCache;
 use crate::colors;
+use crate::emit::get_source_hash;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
@@ -665,19 +666,24 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
+    let original_source = &file.source;
     let (transpiled_source, maybe_source_map) = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => (file.source.as_ref().to_string(), None),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => ("".to_string(), None),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => {
+        ("".to_string(), None)
+      }
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emit_cache.get_emit_data(&file.specifier) {
+        let source_hash =
+          get_source_hash(original_source, ps.emit_options_hash);
+        match emit_cache.get_emit_data(&file.specifier, Some(source_hash)) {
           Some(data) => (data.text, data.map),
           None => {
             return Err(anyhow!(
@@ -692,7 +698,6 @@ pub async fn cover_files(
         unreachable!()
       }
     };
-    let original_source = &file.source;
 
     let coverage_report = generate_coverage_report(
       &script_coverage,

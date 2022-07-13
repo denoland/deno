@@ -212,7 +212,12 @@ impl SourceMapGetter for CliModuleLoader {
         "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
         _ => return None,
       }
-      if let Some(cache_data) = self.emit_cache.get_emit_data(&specifier) {
+      if let Some(cache_data) = self.emit_cache.get_emit_data(
+        &specifier,
+        // ideally we would provide a source hash here in order to verify that
+        // we're getting a source map for the file currently in the cache
+        None,
+      ) {
         source_map_from_code(&cache_data.text)
           .or_else(|| cache_data.map.map(|t| t.into_bytes()))
       } else if let Ok(source) = self.load_prepared_module(&specifier) {

@@ -12,7 +12,6 @@ use super::common::run_sqlite_pragma;
 /// Emit cache for a single file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpecifierEmitCacheData {
-  pub source_hash: u64,
   pub text: String,
   pub map: Option<String>,
 }
@@ -71,9 +70,14 @@ impl EmitCache {
   }
 
   /// Gets the emit data from the cache.
+  ///
+  /// Ideally, you SHOULD provide an expected source hash in order
+  /// to verify that you're getting a value from the cache
+  /// that is relevant to the source.
   pub fn get_emit_data(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_expected_source_hash: Option<u64>,
   ) -> Option<SpecifierEmitCacheData> {
     let conn = match &self.0 {
       Some(conn) => conn,
@@ -85,8 +89,15 @@ impl EmitCache {
     let mut rows = stmt.query(params![specifier.to_string()]).ok()?;
     let row = rows.next().ok().flatten()?;
 
+    if let Some(expected_hash) = maybe_expected_source_hash {
+      // verify that the emit is for the source
+      let saved_hash = row.get::<usize, String>(0).ok()?;
+      if saved_hash != expected_hash.to_string() {
+        return None;
+      }
+    }
+
     Some(SpecifierEmitCacheData {
-      source_hash: row.get::<usize, String>(0).ok()?.parse::<u64>().ok()?,
       text: row.get(1).ok()?,
       map: row.get(2).ok()?,
     })
@@ -96,9 +107,10 @@ impl EmitCache {
   pub fn set_emit_data(
     &self,
     specifier: &ModuleSpecifier,
+    source_hash: u64,
     data: &SpecifierEmitCacheData,
   ) {
-    if let Err(err) = self.set_emit_data_result(specifier, data) {
+    if let Err(err) = self.set_emit_data_result(specifier, source_hash, data) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
         panic!("Error saving emit data: {}", err);
@@ -111,6 +123,7 @@ impl EmitCache {
   fn set_emit_data_result(
     &self,
     specifier: &ModuleSpecifier,
+    source_hash: u64,
     data: &SpecifierEmitCacheData,
   ) -> Result<(), AnyError> {
     let conn = match &self.0 {
@@ -122,7 +135,7 @@ impl EmitCache {
     )?;
     stmt.execute(params![
       specifier.to_string(),
-      &data.source_hash.to_string(),
+      source_hash.to_string(),
       &data.text,
       &data.map,
     ])?;
