@@ -414,10 +414,7 @@ impl ProcState {
     let config_type = if self.options.type_check_mode() == TypeCheckMode::None {
       TsConfigType::Emit
     } else {
-      TsConfigType::Check {
-        tsc_emit: true,
-        lib,
-      }
+      TsConfigType::Check { lib }
     };
 
     let ts_config_result =
