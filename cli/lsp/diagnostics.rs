@@ -1165,42 +1165,35 @@ let c: number = "a";
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
-    assert_eq!(
-      json!(actual),
-      json!([
-        [
-          "file:///std/testing/asserts.ts",
-          1,
-          []
-        ],
-        [
-          "file:///a/file.ts",
-          1,
-          [
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 23
-                },
-                "end": {
-                  "line": 0,
-                  "character": 50
-                }
+    assert_eq!(actual.len(), 2);
+    for (specifier, _, diagnostics) in actual {
+      match specifier.as_str() {
+        "file:///std/testing/asserts.ts" => assert_eq!(json!(diagnostics), json!([])),
+        "file:///a/file.ts" => assert_eq!(json!(diagnostics), json!([
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 23
               },
-              "severity": 4,
-              "code": "import-map-remap",
-              "source": "deno",
-              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
-              "data": {
-                "from": "../std/testing/asserts.ts",
-                "to": "/~/std/testing/asserts.ts"
+              "end": {
+                "line": 0,
+                "character": 50
               }
+            },
+            "severity": 4,
+            "code": "import-map-remap",
+            "source": "deno",
+            "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+            "data": {
+              "from": "../std/testing/asserts.ts",
+              "to": "/~/std/testing/asserts.ts"
             }
-          ]
-        ]
-      ])
-    );
+          }
+        ])),
+        _ => unreachable!("unexpected specifier {}", specifier),
+      }
+    }
   }
 
   #[test]
