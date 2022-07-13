@@ -8,8 +8,14 @@ use test_util::TempDir;
 use util::assert_contains;
 
 itest!(stdout_write_all {
-  args: "run --quiet stdout_write_all.ts",
-  output: "stdout_write_all.out",
+  args: "run --quiet run/stdout_write_all.ts",
+  output: "run/stdout_write_all.out",
+});
+
+itest!(stdin_read_all {
+  args: "run --quiet run/stdin_read_all.ts",
+  output: "run/stdin_read_all.out",
+  input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
 itest!(_001_hello {
