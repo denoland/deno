@@ -20,7 +20,13 @@ impl TypeCheckCache {
     match Self::try_new(db_file_path) {
       Ok(cache) => cache,
       Err(err) => {
-        log::debug!("Creating type checking cache failed.\n{:#}", err);
+        log::debug!(
+          concat!(
+            "Failed creating internal type checking cache. ",
+            "Recreating...\n\nError details:\n{:#}",
+          ),
+          err
+        );
         // Maybe the cache file is corrupt. Attempt to remove the cache file
         // then attempt to recreate again. Otherwise, use null object pattern.
         match std::fs::remove_file(db_file_path) {
@@ -28,7 +34,11 @@ impl TypeCheckCache {
             Ok(cache) => cache,
             Err(err) => {
               log::debug!(
-                "Unable to create internal cache for type checking. This will reduce the performance of type checking.\n\nError details:\n{:#}",
+                concat!(
+                  "Unable to create internal cache for type checking. ",
+                  "This will reduce the performance of type checking.\n\n",
+                  "Error details:\n{:#}",
+                ),
                 err
               );
               Self(None)
