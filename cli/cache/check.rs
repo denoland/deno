@@ -28,7 +28,7 @@ impl TypeCheckCache {
             Ok(cache) => cache,
             Err(err) => {
               log::debug!(
-                "Creating type checking cache failed twice.\n{:#}",
+                "Unable to create internal cache for type checking. This will reduce the performance of type checking.\n\nError details:\n{:#}",
                 err
               );
               Self(None)
