@@ -812,7 +812,7 @@ dependencies = [
  "fwdansi",
  "google-storage1",
  "http",
- "import_map 0.12.0",
+ "import_map 0.12.1",
  "indexmap",
  "jsonc-parser",
  "libc",
@@ -2188,8 +2188,9 @@ dependencies = [
 
 [[package]]
 name = "import_map"
-version = "0.12.0"
-source = "git+https://github.com/kitsonk/import_map.git?branch=fix_use_raw_key#be8954da3b95babca8ccf92cc0fecf089719f7a6"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b827962ca5aa6d5bbe313c14e73d7cc517487fa3bad380bb6bdbd8421e591a29"
 dependencies = [
  "indexmap",
  "log 0.4.17",
