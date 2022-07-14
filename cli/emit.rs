@@ -39,7 +39,6 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
 use std::fmt;
-use std::result;
 use std::sync::Arc;
 
 /// A structure representing stats from an emit operation for a graph.
@@ -47,7 +46,7 @@ use std::sync::Arc;
 pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
-  fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {

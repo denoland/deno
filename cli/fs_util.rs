@@ -249,7 +249,7 @@ where
 {
   let mut prepared = vec![];
 
-  let root_path = std::env::current_dir()?;
+  let root_path = current_dir()?;
   for path in include {
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
