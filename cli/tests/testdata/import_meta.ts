@@ -9,22 +9,18 @@ console.log(
   import.meta.resolve("https://example.com/rewrite"),
 );
 console.log(
-  "Resolving https://example.com/rewrite from import map",
-  import.meta.resolve("https://example.com/rewrite"),
-);
-console.log(
   "Resolving without a value from import map",
   import.meta.resolve(),
 );
 console.log(
-  "Resolving undefined from import map",
-  import.meta.resolve("https://example.com/PASS-undefined"),
-);
-console.log(
   "Resolving 1 from import map",
-  import.meta.resolve("https://example.com/PASS-1"),
+  import.meta.resolve(1),
 );
 console.log(
   "Resolving null from import map",
-  import.meta.resolve("https://example.com/PASS-null"),
+  import.meta.resolve(null),
+);
+console.log(
+  "Resolving object from import map",
+  import.meta.resolve({}),
 );
