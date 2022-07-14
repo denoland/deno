@@ -47,7 +47,7 @@ use std::time::Instant;
 pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
-  fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {

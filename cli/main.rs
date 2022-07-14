@@ -175,7 +175,7 @@ fn create_web_worker_callback(
       source_map_getter: Some(Box::new(ps.clone())),
       worker_type: args.worker_type,
       maybe_inspector_server,
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      get_error_class_fn: Some(&errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
@@ -255,7 +255,7 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    get_error_class_fn: Some(&errors::get_error_class_name),
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
@@ -379,7 +379,7 @@ pub fn get_types(unstable: bool) -> String {
   ];
 
   if unstable {
-    types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(tsc::UNSTABLE_NS_LIB);
   }
 
   types.join("\n")
@@ -1323,7 +1323,7 @@ fn setup_panic_hook() {
       env::consts::ARCH
     );
     eprintln!("Version: {}", version::deno());
-    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
