@@ -2670,10 +2670,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
-      println!(
-          "{}",
-          crate::colors::yellow("Warning: --jobs flag with numeric value is deprecated. Use 'DENO_JOBS' environment variable with --jobs flag instead."),
-        );
       value.parse().unwrap()
     } else if let Ok(value) = env::var("DENO_JOBS") {
       value
