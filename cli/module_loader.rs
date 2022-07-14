@@ -27,6 +27,7 @@ use std::str;
 
 pub struct ModuleCodeSource {
   pub code: String,
+  pub map: Option<String>,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -76,20 +77,24 @@ impl CliModuleLoader {
         maybe_parsed_source,
         ..
       }) => {
-        let code = match media_type {
+        let (code, map) = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => {
-            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
+            let code = if let Some(source) =
+              graph_data.get_cjs_esm_translation(specifier)
             {
               source.to_owned()
             } else {
               code.to_string()
-            }
+            };
+            (code, None)
           }
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
+            ("".to_string(), None)
+          }
           MediaType::TypeScript
           | MediaType::Mts
           | MediaType::Cts
@@ -97,13 +102,20 @@ impl CliModuleLoader {
           | MediaType::Tsx => {
             // get emit text
             let parsed_source = maybe_parsed_source.as_ref().unwrap(); // should always be set
-            emit_parsed_source(
+            let emit = emit_parsed_source(
               &self.emit_cache,
               specifier,
               parsed_source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
-            )?
+            )?;
+            if self.ps.options.is_inspecting() {
+              // when inspecting, embed the source map
+              // so the user can see the original file
+              (emit.into_text_with_embedded_source_map(), None)
+            } else {
+              (emit.code, Some(emit.map))
+            }
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {} for {}", media_type, found_url)
@@ -111,6 +123,7 @@ impl CliModuleLoader {
         };
         Ok(ModuleCodeSource {
           code,
+          map,
           found_url,
           media_type: *media_type,
         })
@@ -213,16 +226,11 @@ impl SourceMapGetter for CliModuleLoader {
         "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
         _ => return None,
       }
-      if let Some(cache_data) = self.emit_cache.get_emit_data(
-        &specifier,
-        // ideally we would provide a source hash here in order to verify that
-        // we're getting a source map for the file currently in the cache
-        None,
-      ) {
-        source_map_from_code(&cache_data.text)
-          .or_else(|| cache_data.map.map(|t| t.into_bytes()))
-      } else if let Ok(source) = self.load_prepared_module(&specifier) {
-        source_map_from_code(&source.code)
+      if let Ok(source) = self.load_prepared_module(&specifier) {
+        source
+          .map
+          .map(|m| m.into_bytes())
+          .or_else(|| source_map_from_code(&source.code))
       } else {
         None
       }

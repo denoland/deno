@@ -673,7 +673,10 @@ pub async fn cover_files(
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => (file.source.as_ref().to_string(), None),
+      | MediaType::Json => (
+        file.source.as_ref().to_string(),
+        source_map_from_code(file.source.as_ref()),
+      ),
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => {
         ("".to_string(), None)
       }
@@ -685,10 +688,7 @@ pub async fn cover_files(
         let source_hash =
           get_source_hash(original_source, ps.emit_options_hash);
         match emit_cache.get_emit_data(&file.specifier, Some(source_hash)) {
-          Some(data) => {
-            let map = source_map_from_code(&data.text).or_else(|| data.map.map(|t| t.into_bytes()));
-            (data.text, map)
-          },
+          Some(data) => (data.code, Some(data.map.into_bytes())),
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".

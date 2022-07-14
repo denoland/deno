@@ -17,6 +17,7 @@ use crate::colors;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::text_encoding::code_with_source_map;
 use crate::tsc;
 use crate::version;
 
@@ -158,8 +159,6 @@ pub fn get_ts_config_for_emit(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
       "isolatedModules": true,
       "lib": lib,
       "module": "esnext",
@@ -178,9 +177,9 @@ pub fn get_ts_config_for_emit(
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
-      "inlineSources": true,
-      "sourceMap": false,
+      "inlineSourceMap": false,
+      "inlineSources": false,
+      "sourceMap": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -241,26 +240,46 @@ pub fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
     .finish()
 }
 
+pub struct EmittedParsedSource {
+  pub code: String,
+  pub map: String,
+}
+
+impl EmittedParsedSource {
+  pub fn into_text_with_embedded_source_map(self) -> String {
+    code_with_source_map(self.code, &self.map)
+  }
+}
+
 pub fn emit_parsed_source(
   cache: &EmitCache,
   specifier: &ModuleSpecifier,
   parsed_source: &ParsedSource,
   emit_options: &deno_ast::EmitOptions,
   emit_config_hash: u64,
-) -> Result<String, AnyError> {
+) -> Result<EmittedParsedSource, AnyError> {
   let source_hash =
     get_source_hash(parsed_source.text_info().text_str(), emit_config_hash);
 
-  if let Some(emit_data) = cache.get_emit_data(specifier, Some(source_hash)) {
-    return Ok(emit_data.text);
-  }
-  let transpiled_source = parsed_source.transpile(emit_options)?;
-  let cache_data = SpecifierEmitCacheData {
-    text: transpiled_source.text,
-    map: transpiled_source.source_map,
+  let cache_data = if let Some(cache_data) =
+    cache.get_emit_data(specifier, Some(source_hash))
+  {
+    cache_data
+  } else {
+    let transpiled_source = parsed_source.transpile(emit_options)?;
+    let cache_data = SpecifierEmitCacheData {
+      code: transpiled_source.text,
+      map: transpiled_source
+        .source_map
+        .expect("should have source map"),
+    };
+    cache.set_emit_data(specifier, source_hash, &cache_data);
+    cache_data
   };
-  cache.set_emit_data(specifier, source_hash, &cache_data);
-  Ok(cache_data.text)
+  Ok(EmittedParsedSource {
+    code: cache_data.code,
+    map: cache_data.map,
+  })
 }
 
 /// Options for performing a check of a module graph. Note that the decision to

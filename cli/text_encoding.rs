@@ -54,17 +54,28 @@ pub fn strip_bom(text: &str) -> &str {
   }
 }
 
+static SOURCE_MAP_PREFIX: &str =
+  "//# sourceMappingURL=data:application/json;base64,";
+
 pub fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
-  static PREFIX: &str = "//# sourceMappingURL=data:application/json;base64,";
-  let last_line = code.rsplit(|u| u == '\n').next().unwrap();
-  if last_line.starts_with(PREFIX) {
-    let input = last_line.split_at(PREFIX.len()).1;
+  let last_line = code.rsplit(|u| u == '\n').next()?;
+  if last_line.starts_with(SOURCE_MAP_PREFIX) {
+    let input = last_line.split_at(SOURCE_MAP_PREFIX.len()).1;
     let decoded_map = base64::decode(input)
       .expect("Unable to decode source map from emitted file.");
     Some(decoded_map)
   } else {
     None
   }
+}
+
+pub fn code_with_source_map(mut code: String, source_map: &str) -> String {
+  if !code.ends_with('\n') {
+    code.push('\n');
+  }
+  code.push_str(SOURCE_MAP_PREFIX);
+  code.push_str(&base64::encode(&source_map));
+  code
 }
 
 #[cfg(test)]

@@ -12,8 +12,8 @@ use super::common::run_sqlite_pragma;
 /// Emit cache for a single file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpecifierEmitCacheData {
-  pub text: String,
-  pub map: Option<String>,
+  pub code: String,
+  pub map: String,
 }
 
 /// The cache that stores previously emitted files.
@@ -84,7 +84,7 @@ impl EmitCache {
       None => return None,
     };
     let mut stmt = conn
-      .prepare_cached("SELECT source_hash, emit_text, source_map FROM emitcache WHERE specifier=?1 LIMIT 1")
+      .prepare_cached("SELECT source_hash, code, source_map FROM emitcache WHERE specifier=?1 LIMIT 1")
       .ok()?;
     let mut rows = stmt.query(params![specifier.to_string()]).ok()?;
     let row = rows.next().ok().flatten()?;
@@ -98,7 +98,7 @@ impl EmitCache {
     }
 
     Some(SpecifierEmitCacheData {
-      text: row.get(1).ok()?,
+      code: row.get(1).ok()?,
       map: row.get(2).ok()?,
     })
   }
@@ -131,12 +131,12 @@ impl EmitCache {
       None => return Ok(()),
     };
     let mut stmt = conn.prepare_cached(
-      "INSERT OR REPLACE INTO emitcache (specifier, source_hash, emit_text, source_map) VALUES (?1, ?2, ?3, ?4)",
+      "INSERT OR REPLACE INTO emitcache (specifier, source_hash, code, source_map) VALUES (?1, ?2, ?3, ?4)",
     )?;
     stmt.execute(params![
       specifier.to_string(),
       source_hash.to_string(),
-      &data.text,
+      &data.code,
       &data.map,
     ])?;
     Ok(())
@@ -152,8 +152,8 @@ fn create_tables(
     "CREATE TABLE IF NOT EXISTS emitcache (
       specifier TEXT PRIMARY KEY,
       source_hash TEXT NOT NULL,
-      emit_text TEXT NOT NULL,
-      source_map TEXT
+      code TEXT NOT NULL,
+      source_map TEXT NOT NULL
     )",
     [],
   )?;
@@ -195,8 +195,8 @@ mod test {
     let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
     assert_eq!(cache.get_emit_data(&specifier1, None), None);
     let cache_data1 = SpecifierEmitCacheData {
-      text: "text".to_string(),
-      map: Some("map".to_string()),
+      code: "text".to_string(),
+      map: "map".to_string(),
     };
     cache.set_emit_data(&specifier1, 10, &cache_data1);
     // providing no source hash
@@ -228,8 +228,8 @@ mod test {
 
     // adding when already exists should not cause issue
     let cache_data2 = SpecifierEmitCacheData {
-      text: "asdf".to_string(),
-      map: None,
+      code: "asdf".to_string(),
+      map: "map2".to_string(),
     };
     cache.set_emit_data(&specifier1, 20, &cache_data2);
     assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
