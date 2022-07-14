@@ -1041,7 +1041,7 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
