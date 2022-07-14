@@ -1319,8 +1319,8 @@ fn setup_panic_hook() {
     eprintln!();
     eprintln!(
       "Platform: {} {}",
-      std::env::consts::OS,
-      std::env::consts::ARCH
+      env::consts::OS,
+      env::consts::ARCH
     );
     eprintln!("Version: {}", version::deno());
     eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
