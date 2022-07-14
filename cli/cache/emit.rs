@@ -183,51 +183,59 @@ fn create_tables(
   Ok(())
 }
 
-// #[cfg(test)]
-// mod test {
-//   use super::*;
+#[cfg(test)]
+mod test {
+  use super::*;
 
-//   #[test]
-//   pub fn check_cache_general_use() {
-//     let conn = Connection::open_in_memory().unwrap();
-//     let cache = EmitCache::from_connection(conn, "1.0.0".to_string()).unwrap();
+  #[test]
+  pub fn emit_cache_general_use() {
+    let conn = Connection::open_in_memory().unwrap();
+    let cache = EmitCache::from_connection(conn, "1.0.0".to_string()).unwrap();
 
-//     assert!(!cache.has_check_hash(1));
-//     cache.add_check_hash(1);
-//     assert!(cache.has_check_hash(1));
-//     assert!(!cache.has_check_hash(2));
+    let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
+    assert_eq!(cache.get_emit_data(&specifier1, None), None);
+    let cache_data1 = SpecifierEmitCacheData {
+      text: "text".to_string(),
+      map: Some("map".to_string()),
+    };
+    cache.set_emit_data(&specifier1, 10, &cache_data1);
+    // providing no source hash
+    assert_eq!(
+      cache.get_emit_data(&specifier1, None),
+      Some(cache_data1.clone())
+    );
+    // providing the incorrect source hash
+    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
+    // providing the correct source hash
+    assert_eq!(
+      cache.get_emit_data(&specifier1, Some(10)),
+      Some(cache_data1.clone()),
+    );
 
-//     let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
-//     assert_eq!(cache.get_tsbuildinfo(&specifier1), None);
-//     cache.set_tsbuildinfo(&specifier1, "test");
-//     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
+    // try changing the cli version (should clear)
+    let conn = cache.0.unwrap();
+    let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    assert_eq!(cache.get_emit_data(&specifier1, None), None);
+    cache.set_emit_data(&specifier1, 5, &cache_data1);
 
-//     // try changing the cli version (should clear)
-//     let conn = cache.0.unwrap();
-//     let cache =
-//       TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-//     assert!(!cache.has_check_hash(1));
-//     cache.add_check_hash(1);
-//     assert!(cache.has_check_hash(1));
-//     assert_eq!(cache.get_tsbuildinfo(&specifier1), None);
-//     cache.set_tsbuildinfo(&specifier1, "test");
-//     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
+    // recreating the cache should not remove the data because the CLI version is the same
+    let conn = cache.0.unwrap();
+    let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
+    assert_eq!(
+      cache.get_emit_data(&specifier1, Some(5)),
+      Some(cache_data1.clone())
+    );
 
-//     // recreating the cache should not remove the data because the CLI version and state hash is the same
-//     let conn = cache.0.unwrap();
-//     let cache =
-//       TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-//     assert!(cache.has_check_hash(1));
-//     assert!(!cache.has_check_hash(2));
-//     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
-
-//     // adding when already exists should not cause issue
-//     cache.add_check_hash(1);
-//     assert!(cache.has_check_hash(1));
-//     cache.set_tsbuildinfo(&specifier1, "other");
-//     assert_eq!(
-//       cache.get_tsbuildinfo(&specifier1),
-//       Some("other".to_string())
-//     );
-//   }
-// }
+    // adding when already exists should not cause issue
+    let cache_data2 = SpecifierEmitCacheData {
+      text: "asdf".to_string(),
+      map: None,
+    };
+    cache.set_emit_data(&specifier1, 20, &cache_data2);
+    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
+    assert_eq!(
+      cache.get_emit_data(&specifier1, Some(20)),
+      Some(cache_data2.clone())
+    );
+  }
+}

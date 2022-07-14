@@ -233,7 +233,7 @@ mod test {
     cache.set_tsbuildinfo(&specifier1, "test");
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
 
-    // recreating the cache should not remove the data because the CLI version and state hash is the same
+    // recreating the cache should not remove the data because the CLI version is the same
     let conn = cache.0.unwrap();
     let cache =
       TypeCheckCache::from_connection(conn, "2.0.0".to_string()).unwrap();
