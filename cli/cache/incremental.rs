@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,6 +11,9 @@ use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
+
+use super::common::fast_insecure_hash;
+use super::common::run_sqlite_pragma;
 
 /// Cache used to skip formatting/linting a file again when we
 /// know it is already formatted or has no lint diagnostics.
@@ -165,7 +170,7 @@ impl SqlIncrementalCache {
     state_hash: u64,
     cli_version: String,
   ) -> Result<Self, AnyError> {
-    run_pragma(&conn)?;
+    run_sqlite_pragma(&conn)?;
     create_tables(&conn, cli_version)?;
 
     Ok(Self { conn, state_hash })
@@ -229,22 +234,6 @@ impl SqlIncrementalCache {
   }
 }
 
-fn run_pragma(conn: &Connection) -> Result<(), AnyError> {
-  // Enable write-ahead-logging and tweak some other stuff
-  let initial_pragmas = "
-    -- enable write-ahead-logging mode
-    PRAGMA journal_mode=WAL;
-    PRAGMA synchronous=NORMAL;
-    PRAGMA temp_store=memory;
-    PRAGMA page_size=4096;
-    PRAGMA mmap_size=6000000;
-    PRAGMA optimize;
-  ";
-
-  conn.execute_batch(initial_pragmas)?;
-  Ok(())
-}
-
 fn create_tables(
   conn: &Connection,
   cli_version: String,
@@ -282,16 +271,6 @@ fn create_tables(
   }
 
   Ok(())
-}
-
-/// Very fast non-cryptographically secure hash.
-fn fast_insecure_hash(bytes: &[u8]) -> u64 {
-  use std::hash::Hasher;
-  use twox_hash::XxHash64;
-
-  let mut hasher = XxHash64::default();
-  hasher.write(bytes);
-  hasher.finish()
 }
 
 #[cfg(test)]
