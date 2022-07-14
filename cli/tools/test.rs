@@ -39,7 +39,7 @@ use deno_graph::ModuleKind;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
@@ -1118,7 +1118,7 @@ async fn test_specifiers(
 
       tokio::task::spawn_blocking(move || {
         let origin = specifier.to_string();
-        let file_result = run_basic(test_specifier(
+        let file_result = run_local(test_specifier(
           ps,
           permissions,
           specifier,
