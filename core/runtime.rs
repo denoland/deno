@@ -1305,12 +1305,12 @@ impl JsRuntime {
     }
 
     let maybe_value = module.evaluate(tc_scope);
-    state_rc
-      .borrow_mut()
-      .pending_mod_evaluate
-      .as_mut()
-      .unwrap()
-      .has_evaluated = true;
+    {
+      let mut state = state_rc.borrow_mut();
+      let pending_mod_evaluate = state.pending_mod_evaluate.as_mut().unwrap();
+      pending_mod_evaluate.has_evaluated = true;
+    }
+
     // Update status after evaluating.
     status = module.get_status();
 
@@ -1318,8 +1318,10 @@ impl JsRuntime {
       state_rc.borrow_mut().explicit_terminate_exception.take();
     if let Some(exception) = explicit_terminate_exception {
       let exception = v8::Local::new(tc_scope, exception);
-      let mut state = state_rc.borrow_mut();
-      let pending_mod_evaluate = state.pending_mod_evaluate.take().unwrap();
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
       pending_mod_evaluate
         .sender
         .send(exception_to_err_result(tc_scope, exception, false))
@@ -1339,8 +1341,10 @@ impl JsRuntime {
         Some(promise_global);
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      let mut state = state_rc.borrow_mut();
-      let pending_mod_evaluate = state.pending_mod_evaluate.take().unwrap();
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
       pending_mod_evaluate.sender.send(Err(
         generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
       )).expect("Failed to send module evaluation error.");
@@ -3282,6 +3286,95 @@ assertEquals(1, notify_return_value);
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
     assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback_top_level_await() {
+    static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
+    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
+
+    #[op]
+    fn op_promise_reject() -> Result<(), AnyError> {
+      PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    }
+
+    #[op]
+    fn op_uncaught_exception() -> Result<(), AnyError> {
+      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![
+        op_promise_reject::decl(),
+        op_uncaught_exception::decl(),
+      ])
+      .build();
+
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let source = r#"
+        Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
+          Deno.core.opSync("op_promise_reject");
+          throw reason;
+        });
+        
+        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
+          Deno.core.opSync("op_uncaught_exception");
+        });
+        
+        throw new Error('top level throw');
+        "#;
+
+        async move {
+          Ok(ModuleSource {
+            code: source.as_bytes().to_vec().into_boxed_slice(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      module_loader: Some(Rc::new(ModsLoader)),
+      ..Default::default()
+    });
+
+    let id = runtime
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
+      .await
+      .unwrap();
+    let receiver = runtime.mod_evaluate(id);
+    runtime.run_event_loop(false).await.unwrap();
+    receiver.await.unwrap().unwrap();
+
+    assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
+    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
   }
 
   #[test]
