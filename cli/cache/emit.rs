@@ -71,35 +71,32 @@ impl EmitCache {
 
   /// Gets the emit data from the cache.
   ///
-  /// Ideally, you SHOULD provide an expected source hash in order
-  /// to verify that you're getting a value from the cache that
-  /// is for the provided source.
+  /// The expected source hash is used in order to verify
+  /// that you're getting a value from the cache that is
+  /// for the provided source.
   pub fn get_emit_data(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_expected_source_hash: Option<u64>,
+    expected_source_hash: u64,
   ) -> Option<SpecifierEmitCacheData> {
     let conn = match &self.0 {
       Some(conn) => conn,
       None => return None,
     };
     let mut stmt = conn
-      .prepare_cached("SELECT source_hash, code, source_map FROM emitcache WHERE specifier=?1 LIMIT 1")
+      .prepare_cached("SELECT code, source_map FROM emitcache WHERE specifier=?1 AND source_hash=?2 LIMIT 1")
       .ok()?;
-    let mut rows = stmt.query(params![specifier.to_string()]).ok()?;
+    let mut rows = stmt
+      .query(params![
+        specifier.to_string(),
+        expected_source_hash.to_string()
+      ])
+      .ok()?;
     let row = rows.next().ok().flatten()?;
 
-    if let Some(expected_hash) = maybe_expected_source_hash {
-      // verify that the emit is for the source
-      let saved_hash = row.get::<usize, String>(0).ok()?;
-      if saved_hash != expected_hash.to_string() {
-        return None;
-      }
-    }
-
     Some(SpecifierEmitCacheData {
-      code: row.get(1).ok()?,
-      map: row.get(2).ok()?,
+      code: row.get(0).ok()?,
+      map: row.get(1).ok()?,
     })
   }
 
@@ -193,35 +190,30 @@ mod test {
     let cache = EmitCache::from_connection(conn, "1.0.0".to_string()).unwrap();
 
     let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, None), None);
+    assert_eq!(cache.get_emit_data(&specifier1, 1), None);
     let cache_data1 = SpecifierEmitCacheData {
       code: "text".to_string(),
       map: "map".to_string(),
     };
     cache.set_emit_data(&specifier1, 10, &cache_data1);
-    // providing no source hash
-    assert_eq!(
-      cache.get_emit_data(&specifier1, None),
-      Some(cache_data1.clone())
-    );
     // providing the incorrect source hash
-    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
+    assert_eq!(cache.get_emit_data(&specifier1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_data(&specifier1, Some(10)),
+      cache.get_emit_data(&specifier1, 10),
       Some(cache_data1.clone()),
     );
 
     // try changing the cli version (should clear)
     let conn = cache.0.unwrap();
     let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, None), None);
+    assert_eq!(cache.get_emit_data(&specifier1, 10), None);
     cache.set_emit_data(&specifier1, 5, &cache_data1);
 
     // recreating the cache should not remove the data because the CLI version is the same
     let conn = cache.0.unwrap();
     let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), Some(cache_data1));
+    assert_eq!(cache.get_emit_data(&specifier1, 5), Some(cache_data1));
 
     // adding when already exists should not cause issue
     let cache_data2 = SpecifierEmitCacheData {
@@ -229,10 +221,7 @@ mod test {
       map: "map2".to_string(),
     };
     cache.set_emit_data(&specifier1, 20, &cache_data2);
-    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
-    assert_eq!(
-      cache.get_emit_data(&specifier1, Some(20)),
-      Some(cache_data2)
-    );
+    assert_eq!(cache.get_emit_data(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_data(&specifier1, 20), Some(cache_data2));
   }
 }

@@ -261,21 +261,20 @@ pub fn emit_parsed_source(
   let source_hash =
     get_source_hash(parsed_source.text_info().text_str(), emit_config_hash);
 
-  let cache_data = if let Some(cache_data) =
-    cache.get_emit_data(specifier, Some(source_hash))
-  {
-    cache_data
-  } else {
-    let transpiled_source = parsed_source.transpile(emit_options)?;
-    let cache_data = SpecifierEmitCacheData {
-      code: transpiled_source.text,
-      map: transpiled_source
-        .source_map
-        .expect("should have source map"),
+  let cache_data =
+    if let Some(cache_data) = cache.get_emit_data(specifier, source_hash) {
+      cache_data
+    } else {
+      let transpiled_source = parsed_source.transpile(emit_options)?;
+      let cache_data = SpecifierEmitCacheData {
+        code: transpiled_source.text,
+        map: transpiled_source
+          .source_map
+          .expect("should have source map"),
+      };
+      cache.set_emit_data(specifier, source_hash, &cache_data);
+      cache_data
     };
-    cache.set_emit_data(specifier, source_hash, &cache_data);
-    cache_data
-  };
   Ok(EmittedParsedSource {
     code: cache_data.code,
     map: cache_data.map,
