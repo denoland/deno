@@ -22,7 +22,7 @@ impl TypeCheckCache {
       Err(err) => {
         log::debug!(
           concat!(
-            "Failed creating internal type checking cache. ",
+            "Failed loading internal type checking cache. ",
             "Recreating...\n\nError details:\n{:#}",
           ),
           err
@@ -35,7 +35,7 @@ impl TypeCheckCache {
             Err(err) => {
               log::debug!(
                 concat!(
-                  "Unable to create internal cache for type checking. ",
+                  "Unable to load internal cache for type checking. ",
                   "This will reduce the performance of type checking.\n\n",
                   "Error details:\n{:#}",
                 ),

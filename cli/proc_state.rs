@@ -219,7 +219,7 @@ impl ProcState {
       coverage_dir,
       options: cli_options,
       emit_options_hash: FastInsecureHash::new()
-        // todo: use hash of emit options instead as it's more specific
+        // todo(dsherret): use hash of emit options instead as it's more specific
         .write(&ts_config_result.ts_config.as_bytes())
         .finish(),
       emit_options: ts_config_result.ts_config.into(),

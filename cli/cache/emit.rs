@@ -26,7 +26,7 @@ impl EmitCache {
       Err(err) => {
         log::debug!(
           concat!(
-            "Failed creating internal emit cache. ",
+            "Failed loading internal emit cache. ",
             "Recreating...\n\nError details:\n{:#}",
           ),
           err
@@ -39,7 +39,7 @@ impl EmitCache {
             Err(err) => {
               log::debug!(
                 concat!(
-                  "Unable to create internal emit cache. ",
+                  "Unable to load internal emit cache. ",
                   "This will reduce the performance of emitting.\n\n",
                   "Error details:\n{:#}",
                 ),
@@ -72,8 +72,8 @@ impl EmitCache {
   /// Gets the emit data from the cache.
   ///
   /// Ideally, you SHOULD provide an expected source hash in order
-  /// to verify that you're getting a value from the cache
-  /// that is relevant to the source.
+  /// to verify that you're getting a value from the cache that
+  /// is for the provided source.
   pub fn get_emit_data(
     &self,
     specifier: &ModuleSpecifier,
