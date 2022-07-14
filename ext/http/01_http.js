@@ -81,7 +81,7 @@
       return this.#rid;
     }
 
-    /** @returns {Promise<ResponseEvent | null>} */
+    /** @returns {Promise<RequestEvent | null>} */
     async nextRequest() {
       let nextRequest;
       try {

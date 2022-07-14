@@ -1,9 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::fmt_errors::format_js_error;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::Future;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -71,8 +73,15 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let msg = format!("{}: {}", colors::red_bold("error"), err);
-    eprintln!("{}", msg);
+    let error_string = match err.downcast_ref::<JsError>() {
+      Some(e) => format_js_error(e),
+      None => format!("{:?}", err),
+    };
+    eprintln!(
+      "{}: {}",
+      colors::red_bold("error"),
+      error_string.trim_start_matches("error: ")
+    );
   }
 }
 

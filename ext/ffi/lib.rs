@@ -10,6 +10,7 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::v8::fast_api;
 use std::sync::mpsc::sync_channel;
 
 use deno_core::serde_json::json;
@@ -37,6 +38,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+
+#[cfg(not(target_os = "windows"))]
+mod jit_trampoline;
+#[cfg(not(target_os = "windows"))]
+mod tcc;
 
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
@@ -71,6 +77,9 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  // This is dead code only on Windows
+  #[allow(dead_code)]
+  can_callback: bool,
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
@@ -432,6 +441,13 @@ struct ForeignFunction {
   result: NativeType,
   #[serde(rename = "nonblocking")]
   non_blocking: Option<bool>,
+  #[serde(rename = "callback")]
+  #[serde(default = "default_callback")]
+  callback: bool,
+}
+
+fn default_callback() -> bool {
+  false
 }
 
 // ForeignStatic's name and type fields are read and used by
@@ -598,13 +614,14 @@ where
           ptr,
           parameter_types: foreign_fn.parameters,
           result_type: foreign_fn.result,
+          can_callback: foreign_fn.callback,
         });
 
         resource.symbols.insert(symbol_key, sym.clone());
         match foreign_fn.non_blocking {
           // Generate functions for synchronous calls.
           Some(false) | None => {
-            let function = make_sync_fn(scope, Box::leak(sym));
+            let function = make_sync_fn(scope, sym);
             obj.set(scope, func_key.into(), function.into());
           }
           // This optimization is not yet supported for non-blocking calls.
@@ -623,13 +640,106 @@ where
   ))
 }
 
+pub struct FfiFastCallTemplate {
+  args: Box<[fast_api::Type]>,
+  ret: fast_api::CType,
+  symbol_ptr: *const c_void,
+}
+
+impl fast_api::FastFunction for FfiFastCallTemplate {
+  type Signature = ();
+  fn function(&self) -> Self::Signature {}
+
+  fn raw(&self) -> *const c_void {
+    self.symbol_ptr
+  }
+  fn args(&self) -> &'static [fast_api::Type] {
+    Box::leak(self.args.clone())
+  }
+  fn return_type(&self) -> fast_api::CType {
+    self.ret
+  }
+}
+
+impl From<&NativeType> for fast_api::Type {
+  fn from(native_type: &NativeType) -> Self {
+    match native_type {
+      NativeType::U8 | NativeType::U16 | NativeType::U32 => {
+        fast_api::Type::Uint32
+      }
+      NativeType::I8 | NativeType::I16 | NativeType::I32 => {
+        fast_api::Type::Int32
+      }
+      NativeType::F32 => fast_api::Type::Float32,
+      NativeType::F64 => fast_api::Type::Float64,
+      NativeType::Void => fast_api::Type::Void,
+      NativeType::I64 | NativeType::ISize => fast_api::Type::Int64,
+      NativeType::U64 | NativeType::USize => fast_api::Type::Uint64,
+      NativeType::Function | NativeType::Pointer => {
+        panic!("Cannot be fast api")
+      }
+    }
+  }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_fast_api_rv(rv: NativeType) -> bool {
+  !matches!(
+    rv,
+    NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize
+  )
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_fast_api_arg(rv: NativeType) -> bool {
+  !matches!(rv, NativeType::Function | NativeType::Pointer)
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
-  sym: *mut Symbol,
+  sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let func = v8::Function::builder(
+  #[cfg(not(target_os = "windows"))]
+  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
+
+  #[cfg(target_os = "windows")]
+  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
+
+  #[cfg(not(target_os = "windows"))]
+  let mut fast_allocations: Option<*mut ()> = None;
+  #[cfg(not(target_os = "windows"))]
+  if !sym.can_callback
+    && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
+    && is_fast_api_rv(sym.result_type)
+  {
+    let ret = fast_api::Type::from(&sym.result_type);
+
+    let mut args = sym
+      .parameter_types
+      .iter()
+      .map(|t| t.into())
+      .collect::<Vec<_>>();
+    // recv
+    args.insert(0, fast_api::Type::V8Value);
+    let symbol_trampoline =
+      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
+    fast_ffi_templ = Some(FfiFastCallTemplate {
+      args: args.into_boxed_slice(),
+      ret: (&ret).into(),
+      symbol_ptr: symbol_trampoline.addr,
+    });
+    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
+  }
+
+  let sym = Box::leak(sym);
+  let builder = v8::FunctionTemplate::builder(
     |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
@@ -650,9 +760,14 @@ fn make_sync_fn<'s>(
       };
     },
   )
-  .data(v8::External::new(scope, sym as *mut _).into())
-  .build(scope)
-  .unwrap();
+  .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
+
+  let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
+    builder.build_fast(scope, fast_ffi_templ)
+  } else {
+    builder.build(scope)
+  };
+  let func = func.get_function(scope).unwrap();
 
   let weak = v8::Weak::with_finalizer(
     scope,
@@ -660,7 +775,13 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe { Box::from_raw(sym) };
+      unsafe {
+        Box::from_raw(sym);
+        #[cfg(not(target_os = "windows"))]
+        if let Some(fast_allocations) = fast_allocations {
+          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
+        }
+      }
     }),
   );
 
@@ -857,6 +978,7 @@ where
     result_type,
     cif,
     ptr: fun_ptr,
+    ..
   } = symbol;
   let mut ffi_args: Vec<NativeValue> =
     Vec::with_capacity(parameter_types.len());
@@ -1730,6 +1852,7 @@ fn op_ffi_call_nonblocking<'scope>(
       ptr,
       parameter_types,
       result_type,
+      ..
     } = symbol.clone();
     ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
   });
