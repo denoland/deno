@@ -221,10 +221,7 @@ mod test {
     // recreating the cache should not remove the data because the CLI version is the same
     let conn = cache.0.unwrap();
     let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-    assert_eq!(
-      cache.get_emit_data(&specifier1, Some(5)),
-      Some(cache_data1.clone())
-    );
+    assert_eq!(cache.get_emit_data(&specifier1, Some(5)), Some(cache_data1));
 
     // adding when already exists should not cause issue
     let cache_data2 = SpecifierEmitCacheData {
@@ -235,7 +232,7 @@ mod test {
     assert_eq!(cache.get_emit_data(&specifier1, Some(5)), None);
     assert_eq!(
       cache.get_emit_data(&specifier1, Some(20)),
-      Some(cache_data2.clone())
+      Some(cache_data2)
     );
   }
 }
