@@ -1,18 +1,5 @@
-// deno-lint-ignore-file
-
-function b() {
-  return function (
-    _target: any,
-    _propertyKey: string,
-    _descriptor: PropertyDescriptor,
-  ) {
-    console.log("b");
-  };
+function foo(bar) {
+  console.log(bar);
 }
 
-class A {
-  @b()
-  a() {
-    console.log("a");
-  }
-}
+foo(1);

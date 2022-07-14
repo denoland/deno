@@ -659,7 +659,6 @@ itest!(async_error {
 
 itest!(config {
   args: "run --reload --config config.tsconfig.json --check config.ts",
-  exit_code: 1,
   output: "config.ts.out",
 });
 
