@@ -38,7 +38,6 @@ use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
 use std::collections::HashSet;
 use std::fmt;
-use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 

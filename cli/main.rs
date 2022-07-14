@@ -1317,11 +1317,7 @@ fn setup_panic_hook() {
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
-    eprintln!(
-      "Platform: {} {}",
-      env::consts::OS,
-      env::consts::ARCH
-    );
+    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
     eprintln!("Version: {}", version::deno());
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
