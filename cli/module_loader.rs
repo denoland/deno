@@ -5,6 +5,7 @@ use crate::emit::emit_parsed_source;
 use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::proc_state::ProcState;
+use crate::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -252,18 +253,5 @@ impl SourceMapGetter for CliModuleLoader {
     } else {
       Some(lines[line_number].to_string())
     }
-  }
-}
-
-fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
-  static PREFIX: &str = "//# sourceMappingURL=data:application/json;base64,";
-  let last_line = code.rsplit(|u| u == '\n').next().unwrap();
-  if last_line.starts_with(PREFIX) {
-    let input = last_line.split_at(PREFIX.len()).1;
-    let decoded_map = base64::decode(input)
-      .expect("Unable to decode source map from emitted file.");
-    Some(decoded_map)
-  } else {
-    None
   }
 }

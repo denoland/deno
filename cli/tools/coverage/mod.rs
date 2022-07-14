@@ -7,6 +7,7 @@ use crate::colors;
 use crate::emit::get_source_hash;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
+use crate::text_encoding::source_map_from_code;
 use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
@@ -684,7 +685,10 @@ pub async fn cover_files(
         let source_hash =
           get_source_hash(original_source, ps.emit_options_hash);
         match emit_cache.get_emit_data(&file.specifier, Some(source_hash)) {
-          Some(data) => (data.text, data.map),
+          Some(data) => {
+            let map = source_map_from_code(&data.text).or_else(|| data.map.map(|t| t.into_bytes()));
+            (data.text, map)
+          },
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -702,7 +706,7 @@ pub async fn cover_files(
     let coverage_report = generate_coverage_report(
       &script_coverage,
       &transpiled_source,
-      &maybe_source_map.map(|t| t.into_bytes()),
+      &maybe_source_map,
       &out_mode,
     );
 
