@@ -62,6 +62,18 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(test_with_config {
+  args: "test --config test/collect/deno.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.out"
+});
+
+itest!(fmt_with_malformed_config {
+  args: "test --config test/collect/deno.malformed.jsonc",
+  exit_code: 1,
+  output: "test/collect_with_malformed_config.out",
+});
+
 itest!(jobs_flag {
   args: "test test/short-pass.ts --jobs",
   exit_code: 0,
