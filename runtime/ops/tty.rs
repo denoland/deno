@@ -95,6 +95,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
         return Err(custom_error("ReferenceError", "null handle"));
       }
       let mut original_mode: DWORD = 0;
+      // SAFETY: winapi call
       if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
         == FALSE
       {
@@ -105,6 +106,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       } else {
         original_mode | RAW_MODE_MASK
       };
+      // SAFETY: winapi call
       if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
         return Err(Error::last_os_error().into());
       }
@@ -210,6 +212,7 @@ fn op_console_size(
       use std::os::windows::io::AsRawHandle;
       let handle = std_file.as_raw_handle();
 
+      // SAFETY: winapi calls
       unsafe {
         let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
           std::mem::zeroed();
