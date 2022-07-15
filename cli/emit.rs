@@ -38,7 +38,6 @@ use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
 use std::collections::HashSet;
 use std::fmt;
-use std::result;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -47,7 +46,7 @@ use std::time::Instant;
 pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
-  fn deserialize<D>(deserializer: D) -> result::Result<Self, D::Error>
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
   {
@@ -199,50 +198,37 @@ pub fn get_ts_config_for_emit(
 /// Transform the graph into root specifiers that we can feed `tsc`. We have to
 /// provide the media type for root modules because `tsc` does not "resolve" the
 /// media type like other modules, as well as a root specifier needs any
-/// redirects resolved. If we aren't checking JavaScript, we need to include all
-/// the emittable files in the roots, so they get type checked and optionally
-/// emitted, otherwise they would be ignored if only imported into JavaScript.
+/// redirects resolved. We need to include all the emittable files in
+/// the roots, so they get type checked and optionally emitted,
+/// otherwise they would be ignored if only imported into JavaScript.
 fn get_tsc_roots(
-  roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: &GraphData,
   check_js: bool,
 ) -> Vec<(ModuleSpecifier, MediaType)> {
-  if !check_js {
-    graph_data
-      .entries()
-      .into_iter()
-      .filter_map(|(specifier, module_entry)| match module_entry {
-        ModuleEntry::Module {
-          media_type,
-          ts_check,
-          ..
-        } => match &media_type {
-          MediaType::TypeScript
-          | MediaType::Tsx
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Jsx => Some((specifier.clone(), *media_type)),
-          MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
-            if check_js || *ts_check =>
-          {
-            Some((specifier.clone(), *media_type))
-          }
-          _ => None,
-        },
-        _ => None,
-      })
-      .collect()
-  } else {
-    roots
-      .iter()
-      .filter_map(|(specifier, _)| match graph_data.get(specifier) {
-        Some(ModuleEntry::Module { media_type, .. }) => {
+  graph_data
+    .entries()
+    .into_iter()
+    .filter_map(|(specifier, module_entry)| match module_entry {
+      ModuleEntry::Module {
+        media_type,
+        ts_check,
+        ..
+      } => match &media_type {
+        MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Jsx => Some((specifier.clone(), *media_type)),
+        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
+          if check_js || *ts_check =>
+        {
           Some((specifier.clone(), *media_type))
         }
         _ => None,
-      })
-      .collect()
-  }
+      },
+      _ => None,
+    })
+    .collect()
 }
 
 /// A hashing function that takes the source code, version and optionally a
@@ -328,7 +314,7 @@ pub fn check(
     return Ok(Default::default());
   }
 
-  let root_names = get_tsc_roots(roots, &segment_graph_data, check_js);
+  let root_names = get_tsc_roots(&segment_graph_data, check_js);
   if options.log_checks {
     for (root, _) in roots {
       let root_str = root.to_string();

@@ -127,7 +127,7 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      crate::colors::yellow("Warning"), column_number,
+      yellow("Warning"), column_number,
     );
   }
 
