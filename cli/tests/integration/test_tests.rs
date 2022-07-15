@@ -65,13 +65,13 @@ itest!(collect {
 itest!(test_with_config {
   args: "test --config test/collect/deno.jsonc test/collect",
   exit_code: 0,
-  output: "test/collect.out"
+  output: "test/collect.out",
 });
 
 itest!(test_with_config2 {
-  args: "test --config test/collect/deno.2.jsonc test/collect",
+  args: "test --config test/collect/deno2.jsonc test/collect",
   exit_code: 0,
-  output: "test/collect.2.out"
+  output: "test/collect2.out",
 });
 
 itest!(test_with_malformed_config {
