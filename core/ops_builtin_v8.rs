@@ -63,16 +63,14 @@ fn to_v8_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  JsRealm::state_from_scope(scope, |context_state| {
-    context_state.unrefed_ops.remove(&promise_id);
-  });
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  JsRealm::state_from_scope(scope, |context_state| {
-    context_state.unrefed_ops.insert(promise_id);
-  });
+  let context_state = JsRealm::state_from_scope(scope);
+  context_state.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
