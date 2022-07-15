@@ -158,12 +158,6 @@ fn cache_test() {
     .expect("Failed to spawn script");
   assert!(output.status.success());
 
-  let out = std::str::from_utf8(&output.stderr).unwrap();
-  // Check if file and dependencies are written successfully
-  assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
-
   let prg = util::deno_exe_path();
   let output = Command::new(&prg)
     .env("DENO_DIR", deno_dir.path())
@@ -367,46 +361,6 @@ fn ts_no_recheck_on_redirect() {
     .expect("failed to spawn script");
 
   assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
-}
-
-#[test]
-fn ts_reload() {
-  let hello_ts = util::testdata_path().join("002_hello.ts");
-  assert!(hello_ts.is_file());
-
-  let deno_dir = TempDir::new();
-  let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--check=all")
-    .arg(&hello_ts)
-    .spawn()
-    .expect("failed to spawn script");
-  let status_initial =
-    initial.wait().expect("failed to wait for child process");
-  assert!(status_initial.success());
-
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--check=all")
-    .arg("--reload")
-    .arg("-L")
-    .arg("debug")
-    .arg(&hello_ts)
-    .output()
-    .expect("failed to spawn script");
-
-  // check the output of the the bundle program.
-  let output_path = hello_ts.canonicalize().unwrap();
-  assert!(
-    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
-      &format!(
-        "host.getSourceFile(\"{}\", Latest)",
-        url::Url::from_file_path(&output_path).unwrap().as_str()
-      )
-    )
-  );
 }
 
 #[test]

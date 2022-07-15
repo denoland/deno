@@ -336,15 +336,11 @@ delete Object.prototype.__proto__;
     getDefaultLibLocation() {
       return ASSETS;
     },
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      let maybeSpecifiers;
-      if (sourceFiles) {
-        maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-      }
       return core.opSync(
         "op_emit",
-        { maybeSpecifiers, fileName, data },
+        { fileName, data },
       );
     },
     getCurrentDirectory() {
@@ -557,16 +553,18 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const { diagnostics: emitDiagnostics } = program.emit();
-
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...program.getSyntacticDiagnostics(),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-      ...emitDiagnostics,
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+
+    // emit the tsbuildinfo file
+    // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
+    program.emitBuildInfo(host.writeFile);
+
     performanceProgram({ program });
 
     core.opSync("op_respond", {

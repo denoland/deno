@@ -145,11 +145,18 @@ impl ReplLanguageServer {
       .ok()
       .unwrap_or_default();
 
-    let items = match response {
+    let mut items = match response {
       Some(CompletionResponse::Array(items)) => items,
       Some(CompletionResponse::List(list)) => list.items,
       None => Vec::new(),
     };
+    items.sort_by_key(|item| {
+      if let Some(sort_text) = &item.sort_text {
+        sort_text.clone()
+      } else {
+        item.label.clone()
+      }
+    });
     items
       .into_iter()
       .filter_map(|item| {
