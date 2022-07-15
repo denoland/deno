@@ -58,6 +58,10 @@ fn main() {}
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
-  build_tcc();
+  if let Ok(tcc_path) = env::var("TCC_PATH") {
+    println!("cargo:rustc-link-search=native={}", tcc_path);
+  } else {
+    build_tcc();
+  }
   println!("cargo:rustc-link-lib=static=tcc");
 }

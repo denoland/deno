@@ -274,7 +274,7 @@ pub async fn run(
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(1),
-      debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+      debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
       location: metadata.location,
       no_color: !colors::use_color(),

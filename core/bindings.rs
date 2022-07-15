@@ -292,12 +292,20 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // a) asynchronous, and b) always terminates.
   if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
     let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
-    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
+    if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
+      if !pending_mod_evaluate.has_evaluated {
+        let promise_global = v8::Global::new(tc_scope, promise);
+        pending_mod_evaluate
+          .handled_promise_rejections
+          .push(promise_global);
+      }
+    }
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
       PromiseRejectWithNoHandler

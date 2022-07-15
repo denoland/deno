@@ -84,6 +84,7 @@ pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
 }
 
@@ -425,6 +426,7 @@ impl Inner {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
+      maybe_import_map: self.maybe_import_map.clone(),
       root_uri: self.config.root_uri.clone(),
     })
   }
