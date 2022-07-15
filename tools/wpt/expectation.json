@@ -4360,7 +4360,6 @@
           "The CanvasPath interface object should be exposed.",
           "The TextMetrics interface object should be exposed.",
           "The Path2D interface object should be exposed.",
-          "The PromiseRejectionEvent interface object should be exposed.",
           "The EventSource interface object should be exposed.",
           "The XMLHttpRequestEventTarget interface object should be exposed.",
           "The XMLHttpRequestUpload interface object should be exposed.",
