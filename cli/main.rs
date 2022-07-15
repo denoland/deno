@@ -175,7 +175,7 @@ fn create_web_worker_callback(
       source_map_getter: Some(Box::new(ps.clone())),
       worker_type: args.worker_type,
       maybe_inspector_server,
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      get_error_class_fn: Some(&errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
@@ -255,7 +255,7 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    get_error_class_fn: Some(&errors::get_error_class_name),
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
@@ -363,23 +363,23 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = vec![
-    crate::tsc::DENO_NS_LIB,
-    crate::tsc::DENO_CONSOLE_LIB,
-    crate::tsc::DENO_URL_LIB,
-    crate::tsc::DENO_WEB_LIB,
-    crate::tsc::DENO_FETCH_LIB,
-    crate::tsc::DENO_WEBGPU_LIB,
-    crate::tsc::DENO_WEBSOCKET_LIB,
-    crate::tsc::DENO_WEBSTORAGE_LIB,
-    crate::tsc::DENO_CRYPTO_LIB,
-    crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
-    crate::tsc::DENO_NET_LIB,
-    crate::tsc::SHARED_GLOBALS_LIB,
-    crate::tsc::WINDOW_LIB,
+    tsc::DENO_NS_LIB,
+    tsc::DENO_CONSOLE_LIB,
+    tsc::DENO_URL_LIB,
+    tsc::DENO_WEB_LIB,
+    tsc::DENO_FETCH_LIB,
+    tsc::DENO_WEBGPU_LIB,
+    tsc::DENO_WEBSOCKET_LIB,
+    tsc::DENO_WEBSTORAGE_LIB,
+    tsc::DENO_CRYPTO_LIB,
+    tsc::DENO_BROADCAST_CHANNEL_LIB,
+    tsc::DENO_NET_LIB,
+    tsc::SHARED_GLOBALS_LIB,
+    tsc::WINDOW_LIB,
   ];
 
   if unstable {
-    types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(tsc::UNSTABLE_NS_LIB);
   }
 
   types.join("\n")
@@ -654,7 +654,6 @@ async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =
       ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
-        tsc_emit: false,
         lib: ps.options.ts_type_lib_window(),
       })?;
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
@@ -1318,13 +1317,9 @@ fn setup_panic_hook() {
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
-    eprintln!(
-      "Platform: {} {}",
-      std::env::consts::OS,
-      std::env::consts::ARCH
-    );
+    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
     eprintln!("Version: {}", version::deno());
-    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);

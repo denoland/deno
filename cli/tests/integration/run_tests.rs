@@ -2701,6 +2701,13 @@ fn check_local_then_remote() {
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
 
+// Regression test for https://github.com/denoland/deno/issues/15163
+itest!(check_js_points_to_ts {
+  args: "run --quiet --check --config checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
+  output: "run/check_js_points_to_ts/test.js.out",
+  exit_code: 1,
+});
+
 itest!(no_prompt_flag {
   args: "run --quiet --unstable --no-prompt no_prompt.ts",
   output_str: Some(""),
