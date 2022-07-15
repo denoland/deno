@@ -8,8 +8,14 @@ use test_util::TempDir;
 use util::assert_contains;
 
 itest!(stdout_write_all {
-  args: "run --quiet stdout_write_all.ts",
-  output: "stdout_write_all.out",
+  args: "run --quiet run/stdout_write_all.ts",
+  output: "run/stdout_write_all.out",
+});
+
+itest!(stdin_read_all {
+  args: "run --quiet run/stdin_read_all.ts",
+  output: "run/stdin_read_all.out",
+  input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
 itest!(_001_hello {
@@ -2694,6 +2700,13 @@ fn check_local_then_remote() {
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
+
+// Regression test for https://github.com/denoland/deno/issues/15163
+itest!(check_js_points_to_ts {
+  args: "run --quiet --check --config checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
+  output: "run/check_js_points_to_ts/test.js.out",
+  exit_code: 1,
+});
 
 itest!(no_prompt_flag {
   args: "run --quiet --unstable --no-prompt no_prompt.ts",

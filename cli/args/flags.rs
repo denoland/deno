@@ -480,6 +480,10 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
+    DENO_JOBS            Number of parallel workers used for test subcommand.
+                         Defaults to number of available CPUs when used with
+                         --jobs flag and no value is provided.
+                         Defaults to 1 when --jobs flag is not used.
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
@@ -1548,7 +1552,7 @@ fn test_subcommand<'a>() -> Command<'a> {
       Arg::new("jobs")
         .short('j')
         .long("jobs")
-        .help("Number of parallel workers, defaults to # of CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .help("Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
@@ -2666,6 +2670,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
+    } else if let Ok(value) = env::var("DENO_JOBS") {
+      value
+        .parse::<NonZeroUsize>()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
     } else {
       std::thread::available_parallelism()
         .unwrap_or(NonZeroUsize::new(1).unwrap())

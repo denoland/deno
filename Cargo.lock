@@ -812,7 +812,7 @@ dependencies = [
  "fwdansi",
  "google-storage1",
  "http",
- "import_map",
+ "import_map 0.12.1",
  "indexmap",
  "jsonc-parser",
  "libc",
@@ -977,7 +977,7 @@ dependencies = [
  "deno_ast",
  "deno_graph",
  "futures",
- "import_map",
+ "import_map 0.11.0",
  "lazy_static",
  "regex",
  "serde",
@@ -1388,9 +1388,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.69.6"
+version = "0.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b71449427ac9087807c1060b418b9127e734ebdd2a254822e8ca4fe8c5d3829"
+checksum = "8615057f4eb72345350d10b6289cb320ff844255a1c2877e0a3692d2bb93f436"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2178,6 +2178,19 @@ name = "import_map"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5247edf057fe57036112a1fec3864baa68052b52116760dbea4909115731272f"
+dependencies = [
+ "indexmap",
+ "log 0.4.17",
+ "serde",
+ "serde_json",
+ "url 2.2.2",
+]
+
+[[package]]
+name = "import_map"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b827962ca5aa6d5bbe313c14e73d7cc517487fa3bad380bb6bdbd8421e591a29"
 dependencies = [
  "indexmap",
  "log 0.4.17",
@@ -5160,9 +5173,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.45.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4afe785c0357a4c1b0a6464ab72899e688d26eafc63e0b626e2ce2d35b147477"
+checksum = "585d0003513563279cbbdfa0b1eb739de0f9c34f556727e885c10748a71e1780"
 dependencies = [
  "bitflags",
  "fslock",
