@@ -272,12 +272,20 @@ Deno.bench("nop_i64()", () => {
 });
 
 const { nop_usize } = dylib.symbols;
-Deno.bench("nop_usize()", () => {
+Deno.bench("nop_usize() number", () => {
+  nop_usize(100);
+});
+
+Deno.bench("nop_usize() bigint", () => {
   nop_usize(100n);
 });
 
 const { nop_isize } = dylib.symbols;
-Deno.bench("nop_isize()", () => {
+Deno.bench("nop_isize() number", () => {
+  nop_isize(100);
+});
+
+Deno.bench("nop_isize() bigint", () => {
   nop_isize(100n);
 });
 

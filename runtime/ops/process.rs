@@ -318,21 +318,26 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
+    // SAFETY: winapi call
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
 
     if handle.is_null() {
+      // SAFETY: winapi call
       let err = match unsafe { GetLastError() } {
         ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
     } else {
-      let is_terminated = unsafe { TerminateProcess(handle, 1) };
-      unsafe { CloseHandle(handle) };
-      match is_terminated {
-        FALSE => Err(Error::last_os_error().into()),
-        TRUE => Ok(()),
-        _ => unreachable!(),
+      // SAFETY: winapi calls
+      unsafe {
+        let is_terminated = TerminateProcess(handle, 1);
+        CloseHandle(handle);
+        match is_terminated {
+          FALSE => Err(Error::last_os_error().into()),
+          TRUE => Ok(()),
+          _ => unreachable!(),
+        }
       }
     }
   }

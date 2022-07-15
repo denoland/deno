@@ -1,14 +1,17 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::CacheType;
-use crate::cache::Cacher;
-use crate::cache::EmitMetadata;
 use crate::fs_util;
 use crate::http_cache::url_to_filename;
+
+use super::CacheType;
+use super::Cacher;
+use super::EmitMetadata;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url::{Host, Url};
+use deno_core::url::Host;
+use deno_core::url::Url;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
@@ -184,7 +187,6 @@ impl Cacher for DiskCache {
     let extension = match cache_type {
       CacheType::Emit => "js",
       CacheType::SourceMap => "js.map",
-      CacheType::TypeScriptBuildInfo => "buildinfo",
       CacheType::Version => {
         return self.get_emit_metadata(specifier).map(|d| d.version_hash)
       }
@@ -206,7 +208,6 @@ impl Cacher for DiskCache {
     let extension = match cache_type {
       CacheType::Emit => "js",
       CacheType::SourceMap => "js.map",
-      CacheType::TypeScriptBuildInfo => "buildinfo",
       CacheType::Version => {
         let data = if let Some(mut data) = self.get_emit_metadata(specifier) {
           data.version_hash = value;
