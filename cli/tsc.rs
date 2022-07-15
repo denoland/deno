@@ -798,7 +798,7 @@ mod tests {
 
   #[test]
   fn test_compiler_snapshot() {
-    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+    let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
     });
