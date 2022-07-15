@@ -1,0 +1,8 @@
+{
+  "test": {
+    "files": {
+      "exclude": ["./"],
+      "include": ["./include/"]
+    }
+  }
+}

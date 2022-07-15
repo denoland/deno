@@ -68,7 +68,13 @@ itest!(test_with_config {
   output: "test/collect.out"
 });
 
-itest!(fmt_with_malformed_config {
+itest!(test_with_config2 {
+  args: "test --config test/collect/deno.2.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.2.out"
+});
+
+itest!(test_with_malformed_config {
   args: "test --config test/collect/deno.malformed.jsonc",
   exit_code: 1,
   output: "test/collect_with_malformed_config.out",
