@@ -480,9 +480,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
-    DENO_JOBS            Number of parallel workers used for test subcommand. 
+    DENO_JOBS            Number of parallel workers used for test subcommand.
                          Defaults to number of available CPUs when used with
-                         --jobs flag and no value is provided. 
+                         --jobs flag and no value is provided.
                          Defaults to 1 when --jobs flag is not used.
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
@@ -1555,7 +1555,6 @@ fn test_subcommand<'a>() -> Command<'a> {
         .help("Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
         .min_values(0)
         .max_values(1)
-        .require_equals(true)
         .takes_value(true)
         .validator(|val: &str| match val.parse::<NonZeroUsize>() {
           Ok(_) => Ok(()),
