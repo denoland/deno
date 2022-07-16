@@ -5,11 +5,11 @@ use std::hash::Hasher;
 use deno_core::error::AnyError;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-/// A very fast insecure hash that uses the xxHash algorithm.
+/// A very fast insecure hasher that uses the xxHash algorithm.
 #[derive(Default)]
-pub struct FastInsecureHash(twox_hash::XxHash64);
+pub struct FastInsecureHasher(twox_hash::XxHash64);
 
-impl FastInsecureHash {
+impl FastInsecureHasher {
   pub fn new() -> Self {
     Self::default()
   }

@@ -13,7 +13,7 @@ use serde::Serialize;
 use tokio::task::JoinHandle;
 
 use super::common::run_sqlite_pragma;
-use super::common::FastInsecureHash;
+use super::common::FastInsecureHasher;
 
 /// Cache used to skip formatting/linting a file again when we
 /// know it is already formatted or has no lint diagnostics.
@@ -79,7 +79,7 @@ impl IncrementalCacheInner {
     state: &TState,
     initial_file_paths: &[PathBuf],
   ) -> Result<Self, AnyError> {
-    let state_hash = FastInsecureHash::new()
+    let state_hash = FastInsecureHasher::new()
       .write_str(&serde_json::to_string(state).unwrap())
       .finish();
     let sql_cache = SqlIncrementalCache::new(db_file_path, state_hash)?;
@@ -125,14 +125,14 @@ impl IncrementalCacheInner {
   pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
     match self.previous_hashes.get(file_path) {
       Some(hash) => {
-        *hash == FastInsecureHash::new().write_str(file_text).finish()
+        *hash == FastInsecureHasher::new().write_str(file_text).finish()
       }
       None => false,
     }
   }
 
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
-    let hash = FastInsecureHash::new().write_str(file_text).finish();
+    let hash = FastInsecureHasher::new().write_str(file_text).finish();
     if let Some(previous_hash) = self.previous_hashes.get(file_path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
@@ -337,7 +337,7 @@ mod test {
         .unwrap();
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
-    let file_hash = FastInsecureHash::new().write_str(file_text).finish();
+    let file_hash = FastInsecureHasher::new().write_str(file_text).finish();
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,

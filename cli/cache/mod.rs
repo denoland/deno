@@ -19,7 +19,7 @@ mod emit;
 mod incremental;
 
 pub use check::TypeCheckCache;
-pub use common::FastInsecureHash;
+pub use common::FastInsecureHasher;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use emit::SpecifierEmitCacheData;

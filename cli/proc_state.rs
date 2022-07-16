@@ -5,7 +5,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
-use crate::cache::FastInsecureHash;
+use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -218,7 +218,7 @@ impl ProcState {
       dir,
       coverage_dir,
       options: cli_options,
-      emit_options_hash: FastInsecureHash::new()
+      emit_options_hash: FastInsecureHasher::new()
         // todo(dsherret): use hash of emit options instead as it's more specific
         .write(&ts_config_result.ts_config.as_bytes())
         .finish(),

@@ -10,7 +10,7 @@ use crate::args::EmitConfigOptions;
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::EmitCache;
-use crate::cache::FastInsecureHash;
+use crate::cache::FastInsecureHasher;
 use crate::cache::SpecifierEmitCacheData;
 use crate::cache::TypeCheckCache;
 use crate::colors;
@@ -233,7 +233,7 @@ fn get_tsc_roots(
 /// user provided config and generates a string hash which can be stored to
 /// determine if the cached emit is valid or not.
 pub fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
-  FastInsecureHash::new()
+  FastInsecureHasher::new()
     .write_str(source_text)
     .write_u64(emit_options_hash)
     .finish()
