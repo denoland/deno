@@ -819,10 +819,10 @@ Deno.test(function responseRedirect() {
 });
 
 Deno.test(function responseRedirectTakeURLObjectAsParameter() {
-  const redir = Response.redirect(new URL("example.com/newLocation"));
+  const redir = Response.redirect(new URL("https://example.com/"));
   assertEquals(
     redir.headers.get("Location"),
-    "http://js-unit-tests/foo/example.com/newLocation",
+    "https://example.com/",
   );
 });
 

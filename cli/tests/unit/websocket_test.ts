@@ -10,8 +10,8 @@ Deno.test({ permissions: "none" }, function websocketPermissionless() {
 
 Deno.test(async function websocketConstructorTakeURLObjectAsParameter() {
   const promise = deferred();
-  const ws = new WebSocket(new URL("ws://localhost:4242"));
-  assertEquals(ws.url, "ws://localhost:4242");
+  const ws = new WebSocket(new URL("ws://localhost:4242/"));
+  assertEquals(ws.url, "ws://localhost:4242/");
   ws.onerror = () => fail();
   ws.onopen = () => ws.close();
   ws.onclose = () => {
