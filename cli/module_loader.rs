@@ -227,10 +227,10 @@ impl SourceMapGetter for CliModuleLoader {
         _ => return None,
       }
       if let Ok(source) = self.load_prepared_module(&specifier) {
-        source
-          .map
-          .map(|m| m.into_bytes())
-          .or_else(|| source_map_from_code(&source.code))
+        // always check the code first as someone might be running
+        // with `--inspect`, which embeds a source file in the code
+        source_map_from_code(&source.code)
+          .or_else(|| source.map.map(|m| m.into_bytes()))
       } else {
         None
       }
