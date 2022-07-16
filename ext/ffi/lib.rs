@@ -39,6 +39,11 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 
+#[cfg(not(target_os = "windows"))]
+mod jit_trampoline;
+#[cfg(not(target_os = "windows"))]
+mod tcc;
+
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
 }
@@ -72,6 +77,8 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  // This is dead code only on Windows
+  #[allow(dead_code)]
   can_callback: bool,
 }
 
@@ -511,8 +518,10 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
       let arguments = [path.as_ptr()];
 
       loop {
-        unsafe {
-          let length = FormatMessageW(
+        // SAFETY:
+        // winapi call to format the error message
+        let length = unsafe {
+          FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
             std::ptr::null_mut(),
             err_num as DWORD,
@@ -520,22 +529,24 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
             buf.as_mut_ptr(),
             buf.len() as DWORD,
             arguments.as_ptr() as _,
-          );
+          )
+        };
 
-          if length == 0 {
-            let err_num = GetLastError();
-            if err_num == ERROR_INSUFFICIENT_BUFFER {
-              buf.resize(buf.len() * 2, 0);
-              continue;
-            }
-
-            // Something went wrong, just return the original error.
-            return e.to_string();
+        if length == 0 {
+          // SAFETY:
+          // winapi call to get the last error message
+          let err_num = unsafe { GetLastError() };
+          if err_num == ERROR_INSUFFICIENT_BUFFER {
+            buf.resize(buf.len() * 2, 0);
+            continue;
           }
 
-          let msg = String::from_utf16_lossy(&buf[..length as usize]);
-          return msg;
+          // Something went wrong, just return the original error.
+          return e.to_string();
         }
+
+        let msg = String::from_utf16_lossy(&buf[..length as usize]);
+        return msg;
       }
     }
     _ => e.to_string(),
@@ -666,19 +677,17 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::F32 => fast_api::Type::Float32,
       NativeType::F64 => fast_api::Type::Float64,
       NativeType::Void => fast_api::Type::Void,
-      NativeType::Function
-      | NativeType::Pointer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize => {
+      NativeType::I64 | NativeType::ISize => fast_api::Type::Int64,
+      NativeType::U64 | NativeType::USize => fast_api::Type::Uint64,
+      NativeType::Function | NativeType::Pointer => {
         panic!("Cannot be fast api")
       }
     }
   }
 }
 
-fn is_fast_api(rv: NativeType) -> bool {
+#[cfg(not(target_os = "windows"))]
+fn is_fast_api_rv(rv: NativeType) -> bool {
   !matches!(
     rv,
     NativeType::Function
@@ -690,31 +699,47 @@ fn is_fast_api(rv: NativeType) -> bool {
   )
 }
 
+#[cfg(not(target_os = "windows"))]
+fn is_fast_api_arg(rv: NativeType) -> bool {
+  !matches!(rv, NativeType::Function | NativeType::Pointer)
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let mut fast_ffi_templ = None;
+  #[cfg(not(target_os = "windows"))]
+  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
 
+  #[cfg(target_os = "windows")]
+  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
+
+  #[cfg(not(target_os = "windows"))]
+  let mut fast_allocations: Option<*mut ()> = None;
+  #[cfg(not(target_os = "windows"))]
   if !sym.can_callback
-    && !sym.parameter_types.iter().any(|t| !is_fast_api(*t))
-    && is_fast_api(sym.result_type)
+    && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
+    && is_fast_api_rv(sym.result_type)
   {
+    let ret = fast_api::Type::from(&sym.result_type);
+
     let mut args = sym
       .parameter_types
       .iter()
       .map(|t| t.into())
       .collect::<Vec<_>>();
-    if args.is_empty() {
-      args.push(fast_api::Type::V8Value);
-    }
+    // recv
+    args.insert(0, fast_api::Type::V8Value);
+    let symbol_trampoline =
+      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
     fast_ffi_templ = Some(FfiFastCallTemplate {
       args: args.into_boxed_slice(),
-      ret: (&fast_api::Type::from(&sym.result_type)).into(),
-      symbol_ptr: sym.ptr.as_ptr() as *const c_void,
+      ret: (&ret).into(),
+      symbol_ptr: symbol_trampoline.addr,
     });
+    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
   }
 
   let sym = Box::leak(sym);
@@ -754,7 +779,13 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe { Box::from_raw(sym) };
+      unsafe {
+        Box::from_raw(sym);
+        #[cfg(not(target_os = "windows"))]
+        if let Some(fast_allocations) = fast_allocations {
+          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
+        }
+      }
     }),
   );
 

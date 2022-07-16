@@ -188,6 +188,15 @@ fn pty_complete_imports() {
 }
 
 #[test]
+fn pty_complete_imports_no_panic_empty_specifier() {
+  // does not panic when tabbing when empty
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("import '\t';");
+    console.write_line("close();");
+  });
+}
+
+#[test]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Array.Symbol\t");
@@ -217,13 +226,13 @@ fn pty_assign_global_this() {
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {
-    console.write_line("console.log('🦕');");
+    console.write_line(r#"console.log('\u{1F995}');"#);
     console.write_line("close();");
 
     let output = console.read_all_output();
-    // one for input, one for output
+    // only one for the output (since input is escaped)
     let emoji_count = output.chars().filter(|c| *c == '🦕').count();
-    assert_eq!(emoji_count, 2);
+    assert_eq!(emoji_count, 1);
   });
 }
 
