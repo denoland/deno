@@ -2024,9 +2024,9 @@ impl JsRealm {
     &self.0
   }
 
-  pub(crate) fn state<'s>(
-    &'s self,
-    isolate: &'s mut v8::Isolate,
+  pub(crate) fn state(
+    &self,
+    isolate: &mut v8::Isolate,
   ) -> Rc<RefCell<ContextState>> {
     self
       .context()
