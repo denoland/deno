@@ -1,8 +1,8 @@
 {
   "test": {
     "files": {
-      "exclude": ["./"],
-      "include": ["./include/"]
+      "include": ["./include/"],
+      "exclude": ["./ignore", "./include/2_test.ts"]
     }
   }
 }
