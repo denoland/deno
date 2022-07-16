@@ -40,7 +40,7 @@ interface WebSocketEventMap {
  * If you are looking to create a WebSocket server, please take a look at `Deno.upgradeWebSocket()`.
  */
 declare class WebSocket extends EventTarget {
-  constructor(url: string, protocols?: string | string[]);
+  constructor(url: string | URL, protocols?: string | string[]);
 
   static readonly CLOSED: number;
   static readonly CLOSING: number;

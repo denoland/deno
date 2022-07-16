@@ -818,6 +818,14 @@ Deno.test(function responseRedirect() {
   assertEquals(redir.type, "default");
 });
 
+Deno.test(function responseRedirectTakeURLObjectAsParameter() {
+  const redir = Response.redirect(new URL("example.com/newLocation"));
+  assertEquals(
+    redir.headers.get("Location"),
+    "http://js-unit-tests/foo/example.com/newLocation",
+  );
+});
+
 Deno.test(async function responseWithoutBody() {
   const response = new Response();
   assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
