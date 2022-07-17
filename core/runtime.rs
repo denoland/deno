@@ -242,6 +242,9 @@ fn v8_init(
   }
 }
 
+pub const V8_WRAPPER_TYPE_INDEX: i32 = 0;
+pub const V8_WRAPPER_OBJECT_INDEX: i32 = 1;
+
 #[derive(Default)]
 pub struct RuntimeOptions {
   /// Source map reference for errors.
@@ -352,7 +355,12 @@ impl JsRuntime {
       let mut params = options
         .create_params
         .take()
-        .unwrap_or_else(v8::Isolate::create_params)
+        .unwrap_or_else(|| {
+          v8::Isolate::create_params().embedder_wrapper_type_info_offsets(
+            V8_WRAPPER_TYPE_INDEX,
+            V8_WRAPPER_OBJECT_INDEX,
+          )
+        })
         .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {

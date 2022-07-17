@@ -10,7 +10,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 {
   const { op_add } = Deno.core.ops;
   function add(a, b) {
-    return op_add(a, b);
+    return op_add.call(a, b);
   }
   function addJS(a, b) {
     return a + b;
@@ -20,7 +20,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 }
 
 const { op_void_sync } = Deno.core.ops;
-function sync() { return op_void_sync(); }
+function sync() { return op_void_sync.call(); }
 sync(); // Warmup
 console.log(sync());
 // Void ops measure op-overhead
