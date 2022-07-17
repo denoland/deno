@@ -25,7 +25,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 
-pub struct ModuleCodeSource {
+struct ModuleCodeSource {
   pub code: String,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
