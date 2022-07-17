@@ -421,7 +421,7 @@ impl ProcState {
       self.options.resolve_ts_config_for_emit(config_type)?;
 
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-      log::warn!("{}", ignored_options);
+      warn!("{}", ignored_options);
     }
 
     // start type checking if necessary
@@ -626,7 +626,7 @@ impl ProcState {
     };
 
     Ok(
-      deno_graph::create_graph(
+      create_graph(
         roots,
         false,
         maybe_imports,

@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::env;
-
+#[cfg(not(target_os = "windows"))]
 fn build_tcc() {
+  use std::env;
+
   {
     // TODO(@littledivy): Windows support for fast call.
     // let tcc_path = root
@@ -58,6 +59,12 @@ fn main() {}
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
-  build_tcc();
+  use std::env;
+
+  if let Ok(tcc_path) = env::var("TCC_PATH") {
+    println!("cargo:rustc-link-search=native={}", tcc_path);
+  } else {
+    build_tcc();
+  }
   println!("cargo:rustc-link-lib=static=tcc");
 }
