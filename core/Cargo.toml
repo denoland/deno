@@ -31,8 +31,8 @@ serde_json = { version = "1.0.79", features = ["preserve_order"] }
 serde_v8 = { version = "0.54.0", path = "../serde_v8" }
 sourcemap = "=6.0.1"
 url = { version = "2.2.2", features = ["serde"] }
-# v8 = { version = "0.46.0", default-features = false }
-v8 = { path = "../../rusty_v8" }
+v8 = { git = "https://github.com/denoland/rusty_v8", version = "0.46.0", default-features = false }
+# v8 = { path = "../../rusty_v8" }
 
 [[example]]
 name = "http_bench_json_ops"
