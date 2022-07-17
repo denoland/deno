@@ -133,6 +133,7 @@ mod dirs {
   use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
 
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
+    // SAFETY: winapi calls
     unsafe {
       let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
       let result = shlobj::SHGetKnownFolderPath(
