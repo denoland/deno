@@ -518,8 +518,10 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
       let arguments = [path.as_ptr()];
 
       loop {
-        unsafe {
-          let length = FormatMessageW(
+        // SAFETY:
+        // winapi call to format the error message
+        let length = unsafe {
+          FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
             std::ptr::null_mut(),
             err_num as DWORD,
@@ -527,22 +529,24 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
             buf.as_mut_ptr(),
             buf.len() as DWORD,
             arguments.as_ptr() as _,
-          );
+          )
+        };
 
-          if length == 0 {
-            let err_num = GetLastError();
-            if err_num == ERROR_INSUFFICIENT_BUFFER {
-              buf.resize(buf.len() * 2, 0);
-              continue;
-            }
-
-            // Something went wrong, just return the original error.
-            return e.to_string();
+        if length == 0 {
+          // SAFETY:
+          // winapi call to get the last error message
+          let err_num = unsafe { GetLastError() };
+          if err_num == ERROR_INSUFFICIENT_BUFFER {
+            buf.resize(buf.len() * 2, 0);
+            continue;
           }
 
-          let msg = String::from_utf16_lossy(&buf[..length as usize]);
-          return msg;
+          // Something went wrong, just return the original error.
+          return e.to_string();
         }
+
+        let msg = String::from_utf16_lossy(&buf[..length as usize]);
+        return msg;
       }
     }
     _ => e.to_string(),
