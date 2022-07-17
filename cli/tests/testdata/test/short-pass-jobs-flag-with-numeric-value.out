@@ -1,3 +1,4 @@
+Warning: --jobs flag with numeric value is deprecated. Use 'DENO_JOBS' environment variable with --jobs flag instead.
 Check [WILDCARD]/test/short-pass.ts
 running 1 test from ./test/short-pass.ts
 test ... ok ([WILDCARD])

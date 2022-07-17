@@ -1556,6 +1556,7 @@ fn test_subcommand<'a>() -> Command<'a> {
         .min_values(0)
         .max_values(1)
         .takes_value(true)
+        .require_equals(true)
         .validator(|val: &str| match val.parse::<NonZeroUsize>() {
           Ok(_) => Ok(()),
           Err(_) => Err("jobs should be a non zero unsigned integer".to_string()),
@@ -2669,6 +2670,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
+      println!(
+        "{}",
+        crate::colors::yellow("Warning: --jobs flag with numeric value is deprecated. Use 'DENO_JOBS' environment variable with --jobs flag instead."),
+      );
       value.parse().unwrap()
     } else if let Ok(value) = env::var("DENO_JOBS") {
       value
