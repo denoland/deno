@@ -69,13 +69,17 @@ pub fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
   }
 }
 
-pub fn code_with_source_map(mut code: String, source_map: &str) -> String {
-  if !code.ends_with('\n') {
-    code.push('\n');
+pub fn code_without_source_map(mut code: String) -> String {
+  if let Some(last_line_index) = code.rfind('\n') {
+    if code[last_line_index + 1..].starts_with(SOURCE_MAP_PREFIX) {
+      code.truncate(last_line_index + 1);
+      code
+    } else {
+      code
+    }
+  } else {
+    code
   }
-  code.push_str(SOURCE_MAP_PREFIX);
-  code.push_str(&base64::encode(&source_map));
-  code
 }
 
 #[cfg(test)]

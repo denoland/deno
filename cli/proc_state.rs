@@ -5,6 +5,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::compat;
@@ -65,6 +66,7 @@ pub struct Inner {
   pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
+  pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
   pub emit_options_hash: u64,
   pub graph_data: Arc<RwLock<GraphData>>,
@@ -213,11 +215,13 @@ impl ProcState {
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       warn!("{}", ignored_options);
     }
+    let emit_cache = EmitCache::new(dir.gen_cache.clone());
 
     Ok(ProcState(Arc::new(Inner {
       dir,
       coverage_dir,
       options: cli_options,
+      emit_cache,
       emit_options_hash: FastInsecureHasher::new()
         // todo(dsherret): use hash of emit options instead as it's more specific
         .write(&ts_config_result.ts_config.as_bytes())
@@ -308,6 +312,7 @@ impl ProcState {
       }
     }
     let mut cache = cache::FetchCacher::new(
+      self.emit_cache.clone(),
       self.file_fetcher.clone(),
       root_permissions.clone(),
       dynamic_permissions.clone(),
@@ -516,6 +521,7 @@ impl ProcState {
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = cache::FetchCacher::new(
+      self.emit_cache.clone(),
       self.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),

@@ -2,7 +2,6 @@
 
 use crate::args::CoverageFlags;
 use crate::args::Flags;
-use crate::cache::EmitCache;
 use crate::colors;
 use crate::emit::get_source_hash;
 use crate::fs_util::collect_files;
@@ -606,7 +605,6 @@ pub async fn cover_files(
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
-  let emit_cache = EmitCache::new(&ps.dir.emit_cache_db_file_path());
 
   let script_coverages =
     collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
@@ -668,18 +666,13 @@ pub async fn cover_files(
 
     // Check if file was transpiled
     let original_source = &file.source;
-    let (transpiled_source, maybe_source_map) = match file.media_type {
+    let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => (
-        file.source.as_ref().to_string(),
-        source_map_from_code(file.source.as_ref()),
-      ),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => {
-        ("".to_string(), None)
-      }
+      | MediaType::Json => file.source.as_ref().to_string(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -687,8 +680,8 @@ pub async fn cover_files(
       | MediaType::Tsx => {
         let source_hash =
           get_source_hash(original_source, ps.emit_options_hash);
-        match emit_cache.get_emit_data(&file.specifier, source_hash) {
-          Some(data) => (data.code, Some(data.map.into_bytes())),
+        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
+          Some(code) => code,
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -705,8 +698,8 @@ pub async fn cover_files(
 
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      &transpiled_source,
-      &maybe_source_map,
+      &transpiled_code,
+      &source_map_from_code(&transpiled_code),
       &out_mode,
     );
 

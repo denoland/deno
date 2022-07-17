@@ -1,113 +1,94 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::params;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
+use deno_core::serde_json;
+use serde::Deserialize;
+use serde::Serialize;
 
-use super::common::run_sqlite_pragma;
+use super::DiskCache;
+use super::FastInsecureHasher;
 
-/// Emit cache for a single file.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SpecifierEmitCacheData {
-  pub code: String,
-  pub map: String,
+#[derive(Debug, Deserialize, Serialize)]
+struct EmitMetadata {
+  pub source_hash: String,
+  pub emit_hash: String,
+  // purge the cache between cli versions
+  pub cli_version: String,
 }
 
 /// The cache that stores previously emitted files.
-pub struct EmitCache(Option<Connection>);
+#[derive(Clone)]
+pub struct EmitCache {
+  disk_cache: DiskCache,
+  cli_version: String,
+}
 
 impl EmitCache {
-  pub fn new(db_file_path: &Path) -> Self {
-    match Self::try_new(db_file_path) {
-      Ok(cache) => cache,
-      Err(err) => {
-        log::debug!(
-          concat!(
-            "Failed loading internal emit cache. ",
-            "Recreating...\n\nError details:\n{:#}",
-          ),
-          err
-        );
-        // Maybe the cache file is corrupt. Attempt to remove the cache file
-        // then attempt to recreate again. Otherwise, use null object pattern.
-        match std::fs::remove_file(db_file_path) {
-          Ok(_) => match Self::try_new(db_file_path) {
-            Ok(cache) => cache,
-            Err(err) => {
-              log::debug!(
-                concat!(
-                  "Unable to load internal emit cache. ",
-                  "This will reduce the performance of emitting.\n\n",
-                  "Error details:\n{:#}",
-                ),
-                err
-              );
-              Self(None)
-            }
-          },
-          Err(_) => Self(None),
-        }
-      }
+  pub fn new(disk_cache: DiskCache) -> Self {
+    Self {
+      disk_cache,
+      cli_version: crate::version::deno(),
     }
   }
 
-  fn try_new(db_file_path: &Path) -> Result<Self, AnyError> {
-    let conn = Connection::open(db_file_path)?;
-    Self::from_connection(conn, crate::version::deno())
-  }
-
-  fn from_connection(
-    conn: Connection,
-    cli_version: String,
-  ) -> Result<Self, AnyError> {
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
-
-    Ok(Self(Some(conn)))
-  }
-
-  /// Gets the emit data from the cache.
+  /// Gets the emitted code with embedded sourcemap from the cache.
   ///
   /// The expected source hash is used in order to verify
   /// that you're getting a value from the cache that is
   /// for the provided source.
-  pub fn get_emit_data(
+  pub fn get_emit_code(
     &self,
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
-  ) -> Option<SpecifierEmitCacheData> {
-    let conn = match &self.0 {
-      Some(conn) => conn,
-      None => return None,
-    };
-    let mut stmt = conn
-      .prepare_cached("SELECT code, source_map FROM emitcache WHERE specifier=?1 AND source_hash=?2 LIMIT 1")
-      .ok()?;
-    let mut rows = stmt
-      .query(params![
-        specifier.to_string(),
-        expected_source_hash.to_string()
-      ])
-      .ok()?;
-    let row = rows.next().ok().flatten()?;
+  ) -> Option<String> {
+    let meta_filename = self.get_meta_filename(specifier)?;
+    let emit_filename = self.get_emit_filename(specifier)?;
 
-    Some(SpecifierEmitCacheData {
-      code: row.get(0).ok()?,
-      map: row.get(1).ok()?,
-    })
+    // load and verify the meta data file is for this source and CLI version
+    let bytes = self.disk_cache.get(&meta_filename).ok()?;
+    let meta: EmitMetadata = serde_json::from_slice(&bytes).ok()?;
+    if meta.source_hash != expected_source_hash.to_string()
+      || meta.cli_version != self.cli_version
+    {
+      return None;
+    }
+
+    // load and verify the emit is for the meta data
+    let emit_bytes = self.disk_cache.get(&emit_filename).ok()?;
+    if meta.emit_hash != compute_emit_hash(&emit_bytes) {
+      return None;
+    }
+
+    // everything looks good, return it
+    let emit_text = String::from_utf8(emit_bytes).ok()?;
+    Some(emit_text)
   }
 
-  /// Sets the emit data in the cache.
-  pub fn set_emit_data(
+  /// Gets the filepath which stores the emit.
+  pub fn get_emit_filepath(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<PathBuf> {
+    Some(
+      self
+        .disk_cache
+        .location
+        .join(self.get_emit_filename(specifier)?),
+    )
+  }
+
+  /// Sets the emit code in the cache.
+  pub fn set_emit_code(
     &self,
     specifier: &ModuleSpecifier,
     source_hash: u64,
-    data: &SpecifierEmitCacheData,
+    code: &str,
   ) {
-    if let Err(err) = self.set_emit_data_result(specifier, source_hash, data) {
+    if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
         panic!("Error saving emit data: {}", err);
@@ -117,111 +98,109 @@ impl EmitCache {
     }
   }
 
-  fn set_emit_data_result(
+  fn set_emit_code_result(
     &self,
     specifier: &ModuleSpecifier,
     source_hash: u64,
-    data: &SpecifierEmitCacheData,
+    code: &str,
   ) -> Result<(), AnyError> {
-    let conn = match &self.0 {
-      Some(conn) => conn,
-      None => return Ok(()),
+    let meta_filename = self
+      .get_meta_filename(specifier)
+      .ok_or_else(|| anyhow!("Could not get meta filename."))?;
+    let emit_filename = self
+      .get_emit_filename(specifier)
+      .ok_or_else(|| anyhow!("Could not get emit filename."))?;
+
+    // save the metadata
+    let metadata = EmitMetadata {
+      cli_version: self.cli_version.to_string(),
+      source_hash: source_hash.to_string(),
+      emit_hash: compute_emit_hash(code.as_bytes()),
     };
-    let mut stmt = conn.prepare_cached(
-      "INSERT OR REPLACE INTO emitcache (specifier, source_hash, code, source_map) VALUES (?1, ?2, ?3, ?4)",
-    )?;
-    stmt.execute(params![
-      specifier.to_string(),
-      source_hash.to_string(),
-      &data.code,
-      &data.map,
-    ])?;
+    self
+      .disk_cache
+      .set(&meta_filename, &serde_json::to_vec(&metadata)?)?;
+
+    // save the emit source
+    self.disk_cache.set(&emit_filename, code.as_bytes())?;
+
     Ok(())
+  }
+
+  fn get_meta_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, "meta")
+  }
+
+  fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    self
+      .disk_cache
+      .get_cache_filename_with_extension(specifier, "js")
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
-  // INT doesn't store up to u64, so use TEXT for source_hash
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS emitcache (
-      specifier TEXT PRIMARY KEY,
-      source_hash TEXT NOT NULL,
-      code TEXT NOT NULL,
-      source_map TEXT NOT NULL
-    )",
-    [],
-  )?;
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS info (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )",
-    [],
-  )?;
-
-  // delete the cache when the CLI version changes
-  let data_cli_version: Option<String> = conn
-    .query_row(
-      "SELECT value FROM info WHERE key='CLI_VERSION' LIMIT 1",
-      [],
-      |row| row.get(0),
-    )
-    .ok();
-  if data_cli_version != Some(cli_version.to_string()) {
-    conn.execute("DELETE FROM emitcache", params![])?;
-    let mut stmt = conn
-      .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
-    stmt.execute(params!["CLI_VERSION", &cli_version])?;
-  }
-
-  Ok(())
+fn compute_emit_hash(bytes: &[u8]) -> String {
+  // it's ok to use an insecure hash here because
+  // if someone can change the emit source then they
+  // can also change the version hash
+  FastInsecureHasher::new().write(bytes).finish().to_string()
 }
 
 #[cfg(test)]
 mod test {
+  use test_util::TempDir;
+
   use super::*;
 
   #[test]
   pub fn emit_cache_general_use() {
-    let conn = Connection::open_in_memory().unwrap();
-    let cache = EmitCache::from_connection(conn, "1.0.0".to_string()).unwrap();
-
-    let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, 1), None);
-    let cache_data1 = SpecifierEmitCacheData {
-      code: "text".to_string(),
-      map: "map".to_string(),
+    let temp_dir = TempDir::new();
+    let disk_cache = DiskCache::new(temp_dir.path());
+    let cache = EmitCache {
+      disk_cache: disk_cache.clone(),
+      cli_version: "1.0.0".to_string(),
     };
-    cache.set_emit_data(&specifier1, 10, &cache_data1);
+
+    let specifier1 =
+      ModuleSpecifier::from_file_path(temp_dir.path().join("file1.ts"))
+        .unwrap();
+    let specifier2 =
+      ModuleSpecifier::from_file_path(temp_dir.path().join("file2.ts"))
+        .unwrap();
+    assert_eq!(cache.get_emit_code(&specifier1, 1), None);
+    let emit_code1 = "text1".to_string();
+    let emit_code2 = "text2".to_string();
+    cache.set_emit_code(&specifier1, 10, &emit_code1);
+    cache.set_emit_code(&specifier2, 2, &emit_code2);
     // providing the incorrect source hash
-    assert_eq!(cache.get_emit_data(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_data(&specifier1, 10),
-      Some(cache_data1.clone()),
+      cache.get_emit_code(&specifier1, 10),
+      Some(emit_code1.clone()),
     );
+    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2),);
 
-    // try changing the cli version (should clear)
-    let conn = cache.0.unwrap();
-    let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, 10), None);
-    cache.set_emit_data(&specifier1, 5, &cache_data1);
+    // try changing the cli version (should not load previous ones)
+    let cache = EmitCache {
+      disk_cache: disk_cache.clone(),
+      cli_version: "2.0.0".to_string(),
+    };
+    assert_eq!(cache.get_emit_code(&specifier1, 10), None);
+    cache.set_emit_code(&specifier1, 5, &emit_code1);
 
-    // recreating the cache should not remove the data because the CLI version is the same
-    let conn = cache.0.unwrap();
-    let cache = EmitCache::from_connection(conn, "2.0.0".to_string()).unwrap();
-    assert_eq!(cache.get_emit_data(&specifier1, 5), Some(cache_data1));
+    // recreating the cache should still load the data because the CLI version is the same
+    let cache = EmitCache {
+      disk_cache,
+      cli_version: "2.0.0".to_string(),
+    };
+    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
 
     // adding when already exists should not cause issue
-    let cache_data2 = SpecifierEmitCacheData {
-      code: "asdf".to_string(),
-      map: "map2".to_string(),
-    };
-    cache.set_emit_data(&specifier1, 20, &cache_data2);
-    assert_eq!(cache.get_emit_data(&specifier1, 5), None);
-    assert_eq!(cache.get_emit_data(&specifier1, 20), Some(cache_data2));
+    let emit_code3 = "asdf".to_string();
+    cache.set_emit_code(&specifier1, 20, &emit_code3);
+    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
   }
 }

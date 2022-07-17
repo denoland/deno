@@ -1,10 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::EmitCache;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::proc_state::ProcState;
+use crate::text_encoding::code_without_source_map;
 use crate::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
@@ -27,7 +27,6 @@ use std::str;
 
 pub struct ModuleCodeSource {
   pub code: String,
-  pub map: Option<String>,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -39,32 +38,26 @@ pub struct CliModuleLoader {
   /// read access errors must be raised based on the parent thread permissions.
   pub root_permissions: Permissions,
   pub ps: ProcState,
-  // the emit cache can only be used on one thread due to sqlite constraints
-  emit_cache: EmitCache,
 }
 
 impl CliModuleLoader {
   pub fn new(ps: ProcState) -> Rc<Self> {
-    let emit_cache = EmitCache::new(&ps.dir.emit_cache_db_file_path());
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_window(),
       root_permissions: Permissions::allow_all(),
       ps,
-      emit_cache,
     })
   }
 
   pub fn new_for_worker(ps: ProcState, permissions: Permissions) -> Rc<Self> {
-    let emit_cache = EmitCache::new(&ps.dir.emit_cache_db_file_path());
     Rc::new(CliModuleLoader {
       lib: ps.options.ts_type_lib_worker(),
       root_permissions: permissions,
       ps,
-      emit_cache,
     })
   }
 
-  pub fn load_prepared_module(
+  fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleCodeSource, AnyError> {
@@ -77,24 +70,20 @@ impl CliModuleLoader {
         maybe_parsed_source,
         ..
       }) => {
-        let (code, map) = match media_type {
+        let code = match media_type {
           MediaType::JavaScript
           | MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => {
-            let code = if let Some(source) =
-              graph_data.get_cjs_esm_translation(specifier)
+            if let Some(source) = graph_data.get_cjs_esm_translation(specifier)
             {
               source.to_owned()
             } else {
               code.to_string()
-            };
-            (code, None)
+            }
           }
-          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
-            ("".to_string(), None)
-          }
+          MediaType::Dts | MediaType::Dcts | MediaType::Dmts => "".to_string(),
           MediaType::TypeScript
           | MediaType::Mts
           | MediaType::Cts
@@ -102,20 +91,13 @@ impl CliModuleLoader {
           | MediaType::Tsx => {
             // get emit text
             let parsed_source = maybe_parsed_source.as_ref().unwrap(); // should always be set
-            let emit = emit_parsed_source(
-              &self.emit_cache,
+            emit_parsed_source(
+              &self.ps.emit_cache,
               specifier,
               parsed_source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
-            )?;
-            if self.ps.options.is_inspecting() {
-              // when inspecting, embed the source map
-              // so the user can see the original file
-              (emit.into_text_with_embedded_source_map(), None)
-            } else {
-              (emit.code, Some(emit.map))
-            }
+            )?
           }
           MediaType::TsBuildInfo | MediaType::Wasm | MediaType::SourceMap => {
             panic!("Unexpected media type {} for {}", media_type, found_url)
@@ -123,7 +105,6 @@ impl CliModuleLoader {
         };
         Ok(ModuleCodeSource {
           code,
-          map,
           found_url,
           media_type: *media_type,
         })
@@ -165,18 +146,26 @@ impl ModuleLoader for CliModuleLoader {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
-    let result =
-      self
-        .load_prepared_module(specifier)
-        .map(|code_source| ModuleSource {
-          code: code_source.code.into_bytes().into_boxed_slice(),
-          module_url_specified: specifier.to_string(),
-          module_url_found: code_source.found_url.to_string(),
-          module_type: match code_source.media_type {
-            MediaType::Json => ModuleType::Json,
-            _ => ModuleType::JavaScript,
-          },
-        });
+    let result = self.load_prepared_module(specifier).map(|code_source| {
+      let code = if self.ps.options.is_inspecting() {
+        // we need the code with the source map in order for
+        // it to work with --inspect or --inspect-brk
+        code_source.code
+      } else {
+        // reduce memory and throw away the source map
+        // because we don't need it
+        code_without_source_map(code_source.code)
+      };
+      ModuleSource {
+        code: code.into_bytes().into_boxed_slice(),
+        module_url_specified: specifier.to_string(),
+        module_url_found: code_source.found_url.to_string(),
+        module_type: match code_source.media_type {
+          MediaType::Json => ModuleType::Json,
+          _ => ModuleType::JavaScript,
+        },
+      }
+    });
 
     Box::pin(deno_core::futures::future::ready(result))
   }
@@ -227,10 +216,7 @@ impl SourceMapGetter for CliModuleLoader {
         _ => return None,
       }
       if let Ok(source) = self.load_prepared_module(&specifier) {
-        // always check the code first as someone might be running
-        // with `--inspect`, which embeds a source file in the code
         source_map_from_code(&source.code)
-          .or_else(|| source.map.map(|m| m.into_bytes()))
       } else {
         None
       }

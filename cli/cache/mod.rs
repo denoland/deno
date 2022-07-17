@@ -22,12 +22,12 @@ pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
-pub use emit::SpecifierEmitCacheData;
 pub use incremental::IncrementalCache;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
+  emit_cache: EmitCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: Permissions,
@@ -35,6 +35,7 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
+    emit_cache: EmitCache,
     file_fetcher: FileFetcher,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
@@ -42,6 +43,7 @@ impl FetchCacher {
     let file_fetcher = Arc::new(file_fetcher);
 
     Self {
+      emit_cache,
       dynamic_permissions,
       file_fetcher,
       root_permissions,
@@ -53,10 +55,13 @@ impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
+      let emit = self
+        .emit_cache
+        .get_emit_filepath(specifier)
+        .filter(|p| p.is_file());
       Some(CacheInfo {
         local: Some(local),
-        // we no longer store the emit and map in their own files
-        emit: None,
+        emit,
         map: None,
       })
     } else {

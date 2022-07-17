@@ -609,6 +609,7 @@ async fn create_graph_and_maybe_check(
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
+    ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
