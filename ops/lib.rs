@@ -351,8 +351,8 @@ fn codegen_fast_impl(
       return (
         quote! {
           #trampoline
-          impl #impl_generics #core::v8::fast_api::FastFunction for #name #ty_generics #where_clause {
-            fn function(&self) -> *const ::std::ffi::c_void #where_clause {
+          impl #impl_generics #core::v8::fast_api::FastFunction for #name #ty_generics {
+            fn function(&self) -> *const ::std::ffi::c_void {
               #raw_block
             }
             fn args(&self) -> &'static [#core::v8::fast_api::Type] {
@@ -363,7 +363,7 @@ fn codegen_fast_impl(
             }
           }
         },
-        quote! { Some(Box::new(#name)) },
+        quote! { Some(Box::new(#name #ty_generics)) },
       );
     }
   }
