@@ -93,7 +93,7 @@ impl CliModuleLoader {
             let parsed_source = maybe_parsed_source.as_ref().unwrap(); // should always be set
             emit_parsed_source(
               &self.ps.emit_cache,
-              specifier,
+              &found_url,
               parsed_source,
               &self.ps.emit_options,
               self.ps.emit_options_hash,
