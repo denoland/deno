@@ -712,3 +712,47 @@ Deno.test(function spawnSyncStdinPipedFails() {
     "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
   );
 });
+
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function spawnChildUnref() {
+    const enc = new TextEncoder();
+    const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
+
+    const programFile = "unref.ts";
+    const program = `
+const child = await Deno.spawnChild(Deno.execPath(), {
+  cwd: Deno.args[0],
+  args: ["run", "-A", "--unstable", Deno.args[1]],
+});
+console.log("spawned pid", child.pid);
+child.unref();
+`;
+
+    const childProgramFile = "unref_child.ts";
+    const childProgram = `
+setInterval(() => {
+  console.log("hello from interval");
+}, 100);
+`;
+    Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
+    Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
+    const { stderr, stdout, success } = await Deno.spawn(Deno.execPath(), {
+      cwd,
+      args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
+    });
+
+    // assert(success);
+    const stdoutText = new TextDecoder().decode(stdout);
+    const stderrText = new TextDecoder().decode(stderr);
+    console.log("stdout", stdoutText);
+    console.log("stderr", stderrText);
+    const pidStr = stdoutText.split(" ").at(-1);
+    assert(pidStr);
+    const pid = parseInt(pidStr);
+    console.log("received pid", pid);
+    await Deno.remove(cwd, { recursive: true });
+    Deno.kill(pid, "SIGTERM");
+    Deno.kill(pid, "SIGTERM");
+  },
+);
