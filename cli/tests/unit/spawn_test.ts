@@ -749,7 +749,7 @@ setInterval(() => {
     const stdoutText = new TextDecoder().decode(stdout);
     const pidStr = stdoutText.split(" ").at(-1);
     assert(pidStr);
-    const pid = parseInt(pidStr);
+    const pid = Number.parseInt(pidStr, 10);
     await Deno.remove(cwd, { recursive: true });
     // Child process should have been killed when parent process exits.
     assertThrows(() => {
