@@ -301,20 +301,20 @@ Deno.test("skia-canvas", () => {
 });
 
 // TODO(@littledivy): Don't run this in the CI.
-Deno.test("usb-enum", async () => {
+Deno.test("usb-enum", { ignore: true}, async () => {
   const usb = require("usb-enum");
   const devices = await usb.list();
   assert(devices instanceof Array);
 });
 
 // TODO(@littledivy): Don't run this in the CI.
-Deno.test("node-usb", () => {
+Deno.test("node-usb", { ignore: true}, () => {
   // const usb = require("usb");
   // const devices = usb.getDeviceList();
   // assert(devices instanceof Array);
 });
 
-Deno.test("@tensorflow/tfjs-node", () => {
+Deno.test("@tensorflow/tfjs-node", { ignore: true}, () => {
   // const tf = require("@tensorflow/tfjs-node");
   // const x = tf.tensor1d([1, 2, Math.sqrt(2), -1]);
   // x.print();
