@@ -683,12 +683,20 @@ fn websocketstream_ping() {
   let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
   let (stream, _) = server.accept().unwrap();
   let mut socket = tungstenite::accept(stream).unwrap();
-  socket.write_message(tungstenite::Message::Text(String::from("A"))).unwrap();
-  socket.write_message(tungstenite::Message::Ping(vec![])).unwrap();
-  socket.write_message(tungstenite::Message::Text(String::from("B"))).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("A")))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Ping(vec![]))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("B")))
+    .unwrap();
   let message = socket.read_message().unwrap();
   assert_eq!(message, tungstenite::Message::Pong(vec![]));
-  socket.write_message(tungstenite::Message::Text(String::from("C"))).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("C")))
+    .unwrap();
   socket.close(None).unwrap();
 
   assert!(child.wait().unwrap().success());
