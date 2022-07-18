@@ -40,6 +40,9 @@ impl EmitCache {
   /// The expected source hash is used in order to verify
   /// that you're getting a value from the cache that is
   /// for the provided source.
+  ///
+  /// Cached emits from previous CLI releases will not be returned
+  /// or emits that do not match the source.
   pub fn get_emit_code(
     &self,
     specifier: &ModuleSpecifier,
