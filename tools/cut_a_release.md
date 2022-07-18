@@ -143,8 +143,18 @@ verify on GitHub that everything looks correct.
 
 5. Publish the release on Github
 
-6. Update the Deno version on the website by updating
-   https://github.com/denoland/dotland/blob/main/versions.json.
+6. Run the
+   https://github.com/denoland/dotland/actions/workflows/update_versions.yml
+   workflow.
+   - This should open a PR. Review and merge it.
+
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. Update https://github.com/denoland/dotland/blob/main/versions.json
+      manually.
+   2. Open a PR and merge.
+   </details>
 
 7. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
    must match the CLI tag; you don't need to create dedicated commit for that
