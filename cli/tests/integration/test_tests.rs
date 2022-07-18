@@ -397,7 +397,7 @@ fn file_protocol() {
 
 #[cfg(windows)]
 itest!(uncaught_errors {
-  args: "test -Ldebug test/uncaught_errors_1.ts test/uncaught_errors_2.ts test/uncaught_errors_3.ts",
+  args: "test --reload -Ldebug test/uncaught_errors_1.ts test/uncaught_errors_2.ts test/uncaught_errors_3.ts",
   output: "test/uncaught_errors.out",
   exit_code: 1,
 });
