@@ -81,9 +81,11 @@
       return this.#pid;
     }
 
-    #stdinRid;
     #stdin = null;
     get stdin() {
+      if (this.#stdin == null) {
+        throw new TypeError("stdin is not piped");
+      }
       return this.#stdin;
     }
 
@@ -91,6 +93,9 @@
     #stdoutRid;
     #stdout = null;
     get stdout() {
+      if (this.#stdout == null) {
+        throw new TypeError("stdout is not piped");
+      }
       return this.#stdout;
     }
 
@@ -98,6 +103,9 @@
     #stderrRid;
     #stderr = null;
     get stderr() {
+      if (this.#stderr == null) {
+        throw new TypeError("stderr is not piped");
+      }
       return this.#stderr;
     }
 
@@ -117,7 +125,6 @@
       this.#pid = pid;
 
       if (stdinRid !== null) {
-        this.#stdinRid = stdinRid;
         this.#stdin = writableStreamForRid(stdinRid);
       }
 
@@ -171,9 +178,21 @@
       ]);
 
       return {
-        status,
-        stdout,
-        stderr,
+        success: status.success,
+        code: status.code,
+        signal: status.signal,
+        get stdout() {
+          if (stdout == null) {
+            throw new TypeError("stdout is not piped");
+          }
+          return stdout;
+        },
+        get stderr() {
+          if (stderr == null) {
+            throw new TypeError("stderr is not piped");
+          }
+          return stderr;
+        },
       };
     }
 
@@ -222,7 +241,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    return core.opSync("op_spawn_sync", {
+    const result = core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -234,6 +253,23 @@
       stdout,
       stderr,
     });
+    return {
+      success: result.status.success,
+      code: result.status.code,
+      signal: result.status.signal,
+      get stdout() {
+        if (result.stdout == null) {
+          throw new TypeError("stdout is not piped");
+        }
+        return result.stdout;
+      },
+      get stderr() {
+        if (result.stderr == null) {
+          throw new TypeError("stderr is not piped");
+        }
+        return result.stderr;
+      },
+    };
   }
 
   window.__bootstrap.spawn = {
