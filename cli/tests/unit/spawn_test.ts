@@ -737,22 +737,23 @@ setInterval(() => {
 `;
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
     Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
-    const { stderr, stdout, success } = await Deno.spawn(Deno.execPath(), {
+    // In this subprocess we are spawning another subprocess which has
+    // an infite interval set. Following call would never resolve unless
+    // child process gets unrefed.
+    const { success, stdout } = await Deno.spawn(Deno.execPath(), {
       cwd,
       args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
     });
 
-    // assert(success);
+    assert(success);
     const stdoutText = new TextDecoder().decode(stdout);
-    const stderrText = new TextDecoder().decode(stderr);
-    console.log("stdout", stdoutText);
-    console.log("stderr", stderrText);
     const pidStr = stdoutText.split(" ").at(-1);
     assert(pidStr);
     const pid = parseInt(pidStr);
-    console.log("received pid", pid);
     await Deno.remove(cwd, { recursive: true });
-    Deno.kill(pid, "SIGTERM");
-    Deno.kill(pid, "SIGTERM");
+    // Child process should have been killed when parent process exits.
+    assertThrows(() => {
+      Deno.kill(pid, "SIGTERM");
+    }, Deno.errors.NotFound);
   },
 );
