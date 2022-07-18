@@ -272,17 +272,13 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
 
-  // Set the referrer in an own property, so it can be later retrieved in
+  // Set the referrer in a private, so it can be later retrieved in
   // `import.meta.resolve()`. We're not using `import.meta.url` because it's a
   // writable property and users might overwrite it.
   let internal_referrer_key =
     v8::String::new(scope, "internalReferrer").unwrap();
-  meta.define_own_property(
-    scope,
-    internal_referrer_key.into(),
-    url_val.into(),
-    v8::READ_ONLY + v8::DONT_ENUM + v8::DONT_DELETE,
-  );
+  let p = v8::Private::new(scope, Some(internal_referrer_key));
+  meta.set_private(scope, p, url_val.into());
   let resolve_key = v8::String::new(scope, "resolve").unwrap();
   let val = v8::Function::new(scope, import_meta_resolve).unwrap();
   val.set_name(resolve_key);
@@ -308,9 +304,8 @@ fn import_meta_resolve(
     let receiver = args.this();
     let internal_referrer_key =
       v8::String::new(tc_scope, "internalReferrer").unwrap();
-    let url_prop = receiver
-      .get(tc_scope, internal_referrer_key.into())
-      .unwrap();
+    let p = v8::Private::new(tc_scope, Some(internal_referrer_key));
+    let url_prop = receiver.get_private(tc_scope, p).unwrap();
     url_prop.to_rust_string_lossy(tc_scope)
   };
   let module_map_rc = JsRuntime::module_map(tc_scope);
