@@ -17,7 +17,7 @@ const fetchProc = await Deno.spawn(Deno.execPath(), {
   ],
 });
 
-console.log(`fetch code: ${fetchProc.status.code}`);
+console.log(`fetch code: ${fetchProc.code}`);
 
 const fetchCheckProc = await Deno.spawn(Deno.execPath(), {
   stdout: "null",
@@ -30,7 +30,7 @@ const fetchCheckProc = await Deno.spawn(Deno.execPath(), {
   ],
 });
 
-console.log(`fetch check code: ${fetchCheckProc.status.code}`);
+console.log(`fetch check code: ${fetchCheckProc.code}`);
 
 Deno.removeSync("./lock_write_fetch.json");
 
@@ -47,6 +47,6 @@ const runProc = await Deno.spawn(Deno.execPath(), {
   ],
 });
 
-console.log(`run code: ${runProc.status.code}`);
+console.log(`run code: ${runProc.code}`);
 
 Deno.removeSync("./lock_write_fetch.json");
