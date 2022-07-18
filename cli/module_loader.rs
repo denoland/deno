@@ -133,16 +133,6 @@ impl ModuleLoader for CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    log::debug!(
-      "specifier: {} maybe_referrer: {} is_dynamic: {}",
-      specifier,
-      maybe_referrer
-        .as_ref()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "<none>".to_string()),
-      is_dynamic
-    );
-
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
