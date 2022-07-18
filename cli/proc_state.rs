@@ -12,6 +12,7 @@ use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
 use crate::emit;
+use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
@@ -514,6 +515,28 @@ impl ProcState {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
     }
+  }
+
+  pub fn cache_module_emits(&self) -> Result<(), AnyError> {
+    let graph_data = self.graph_data.read();
+    for (specifier, entry) in graph_data.entries() {
+      if let ModuleEntry::Module {
+        maybe_parsed_source,
+        ..
+      } = entry
+      {
+        if let Some(parsed_source) = maybe_parsed_source {
+          emit_parsed_source(
+            &self.emit_cache,
+            specifier,
+            parsed_source,
+            &self.emit_options,
+            self.emit_options_hash,
+          )?;
+        }
+      }
+    }
+    Ok(())
   }
 
   pub async fn create_graph(

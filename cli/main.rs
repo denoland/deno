@@ -518,10 +518,28 @@ async fn cache_command(
   cache_flags: CacheFlags,
 ) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &cache_flags.files).await?;
+  ps.cache_module_emits()?;
+  Ok(0)
+}
+
+async fn check_command(
+  flags: Flags,
+  check_flags: CheckFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &check_flags.files).await?;
+  Ok(0)
+}
+
+async fn load_and_type_check(
+  ps: &ProcState,
+  files: &Vec<String>,
+) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
 
-  for file in cache_flags.files {
-    let specifier = resolve_url_or_path(&file)?;
+  for file in files {
+    let specifier = resolve_url_or_path(file)?;
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -533,20 +551,7 @@ async fn cache_command(
     .await?;
   }
 
-  Ok(0)
-}
-
-async fn check_command(
-  flags: Flags,
-  check_flags: CheckFlags,
-) -> Result<i32, AnyError> {
-  cache_command(
-    flags,
-    CacheFlags {
-      files: check_flags.files,
-    },
-  )
-  .await
+  Ok(())
 }
 
 async fn eval_command(

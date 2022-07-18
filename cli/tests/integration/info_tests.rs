@@ -14,7 +14,7 @@ fn info_with_compiled_source() {
   let mut deno = util::deno_cmd()
     .env("DENO_DIR", t.path())
     .current_dir(util::testdata_path())
-    .arg("run") // run so it gets emitted
+    .arg("cache")
     .arg(&module_path)
     .spawn()
     .unwrap();
