@@ -2,9 +2,13 @@
 
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::Extension;
+use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use rustyline::error::ReadlineError;
+use rustyline::ExternalPrinter;
 
 mod channel;
 mod editor;
@@ -18,6 +22,32 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 use session::EvaluationOutput;
 use session::ReplSession;
+
+struct Printer {
+  inner: Box<dyn ExternalPrinter>,
+}
+
+pub fn create_extension() -> Vec<Extension> {
+  vec![Extension::builder()
+    .middleware(|op| match op.name {
+      "op_print" => op_print::decl(),
+      _ => op,
+    })
+    .build()]
+}
+
+// Overrides op_print so we can use "external printer" from the REPL
+// editor.
+#[op]
+pub fn op_print(
+  state: &mut OpState,
+  msg: String,
+  _is_err: bool,
+) -> Result<(), AnyError> {
+  let printer = state.borrow_mut::<Printer>();
+  printer.inner.print(msg)?;
+  Ok(())
+}
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -75,10 +105,12 @@ async fn read_eval_file(
 
 pub async fn run(
   ps: &ProcState,
-  worker: MainWorker,
+  mut worker: MainWorker,
   maybe_eval_files: Option<Vec<String>>,
   maybe_eval: Option<String>,
 ) -> Result<i32, AnyError> {
+  let op_state_rc = worker.js_runtime.op_state();
+
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
 
@@ -89,6 +121,14 @@ pub async fn run(
 
   let history_file_path = ps.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
+
+  {
+    let mut op_state = op_state_rc.borrow_mut();
+    let printer = Printer {
+      inner: editor.create_external_printer()?,
+    };
+    op_state.put(printer);
+  }
 
   if let Some(eval_files) = maybe_eval_files {
     for eval_file in eval_files {

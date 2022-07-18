@@ -20,6 +20,7 @@ use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline::EventHandler;
+use rustyline::ExternalPrinter;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
@@ -384,6 +385,12 @@ impl ReplEditor {
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
     self.inner.lock().readline("> ")
+  }
+
+  pub fn create_external_printer(
+    &self,
+  ) -> Result<Box<dyn ExternalPrinter>, AnyError> {
+    Ok(Box::new(self.inner.lock().create_external_printer()?))
   }
 
   pub fn add_history_entry(&self, entry: String) {

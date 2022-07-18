@@ -858,7 +858,7 @@ async fn repl_command(
     &ps,
     main_module.clone(),
     Permissions::from_options(&ps.options.permissions_options()),
-    vec![],
+    tools::repl::create_extension(),
     Default::default(),
   );
   if ps.options.compat() {
