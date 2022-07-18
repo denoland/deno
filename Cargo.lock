@@ -818,7 +818,7 @@ dependencies = [
  "libc",
  "log 0.4.17",
  "mitata",
- "nix 0.23.0",
+ "nix",
  "node_resolver",
  "notify",
  "once_cell",
@@ -1148,7 +1148,7 @@ dependencies = [
  "log 0.4.17",
  "lzzzz",
  "netif",
- "nix 0.23.0",
+ "nix",
  "notify",
  "once_cell",
  "regex",
@@ -2728,19 +2728,6 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f305c2c2e4c39a82f7bf0bf65fb557f9070ce06781d4f2454295cc34b1c43188"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
- "memoffset",
-]
-
-[[package]]
-name = "nix"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "195cdbc1741b8134346d515b3a56a1c94b0912758009cfd53f99ea0f57b065fc"
@@ -2748,6 +2735,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -3647,7 +3635,7 @@ dependencies = [
  "libc",
  "log 0.4.17",
  "memchr",
- "nix 0.24.2",
+ "nix",
  "radix_trie",
  "scopeguard",
  "unicode-segmentation",
