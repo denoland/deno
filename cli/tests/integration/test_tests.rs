@@ -351,19 +351,19 @@ fn captured_output() {
   let output_text = String::from_utf8(output.stdout).unwrap();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
-  let output_text = output_text[start..end].trim();
+  // replace zero width space that may appear in test output due
+  // to test runner output flusher
+  let output_text = output_text[start..end]
+    .replace('\u{200B}', "")
+    .trim()
+    .to_string();
   let mut lines = output_text.lines().collect::<Vec<_>>();
   // the output is racy on either stdout or stderr being flushed
   // from the runtime into the rust code, so sort it... the main
   // thing here to ensure is that we're capturing the output in
   // this block on stdout
   lines.sort_unstable();
-  assert_eq!(
-    // replace zero width space that may appear in test output due
-    // to test runner output flusher
-    lines.join(" ").replace('\u{200B}', ""),
-    "0 1 2 3 4 5 6 7 8 9"
-  );
+  assert_eq!(lines.join(" "), "0 1 2 3 4 5 6 7 8 9");
 }
 
 #[test]
