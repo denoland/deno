@@ -275,11 +275,11 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   // Set the referrer in an own property, so it can be later retrieved in
   // `import.meta.resolve()`. We're not using `import.meta.url` because it's a
   // writable property and users might overwrite it.
-  let internal_refferer_key =
+  let internal_referrer_key =
     v8::String::new(scope, "internalReferrer").unwrap();
   meta.define_own_property(
     scope,
-    internal_refferer_key.into(),
+    internal_referrer_key.into(),
     url_val.into(),
     v8::READ_ONLY + v8::DONT_ENUM + v8::DONT_DELETE,
   );
@@ -306,10 +306,10 @@ fn import_meta_resolve(
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
     let receiver = args.this();
-    let internal_refferer_key =
+    let internal_referrer_key =
       v8::String::new(tc_scope, "internalReferrer").unwrap();
     let url_prop = receiver
-      .get(tc_scope, internal_refferer_key.into())
+      .get(tc_scope, internal_referrer_key.into())
       .unwrap();
     url_prop.to_rust_string_lossy(tc_scope)
   };
