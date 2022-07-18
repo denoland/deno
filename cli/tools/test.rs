@@ -1153,8 +1153,16 @@ async fn test_specifiers(
               origin.clone(),
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
+            log::debug!("uncaught error at origin: {}", &origin);
             for desc in tests.read().values() {
+              log::debug!(
+                "found desc at origin: {} {{ name: \"{}\", id: {} }}",
+                &desc.origin,
+                desc.name,
+                desc.id
+              );
               if desc.origin == origin {
+                log::debug!("send cancelled event for test id {}", desc.id);
                 sender.send(TestEvent::Result(
                   desc.id,
                   TestResult::Cancelled,
@@ -1225,6 +1233,7 @@ async fn test_specifiers(
                   summary.failures.push((description.clone(), error.clone()));
                 }
                 TestResult::Cancelled => {
+                  log::debug!("receive cancelled event for test id {}", id);
                   summary.failed += 1;
                 }
               }
