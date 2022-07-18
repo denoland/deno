@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::undocumented_unsafe_blocks)]
+
 use std::os::raw::c_void;
 use std::thread::sleep;
 use std::time::Duration;
@@ -11,23 +13,29 @@ pub extern "C" fn print_something() {
   println!("something");
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initalized, and the length must
+/// not be longer than the buffer's allocation.
 #[no_mangle]
-pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
-  let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
+pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
+  let buf = std::slice::from_raw_parts(ptr, len);
   println!("{:?}", buf);
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initalized, and the length must
+/// not be longer than the buffer's allocation.
 #[no_mangle]
-pub extern "C" fn print_buffer2(
+pub unsafe extern "C" fn print_buffer2(
   ptr1: *const u8,
   len1: usize,
   ptr2: *const u8,
   len2: usize,
 ) {
-  let buf1 = unsafe { std::slice::from_raw_parts(ptr1, len1) };
-  let buf2 = unsafe { std::slice::from_raw_parts(ptr2, len2) };
+  let buf1 = std::slice::from_raw_parts(ptr1, len1);
+  let buf2 = std::slice::from_raw_parts(ptr2, len2);
   println!("{:?} {:?}", buf1, buf2);
 }
 
@@ -67,6 +75,11 @@ pub extern "C" fn add_usize(a: usize, b: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn add_usize_fast(a: usize, b: usize) -> u32 {
+  (a + b) as u32
+}
+
+#[no_mangle]
 pub extern "C" fn add_isize(a: isize, b: isize) -> isize {
   a + b
 }
@@ -87,19 +100,25 @@ pub extern "C" fn sleep_blocking(ms: u64) {
   sleep(duration);
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initalized, and the length must
+/// not be longer than the buffer's allocation.
 #[no_mangle]
-pub extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
-  let buf = unsafe { std::slice::from_raw_parts_mut(buf, len) };
+pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
+  let buf = std::slice::from_raw_parts_mut(buf, len);
   for itm in buf.iter_mut() {
     *itm = value;
   }
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// # Safety
+///
+/// The pointer to the buffer must be valid and initalized, and the length must
+/// not be longer than the buffer's allocation.
 #[no_mangle]
-pub extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
-  let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
+pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
+  let buf = std::slice::from_raw_parts(ptr, len);
   assert_eq!(buf, vec![1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
@@ -195,6 +214,33 @@ pub extern "C" fn call_stored_function_2(arg: u8) {
     }
     println!("{}", STORED_FUNCTION_2.unwrap()(arg));
   }
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe_and_log() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+      println!("STORED_FUNCTION called");
+    }
+  });
 }
 
 // FFI performance helper functions

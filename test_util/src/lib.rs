@@ -139,7 +139,7 @@ pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
   prebuilt_path().join(platform_dir_name()).join(exe)
 }
 
-fn platform_dir_name() -> &'static str {
+pub fn platform_dir_name() -> &'static str {
   if cfg!(target_os = "linux") {
     "linux64"
   } else if cfg!(target_os = "macos") {

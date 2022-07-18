@@ -188,6 +188,10 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
+    // TS2306: File '.../index.d.ts' is not a module.
+    // We get this for `x-typescript-types` declaration files which don't export
+    // anything. We prefer to treat these as modules with no exports.
+    2306,
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
     2688,
@@ -332,15 +336,11 @@ delete Object.prototype.__proto__;
     getDefaultLibLocation() {
       return ASSETS;
     },
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      let maybeSpecifiers;
-      if (sourceFiles) {
-        maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-      }
       return core.opSync(
         "op_emit",
-        { maybeSpecifiers, fileName, data },
+        { fileName, data },
       );
     },
     getCurrentDirectory() {
@@ -553,16 +553,18 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const { diagnostics: emitDiagnostics } = program.emit();
-
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...program.getSyntacticDiagnostics(),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-      ...emitDiagnostics,
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+
+    // emit the tsbuildinfo file
+    // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
+    program.emitBuildInfo(host.writeFile);
+
     performanceProgram({ program });
 
     core.opSync("op_respond", {
@@ -585,11 +587,16 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
     switch (request.method) {
+      case "restart": {
+        serverRestart();
+        return respond(id, true);
+      }
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
@@ -709,10 +716,9 @@ delete Object.prototype.__proto__;
             request.args.specifier,
             request.args.position,
             request.args.name,
-            undefined,
+            {},
             request.args.source,
-            undefined,
-            // @ts-expect-error this exists in 4.3 but not part of the d.ts
+            request.args.preferences,
             request.args.data,
           ),
         );
@@ -912,6 +918,11 @@ delete Object.prototype.__proto__;
     languageService = ts.createLanguageService(host);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
+  }
+
+  function serverRestart() {
+    languageService = ts.createLanguageService(host);
+    debug("serverRestart()");
   }
 
   let hasStarted = false;

@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -164,10 +165,14 @@ fn build_proxy_module_source(
   module: &Module,
   proxied_module: &ProxiedModule,
 ) -> String {
-  let mut text = format!(
-    "// @deno-types=\"{}\"\n",
+  let mut text = String::new();
+  writeln!(
+    text,
+    "// @deno-types=\"{}\"",
     proxied_module.declaration_specifier
-  );
+  )
+  .unwrap();
+
   let relative_specifier = format!(
     "./{}",
     proxied_module
@@ -179,15 +184,17 @@ fn build_proxy_module_source(
 
   // for simplicity, always include the `export *` statement as it won't error
   // even when the module does not contain a named export
-  text.push_str(&format!("export * from \"{}\";\n", relative_specifier));
+  writeln!(text, "export * from \"{}\";", relative_specifier).unwrap();
 
   // add a default export if one exists in the module
   if let Some(parsed_source) = module.maybe_parsed_source.as_ref() {
     if has_default_export(parsed_source) {
-      text.push_str(&format!(
-        "export {{ default }} from \"{}\";\n",
+      writeln!(
+        text,
+        "export {{ default }} from \"{}\";",
         relative_specifier
-      ));
+      )
+      .unwrap();
     }
   }
 

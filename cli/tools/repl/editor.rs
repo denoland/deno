@@ -363,7 +363,8 @@ impl ReplEditor {
       .completion_type(CompletionType::List)
       .build();
 
-    let mut editor = Editor::with_config(editor_config);
+    let mut editor =
+      Editor::with_config(editor_config).expect("Failed to create editor.");
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
     editor.bind_sequence(
@@ -423,7 +424,13 @@ impl ConditionalEventHandler for TabEventHandler {
         .filter(|c| c.is_whitespace())
         .is_some()
     {
-      Some(Cmd::Insert(n, "\t".into()))
+      if cfg!(target_os = "windows") {
+        // Inserting a tab is broken in windows with rustyline
+        // use 4 spaces as a workaround for now
+        Some(Cmd::Insert(n, "    ".into()))
+      } else {
+        Some(Cmd::Insert(n, "\t".into()))
+      }
     } else {
       None // default complete
     }

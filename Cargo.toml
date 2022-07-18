@@ -109,6 +109,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
+[profile.bench.package.base64-simd]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -172,4 +174,6 @@ opt-level = 3
 [profile.release.package.lzzzz]
 opt-level = 3
 [profile.release.package.zstd-sys]
+opt-level = 3
+[profile.release.package.base64-simd]
 opt-level = 3

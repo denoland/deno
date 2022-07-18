@@ -30,6 +30,7 @@ fn basic() {
     .arg("--allow-read")
     .arg("--unstable")
     .arg("--quiet")
+    .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
     .output()
@@ -56,9 +57,14 @@ fn basic() {
     false\n\
     true\n\
     false\n\
+    false\n\
+    false\n\
     579\n\
     true\n\
     579\n\
+    579\n\
+    5\n\
+    5\n\
     579\n\
     8589934590n\n\
     -8589934590n\n\
@@ -77,6 +83,8 @@ fn basic() {
     true\n\
     Before\n\
     true\n\
+    After\n\
+    true\n\
     logCallback\n\
     1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
@@ -85,12 +93,14 @@ fn basic() {
     30\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
+    Thread safe call counter: 0\n\
+    logCallback\n\
+    Thread safe call counter: 1\n\
+    u8: 8\n\
     Static u32: 42\n\
     Static i64: -1242464576485n\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
-    After\n\
-    true\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
@@ -116,5 +126,84 @@ fn symbol_types() {
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
+  assert_eq!(stderr, "");
+}
+
+#[test]
+fn thread_safe_callback() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/thread_safe_test.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  let expected = "\
+    Callback on main thread\n\
+    Callback on worker thread\n\
+    Calling callback, isolate should stay asleep until callback is called\n\
+    Callback being called\n\
+    Isolate should now exit\n";
+  assert_eq!(stdout, expected);
+  assert_eq!(stderr, "");
+}
+
+#[test]
+fn event_loop_integration() {
+  build();
+
+  let output = deno_cmd()
+    .arg("run")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("tests/event_loop_integration.ts")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  // TODO(aapoalas): The order of logging in thread safe callbacks is
+  // unexpected: The callback logs synchronously and creates an asynchronous
+  // logging task, which then gets called synchronously before the callback
+  // actually yields to the calling thread. This is in contrast to what the
+  // logging would look like if the call was coming from within Deno itself,
+  // and may lead users to unknowingly run heavy asynchronous tasks from thread
+  // safe callbacks synchronously.
+  // The fix would be to make sure microtasks are only run after the event loop
+  // middleware that polls them has completed its work. This just does not seem
+  // to work properly with Linux release builds.
+  let expected = "\
+    SYNCHRONOUS\n\
+    Sync\n\
+    STORED_FUNCTION called\n\
+    Async\n\
+    Timeout\n\
+    THREAD SAFE\n\
+    Sync\n\
+    Async\n\
+    STORED_FUNCTION called\n\
+    Timeout\n";
+  assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
