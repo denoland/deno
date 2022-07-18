@@ -185,24 +185,24 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
 
       let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
-      {
-        let mut op_state = op_state_rc.borrow_mut();
-        let ffi_state = op_state.borrow_mut::<FfiState>();
+        if let Ok(mut op_state) = op_state_rc.try_borrow_mut() {
 
-        while let Ok(Some(async_work_fut)) =
-          ffi_state.async_work_receiver.try_next()
-        {
-          // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
-          work_items.push(async_work_fut);
-          maybe_scheduling = true;
+          let ffi_state = op_state.borrow_mut::<FfiState>();
+
+          while let Ok(Some(async_work_fut)) =
+            ffi_state.async_work_receiver.try_next()
+          {
+            // Move received items to a temporary vector so that we can drop the `op_state` borrow before we do the work.
+            work_items.push(async_work_fut);
+            maybe_scheduling = true;
+          }
+  
+          if ffi_state.active_refed_functions > 0 {
+            maybe_scheduling = true;
+          }
+  
+          drop(op_state);
         }
-
-        if ffi_state.active_refed_functions > 0 {
-          maybe_scheduling = true;
-        }
-
-        drop(op_state);
-      }
       while let Some(async_work_fut) = work_items.pop() {
         async_work_fut();
       }
