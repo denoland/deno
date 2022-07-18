@@ -156,6 +156,8 @@ pub fn get_ts_config_for_emit(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "importsNotUsedAsValues": "remove",
+      "inlineSourceMap": true,
+      "inlineSources": true,
       "isolatedModules": true,
       "lib": lib,
       "module": "esnext",

@@ -131,4 +131,33 @@ mod tests {
     let err = result.expect_err("Err expected");
     assert!(err.kind() == ErrorKind::InvalidData);
   }
+
+  #[test]
+  fn test_source_without_source_map() {
+    run_test("", "");
+    run_test("\n", "\n");
+    run_test("\r\n", "\r\n");
+    run_test("a", "a");
+    run_test("a\n", "a\n");
+    run_test("a\r\n", "a\r\n");
+    run_test("a\r\nb", "a\r\nb");
+    run_test("a\nb\n", "a\nb\n");
+    run_test("a\r\nb\r\n", "a\r\nb\r\n");
+    run_test(
+      "test\n//# sourceMappingURL=data:application/json;base64,test",
+      "test\n",
+    );
+    run_test(
+      "test\r\n//# sourceMappingURL=data:application/json;base64,test",
+      "test\r\n",
+    );
+    run_test(
+      "\n//# sourceMappingURL=data:application/json;base64,test",
+      "\n",
+    );
+
+    fn run_test(input: &str, output: &str) {
+      assert_eq!(code_without_source_map(input.to_string()), output);
+    }
+  }
 }

@@ -46,12 +46,6 @@ impl DenoDir {
     Ok(deno_dir)
   }
 
-  /// Path for the cache used for emits.
-  pub fn emit_cache_db_file_path(&self) -> PathBuf {
-    // bump this version name to invalidate the entire cache
-    self.root.join("emit_cache_v1")
-  }
-
   /// Path for the incremental cache used for formatting.
   pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
