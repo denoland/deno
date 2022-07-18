@@ -952,7 +952,7 @@ itest!(if_main {
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload import_meta.ts",
+  args: "run --quiet --reload --import-map=import_meta.importmap.json import_meta.ts",
   output: "import_meta.ts.out",
 });
 

@@ -363,7 +363,8 @@ impl ReplEditor {
       .completion_type(CompletionType::List)
       .build();
 
-    let mut editor = Editor::with_config(editor_config);
+    let mut editor =
+      Editor::with_config(editor_config).expect("Failed to create editor.");
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
     editor.bind_sequence(

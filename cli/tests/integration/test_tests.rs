@@ -62,6 +62,32 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(jobs_flag {
+  args: "test test/short-pass.ts --jobs",
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(jobs_flag_with_numeric_value {
+  args: "test test/short-pass.ts --jobs=2",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-with-numeric-value.out",
+});
+
+itest!(jobs_flag_with_env_variable {
+  args: "test test/short-pass.ts --jobs",
+  envs: vec![("DENO_JOBS".to_owned(), "2".to_owned())],
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(jobs_flag_with_numeric_value_and_env_var {
+  args: "test test/short-pass.ts --jobs=2",
+  envs: vec![("DENO_JOBS".to_owned(), "3".to_owned())],
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-with-numeric-value.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,
@@ -325,7 +351,12 @@ fn captured_output() {
   let output_text = String::from_utf8(output.stdout).unwrap();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
-  let output_text = output_text[start..end].trim();
+  // replace zero width space that may appear in test output due
+  // to test runner output flusher
+  let output_text = output_text[start..end]
+    .replace('\u{200B}', "")
+    .trim()
+    .to_string();
   let mut lines = output_text.lines().collect::<Vec<_>>();
   // the output is racy on either stdout or stderr being flushed
   // from the runtime into the rust code, so sort it... the main

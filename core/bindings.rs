@@ -271,6 +271,47 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let main_key = v8::String::new(scope, "main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
+
+  let builder =
+    v8::FunctionBuilder::new(import_meta_resolve).data(url_val.into());
+  let val = v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
+  let resolve_key = v8::String::new(scope, "resolve").unwrap();
+  meta.set(scope, resolve_key.into(), val.into());
+}
+
+fn import_meta_resolve(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if args.length() > 1 {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+
+  let maybe_arg_str = args.get(0).to_string(scope);
+  if maybe_arg_str.is_none() {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+  let specifier = maybe_arg_str.unwrap();
+  let referrer = {
+    let url_prop = args.data().unwrap();
+    url_prop.to_rust_string_lossy(scope)
+  };
+  let module_map_rc = JsRuntime::module_map(scope);
+  let loader = {
+    let module_map = module_map_rc.borrow();
+    module_map.loader.clone()
+  };
+  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
+  {
+    Ok(resolved) => {
+      let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
+      rv.set(resolved_val);
+    }
+    Err(err) => {
+      throw_type_error(scope, &err.to_string());
+    }
+  };
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -284,20 +325,12 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 
   if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
     let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
-    if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
-      if !pending_mod_evaluate.has_evaluated {
-        let promise_global = v8::Global::new(tc_scope, promise);
-        pending_mod_evaluate
-          .handled_promise_rejections
-          .push(promise_global);
-      }
-    }
-    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
       PromiseRejectWithNoHandler
