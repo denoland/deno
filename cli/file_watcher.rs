@@ -32,7 +32,7 @@ struct DebouncedReceiver {
   // and so we store this state on the struct to ensure we don't
   // lose items if a `recv()` never completes
   received_items: HashSet<PathBuf>,
-  receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
+  receiver: UnboundedReceiver<Vec<PathBuf>>,
 }
 
 impl DebouncedReceiver {
@@ -55,7 +55,7 @@ impl DebouncedReceiver {
     }
 
     loop {
-      tokio::select! {
+      select! {
         items = self.receiver.recv() => {
           self.received_items.extend(items?);
         }
@@ -255,7 +255,7 @@ where
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
 pub async fn watch_func2<T: Clone, O, F>(
-  mut paths_to_watch_receiver: mpsc::UnboundedReceiver<Vec<PathBuf>>,
+  mut paths_to_watch_receiver: UnboundedReceiver<Vec<PathBuf>>,
   mut operation: O,
   operation_args: T,
   print_config: PrintConfig,
