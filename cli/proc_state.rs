@@ -521,19 +521,17 @@ impl ProcState {
     let graph_data = self.graph_data.read();
     for (specifier, entry) in graph_data.entries() {
       if let ModuleEntry::Module {
-        maybe_parsed_source,
+        maybe_parsed_source: Some(parsed_source),
         ..
       } = entry
       {
-        if let Some(parsed_source) = maybe_parsed_source {
-          emit_parsed_source(
-            &self.emit_cache,
-            specifier,
-            parsed_source,
-            &self.emit_options,
-            self.emit_options_hash,
-          )?;
-        }
+        emit_parsed_source(
+          &self.emit_cache,
+          specifier,
+          parsed_source,
+          &self.emit_options,
+          self.emit_options_hash,
+        )?;
       }
     }
     Ok(())
