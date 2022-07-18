@@ -1223,12 +1223,14 @@ async fn test_specifiers(
               let description = tests.read().get(&id).unwrap().clone();
               match &result {
                 TestResult::Ok => {
+                  log::debug!("receive passed event for test id {}", id);
                   summary.passed += 1;
                 }
                 TestResult::Ignored => {
                   summary.ignored += 1;
                 }
                 TestResult::Failed(error) => {
+                  log::debug!("receive failed event for test id {}", id);
                   summary.failed += 1;
                   summary.failures.push((description.clone(), error.clone()));
                 }
@@ -1242,6 +1244,7 @@ async fn test_specifiers(
           }
 
           TestEvent::UncaughtError(origin, error) => {
+            log::debug!("receive uncaught error event for origin: {}", &origin);
             reporter.report_uncaught_error(&origin, &error);
             summary.failed += 1;
             summary.uncaught_errors.push((origin, error));
