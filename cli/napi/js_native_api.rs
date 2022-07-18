@@ -992,7 +992,8 @@ fn napi_add_finalizer(
   _finalize_hint: *const c_void,
   _result: *mut napi_ref,
 ) -> Result {
-  unimplemented!("napi_add_finalizer is not yet supported.");
+  eprintln!("napi_add_finalizer is not yet supported.");
+  Ok(())
 }
 
 #[napi_sym::napi_sym]

@@ -43,7 +43,7 @@ fn napi_tests() {
 }
 
 #[test]
-fn thrid_party_tests() {
+fn third_party_tests() {
   build();
 
   let yarn_cmd = Command::new("yarn")
