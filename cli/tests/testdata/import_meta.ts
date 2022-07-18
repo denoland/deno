@@ -1,3 +1,5 @@
+import { assertThrows } from "../../../test_util/std/testing/asserts.ts";
+
 console.log("import_meta", import.meta.url, import.meta.main);
 
 import "./import_meta2.ts";
@@ -24,3 +26,9 @@ console.log(
   "Resolving object from import map",
   import.meta.resolve({}),
 );
+assertThrows(() => {
+  import.meta.resolve("too", "many", "arguments");
+}, TypeError);
+assertThrows(() => {
+  import.meta.resolve("://malformed/url?asdf");
+}, TypeError);
