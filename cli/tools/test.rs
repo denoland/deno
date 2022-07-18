@@ -1147,6 +1147,7 @@ async fn test_specifiers(
           &sender,
           options,
         ));
+        log::debug!("result of origin: {}, {:?}", &origin, &file_result);
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(TestEvent::UncaughtError(
