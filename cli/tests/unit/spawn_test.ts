@@ -533,7 +533,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function spawnEnv() {
+  function spawnSyncEnv() {
     const { stdout } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -712,3 +712,48 @@ Deno.test(function spawnSyncStdinPipedFails() {
     "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
   );
 });
+
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function spawnChildUnref() {
+    const enc = new TextEncoder();
+    const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
+
+    const programFile = "unref.ts";
+    const program = `
+const child = await Deno.spawnChild(Deno.execPath(), {
+  cwd: Deno.args[0],
+  args: ["run", "-A", "--unstable", Deno.args[1]],
+});
+console.log("spawned pid", child.pid);
+child.unref();
+`;
+
+    const childProgramFile = "unref_child.ts";
+    const childProgram = `
+setInterval(() => {
+  console.log("hello from interval");
+}, 100);
+`;
+    Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
+    Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
+    // In this subprocess we are spawning another subprocess which has
+    // an infite interval set. Following call would never resolve unless
+    // child process gets unrefed.
+    const { success, stdout } = await Deno.spawn(Deno.execPath(), {
+      cwd,
+      args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
+    });
+
+    assert(success);
+    const stdoutText = new TextDecoder().decode(stdout);
+    const pidStr = stdoutText.split(" ").at(-1);
+    assert(pidStr);
+    const pid = Number.parseInt(pidStr, 10);
+    await Deno.remove(cwd, { recursive: true });
+    // Child process should have been killed when parent process exits.
+    assertThrows(() => {
+      Deno.kill(pid, "SIGTERM");
+    }, Deno.errors.NotFound);
+  },
+);

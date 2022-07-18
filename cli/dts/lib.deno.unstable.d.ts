@@ -1176,6 +1176,9 @@ declare namespace Deno {
     output(): Promise<SpawnOutput>;
     /** Kills the process with given Signal. Defaults to SIGTERM. */
     kill(signo?: Signal): void;
+
+    ref(): void;
+    unref(): void;
   }
 
   /**
