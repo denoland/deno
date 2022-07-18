@@ -21,9 +21,8 @@ pub struct TestData {
   pub id: String,
   /// The human readable test to display for the test.
   pub label: String,
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  #[serde(default)]
-  pub steps: Vec<TestData>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub steps: Option<Vec<TestData>>,
   /// The range where the test is located.
   #[serde(skip_serializing_if = "Option::is_none")]
   pub range: Option<lsp::Range>,
@@ -93,9 +92,8 @@ pub enum TestRunKind {
 pub struct TestRunRequestParams {
   pub id: u32,
   pub kind: TestRunKind,
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  #[serde(default)]
-  pub exclude: Vec<TestIdentifier>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub exclude: Option<Vec<TestIdentifier>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include: Option<Vec<TestIdentifier>>,
 }

@@ -14,20 +14,25 @@
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
+    ArrayPrototypeSome,
     ArrayPrototypeSort,
     DateNow,
     Error,
     FunctionPrototype,
     Map,
-    MapPrototypeGet,
     MapPrototypeHas,
-    MapPrototypeSet,
     MathCeil,
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     Promise,
+    RegExp,
+    RegExpPrototypeTest,
     SafeArrayIterator,
     Set,
+    StringPrototypeEndsWith,
+    StringPrototypeIncludes,
+    StringPrototypeSlice,
+    StringPrototypeStartsWith,
     SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -134,12 +139,12 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    /** @param desc {TestDescription | TestStepDescription} */
-    return async function asyncOpSanitizer(desc) {
+    /** @param step {TestStep} */
+    return async function asyncOpSanitizer(step) {
       const pre = core.metrics();
       const preTraces = new Map(core.opCallTraces);
       try {
-        await fn(desc);
+        await fn(step);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -147,7 +152,7 @@
         await opSanitizerDelay();
       }
 
-      if (shouldSkipSanitizers(desc)) return;
+      if (step.shouldSkipSanitizers) return;
 
       const post = core.metrics();
       const postTraces = new Map(core.opCallTraces);
@@ -361,13 +366,15 @@
   // Wrap test function in additional assertion that makes sure
   // the test case does not "leak" resources - ie. resource table after
   // the test has exactly the same contents as before the test.
-  function assertResources(fn) {
-    /** @param desc {TestDescription | TestStepDescription} */
-    return async function resourceSanitizer(desc) {
+  function assertResources(
+    fn,
+  ) {
+    /** @param step {TestStep} */
+    return async function resourceSanitizer(step) {
       const pre = core.resources();
-      await fn(desc);
+      await fn(step);
 
-      if (shouldSkipSanitizers(desc)) {
+      if (step.shouldSkipSanitizers) {
         return;
       }
 
@@ -389,12 +396,12 @@
           const hint = resourceCloseHint(postResource);
           const detail =
             `${name} (rid ${resource}) was ${action1} during the test, but not ${action2} during the test. ${hint}`;
-          ArrayPrototypePush(details, detail);
+          details.push(detail);
         } else {
           const [name, action1, action2] = prettyResourceNames(preResource);
           const detail =
             `${name} (rid ${resource}) was ${action1} before the test started, but was ${action2} during the test. Do not close resources in a test that were not created during that test.`;
-          ArrayPrototypePush(details, detail);
+          details.push(detail);
         }
       }
 
@@ -432,81 +439,79 @@
   }
 
   function assertTestStepScopes(fn) {
-    /** @param desc {TestDescription | TestStepDescription} */
-    return async function testStepSanitizer(desc) {
+    /** @param step {TestStep} */
+    return async function testStepSanitizer(step) {
       preValidation();
       // only report waiting after pre-validation
-      if (canStreamReporting(desc) && "parent" in desc) {
-        stepReportWait(desc);
+      if (step.canStreamReporting()) {
+        step.reportWait();
       }
-      await fn(MapPrototypeGet(testStates, desc.id).context);
-      testStepPostValidation(desc);
+      await fn(createTestContext(step));
+      postValidation();
 
       function preValidation() {
-        const runningStepDescs = getRunningStepDescs();
-        const runningStepDescsWithSanitizers = ArrayPrototypeFilter(
-          runningStepDescs,
-          (d) => usesSanitizer(d),
+        const runningSteps = getPotentialConflictingRunningSteps();
+        const runningStepsWithSanitizers = ArrayPrototypeFilter(
+          runningSteps,
+          (t) => t.usesSanitizer,
         );
 
-        if (runningStepDescsWithSanitizers.length > 0) {
+        if (runningStepsWithSanitizers.length > 0) {
           throw new Error(
             "Cannot start test step while another test step with sanitizers is running.\n" +
-              runningStepDescsWithSanitizers
-                .map((d) => ` * ${getFullName(d)}`)
+              runningStepsWithSanitizers
+                .map((s) => ` * ${s.getFullName()}`)
                 .join("\n"),
           );
         }
 
-        if (usesSanitizer(desc) && runningStepDescs.length > 0) {
+        if (step.usesSanitizer && runningSteps.length > 0) {
           throw new Error(
             "Cannot start test step with sanitizers while another test step is running.\n" +
-              runningStepDescs.map((d) => ` * ${getFullName(d)}`).join("\n"),
+              runningSteps.map((s) => ` * ${s.getFullName()}`).join("\n"),
           );
         }
 
-        function getRunningStepDescs() {
+        function getPotentialConflictingRunningSteps() {
+          /** @type {TestStep[]} */
           const results = [];
-          let childDesc = desc;
-          while (childDesc.parent != null) {
-            const state = MapPrototypeGet(testStates, childDesc.parent.id);
-            for (const siblingDesc of state.children) {
-              if (siblingDesc.id == childDesc.id) {
+
+          let childStep = step;
+          for (const ancestor of step.ancestors()) {
+            for (const siblingStep of ancestor.children) {
+              if (siblingStep === childStep) {
                 continue;
               }
-              const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
-              if (!siblingState.finalized) {
-                ArrayPrototypePush(results, siblingDesc);
+              if (!siblingStep.finalized) {
+                ArrayPrototypePush(results, siblingStep);
               }
             }
-            childDesc = childDesc.parent;
+            childStep = ancestor;
           }
           return results;
         }
       }
+
+      function postValidation() {
+        // check for any running steps
+        if (step.hasRunningChildren) {
+          throw new Error(
+            "There were still test steps running after the current scope finished execution. " +
+              "Ensure all steps are awaited (ex. `await t.step(...)`).",
+          );
+        }
+
+        // check if an ancestor already completed
+        for (const ancestor of step.ancestors()) {
+          if (ancestor.finalized) {
+            throw new Error(
+              "Parent scope completed before test step finished execution. " +
+                "Ensure all steps are awaited (ex. `await t.step(...)`).",
+            );
+          }
+        }
+      }
     };
-  }
-
-  function testStepPostValidation(desc) {
-    // check for any running steps
-    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      if (MapPrototypeGet(testStates, childDesc.id).status == "pending") {
-        throw new Error(
-          "There were still test steps running after the current scope finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-        );
-      }
-    }
-
-    // check if an ancestor already completed
-    let currentDesc = desc.parent;
-    while (currentDesc != null) {
-      if (MapPrototypeGet(testStates, currentDesc.id).finalized) {
-        throw new Error(
-          "Parent scope completed before test step finished execution. Ensure all steps are awaited (ex. `await t.step(...)`).",
-        );
-      }
-      currentDesc = currentDesc.parent;
-    }
   }
 
   function pledgePermissions(permissions) {
@@ -536,54 +541,6 @@
    * @typedef {{
    *   id: number,
    *   name: string,
-   *   fn: TestFunction
-   *   origin: string,
-   *   location: TestLocation,
-   *   filteredOut: boolean,
-   *   ignore: boolean,
-   *   only: boolean.
-   *   sanitizeOps: boolean,
-   *   sanitizeResources: boolean,
-   *   sanitizeExit: boolean,
-   *   permissions: PermissionOptions,
-   * }} TestDescription
-   *
-   * @typedef {{
-   *   id: number,
-   *   name: string,
-   *   fn: TestFunction
-   *   origin: string,
-   *   location: TestLocation,
-   *   ignore: boolean,
-   *   level: number,
-   *   parent: TestDescription | TestStepDescription,
-   *   rootId: number,
-   *   rootName: String,
-   *   sanitizeOps: boolean,
-   *   sanitizeResources: boolean,
-   *   sanitizeExit: boolean,
-   * }} TestStepDescription
-   *
-   * @typedef {{
-   *   context: TestContext,
-   *   children: TestStepDescription[],
-   *   finalized: boolean,
-   * }} TestState
-   *
-   * @typedef {{
-   *   context: TestContext,
-   *   children: TestStepDescription[],
-   *   finalized: boolean,
-   *   status: "pending" | "ok" | ""failed" | ignored",
-   *   error: unknown,
-   *   elapsed: number | null,
-   *   reportedWait: boolean,
-   *   reportedResult: boolean,
-   * }} TestStepState
-   *
-   * @typedef {{
-   *   id: number,
-   *   name: string,
    *   fn: BenchFunction
    *   origin: string,
    *   filteredOut: boolean,
@@ -594,10 +551,7 @@
    * }} BenchDescription
    */
 
-  /** @type {TestDescription[]} */
-  const testDescs = [];
-  /** @type {Map<number, TestState | TestStepState>} */
-  const testStates = new Map();
+  const tests = [];
   /** @type {BenchDescription[]} */
   const benchDescs = [];
   let isTestOrBenchSubcommand = false;
@@ -612,7 +566,7 @@
       return;
     }
 
-    let testDesc;
+    let testDef;
     const defaults = {
       ignore: false,
       only: false,
@@ -627,7 +581,7 @@
         throw new TypeError("The test name can't be empty");
       }
       if (typeof optionsOrFn === "function") {
-        testDesc = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
+        testDef = { fn: optionsOrFn, name: nameOrFnOrOptions, ...defaults };
       } else {
         if (!maybeFn || typeof maybeFn !== "function") {
           throw new TypeError("Missing test function");
@@ -642,7 +596,7 @@
             "Unexpected 'name' field in options, test name is already provided as the first argument.",
           );
         }
-        testDesc = {
+        testDef = {
           ...defaults,
           ...optionsOrFn,
           fn: maybeFn,
@@ -659,7 +613,7 @@
       if (maybeFn != undefined) {
         throw new TypeError("Unexpected third argument to Deno.test()");
       }
-      testDesc = {
+      testDef = {
         ...defaults,
         fn: nameOrFnOrOptions,
         name: nameOrFnOrOptions.name,
@@ -689,36 +643,29 @@
       if (!name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
+      testDef = { ...defaults, ...nameOrFnOrOptions, fn, name };
     }
 
-    // Delete this prop in case the user passed it. It's used to detect steps.
-    delete testDesc.parent;
-    testDesc.fn = wrapTestFnWithSanitizers(testDesc.fn, testDesc);
-    if (testDesc.permissions) {
-      testDesc.fn = withPermissions(
-        testDesc.fn,
-        testDesc.permissions,
+    testDef.fn = wrapTestFnWithSanitizers(testDef.fn, testDef);
+
+    if (testDef.permissions) {
+      testDef.fn = withPermissions(
+        testDef.fn,
+        testDef.permissions,
       );
     }
-    testDesc.origin = getTestOrigin();
+
     const jsError = Deno.core.destructureError(new Error());
-    testDesc.location = {
+    // Note: There might pop up a case where one of the filename, line number or
+    // column number from the caller isn't defined. We assume never for now.
+    // Make `TestDescription::location` optional if such a case is found.
+    testDef.location = {
       fileName: jsError.frames[1].fileName,
       lineNumber: jsError.frames[1].lineNumber,
       columnNumber: jsError.frames[1].columnNumber,
     };
 
-    const { id, filteredOut } = core.opSync("op_register_test", testDesc);
-    testDesc.id = id;
-    testDesc.filteredOut = filteredOut;
-
-    ArrayPrototypePush(testDescs, testDesc);
-    MapPrototypeSet(testStates, testDesc.id, {
-      context: createTestContext(testDesc),
-      children: [],
-      finalized: false,
-    });
+    ArrayPrototypePush(tests, testDef);
   }
 
   // Main bench function provided by Deno.
@@ -822,14 +769,58 @@
     ArrayPrototypePush(benchDescs, benchDesc);
   }
 
-  async function runTest(desc) {
-    if (desc.ignore) {
+  /**
+   * @param {string | { include?: string[], exclude?: string[] }} filter
+   * @returns {(def: { name: string }) => boolean}
+   */
+  function createTestFilter(filter) {
+    if (!filter) {
+      return () => true;
+    }
+
+    const regex =
+      typeof filter === "string" && StringPrototypeStartsWith(filter, "/") &&
+        StringPrototypeEndsWith(filter, "/")
+        ? new RegExp(StringPrototypeSlice(filter, 1, filter.length - 1))
+        : undefined;
+
+    const filterIsObject = filter != null && typeof filter === "object";
+
+    return (def) => {
+      if (regex) {
+        return RegExpPrototypeTest(regex, def.name);
+      }
+      if (filterIsObject) {
+        if (filter.include && !filter.include.includes(def.name)) {
+          return false;
+        } else if (filter.exclude && filter.exclude.includes(def.name)) {
+          return false;
+        } else {
+          return true;
+        }
+      }
+      return StringPrototypeIncludes(def.name, filter);
+    };
+  }
+
+  async function runTest(test, description) {
+    if (test.ignore) {
       return "ignored";
     }
 
+    const step = new TestStep({
+      name: test.name,
+      parent: undefined,
+      parentContext: undefined,
+      rootTestDescription: description,
+      sanitizeOps: test.sanitizeOps,
+      sanitizeResources: test.sanitizeResources,
+      sanitizeExit: test.sanitizeExit,
+    });
+
     try {
-      await desc.fn(desc);
-      const failCount = failedChildStepsCount(desc);
+      await test.fn(step);
+      const failCount = step.failedChildStepsCount();
       return failCount === 0 ? "ok" : {
         "failed": core.destructureError(
           new Error(
@@ -842,11 +833,10 @@
         "failed": core.destructureError(error),
       };
     } finally {
-      const state = MapPrototypeGet(testStates, desc.id);
-      state.finalized = true;
+      step.finalized = true;
       // ensure the children report their result
-      for (const childDesc of state.children) {
-        stepReportResult(childDesc);
+      for (const child of step.children) {
+        child.reportResult();
       }
     }
   }
@@ -971,7 +961,7 @@
 
           n++;
           avg += iterationTime;
-          ArrayPrototypePush(all, iterationTime);
+          all.push(iterationTime);
           if (iterationTime < min) min = iterationTime;
           if (iterationTime > max) max = iterationTime;
           budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -1028,6 +1018,36 @@
     return origin;
   }
 
+  function reportTestPlan(plan) {
+    core.opSync("op_dispatch_test_event", {
+      plan,
+    });
+  }
+
+  function reportTestWait(test) {
+    core.opSync("op_dispatch_test_event", {
+      wait: test,
+    });
+  }
+
+  function reportTestResult(test, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      result: [test, result, elapsed],
+    });
+  }
+
+  function reportTestStepWait(testDescription) {
+    core.opSync("op_dispatch_test_event", {
+      stepWait: testDescription,
+    });
+  }
+
+  function reportTestStepResult(testDescription, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      stepResult: [testDescription, result, elapsed],
+    });
+  }
+
   function benchNow() {
     return core.opSync("op_bench_now");
   }
@@ -1040,24 +1060,24 @@
   }
 
   async function runTests({
+    filter = null,
     shuffle = null,
   } = {}) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
 
     const origin = getTestOrigin();
-    const only = ArrayPrototypeFilter(testDescs, (test) => test.only);
+
+    const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
-      only.length > 0 ? only : testDescs,
-      (desc) => !desc.filteredOut,
+      only.length > 0 ? only : tests,
+      createTestFilter(filter),
     );
 
-    core.opSync("op_dispatch_test_event", {
-      plan: {
-        origin,
-        total: filtered.length,
-        filteredOut: testDescs.length - filtered.length,
-        usedOnly: only.length > 0,
-      },
+    reportTestPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: tests.length - filtered.length,
+      usedOnly: only.length > 0,
     });
 
     if (shuffle !== null) {
@@ -1078,14 +1098,20 @@
       }
     }
 
-    for (const desc of filtered) {
-      core.opSync("op_dispatch_test_event", { wait: desc.id });
+    for (const test of filtered) {
+      const description = {
+        origin,
+        name: test.name,
+        location: test.location,
+      };
       const earlier = DateNow();
-      const result = await runTest(desc);
+
+      reportTestWait(description);
+
+      const result = await runTest(test, description);
       const elapsed = DateNow() - earlier;
-      core.opSync("op_dispatch_test_event", {
-        result: [desc.id, result, elapsed],
-      });
+
+      reportTestResult(description, result, elapsed);
     }
   }
 
@@ -1140,225 +1166,320 @@
     globalThis.console = originalConsole;
   }
 
-  function getFullName(desc) {
-    if ("parent" in desc) {
-      return `${desc.parent.name} > ${desc.name}`;
-    }
-    return desc.name;
-  }
-
-  function usesSanitizer(desc) {
-    return desc.sanitizeResources || desc.sanitizeOps || desc.sanitizeExit;
-  }
-
-  function canStreamReporting(desc) {
-    let currentDesc = desc;
-    while (currentDesc != null) {
-      if (!usesSanitizer(currentDesc)) {
-        return false;
-      }
-      currentDesc = currentDesc.parent;
-    }
-    for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      const state = MapPrototypeGet(testStates, childDesc.id);
-      if (!usesSanitizer(childDesc) && !state.finalized) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function stepReportWait(desc) {
-    const state = MapPrototypeGet(testStates, desc.id);
-    if (state.reportedWait) {
-      return;
-    }
-    core.opSync("op_dispatch_test_event", { stepWait: desc.id });
-    state.reportedWait = true;
-  }
-
-  function stepReportResult(desc) {
-    const state = MapPrototypeGet(testStates, desc.id);
-    if (state.reportedResult) {
-      return;
-    }
-    stepReportWait(desc);
-    for (const childDesc of state.children) {
-      stepReportResult(childDesc);
-    }
-    let result;
-    if (state.status == "pending" || state.status == "failed") {
-      result = {
-        [state.status]: state.error && core.destructureError(state.error),
-      };
-    } else {
-      result = state.status;
-    }
-    core.opSync("op_dispatch_test_event", {
-      stepResult: [desc.id, result, state.elapsed],
-    });
-    state.reportedResult = true;
-  }
-
-  function failedChildStepsCount(desc) {
-    return ArrayPrototypeFilter(
-      MapPrototypeGet(testStates, desc.id).children,
-      (d) => MapPrototypeGet(testStates, d.id).status === "failed",
-    ).length;
-  }
-
-  /** If a test validation error already occurred then don't bother checking
-   * the sanitizers as that will create extra noise.
+  /**
+   * @typedef {{
+   *   fn: (t: TestContext) => void | Promise<void>,
+   *   name: string,
+   *   ignore?: boolean,
+   *   sanitizeOps?: boolean,
+   *   sanitizeResources?: boolean,
+   *   sanitizeExit?: boolean,
+   * }} TestStepDefinition
+   *
+   * @typedef {{
+   *   name: string,
+   *   parent: TestStep | undefined,
+   *   parentContext: TestContext | undefined,
+   *   rootTestDescription: { origin: string; name: string };
+   *   sanitizeOps: boolean,
+   *   sanitizeResources: boolean,
+   *   sanitizeExit: boolean,
+   * }} TestStepParams
    */
-  function shouldSkipSanitizers(desc) {
-    try {
-      testStepPostValidation(desc);
-      return false;
-    } catch {
+
+  class TestStep {
+    /** @type {TestStepParams} */
+    #params;
+    reportedWait = false;
+    #reportedResult = false;
+    finalized = false;
+    elapsed = 0;
+    /** @type "ok" | "ignored" | "pending" | "failed" */
+    status = "pending";
+    error = undefined;
+    /** @type {TestStep[]} */
+    children = [];
+
+    /** @param params {TestStepParams} */
+    constructor(params) {
+      this.#params = params;
+    }
+
+    get name() {
+      return this.#params.name;
+    }
+
+    get parent() {
+      return this.#params.parent;
+    }
+
+    get parentContext() {
+      return this.#params.parentContext;
+    }
+
+    get rootTestDescription() {
+      return this.#params.rootTestDescription;
+    }
+
+    get sanitizerOptions() {
+      return {
+        sanitizeResources: this.#params.sanitizeResources,
+        sanitizeOps: this.#params.sanitizeOps,
+        sanitizeExit: this.#params.sanitizeExit,
+      };
+    }
+
+    get usesSanitizer() {
+      return this.#params.sanitizeResources ||
+        this.#params.sanitizeOps ||
+        this.#params.sanitizeExit;
+    }
+
+    /** If a test validation error already occurred then don't bother checking
+     * the sanitizers as that will create extra noise.
+     */
+    get shouldSkipSanitizers() {
+      return this.hasRunningChildren || this.parent?.finalized;
+    }
+
+    get hasRunningChildren() {
+      return ArrayPrototypeSome(
+        this.children,
+        /** @param step {TestStep} */
+        (step) => step.status === "pending",
+      );
+    }
+
+    failedChildStepsCount() {
+      return ArrayPrototypeFilter(
+        this.children,
+        /** @param step {TestStep} */
+        (step) => step.status === "failed",
+      ).length;
+    }
+
+    canStreamReporting() {
+      // there should only ever be one sub step running when running with
+      // sanitizers, so we can use this to tell if we can stream reporting
+      return this.selfAndAllAncestorsUseSanitizer() &&
+        this.children.every((c) => c.usesSanitizer || c.finalized);
+    }
+
+    selfAndAllAncestorsUseSanitizer() {
+      if (!this.usesSanitizer) {
+        return false;
+      }
+
+      for (const ancestor of this.ancestors()) {
+        if (!ancestor.usesSanitizer) {
+          return false;
+        }
+      }
+
       return true;
     }
+
+    *ancestors() {
+      let ancestor = this.parent;
+      while (ancestor) {
+        yield ancestor;
+        ancestor = ancestor.parent;
+      }
+    }
+
+    getFullName() {
+      if (this.parent) {
+        return `${this.parent.getFullName()} > ${this.name}`;
+      } else {
+        return this.name;
+      }
+    }
+
+    reportWait() {
+      if (this.reportedWait || !this.parent) {
+        return;
+      }
+
+      reportTestStepWait(this.#getTestStepDescription());
+
+      this.reportedWait = true;
+    }
+
+    reportResult() {
+      if (this.#reportedResult || !this.parent) {
+        return;
+      }
+
+      this.reportWait();
+
+      for (const child of this.children) {
+        child.reportResult();
+      }
+
+      reportTestStepResult(
+        this.#getTestStepDescription(),
+        this.#getStepResult(),
+        this.elapsed,
+      );
+
+      this.#reportedResult = true;
+    }
+
+    #getStepResult() {
+      switch (this.status) {
+        case "ok":
+          return "ok";
+        case "ignored":
+          return "ignored";
+        case "pending":
+          return {
+            "pending": this.error && core.destructureError(this.error),
+          };
+        case "failed":
+          return {
+            "failed": this.error && core.destructureError(this.error),
+          };
+        default:
+          throw new Error(`Unhandled status: ${this.status}`);
+      }
+    }
+
+    #getTestStepDescription() {
+      return {
+        test: this.rootTestDescription,
+        name: this.name,
+        level: this.#getLevel(),
+      };
+    }
+
+    #getLevel() {
+      let count = 0;
+      for (const _ of this.ancestors()) {
+        count++;
+      }
+      return count;
+    }
   }
 
-  /** @param desc {TestDescription | TestStepDescription} */
-  function createTestContext(desc) {
-    let parent;
-    let level;
-    let rootId;
-    let rootName;
-    if ("parent" in desc) {
-      parent = MapPrototypeGet(testStates, desc.parent.id).context;
-      level = desc.level;
-      rootId = desc.rootId;
-      rootName = desc.rootName;
-    } else {
-      parent = undefined;
-      level = 0;
-      rootId = desc.id;
-      rootName = desc.name;
-    }
+  /** @param parentStep {TestStep} */
+  function createTestContext(parentStep) {
     return {
       [SymbolToStringTag]: "TestContext",
       /**
        * The current test name.
        */
-      name: desc.name,
+      name: parentStep.name,
       /**
        * Parent test context.
        */
-      parent,
+      parent: parentStep.parentContext ?? undefined,
       /**
        * File Uri of the test code.
        */
-      origin: desc.origin,
+      origin: parentStep.rootTestDescription.origin,
       /**
        * @param nameOrTestDefinition {string | TestStepDefinition}
        * @param fn {(t: TestContext) => void | Promise<void>}
        */
       async step(nameOrTestDefinition, fn) {
-        if (MapPrototypeGet(testStates, desc.id).finalized) {
+        if (parentStep.finalized) {
           throw new Error(
             "Cannot run test step after parent scope has finished execution. " +
               "Ensure any `.step(...)` calls are executed before their parent scope completes execution.",
           );
         }
 
-        let stepDesc;
-        if (typeof nameOrTestDefinition === "string") {
-          if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
-            throw new TypeError("Expected function for second argument.");
-          }
-          stepDesc = {
-            name: nameOrTestDefinition,
-            fn,
-          };
-        } else if (typeof nameOrTestDefinition === "object") {
-          stepDesc = nameOrTestDefinition;
-        } else {
-          throw new TypeError(
-            "Expected a test definition or name and function.",
-          );
-        }
-        stepDesc.ignore ??= false;
-        stepDesc.sanitizeOps ??= desc.sanitizeOps;
-        stepDesc.sanitizeResources ??= desc.sanitizeResources;
-        stepDesc.sanitizeExit ??= desc.sanitizeExit;
-        stepDesc.origin = getTestOrigin();
-        const jsError = Deno.core.destructureError(new Error());
-        stepDesc.location = {
-          fileName: jsError.frames[1].fileName,
-          lineNumber: jsError.frames[1].lineNumber,
-          columnNumber: jsError.frames[1].columnNumber,
-        };
-        stepDesc.level = level + 1;
-        stepDesc.parent = desc;
-        stepDesc.rootId = rootId;
-        stepDesc.rootName = rootName;
-        const { id } = core.opSync("op_register_test_step", stepDesc);
-        stepDesc.id = id;
-        const state = {
-          context: createTestContext(stepDesc),
-          children: [],
-          finalized: false,
-          status: "pending",
-          error: null,
-          elapsed: null,
-          reportedWait: false,
-          reportedResult: false,
-        };
-        MapPrototypeSet(testStates, stepDesc.id, state);
-        ArrayPrototypePush(
-          MapPrototypeGet(testStates, stepDesc.parent.id).children,
-          stepDesc,
-        );
+        const definition = getDefinition();
+        const subStep = new TestStep({
+          name: definition.name,
+          parent: parentStep,
+          parentContext: this,
+          rootTestDescription: parentStep.rootTestDescription,
+          sanitizeOps: getOrDefault(
+            definition.sanitizeOps,
+            parentStep.sanitizerOptions.sanitizeOps,
+          ),
+          sanitizeResources: getOrDefault(
+            definition.sanitizeResources,
+            parentStep.sanitizerOptions.sanitizeResources,
+          ),
+          sanitizeExit: getOrDefault(
+            definition.sanitizeExit,
+            parentStep.sanitizerOptions.sanitizeExit,
+          ),
+        });
+
+        ArrayPrototypePush(parentStep.children, subStep);
 
         try {
-          if (stepDesc.ignore) {
-            state.status = "ignored";
-            state.finalized = true;
-            if (canStreamReporting(stepDesc)) {
-              stepReportResult(stepDesc);
+          if (definition.ignore) {
+            subStep.status = "ignored";
+            subStep.finalized = true;
+            if (subStep.canStreamReporting()) {
+              subStep.reportResult();
             }
             return false;
           }
 
-          const testFn = wrapTestFnWithSanitizers(stepDesc.fn, stepDesc);
+          const testFn = wrapTestFnWithSanitizers(
+            definition.fn,
+            subStep.sanitizerOptions,
+          );
           const start = DateNow();
 
           try {
-            await testFn(stepDesc);
+            await testFn(subStep);
 
-            if (failedChildStepsCount(stepDesc) > 0) {
-              state.status = "failed";
+            if (subStep.failedChildStepsCount() > 0) {
+              subStep.status = "failed";
             } else {
-              state.status = "ok";
+              subStep.status = "ok";
             }
           } catch (error) {
-            state.error = error;
-            state.status = "failed";
+            subStep.error = error;
+            subStep.status = "failed";
           }
 
-          state.elapsed = DateNow() - start;
+          subStep.elapsed = DateNow() - start;
 
-          if (MapPrototypeGet(testStates, stepDesc.parent.id).finalized) {
+          if (subStep.parent?.finalized) {
             // always point this test out as one that was still running
             // if the parent step finalized
-            state.status = "pending";
+            subStep.status = "pending";
           }
 
-          state.finalized = true;
+          subStep.finalized = true;
 
-          if (state.reportedWait && canStreamReporting(stepDesc)) {
-            stepReportResult(stepDesc);
+          if (subStep.reportedWait && subStep.canStreamReporting()) {
+            subStep.reportResult();
           }
 
-          return state.status === "ok";
+          return subStep.status === "ok";
         } finally {
-          if (canStreamReporting(stepDesc.parent)) {
-            const parentState = MapPrototypeGet(testStates, stepDesc.parent.id);
+          if (parentStep.canStreamReporting()) {
             // flush any buffered steps
-            for (const childDesc of parentState.children) {
-              stepReportResult(childDesc);
+            for (const parentChild of parentStep.children) {
+              parentChild.reportResult();
             }
+          }
+        }
+
+        /** @returns {TestStepDefinition} */
+        function getDefinition() {
+          if (typeof nameOrTestDefinition === "string") {
+            if (!(ObjectPrototypeIsPrototypeOf(FunctionPrototype, fn))) {
+              throw new TypeError("Expected function for second argument.");
+            }
+            return {
+              name: nameOrTestDefinition,
+              fn,
+            };
+          } else if (typeof nameOrTestDefinition === "object") {
+            return nameOrTestDefinition;
+          } else {
+            throw new TypeError(
+              "Expected a test definition or name and function.",
+            );
           }
         }
       },
@@ -1388,6 +1509,16 @@
       testFn = assertExit(testFn, true);
     }
     return testFn;
+  }
+
+  /**
+   * @template T
+   * @param value {T | undefined}
+   * @param defaultValue {T}
+   * @returns T
+   */
+  function getOrDefault(value, defaultValue) {
+    return value == null ? defaultValue : value;
   }
 
   window.__bootstrap.internals = {
