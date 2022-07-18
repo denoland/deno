@@ -39,6 +39,7 @@ fn is_process_active(process_id: u32) -> bool {
   use winapi::um::synchapi::WaitForSingleObject;
   use winapi::um::winnt::SYNCHRONIZE;
 
+  // SAFETY: winapi calls
   unsafe {
     let process = OpenProcess(SYNCHRONIZE, FALSE, process_id as DWORD);
     let result = if process == NULL {
