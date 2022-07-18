@@ -288,32 +288,28 @@ fn import_meta_resolve(
     return throw_type_error(scope, "Invalid arguments");
   }
 
-  let tc_scope = &mut v8::TryCatch::new(scope);
-  let maybe_arg_str = args.get(0).to_string(tc_scope);
+  let maybe_arg_str = args.get(0).to_string(scope);
   if maybe_arg_str.is_none() {
-    return throw_type_error(tc_scope, "Invalid arguments");
+    return throw_type_error(scope, "Invalid arguments");
   }
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
     let url_prop = args.data().unwrap();
-    url_prop.to_rust_string_lossy(tc_scope)
+    url_prop.to_rust_string_lossy(scope)
   };
-  let module_map_rc = JsRuntime::module_map(tc_scope);
+  let module_map_rc = JsRuntime::module_map(scope);
   let loader = {
     let module_map = module_map_rc.borrow();
     module_map.loader.clone()
   };
-  match loader.resolve(
-    &specifier.to_rust_string_lossy(tc_scope),
-    &referrer,
-    false,
-  ) {
+  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
+  {
     Ok(resolved) => {
-      let resolved_val = serde_v8::to_v8(tc_scope, resolved.as_str()).unwrap();
+      let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
       rv.set(resolved_val);
     }
     Err(err) => {
-      throw_type_error(tc_scope, &err.to_string());
+      return throw_type_error(scope, &err.to_string());
     }
   };
 }
