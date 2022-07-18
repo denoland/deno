@@ -358,7 +358,12 @@ fn captured_output() {
   // thing here to ensure is that we're capturing the output in
   // this block on stdout
   lines.sort_unstable();
-  assert_eq!(lines.join(" "), "0 1 2 3 4 5 6 7 8 9");
+  assert_eq!(
+    // replace zero width space that may appear in test output due
+    // to test runner output flusher
+    lines.join(" ").replace('\u{200B}', ""),
+    "0 1 2 3 4 5 6 7 8 9"
+  );
 }
 
 #[test]
