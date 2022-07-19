@@ -81,8 +81,8 @@ Deno.test({
   computePass.setPipeline(computePipeline);
   computePass.setBindGroup(0, bindGroup);
   computePass.insertDebugMarker("compute collatz iterations");
-  computePass.dispatch(numbers.length);
-  computePass.endPass();
+  computePass.dispatchWorkgroups(numbers.length);
+  computePass.end();
 
   encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
 
@@ -172,13 +172,14 @@ Deno.test({
       {
         view,
         storeOp: "store",
-        loadValue: [0, 1, 0, 1],
+        loadOp: "clear",
+        clearValue: [0, 1, 0, 1],
       },
     ],
   });
   renderPass.setPipeline(renderPipeline);
   renderPass.draw(3, 1);
-  renderPass.endPass();
+  renderPass.end();
 
   encoder.copyTextureToBuffer(
     {
