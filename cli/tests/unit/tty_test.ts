@@ -26,13 +26,11 @@ Deno.test({ permissions: { read: true } }, function isatty() {
 });
 
 Deno.test(function isattyError() {
-  let caught = false;
-  try {
+  assertThrows(() => {
     // Absurdly large rid.
     Deno.isatty(0x7fffffff);
-  } catch (e) {
-    caught = true;
-    assert(e instanceof Deno.errors.BadResource);
-  }
-  assert(caught);
+  }, Deno.errors.BadResource);
+  assertThrows(() => {
+    Deno.isatty(-1);
+  }, Deno.errors.BadResource);
 });

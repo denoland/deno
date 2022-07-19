@@ -9,6 +9,9 @@
   }
 
   function isatty(rid) {
+    if (rid < 0) {
+      throw new core.BadResource();
+    }
     return core.opSync("op_isatty", rid);
   }
 
