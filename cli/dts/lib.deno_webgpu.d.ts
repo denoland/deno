@@ -514,8 +514,10 @@ declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
   sourceMap?: any;
 }
 
+declare type GPUAutoLayoutMode = "auto";
+
 declare interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
-  layout: GPUPipelineLayout;
+  layout: GPUPipelineLayout | GPUAutoLayoutMode;
 }
 
 declare interface GPUPipelineBase {

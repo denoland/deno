@@ -945,11 +945,29 @@
   //   GPUCompilationInfo.prototype,
   // );
 
+  webidl.converters["GPUAutoLayoutMode"] = webidl.createEnumConverter(
+    "GPUAutoLayoutMode",
+    [
+      "auto",
+    ],
+  );
+
+  webidl.converters["GPUPipelineLayout or GPUAutoLayoutMode"] = (V, opts) => {
+    if (typeof V === "object") {
+      const method = V[SymbolIterator];
+      if (method !== undefined) {
+        return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
+      }
+      return webidl.converters["GPUPipelineLayout"](V, opts);
+    }
+    return webidl.converters["GPUAutoLayoutMode"](V, opts);
+  };
+
   // DICTIONARY: GPUPipelineDescriptorBase
   const dictMembersGPUPipelineDescriptorBase = [
     {
       key: "layout",
-      converter: webidl.converters["GPUPipelineLayout"],
+      converter: webidl.converters["GPUPipelineLayout or GPUAutoLayoutMode"],
     },
   ];
   webidl.converters["GPUPipelineDescriptorBase"] = webidl

@@ -1252,8 +1252,8 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      let layout = undefined;
-      if (descriptor.layout) {
+      let layout = descriptor.layout;
+      if (typeof descriptor.layout !== "string") {
         const context = "layout";
         layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {
@@ -1307,8 +1307,8 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      let layout = undefined;
-      if (descriptor.layout) {
+      let layout = descriptor.layout;
+      if (typeof descriptor.layout !== "string") {
         const context = "layout";
         layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {

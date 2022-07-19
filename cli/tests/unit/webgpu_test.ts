@@ -56,6 +56,7 @@ Deno.test({
   storageBuffer.unmap();
 
   const computePipeline = device.createComputePipeline({
+    layout: "auto",
     compute: {
       module: shaderModule,
       entryPoint: "main",
