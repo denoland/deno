@@ -647,13 +647,28 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
-  function readableStreamForRid(rid) {
+  /**
+   * @callback unrefCallback
+   * @param {Promise} promise
+   * @returns {undefined}
+   */
+  /**
+   * @param {number} rid
+   * @param {unrefCallback=} unrefCallback
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRid(rid, unrefCallback) {
     const stream = new ReadableStream({
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
-          const bytesRead = await core.read(rid, v);
+          const promise = core.read(rid, v);
+
+          unrefCallback?.(promise);
+
+          const bytesRead = await promise;
+
           if (bytesRead === 0) {
             core.tryClose(rid);
             controller.close();

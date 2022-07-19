@@ -14,6 +14,7 @@ pub use config_file::LintConfig;
 pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
+pub use config_file::TestConfig;
 pub use config_file::TsConfig;
 pub use flags::*;
 
@@ -239,6 +240,14 @@ impl CliOptions {
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.to_lint_config()
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+    if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_test_config()
     } else {
       Ok(None)
     }

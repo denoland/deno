@@ -2,6 +2,7 @@
 
 use crate::args::CoverageFlags;
 use crate::args::Flags;
+use crate::cache::EmitCache;
 use crate::colors;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
@@ -202,16 +203,18 @@ fn generate_coverage_report(
       continue;
     }
 
-    let source_line_index =
-      text_lines.line_index(function.ranges[0].start_offset);
+    let dest_line_index = text_lines.line_index(
+      text_lines
+        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    );
     let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
       source_map
         .tokens()
-        .find(|token| token.get_dst_line() as usize == source_line_index)
+        .find(|token| token.get_dst_line() as usize == dest_line_index)
         .map(|token| token.get_src_line() as usize)
         .unwrap_or(0)
     } else {
-      source_line_index
+      dest_line_index
     };
 
     coverage_report.named_functions.push(FunctionCoverageItem {
@@ -224,7 +227,9 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(range.start_offset);
+      let source_line_index = text_lines.line_index(
+        text_lines.byte_index_from_char_index(range.start_char_offset),
+      );
       let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
           .tokens()
@@ -264,11 +269,14 @@ fn generate_coverage_report(
   // parts of a line in color (word diff style) instead of the entire line.
   let mut line_counts = Vec::with_capacity(text_lines.lines_count());
   for line_index in 0..text_lines.lines_count() {
-    let line_start_offset = text_lines.line_start(line_index);
-    let line_end_offset = text_lines.line_end(line_index);
+    let line_start_byte_offset = text_lines.line_start(line_index);
+    let line_start_char_offset = text_lines.char_index(line_start_byte_offset);
+    let line_end_byte_offset = text_lines.line_end(line_index);
+    let line_end_char_offset = text_lines.char_index(line_end_byte_offset);
     let ignore = comment_ranges.iter().any(|range| {
-      range.start <= line_start_offset && range.end >= line_end_offset
-    }) || script_source[line_start_offset..line_end_offset]
+      range.start <= line_start_byte_offset && range.end >= line_end_byte_offset
+    }) || script_source
+      [line_start_byte_offset..line_end_byte_offset]
       .trim()
       .is_empty();
     let mut count = 0;
@@ -280,8 +288,8 @@ fn generate_coverage_report(
       // as long as the code has been evaluated.
       for function in &script_coverage.functions {
         for range in &function.ranges {
-          if range.start_offset <= line_start_offset
-            && range.end_offset >= line_end_offset
+          if range.start_char_offset <= line_start_char_offset
+            && range.end_char_offset >= line_end_char_offset
           {
             count += range.count;
           }
@@ -295,8 +303,8 @@ fn generate_coverage_report(
             continue;
           }
 
-          let overlaps = range.start_offset < line_end_offset
-            && range.end_offset > line_start_offset;
+          let overlaps = range.start_char_offset < line_end_char_offset
+            && range.end_char_offset > line_start_char_offset;
           if overlaps {
             count = 0;
           }
@@ -669,16 +677,9 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let emit_path = ps
-          .dir
-          .gen_cache
-          .get_cache_filename_with_extension(&file.specifier, "js")
-          .unwrap_or_else(|| {
-            unreachable!("Unable to get cache filename: {}", &file.specifier)
-          });
-        match ps.dir.gen_cache.get(&emit_path) {
-          Ok(b) => String::from_utf8(b).unwrap(),
-          Err(_) => {
+        match ps.dir.gen_cache.get_emit_text(&file.specifier) {
+          Some(source) => source,
+          None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
               Before generating coverage report, run `deno test --coverage` to ensure consistent state.",

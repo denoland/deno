@@ -185,14 +185,14 @@ Deno.test(
     permissions: { run: true, read: true },
   },
   async function canExitWhileListeningToSignal() {
-    const { status } = await Deno.spawn(Deno.execPath(), {
+    const { code } = await Deno.spawn(Deno.execPath(), {
       args: [
         "eval",
         "--unstable",
         "Deno.addSignalListener('SIGINT', () => {})",
       ],
     });
-    assertEquals(status.code, 0);
+    assertEquals(code, 0);
   },
 );
 

@@ -90,68 +90,62 @@ impl Serialize for IgnoredCompilerOptions {
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
-  "baseUrl",
-  "declaration",
-  "declarationMap",
-  "downlevelIteration",
-  "esModuleInterop",
-  "emitDeclarationOnly",
-  "importHelpers",
-  "inlineSourceMap",
-  "inlineSources",
-  "module",
-  "noEmitHelpers",
-  "noErrorTruncation",
-  "noLib",
-  "noResolve",
-  "outDir",
-  "paths",
-  "preserveConstEnums",
-  "reactNamespace",
-  "resolveJsonModule",
-  "rootDir",
-  "rootDirs",
-  "skipLibCheck",
-  "sourceMap",
-  "sourceRoot",
-  "target",
-  "useDefineForClassFields",
-];
-
-pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
+  "baseUrl",
   "build",
   "charset",
   "composite",
+  "declaration",
+  "declarationMap",
   "diagnostics",
   "disableSizeLimit",
+  "downlevelIteration",
   "emitBOM",
+  "emitDeclarationOnly",
+  "esModuleInterop",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
   "help",
+  "importHelpers",
   "incremental",
   "init",
+  "inlineSourceMap",
+  "inlineSources",
   "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
   "maxNodeModuleJsDepth",
+  "module",
   "moduleResolution",
   "newLine",
   "noEmit",
+  "noEmitHelpers",
   "noEmitOnError",
+  "noErrorTruncation",
+  "noLib",
+  "noResolve",
   "out",
   "outDir",
   "outFile",
+  "paths",
+  "preserveConstEnums",
   "preserveSymlinks",
   "preserveWatchOutput",
   "pretty",
   "project",
+  "reactNamespace",
   "resolveJsonModule",
+  "rootDir",
+  "rootDirs",
   "showConfig",
   "skipDefaultLibCheck",
+  "skipLibCheck",
+  "sourceMap",
+  "sourceRoot",
   "stripInternal",
+  "target",
   "traceResolution",
   "tsBuildInfoFile",
   "typeRoots",
@@ -177,16 +171,13 @@ pub fn json_merge(a: &mut Value, b: &Value) {
 fn parse_compiler_options(
   compiler_options: &HashMap<String, Value>,
   maybe_specifier: Option<ModuleSpecifier>,
-  is_runtime: bool,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   let mut filtered: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if (!is_runtime && IGNORED_COMPILER_OPTIONS.contains(&key))
-      || IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
-    {
+    if IGNORED_COMPILER_OPTIONS.contains(&key) {
       items.push(key.to_string());
     } else {
       filtered.insert(key.to_string(), value.to_owned());
@@ -260,19 +251,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Take a map of compiler options, filtering out any that are ignored, then
-  /// merge it with the current configuration, returning any options that might
-  /// have been ignored.
-  pub fn merge_user_config(
-    &mut self,
-    user_options: &HashMap<String, Value>,
-  ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
-    let (value, maybe_ignored_options) =
-      parse_compiler_options(user_options, None, true)?;
-    self.merge(&value);
-    Ok(maybe_ignored_options)
   }
 }
 
@@ -419,6 +397,28 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedTestConfig {
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedTestConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<TestConfig, AnyError> {
+    Ok(TestConfig {
+      files: self.files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestConfig {
+  pub files: FilesConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -427,6 +427,7 @@ pub struct ConfigFileJson {
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
+  pub test: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -585,7 +586,7 @@ impl ConfigFile {
       let options: HashMap<String, Value> =
         serde_json::from_value(compiler_options)
           .context("compilerOptions should be an object")?;
-      parse_compiler_options(&options, Some(self.specifier.to_owned()), false)
+      parse_compiler_options(&options, Some(self.specifier.to_owned()))
     } else {
       Ok((json!({}), None))
     }
@@ -599,6 +600,16 @@ impl ConfigFile {
     if let Some(config) = self.json.lint.clone() {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
+      Ok(Some(lint_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+    if let Some(config) = self.json.test.clone() {
+      let lint_config: SerializedTestConfig = serde_json::from_value(config)
+        .context("Failed to parse \"test\" configuration")?;
       Ok(Some(lint_config.into_resolved(&self.specifier)?))
     } else {
       Ok(None)
@@ -908,38 +919,6 @@ mod tests {
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, &config_specifier).is_err());
-  }
-
-  #[test]
-  fn test_tsconfig_merge_user_options() {
-    let mut tsconfig = TsConfig::new(json!({
-      "target": "esnext",
-      "module": "esnext",
-    }));
-    let user_options = serde_json::from_value(json!({
-      "target": "es6",
-      "build": true,
-      "strict": false,
-    }))
-    .expect("could not convert to hashmap");
-    let maybe_ignored_options = tsconfig
-      .merge_user_config(&user_options)
-      .expect("could not merge options");
-    assert_eq!(
-      tsconfig.0,
-      json!({
-        "module": "esnext",
-        "target": "es6",
-        "strict": false,
-      })
-    );
-    assert_eq!(
-      maybe_ignored_options,
-      Some(IgnoredCompilerOptions {
-        items: vec!["build".to_string()],
-        maybe_specifier: None
-      })
-    );
   }
 
   #[test]

@@ -175,7 +175,7 @@ pub struct TestFlags {
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub allow_none: bool,
-  pub include: Option<Vec<String>>,
+  pub include: Vec<String>,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
@@ -480,6 +480,10 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
+    DENO_JOBS            Number of parallel workers used for test subcommand.
+                         Defaults to number of available CPUs when used with
+                         --jobs flag and no value is provided.
+                         Defaults to 1 when --jobs flag is not used.
     HTTP_PROXY           Proxy address for HTTP requests
                          (module downloads, fetch)
     HTTPS_PROXY          Proxy address for HTTPS requests
@@ -1548,7 +1552,7 @@ fn test_subcommand<'a>() -> Command<'a> {
       Arg::new("jobs")
         .short('j')
         .long("jobs")
-        .help("Number of parallel workers, defaults to # of CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .help("Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
@@ -2666,6 +2670,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
+    } else if let Ok(value) = env::var("DENO_JOBS") {
+      value
+        .parse::<NonZeroUsize>()
+        .unwrap_or(NonZeroUsize::new(1).unwrap())
     } else {
       std::thread::available_parallelism()
         .unwrap_or(NonZeroUsize::new(1).unwrap())
@@ -2674,15 +2682,14 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     NonZeroUsize::new(1).unwrap()
   };
 
-  let include = if matches.is_present("files") {
-    let files: Vec<String> = matches
+  let include: Vec<String> = if matches.is_present("files") {
+    matches
       .values_of("files")
       .unwrap()
       .map(String::from)
-      .collect();
-    Some(files)
+      .collect::<Vec<_>>()
   } else {
-    None
+    Vec::new()
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
@@ -4987,7 +4994,7 @@ mod tests {
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
-          include: Some(svec!["dir1/", "dir2/"]),
+          include: svec!["dir1/", "dir2/"],
           ignore: vec![],
           shuffle: None,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
@@ -5059,7 +5066,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
           trace_ops: false,
@@ -5087,7 +5094,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5119,7 +5126,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5145,7 +5152,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: Some(1),
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5171,7 +5178,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
@@ -5198,7 +5205,7 @@ mod tests {
           filter: None,
           allow_none: false,
           shuffle: None,
-          include: None,
+          include: vec![],
           ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
