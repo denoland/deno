@@ -954,10 +954,6 @@
 
   webidl.converters["GPUPipelineLayout or GPUAutoLayoutMode"] = (V, opts) => {
     if (typeof V === "object") {
-      const method = V[SymbolIterator];
-      if (method !== undefined) {
-        return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
-      }
       return webidl.converters["GPUPipelineLayout"](V, opts);
     }
     return webidl.converters["GPUAutoLayoutMode"](V, opts);
