@@ -1440,7 +1440,9 @@
     {
       key: "targets",
       converter: webidl.createSequenceConverter(
-        webidl.createNullableConverter(webidl.converters["GPUColorTargetState"]),
+        webidl.createNullableConverter(
+          webidl.converters["GPUColorTargetState"],
+        ),
       ),
       required: true,
     },
@@ -1819,7 +1821,9 @@
     {
       key: "colorAttachments",
       converter: webidl.createSequenceConverter(
-        webidl.createNullableConverter(webidl.converters["GPURenderPassColorAttachment"]),
+        webidl.createNullableConverter(
+          webidl.converters["GPURenderPassColorAttachment"],
+        ),
       ),
       required: true,
     },
