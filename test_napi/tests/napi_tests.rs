@@ -42,7 +42,6 @@ fn napi_tests() {
   assert!(output.status.success());
 }
 
-#[ignore]
 #[test]
 fn third_party_tests() {
   build();
