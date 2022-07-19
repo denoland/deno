@@ -74,11 +74,11 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const { status, stdout } = await Deno.spawn(Deno.execPath(), {
+      const { success, stdout } = await Deno.spawn(Deno.execPath(), {
         args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
       });
-      assertEquals(status.success, true);
+      assertEquals(success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(new TextDecoder().decode(stdout));
       assertEquals(actualValues, expectedValues);

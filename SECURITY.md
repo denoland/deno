@@ -9,8 +9,8 @@ we use to work with the security research community to address runtime security.
 
 ## Reporting a vulnerability
 
-Please email findings to engineering@deno.com. We strive to resolve all problems
-as quickly as possible, and are more than happy to play an active role in
+Please email findings to security@deno.com. We strive to resolve all problems as
+quickly as possible, and are more than happy to play an active role in
 publication of writeups after the problem is resolved.
 
 Try to include as much information as possible in the initial email, so we can

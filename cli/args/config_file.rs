@@ -397,6 +397,28 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedTestConfig {
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedTestConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<TestConfig, AnyError> {
+    Ok(TestConfig {
+      files: self.files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestConfig {
+  pub files: FilesConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -405,6 +427,7 @@ pub struct ConfigFileJson {
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
+  pub test: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -577,6 +600,16 @@ impl ConfigFile {
     if let Some(config) = self.json.lint.clone() {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
+      Ok(Some(lint_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+    if let Some(config) = self.json.test.clone() {
+      let lint_config: SerializedTestConfig = serde_json::from_value(config)
+        .context("Failed to parse \"test\" configuration")?;
       Ok(Some(lint_config.into_resolved(&self.specifier)?))
     } else {
       Ok(None)
