@@ -16,6 +16,7 @@ use mio::Interest;
 use mio::Poll;
 use mio::Token;
 use std::collections::HashMap;
+use std::mem::forget;
 use std::intrinsics::transmute;
 use std::io::Read;
 use std::sync::Arc;
@@ -86,9 +87,9 @@ pub fn start_http(tx: mpsc::Sender<NextRequest>, opts: Option<ListenOpts>) {
                 Some(ref tls_conf) => {
                   let connection =
                     rustls::ServerConnection::new(tls_conf.clone()).unwrap();
-                  Stream::Tls(rustls::StreamOwned::new(connection, socket))
+                  Stream::Tls(rustls::StreamOwned::new(connection, socket), false)
                 }
-                None => Stream::Tcp(socket),
+                None => Stream::Tcp(socket, false),
               };
               sockets.insert(token, stream);
             }
@@ -98,6 +99,12 @@ pub fn start_http(tx: mpsc::Sender<NextRequest>, opts: Option<ListenOpts>) {
         },
         token => {
           let socket = sockets.get_mut(&token).unwrap();
+          match socket {
+            Stream::Tcp(_, true) | Stream::Tls(_, true) => {
+              continue
+            },
+            _ => {},
+          }
           debug_assert!(event.is_readable());
           let sock_ptr = socket as *mut _;
           let nread = socket.read(&mut buffer);

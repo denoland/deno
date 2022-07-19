@@ -15,8 +15,11 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { path = "../../core", version = "0.143.0" }
+# For HTTP/2 and websocket upgrades
+deno_websocket = { version = "0.66.0", path = "../websocket" }
 http = "0.2.6"
 httparse = "1.7"
+hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
 mio = { version = "0.8", features = ["os-poll", "net"] }
 rustls = { version = "0.20" }
 rustls-pemfile = { version = "0.2.1" }

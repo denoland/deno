@@ -1,20 +1,22 @@
-use deno_core::Op;
+use deno_core::StringOrBuffer;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
+use hyper::body::Bytes;
 use mio::net::TcpStream;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::HashMap;
 use std::io::Read;
 use std::io::Write;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 use tokio::sync::mpsc;
 
 mod server;
@@ -32,23 +34,32 @@ pub struct InnerRequest {
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 
 pub enum Stream {
-  Tcp(TcpStream),
-  Tls(TlsTcpStream),
+  Tcp(TcpStream, bool),
+  Tls(TlsTcpStream, bool),
+}
+
+impl Stream {
+  pub fn detach_ownership(&mut self) {
+   match self {
+      Stream::Tcp(_, detached) => *detached = true,
+      Stream::Tls(_, detached) => *detached = true, 
+   } 
+  }
 }
 
 impl Write for Stream {
   #[inline]
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
     match self {
-      Stream::Tcp(stream) => stream.write(buf),
-      Stream::Tls(stream) => stream.write(buf),
+      Stream::Tcp(stream, _) => stream.write(buf),
+      Stream::Tls(stream, _) => stream.write(buf),
     }
   }
   #[inline]
   fn flush(&mut self) -> std::io::Result<()> {
     match self {
-      Stream::Tcp(stream) => stream.flush(),
-      Stream::Tls(stream) => stream.flush(),
+      Stream::Tcp(stream, _) => stream.flush(),
+      Stream::Tls(stream, _) => stream.flush(),
     }
   }
 }
@@ -57,43 +68,83 @@ impl Read for Stream {
   #[inline]
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self {
-      Stream::Tcp(stream) => stream.read(buf),
-      Stream::Tls(stream) => stream.read(buf),
+      Stream::Tcp(stream, _) => stream.read(buf),
+      Stream::Tls(stream, _) => stream.read(buf),
     }
   }
 }
 
 pub struct NextRequest {
+  // Pointer to stream owned by the server loop thread.
+  //
+  // Why not Arc<Mutex<Stream>>? Performance. The stream
+  // is never written to by the server loop thread.
+  //
+  // Dereferencing is safe until server thread finishes and
+  // op_flash_listen resolves.
   pub socket: *mut Stream,
+  //
   pub inner: Arc<InnerRequest>,
+  //
   pub no_more_requests: bool,
   pub upgrade: bool,
 }
 
+// SAFETY: Sent from server thread to JS thread.
+// See comment above for `socket`.
 unsafe impl Send for NextRequest {}
 
 #[op]
-fn op_respond(
+fn op_flash_respond(
   op_state: &mut OpState,
   token: u32,
   status: u16,
   js_headers: Vec<(String, String)>,
-  body: String,
+  body: StringOrBuffer,
+  shutdown: bool,
 ) {
   let mut ctx = op_state.borrow::<Rc<RefCell<ServerContext>>>().borrow_mut();
-  let tx = ctx.response.remove(&token).unwrap();
-  let sock = unsafe { &mut *tx.socket };
 
-  // let mut headers = format!("HTTP/1.1 {} {}\r\n", status, "OK");
+  let sock = match shutdown {
+    true => {
+      let tx = ctx.response.remove(&token).unwrap();
+      unsafe { &mut *tx.socket }
+    }
+    // In case of a websocket upgrade or streaming response.
+    false => {
+      let tx = ctx.response.get(&token).unwrap();
+      unsafe { &mut *tx.socket }
+    }
+  };
 
-  // for (name, value) in js_headers.iter() {
-  //   write!(sock, "{}: {}\r\n", name, value).unwrap();
-  // }
-  
-  // headers.push_str("Content-length: 11\r\n\r\n");
-  // headers.push_str(&body);
-  // let headers = headers.as_bytes();
-  let _ = sock.write(b"HTTP/1.1 200 OK\r\nContent-length: 11\r\n\r\nHello World").unwrap();
+  #[inline]
+  fn extend(dst: &mut Vec<u8>, data: &[u8]) {
+    dst.extend_from_slice(data);
+  }
+
+  let mut dst = Vec::with_capacity(1024);
+  extend(&mut dst, b"HTTP/1.1 ");
+  extend(&mut dst, status.to_string().as_bytes());
+  extend(&mut dst, b" ");
+  let status = http::StatusCode::from_u16(status).unwrap();
+  extend(
+    &mut dst,
+    status.canonical_reason().unwrap_or("<none>").as_bytes(),
+  );
+  extend(&mut dst, b"\r\n");
+
+  for (key, value) in js_headers {
+    extend(&mut dst, key.as_bytes());
+    extend(&mut dst, b": ");
+    extend(&mut dst, value.as_bytes());
+    extend(&mut dst, b"\r\n");
+  }
+  extend(&mut dst, b"Content-Length: ");
+  extend(&mut dst, body.len().to_string().as_bytes());
+  extend(&mut dst, b"\r\n\r\n");
+
+  extend(&mut dst, &body);
+  let _ = sock.write(&dst);
 
   // if tx.no_more_requests && !tx.upgrade {
   //  dbg!("closing socket");
@@ -102,7 +153,7 @@ fn op_respond(
 }
 
 #[op]
-async fn op_respond_stream(
+async fn op_flash_write_stream(
   state: Rc<RefCell<OpState>>,
   token: u32,
   data: String,
@@ -127,9 +178,8 @@ async fn op_respond_stream(
 }
 
 #[op]
-fn op_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
-  let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
+fn op_flash_method(state: &mut OpState, token: u32) -> String {
+  let ctx = state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
   ctx
     .response
     .get(&token)
@@ -142,9 +192,8 @@ fn op_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
 }
 
 #[op]
-fn op_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
-  let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
+fn op_flash_path(state: &mut OpState, token: u32) -> String {
+  let ctx = state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
   ctx
     .response
     .get(&token)
@@ -160,12 +209,8 @@ fn op_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
 // - use ByteString for headers
 // - maybe use typedarray with fast api calls?
 #[op]
-fn op_headers(
-  state: Rc<RefCell<OpState>>,
-  token: u32,
-) -> Vec<(String, String)> {
-  let mut op_state = state.borrow();
-  let ctx = op_state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
+fn op_flash_headers(state: &mut OpState, token: u32) -> Vec<(String, String)> {
+  let ctx = state.borrow::<Rc<RefCell<ServerContext>>>().borrow();
   let inner_req = &ctx.response.get(&token).unwrap().inner.req;
   inner_req
     .headers
@@ -186,7 +231,10 @@ pub struct ListenOpts {
 }
 
 #[op]
-async fn op_listen(state: Rc<RefCell<OpState>>, opts: Option<ListenOpts>) {
+async fn op_flash_listen(
+  state: Rc<RefCell<OpState>>,
+  opts: Option<ListenOpts>,
+) {
   let (tx, rx) = mpsc::channel(100);
   state.borrow_mut().put(Rc::new(RefCell::new(ServerContext {
     rx,
@@ -201,7 +249,7 @@ async fn op_listen(state: Rc<RefCell<OpState>>, opts: Option<ListenOpts>) {
 }
 
 #[op]
-async fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
+async fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   let ctx = {
     let state = &mut *op_state.borrow_mut();
     let ctx = state.borrow::<Rc<RefCell<ServerContext>>>();
@@ -211,7 +259,7 @@ async fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   let ctx = &mut ctx.borrow_mut();
   let mut tokens = 0;
 
-  if let Some(req) = ctx.rx.recv().await {  
+  if let Some(req) = ctx.rx.recv().await {
     ctx.response.insert(tokens, req);
     tokens += 1;
     while let Ok(token) = ctx.rx.try_recv() {
@@ -222,6 +270,69 @@ async fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   tokens
 }
 
+impl hyper::body::HttpBody for NextRequest {
+  type Data = Bytes;
+  type Error = AnyError;
+
+  fn poll_data(
+    mut self: Pin<&mut Self>,
+    _: &mut Context<'_>,
+  ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    let stream = unsafe { &mut *self.socket };
+    let mut vec = vec![0u8; 64 * 1024]; // 64KB
+    match stream.read(&mut vec) {
+      Ok(nread) => {
+        if nread == 0 {
+          return Poll::Ready(None);
+        }
+        Poll::Ready(Some(Ok(vec[..nread].to_vec().into())))
+      }
+      Err(e) => Poll::Ready(Some(Err(e.into()))),
+    }
+  }
+
+  fn poll_trailers(
+    self: Pin<&mut Self>,
+    _: &mut Context<'_>,
+  ) -> Poll<
+    Result<Option<hyper::HeaderMap<hyper::header::HeaderValue>>, Self::Error>,
+  > {
+    Poll::Ready(Ok(None))
+  }
+}
+
+#[op]
+async fn op_flash_upgrade_websocket(
+  state: Rc<RefCell<OpState>>,
+  token: u32,
+) -> Result<deno_core::ResourceId, AnyError> {
+  let tx = {
+    let op_state = state.borrow_mut();
+    let mut ctx = op_state.borrow::<Rc<RefCell<ServerContext>>>().borrow_mut();
+    ctx.response.remove(&token).unwrap()
+  };
+  {
+    let stream = unsafe { &mut *tx.socket };
+    stream.detach_ownership();
+  }
+
+  let mut request = http::Request::builder();
+  let headers = request.headers_mut().unwrap();
+  for header in tx.inner.req.headers.iter() {
+    headers.append(
+      header.name,
+      http::header::HeaderValue::from_bytes(header.value)?,
+    );
+  }
+  let request = request.body(tx)?;
+  dbg!("upgrading to websocket");
+  let transport = hyper::upgrade::on(request).await?;
+  dbg!("upgrading to websocket");
+  let ws_rid =
+    deno_websocket::ws_create_server_stream(&state, transport).await?;
+  Ok(ws_rid)
+}
+
 pub fn init() -> Extension {
   Extension::builder()
     .js(deno_core::include_js_files!(
@@ -229,13 +340,14 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      op_listen::decl(),
-      op_respond::decl(),
-      op_method::decl(),
-      op_path::decl(),
-      op_headers::decl(),
-      op_respond_stream::decl(),
-      op_next::decl(),
+      op_flash_listen::decl(),
+      op_flash_respond::decl(),
+      op_flash_method::decl(),
+      op_flash_path::decl(),
+      op_flash_headers::decl(),
+      op_flash_write_stream::decl(),
+      op_flash_next::decl(),
+      op_flash_upgrade_websocket::decl(),
     ])
     .build()
 }

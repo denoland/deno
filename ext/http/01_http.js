@@ -483,5 +483,6 @@
     HttpConn,
     upgradeWebSocket,
     upgradeHttp,
+    _ws,
   };
 })(this);
