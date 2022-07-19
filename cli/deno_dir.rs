@@ -58,7 +58,7 @@ impl DenoDir {
     self.root.join("lint_incremental_cache_v1")
   }
 
-  /// Path for the incremental cache used for linting.
+  /// Path for the cache used for type checking.
   pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("check_cache_v1")
