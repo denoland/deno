@@ -42,6 +42,7 @@ fn napi_tests() {
   assert!(output.status.success());
 }
 
+#[ignore]
 #[test]
 fn third_party_tests() {
   build();
@@ -63,6 +64,7 @@ fn third_party_tests() {
     .arg("--unstable")
     .arg("--no-check")
     .arg("--ignore=node_modules/")
+    .arg("test.js")
     .env("DENO_NODE_COMPAT_URL", "https://raw.githubusercontent.com/littledivy/deno_std/load_native_module/")
     .spawn()
     .unwrap()
