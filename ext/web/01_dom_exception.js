@@ -15,16 +15,22 @@
     Error,
     ErrorPrototype,
     ObjectDefineProperty,
+    ObjectCreate,
     ObjectEntries,
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
+    Symbol,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
 
+  const _name = Symbol("name");
+  const _message = Symbol("message");
+  const _code = Symbol("code");
+
   // Defined in WebIDL 4.3.
-  // https://heycam.github.io/webidl/#idl-DOMException
+  // https://webidl.spec.whatwg.org/#idl-DOMException
   const INDEX_SIZE_ERR = 1;
   const DOMSTRING_SIZE_ERR = 2;
   const HIERARCHY_REQUEST_ERR = 3;
@@ -52,52 +58,60 @@
   const DATA_CLONE_ERR = 25;
 
   // Defined in WebIDL 2.8.1.
-  // https://heycam.github.io/webidl/#dfn-error-names-table
+  // https://webidl.spec.whatwg.org/#dfn-error-names-table
   /** @type {Record<string, number>} */
-  const nameToCodeMapping = {
-    IndexSizeError: INDEX_SIZE_ERR,
-    HierarchyRequestError: HIERARCHY_REQUEST_ERR,
-    WrongDocumentError: WRONG_DOCUMENT_ERR,
-    InvalidCharacterError: INVALID_CHARACTER_ERR,
-    NoModificationAllowedError: NO_MODIFICATION_ALLOWED_ERR,
-    NotFoundError: NOT_FOUND_ERR,
-    NotSupportedError: NOT_SUPPORTED_ERR,
-    InUseAttributeError: INUSE_ATTRIBUTE_ERR,
-    InvalidStateError: INVALID_STATE_ERR,
-    SyntaxError: SYNTAX_ERR,
-    InvalidModificationError: INVALID_MODIFICATION_ERR,
-    NamespaceError: NAMESPACE_ERR,
-    InvalidAccessError: INVALID_ACCESS_ERR,
-    TypeMismatchError: TYPE_MISMATCH_ERR,
-    SecurityError: SECURITY_ERR,
-    NetworkError: NETWORK_ERR,
-    AbortError: ABORT_ERR,
-    URLMismatchError: URL_MISMATCH_ERR,
-    QuotaExceededError: QUOTA_EXCEEDED_ERR,
-    TimeoutError: TIMEOUT_ERR,
-    InvalidNodeTypeError: INVALID_NODE_TYPE_ERR,
-    DataCloneError: DATA_CLONE_ERR,
-  };
+  // the prototype should be null, to prevent user code from looking
+  // up Object.prototype properties, such as "toString"
+  const nameToCodeMapping = ObjectCreate(null, {
+    IndexSizeError: { value: INDEX_SIZE_ERR },
+    HierarchyRequestError: { value: HIERARCHY_REQUEST_ERR },
+    WrongDocumentError: { value: WRONG_DOCUMENT_ERR },
+    InvalidCharacterError: { value: INVALID_CHARACTER_ERR },
+    NoModificationAllowedError: { value: NO_MODIFICATION_ALLOWED_ERR },
+    NotFoundError: { value: NOT_FOUND_ERR },
+    NotSupportedError: { value: NOT_SUPPORTED_ERR },
+    InUseAttributeError: { value: INUSE_ATTRIBUTE_ERR },
+    InvalidStateError: { value: INVALID_STATE_ERR },
+    SyntaxError: { value: SYNTAX_ERR },
+    InvalidModificationError: { value: INVALID_MODIFICATION_ERR },
+    NamespaceError: { value: NAMESPACE_ERR },
+    InvalidAccessError: { value: INVALID_ACCESS_ERR },
+    TypeMismatchError: { value: TYPE_MISMATCH_ERR },
+    SecurityError: { value: SECURITY_ERR },
+    NetworkError: { value: NETWORK_ERR },
+    AbortError: { value: ABORT_ERR },
+    URLMismatchError: { value: URL_MISMATCH_ERR },
+    QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
+    TimeoutError: { value: TIMEOUT_ERR },
+    InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
+    DataCloneError: { value: DATA_CLONE_ERR },
+  });
 
   // Defined in WebIDL 4.3.
-  // https://heycam.github.io/webidl/#idl-DOMException
+  // https://webidl.spec.whatwg.org/#idl-DOMException
   class DOMException {
-    #message = "";
-    #name = "";
-    #code = 0;
+    [_message];
+    [_name];
+    [_code];
 
+    // https://webidl.spec.whatwg.org/#dom-domexception-domexception
     constructor(message = "", name = "Error") {
-      this.#message = webidl.converters.DOMString(message, {
+      message = webidl.converters.DOMString(message, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 1",
       });
-      this.#name = webidl.converters.DOMString(name, {
+      name = webidl.converters.DOMString(name, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 2",
       });
-      this.#code = nameToCodeMapping[this.#name] ?? 0;
+      const code = nameToCodeMapping[name] ?? 0;
 
-      const error = new Error(this.#message);
+      this[_message] = message;
+      this[_name] = name;
+      this[_code] = code;
+      this[webidl.brand] = webidl.brand;
+
+      const error = new Error(message);
       error.name = "DOMException";
       ObjectDefineProperty(this, "stack", {
         value: error.stack,
@@ -115,20 +129,23 @@
     }
 
     get message() {
-      return this.#message;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_message];
     }
 
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_name];
     }
 
     get code() {
-      return this.#code;
+      webidl.assertBranded(this, DOMExceptionPrototype);
+      return this[_code];
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
       if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-        return `DOMException: ${this.#message}`;
+        return `DOMException: ${this[_message]}`;
       } else {
         return inspect(consoleInternal.createFilteredInspectProxy({
           object: this,

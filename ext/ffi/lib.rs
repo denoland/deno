@@ -654,9 +654,11 @@ impl fast_api::FastFunction for FfiFastCallTemplate {
   fn function(&self) -> *const c_void {
     self.symbol_ptr
   }
+
   fn args(&self) -> &'static [fast_api::Type] {
     Box::leak(self.args.clone())
   }
+
   fn return_type(&self) -> fast_api::CType {
     self.ret
   }

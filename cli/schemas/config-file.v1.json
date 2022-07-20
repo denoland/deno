@@ -321,6 +321,31 @@
         }
       },
       "additionalProperties": false
+    },
+    "test": {
+      "description": "Configuration for deno test",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be searched for tests.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be searched for tests.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -62,6 +62,24 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(test_with_config {
+  args: "test --config test/collect/deno.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
+itest!(test_with_config2 {
+  args: "test --config test/collect/deno2.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect2.out",
+});
+
+itest!(test_with_malformed_config {
+  args: "test --config test/collect/deno.malformed.jsonc",
+  exit_code: 1,
+  output: "test/collect_with_malformed_config.out",
+});
+
 itest!(jobs_flag {
   args: "test test/short-pass.ts --jobs",
   exit_code: 0,
@@ -351,7 +369,12 @@ fn captured_output() {
   let output_text = String::from_utf8(output.stdout).unwrap();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
-  let output_text = output_text[start..end].trim();
+  // replace zero width space that may appear in test output due
+  // to test runner output flusher
+  let output_text = output_text[start..end]
+    .replace('\u{200B}', "")
+    .trim()
+    .to_string();
   let mut lines = output_text.lines().collect::<Vec<_>>();
   // the output is racy on either stdout or stderr being flushed
   // from the runtime into the rust code, so sort it... the main

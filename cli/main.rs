@@ -168,11 +168,11 @@ fn create_web_worker_callback(
         .map(ToOwned::to_owned),
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
-      module_loader,
       create_web_worker_cb,
       preload_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: Some(Box::new(ps.clone())),
+      source_map_getter: Some(Box::new(module_loader.clone())),
+      module_loader,
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),
@@ -248,7 +248,7 @@ pub fn create_main_worker(
       .map(ToOwned::to_owned),
     root_cert_store: Some(ps.root_cert_store.clone()),
     seed: ps.options.seed(),
-    source_map_getter: Some(Box::new(ps.clone())),
+    source_map_getter: Some(Box::new(module_loader.clone())),
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
@@ -518,10 +518,28 @@ async fn cache_command(
   cache_flags: CacheFlags,
 ) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &cache_flags.files).await?;
+  ps.cache_module_emits()?;
+  Ok(0)
+}
+
+async fn check_command(
+  flags: Flags,
+  check_flags: CheckFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &check_flags.files).await?;
+  Ok(0)
+}
+
+async fn load_and_type_check(
+  ps: &ProcState,
+  files: &Vec<String>,
+) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
 
-  for file in cache_flags.files {
-    let specifier = resolve_url_or_path(&file)?;
+  for file in files {
+    let specifier = resolve_url_or_path(file)?;
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -533,20 +551,7 @@ async fn cache_command(
     .await?;
   }
 
-  Ok(0)
-}
-
-async fn check_command(
-  flags: Flags,
-  check_flags: CheckFlags,
-) -> Result<i32, AnyError> {
-  cache_command(
-    flags,
-    CacheFlags {
-      files: check_flags.files,
-    },
-  )
-  .await
+  Ok(())
 }
 
 async fn eval_command(
@@ -609,7 +614,7 @@ async fn create_graph_and_maybe_check(
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
-    ps.dir.gen_cache.clone(),
+    ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),

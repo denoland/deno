@@ -52,7 +52,7 @@ deno_emit = "0.4.0"
 deno_graph = "0.29.0"
 deno_lint = { version = "0.32.0", features = ["docs"] }
 deno_runtime = { version = "0.69.0", path = "../runtime" }
-deno_task_shell = "0.4.0"
+deno_task_shell = "0.5.0"
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
@@ -86,8 +86,8 @@ pin-project = "1.0.11" # don't pin because they yank crates from cargo
 rand = { version = "=0.8.5", features = ["small_rng"] }
 regex = "=1.5.6"
 ring = "=0.16.20"
-rustyline = { version = "=9.1.2", default-features = false }
-rustyline-derive = "=0.6.0"
+rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
+rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 semver-parser = "=0.10.2"
 serde = { version = "=1.0.139", features = ["derive"] }
@@ -122,7 +122,7 @@ trust-dns-client = "=0.21.2"
 trust-dns-server = "=0.21.2"
 
 [target.'cfg(unix)'.dev-dependencies]
-nix = "=0.23.0"
+nix = "=0.24.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

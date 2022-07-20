@@ -143,8 +143,18 @@ verify on GitHub that everything looks correct.
 
 5. Publish the release on Github
 
-6. Update the Deno version on the website by updating
-   https://github.com/denoland/dotland/blob/main/versions.json.
+6. Run the
+   https://github.com/denoland/dotland/actions/workflows/update_versions.yml
+   workflow.
+   - This should open a PR. Review and merge it.
+
+   <details>
+     <summary>❌ Failure Steps</summary>
+
+   1. Update https://github.com/denoland/dotland/blob/main/versions.json
+      manually.
+   2. Open a PR and merge.
+   </details>
 
 7. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
    must match the CLI tag; you don't need to create dedicated commit for that
@@ -163,15 +173,19 @@ verify on GitHub that everything looks correct.
 This should occur after the Deno CLI is fully published, as the build script
 queries the GitHub API to determine what it needs to change and update.
 
-1. Goto the cloned report for `denoland/docland`.
+1. Run the update_deno workflow in the docland repo on the main branch:
+   https://github.com/denoland/docland/actions/workflows/update_deno.yml
 
-2. Checkout a new branch (e.g. `git checkout -b deno_1.17.0`).
+2. This will open a PR. Review it and merge, which will trigger a deployment.
 
-3. Execute `deno task build`
+   <details>
+     <summary>❌ Failure Steps</summary>
 
-4. Commit changes and raise a PR on `denoland/docland`.
-
-5. Merging the approved PR will trigger deployment to Deploy of the updates.
+   1. Checkout a new branch for docland (e.g. `git checkout -b deno_1.17.0`).
+   2. Execute `deno task build`
+   3. Commit changes and raise a PR on `denoland/docland`.
+   4. Merging the approved PR will trigger deployment to Deploy of the updates.
+   </details>
 
 ## Updating `deno_docker`
 
