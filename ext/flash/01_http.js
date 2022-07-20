@@ -72,14 +72,14 @@
 
     get method() {
       if (!this.#method) {
-        this.#method = core.ops.op_flash_method(this.#token);
+        this.#method = core.ops.op_method(this.#token);
       }
       return this.#method;
     }
 
     get url() {
       if (!this.#url) {
-        this.#url = core.ops.op_flash_path(this.#token);
+        this.#url = core.ops.op_path(this.#token);
       }
       return this.#url;
     }
@@ -87,7 +87,7 @@
     get headers() {
       if (!this.#headers) {
         this.#headers = headersFromHeaderList(
-          core.ops.op_flash_headers(this.#token),
+          core.ops.op_headers(this.#token),
           "request",
         );
       }
@@ -99,12 +99,12 @@
     #listener;
 
     constructor() {
-      this.#listener = core.opAsync("op_flash_listen");
+      this.#listener = core.opAsync("op_listen");
     }
 
     async *[Symbol.asyncIterator]() {
       while (true) {
-        const token = await core.opAsync("op_flash_next");
+        const token = await core.opAsync("op_next");
         for (let i = 0; i < token; i++) {
           const request = new Request(i);
           async function respondWith(resp) {
@@ -157,7 +157,7 @@
             );
 
             const ws = resp[_ws];
-            core.ops.op_flash_respond(
+            core.ops.op_respond(
               i,
               innerResp.status ?? 200,
               innerResp.headerList,
@@ -181,7 +181,7 @@
                 reader = respBody.getReader(); // Aquire JS lock.
                 try {
                   await core.opAsync(
-                    "op_flash_write_stream",
+                    "op_write_stream",
                     i,
                     resourceRid,
                   );
@@ -258,7 +258,7 @@
 
             if (ws) {
               const wsRid = await core.opAsync(
-                "op_flash_upgrade_websocket",
+                "op_upgrade_websocket",
                 i,
               );
 
@@ -287,11 +287,11 @@
 
   async function serve(handler, opts) {
     const listener = core.opAsync(
-      "op_flash_listen",
+      "op_listen",
       opts,
     );
     while (true) {
-      const token = await core.opAsync("op_flash_next");
+      const token = await core.opAsync("op_next");
       for (let i = 0; i < token; i++) {
         const req = new Request(i);
         const resp = handler(req);
@@ -344,7 +344,7 @@
         );
 
         const ws = resp[_ws];
-        core.ops.op_flash_respond(
+        core.ops.op_respond(
           i,
           innerResp.status ?? 200,
           innerResp.headerList,
