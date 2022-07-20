@@ -292,8 +292,8 @@ fn codegen_fast_impl(
       use_recv,
     }) = fast_info
     {
-      let inputs = &f.sig.inputs;
-      let input_idents = inputs
+      let inputs = &f.sig.inputs.iter().skip(if use_recv { 1 } else { 0 }).collect::<Vec<_>>();
+      let input_idents = f.sig.inputs
         .iter()
         .map(|a| match a {
           FnArg::Receiver(_) => unreachable!(),
@@ -311,7 +311,7 @@ fn codegen_fast_impl(
         // TODO(@littledivy): Fast async calls.
         (
           quote! {
-            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #inputs) {
+            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
               let op_ctx = recv.get_aligned_pointer_from_internal_field(#core::_ops::V8_WRAPPER_OBJECT_INDEX);
               let op_id = op_ctx.op_id;
               #core::_ops::queue_async_op(scope, async move {
@@ -338,7 +338,7 @@ fn codegen_fast_impl(
 
         (
           quote! {
-            fn #func_name #generics (recv: #core::v8::Local<#core::v8::Object>, #inputs) #output #where_clause {
+            fn #func_name #generics (recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
               #recv_decl
               #name::call::<#type_params>(#(#input_idents),*)
             }
@@ -419,7 +419,7 @@ struct FastApiSyn {
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   // TODO(@littledivy): Support generics
-  if f.sig.generics.params.len() > 0 {
+  if !f.sig.generics.params.is_empty() {
     return None;
   }
 
