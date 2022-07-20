@@ -45,6 +45,8 @@ use crate::file_fetcher::CacheSetting;
 use crate::lockfile::Lockfile;
 use crate::version;
 
+use self::config_file::TaskDescriptor;
+
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -202,7 +204,7 @@ impl CliOptions {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<BTreeMap<String, TaskDescriptor>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.resolve_tasks_config()
     } else {

@@ -372,6 +372,12 @@ pub struct FmtOptionsConfig {
   pub prose_wrap: Option<ProseWrap>,
 }
 
+#[derive(Clone, Debug)]
+pub struct TaskDescriptor {
+  pub command: String,
+  pub description: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedFmtConfig {
@@ -620,28 +626,65 @@ impl ConfigFile {
   /// of JSON objects providing the name of the task and the arguments of the
   /// task in a detail field.
   pub fn to_lsp_tasks(&self) -> Option<Value> {
-    let value = self.json.tasks.clone()?;
-    let tasks: BTreeMap<String, String> = serde_json::from_value(value).ok()?;
+    let tasks = self.to_tasks_config().ok()??;
     Some(
       tasks
         .into_iter()
-        .map(|(key, value)| {
+        .map(|(key, descriptor)| {
           json!({
             "name": key,
-            "detail": value,
+            "detail": descriptor.command,
           })
         })
         .collect(),
     )
   }
 
-  pub fn to_tasks_config(
+  fn to_tasks_config(
     &self,
-  ) -> Result<Option<BTreeMap<String, String>>, AnyError> {
+  ) -> Result<Option<BTreeMap<String, TaskDescriptor>>, AnyError> {
     if let Some(config) = self.json.tasks.clone() {
-      let tasks_config: BTreeMap<String, String> =
+      let temp_tasks_config: BTreeMap<String, Value> =
         serde_json::from_value(config)
           .context("Failed to parse \"tasks\" configuration")?;
+      let mut tasks_config = BTreeMap::new();
+
+      for (key, value) in temp_tasks_config.into_iter() {
+        if value.is_string() {
+          tasks_config.insert(
+            key,
+            TaskDescriptor {
+              command: value.as_str().unwrap().to_string(),
+              description: None,
+            },
+          );
+        } else if value.is_object() {
+          let command = value
+            .get("command")
+            .context("Failed to parse \"tasks\" configuration")?
+            .as_str()
+            .context("Failed to parse \"tasks\" configuration")?
+            .to_string();
+          let mut description = None;
+          if let Some(maybe_desc) = value.get("description") {
+            description = Some(
+              maybe_desc
+                .as_str()
+                .context("Failed to parse \"tasks\" configuration")?
+                .to_string(),
+            );
+          }
+          tasks_config.insert(
+            key,
+            TaskDescriptor {
+              command,
+              description,
+            },
+          );
+        } else {
+          bail!("Failed to parse \"tasks\" configuration");
+        }
+      }
       Ok(Some(tasks_config))
     } else {
       Ok(None)
@@ -707,7 +750,7 @@ impl ConfigFile {
 
   pub fn resolve_tasks_config(
     &self,
-  ) -> Result<BTreeMap<String, String>, AnyError> {
+  ) -> Result<BTreeMap<String, TaskDescriptor>, AnyError> {
     let maybe_tasks_config = self.to_tasks_config()?;
     if let Some(tasks_config) = maybe_tasks_config {
       for key in tasks_config.keys() {
@@ -811,7 +854,11 @@ mod tests {
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
-        "server": "deno run --allow-net --allow-read server.ts"
+        "server": "deno run --allow-net --allow-read server.ts",
+        "dev": {
+          "command": "deno run -A dev.ts",
+          "description": "Start a development server"
+        }
       }
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
@@ -871,13 +918,23 @@ mod tests {
     assert_eq!(fmt_config.options.single_quote, Some(true));
 
     let tasks_config = config_file.to_tasks_config().unwrap().unwrap();
+    let build_config = &tasks_config["build"];
     assert_eq!(
-      tasks_config["build"],
+      build_config.command,
       "deno run --allow-read --allow-write build.ts",
     );
+    assert!(build_config.description.is_none());
+    let server_config = &tasks_config["server"];
     assert_eq!(
-      tasks_config["server"],
+      server_config.command,
       "deno run --allow-net --allow-read server.ts"
+    );
+    assert!(server_config.description.is_none());
+    let dev_config = &tasks_config["dev"];
+    assert_eq!(dev_config.command, "deno run -A dev.ts");
+    assert_eq!(
+      dev_config.description.as_ref().unwrap(),
+      "Start a development server"
     );
   }
 

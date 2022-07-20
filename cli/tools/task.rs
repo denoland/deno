@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::config_file::TaskDescriptor;
 use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
@@ -12,12 +13,21 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-fn print_available_tasks(tasks_config: BTreeMap<String, String>) {
+fn print_available_tasks(tasks_config: BTreeMap<String, TaskDescriptor>) {
   eprintln!("{}", colors::green("Available tasks:"));
 
   for name in tasks_config.keys() {
-    eprintln!("- {}", colors::cyan(name));
-    eprintln!("    {}", tasks_config[name])
+    let descriptor = &tasks_config[name];
+    if let Some(description) = &descriptor.description {
+      eprintln!(
+        "- {} {}",
+        colors::cyan(name),
+        colors::italic_gray(description)
+      );
+    } else {
+      eprintln!("- {}", colors::cyan(name));
+    }
+    eprintln!("    {}", descriptor.command);
   }
 }
 
@@ -48,9 +58,10 @@ pub async fn execute_script(
     None => config_file_path.parent().unwrap().to_owned(),
   };
   let task_name = task_flags.task;
-  let maybe_script = tasks_config.get(&task_name);
+  let maybe_config = tasks_config.get(&task_name);
 
-  if let Some(script) = maybe_script {
+  if let Some(config) = maybe_config {
+    let script = &config.command;
     let additional_args = ps
       .options
       .argv()
