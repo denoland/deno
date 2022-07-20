@@ -2,10 +2,11 @@
 
 use crate::args::CoverageFlags;
 use crate::args::Flags;
-use crate::cache::EmitCache;
 use crate::colors;
+use crate::emit::get_source_hash;
 use crate::fs_util::collect_files;
 use crate::proc_state::ProcState;
+use crate::text_encoding::source_map_from_code;
 use crate::tools::fmt::format_json;
 
 use deno_ast::MediaType;
@@ -17,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::SourceMapGetter;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -665,7 +665,8 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let transpiled_source = match file.media_type {
+    let original_source = &file.source;
+    let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
@@ -677,8 +678,10 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match ps.dir.gen_cache.get_emit_text(&file.specifier) {
-          Some(source) => source,
+        let source_hash =
+          get_source_hash(original_source, ps.emit_options_hash);
+        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
+          Some(code) => code,
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -693,13 +696,10 @@ pub async fn cover_files(
       }
     };
 
-    let original_source = &file.source;
-    let maybe_source_map = ps.get_source_map(&script_coverage.url);
-
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      &transpiled_source,
-      &maybe_source_map,
+      &transpiled_code,
+      &source_map_from_code(&transpiled_code),
       &out_mode,
     );
 

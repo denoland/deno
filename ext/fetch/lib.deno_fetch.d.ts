@@ -252,7 +252,7 @@ interface RequestInit {
 
 /** This Fetch API interface represents a resource request. */
 declare class Request implements Body {
-  constructor(input: RequestInfo, init?: RequestInit);
+  constructor(input: RequestInfo | URL, init?: RequestInit);
 
   /**
    * Returns the cache mode associated with request, which is a string
@@ -385,7 +385,7 @@ declare class Response implements Body {
   constructor(body?: BodyInit | null, init?: ResponseInit);
   static json(data: unknown, init?: ResponseInit): Response;
   static error(): Response;
-  static redirect(url: string, status?: number): Response;
+  static redirect(url: string | URL, status?: number): Response;
 
   readonly headers: Headers;
   readonly ok: boolean;
