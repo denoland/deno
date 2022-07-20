@@ -596,7 +596,7 @@ Deno.test({
   name: "worker location",
   fn: async function () {
     const promise = deferred();
-    const workerModuleHref = import.meta.resolve("worker_location.ts");
+    const workerModuleHref = import.meta.resolve("./worker_location.ts");
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e) => {
       promise.resolve(e.data);

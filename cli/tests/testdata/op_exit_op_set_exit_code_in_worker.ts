@@ -6,7 +6,7 @@
 Deno.core.opSync("op_set_exit_code", 21);
 
 const worker = new Worker(
-  import.meta.resolve("op_exit_op_set_exit_code_worker.js"),
+  import.meta.resolve("./op_exit_op_set_exit_code_worker.js"),
   { type: "module" },
 );
 
