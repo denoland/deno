@@ -1333,7 +1333,9 @@ impl JsRuntime {
       );
       let promise = v8::Local::<v8::Promise>::try_from(value)
         .expect("Expected to get promise as module evaluation result");
+      let promise_global = v8::Global::new(tc_scope, promise);
       let mut state = state_rc.borrow_mut();
+      state.pending_promise_exceptions.remove(&promise_global);
       let promise_global = v8::Global::new(tc_scope, promise);
       state.pending_mod_evaluate.as_mut().unwrap().promise =
         Some(promise_global);
