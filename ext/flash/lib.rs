@@ -1,11 +1,10 @@
-use deno_core::StringOrBuffer;
 use deno_core::error::AnyError;
-use tokio::sync::mpsc;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
 use http::header::CONNECTION;
@@ -31,6 +30,7 @@ use std::io::Write;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 struct ServerContext {
   tx: mpsc::Sender<NextRequest>,
