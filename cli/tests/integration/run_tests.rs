@@ -659,7 +659,6 @@ itest!(async_error {
 
 itest!(config {
   args: "run --reload --config config.tsconfig.json --check config.ts",
-  exit_code: 1,
   output: "config.ts.out",
 });
 
@@ -1042,7 +1041,7 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
