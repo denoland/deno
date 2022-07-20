@@ -584,8 +584,11 @@ delete Intl.v8BreakIterator;
         break;
       }
       default:
-        return;
+        return false;
     }
+
+    return !!(globalThis.onunhandledrejection ||
+      eventTarget.listenerCount(globalThis, "unhandledrejection") > 0);
   }
 
   function promiseRejectMacrotaskCallback() {

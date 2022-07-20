@@ -330,14 +330,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
-    if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
-      if !pending_mod_evaluate.has_evaluated {
-        let promise_global = v8::Global::new(tc_scope, promise);
-        pending_mod_evaluate
-          .handled_promise_rejections
-          .push(promise_global);
-      }
-    }
     drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
@@ -347,10 +339,24 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       PromiseHandlerAddedAfterReject => undefined,
     };
 
+    let promise_global = v8::Global::new(tc_scope, promise);
     let args = &[type_.into(), promise.into(), reason];
-    js_promise_reject_cb
+    let has_unhandled_rejection_handler = js_promise_reject_cb
       .open(tc_scope)
-      .call(tc_scope, undefined, args);
+      .call(tc_scope, undefined, args)
+      .unwrap()
+      .is_true();
+
+    if has_unhandled_rejection_handler {
+      let mut state = state_rc.borrow_mut();
+      if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
+        if !pending_mod_evaluate.has_evaluated {
+          pending_mod_evaluate
+            .handled_promise_rejections
+            .push(promise_global);
+        }
+      }
+    }
 
     if let Some(exception) = tc_scope.exception() {
       if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
