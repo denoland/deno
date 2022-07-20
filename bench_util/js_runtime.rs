@@ -14,8 +14,8 @@ pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
   })
 }
 
-fn loop_code(iters: u64) -> String {
-  format!(r#"for(let i=0; i < {}; i++) {{ bench() }}"#, iters)
+fn loop_code(iters: u64, src: &str) -> String {
+  format!(r#"for(let i=0; i < {}; i++) {{ {} }}"#, iters, src,)
 }
 
 #[derive(Copy, Clone)]
@@ -58,18 +58,8 @@ pub fn bench_js_sync_with(
   } else {
     opts.benching_inner
   };
-
-  {
-    let prep_src = format!(
-      r#"function add(a, b) {{ return Deno.core.ops.op_add_fast(a, b) }};  %PrepareFunctionForOptimization(add); %OptimizeFunctionOnNextCall(add); add(1, 2); function bench() {{ {} }}; "#,
-      src
-    );
-    let code = v8::String::new(scope, prep_src.as_ref()).unwrap();
-    let script = v8::Script::compile(scope, code, None).unwrap();
-    script.run(scope).unwrap();
-  }
   // Looped code
-  let looped_src = loop_code(inner_iters);
+  let looped_src = loop_code(inner_iters, src);
 
   let code = v8::String::new(scope, looped_src.as_ref()).unwrap();
   let script = v8::Script::compile(scope, code, None).unwrap();
@@ -110,14 +100,7 @@ pub fn bench_js_async_with(
   } else {
     opts.benching_inner
   };
-  {
-    let prep_src = format!(
-      r#"async function bench() {{ {} }}; %PrepareFunctionForOptimization(bench); bench(); %OptimizeFunctionOnNextCall(bench);"#,
-      src
-    );
-    runtime.execute_script("prep_code", &prep_src).unwrap();
-  }
-  let looped = loop_code(inner_iters);
+  let looped = loop_code(inner_iters, src);
   let src = looped.as_ref();
 
   if is_profiling() {
