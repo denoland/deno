@@ -4,7 +4,7 @@ function oneWorker(i: number) {
   return new Promise<void>((resolve) => {
     let countDown = 10;
     const worker = new Worker(
-      import.meta.resolve("worker_large_message.js"),
+      import.meta.resolve("./worker_large_message.js"),
       { type: "module" },
     );
     worker.onmessage = (_e) => {
