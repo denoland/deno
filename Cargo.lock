@@ -941,7 +941,7 @@ dependencies = [
  "sourcemap",
  "tokio",
  "url 2.2.2",
- "v8 0.46.0",
+ "v8",
 ]
 
 [[package]]
@@ -3861,7 +3861,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "v8 0.46.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "v8",
 ]
 
 [[package]]
