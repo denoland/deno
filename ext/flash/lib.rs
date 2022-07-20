@@ -93,7 +93,7 @@ fn op_respond(
   response: String,
   shutdown: bool,
 ) {
-  let mut ctx = op_state.borrow_mut::<ServerContext>();
+  let ctx = op_state.borrow_mut::<ServerContext>();
 
   let sock = match shutdown {
     true => {
