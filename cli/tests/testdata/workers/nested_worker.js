@@ -1,6 +1,6 @@
 // Specifier should be resolved relative to current file
 const jsWorker = new Worker(
-  new URL("sibling_worker.js", import.meta.url).href,
+  import.meta.resolve("./sibling_worker.js"),
   { type: "module", name: "sibling" },
 );
 
