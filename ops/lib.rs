@@ -418,6 +418,11 @@ struct FastApiSyn {
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
+  // TODO(@littledivy): Support generics
+  if f.sig.generics.params.len() > 0 {
+    return None;
+  }
+
   let inputs = &f.sig.inputs;
   let ret = match &f.sig.output {
     syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),
