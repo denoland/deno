@@ -1550,7 +1550,7 @@ fn test_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("parallel")
         .long("parallel")
-        .help("Runs test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
+        .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
         .conflicts_with("jobs")
         .takes_value(false)
     )
