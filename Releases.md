@@ -20,7 +20,6 @@ https://github.com/denoland/deno_install
   (#15151)
 - feat(web): add beforeunload event (#14830)
 - feat: add "unhandledrejection" event support (#12994, #15211)
-- feat: emit files on demand and fix racy emit (#15220)
 - feat: import.meta.resolve() (#15074)
 - fix(cli): Improve error message in watch mode (#15184)
 - fix(cli): expand tsc roots when using checkJs (#15164)
@@ -42,6 +41,7 @@ https://github.com/denoland/deno_install
 - fix: WebSocketStream ping event causes pending promises (#15235)
 - fix: fallback to no type checking cache when db file can't be created (#15180)
 - fix: revert changes to test output for uncaught errors (#15231)
+- perf: emit files on demand and fix racy emit (#15220)
 - perf: use emit from swc instead of tsc (#15118)
 
 ### 1.23.4 / 2022.07.12
