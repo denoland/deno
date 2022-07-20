@@ -3,9 +3,9 @@ Task not found: non_existent
 Available tasks:
 - boolean_logic
     sleep 0.1 && echo 3 && echo 4 & echo 1 && echo 2 || echo NOPE
-- deno_echo
+- deno_echo console.log value 5
     deno eval 'console.log(5)'
-- echo
+- echo Print value 1
     echo 1
 - echo_cwd
     echo $(pwd)
