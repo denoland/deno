@@ -271,20 +271,19 @@
   webidl.configurePrototype(FormData);
   const FormDataPrototype = FormData.prototype;
 
-  const escape = (str, isFilename) =>
-    StringPrototypeReplace(
-      StringPrototypeReplace(
-        StringPrototypeReplace(
-          isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
-          /\n/g,
-          "%0A",
-        ),
-        /\r/g,
-        "%0D",
-      ),
-      /"/g,
-      "%22",
+  const escape = (str, isFilename) => {
+    const escapeMap = {
+      "\n": "%0A",
+      "\r": "%0D",
+      '"': "%22",
+    };
+
+    return StringPrototypeReplace(
+      isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
+      /([\n\r"])/g,
+      (c) => escapeMap[c],
     );
+  };
 
   /**
    * convert FormData to a Blob synchronous without reading all of the files

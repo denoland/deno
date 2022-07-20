@@ -2,12 +2,20 @@
 
 use deno_core::url;
 use std::process::Command;
+use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
+use util::assert_contains;
 
 itest!(stdout_write_all {
-  args: "run --quiet stdout_write_all.ts",
-  output: "stdout_write_all.out",
+  args: "run --quiet run/stdout_write_all.ts",
+  output: "run/stdout_write_all.out",
+});
+
+itest!(stdin_read_all {
+  args: "run --quiet run/stdin_read_all.ts",
+  output: "run/stdin_read_all.out",
+  input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
 itest!(_001_hello {
@@ -268,7 +276,7 @@ fn webstorage_location_shares_origin() {
     .arg("--location")
     .arg("https://example.com/a.ts")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -283,7 +291,7 @@ fn webstorage_location_shares_origin() {
     .arg("--location")
     .arg("https://example.com/b.ts")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -305,7 +313,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -320,7 +328,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_b.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -335,7 +343,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -359,7 +367,7 @@ fn webstorage_location_precedes_config() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -376,7 +384,7 @@ fn webstorage_location_precedes_config() {
     .arg("--config")
     .arg("webstorage/config_b.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -396,7 +404,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -409,7 +417,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -422,7 +430,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -651,7 +659,6 @@ itest!(async_error {
 
 itest!(config {
   args: "run --reload --config config.tsconfig.json --check config.ts",
-  exit_code: 1,
   output: "config.ts.out",
 });
 
@@ -944,7 +951,7 @@ itest!(if_main {
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload import_meta.ts",
+  args: "run --quiet --reload --import-map=import_meta.importmap.json import_meta.ts",
   output: "import_meta.ts.out",
 });
 
@@ -1034,7 +1041,7 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
@@ -1632,8 +1639,8 @@ fn no_validate_asm() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("no_validate_asm.js")
-    .stderr(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1650,7 +1657,7 @@ fn exec_path() {
     .arg("run")
     .arg("--allow-read")
     .arg("exec_path.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1776,7 +1783,7 @@ fn rust_log() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("001_hello.js")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1790,7 +1797,7 @@ fn rust_log() {
     .arg("run")
     .arg("001_hello.js")
     .env("RUST_LOG", "debug")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1810,7 +1817,7 @@ fn dont_cache_on_check_fail() {
     .arg("--check=all")
     .arg("--reload")
     .arg("error_003_typescript.ts")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1824,7 +1831,7 @@ fn dont_cache_on_check_fail() {
     .arg("run")
     .arg("--check=all")
     .arg("error_003_typescript.ts")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -2357,12 +2364,6 @@ itest!(long_data_url_formatting {
   exit_code: 1,
 });
 
-itest!(eval_context_throw_with_conflicting_source {
-  args: "run eval_context_throw_with_conflicting_source.ts",
-  output: "eval_context_throw_with_conflicting_source.ts.out",
-  exit_code: 1,
-});
-
 itest!(eval_context_throw_dom_exception {
   args: "run eval_context_throw_dom_exception.js",
   output: "eval_context_throw_dom_exception.js.out",
@@ -2380,8 +2381,8 @@ fn issue12740() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2393,8 +2394,8 @@ fn issue12740() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2417,8 +2418,8 @@ fn issue12807() {
     .arg("run")
     .arg("--check")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2431,8 +2432,8 @@ fn issue12807() {
     .arg("run")
     .arg("--check")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2669,6 +2670,43 @@ itest!(js_root_with_ts_check {
   exit_code: 1,
 });
 
+#[test]
+fn check_local_then_remote() {
+  let _http_guard = util::http_server();
+  let deno_dir = util::new_deno_dir();
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--check")
+    .arg("run/remote_type_error/main.ts")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--check=all")
+    .arg("run/remote_type_error/main.ts")
+    .env("NO_COLOR", "1")
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
+}
+
+// Regression test for https://github.com/denoland/deno/issues/15163
+itest!(check_js_points_to_ts {
+  args: "run --quiet --check --config checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
+  output: "run/check_js_points_to_ts/test.js.out",
+  exit_code: 1,
+});
+
 itest!(no_prompt_flag {
   args: "run --quiet --unstable --no-prompt no_prompt.ts",
   output_str: Some(""),
@@ -2743,4 +2781,9 @@ itest!(test_and_bench_are_noops_in_run {
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(unhandled_rejection {
+  args: "run --allow-read unhandled_rejection.js",
+  output: "unhandled_rejection.js.out",
 });

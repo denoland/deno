@@ -75,6 +75,11 @@ pub extern "C" fn add_usize(a: usize, b: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn add_usize_fast(a: usize, b: usize) -> u32 {
+  (a + b) as u32
+}
+
+#[no_mangle]
 pub extern "C" fn add_isize(a: isize, b: isize) -> isize {
   a + b
 }
@@ -220,6 +225,20 @@ pub extern "C" fn call_stored_function_thread_safe() {
         return;
       }
       STORED_FUNCTION.unwrap()();
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe_and_log() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+      println!("STORED_FUNCTION called");
     }
   });
 }

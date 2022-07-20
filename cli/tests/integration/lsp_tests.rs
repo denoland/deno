@@ -774,35 +774,40 @@ fn lsp_import_map_import_completions() {
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": "."
+          "insertText": ".",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "..",
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": ".."
+          "insertText": "..",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "std",
-          "insertText": "std"
+          "insertText": "std",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
           "sortText": "fs",
-          "insertText": "fs"
+          "insertText": "fs",
+          "commitCharacters": ["\"", "'", "/"],
         },
         {
           "label": "/~",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "/~",
-          "insertText": "/~"
+          "insertText": "/~",
+          "commitCharacters": ["\"", "'", "/"],
         }
       ]
     }))
@@ -883,7 +888,8 @@ fn lsp_import_map_import_completions() {
               }
             },
             "newText": "/~/b.ts"
-          }
+          },
+          "commitCharacters": ["\"", "'", "/"],
         }
       ]
     }))
@@ -3490,6 +3496,7 @@ fn lsp_completions_optional() {
           "sortText": "11",
           "filterText": "b",
           "insertText": "b",
+          "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
               "specifier": "file:///a/file.ts",
@@ -3525,6 +3532,124 @@ fn lsp_completions_optional() {
     }))
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_completions_auto_import() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const foo = \"foo\";\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export {};\n\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 0,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    if !list.items.iter().any(|item| item.label == "foo") {
+      panic!("completions items missing 'foo' symbol");
+    }
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "foo",
+        "kind": 6,
+        "sortText": "￿16",
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 12,
+            "name": "foo",
+            "source": "./b",
+            "data": {
+              "exportName": "foo",
+              "moduleSpecifier": "./b",
+              "fileName": "file:///a/b.ts"
+            },
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "foo",
+      "kind": 6,
+      "detail": "const foo: \"foo\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 0,
+              "character": 0
+            }
+          },
+          "newText": "import { foo } from \"./b.ts\";\n\n"
+        }
+      ],
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
 }
 
 #[test]

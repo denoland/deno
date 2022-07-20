@@ -1912,6 +1912,7 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     use winapi::um::winuser::MAPVK_VK_TO_VSC;
     use winapi::um::winuser::VK_RETURN;
 
+    // SAFETY: winapi calls
     unsafe {
       let stdin = GetStdHandle(STD_INPUT_HANDLE);
       // emulate an enter key press to clear any line buffered console characters

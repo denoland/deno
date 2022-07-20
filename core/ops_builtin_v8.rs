@@ -48,6 +48,9 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
     op_event_loop_has_more_work::decl(),
+    op_store_pending_promise_exception::decl(),
+    op_remove_pending_promise_exception::decl(),
+    op_has_pending_promise_exception::decl(),
   ]
 }
 
@@ -790,23 +793,50 @@ fn op_set_format_exception_callback<'a>(
 
 #[op(v8)]
 fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
+  JsRuntime::event_loop_pending_state(scope).is_pending()
+}
+
+#[op(v8)]
+fn op_store_pending_promise_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  promise: serde_v8::Value<'a>,
+  reason: serde_v8::Value<'a>,
+) {
   let state_rc = JsRuntime::state(scope);
-  let module_map_rc = JsRuntime::module_map(scope);
-  let state = state_rc.borrow_mut();
-  let module_map = module_map_rc.borrow();
+  let mut state = state_rc.borrow_mut();
+  let promise_value =
+    v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
+  let promise_global = v8::Global::new(scope, promise_value);
+  let error_global = v8::Global::new(scope, reason.v8_value);
+  state
+    .pending_promise_exceptions
+    .insert(promise_global, error_global);
+}
 
-  let has_pending_refed_ops = state.pending_ops.len() > state.unrefed_ops.len();
-  let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-  let has_pending_dyn_module_evaluation =
-    !state.pending_dyn_mod_evaluate.is_empty();
-  let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-  let has_pending_background_tasks = scope.has_pending_background_tasks();
-  let has_tick_scheduled = state.has_tick_scheduled;
+#[op(v8)]
+fn op_remove_pending_promise_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  promise: serde_v8::Value<'a>,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  let promise_value =
+    v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
+  let promise_global = v8::Global::new(scope, promise_value);
+  state.pending_promise_exceptions.remove(&promise_global);
+}
 
-  has_pending_refed_ops
-    || has_pending_dyn_imports
-    || has_pending_dyn_module_evaluation
-    || has_pending_module_evaluation
-    || has_pending_background_tasks
-    || has_tick_scheduled
+#[op(v8)]
+fn op_has_pending_promise_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  promise: serde_v8::Value<'a>,
+) -> bool {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  let promise_value =
+    v8::Local::<v8::Promise>::try_from(promise.v8_value).unwrap();
+  let promise_global = v8::Global::new(scope, promise_value);
+  state
+    .pending_promise_exceptions
+    .contains_key(&promise_global)
 }
