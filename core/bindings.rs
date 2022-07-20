@@ -341,11 +341,16 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 
     let promise_global = v8::Global::new(tc_scope, promise);
     let args = &[type_.into(), promise.into(), reason];
-    let has_unhandled_rejection_handler = js_promise_reject_cb
+    let maybe_has_unhandled_rejection_handler = js_promise_reject_cb
       .open(tc_scope)
-      .call(tc_scope, undefined, args)
-      .unwrap()
-      .is_true();
+      .call(tc_scope, undefined, args);
+
+    let has_unhandled_rejection_handler =
+      if let Some(value) = maybe_has_unhandled_rejection_handler {
+        value.is_true()
+      } else {
+        false
+      };
 
     if has_unhandled_rejection_handler {
       let mut state = state_rc.borrow_mut();
@@ -353,7 +358,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         if !pending_mod_evaluate.has_evaluated {
           pending_mod_evaluate
             .handled_promise_rejections
-            .push(promise_global);
+            .push(promise_global.clone());
         }
       }
     }
@@ -361,6 +366,18 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
     if let Some(exception) = tc_scope.exception() {
       if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
         tc_scope.reset(); // Cancel pending exception.
+        {
+          let mut state = state_rc.borrow_mut();
+          if let Some(pending_mod_evaluate) =
+            state.pending_mod_evaluate.as_mut()
+          {
+            if !pending_mod_evaluate.has_evaluated {
+              pending_mod_evaluate
+                .handled_promise_rejections
+                .push(promise_global);
+            }
+          }
+        }
         js_uncaught_exception_cb.open(tc_scope).call(
           tc_scope,
           undefined,
