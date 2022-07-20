@@ -612,7 +612,7 @@ Deno.test({
   fn: async function () {
     assertEquals(location.href, "http://127.0.0.1:4545/");
     const w = new Worker(
-      import.meta.resolve("./workers/test_worker.ts"),
+      "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
     const promise = deferred();
