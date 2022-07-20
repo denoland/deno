@@ -292,8 +292,15 @@ fn codegen_fast_impl(
       use_recv,
     }) = fast_info
     {
-      let inputs = &f.sig.inputs.iter().skip(if use_recv { 1 } else { 0 }).collect::<Vec<_>>();
-      let input_idents = f.sig.inputs
+      let inputs = &f
+        .sig
+        .inputs
+        .iter()
+        .skip(if use_recv { 1 } else { 0 })
+        .collect::<Vec<_>>();
+      let input_idents = f
+        .sig
+        .inputs
         .iter()
         .map(|a| match a {
           FnArg::Receiver(_) => unreachable!(),
@@ -450,6 +457,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
         Some(arg) => {
           args.push(arg);
         }
+        // early return, this function cannot be a fast call.
         None => return None,
       },
       Some(arg) => {
@@ -475,6 +483,7 @@ fn is_fast_arg_sequence(
   core: &TokenStream2,
   ty: impl ToTokens,
 ) -> Option<TokenStream2> {
+  // TODO(@littledivy): Make `v8::` parts optional.
   if is_fast_typed_array(&ty) {
     return Some(
       quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) },
@@ -517,9 +526,10 @@ fn is_fast_scalar(
   if is_void(&ty) {
     return Some(quote! { #core::v8::fast_api::#cty::Void });
   }
+  // TODO(@littledivy): Support u8, i8, u16, i16 by casting.
   match tokens(&ty).as_str() {
-    "u8" | "u16" | "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
-    "i8" | "i16" | "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
+    "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
+    "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
     _ => None,
