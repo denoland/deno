@@ -13,9 +13,12 @@
     TypeError,
     Uint8Array,
     PromiseAll,
+    SymbolFor,
   } = window.__bootstrap.primordials;
   const { readableStreamForRid, writableStreamForRid } =
     window.__bootstrap.streamUtils;
+
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function spawnChild(command, {
     args = [],
@@ -71,27 +74,38 @@
 
   class Child {
     #rid;
+    #waitPromiseId;
 
     #pid;
     get pid() {
       return this.#pid;
     }
 
-    #stdinRid;
     #stdin = null;
     get stdin() {
+      if (this.#stdin == null) {
+        throw new TypeError("stdin is not piped");
+      }
       return this.#stdin;
     }
 
+    #stdoutPromiseId;
     #stdoutRid;
     #stdout = null;
     get stdout() {
+      if (this.#stdout == null) {
+        throw new TypeError("stdout is not piped");
+      }
       return this.#stdout;
     }
 
+    #stderrPromiseId;
     #stderrRid;
     #stderr = null;
     get stderr() {
+      if (this.#stderr == null) {
+        throw new TypeError("stderr is not piped");
+      }
       return this.#stderr;
     }
 
@@ -111,24 +125,29 @@
       this.#pid = pid;
 
       if (stdinRid !== null) {
-        this.#stdinRid = stdinRid;
         this.#stdin = writableStreamForRid(stdinRid);
       }
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = readableStreamForRid(stdoutRid);
+        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
+          this.#stdoutPromiseId = promise[promiseIdSymbol];
+        });
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = readableStreamForRid(stderrRid);
+        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
+          this.#stderrPromiseId = promise[promiseIdSymbol];
+        });
       }
 
       const onAbort = () => this.kill("SIGTERM");
       signal?.[add](onAbort);
 
-      this.#status = core.opAsync("op_spawn_wait", this.#rid).then((res) => {
+      const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+      this.#waitPromiseId = waitPromise[promiseIdSymbol];
+      this.#status = waitPromise.then((res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -159,9 +178,21 @@
       ]);
 
       return {
-        status,
-        stdout,
-        stderr,
+        success: status.success,
+        code: status.code,
+        signal: status.signal,
+        get stdout() {
+          if (stdout == null) {
+            throw new TypeError("stdout is not piped");
+          }
+          return stdout;
+        },
+        get stderr() {
+          if (stderr == null) {
+            throw new TypeError("stderr is not piped");
+          }
+          return stderr;
+        },
       };
     }
 
@@ -170,6 +201,18 @@
         throw new TypeError("Child process has already terminated.");
       }
       core.opSync("op_kill", this.#pid, signo);
+    }
+
+    ref() {
+      core.refOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
+    }
+
+    unref() {
+      core.unrefOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
     }
   }
 
@@ -198,7 +241,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    return core.opSync("op_spawn_sync", {
+    const result = core.opSync("op_spawn_sync", {
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -210,6 +253,23 @@
       stdout,
       stderr,
     });
+    return {
+      success: result.status.success,
+      code: result.status.code,
+      signal: result.status.signal,
+      get stdout() {
+        if (result.stdout == null) {
+          throw new TypeError("stdout is not piped");
+        }
+        return result.stdout;
+      },
+      get stderr() {
+        if (result.stderr == null) {
+          throw new TypeError("stderr is not piped");
+        }
+        return result.stderr;
+      },
+    };
   }
 
   window.__bootstrap.spawn = {

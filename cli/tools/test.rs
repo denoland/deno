@@ -15,6 +15,7 @@ use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
@@ -1363,8 +1364,40 @@ async fn fetch_specifiers_with_test_mode(
   ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(include, ignore, include_inline)?;
+  let maybe_test_config = ps.options.to_test_config()?;
+
+  let mut include_files = include.clone();
+  let mut exclude_files = ignore.clone();
+
+  if let Some(test_config) = maybe_test_config.as_ref() {
+    if include_files.is_empty() {
+      include_files = test_config
+        .files
+        .include
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+    }
+
+    if exclude_files.is_empty() {
+      exclude_files = test_config
+        .files
+        .exclude
+        .iter()
+        .filter_map(|s| specifier_to_file_path(s).ok())
+        .collect::<Vec<_>>();
+    }
+  }
+
+  if include_files.is_empty() {
+    include_files.push(".".to_string());
+  }
+
+  let mut specifiers_with_mode = collect_specifiers_with_test_mode(
+    include_files,
+    exclude_files,
+    include_inline,
+  )?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = ps
       .file_fetcher
@@ -1390,7 +1423,7 @@ pub async fn run_tests(
     Permissions::from_options(&ps.options.permissions_options());
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
-    test_flags.include.unwrap_or_else(|| vec![".".to_string()]),
+    test_flags.include,
     test_flags.ignore.clone(),
     test_flags.doc,
   )
@@ -1434,7 +1467,7 @@ pub async fn run_tests_with_watch(
   let permissions =
     Permissions::from_options(&ps.options.permissions_options());
 
-  let include = test_flags.include.unwrap_or_else(|| vec![".".to_string()]);
+  let include = test_flags.include;
   let ignore = test_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
   let no_check = ps.options.type_check_mode() == TypeCheckMode::None;

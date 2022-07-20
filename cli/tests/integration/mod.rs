@@ -663,6 +663,46 @@ fn websocketstream() {
 }
 
 #[test]
+fn websocketstream_ping() {
+  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_ping_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
+  let (stream, _) = server.accept().unwrap();
+  let mut socket = tungstenite::accept(stream).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("A")))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Ping(vec![]))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("B")))
+    .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, tungstenite::Message::Pong(vec![]));
+  socket
+    .write_message(tungstenite::Message::Text(String::from("C")))
+    .unwrap();
+  socket.close(None).unwrap();
+
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
 fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("websocket_server_multi_field_connection_header_test.ts");
