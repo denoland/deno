@@ -5,4 +5,4 @@
 // }
 
 const { serve } = Deno.flash;
-serve(_ => new Response("Hello World"));
+serve((_) => new Response("Hello World"));

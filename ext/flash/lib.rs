@@ -90,9 +90,7 @@ unsafe impl Send for NextRequest {}
 fn op_respond(
   op_state: &mut OpState,
   token: u32,
-  status: u16,
-  js_headers: Vec<(String, String)>,
-  body: StringOrBuffer,
+  response: String,
   shutdown: bool,
 ) {
   let mut ctx = op_state.borrow_mut::<ServerContext>();
@@ -109,35 +107,7 @@ fn op_respond(
     }
   };
 
-  #[inline]
-  fn extend(dst: &mut Vec<u8>, data: &[u8]) {
-    dst.extend_from_slice(data);
-  }
-
-  let mut dst = Vec::with_capacity(1024);
-  extend(&mut dst, b"HTTP/1.1 ");
-  extend(&mut dst, status.to_string().as_bytes());
-  extend(&mut dst, b" ");
-  let status = http::StatusCode::from_u16(status).unwrap();
-  extend(
-    &mut dst,
-    status.canonical_reason().unwrap_or("<none>").as_bytes(),
-  );
-  extend(&mut dst, b"\r\n");
-
-  for (key, value) in js_headers {
-    extend(&mut dst, key.as_bytes());
-    extend(&mut dst, b": ");
-    extend(&mut dst, value.as_bytes());
-    extend(&mut dst, b"\r\n");
-  }
-  extend(&mut dst, b"Content-Length: ");
-  extend(&mut dst, body.len().to_string().as_bytes());
-  extend(&mut dst, b"\r\n\r\n");
-
-  extend(&mut dst, &body);
-  let _ = sock.write(&dst);
-
+  let _ = sock.write(response.as_bytes());
   // if tx.no_more_requests && !tx.upgrade {
   //  dbg!("closing socket");
   //   sock.flush().unwrap();

@@ -95,6 +95,20 @@
     }
   }
 
+  const methods = {
+    200: "OK",
+  };
+
+  function http1Response(status, headerList, body) {
+    let str = `HTTP/1.1 ${status} ${methods[status]}\r\n`;
+    for (const [name, value] of headerList) {
+      str += `${name}: ${value}\r\n`;
+    }
+    str += `Content-Length: ${body?.length}\r\n`;
+    str += "\r\n";
+    return str + body ?? "";
+  }
+
   class HttpConn {
     #listener;
 
@@ -170,9 +184,11 @@
             const ws = resp[_ws];
             core.ops.op_respond(
               i,
-              innerResp.status ?? 200,
-              innerResp.headerList,
-              isStreamingResponseBody ? null : respBody,
+              http1Response(
+                innerResp.status ?? 200,
+                innerResp.headerList,
+                isStreamingResponseBody ? null : respBody,
+              ),
               !ws,
             );
 
@@ -313,16 +329,24 @@
         // we'll be streaming it.
         /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
         let respBody = null;
+        let isStreamingResponseBody = false;
         if (innerResp.body !== null) {
-          if (innerResp.body.unusable()) {
-            throw new TypeError("Body is unusable.");
-          }
-          if (
+          if (typeof innerResp.body.streamOrStatic?.body === "string") {
+            if (innerResp.body.streamOrStatic.consumed === true) {
+              throw new TypeError("Body is unusable.");
+            }
+            innerResp.body.streamOrStatic.consumed = true;
+            respBody = innerResp.body.streamOrStatic.body;
+            isStreamingResponseBody = false;
+          } else if (
             ObjectPrototypeIsPrototypeOf(
               ReadableStreamPrototype,
               innerResp.body.streamOrStatic,
             )
           ) {
+            if (innerResp.body.unusable()) {
+              throw new TypeError("Body is unusable.");
+            }
             if (
               innerResp.body.length === null ||
               ObjectPrototypeIsPrototypeOf(
@@ -342,24 +366,29 @@
                 if (!r2.done) throw new TypeError("Unreachable");
               }
             }
+            isStreamingResponseBody = !(
+              typeof respBody === "string" ||
+              ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+            );
           } else {
+            if (innerResp.body.streamOrStatic.consumed === true) {
+              throw new TypeError("Body is unusable.");
+            }
             innerResp.body.streamOrStatic.consumed = true;
             respBody = innerResp.body.streamOrStatic.body;
           }
         } else {
           respBody = new Uint8Array(0);
         }
-        const isStreamingResponseBody = !(
-          typeof respBody === "string" ||
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
-        );
 
         const ws = resp[_ws];
         core.ops.op_respond(
           i,
-          innerResp.status ?? 200,
-          innerResp.headerList,
-          isStreamingResponseBody ? null : respBody,
+          http1Response(
+            innerResp.status ?? 200,
+            innerResp.headerList,
+            isStreamingResponseBody ? null : respBody,
+          ),
           !ws,
         );
       }
