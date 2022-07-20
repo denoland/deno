@@ -68,3 +68,10 @@ Deno.test(function customInspectFunction() {
   );
   assertStringIncludes(Deno.inspect(Request.prototype), "Request");
 });
+
+Deno.test(function requestConstructorTakeURLObjectAsParameter() {
+  assertEquals(
+    new Request(new URL("http://foo/")).url,
+    "http://foo/",
+  );
+});
