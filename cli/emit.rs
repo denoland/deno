@@ -249,7 +249,7 @@ pub fn emit_parsed_source(
   let source_hash =
     get_source_hash(parsed_source.text_info().text_str(), emit_config_hash);
 
-  if let Some(emit_code) = cache.get_emit_code(specifier, source_hash) {
+  if let Some(emit_code) = cache.get_emit_code(specifier, Some(source_hash)) {
     Ok(emit_code)
   } else {
     let transpiled_source = parsed_source.transpile(emit_options)?;
