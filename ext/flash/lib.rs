@@ -1,8 +1,8 @@
-use deno_core::StringOrBuffer;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hyper::body::Bytes;
 use mio::net::TcpStream;
@@ -40,10 +40,10 @@ pub enum Stream {
 
 impl Stream {
   pub fn detach_ownership(&mut self) {
-   match self {
+    match self {
       Stream::Tcp(_, detached) => *detached = true,
-      Stream::Tls(_, detached) => *detached = true, 
-   } 
+      Stream::Tls(_, detached) => *detached = true,
+    }
   }
 }
 

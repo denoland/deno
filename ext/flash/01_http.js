@@ -294,8 +294,63 @@
       const token = await core.opAsync("op_flash_next");
       for (let i = 0; i < token; i++) {
         const req = new Request(i);
-        const res = handler(req);
-        core.ops.op_flash_respond(i, res.head, res.body);
+        const resp = handler(req);
+        const innerResp = toInnerResponse(resp);
+
+        // If response body length is known, it will be sent synchronously in a
+        // single op, in other case a "response body" resource will be created and
+        // we'll be streaming it.
+        /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+        let respBody = null;
+        if (innerResp.body !== null) {
+          if (innerResp.body.unusable()) {
+            throw new TypeError("Body is unusable.");
+          }
+          if (
+            ObjectPrototypeIsPrototypeOf(
+              ReadableStreamPrototype,
+              innerResp.body.streamOrStatic,
+            )
+          ) {
+            if (
+              innerResp.body.length === null ||
+              ObjectPrototypeIsPrototypeOf(
+                BlobPrototype,
+                innerResp.body.source,
+              )
+            ) {
+              respBody = innerResp.body.stream;
+            } else {
+              const reader = innerResp.body.stream.getReader();
+              const r1 = await reader.read();
+              if (r1.done) {
+                respBody = new Uint8Array(0);
+              } else {
+                respBody = r1.value;
+                const r2 = await reader.read();
+                if (!r2.done) throw new TypeError("Unreachable");
+              }
+            }
+          } else {
+            innerResp.body.streamOrStatic.consumed = true;
+            respBody = innerResp.body.streamOrStatic.body;
+          }
+        } else {
+          respBody = new Uint8Array(0);
+        }
+        const isStreamingResponseBody = !(
+          typeof respBody === "string" ||
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+        );
+
+        const ws = resp[_ws];
+        core.ops.op_flash_respond(
+          i,
+          innerResp.status ?? 200,
+          innerResp.headerList,
+          isStreamingResponseBody ? null : respBody,
+          !ws,
+        );
       }
     }
     await listener;
