@@ -96,13 +96,13 @@ itest!(parallel_flag_with_env_variable {
 itest!(jobs_flag {
   args: "test test/short-pass.ts --jobs",
   exit_code: 0,
-  output: "test/short-pass-jobs-flag-with-jobs-warning.out",
+  output: "test/short-pass-jobs-flag-warning.out",
 });
 
 itest!(jobs_flag_with_numeric_value {
   args: "test test/short-pass.ts --jobs=2",
   exit_code: 0,
-  output: "test/short-pass-jobs-flag-with-jobs-warning.out",
+  output: "test/short-pass-jobs-flag-warning.out",
 });
 
 itest!(load_unload {
