@@ -4,6 +4,6 @@ const listener = core.opAsync("op_listen");
 while (true) {
   const token = await core.opAsync("op_next");
   for (let i = 0; i < token; i++) {
-    core.ops.op_respond(i, 200, [], "Hello World");
+    core.ops.op_respond(i, "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nHello World"); 
   }
 }
