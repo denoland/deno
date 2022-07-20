@@ -587,8 +587,8 @@ delete Intl.v8BreakIterator;
         return false;
     }
 
-    return !!(globalThis.onunhandledrejection ||
-      eventTarget.listenerCount(globalThis, "unhandledrejection") > 0);
+    return !!globalThis.onunhandledrejection ||
+      eventTarget.listenerCount(globalThis, "unhandledrejection") > 0;
   }
 
   function promiseRejectMacrotaskCallback() {
