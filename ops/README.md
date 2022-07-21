@@ -33,15 +33,14 @@ Cases where code is optimized away:
 
 ```rust
 impl fast_api::FastFunction for #name {
-  type Signature = ();
-  fn function(&self) -> Self::Signature {}
-
-  fn raw(&self) -> *const std::ffi::c_void {
+  fn function(&self) -> *const c_void {
     #raw_block
   }
+
   fn args(&self) -> &'static [fast_api::Type] {
     &[ #args ]
   }
+
   fn return_type(&self) -> fast_api::CType {
     #ret
   }

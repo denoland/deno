@@ -1,6 +1,6 @@
-use core::panic;
-
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use core::panic;
 use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
