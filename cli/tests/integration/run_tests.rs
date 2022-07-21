@@ -2784,6 +2784,6 @@ itest!(followup_dyn_import_resolved {
 });
 
 itest!(unhandled_rejection {
-  args: "run --allow-read unhandled_rejection.js",
-  output: "unhandled_rejection.js.out",
+  args: "run --check unhandled_rejection.ts",
+  output: "unhandled_rejection.ts.out",
 });
