@@ -884,7 +884,12 @@ fn diagnose_dependency(
       specifier, range, ..
     } = &dependency.maybe_code
     {
-      if let Some(to) = import_map.lookup(specifier, referrer) {
+      let key = import_map.lookup(specifier, referrer).filter(|key| {
+        !(key.starts_with("/")
+          || key.starts_with("./")
+          || key.starts_with("../"))
+      });
+      if let Some(to) = key {
         if dependency_key != to {
           diagnostics.push(
             DenoDiagnostic::ImportMapRemap {
@@ -1154,21 +1159,28 @@ let c: number = "a";
       &temp_dir,
       &[
         ("file:///std/testing/asserts.ts", "export function assert() {}", 1, LanguageId::TypeScript),
-        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\n", 1, LanguageId::TypeScript),
+        ("file:///bar.ts", "export function foo() {}", 1, LanguageId::TypeScript),
+        ("file:///a/file.ts", "import { assert } from \"../std/testing/asserts.ts\";\n\nassert();\nimport { foo } from \"../bar.ts\";\n\nfoo();\n", 1, LanguageId::TypeScript),
       ],
+      // The second map entry and the `../bar.ts` import shouldn't generate a
+      // diagnostic since it's a relative map key.
       Some(("file:///a/import-map.json", r#"{
         "imports": {
-          "/~/std/": "../std/"
+          "~/std/": "../std/",
+          "../foo.ts": "../bar.ts"
         }
       }"#)),
     );
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     for (specifier, _, diagnostics) in actual {
       match specifier.as_str() {
         "file:///std/testing/asserts.ts" => {
+          assert_eq!(json!(diagnostics), json!([]))
+        }
+        "file:///bar.ts" => {
           assert_eq!(json!(diagnostics), json!([]))
         }
         "file:///a/file.ts" => assert_eq!(
@@ -1188,10 +1200,10 @@ let c: number = "a";
               "severity": 4,
               "code": "import-map-remap",
               "source": "deno",
-              "message": "The import specifier can be remapped to \"/~/std/testing/asserts.ts\" which will resolve it via the active import map.",
+              "message": "The import specifier can be remapped to \"~/std/testing/asserts.ts\" which will resolve it via the active import map.",
               "data": {
                 "from": "../std/testing/asserts.ts",
-                "to": "/~/std/testing/asserts.ts"
+                "to": "~/std/testing/asserts.ts"
               }
             }
           ])
