@@ -81,7 +81,7 @@
       if (!this.#url) {
         this.#url = core.ops.op_path(this.#token);
       }
-      return this.#url;
+      return `http://localhost:9000`;
     }
 
     get headers() {
@@ -104,9 +104,12 @@
     for (const [name, value] of headerList) {
       str += `${name}: ${value}\r\n`;
     }
-    str += `Content-Length: ${body?.length}\r\n`;
-    str += "\r\n";
-    return str + body ?? "";
+    if (body) {
+      str += `Content-Length: ${body?.length}\r\n\r\n`;
+    } else {
+      str += "Transfer-Encoding: chunked\r\n\r\n";
+    }
+    return str + (body ?? "");
   }
 
   class HttpConn {
@@ -321,7 +324,7 @@
       const token = await core.opAsync("op_next");
       for (let i = 0; i < token; i++) {
         const req = new Request(i);
-        const resp = handler(req);
+        const resp = await handler(req);
         const innerResp = toInnerResponse(resp);
 
         // If response body length is known, it will be sent synchronously in a
@@ -382,15 +385,51 @@
         }
 
         const ws = resp[_ws];
-        core.ops.op_respond(
-          i,
-          http1Response(
-            innerResp.status ?? 200,
-            innerResp.headerList,
-            isStreamingResponseBody ? null : respBody,
-          ),
-          !ws,
-        );
+        if (isStreamingResponseBody === true) {
+          // const resourceRid = getReadableStreamRid(respBody);
+          let reader = respBody.getReader();
+          let first = true;
+          a: while (true) {
+            const { value, done } = await reader.read();
+            if (first) {
+              first = false;
+              core.ops.op_respond(
+                i,
+                http1Response(
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  null
+                ),
+                value,
+                false,
+              );
+            } else {
+              core.ops.op_respond_chuncked(
+                i,
+                value,
+                done,
+              );
+            }
+            if (done) break a;
+          }
+          // try {
+          //   await core.opAsync("op_http_shutdown", streamRid);
+          // } catch (error) {
+          //   await reader.cancel(error);
+          //   throw error;
+          // }
+        } else {
+          core.ops.op_respond(
+            i,
+            http1Response(
+              innerResp.status ?? 200,
+              innerResp.headerList,
+              respBody,
+            ),
+            null,
+            false,
+          );
+        }
       }
     }
     await listener;

@@ -13,6 +13,7 @@ use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
 use http::header::UPGRADE;
 use http::HeaderValue;
+use http::response;
 use mio::net::TcpListener;
 use mio::net::TcpStream;
 use mio::Events;
@@ -79,7 +80,7 @@ impl Read for Stream {
 
 struct NextRequest {
   socket: *mut Stream,
-  inner: Arc<InnerRequest>,
+  inner: InnerRequest,
   no_more_requests: bool,
   upgrade: bool,
 }
@@ -90,7 +91,8 @@ unsafe impl Send for NextRequest {}
 fn op_respond(
   op_state: &mut OpState,
   token: u32,
-  response: String,
+  response: StringOrBuffer,
+  maybe_body: Option<ZeroCopyBuf>,
   shutdown: bool,
 ) {
   let ctx = op_state.borrow_mut::<ServerContext>();
@@ -107,11 +109,50 @@ fn op_respond(
     }
   };
 
-  let _ = sock.write(response.as_bytes());
+  let _ = sock.write(&response);
+  if let Some(response) = maybe_body {
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(&response);
+    let _ = sock.write(b"\r\n");
+  }
   // if tx.no_more_requests && !tx.upgrade {
   //  dbg!("closing socket");
   //   sock.flush().unwrap();
   // }
+}
+
+#[op]
+fn op_respond_chuncked(
+  op_state: &mut OpState,
+  token: u32,
+  response: Option<ZeroCopyBuf>, 
+  shutdown: bool,
+) {
+  let ctx = op_state.borrow_mut::<ServerContext>();
+
+  let sock = match shutdown {
+    true => {
+      let tx = ctx.response.remove(&token).unwrap();
+      unsafe { &mut *tx.socket }
+    }
+    // In case of a websocket upgrade or streaming response.
+    false => {
+      let tx = ctx.response.get(&token).unwrap();
+      unsafe { &mut *tx.socket }
+    }
+  };
+
+  if let Some(response) = response {
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(&response);
+    let _ = sock.write(b"\r\n");  
+  }
+  // The last chunk
+  if shutdown { 
+    let _ = sock.write(b"0\r\n\r\n");
+  }
 }
 
 #[op]
@@ -369,7 +410,7 @@ fn op_listen(
               tx.blocking_send(NextRequest {
                 socket: sock_ptr,
                 // SAFETY: headers backing buffer outlives the mio event loop ('static)
-                inner: Arc::new(inner_req),
+                inner: inner_req,
                 no_more_requests,
                 upgrade,
               });
@@ -408,6 +449,7 @@ pub fn init() -> Extension {
     .ops(vec![
       op_listen::decl(),
       op_respond::decl(),
+      op_respond_chuncked::decl(),
       op_method::decl(),
       op_path::decl(),
       op_headers::decl(),
