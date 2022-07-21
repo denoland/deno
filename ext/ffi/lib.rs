@@ -39,11 +39,6 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 
-#[cfg(not(target_os = "windows"))]
-mod jit_trampoline;
-#[cfg(not(target_os = "windows"))]
-mod tcc;
-
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
 }
@@ -716,29 +711,21 @@ fn make_sync_fn<'s>(
   let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
 
   #[cfg(not(target_os = "windows"))]
-  let mut fast_allocations: Option<*mut ()> = None;
-  #[cfg(not(target_os = "windows"))]
   if !sym.can_callback
     && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
     && is_fast_api_rv(sym.result_type)
   {
-    let ret = fast_api::Type::from(&sym.result_type);
-
-    let mut args = sym
+    let args = sym
       .parameter_types
       .iter()
       .map(|t| t.into())
       .collect::<Vec<_>>();
-    // recv
-    args.insert(0, fast_api::Type::V8Value);
-    let symbol_trampoline =
-      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
+
     fast_ffi_templ = Some(FfiFastCallTemplate {
       args: args.into_boxed_slice(),
-      ret: (&ret).into(),
-      symbol_ptr: symbol_trampoline.addr,
+      ret: (&fast_api::Type::from(&sym.result_type)).into(),
+      symbol_ptr: sym.ptr.as_ptr() as *const c_void,
     });
-    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
   }
 
   let sym = Box::leak(sym);
@@ -780,10 +767,6 @@ fn make_sync_fn<'s>(
       // from Box::into_raw, hence, satisfies memory layout requirements.
       unsafe {
         Box::from_raw(sym);
-        #[cfg(not(target_os = "windows"))]
-        if let Some(fast_allocations) = fast_allocations {
-          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
-        }
       }
     }),
   );
@@ -987,7 +970,25 @@ where
     Vec::with_capacity(parameter_types.len());
 
   for (index, native_type) in parameter_types.iter().enumerate() {
-    let value = args.get(index as i32);
+    let value = if index == 0 {
+      // sync callbacks are called with the first parameter as the receiver (ie f.call(first, ...rest))
+      // see DinamicLibrary constructor in 00_ffi.js for more details
+      let receiver = args.this();
+      if receiver.is_big_int_object() {
+        // V8 converts BigInt to object when used as receiver
+        receiver
+          .to_big_int(scope)
+          .expect("BigInt object should be able to convert to BigInt")
+          .into()
+      } else if receiver == scope.get_current_context().global(scope) {
+        // V8 converts null or undefined to the global object when used as receiver
+        v8::null(scope).into()
+      } else {
+        receiver.into()
+      }
+    } else {
+      args.get(index as i32 - 1)
+    };
     match native_type {
       NativeType::Void => {
         unreachable!();

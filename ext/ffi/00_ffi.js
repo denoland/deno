@@ -316,6 +316,21 @@
               writable: false,
             },
           );
+        } else {
+          const f = this.symbols[symbol];
+          ObjectDefineProperty(
+            this.symbols,
+            symbol,
+            {
+              configurable: false,
+              enumerable: true,
+              value: (first, ...rest) => {
+                // V8's fast-API-calls always puts receiver as first argument of the function call
+                // even if the receiver is undefined (in which case puts the global object, regardless of using strict mode)
+                return f.call(first, ...rest);
+              },
+            },
+          );
         }
       }
     }
