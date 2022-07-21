@@ -153,8 +153,6 @@ pub fn get_ts_config_for_emit(
       "experimentalDecorators": true,
       "incremental": true,
       "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "inlineSources": true,
