@@ -4,9 +4,9 @@ try {
   console.log(e);
 }
 
-const { status } = await Deno.spawn("curl", {
+const { success } = await Deno.spawn("curl", {
   args: ["--help"],
   stdout: "null",
   stderr: "inherit",
 });
-console.log(status.success);
+console.log(success);

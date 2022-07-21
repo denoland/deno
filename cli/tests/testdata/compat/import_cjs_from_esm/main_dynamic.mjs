@@ -1,2 +1,2 @@
-const url = new URL("./imported.js", import.meta.url);
-await import(url.href);
+const url = import.meta.resolve("./imported.js");
+await import(url);

@@ -1,2 +1,9 @@
 import_meta2 [WILDCARD]import_meta2.ts false
 import_meta [WILDCARD]import_meta.ts true
+Resolving ./foo.js file:///[WILDCARD]/foo.js
+Resolving bare from import map https://example.com/
+Resolving https://example.com/rewrite from import map https://example.com/rewritten
+Resolving without a value from import map https://example.com/PASS-undefined
+Resolving 1 from import map https://example.com/PASS-1
+Resolving null from import map https://example.com/PASS-null
+Resolving object from import map https://example.com/PASS-object
