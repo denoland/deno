@@ -9,6 +9,7 @@
 
 interface WindowEventMap {
   "error": ErrorEvent;
+  "unhandledrejection": PromiseRejectionEvent;
 }
 
 declare class Window extends EventTarget {
@@ -18,6 +19,9 @@ declare class Window extends EventTarget {
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
   onload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
+  onunhandledrejection:
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
   close: () => void;
   readonly closed: boolean;
   alert: (message?: string) => void;
@@ -64,6 +68,9 @@ declare var self: Window & typeof globalThis;
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
+declare var onunhandledrejection:
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
 declare var localStorage: Storage;
 declare var sessionStorage: Storage;
 
