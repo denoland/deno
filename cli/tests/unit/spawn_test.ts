@@ -64,9 +64,8 @@ Deno.test(
       stderr: "null",
     });
 
-    assert(child.stdin !== null);
-    assert(child.stdout === null);
-    assert(child.stderr === null);
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
 
     const msg = new TextEncoder().encode("hello");
     const writer = child.stdin.getWriter();
@@ -92,9 +91,8 @@ Deno.test(
       stderr: "null",
     });
 
-    assert(child.stdin === null);
-    assert(child.stdout !== null);
-    assert(child.stderr === null);
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
 
     const readable = child.stdout.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -122,13 +120,11 @@ Deno.test(
         "eval",
         "await Deno.stderr.write(new TextEncoder().encode('hello'))",
       ],
-      stderr: "piped",
       stdout: "null",
     });
 
-    assert(child.stdin === null);
-    assert(child.stdout === null);
-    assert(child.stderr !== null);
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
 
     const readable = child.stderr.pipeThrough(new TextDecoderStream());
     const reader = readable.getReader();
@@ -322,62 +318,62 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true } },
   async function spawnSuccess() {
-    const { status } = await Deno.spawn(Deno.execPath(), {
+    const output = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
 
-    assertEquals(status.success, true);
-    assertEquals(status.code, 0);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true } },
   function spawnSyncSuccess() {
-    const { status } = Deno.spawnSync(Deno.execPath(), {
+    const output = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "console.log('hello world')"],
     });
 
-    assertEquals(status.success, true);
-    assertEquals(status.code, 0);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true } },
   async function spawnUrl() {
-    const { status, stdout } = await Deno.spawn(
+    const output = await Deno.spawn(
       new URL(`file:///${Deno.execPath()}`),
       {
         args: ["eval", "console.log('hello world')"],
       },
     );
 
-    assertEquals(new TextDecoder().decode(stdout), "hello world\n");
+    assertEquals(new TextDecoder().decode(output.stdout), "hello world\n");
 
-    assertEquals(status.success, true);
-    assertEquals(status.code, 0);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true } },
   function spawnSyncUrl() {
-    const { status, stdout } = Deno.spawnSync(
+    const output = Deno.spawnSync(
       new URL(`file:///${Deno.execPath()}`),
       {
         args: ["eval", "console.log('hello world')"],
       },
     );
 
-    assertEquals(new TextDecoder().decode(stdout), "hello world\n");
+    assertEquals(new TextDecoder().decode(output.stdout), "hello world\n");
 
-    assertEquals(status.success, true);
-    assertEquals(status.code, 0);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
   },
 );
 
@@ -398,24 +394,24 @@ Deno.test({ permissions: { run: true } }, function spawnSyncNotFound() {
 Deno.test(
   { permissions: { run: true, read: true } },
   async function spawnFailedWithCode() {
-    const { status } = await Deno.spawn(Deno.execPath(), {
+    const output = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "Deno.exit(41 + 1)"],
     });
-    assertEquals(status.success, false);
-    assertEquals(status.code, 42);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, false);
+    assertEquals(output.code, 42);
+    assertEquals(output.signal, null);
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true } },
   function spawnSyncFailedWithCode() {
-    const { status } = Deno.spawnSync(Deno.execPath(), {
+    const output = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "Deno.exit(41 + 1)"],
     });
-    assertEquals(status.success, false);
-    assertEquals(status.code, 42);
-    assertEquals(status.signal, null);
+    assertEquals(output.success, false);
+    assertEquals(output.code, 42);
+    assertEquals(output.signal, null);
   },
 );
 
@@ -424,16 +420,16 @@ Deno.test(
     permissions: { run: true, read: true },
   },
   async function spawnFailedWithSignal() {
-    const { status } = await Deno.spawn(Deno.execPath(), {
+    const output = await Deno.spawn(Deno.execPath(), {
       args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
     });
-    assertEquals(status.success, false);
+    assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
-      assertEquals(status.code, 1);
-      assertEquals(status.signal, null);
+      assertEquals(output.code, 1);
+      assertEquals(output.signal, null);
     } else {
-      assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, "SIGKILL");
+      assertEquals(output.code, 128 + 9);
+      assertEquals(output.signal, "SIGKILL");
     }
   },
 );
@@ -443,16 +439,16 @@ Deno.test(
     permissions: { run: true, read: true },
   },
   function spawnSyncFailedWithSignal() {
-    const { status } = Deno.spawnSync(Deno.execPath(), {
+    const output = Deno.spawnSync(Deno.execPath(), {
       args: ["eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
     });
-    assertEquals(status.success, false);
+    assertEquals(output.success, false);
     if (Deno.build.os === "windows") {
-      assertEquals(status.code, 1);
-      assertEquals(status.signal, null);
+      assertEquals(output.code, 1);
+      assertEquals(output.signal, null);
     } else {
-      assertEquals(status.code, 128 + 9);
-      assertEquals(status.signal, "SIGKILL");
+      assertEquals(output.code, 128 + 9);
+      assertEquals(output.signal, "SIGKILL");
     }
   },
 );
@@ -537,7 +533,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  function spawnEnv() {
+  function spawnSyncEnv() {
     const { stdout } = Deno.spawnSync(Deno.execPath(), {
       args: [
         "eval",
@@ -716,3 +712,48 @@ Deno.test(function spawnSyncStdinPipedFails() {
     "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
   );
 });
+
+Deno.test(
+  { permissions: { write: true, run: true, read: true } },
+  async function spawnChildUnref() {
+    const enc = new TextEncoder();
+    const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
+
+    const programFile = "unref.ts";
+    const program = `
+const child = await Deno.spawnChild(Deno.execPath(), {
+  cwd: Deno.args[0],
+  args: ["run", "-A", "--unstable", Deno.args[1]],
+});
+console.log("spawned pid", child.pid);
+child.unref();
+`;
+
+    const childProgramFile = "unref_child.ts";
+    const childProgram = `
+setInterval(() => {
+  console.log("hello from interval");
+}, 100);
+`;
+    Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
+    Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
+    // In this subprocess we are spawning another subprocess which has
+    // an infite interval set. Following call would never resolve unless
+    // child process gets unrefed.
+    const { success, stdout } = await Deno.spawn(Deno.execPath(), {
+      cwd,
+      args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
+    });
+
+    assert(success);
+    const stdoutText = new TextDecoder().decode(stdout);
+    const pidStr = stdoutText.split(" ").at(-1);
+    assert(pidStr);
+    const pid = Number.parseInt(pidStr, 10);
+    await Deno.remove(cwd, { recursive: true });
+    // Child process should have been killed when parent process exits.
+    assertThrows(() => {
+      Deno.kill(pid, "SIGTERM");
+    }, Deno.errors.NotFound);
+  },
+);
