@@ -346,6 +346,12 @@ itest!(no_prompt_with_denied_perms {
   output: "test/no_prompt_with_denied_perms.out",
 });
 
+itest!(test_with_custom_jsx {
+  args: "test --quiet --allow-read test/hello_world.ts --config=test/deno_custom_jsx.json",
+  exit_code: 0,
+  output: "test/hello_world.out",
+});
+
 #[test]
 fn captured_output() {
   let output = util::deno_cmd()
