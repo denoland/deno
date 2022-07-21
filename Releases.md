@@ -6,6 +6,44 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.24.0 / 2022.07.20
+
+- BREAKING(unstable): Improve Deno.spawn() stdio API (#14919)
+- feat(cli): support configuring the test tool in the config file (#15079)
+- feat(cli/lsp): Sort repl completions (#15171)
+- feat(cli/test): add `DENO_JOBS` env variable for `test` subcommand (#14929)
+- feat(ext/ffi): Support 64 bit parameters in Fast API calls (#15140)
+- feat(fmt): do not add a newline between a template and its tag (#15195)
+- feat(lsp): provide import map remapping diags and fixes (#15165)
+- feat(test): add `--parallel` flag, soft deprecate `--jobs` (#15259)
+- feat(unstable): Ability to ref/unref "Child" in "Deno.spawnChild()" API
+  (#15151)
+- feat(web): add beforeunload event (#14830)
+- feat: add "unhandledrejection" event support (#12994, #15211)
+- feat: import.meta.resolve() (#15074)
+- fix(cli): Improve error message in watch mode (#15184)
+- fix(cli): expand tsc roots when using checkJs (#15164)
+- fix(cli): synchronize async stdio/file reads and writes (#15092)
+- fix(cli/dts): allow passing arguments to `WebAssembly` error constructors
+  (#15149)
+- fix(core): unhandled rejection in top-level scope (#15204)
+- fix(coverage): do not verify emit source hash for coverage (#15260)
+- fix(ext/ffi): allow setting a custom lib path for libtcc.a (#15208)
+- fix(ext/ffi): i64 arg to C mapping was wrong (#15162)
+- fix(ext/web): align DOMException better with spec (#15097)
+- fix(fmt): improve curried arrow functions (#15251)
+- fix(repl): do not panic for import completions when the import specifier is
+  empty (#15177)
+- fix(task): do not overflow attempting to parse large number as redirect
+  (#15249)
+- fix(task): resolve deno configuration file first from specified `--cwd` arg
+  (#15257)
+- fix: WebSocketStream ping event causes pending promises (#15235)
+- fix: fallback to no type checking cache when db file can't be created (#15180)
+- fix: revert changes to test output for uncaught errors (#15231)
+- perf: emit files on demand and fix racy emit (#15220)
+- perf: use emit from swc instead of tsc (#15118)
+
 ### 1.23.4 / 2022.07.12
 
 - feat(core): Re-export v8 use_custom_libcxx feature (#14475)

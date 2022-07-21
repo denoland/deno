@@ -268,6 +268,10 @@
     terminate: opSync.bind(null, "op_terminate"),
     opNames: opSync.bind(null, "op_op_names"),
     eventLoopHasMoreWork: opSync.bind(null, "op_event_loop_has_more_work"),
+    setPromiseRejectCallback: opSync.bind(
+      null,
+      "op_set_promise_reject_callback",
+    ),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
