@@ -1278,6 +1278,58 @@
     [SymbolToStringTag] = "ProgressEvent";
   }
 
+  class PromiseRejectionEvent extends Event {
+    #promise = null;
+    #reason = null;
+
+    get promise() {
+      return this.#promise;
+    }
+    get reason() {
+      return this.#reason;
+    }
+
+    constructor(
+      type,
+      {
+        bubbles,
+        cancelable,
+        composed,
+        promise,
+        reason,
+      } = {},
+    ) {
+      super(type, {
+        bubbles: bubbles,
+        cancelable: cancelable,
+        composed: composed,
+      });
+
+      this.#promise = promise;
+      this.#reason = reason;
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof PromiseRejectionEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "promise",
+          "reason",
+        ],
+      }));
+    }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "PromiseRejectionEvent";
+  }
+
+  defineEnumerableProps(PromiseRejectionEvent, [
+    "promise",
+    "reason",
+  ]);
+
   const _eventHandlers = Symbol("eventHandlers");
 
   function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
@@ -1426,6 +1478,7 @@
   window.MessageEvent = MessageEvent;
   window.CustomEvent = CustomEvent;
   window.ProgressEvent = ProgressEvent;
+  window.PromiseRejectionEvent = PromiseRejectionEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
   window.removeEventListener = EventTarget.prototype.removeEventListener;

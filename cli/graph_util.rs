@@ -4,6 +4,7 @@ use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 
+use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -38,6 +39,7 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
+    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
@@ -146,6 +148,7 @@ impl GraphData {
           };
           let module_entry = ModuleEntry::Module {
             code,
+            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
             ts_check,
             media_type,

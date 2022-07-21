@@ -818,6 +818,14 @@ Deno.test(function responseRedirect() {
   assertEquals(redir.type, "default");
 });
 
+Deno.test(function responseRedirectTakeURLObjectAsParameter() {
+  const redir = Response.redirect(new URL("https://example.com/"));
+  assertEquals(
+    redir.headers.get("Location"),
+    "https://example.com/",
+  );
+});
+
 Deno.test(async function responseWithoutBody() {
   const response = new Response();
   assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
@@ -1456,7 +1464,7 @@ Deno.test(
 
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
-    await fetch(new URL("../testdata/subdir/json_1.json", import.meta.url));
+    await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
   }, Deno.errors.PermissionDenied);
 });
 
@@ -1464,7 +1472,7 @@ Deno.test(
   { permissions: { read: false } },
   async function fetchFilePermDoesNotExist() {
     await assertRejects(async () => {
-      await fetch(new URL("./bad.json", import.meta.url));
+      await fetch(import.meta.resolve("./bad.json"));
     }, Deno.errors.PermissionDenied);
   },
 );
@@ -1475,7 +1483,7 @@ Deno.test(
     await assertRejects(
       async () => {
         await fetch(
-          new URL("../testdata/subdir/json_1.json", import.meta.url),
+          import.meta.resolve("../testdata/subdir/json_1.json"),
           {
             method: "POST",
           },
@@ -1492,7 +1500,7 @@ Deno.test(
   async function fetchFileDoesNotExist() {
     await assertRejects(
       async () => {
-        await fetch(new URL("./bad.json", import.meta.url));
+        await fetch(import.meta.resolve("./bad.json"));
       },
       TypeError,
     );
@@ -1503,7 +1511,7 @@ Deno.test(
   { permissions: { read: true } },
   async function fetchFile() {
     const res = await fetch(
-      new URL("../testdata/subdir/json_1.json", import.meta.url),
+      import.meta.resolve("../testdata/subdir/json_1.json"),
     );
     assert(res.ok);
     const fixture = await Deno.readTextFile(

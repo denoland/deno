@@ -31,7 +31,7 @@ async function handler(req: Request): Promise<Response> {
 }
 
 async function testFetch() {
-  const { status } = await Deno.spawn(Deno.execPath(), {
+  const { code } = await Deno.spawn(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
@@ -44,11 +44,11 @@ async function testFetch() {
     },
   });
 
-  assertEquals(status.code, 0);
+  assertEquals(code, 0);
 }
 
 async function testModuleDownload() {
-  const { status } = await Deno.spawn(Deno.execPath(), {
+  const { code } = await Deno.spawn(Deno.execPath(), {
     args: [
       "cache",
       "--reload",
@@ -60,11 +60,11 @@ async function testModuleDownload() {
     },
   });
 
-  assertEquals(status.code, 0);
+  assertEquals(code, 0);
 }
 
 async function testFetchNoProxy() {
-  const { status } = await Deno.spawn(Deno.execPath(), {
+  const { code } = await Deno.spawn(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
@@ -78,11 +78,11 @@ async function testFetchNoProxy() {
     },
   });
 
-  assertEquals(status.code, 0);
+  assertEquals(code, 0);
 }
 
 async function testModuleDownloadNoProxy() {
-  const { status } = await Deno.spawn(Deno.execPath(), {
+  const { code } = await Deno.spawn(Deno.execPath(), {
     args: [
       "cache",
       "--reload",
@@ -95,11 +95,11 @@ async function testModuleDownloadNoProxy() {
     },
   });
 
-  assertEquals(status.code, 0);
+  assertEquals(code, 0);
 }
 
 async function testFetchProgrammaticProxy() {
-  const { status } = await Deno.spawn(Deno.execPath(), {
+  const { code } = await Deno.spawn(Deno.execPath(), {
     args: [
       "run",
       "--quiet",
@@ -109,7 +109,7 @@ async function testFetchProgrammaticProxy() {
       "045_programmatic_proxy_client.ts",
     ],
   });
-  assertEquals(status.code, 0);
+  assertEquals(code, 0);
 }
 
 proxyServer();

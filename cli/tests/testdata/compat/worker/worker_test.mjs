@@ -1,8 +1,8 @@
 import { deferred } from "../../../../../test_util/std/async/deferred.ts";
 
 const promise = deferred();
-const url = new URL("./worker.mjs", import.meta.url);
-const worker = new Worker(url.href, { type: "module" });
+const url = import.meta.resolve("./worker.mjs");
+const worker = new Worker(url, { type: "module" });
 
 worker.onmessage = (e) => {
     const pid = e.data.pid;

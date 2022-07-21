@@ -21,6 +21,16 @@ declare interface ImportMeta {
    * ```
    */
   main: boolean;
+
+  /** A function that returns resolved specifier as if it would be imported
+   * using `import(specifier)`.
+   *
+   * ```ts
+   * console.log(import.meta.resolve("./foo.js"));
+   * // file:///dev/foo.js
+   * ```
+   */
+  resolve(specifier: string): string;
 }
 
 /** Deno supports user timing Level 3 (see: https://w3c.github.io/user-timing)
