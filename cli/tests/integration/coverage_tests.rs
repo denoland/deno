@@ -236,3 +236,76 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
   assert!(output.status.success());
 }
+
+#[test]
+fn no_transpiled_lines() {
+  let deno_dir = TempDir::new();
+  let tempdir = TempDir::new();
+  let tempdir = tempdir.path().join("cov");
+
+  let status = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("test")
+    .arg("--quiet")
+    .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
+    .arg("coverage/no_transpiled_lines/")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::inherit())
+    .status()
+    .unwrap();
+
+  assert!(status.success());
+
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("coverage")
+    .arg(format!("{}/", tempdir.to_str().unwrap()))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .output()
+    .unwrap();
+
+  let actual =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+      .to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/no_transpiled_lines/expected.out"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{}\nOUTPUT", actual);
+    println!("EXPECTED\n{}\nEXPECTED", expected);
+    panic!("pattern match failed");
+  }
+
+  assert!(output.status.success());
+
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("coverage")
+    .arg("--lcov")
+    .arg(format!("{}/", tempdir.to_str().unwrap()))
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::inherit())
+    .output()
+    .unwrap();
+
+  let actual =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap())
+      .to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/no_transpiled_lines/expected.lcov"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{}\nOUTPUT", actual);
+    println!("EXPECTED\n{}\nEXPECTED", expected);
+    panic!("pattern match failed");
+  }
+
+  assert!(output.status.success());
+}

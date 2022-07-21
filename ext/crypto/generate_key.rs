@@ -7,7 +7,7 @@ use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
-use rsa::pkcs1::ToRsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
 use serde::Deserialize;
@@ -76,7 +76,7 @@ fn generate_key_rsa(
     .to_pkcs1_der()
     .map_err(|_| operation_error("Failed to serialize RSA key"))?;
 
-  Ok(private_key.as_ref().to_vec())
+  Ok(private_key.as_bytes().to_vec())
 }
 
 fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {

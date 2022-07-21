@@ -21,7 +21,7 @@ declare namespace WebAssembly {
    */
   export class CompileError extends Error {
     /** Creates a new `WebAssembly.CompileError` object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -72,7 +72,7 @@ declare namespace WebAssembly {
    */
   export class LinkError extends Error {
     /** Creates a new WebAssembly.LinkError object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -132,7 +132,7 @@ declare namespace WebAssembly {
    */
   export class RuntimeError extends Error {
     /** Creates a new `WebAssembly.RuntimeError` object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -400,6 +400,17 @@ declare class ErrorEvent extends Event {
   constructor(type: string, eventInitDict?: ErrorEventInit);
 }
 
+interface PromiseRejectionEventInit extends EventInit {
+  promise: Promise<any>;
+  reason?: any;
+}
+
+declare class PromiseRejectionEvent extends Event {
+  readonly promise: Promise<any>;
+  readonly reason: any;
+  constructor(type: string, eventInitDict?: PromiseRejectionEventInit);
+}
+
 interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
@@ -449,7 +460,7 @@ declare class Worker extends EventTarget {
 
 declare type PerformanceEntryList = PerformanceEntry[];
 
-declare class Performance {
+declare class Performance extends EventTarget {
   /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
   constructor();

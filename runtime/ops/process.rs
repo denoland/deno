@@ -174,6 +174,8 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
     c.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     c.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
@@ -316,20 +318,26 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
+    // SAFETY: winapi call
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+
     if handle.is_null() {
+      // SAFETY: winapi call
       let err = match unsafe { GetLastError() } {
         ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
     } else {
-      let r = unsafe { TerminateProcess(handle, 1) };
-      unsafe { CloseHandle(handle) };
-      match r {
-        FALSE => Err(Error::last_os_error().into()),
-        TRUE => Ok(()),
-        _ => unreachable!(),
+      // SAFETY: winapi calls
+      unsafe {
+        let is_terminated = TerminateProcess(handle, 1);
+        CloseHandle(handle);
+        match is_terminated {
+          FALSE => Err(Error::last_os_error().into()),
+          TRUE => Ok(()),
+          _ => unreachable!(),
+        }
       }
     }
   }

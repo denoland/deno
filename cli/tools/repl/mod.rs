@@ -70,7 +70,7 @@ async fn read_eval_file(
     .fetch(&specifier, &mut Permissions::allow_all())
     .await?;
 
-  Ok((*file.source).clone())
+  Ok((*file.source).to_string())
 }
 
 pub async fn run(

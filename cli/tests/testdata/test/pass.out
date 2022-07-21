@@ -19,5 +19,5 @@ console.error
 ----- output end -----
 test 9 ... ok ([WILDCARD])
 
-test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+ok | 10 passed | 0 failed ([WILDCARD])
 

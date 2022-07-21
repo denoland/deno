@@ -569,10 +569,14 @@
   /** @param {WritableStream} stream */
   function initializeWritableStream(stream) {
     stream[_state] = "writable";
-    stream[_storedError] = stream[_writer] = stream[_controller] =
-      stream[_inFlightWriteRequest] = stream[_closeRequest] =
-        stream[_inFlightCloseRequest] = stream[_pendingAbortRequest] =
-          undefined;
+    stream[_storedError] =
+      stream[_writer] =
+      stream[_controller] =
+      stream[_inFlightWriteRequest] =
+      stream[_closeRequest] =
+      stream[_inFlightCloseRequest] =
+      stream[_pendingAbortRequest] =
+        undefined;
     stream[_writeRequests] = [];
     stream[_backpressure] = false;
   }
@@ -643,13 +647,28 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
-  function readableStreamForRid(rid) {
+  /**
+   * @callback unrefCallback
+   * @param {Promise} promise
+   * @returns {undefined}
+   */
+  /**
+   * @param {number} rid
+   * @param {unrefCallback=} unrefCallback
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRid(rid, unrefCallback) {
     const stream = new ReadableStream({
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
-          const bytesRead = await core.read(rid, v);
+          const promise = core.read(rid, v);
+
+          unrefCallback?.(promise);
+
+          const bytesRead = await promise;
+
           if (bytesRead === 0) {
             core.tryClose(rid);
             controller.close();
@@ -2944,8 +2963,11 @@
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     resetQueue(controller);
-    controller[_started] = controller[_closeRequested] =
-      controller[_pullAgain] = controller[_pulling] = false;
+    controller[_started] =
+      controller[_closeRequested] =
+      controller[_pullAgain] =
+      controller[_pulling] =
+        false;
     controller[_strategySizeAlgorithm] = sizeAlgorithm;
     controller[_strategyHWM] = highWaterMark;
     controller[_pullAlgorithm] = pullAlgorithm;

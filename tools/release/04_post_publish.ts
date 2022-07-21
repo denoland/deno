@@ -1,20 +1,20 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git --allow-net --no-check --lock=tools/deno.lock.json
+#!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
-import { createOctoKit, getGitHubRepository } from "./deps.ts";
+import { $, createOctoKit, getGitHubRepository } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 
-console.log("Creating release tag...");
+$.logStep("Creating release tag...");
 await createReleaseTag();
 
-console.log("Forwarding release commit to main...");
+$.logStep("Forwarding release commit to main...");
 try {
   await forwardReleaseCommitToMain();
 } catch (err) {
-  console.error("Failed. Please manually open a PR.", err);
+  $.logError("Failed. Please manually open a PR.", err);
 }
 
 async function createReleaseTag() {
@@ -23,7 +23,7 @@ async function createReleaseTag() {
   const tagName = `v${cliCrate.version}`;
 
   if (tags.has(tagName)) {
-    console.log(`Tag ${tagName} already exists.`);
+    $.log(`Tag ${tagName} already exists.`);
   } else {
     await repo.gitTag(tagName);
     await repo.gitPush("origin", tagName);
@@ -36,30 +36,31 @@ async function forwardReleaseCommitToMain() {
   const isPatchRelease = currentBranch !== "main";
 
   if (!isPatchRelease) {
-    console.log("Not doing a patch release. Skipping.");
+    $.log("Not doing a patch release. Skipping.");
     return;
   }
 
-  await repo.runCommandWithOutput(["git", "fetch", "origin", "main"]);
-  const releaseCommitHash =
-    (await repo.runCommand(["git", "rev-parse", "HEAD"])).trim();
+  await repo.command("git fetch origin main");
+  const releaseCommitHash = await repo.command("git rev-parse HEAD").text();
   const newBranchName = `forward_v${cliCrate.version}`;
-  console.log(`Creating branch ${newBranchName}...`);
-  await repo.runCommand([
+  $.logStep(`Creating branch ${newBranchName}...`);
+  await repo.command([
     "git",
     "checkout",
     "-b",
     newBranchName,
     "origin/main",
   ]);
-  await repo.runCommand([
+  await repo.command([
     "git",
     "cherry-pick",
+    "--strategy-option",
+    "theirs",
     releaseCommitHash,
   ]);
   await repo.gitPush("origin", newBranchName);
 
-  console.log(`Opening PR...`);
+  $.logStep(`Opening PR...`);
   const openedPr = await createOctoKit().request(
     "POST /repos/{owner}/{repo}/pulls",
     {
@@ -71,7 +72,7 @@ async function forwardReleaseCommitToMain() {
       body: getPrBody(),
     },
   );
-  console.log(`Opened PR at ${openedPr.data.url}`);
+  $.log(`Opened PR at ${openedPr.data.url}`);
 
   function getPrBody() {
     let text =

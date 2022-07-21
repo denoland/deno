@@ -7,19 +7,10 @@ Deno.test(
     const promise = deferred<boolean[]>();
 
     const worker = new Worker(
-      new URL(
+      import.meta.resolve(
         "../testdata/workers/env_read_check_worker.js",
-        import.meta.url,
-      ).href,
-      {
-        type: "module",
-        deno: {
-          namespace: true,
-          permissions: {
-            env: ["test", "OTHER"],
-          },
-        },
-      },
+      ),
+      { type: "module", deno: { permissions: { env: ["test", "OTHER"] } } },
     );
 
     worker.onmessage = ({ data }) => {

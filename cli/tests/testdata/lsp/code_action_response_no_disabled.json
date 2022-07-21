@@ -1,5 +1,25 @@
 [
   {
+    "title": "Extract to function in module scope",
+    "kind": "refactor.extract.function",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 14,
+          "character": 0
+        }
+      },
+      "refactorName": "Extract Symbol",
+      "actionName": "function_scope_0"
+    }
+  },
+  {
     "title": "Move to a new file",
     "kind": "refactor.move.newFile",
     "isPreferred": false,

@@ -2,18 +2,25 @@
 
 use deno_core::url;
 use std::process::Command;
+use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
+use util::assert_contains;
 
 itest!(stdout_write_all {
-  args: "run --quiet stdout_write_all.ts",
-  output: "stdout_write_all.out",
+  args: "run --quiet run/stdout_write_all.ts",
+  output: "run/stdout_write_all.out",
+});
+
+itest!(stdin_read_all {
+  args: "run --quiet run/stdin_read_all.ts",
+  output: "run/stdin_read_all.out",
+  input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_002_hello {
@@ -107,7 +114,6 @@ itest!(_021_mjs_modules {
 itest!(_023_no_ext {
   args: "run --reload --check 023_no_ext",
   output: "023_no_ext.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
@@ -161,12 +167,11 @@ itest!(_035_cached_only_flag {
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config checkjs.tsconfig.json 038_checkjs.js",
+  args: "run --reload --config checkjs.tsconfig.json --check 038_checkjs.js",
   exit_code: 1,
   output: "038_checkjs.js.out",
 });
@@ -182,8 +187,9 @@ itest!(_044_bad_resource {
   exit_code: 1,
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
   output: "045_proxy_test.ts.out",
   http_server: true,
 });
@@ -210,7 +216,6 @@ itest!(_052_no_remote_flag {
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(_056_make_temp_file_write_perm {
@@ -252,6 +257,12 @@ itest!(webstorage_serialization {
   output: "webstorage/serialization.ts.out",
 });
 
+// tests the beforeunload event
+itest!(beforeunload_event {
+  args: "run before_unload.js",
+  output: "before_unload.js.out",
+});
+
 // tests to ensure that when `--location` is set, all code shares the same
 // localStorage cache based on the origin of the location URL.
 #[test]
@@ -265,7 +276,7 @@ fn webstorage_location_shares_origin() {
     .arg("--location")
     .arg("https://example.com/a.ts")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -280,7 +291,7 @@ fn webstorage_location_shares_origin() {
     .arg("--location")
     .arg("https://example.com/b.ts")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -302,7 +313,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -317,7 +328,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_b.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -332,7 +343,7 @@ fn webstorage_config_file() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -356,7 +367,7 @@ fn webstorage_location_precedes_config() {
     .arg("--config")
     .arg("webstorage/config_a.jsonc")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -373,7 +384,7 @@ fn webstorage_location_precedes_config() {
     .arg("--config")
     .arg("webstorage/config_b.jsonc")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -393,7 +404,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -406,7 +417,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/logger.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -419,7 +430,7 @@ fn webstorage_main_module() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("webstorage/fixture.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -448,12 +459,6 @@ itest!(_078_unload_on_exit {
 itest!(_079_location_authentication {
   args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
   output: "079_location_authentication.ts.out",
-});
-
-itest!(_080_deno_emit_permissions {
-  args: "run --unstable 080_deno_emit_permissions.ts",
-  output: "080_deno_emit_permissions.ts.out",
-  exit_code: 1,
 });
 
 itest!(_081_location_relative_fetch_redirect {
@@ -515,8 +520,9 @@ itest!(_088_dynamic_import_already_evaluating {
   output: "088_dynamic_import_already_evaluating.ts.out",
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_089_run_allow_list {
-  args: "run --allow-run=curl 089_run_allow_list.ts",
+  args: "run --unstable --allow-run=curl 089_run_allow_list.ts",
   output: "089_run_allow_list.ts.out",
 });
 
@@ -536,7 +542,7 @@ fn _090_run_permissions_request() {
 }
 
 itest!(_091_use_define_for_class_fields {
-  args: "run 091_use_define_for_class_fields.ts",
+  args: "run --check 091_use_define_for_class_fields.ts",
   output: "091_use_define_for_class_fields.ts.out",
   exit_code: 1,
 });
@@ -557,7 +563,6 @@ itest!(blob_gc_finalization {
   args: "run blob_gc_finalization.js",
   output: "blob_gc_finalization.js.out",
   exit_code: 0,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fetch_response_finalization {
@@ -565,7 +570,6 @@ itest!(fetch_response_finalization {
   output: "fetch_response_finalization.js.out",
   http_server: true,
   exit_code: 0,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(import_type {
@@ -594,9 +598,10 @@ itest!(lock_write_requires_lock {
   exit_code: 1,
 });
 
+// TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable lock_write_fetch.ts",
   output: "lock_write_fetch.ts.out",
   http_server: true,
   exit_code: 0,
@@ -653,8 +658,7 @@ itest!(async_error {
 });
 
 itest!(config {
-  args: "run --reload --config config.tsconfig.json config.ts",
-  exit_code: 1,
+  args: "run --reload --config config.tsconfig.json --check config.ts",
   output: "config.ts.out",
 });
 
@@ -673,7 +677,6 @@ itest!(config_types_remote {
 itest!(empty_typescript {
   args: "run --reload --check subdir/empty.ts",
   output_str: Some("Check file:[WILDCARD]/subdir/empty.ts\n"),
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_001 {
@@ -689,7 +692,7 @@ itest!(error_002 {
 });
 
 itest!(error_003_typescript {
-  args: "run --reload error_003_typescript.ts",
+  args: "run --reload --check error_003_typescript.ts",
   exit_code: 1,
   output: "error_003_typescript.ts.out",
 });
@@ -699,7 +702,7 @@ itest!(error_003_typescript {
 // should result in the same output.
 // https://github.com/denoland/deno/issues/2436
 itest!(error_003_typescript2 {
-  args: "run error_003_typescript.ts",
+  args: "run --check error_003_typescript.ts",
   exit_code: 1,
   output: "error_003_typescript.ts.out",
 });
@@ -750,20 +753,17 @@ itest!(error_012_bad_dynamic_import_specifier {
   args: "run --reload --check error_012_bad_dynamic_import_specifier.ts",
   exit_code: 1,
   output: "error_012_bad_dynamic_import_specifier.ts.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_013_missing_script {
   args: "run --reload missing_file_name",
   exit_code: 1,
   output: "error_013_missing_script.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_014_catch_dynamic_import_error {
   args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
   output: "error_014_catch_dynamic_import_error.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_015_dynamic_import_permissions {
@@ -782,7 +782,7 @@ itest!(error_016_dynamic_import_permissions2 {
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "run --reload error_017_hide_long_source_ts.ts",
+  args: "run --reload --check error_017_hide_long_source_ts.ts",
   output: "error_017_hide_long_source_ts.ts.out",
   exit_code: 1,
 });
@@ -791,7 +791,6 @@ itest!(error_018_hide_long_source_js {
   args: "run error_018_hide_long_source_js.js",
   output: "error_018_hide_long_source_js.js.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_019_stack_function {
@@ -844,7 +843,7 @@ itest!(error_026_remote_import_error {
 });
 
 itest!(error_for_await {
-  args: "run --reload error_for_await.ts",
+  args: "run --reload --check error_for_await.ts",
   output: "error_for_await.ts.out",
   exit_code: 1,
 });
@@ -865,18 +864,16 @@ itest!(error_syntax {
   args: "run --reload error_syntax.js",
   exit_code: 1,
   output: "error_syntax.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_syntax_empty_trailing_line {
   args: "run --reload error_syntax_empty_trailing_line.mjs",
   exit_code: 1,
   output: "error_syntax_empty_trailing_line.mjs.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(error_type_definitions {
-  args: "run --reload error_type_definitions.ts",
+  args: "run --reload --check error_type_definitions.ts",
   exit_code: 1,
   output: "error_type_definitions.ts.out",
 });
@@ -919,8 +916,14 @@ itest!(set_exit_code_2 {
   exit_code: 42,
 });
 
-itest!(set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read set_exit_code_in_worker.ts",
+itest!(op_exit_op_set_exit_code_in_worker {
+  args: "run --no-check --unstable --allow-read op_exit_op_set_exit_code_in_worker.ts",
+  exit_code: 21,
+  output: "empty.out",
+});
+
+itest!(deno_exit_tampering {
+  args: "run --no-check --unstable deno_exit_tampering.ts",
   output: "empty.out",
   exit_code: 42,
 });
@@ -948,7 +951,7 @@ itest!(if_main {
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload import_meta.ts",
+  args: "run --quiet --reload --import-map=import_meta.importmap.json import_meta.ts",
   output: "import_meta.ts.out",
 });
 
@@ -969,7 +972,7 @@ itest!(no_check_decorators {
 });
 
 itest!(check_remote {
-  args: "run --quiet --reload no_check_remote.ts",
+  args: "run --quiet --reload --check=all no_check_remote.ts",
   output: "no_check_remote.ts.disabled.out",
   exit_code: 1,
   http_server: true,
@@ -986,30 +989,9 @@ itest!(runtime_decorators {
   output: "runtime_decorators.ts.out",
 });
 
-itest!(lib_dom_asynciterable {
-  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
-  output: "lib_dom_asynciterable.ts.out",
-});
-
-itest!(lib_dom_extras {
-  args: "run --quiet --unstable --reload lib_dom_extras.ts",
-  output: "lib_dom_extras.ts.out",
-});
-
-itest!(lib_ref {
-  args: "run --quiet --unstable --reload lib_ref.ts",
-  output: "lib_ref.ts.out",
-});
-
-itest!(lib_runtime_api {
-  args: "run --quiet --unstable --reload lib_runtime_api.ts",
-  output: "lib_runtime_api.ts.out",
-});
-
 itest!(seed_random {
   args: "run --seed=100 seed_random.js",
   output: "seed_random.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_definitions {
@@ -1021,17 +1003,16 @@ itest!(type_definitions_for_export {
   args: "run --reload --check type_definitions_for_export.ts",
   output: "type_definitions_for_export.ts.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_directives_01 {
-  args: "run --reload -L debug type_directives_01.ts",
+  args: "run --reload --check=all -L debug type_directives_01.ts",
   output: "type_directives_01.ts.out",
   http_server: true,
 });
 
 itest!(type_directives_02 {
-  args: "run --reload -L debug type_directives_02.ts",
+  args: "run --reload --check=all -L debug type_directives_02.ts",
   output: "type_directives_02.ts.out",
 });
 
@@ -1045,40 +1026,34 @@ itest!(type_directives_redirect {
   args: "run --reload --check type_directives_redirect.ts",
   output: "type_directives_redirect.ts.out",
   http_server: true,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(type_headers_deno_types {
   args: "run --reload --check type_headers_deno_types.ts",
   output: "type_headers_deno_types.ts.out",
   http_server: true,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_imports {
   args: "run --reload --check ts_type_imports.ts",
   output: "ts_type_imports.ts.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(ts_type_only_import {
   args: "run --reload --check ts_type_only_import.ts",
   output: "ts_type_only_import.ts.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(swc_syntax_error {
   args: "run --reload --check swc_syntax_error.ts",
   output: "swc_syntax_error.ts.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unbuffered_stderr {
@@ -1094,7 +1069,6 @@ itest!(unbuffered_stdout {
 itest!(v8_flags_run {
   args: "run --v8-flags=--expose-gc v8_flags.js",
   output: "v8_flags.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(v8_flags_unrecognized {
@@ -1127,14 +1101,12 @@ itest!(wasm_shared {
 itest!(wasm_async {
   args: "run wasm_async.js",
   output: "wasm_async.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_unreachable {
   args: "run --allow-read wasm_unreachable.js",
   output: "wasm_unreachable.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(wasm_url {
@@ -1152,40 +1124,34 @@ itest!(weakref {
 itest!(top_level_await_order {
   args: "run --allow-read top_level_await_order.js",
   output: "top_level_await_order.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_loop {
   args: "run --allow-read top_level_await_loop.js",
   output: "top_level_await_loop.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_circular {
   args: "run --allow-read top_level_await_circular.js",
   output: "top_level_await_circular.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Regression test for https://github.com/denoland/deno/issues/11238.
 itest!(top_level_await_nested {
   args: "run --allow-read top_level_await_nested/main.js",
   output: "top_level_await_nested.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_unresolved {
   args: "run top_level_await_unresolved.js",
   output: "top_level_await_unresolved.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await {
   args: "run --allow-read top_level_await.js",
   output: "top_level_await.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(top_level_await_ts {
@@ -1204,7 +1170,7 @@ itest!(top_level_for_await_ts {
 });
 
 itest!(unstable_disabled {
-  args: "run --reload unstable.ts",
+  args: "run --reload --check unstable.ts",
   exit_code: 1,
   output: "unstable_disabled.out",
 });
@@ -1217,7 +1183,6 @@ itest!(unstable_enabled {
 itest!(unstable_disabled_js {
   args: "run --reload unstable.js",
   output: "unstable_disabled_js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_enabled_js {
@@ -1258,13 +1223,11 @@ itest!(dynamic_import_conditional {
 itest!(tsx_imports {
   args: "run --reload --check tsx_imports.ts",
   output: "tsx_imports.ts.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fix_dynamic_import_errors {
   args: "run --reload fix_dynamic_import_errors.js",
   output: "fix_dynamic_import_errors.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(fix_emittable_skipped {
@@ -1439,7 +1402,6 @@ itest!(jsx_import_source_import_map_no_check {
 itest!(proto_exploit {
   args: "run proto_exploit.js",
   output: "proto_exploit.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(reference_types {
@@ -1536,7 +1498,6 @@ itest!(classic_workers_event_loop {
   args:
     "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
   output: "classic_workers_event_loop.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // FIXME(bartlomieju): disabled, because this test is very flaky on CI
@@ -1588,7 +1549,6 @@ itest!(error_import_map_unable_to_load {
   args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
   output: "error_import_map_unable_to_load.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Test that setting `self` in the main thread to some other value doesn't break
@@ -1596,7 +1556,6 @@ itest!(error_import_map_unable_to_load {
 itest!(replace_self {
   args: "run replace_self.js",
   output: "replace_self.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(worker_event_handler_test {
@@ -1639,7 +1598,6 @@ itest!(reference_types_error {
   args: "run --config checkjs.tsconfig.json --check reference_types_error.js",
   output: "reference_types_error.js.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(reference_types_error_no_check {
@@ -1651,7 +1609,6 @@ itest!(jsx_import_source_error {
   args: "run --config jsx/deno-jsx-error.jsonc --check jsx_import_source_no_pragma.tsx",
   output: "jsx_import_source_error.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(shebang_tsc {
@@ -1680,11 +1637,10 @@ itest!(shebang_with_json_imports_swc {
 fn no_validate_asm() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("no_validate_asm.js")
-    .stderr(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1701,7 +1657,7 @@ fn exec_path() {
     .arg("run")
     .arg("--allow-read")
     .arg("exec_path.ts")
-    .stdout(std::process::Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1825,10 +1781,9 @@ fn rust_log() {
   // Without RUST_LOG the stderr is empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("001_hello.js")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1839,11 +1794,10 @@ fn rust_log() {
   // With RUST_LOG the stderr is not empty.
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("001_hello.js")
     .env("RUST_LOG", "debug")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1860,9 +1814,10 @@ fn dont_cache_on_check_fail() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check=all")
     .arg("--reload")
     .arg("error_003_typescript.ts")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1874,8 +1829,9 @@ fn dont_cache_on_check_fail() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check=all")
     .arg("error_003_typescript.ts")
-    .stderr(std::process::Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -1887,12 +1843,14 @@ fn dont_cache_on_check_fail() {
 mod permissions {
   use test_util as util;
 
+  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
   #[test]
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
         .arg("run")
+        .arg("--unstable")
         .arg(format!("--allow-{0}", permission))
         .arg("permission_test.ts")
         .arg(format!("{0}Required", permission))
@@ -1904,12 +1862,13 @@ mod permissions {
     }
   }
 
+  // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
   #[test]
   fn without_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run permission_test.ts {0}Required", permission),
+        &format!("run --unstable permission_test.ts {0}Required", permission),
         None,
         None,
         false,
@@ -2405,35 +2364,10 @@ itest!(long_data_url_formatting {
   exit_code: 1,
 });
 
-itest!(eval_context_throw_with_conflicting_source {
-  args: "run eval_context_throw_with_conflicting_source.ts",
-  output: "eval_context_throw_with_conflicting_source.ts.out",
-  exit_code: 1,
-});
-
 itest!(eval_context_throw_dom_exception {
   args: "run eval_context_throw_dom_exception.js",
   output: "eval_context_throw_dom_exception.js.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
-
-#[test]
-fn issue12453() {
-  let _g = util::http_server();
-  let deno_dir = util::new_deno_dir();
-  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
-  let status = deno_cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--allow-net")
-    .arg("issue12453.js")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
 
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
@@ -2447,8 +2381,8 @@ fn issue12740() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2460,8 +2394,8 @@ fn issue12740() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2482,9 +2416,10 @@ fn issue12807() {
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2495,9 +2430,10 @@ fn issue12807() {
   let status = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
+    .arg("--check")
     .arg(&mod1_path)
-    .stderr(std::process::Stdio::null())
-    .stdout(std::process::Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
     .spawn()
     .unwrap()
     .wait()
@@ -2538,7 +2474,7 @@ itest!(import_assertions_dynamic_error {
 });
 
 itest!(import_assertions_type_check {
-  args: "run --allow-read import_assertions/type_check.ts",
+  args: "run --allow-read --check import_assertions/type_check.ts",
   output: "import_assertions/type_check.out",
   exit_code: 1,
 });
@@ -2546,13 +2482,11 @@ itest!(import_assertions_type_check {
 itest!(delete_window {
   args: "run delete_window.js",
   output_str: Some("true\n"),
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(colors_without_global_this {
   args: "run colors_without_globalThis.js",
   output_str: Some("true\n"),
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(config_auto_discovered_for_local_script {
@@ -2561,7 +2495,7 @@ itest!(config_auto_discovered_for_local_script {
 });
 
 itest!(no_config_auto_discovery_for_local_script {
-  args: "run --quiet --no-config run/with_config/frontend_work.ts",
+  args: "run --quiet --no-config --check run/with_config/frontend_work.ts",
   output: "run/with_config/no_auto_discovery.out",
   exit_code: 1,
 });
@@ -2576,7 +2510,6 @@ itest!(wasm_streaming_panic_test {
   args: "run wasm_streaming_panic_test.js",
   output: "wasm_streaming_panic_test.js.out",
   exit_code: 1,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 // Regression test for https://github.com/denoland/deno/issues/13897.
@@ -2590,116 +2523,95 @@ itest!(unstable_ffi_1 {
   args: "run unstable_ffi_1.js",
   output: "unstable_ffi_1.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_2 {
   args: "run unstable_ffi_2.js",
   output: "unstable_ffi_2.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_3 {
   args: "run unstable_ffi_3.js",
   output: "unstable_ffi_3.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_4 {
   args: "run unstable_ffi_4.js",
   output: "unstable_ffi_4.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_5 {
   args: "run unstable_ffi_5.js",
   output: "unstable_ffi_5.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_6 {
   args: "run unstable_ffi_6.js",
   output: "unstable_ffi_6.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_7 {
   args: "run unstable_ffi_7.js",
   output: "unstable_ffi_7.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_8 {
   args: "run unstable_ffi_8.js",
   output: "unstable_ffi_8.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_9 {
   args: "run unstable_ffi_9.js",
   output: "unstable_ffi_9.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_10 {
   args: "run unstable_ffi_10.js",
   output: "unstable_ffi_10.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_11 {
   args: "run unstable_ffi_11.js",
   output: "unstable_ffi_11.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_12 {
   args: "run unstable_ffi_12.js",
   output: "unstable_ffi_12.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_13 {
   args: "run unstable_ffi_13.js",
   output: "unstable_ffi_13.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_14 {
   args: "run unstable_ffi_14.js",
   output: "unstable_ffi_14.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(unstable_ffi_15 {
   args: "run unstable_ffi_15.js",
   output: "unstable_ffi_15.js.out",
   exit_code: 70,
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
-});
-
-itest!(future_check1 {
-  args: "run future_check.ts",
-  output: "future_check1.out",
 });
 
 itest!(future_check2 {
   args: "run --check future_check.ts",
   output: "future_check2.out",
-  envs: vec![("DENO_FUTURE_CHECK".to_string(), "1".to_string())],
 });
 
 itest!(event_listener_error {
@@ -2753,8 +2665,45 @@ itest!(complex_error {
 
 // Regression test for https://github.com/denoland/deno/issues/12143.
 itest!(js_root_with_ts_check {
-  args: "run --quiet js_root_with_ts_check.js",
+  args: "run --quiet --check js_root_with_ts_check.js",
   output: "js_root_with_ts_check.js.out",
+  exit_code: 1,
+});
+
+#[test]
+fn check_local_then_remote() {
+  let _http_guard = util::http_server();
+  let deno_dir = util::new_deno_dir();
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--check")
+    .arg("run/remote_type_error/main.ts")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let output = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--check=all")
+    .arg("run/remote_type_error/main.ts")
+    .env("NO_COLOR", "1")
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
+}
+
+// Regression test for https://github.com/denoland/deno/issues/15163
+itest!(check_js_points_to_ts {
+  args: "run --quiet --check --config checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
+  output: "run/check_js_points_to_ts/test.js.out",
   exit_code: 1,
 });
 
@@ -2798,4 +2747,43 @@ itest!(error_name_non_string {
   args: "run --quiet error_name_non_string.js",
   output: "error_name_non_string.js.out",
   exit_code: 1,
+});
+
+itest!(custom_inspect_url {
+  args: "run custom_inspect_url.js",
+  output: "custom_inspect_url.js.out",
+});
+
+#[test]
+fn running_declaration_files() {
+  let temp_dir = TempDir::new();
+  let files = vec!["file.d.ts", "file.d.cts", "file.d.mts"];
+
+  for file in files {
+    temp_dir.write(file, "");
+    let mut deno_cmd = util::deno_cmd_with_deno_dir(&temp_dir);
+    let output = deno_cmd
+      .current_dir(temp_dir.path())
+      .args(["run", file])
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+  }
+}
+
+itest!(test_and_bench_are_noops_in_run {
+  args: "run test_and_bench_in_run.js",
+  output_str: Some(""),
+});
+
+itest!(followup_dyn_import_resolved {
+  args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
+  output: "followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(unhandled_rejection {
+  args: "run --allow-read unhandled_rejection.js",
+  output: "unhandled_rejection.js.out",
 });

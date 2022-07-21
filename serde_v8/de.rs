@@ -580,7 +580,7 @@ struct EnumAccess<'a, 'b, 's> {
   // p1: std::marker::PhantomData<&'x ()>,
 }
 
-impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
+impl<'de, 'a, 'b, 's> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
   type Error = Error;
   type Variant = VariantDeserializer<'a, 'b, 's>;
 

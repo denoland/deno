@@ -375,11 +375,17 @@ impl TlsStreamInner {
     ready!(self.poll_io(cx, Flow::Read))?;
 
     if self.rd_state == State::StreamOpen {
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let buf_slice =
         unsafe { &mut *(buf.unfilled_mut() as *mut [_] as *mut [u8]) };
       let bytes_read = self.tls.reader().read(buf_slice)?;
       assert_ne!(bytes_read, 0);
-      unsafe { buf.assume_init(bytes_read) };
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        buf.assume_init(bytes_read)
+      };
       buf.advance(bytes_read);
     }
 
@@ -581,10 +587,16 @@ impl Shared {
     let self_weak = Arc::downgrade(self);
     let self_ptr = self_weak.into_raw() as *const ();
     let raw_waker = RawWaker::new(self_ptr, &Self::SHARED_WAKER_VTABLE);
-    unsafe { Waker::from_raw(raw_waker) }
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      Waker::from_raw(raw_waker)
+    }
   }
 
   fn clone_shared_waker(self_ptr: *const ()) -> RawWaker {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let self_weak = unsafe { Weak::from_raw(self_ptr as *const Self) };
     let ptr1 = self_weak.clone().into_raw();
     let ptr2 = self_weak.into_raw();
@@ -598,6 +610,8 @@ impl Shared {
   }
 
   fn wake_shared_waker_by_ref(self_ptr: *const ()) {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let self_weak = unsafe { Weak::from_raw(self_ptr as *const Self) };
     if let Some(self_arc) = Weak::upgrade(&self_weak) {
       self_arc.rd_waker.wake();
@@ -607,6 +621,8 @@ impl Shared {
   }
 
   fn drop_shared_waker(self_ptr: *const ()) {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let _ = unsafe { Weak::from_raw(self_ptr as *const Self) };
   }
 

@@ -150,18 +150,13 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--check=all")
     .arg("-L")
     .arg("debug")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
-
-  let out = std::str::from_utf8(&output.stderr).unwrap();
-  // Check if file and dependencies are written successfully
-  assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
 
   let prg = util::deno_exe_path();
   let output = Command::new(&prg)
@@ -297,7 +292,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -321,7 +315,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -346,7 +339,6 @@ fn ts_no_recheck_on_redirect() {
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let mut initial = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -360,7 +352,6 @@ fn ts_no_recheck_on_redirect() {
 
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let output = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -370,44 +361,6 @@ fn ts_no_recheck_on_redirect() {
     .expect("failed to spawn script");
 
   assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
-}
-
-#[test]
-fn ts_reload() {
-  let hello_ts = util::testdata_path().join("002_hello.ts");
-  assert!(hello_ts.is_file());
-
-  let deno_dir = TempDir::new();
-  let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(&hello_ts)
-    .spawn()
-    .expect("failed to spawn script");
-  let status_initial =
-    initial.wait().expect("failed to wait for child process");
-  assert!(status_initial.success());
-
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--reload")
-    .arg("-L")
-    .arg("debug")
-    .arg(&hello_ts)
-    .output()
-    .expect("failed to spawn script");
-
-  // check the output of the the bundle program.
-  let output_path = hello_ts.canonicalize().unwrap();
-  assert!(
-    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
-      &format!(
-        "host.getSourceFile(\"{}\", Latest)",
-        url::Url::from_file_path(&output_path).unwrap().as_str()
-      )
-    )
-  );
 }
 
 #[test]
@@ -441,22 +394,6 @@ console.log("finish");
   // check that program did not run for 10 seconds
   // for timeout to clear
   assert!(end - start < Duration::new(10, 0));
-}
-
-#[test]
-fn compiler_api() {
-  let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--reload")
-    .arg("--allow-read")
-    .arg("compiler_api_test.ts")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
 }
 
 #[test]
@@ -537,6 +474,12 @@ itest!(deno_land_unsafe_ssl {
   args:
     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
   output: "deno_land_unsafe_ssl.ts.out",
+});
+
+itest!(ip_address_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 ip_address_unsafe_ssl.ts",
+  output: "ip_address_unsafe_ssl.ts.out",
 });
 
 itest!(localhost_unsafe_ssl {
@@ -664,7 +607,6 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
@@ -721,6 +663,46 @@ fn websocketstream() {
 }
 
 #[test]
+fn websocketstream_ping() {
+  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_ping_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
+  let (stream, _) = server.accept().unwrap();
+  let mut socket = tungstenite::accept(stream).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("A")))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Ping(vec![]))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("B")))
+    .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, tungstenite::Message::Pong(vec![]));
+  socket
+    .write_message(tungstenite::Message::Text(String::from("C")))
+    .unwrap();
+  socket.close(None).unwrap();
+
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
 fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("websocket_server_multi_field_connection_header_test.ts");
@@ -748,10 +730,12 @@ fn websocket_server_multi_field_connection_header() {
     .uri("ws://localhost:4319")
     .body(())
     .unwrap();
-  assert!(
+  let (mut socket, _) =
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
-      .is_ok()
-  );
+      .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
+  socket.close(None).unwrap();
   assert!(child.wait().unwrap().success());
 }
 
@@ -875,7 +859,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net")
@@ -903,7 +886,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
@@ -930,7 +912,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=deno.land")
@@ -954,7 +935,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("resolve_dns.ts")

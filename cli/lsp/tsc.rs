@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
+use super::completions::relative_specifier;
 use super::config;
 use super::documents::AssetOrDocument;
 use super::language_server;
@@ -17,7 +18,7 @@ use super::text::LineIndex;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -46,6 +47,8 @@ use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
+use serde_repr::Deserialize_repr;
+use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -154,7 +157,7 @@ impl TsServer {
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
   specifier: ModuleSpecifier,
-  text: Arc<String>,
+  text: Arc<str>,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
@@ -169,7 +172,7 @@ impl AssetDocument {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
       specifier,
-      text: Arc::new(text.to_string()),
+      text: text.into(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
@@ -189,7 +192,7 @@ impl AssetDocument {
     }))
   }
 
-  pub fn text(&self) -> Arc<String> {
+  pub fn text(&self) -> Arc<str> {
     self.0.text.clone()
   }
 
@@ -509,7 +512,7 @@ pub enum ScriptElementKind {
   Link,
   #[serde(rename = "link name")]
   LinkName,
-  #[serde(rename = "link test")]
+  #[serde(rename = "link text")]
   LinkText,
 }
 
@@ -623,7 +626,7 @@ impl TextSpan {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
@@ -634,7 +637,7 @@ pub struct SymbolDisplayPart {
   target: Option<DocumentSpan>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsDocTagInfo {
   name: String,
@@ -785,7 +788,7 @@ impl QuickInfo {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
@@ -1283,7 +1286,14 @@ pub struct TextChange {
 }
 
 impl TextChange {
-  pub fn as_text_edit(
+  pub fn as_text_edit(&self, line_index: Arc<LineIndex>) -> lsp::TextEdit {
+    lsp::TextEdit {
+      range: self.span.to_range(line_index),
+      new_text: self.new_text.clone(),
+    }
+  }
+
+  pub fn as_text_or_annotated_text_edit(
     &self,
     line_index: Arc<LineIndex>,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
@@ -1313,7 +1323,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(asset_or_doc.line_index()))
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -1357,7 +1367,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -1577,13 +1587,13 @@ impl RefactorEditInfo {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
-  // description: String,
-// changes: Vec<FileTextChanges>,
-// #[serde(skip_serializing_if = "Option::is_none")]
-// commands: Option<Vec<Value>>,
+  description: String,
+  changes: Vec<FileTextChanges>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1618,6 +1628,7 @@ pub struct CombinedCodeActions {
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
   // is_write_access: bool,
+  #[serde(default)]
   pub is_definition: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
@@ -1813,25 +1824,97 @@ impl CallHierarchyOutgoingCall {
   }
 }
 
-#[derive(Debug, Deserialize)]
+/// Used to convert completion code actions into a command and additional text
+/// edits to pass in the completion item.
+fn parse_code_actions(
+  maybe_code_actions: Option<&Vec<CodeAction>>,
+  data: &CompletionItemData,
+  specifier: &ModuleSpecifier,
+  language_server: &language_server::Inner,
+) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
+  if let Some(code_actions) = maybe_code_actions {
+    let mut additional_text_edits: Vec<lsp::TextEdit> = Vec::new();
+    let mut has_remaining_commands_or_edits = false;
+    for ts_action in code_actions {
+      if ts_action.commands.is_some() {
+        has_remaining_commands_or_edits = true;
+      }
+
+      let asset_or_doc =
+        language_server.get_asset_or_document(&data.specifier)?;
+      for change in &ts_action.changes {
+        let change_specifier = normalize_specifier(&change.file_name)?;
+        if data.specifier == change_specifier {
+          additional_text_edits.extend(change.text_changes.iter().map(|tc| {
+            update_import_statement(
+              tc.as_text_edit(asset_or_doc.line_index()),
+              data,
+            )
+          }));
+        } else {
+          has_remaining_commands_or_edits = true;
+        }
+      }
+    }
+
+    let mut command: Option<lsp::Command> = None;
+    if has_remaining_commands_or_edits {
+      let actions: Vec<Value> = code_actions
+        .iter()
+        .map(|ca| {
+          let changes: Vec<FileTextChanges> = ca
+            .changes
+            .clone()
+            .into_iter()
+            .filter(|ch| {
+              normalize_specifier(&ch.file_name).unwrap() == data.specifier
+            })
+            .collect();
+          json!({
+            "commands": ca.commands,
+            "description": ca.description,
+            "changes": changes,
+          })
+        })
+        .collect();
+      command = Some(lsp::Command {
+        title: "".to_string(),
+        command: "_typescript.applyCompletionCodeAction".to_string(),
+        arguments: Some(vec![json!(specifier.to_string()), json!(actions)]),
+      });
+    }
+
+    if additional_text_edits.is_empty() {
+      Ok((command, None))
+    } else {
+      Ok((command, Some(additional_text_edits)))
+    }
+  } else {
+    Ok((None, None))
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
-  // name: String,
-  // kind: ScriptElementKind,
-  // kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
-  // code_actions: Option<Vec<CodeAction>>,
-  // source: Option<Vec<SymbolDisplayPart>>,
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  code_actions: Option<Vec<CodeAction>>,
+  source_display: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
   pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
+    data: &CompletionItemData,
+    specifier: &ModuleSpecifier,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> Result<lsp::CompletionItem, AnyError> {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
@@ -1859,22 +1942,42 @@ impl CompletionEntryDetails {
     } else {
       None
     };
-    // TODO(@kitsonk) add `self.code_actions`
+    let (command, additional_text_edits) = parse_code_actions(
+      self.code_actions.as_ref(),
+      data,
+      specifier,
+      language_server,
+    )?;
     // TODO(@kitsonk) add `use_code_snippet`
 
-    lsp::CompletionItem {
+    Ok(lsp::CompletionItem {
       data: None,
       detail,
       documentation,
+      command,
+      additional_text_edits,
       ..original_item.clone()
-    }
+    })
   }
+}
+
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[repr(u32)]
+pub enum CompletionInfoFlags {
+  None = 0,
+  MayIncludeAutoImports = 1,
+  IsImportStatementCompletion = 2,
+  IsContinuation = 4,
+  ResolvedModuleSpecifiers = 8,
+  ResolvedModuleSpecifiersBeyondLimit = 16,
+  MayIncludeMethodSnippets = 32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionInfo {
   entries: Vec<CompletionEntry>,
+  flags: Option<CompletionInfoFlags>,
   is_global_completion: bool,
   is_member_completion: bool,
   is_new_identifier_location: bool,
@@ -1935,6 +2038,36 @@ pub struct CompletionItemData {
   pub use_code_snippet: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionEntryDataImport {
+  module_specifier: String,
+  file_name: String,
+}
+
+/// Modify an import statement text replacement to have the correct import
+/// specifier to work with Deno module resolution.
+fn update_import_statement(
+  mut text_edit: lsp::TextEdit,
+  item_data: &CompletionItemData,
+) -> lsp::TextEdit {
+  if let Some(data) = &item_data.data {
+    if let Ok(import_data) =
+      serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+    {
+      if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
+      {
+        let new_module_specifier =
+          relative_specifier(&import_specifier, &item_data.specifier);
+        text_edit.new_text = text_edit
+          .new_text
+          .replace(&import_data.module_specifier, &new_module_specifier);
+      }
+    }
+  }
+  text_edit
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntry {
@@ -1946,15 +2079,25 @@ pub struct CompletionEntry {
   #[serde(skip_serializing_if = "Option::is_none")]
   insert_text: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  is_snippet: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   replacement_span: Option<TextSpan>,
   #[serde(skip_serializing_if = "Option::is_none")]
   has_action: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  source_display: Option<Vec<SymbolDisplayPart>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  label_details: Option<CompletionEntryLabelDetails>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   is_recommended: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   is_from_unchecked_file: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_package_json_import: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
 }
@@ -2061,8 +2204,7 @@ impl CompletionEntry {
     let use_code_snippet = settings.complete_function_calls
       && (kind == Some(lsp::CompletionItemKind::FUNCTION)
         || kind == Some(lsp::CompletionItemKind::METHOD));
-    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
-    let _commit_characters = self.get_commit_characters(info, settings);
+    let commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
     let range = self.replacement_span.clone();
     let mut filter_text = self.get_filter_text();
@@ -2132,12 +2274,20 @@ impl CompletionEntry {
       insert_text,
       detail,
       tags,
-      data: Some(json!({
-        "tsc": tsc,
-      })),
+      commit_characters,
+      data: Some(json!({ "tsc": tsc })),
       ..Default::default()
     }
   }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionEntryLabelDetails {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  detail: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2627,6 +2777,27 @@ fn start(
   Ok(())
 }
 
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[repr(u32)]
+pub enum CompletionTriggerKind {
+  Invoked = 1,
+  TriggerCharacter = 2,
+  TriggerForIncompleteCompletions = 3,
+}
+
+impl From<lsp::CompletionTriggerKind> for CompletionTriggerKind {
+  fn from(kind: lsp::CompletionTriggerKind) -> Self {
+    match kind {
+      lsp::CompletionTriggerKind::INVOKED => Self::Invoked,
+      lsp::CompletionTriggerKind::TRIGGER_CHARACTER => Self::TriggerCharacter,
+      lsp::CompletionTriggerKind::TRIGGER_FOR_INCOMPLETE_COMPLETIONS => {
+        Self::TriggerForIncompleteCompletions
+      }
+      _ => Self::Invoked,
+    }
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
@@ -2658,10 +2829,28 @@ pub enum ImportModuleSpecifierEnding {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
+pub enum IncludeInlayParameterNameHints {
+  None,
+  Literals,
+  All,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
 pub enum IncludePackageJsonAutoImports {
   Auto,
   On,
   Off,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum JsxAttributeCompletionStyle {
+  Auto,
+  Braces,
+  None,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -2671,6 +2860,8 @@ pub struct GetCompletionsAtPositionOptions {
   pub user_preferences: UserPreferences,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub trigger_character: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_kind: Option<CompletionTriggerKind>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -2691,6 +2882,12 @@ pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_with_insert_text: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_class_member_snippets: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_object_literal_method_snippets: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub use_label_details_in_completion_entries: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub allow_incomplete_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub import_module_specifier_preference:
@@ -2705,6 +2902,24 @@ pub struct UserPreferences {
   pub include_package_json_auto_imports: Option<IncludePackageJsonAutoImports>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub provide_refactor_not_applicable_reason: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub jsx_attribute_completion_style: Option<JsxAttributeCompletionStyle>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_parameter_name_hints:
+    Option<IncludeInlayParameterNameHints>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_parameter_name_hints_when_argument_matches_name:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_function_parameter_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_variable_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_property_declaration_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_function_like_return_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_enum_member_value_hints: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2754,17 +2969,20 @@ pub struct GetCompletionDetailsArgs {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub preferences: Option<UserPreferences>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
 }
 
-impl From<CompletionItemData> for GetCompletionDetailsArgs {
-  fn from(item_data: CompletionItemData) -> Self {
+impl From<&CompletionItemData> for GetCompletionDetailsArgs {
+  fn from(item_data: &CompletionItemData) -> Self {
     Self {
-      specifier: item_data.specifier,
+      specifier: item_data.specifier.clone(),
       position: item_data.position,
-      name: item_data.name,
-      source: item_data.source,
-      data: item_data.data,
+      name: item_data.name.clone(),
+      source: item_data.source.clone(),
+      preferences: None,
+      data: item_data.data.clone(),
     }
   }
 }
@@ -2836,6 +3054,9 @@ pub enum RequestMethod {
   ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
   /// Resolve outgoing call hierarchy items for a specific position.
   ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
+
+  // Special request, used only internally by the LSP
+  Restart,
 }
 
 impl RequestMethod {
@@ -3049,6 +3270,10 @@ impl RequestMethod {
           "position": position
         })
       }
+      RequestMethod::Restart => json!({
+        "id": id,
+        "method": "restart",
+      }),
     }
   }
 }
@@ -3114,7 +3339,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     StateSnapshot {
@@ -3560,7 +3785,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 66);
+    assert_eq!(assets.len(), 69);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
@@ -3767,6 +3992,7 @@ mod tests {
             ..Default::default()
           },
           trigger_character: Some(".".to_string()),
+          trigger_kind: None,
         },
       )),
       Default::default(),
@@ -3783,6 +4009,7 @@ mod tests {
         position,
         name: "log".to_string(),
         source: None,
+        preferences: None,
         data: None,
       }),
       Default::default(),
@@ -3876,5 +4103,80 @@ mod tests {
         "documentation": []
       })
     );
+  }
+
+  #[test]
+  fn test_update_import_statement() {
+    let fixtures = vec![
+      (
+        "file:///a/a.ts",
+        "./b",
+        "file:///a/b.ts",
+        "import { b } from \"./b\";\n\n",
+        "import { b } from \"./b.ts\";\n\n",
+      ),
+      (
+        "file:///a/a.ts",
+        "../b/b",
+        "file:///b/b.ts",
+        "import { b } from \"../b/b\";\n\n",
+        "import { b } from \"../b/b.ts\";\n\n",
+      ),
+      ("file:///a/a.ts", "./b", "file:///a/b.ts", ", b", ", b"),
+    ];
+
+    for (
+      specifier_text,
+      module_specifier,
+      file_name,
+      orig_text,
+      expected_text,
+    ) in fixtures
+    {
+      let specifier = ModuleSpecifier::parse(specifier_text).unwrap();
+      let item_data = CompletionItemData {
+        specifier: specifier.clone(),
+        position: 0,
+        name: "b".to_string(),
+        source: None,
+        data: Some(json!({
+          "moduleSpecifier": module_specifier,
+          "fileName": file_name,
+        })),
+        use_code_snippet: false,
+      };
+      let actual = update_import_statement(
+        lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+          },
+          new_text: orig_text.to_string(),
+        },
+        &item_data,
+      );
+      assert_eq!(
+        actual,
+        lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+          },
+          new_text: expected_text.to_string(),
+        }
+      );
+    }
   }
 }

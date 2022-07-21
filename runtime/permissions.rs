@@ -1886,6 +1886,8 @@ fn permission_prompt(message: &str, name: &str) -> bool {
 
   #[cfg(unix)]
   fn clear_stdin() -> Result<(), AnyError> {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
     assert_eq!(r, 0);
     Ok(())
@@ -1910,6 +1912,7 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     use winapi::um::winuser::MAPVK_VK_TO_VSC;
     use winapi::um::winuser::VK_RETURN;
 
+    // SAFETY: winapi calls
     unsafe {
       let stdin = GetStdHandle(STD_INPUT_HANDLE);
       // emulate an enter key press to clear any line buffered console characters

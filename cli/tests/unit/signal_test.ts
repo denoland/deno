@@ -4,89 +4,102 @@ import { assertEquals, assertThrows, deferred, delay } from "./test_util.ts";
 Deno.test(
   { ignore: Deno.build.os !== "windows" },
   function signalsNotImplemented() {
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGINT", () => {});
-      },
-      Error,
-      "not implemented",
-    );
+    const msg =
+      "Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK).";
     assertThrows(
       () => {
         Deno.addSignalListener("SIGALRM", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGCHLD", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGHUP", () => {});
       },
       Error,
-      "not implemented",
-    );
-    assertThrows(
-      () => {
-        Deno.addSignalListener("SIGINT", () => {});
-      },
-      Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGIO", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGPIPE", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGQUIT", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGTERM", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR1", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGUSR2", () => {});
       },
       Error,
-      "not implemented",
+      msg,
     );
     assertThrows(
       () => {
         Deno.addSignalListener("SIGWINCH", () => {});
       },
       Error,
-      "not implemented",
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGKILL", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSTOP", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGILL", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGFPE", () => {}),
+      Error,
+      msg,
+    );
+    assertThrows(
+      () => Deno.addSignalListener("SIGSEGV", () => {}),
+      Error,
+      msg,
     );
   },
 );
@@ -169,40 +182,73 @@ Deno.test(
 // This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
 Deno.test(
   {
-    ignore: Deno.build.os === "windows",
     permissions: { run: true, read: true },
   },
   async function canExitWhileListeningToSignal() {
-    const p = Deno.run({
-      cmd: [
-        Deno.execPath(),
+    const { code } = await Deno.spawn(Deno.execPath(), {
+      args: [
         "eval",
         "--unstable",
-        "Deno.addSignalListener('SIGIO', () => {})",
+        "Deno.addSignalListener('SIGINT', () => {})",
       ],
     });
-    const res = await p.status();
-    assertEquals(res.code, 0);
-    p.close();
+    assertEquals(code, 0);
   },
 );
 
 Deno.test(
   {
-    ignore: Deno.build.os === "windows",
+    ignore: Deno.build.os !== "windows",
     permissions: { run: true },
   },
-  function signalInvalidHandlerTest() {
-    assertThrows(() => {
-      // deno-lint-ignore no-explicit-any
-      Deno.addSignalListener("SIGINT", "handler" as any);
-    });
-    assertThrows(() => {
-      // deno-lint-ignore no-explicit-any
-      Deno.removeSignalListener("SIGINT", "handler" as any);
-    });
+  function windowsThrowsOnNegativeProcessIdTest() {
+    assertThrows(
+      () => {
+        Deno.kill(-1, "SIGKILL");
+      },
+      TypeError,
+      "Invalid pid",
+    );
   },
 );
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { run: true },
+  },
+  function noOpenSystemIdleProcessTest() {
+    let signal: Deno.Signal = "SIGKILL";
+
+    assertThrows(
+      () => {
+        Deno.kill(0, signal);
+      },
+      TypeError,
+      `Invalid pid`,
+    );
+
+    signal = "SIGTERM";
+    assertThrows(
+      () => {
+        Deno.kill(0, signal);
+      },
+      TypeError,
+      `Invalid pid`,
+    );
+  },
+);
+
+Deno.test(function signalInvalidHandlerTest() {
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    Deno.addSignalListener("SIGINT", "handler" as any);
+  });
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    Deno.removeSignalListener("SIGINT", "handler" as any);
+  });
+});
 
 Deno.test(
   {
