@@ -256,6 +256,7 @@ impl Default for TypeCheckMode {
 pub enum ConfigFlag {
   Discover,
   Path(String),
+  Inline(String),
   Disabled,
 }
 
@@ -2105,6 +2106,8 @@ static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
       deno including TypeScript, linting, and code formatting. Typically the \
       configuration file will be called `deno.json` or `deno.jsonc` and \
       automatically detected; in that case this flag is not necessary. \
+      Alternativly, you may also provide the configuration directly \
+      as a string. \
       See https://deno.land/manual@v{}/getting_started/configuration_file",
     SHORT_VERSION.as_str()
   )
@@ -2114,7 +2117,7 @@ fn config_arg<'a>() -> Arg<'a> {
   Arg::new("config")
     .short('c')
     .long("config")
-    .value_name("FILE")
+    .value_name("CONFIG")
     .help("Specify the configuration file")
     .long_help(CONFIG_HELP.as_str())
     .takes_value(true)
