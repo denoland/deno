@@ -885,7 +885,7 @@ fn diagnose_dependency(
     } = &dependency.maybe_code
     {
       let key = import_map.lookup(specifier, referrer).filter(|key| {
-        !(key.starts_with("/")
+        !(key.starts_with('/')
           || key.starts_with("./")
           || key.starts_with("../"))
       });
