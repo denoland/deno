@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
+  use deno_cache::SqliteBackedCache;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -160,6 +161,9 @@ mod not_docs {
   fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     let extensions: Vec<Extension> = vec![
       deno_webidl::init(),
+      deno_cache::init(SqliteBackedCache::new(
+        std::env::current_dir().unwrap(),
+      )),
       deno_console::init(),
       deno_url::init(),
       deno_tls::init(),

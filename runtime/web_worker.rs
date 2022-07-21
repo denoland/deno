@@ -9,6 +9,7 @@ use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -377,6 +378,9 @@ impl WebWorker {
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
+      deno_cache::init(SqliteBackedCache::new(
+        std::env::current_dir().unwrap(),
+      )),
       deno_console::init(),
       deno_url::init(),
       deno_web::init::<Permissions>(

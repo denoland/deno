@@ -806,6 +806,7 @@ dependencies = [
  "deno_ast",
  "deno_bench_util",
  "deno_broadcast_channel",
+ "deno_cache",
  "deno_console",
  "deno_core",
  "deno_crypto",
@@ -931,6 +932,16 @@ dependencies = [
  "deno_core",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "deno_cache"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "deno_core",
+ "rusqlite",
+ "serde",
 ]
 
 [[package]]
@@ -1183,6 +1194,7 @@ version = "0.76.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
+ "deno_cache",
  "deno_console",
  "deno_core",
  "deno_crypto",

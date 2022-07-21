@@ -27,6 +27,7 @@ path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
 deno_broadcast_channel = { version = "0.62.0", path = "../ext/broadcast_channel" }
+deno_cache = { version = "0.1.0", path = "../ext/cache" }
 deno_console = { version = "0.68.0", path = "../ext/console" }
 deno_core = { version = "0.150.0", path = "../core" }
 deno_crypto = { version = "0.82.0", path = "../ext/crypto" }

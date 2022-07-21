@@ -7,6 +7,7 @@ use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -136,6 +137,9 @@ impl MainWorker {
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
+      deno_cache::init(SqliteBackedCache::new(
+        std::env::current_dir().unwrap(),
+      )),
       deno_console::init(),
       deno_url::init(),
       deno_web::init::<Permissions>(
