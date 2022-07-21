@@ -3,14 +3,14 @@
 import { join, ROOT_PATH as ROOT } from "./util.js";
 
 async function bashOut(subcmd) {
-  const { status, stdout } = await Deno.spawn("bash", {
+  const { success, stdout } = await Deno.spawn("bash", {
     args: ["-c", subcmd],
     stdout: "piped",
     stderr: "null",
   });
 
   // Check for failure
-  if (!status.success) {
+  if (!success) {
     throw new Error("subcmd failed");
   }
   // Gather output
@@ -20,7 +20,7 @@ async function bashOut(subcmd) {
 }
 
 async function bashThrough(subcmd, opts = {}) {
-  const { status } = await Deno.spawn("bash", {
+  const { success, code } = await Deno.spawn("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
@@ -28,8 +28,8 @@ async function bashThrough(subcmd, opts = {}) {
   });
 
   // Exit process on failure
-  if (!status.success) {
-    Deno.exit(status.code);
+  if (!success) {
+    Deno.exit(code);
   }
 }
 
