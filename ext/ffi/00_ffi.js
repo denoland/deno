@@ -237,6 +237,7 @@
 
   class UnsafeCallback {
     #refcount;
+    #refpromise;
     #rid;
     definition;
     callback;
@@ -261,7 +262,10 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        ops.op_ffi_unsafe_callback_ref(true);
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
       }
     }
 
@@ -269,14 +273,16 @@
       // Only decrement refcount if it is positive, and only
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
-        ops.op_ffi_unsafe_callback_ref(false);
+        ops.op_ffi_unsafe_callback_unref(this.#rid);
+        this.#refpromise = undefined;
       }
     }
 
     close() {
-      if (this.#refcount) {
+      if (this.#refcount > 0) {
         this.#refcount = 0;
-        ops.op_ffi_unsafe_callback_ref(false);
+        core.opSync("op_ffi_unsafe_callback_unref", this.#rid);
+        this.#refpromise = undefined;
       }
       core.close(this.#rid);
     }

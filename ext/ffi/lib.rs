@@ -33,9 +33,14 @@ use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Poll;
+use std::task::Waker;
 
 mod fast_call;
 
@@ -158,7 +163,6 @@ type PendingFfiAsyncWork = Box<dyn FnOnce()>;
 struct FfiState {
   async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   async_work_receiver: mpsc::UnboundedReceiver<PendingFfiAsyncWork>,
-  active_refed_functions: usize,
 }
 
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
@@ -190,6 +194,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_read_f64::decl::<P>(),
       op_ffi_unsafe_callback_create::decl::<P>(),
       op_ffi_unsafe_callback_ref::decl(),
+      op_ffi_unsafe_callback_unref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
       // FFI callbacks coming in from other threads will call in and get queued.
@@ -209,10 +214,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
           maybe_scheduling = true;
         }
 
-        if ffi_state.active_refed_functions > 0 {
-          maybe_scheduling = true;
-        }
-
         drop(op_state);
       }
       while let Some(async_work_fut) = work_items.pop() {
@@ -229,7 +230,6 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
         mpsc::unbounded::<PendingFfiAsyncWork>();
 
       state.put(FfiState {
-        active_refed_functions: 0,
         async_work_receiver,
         async_work_sender,
       });
@@ -1368,7 +1368,7 @@ struct UnsafeCallbackResource {
   // until `close()` method is called.
   #[allow(dead_code)]
   closure: libffi::middle::Closure<'static>,
-  info: *const CallbackInfo,
+  info: *mut CallbackInfo,
 }
 
 impl Resource for UnsafeCallbackResource {
@@ -1397,6 +1397,12 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
+  pub state: Arc<Mutex<SharedState>>,
+}
+
+struct SharedState {
+  refed: bool,
+  waker: Option<Waker>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -1420,6 +1426,10 @@ unsafe extern "C" fn deno_ffi_callback(
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
+      if let Some(waker) = info.state.clone().lock().unwrap().waker.as_ref() {
+        // Make sure event loop wakes up to receive our message before we start waiting for a response.
+        waker.wake_by_ref();
+      }
       response_receiver.recv().unwrap();
     }
   });
@@ -1769,20 +1779,27 @@ where
   let current_context = scope.get_current_context();
   let context = v8::Global::new(scope, current_context).into_raw();
 
-  let info = Box::leak(Box::new(CallbackInfo {
+  let info: *mut CallbackInfo = Box::leak(Box::new(CallbackInfo {
     parameters: args.parameters.clone(),
     result: args.result,
     async_work_sender,
     callback,
     context,
     isolate,
+    state: Arc::new(Mutex::new(SharedState {
+      refed: false,
+      waker: None,
+    })),
   }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
     libffi::middle::Type::from(args.result),
   );
 
-  let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
+  // SAFETY: CallbackInfo is leaked, is not null and stays valid as long as the callback exists.
+  let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, unsafe {
+    info.as_ref().unwrap()
+  });
   let ptr = *closure.code_ptr() as usize;
   let resource = UnsafeCallbackResource { closure, info };
   let rid = state.resource_table.add(resource);
@@ -1834,15 +1851,68 @@ where
   Ok(result)
 }
 
-#[op]
-fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
-  check_unstable(state, "Deno.dlopen");
-  let ffi_state = state.borrow_mut::<FfiState>();
-  if inc_dec {
-    ffi_state.active_refed_functions += 1;
-  } else {
-    ffi_state.active_refed_functions -= 1;
+impl Future for CallbackInfo {
+  type Output = ();
+  fn poll(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    let mut state = self.state.lock().unwrap();
+    if !state.refed {
+      Poll::Ready(())
+    } else {
+      state.waker = Some(cx.waker().clone());
+      Poll::Pending
+    }
   }
+}
+
+#[op]
+async fn op_ffi_unsafe_callback_ref(
+  state: Rc<RefCell<deno_core::OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let info_ptr = {
+    let op_state = state.borrow_mut();
+    let callback_resource =
+      op_state.resource_table.get::<UnsafeCallbackResource>(rid)?;
+    callback_resource.info
+  };
+  // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
+  let info: &'static mut CallbackInfo = unsafe { info_ptr.as_mut().unwrap() };
+  {
+    let state = &mut info.state.lock().unwrap();
+    if state.refed {
+      return Err(type_error(
+        "Invalid UnsafeCallbackResource ref call, callback is already ref'ed",
+      ));
+    }
+    state.refed = true;
+  }
+  info.await;
+  Ok(())
+}
+
+#[op(fast)]
+fn op_ffi_unsafe_callback_unref(
+  state: &mut deno_core::OpState,
+  rid: u32,
+) -> Result<(), AnyError> {
+  let callback_resource =
+    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
+  // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
+  let info = unsafe { callback_resource.info.as_mut().unwrap() };
+  {
+    let state: &mut SharedState = &mut info.state.lock().unwrap();
+    if state.refed {
+      state.refed = false;
+      // Wake up awaiters
+      if let Some(waker) = state.waker.as_ref() {
+        waker.wake_by_ref();
+      }
+    }
+  }
+  Ok(())
 }
 
 #[op(v8)]
