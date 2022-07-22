@@ -610,7 +610,7 @@ delete Intl.v8BreakIterator;
         promise,
         reason,
       });
-      
+
       const errorEventCb = (event) => {
         if (event.error == reason) {
           core.opSync("op_remove_pending_promise_exception", promise);
@@ -622,8 +622,8 @@ delete Intl.v8BreakIterator;
       globalThis.addEventListener("error", errorEventCb);
       globalThis.dispatchEvent(event);
       globalThis.removeEventListener("error", errorEventCb);
-      
-      // If event was not prevented (or "unhandledrejection" listeners didn't 
+
+      // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
       if (event.defaultPrevented) {
         core.opSync("op_remove_pending_promise_exception", promise);
