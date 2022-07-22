@@ -612,7 +612,7 @@ delete Intl.v8BreakIterator;
       });
 
       const errorEventCb = (event) => {
-        if (event.error == reason) {
+        if (event.error === reason) {
           core.opSync("op_remove_pending_promise_exception", promise);
         }
       };
