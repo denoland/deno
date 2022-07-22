@@ -600,10 +600,9 @@ delete Intl.v8BreakIterator;
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
       WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
-      core.opSync("op_remove_pending_promise_exception", promise);
 
       if (!hasPendingException) {
-        return;
+        continue;
       }
 
       const event = new PromiseRejectionEvent("unhandledrejection", {
@@ -611,9 +610,21 @@ delete Intl.v8BreakIterator;
         promise,
         reason,
       });
+      
+      const errorEventCb = (event) => {
+        if (event.error == reason) {
+          core.opSync("op_remove_pending_promise_exception", promise);
+        }
+      };
+      // Add a callback for "error" event - it will be dispatched
+      // if error is thrown during dispatch of "unhandledrejection"
+      // event.
+      globalThis.addEventListener("error", errorEventCb);
       globalThis.dispatchEvent(event);
-
-      // If event was not prevented we will let Rust side handle it.
+      globalThis.removeEventListener("error", errorEventCb);
+      
+      // If event was not prevented (or "unhandledrejection" listeners didn't 
+      // throw) we will let Rust side handle it.
       if (event.defaultPrevented) {
         core.opSync("op_remove_pending_promise_exception", promise);
       }
