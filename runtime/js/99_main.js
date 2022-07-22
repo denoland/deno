@@ -600,6 +600,7 @@ delete Intl.v8BreakIterator;
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
       WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+      core.opSync("op_remove_pending_promise_exception", promise);
 
       if (!hasPendingException) {
         return;
