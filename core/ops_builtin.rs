@@ -31,7 +31,6 @@ pub(crate) fn init_builtins() -> Extension {
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
-      op_add::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
       op_read::decl(),
       op_write::decl(),
@@ -55,12 +54,7 @@ pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
     .collect()
 }
 
-#[op(fast)]
-fn op_add(a: i32, b: i32) -> i32 {
-  a + b
-}
-
-#[op(fast)]
+#[op]
 pub fn op_void_sync() {}
 
 #[op]
