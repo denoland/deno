@@ -17,6 +17,9 @@ use syn::FnArg;
 use syn::GenericParam;
 use syn::Ident;
 
+#[cfg(test)]
+mod tests;
+
 // Identifier to the `deno_core` crate.
 //
 // If macro called in deno_core, `crate` is used.
@@ -284,6 +287,9 @@ fn codegen_fast_impl(
   let fast_info = can_be_fast_api(core, f);
   if must_be_fast && fast_info.is_none() {
     panic!("op cannot be a fast api. enforced by #[op(fast)]")
+  }
+  if must_be_fast && is_async {
+    panic!("async op cannot be a fast api. enforced by #[op(fast)]")
   }
   if !is_async {
     if let Some(FastApiSyn {
