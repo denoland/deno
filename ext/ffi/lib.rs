@@ -2237,7 +2237,7 @@ where
   } else if pointer as usize > MAX_SAFE_INTEGER as usize {
     v8::BigInt::new_from_u64(scope, pointer as u64).into()
   } else {
-    v8::Number::new(scope, pointer as f64).into()
+    v8::Number::new(scope, pointer as usize as f64).into()
   };
   Ok(integer.into())
 }
