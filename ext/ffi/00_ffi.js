@@ -32,77 +32,77 @@
     getUint8(offset = 0) {
       return core.opSync(
         "op_ffi_read_u8",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt8(offset = 0) {
       return core.opSync(
         "op_ffi_read_i8",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getUint16(offset = 0) {
       return core.opSync(
         "op_ffi_read_u16",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt16(offset = 0) {
       return core.opSync(
         "op_ffi_read_i16",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getUint32(offset = 0) {
       return core.opSync(
         "op_ffi_read_u32",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt32(offset = 0) {
       return core.opSync(
         "op_ffi_read_i32",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getBigUint64(offset = 0) {
       return core.opSync(
         "op_ffi_read_u64",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getBigInt64(offset = 0) {
       return core.opSync(
         "op_ffi_read_u64",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat32(offset = 0) {
       return core.opSync(
         "op_ffi_read_f32",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat64(offset = 0) {
       return core.opSync(
         "op_ffi_read_f64",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getCString(offset = 0) {
       return core.opSync(
         "op_ffi_cstr_read",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
@@ -115,7 +115,7 @@
     copyInto(destination, offset = 0) {
       core.opSync(
         "op_ffi_buf_copy_into",
-        this.pointer + BigInt(offset),
+        offset ? this.pointer + BigInt(offset) : this.pointer,
         destination,
         destination.byteLength,
       );
