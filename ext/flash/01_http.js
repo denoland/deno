@@ -121,7 +121,8 @@
 
     async *[Symbol.asyncIterator]() {
       while (true) {
-        const token = await core.opAsync("op_next");
+        // const token = await core.opAsync("op_next");
+        const token = core.ops.op_next();
         for (let i = 0; i < token; i++) {
           const request = new Request(i);
           async function respondWith(resp) {
