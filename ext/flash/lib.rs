@@ -425,18 +425,19 @@ fn op_listen(
 }
 
 #[op]
-async fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
+fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   let mut op_state = op_state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   let mut tokens = 0;
-  if let Some(req) = ctx.rx.recv().await {
-    ctx.response.insert(tokens, req);
-    tokens += 1;
+  // if let Some(req) = ctx.rx.recv().await {
+  //   ctx.response.insert(tokens, req);
+  //   tokens += 1;
     while let Ok(token) = ctx.rx.try_recv() {
       ctx.response.insert(tokens, token);
       tokens += 1;
     }
-  }
+  // }
+
   tokens
 }
 

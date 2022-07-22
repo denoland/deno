@@ -412,12 +412,6 @@
             }
             if (done) break a;
           }
-          // try {
-          //   await core.opAsync("op_http_shutdown", streamRid);
-          // } catch (error) {
-          //   await reader.cancel(error);
-          //   throw error;
-          // }
         } else {
           core.ops.op_respond(
             i,
