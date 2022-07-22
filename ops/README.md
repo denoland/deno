@@ -29,20 +29,16 @@ Cases where code is optimized away:
 - `-> Result<ResourceId, E>` or `-> Result<[int], E>` types will be optimized
   like above for the `Ok()` branch.
 
-### fast API calls
+### Fast calls
 
-```rust
-impl fast_api::FastFunction for #name {
-  fn function(&self) -> *const c_void {
-    #raw_block
-  }
+The macro will infer and try to auto generate V8 fast API call trait impl for
+`sync` ops with:
 
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[ #args ]
-  }
+- arguments: integers / `&mut OpState`
+- return_type: integers
 
-  fn return_type(&self) -> fast_api::CType {
-    #ret
-  }
-}
-```
+The `#[op(fast)]` attribute can be used to enforce fast call generation at
+compile time.
+
+Trait gen for `async` ops & a ZeroCopyBuf equivalent type is planned and will be
+added soon.

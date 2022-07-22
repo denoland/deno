@@ -55,15 +55,15 @@ pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
     .collect()
 }
 
-#[op]
+#[op(fast)]
 fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
 
-#[op]
+#[op(fast)]
 pub fn op_void_sync() {}
 
-#[op]
+#[op(fast)]
 pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
