@@ -571,3 +571,17 @@ Deno.bench("nop_many_parameters_nonblocking()", () => {
     buffer2,
   );
 });
+
+Deno.bench("Deno.UnsafePointer.of", () => {
+  Deno.UnsafePointer.of(buffer);
+});
+
+const cstringBuffer = new TextEncoder().encode("Best believe it!\0");
+// Make sure the buffer does not get collected
+globalThis.cstringBuffer = cstringBuffer;
+const cstringPointerView = new Deno.UnsafePointerView(
+  Deno.UnsafePointer.of(cstringBuffer),
+);
+Deno.bench("Deno.UnsafePointerView#getCString", () => {
+  cstringPointerView.getCString();
+});
