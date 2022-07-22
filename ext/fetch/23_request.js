@@ -81,7 +81,11 @@
       headerListInner: null,
       get headerList() {
         if (this.headerListInner === null) {
-          this.headerListInner = headerList();
+          try {
+            this.headerListInner = headerList();
+          } catch {
+            throw new TypeError("cannot read headers: request closed");
+          }
         }
         return this.headerListInner;
       },

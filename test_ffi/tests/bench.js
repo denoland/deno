@@ -272,12 +272,20 @@ Deno.bench("nop_i64()", () => {
 });
 
 const { nop_usize } = dylib.symbols;
-Deno.bench("nop_usize()", () => {
+Deno.bench("nop_usize() number", () => {
+  nop_usize(100);
+});
+
+Deno.bench("nop_usize() bigint", () => {
   nop_usize(100n);
 });
 
 const { nop_isize } = dylib.symbols;
-Deno.bench("nop_isize()", () => {
+Deno.bench("nop_isize() number", () => {
+  nop_isize(100);
+});
+
+Deno.bench("nop_isize() bigint", () => {
   nop_isize(100n);
 });
 
@@ -562,4 +570,18 @@ Deno.bench("nop_many_parameters_nonblocking()", () => {
     264.3576468623546834,
     buffer2,
   );
+});
+
+Deno.bench("Deno.UnsafePointer.of", () => {
+  Deno.UnsafePointer.of(buffer);
+});
+
+const cstringBuffer = new TextEncoder().encode("Best believe it!\0");
+// Make sure the buffer does not get collected
+globalThis.cstringBuffer = cstringBuffer;
+const cstringPointerView = new Deno.UnsafePointerView(
+  Deno.UnsafePointer.of(cstringBuffer),
+);
+Deno.bench("Deno.UnsafePointerView#getCString", () => {
+  cstringPointerView.getCString();
 });

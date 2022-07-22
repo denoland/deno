@@ -11,6 +11,10 @@ delete Intl.v8BreakIterator;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeIndexOf,
+    ArrayPrototypePush,
+    ArrayPrototypeShift,
+    ArrayPrototypeSplice,
     ArrayPrototypeMap,
     DateNow,
     Error,
@@ -27,7 +31,11 @@ delete Intl.v8BreakIterator;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    SafeWeakMap,
     TypeError,
+    WeakMapPrototypeDelete,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -233,6 +241,7 @@ delete Intl.v8BreakIterator;
 
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
+    core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
     core.opSync("op_set_format_exception_callback", formatException);
     version.setVersions(
@@ -411,6 +420,7 @@ delete Intl.v8BreakIterator;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
@@ -553,6 +563,63 @@ delete Intl.v8BreakIterator;
     postMessage: util.writable(postMessage),
   };
 
+  const pendingRejections = [];
+  const pendingRejectionsReasons = new SafeWeakMap();
+
+  function promiseRejectCallback(type, promise, reason) {
+    switch (type) {
+      case 0: {
+        core.opSync("op_store_pending_promise_exception", promise, reason);
+        ArrayPrototypePush(pendingRejections, promise);
+        WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
+        break;
+      }
+      case 1: {
+        core.opSync("op_remove_pending_promise_exception", promise);
+        const index = ArrayPrototypeIndexOf(pendingRejections, promise);
+        if (index > -1) {
+          ArrayPrototypeSplice(pendingRejections, index, 1);
+          WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+
+    return !!globalThis.onunhandledrejection ||
+      eventTarget.listenerCount(globalThis, "unhandledrejection") > 0;
+  }
+
+  function promiseRejectMacrotaskCallback() {
+    while (pendingRejections.length > 0) {
+      const promise = ArrayPrototypeShift(pendingRejections);
+      const hasPendingException = core.opSync(
+        "op_has_pending_promise_exception",
+        promise,
+      );
+      const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
+      WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+
+      if (!hasPendingException) {
+        return;
+      }
+
+      const event = new PromiseRejectionEvent("unhandledrejection", {
+        cancelable: true,
+        promise,
+        reason,
+      });
+      globalThis.dispatchEvent(event);
+
+      // If event was not prevented we will let Rust side handle it.
+      if (event.defaultPrevented) {
+        core.opSync("op_remove_pending_promise_exception", promise);
+      }
+    }
+    return true;
+  }
+
   let hasBootstrapped = false;
 
   function bootstrapMainRuntime(runtimeOptions) {
@@ -585,6 +652,10 @@ delete Intl.v8BreakIterator;
     defineEventHandler(window, "load");
     defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
+    defineEventHandler(window, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
+
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
     // This prevents the recursive dispatches of unload events.
@@ -685,6 +756,10 @@ delete Intl.v8BreakIterator;
 
     defineEventHandler(self, "message");
     defineEventHandler(self, "error", undefined, true);
+    defineEventHandler(self, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
+
     // `Deno.exit()` is an alias to `self.close()`. Setting and exit
     // code using an op in worker context is a no-op.
     os.setExitHandler((_exitCode) => {

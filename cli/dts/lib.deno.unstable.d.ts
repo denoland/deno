@@ -1136,7 +1136,11 @@ declare namespace Deno {
   /**
    * Spawns a child process.
    *
-   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Child` or its `SpawnOutput` will throw a `TypeError`.
+   *
+   * If stdin is set to `"piped"`, the stdin WritableStream needs to be closed
+   * manually.
    *
    * ```ts
    * const child = Deno.spawnChild(Deno.execPath(), {
@@ -1155,27 +1159,26 @@ declare namespace Deno {
    * const status = await child.status;
    * ```
    */
-  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+  export function spawnChild(
     command: string | URL,
-    options?: T,
-  ): Child<T>;
+    options?: SpawnOptions,
+  ): Child;
 
-  export class Child<T extends SpawnOptions> {
-    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
-      : null;
-    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
-    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
-
+  export class Child {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<ChildStatus>;
 
     /** Waits for the child to exit completely, returning all its output and status. */
-    output(): Promise<SpawnOutput<T>>;
+    output(): Promise<SpawnOutput>;
     /** Kills the process with given Signal. Defaults to SIGTERM. */
     kill(signo?: Signal): void;
+
+    ref(): void;
+    unref(): void;
   }
 
   /**
@@ -1183,61 +1186,60 @@ declare namespace Deno {
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
    *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
    * ```ts
-   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   * const { code, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
    *        "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert(status.code === 0);
+   * console.assert(code === 0);
    * console.assert("hello\n" === new TextDecoder().decode(stdout));
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
-  export function spawn<T extends SpawnOptions = SpawnOptions>(
+  export function spawn(
     command: string | URL,
-    options?: T,
-  ): Promise<SpawnOutput<T>>;
+    options?: SpawnOptions,
+  ): Promise<SpawnOutput>;
 
   /**
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
    *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
    * ```ts
-   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   * const { code, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
    *       "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert(status.code === 0);
+   * console.assert(code === 0);
    * console.assert("hello\n" === new TextDecoder().decode(stdout));
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
-  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+  export function spawnSync(
     command: string | URL,
-    options?: T,
-  ): SpawnOutput<T>;
+    options?: SpawnOptions,
+  ): SpawnOutput;
 
-  export type ChildStatus =
-    | {
-      success: true;
-      code: 0;
-      signal: null;
-    }
-    | {
-      success: false;
-      code: number;
-      signal: Signal | null;
-    };
+  export interface ChildStatus {
+    success: boolean;
+    code: number;
+    signal: Signal | null;
+  }
 
-  export interface SpawnOutput<T extends SpawnOptions> {
-    status: ChildStatus;
-    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
-    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  export interface SpawnOutput extends ChildStatus {
+    get stdout(): Uint8Array;
+    get stderr(): Uint8Array;
   }
 }
 
