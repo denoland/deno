@@ -322,7 +322,7 @@
       opts,
     );
     while (true) {
-      const token = core.ops.op_next();
+      const token = await core.opAsync("op_next");
       for (let i = 0; i < token; i++) {
         const req = new Request(i);
         const resp = await handler(req);
