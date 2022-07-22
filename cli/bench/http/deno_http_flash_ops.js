@@ -2,7 +2,8 @@
 const { core } = Deno;
 const listener = core.opAsync("op_listen");
 while (true) {
-  const token = await core.opAsync("op_next_async");
+  let token = core.ops.op_next();
+  if (token === 0) token = await core.opAsync("op_next_async");
   for (let i = 0; i < token; i++) {
     core.ops.op_respond(
       i,
