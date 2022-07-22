@@ -23,9 +23,11 @@
   const { webidl } = window.__bootstrap;
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
+  // deno-lint-ignore camelcase
+  const { op_now } = Deno.core.ops;
 
   function opNow() {
-    return core.opSync("op_now");
+    return op_now.call();
   }
 
   // ---------------------------------------------------------------------------
