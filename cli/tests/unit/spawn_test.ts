@@ -728,8 +728,8 @@ const child = await Deno.spawnChild(Deno.execPath(), {
 });
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
 const reader = readable.getReader();
-// set up an interval that will end after reading a few from stdout for 
-// a few times to verify that stdio streams are properly unrefed
+// set up an interval that will end after reading a few messages from stdout, 
+// to verify that stdio streams are properly unrefed
 let count = 0;
 let interval;
 interval = setInterval(async () => {
