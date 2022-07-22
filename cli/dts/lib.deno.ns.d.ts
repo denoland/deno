@@ -309,6 +309,11 @@ declare namespace Deno {
      * for example via a call to `Deno.exit`. Defaults to the parent test or
      * step's value. */
     sanitizeExit?: boolean;
+    /** Throws an error when the step fails. Normally a step resolves with a
+     * boolean indicating if the step failed or not. But you can set this to
+     * `true` to throw an error instead. This ensures that any step after this
+     * one will not run. Defaults to the parent test or step's value. */
+    throwOnFailure?: boolean;
   }
 
   export interface TestDefinition {

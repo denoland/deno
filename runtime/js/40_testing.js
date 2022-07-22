@@ -1282,6 +1282,7 @@
         stepDesc.sanitizeOps ??= desc.sanitizeOps;
         stepDesc.sanitizeResources ??= desc.sanitizeResources;
         stepDesc.sanitizeExit ??= desc.sanitizeExit;
+        stepDesc.throwOnFailure ??= desc.throwOnFailure;
         stepDesc.origin = getTestOrigin();
         const jsError = Deno.core.destructureError(new Error());
         stepDesc.location = {
@@ -1351,7 +1352,16 @@
             stepReportResult(stepDesc);
           }
 
-          return state.status === "ok";
+          const statusOk = state.status === "ok";
+          if (stepDesc.throwOnFailure) {
+            if (!statusOk) {
+              throw state.error;
+            } else {
+              return true;
+            }
+          } else {
+            return statusOk;
+          }
         } finally {
           if (canStreamReporting(stepDesc.parent)) {
             const parentState = MapPrototypeGet(testStates, stepDesc.parent.id);
