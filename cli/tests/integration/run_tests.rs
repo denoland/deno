@@ -2787,3 +2787,8 @@ itest!(unhandled_rejection {
   args: "run --check unhandled_rejection.ts",
   output: "unhandled_rejection.ts.out",
 });
+
+itest!(unhandled_rejection_sync_error {
+  args: "run --check unhandled_rejection_sync_error.ts",
+  output: "unhandled_rejection_sync_error.ts.out",
+});
