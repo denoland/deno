@@ -3,7 +3,7 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
-import { assertThrows } from "../../test_util/std/testing/asserts.ts";
+import { assertThrows, assert } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -251,12 +251,14 @@ function addU32Fast(a, b) {
 console.log(addU32Fast(123, 456));
 %OptimizeFunctionOnNextCall(addU32Fast);
 console.log(addU32Fast(123, 456));
+assertFastCall(addU32Fast);
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
 %PrepareFunctionForOptimization(addU64Fast);
 console.log(addU64Fast(2, 3));
 %OptimizeFunctionOnNextCall(addU64Fast);
 console.log(addU64Fast(2, 3));
+assertFastCall(addU64Fast);
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -468,55 +470,7 @@ After: ${postStr}`,
   console.log("Correct number of resources");
 })();
 
-function printStatus(fn) {
-    const status = %GetOptimizationStatus(fn);
-    console.log(status.toString(2).padStart(12, '0'));
-
-    if (status & (1 << 0)) {
-        console.log("is function");
-    }
-
-    if (status & (1 << 1)) {
-        console.log("is never optimized");
-    }
-    
-    if (status & (1 << 2)) {
-        console.log("is always optimized");
-    }
-    
-    if (status & (1 << 3)) {
-        console.log("is maybe deoptimized");
-    }
-    
-    if (status & (1 << 4)) {
-        console.log("is optimized");
-    }
-    
-    if (status & (1 << 5)) {
-        console.log("is optimized by TurboFan");
-    }
-    
-    if (status & (1 << 6)) {
-        console.log("is interpreted");
-    }
-    
-    if (status & (1 << 7)) {
-        console.log("is marked for optimization");
-    }
-    
-    if (status & (1 << 8)) {
-        console.log("is marked for concurrent optimization");
-    }
-    
-    if (status & (1 << 9)) {
-        console.log("is optimizing concurrently");
-    }
-    
-    if (status & (1 << 10)) {
-        console.log("is executing");
-    }
-    
-    if (status & (1 << 11)) {
-        console.log("topmost frame is turbo fanned");
-    }
+function assertFastCall(fn) {
+  const status = % GetOptimizationStatus(fn);
+  assert(status & (1 << 4));
 }
