@@ -651,15 +651,14 @@ pub struct FfiFastCallTemplate {
 }
 
 impl fast_api::FastFunction for FfiFastCallTemplate {
-  type Signature = ();
-  fn function(&self) -> Self::Signature {}
-
-  fn raw(&self) -> *const c_void {
+  fn function(&self) -> *const c_void {
     self.symbol_ptr
   }
+
   fn args(&self) -> &'static [fast_api::Type] {
     Box::leak(self.args.clone())
   }
+
   fn return_type(&self) -> fast_api::CType {
     self.ret
   }
@@ -767,7 +766,7 @@ fn make_sync_fn<'s>(
   .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
 
   let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
-    builder.build_fast(scope, fast_ffi_templ)
+    builder.build_fast(scope, &fast_ffi_templ, None)
   } else {
     builder.build(scope)
   };
@@ -1874,7 +1873,7 @@ fn op_ffi_call_nonblocking<'scope>(
 fn op_ffi_ptr_of<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  buf: ZeroCopyBuf,
+  buf: serde_v8::Value<'scope>,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1883,8 +1882,33 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  let pointer = if let Ok(value) =
+    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
+  {
+    let backing_store = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .get_backing_store();
+    let byte_offset = value.byte_offset();
+    if byte_offset > 0 {
+      &backing_store[byte_offset..] as *const _ as *const u8
+    } else {
+      &backing_store[..] as *const _ as *const u8
+    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
+  {
+    let backing_store = value.get_backing_store();
+    &backing_store[..] as *const _ as *const u8
+  } else {
+    return Err(type_error(
+      "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
+    ));
+  };
+
   let big_int: v8::Local<v8::Value> =
-    v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
+    v8::BigInt::new_from_u64(scope, pointer as u64).into();
   Ok(big_int.into())
 }
 
@@ -1916,11 +1940,12 @@ where
   }
 }
 
-#[op]
-fn op_ffi_cstr_read<FP>(
+#[op(v8)]
+fn op_ffi_cstr_read<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   ptr: u64,
-) -> Result<String, AnyError>
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1929,10 +1954,15 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_char;
-  // SAFETY: ptr is user provided
-  // lifetime validity is not an issue because we allocate a new string.
-  Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
+  // SAFETY: Pointer is user provided.
+  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+  let value: v8::Local<v8::Value> =
+    v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
+      .ok_or_else(|| {
+        type_error("Invalid CString pointer, string exceeds max length")
+      })?
+      .into();
+  Ok(value.into())
 }
 
 #[op]

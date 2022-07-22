@@ -659,7 +659,6 @@ itest!(async_error {
 
 itest!(config {
   args: "run --reload --config config.tsconfig.json --check config.ts",
-  exit_code: 1,
   output: "config.ts.out",
 });
 
@@ -1042,7 +1041,7 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
@@ -2782,4 +2781,9 @@ itest!(test_and_bench_are_noops_in_run {
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(unhandled_rejection {
+  args: "run --check unhandled_rejection.ts",
+  output: "unhandled_rejection.ts.out",
 });

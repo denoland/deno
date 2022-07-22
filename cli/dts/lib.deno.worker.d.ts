@@ -8,12 +8,16 @@
 
 interface WorkerGlobalScopeEventMap {
   "error": ErrorEvent;
+  "unhandledrejection": PromiseRejectionEvent;
 }
 
 declare class WorkerGlobalScope extends EventTarget {
   readonly location: WorkerLocation;
   readonly navigator: WorkerNavigator;
   onerror: ((this: WorkerGlobalScope, ev: ErrorEvent) => any) | null;
+  onunhandledrejection:
+    | ((this: WorkerGlobalScope, ev: PromiseRejectionEvent) => any)
+    | null;
 
   readonly self: WorkerGlobalScope & typeof globalThis;
 
@@ -116,6 +120,9 @@ declare function postMessage(
 declare var navigator: WorkerNavigator;
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)
+  | null;
+declare var onunhandledrejection:
+  | ((this: DedicatedWorkerGlobalScope, ev: PromiseRejectionEvent) => any)
   | null;
 declare var self: WorkerGlobalScope & typeof globalThis;
 declare function addEventListener<

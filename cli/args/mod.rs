@@ -286,6 +286,11 @@ impl CliOptions {
     self.flags.enable_testing_features
   }
 
+  /// If the --inspect or --inspect-brk flags are used.
+  pub fn is_inspecting(&self) -> bool {
+    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
+  }
+
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
     self.flags.inspect_brk
   }

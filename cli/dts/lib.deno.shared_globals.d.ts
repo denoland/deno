@@ -400,6 +400,17 @@ declare class ErrorEvent extends Event {
   constructor(type: string, eventInitDict?: ErrorEventInit);
 }
 
+interface PromiseRejectionEventInit extends EventInit {
+  promise: Promise<any>;
+  reason?: any;
+}
+
+declare class PromiseRejectionEvent extends Event {
+  readonly promise: Promise<any>;
+  readonly reason: any;
+  constructor(type: string, eventInitDict?: PromiseRejectionEventInit);
+}
+
 interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }

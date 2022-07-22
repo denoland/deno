@@ -3,10 +3,7 @@
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 
-use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
@@ -22,44 +19,15 @@ mod emit;
 mod incremental;
 
 pub use check::TypeCheckCache;
+pub use common::FastInsecureHasher;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
-pub use emit::SpecifierEmitCacheData;
 pub use incremental::IncrementalCache;
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct EmitMetadata {
-  pub version_hash: String,
-}
-
-pub enum CacheType {
-  Emit,
-  SourceMap,
-  Version,
-}
-
-/// A trait which provides a concise implementation to getting and setting
-/// values in a cache.
-pub trait Cacher {
-  /// Get a value from the cache.
-  fn get(
-    &self,
-    cache_type: CacheType,
-    specifier: &ModuleSpecifier,
-  ) -> Option<String>;
-  /// Set a value in the cache.
-  fn set(
-    &self,
-    cache_type: CacheType,
-    specifier: &ModuleSpecifier,
-    value: String,
-  ) -> Result<(), AnyError>;
-}
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  disk_cache: DiskCache,
+  emit_cache: EmitCache,
   dynamic_permissions: Permissions,
   file_fetcher: Arc<FileFetcher>,
   root_permissions: Permissions,
@@ -67,7 +35,7 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    disk_cache: DiskCache,
+    emit_cache: EmitCache,
     file_fetcher: FileFetcher,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
@@ -75,7 +43,7 @@ impl FetchCacher {
     let file_fetcher = Arc::new(file_fetcher);
 
     Self {
-      disk_cache,
+      emit_cache,
       dynamic_permissions,
       file_fetcher,
       root_permissions,
@@ -87,21 +55,14 @@ impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
-      let location = &self.disk_cache.location;
       let emit = self
-        .disk_cache
-        .get_cache_filename_with_extension(specifier, "js")
-        .map(|p| location.join(p))
-        .filter(|p| p.is_file());
-      let map = self
-        .disk_cache
-        .get_cache_filename_with_extension(specifier, "js.map")
-        .map(|p| location.join(p))
+        .emit_cache
+        .get_emit_filepath(specifier)
         .filter(|p| p.is_file());
       Some(CacheInfo {
         local: Some(local),
         emit,
-        map,
+        map: None,
       })
     } else {
       None

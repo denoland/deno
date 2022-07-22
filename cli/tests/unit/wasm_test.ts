@@ -79,8 +79,8 @@ Deno.test(async function wasmInstantiateStreaming() {
 Deno.test(
   { permissions: { read: true } },
   async function wasmFileStreaming() {
-    const url = new URL("../testdata/unreachable.wasm", import.meta.url);
-    assert(url.href.startsWith("file://"));
+    const url = import.meta.resolve("../testdata/unreachable.wasm");
+    assert(url.startsWith("file://"));
 
     const { module } = await WebAssembly.instantiateStreaming(fetch(url));
     assertEquals(WebAssembly.Module.exports(module), [{
