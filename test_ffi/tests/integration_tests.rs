@@ -128,7 +128,7 @@ fn symbol_types() {
   build();
 
   let output = deno_cmd()
-    .arg("cache")
+    .arg("check")
     .arg("--unstable")
     .arg("--quiet")
     .arg("tests/ffi_types.ts")
