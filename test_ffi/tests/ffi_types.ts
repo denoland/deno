@@ -331,7 +331,10 @@ type __Tests__ = [
   higher_order_params: AssertEqual<
     {
       symbols: {
-        pushBuf: (ptr: number | bigint | TypedArray | null, func: number | bigint | null) => void;
+        pushBuf: (
+          ptr: number | bigint | TypedArray | null,
+          func: number | bigint | null,
+        ) => void;
       };
       close(): void;
     },
@@ -356,7 +359,9 @@ type __Tests__ = [
   non_exact_params: AssertEqual<
     {
       symbols: {
-        foo: (...args: (number | bigint | TypedArray | null)[]) => number | bigint;
+        foo: (
+          ...args: (number | bigint | TypedArray | null)[]
+        ) => number | bigint;
       };
       close(): void;
     },

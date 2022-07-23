@@ -2265,9 +2265,14 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let value = v8::Local::<v8::BigInt>::try_from(src.v8_value)
-    .map_err(|_| type_error("Invalid FFI pointer value, expected BigInt"))?;
-  let ptr = value.u64_value().0 as usize as *mut c_void;
+  let ptr = if let Ok(value) = v8::Local::<v8::Number>::try_from(src.v8_value) {
+    value.value() as usize as *mut c_void
+  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(src.v8_value) {
+    value.u64_value().0 as usize as *mut c_void
+  } else {
+    return Err(type_error("Invalid FFI pointer value, expected BigInt"));
+  };
+
   if std::ptr::eq(ptr, std::ptr::null()) {
     return Err(type_error("Invalid FFI pointer value, got nullptr"));
   }
