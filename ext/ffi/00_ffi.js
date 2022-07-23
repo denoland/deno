@@ -10,7 +10,6 @@
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     TypeError,
-    Uint8Array,
   } = window.__bootstrap.primordials;
 
   function unpackU64([hi, lo]) {
@@ -107,9 +106,11 @@
     }
 
     getArrayBuffer(byteLength, offset = 0) {
-      const uint8array = new Uint8Array(byteLength);
-      this.copyInto(uint8array, offset);
-      return uint8array.buffer;
+      return core.opSync(
+        "op_ffi_get_buf",
+        offset ? this.pointer + BigInt(offset) : this.pointer,
+        byteLength,
+      );
     }
 
     copyInto(destination, offset = 0) {
