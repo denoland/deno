@@ -3,7 +3,9 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
-import { assertThrows } from "../../test_util/std/testing/asserts.ts";
+import {
+  assertThrows,
+} from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -441,6 +443,15 @@ console.log(
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
+
+const arrayBuffer = view.getArrayBuffer(4);
+const uint32Array = new Uint32Array(arrayBuffer);
+console.log("arrayBuffer.byteLength:", arrayBuffer.byteLength);
+console.log("uint32Array.length:", uint32Array.length);
+console.log("uint32Array[0]:", uint32Array[0]);
+uint32Array[0] = 55; // MUTATES!
+console.log("uint32Array[0] after mutation:", uint32Array[0]);
+console.log("Static ptr value after mutation:", view.getUint32());
 
 (function cleanup() {
   dylib.close();

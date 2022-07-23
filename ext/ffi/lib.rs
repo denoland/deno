@@ -165,6 +165,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
+      op_ffi_get_buf::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
       op_ffi_read_u8::decl::<P>(),
@@ -1873,7 +1874,7 @@ fn op_ffi_call_nonblocking<'scope>(
 fn op_ffi_ptr_of<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  buf: ZeroCopyBuf,
+  buf: serde_v8::Value<'scope>,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -1882,9 +1883,78 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  let pointer = if let Ok(value) =
+    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
+  {
+    let backing_store = value
+      .buffer(scope)
+      .ok_or_else(|| {
+        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
+      })?
+      .get_backing_store();
+    let byte_offset = value.byte_offset();
+    if byte_offset > 0 {
+      &backing_store[byte_offset..] as *const _ as *const u8
+    } else {
+      &backing_store[..] as *const _ as *const u8
+    }
+  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
+  {
+    let backing_store = value.get_backing_store();
+    &backing_store[..] as *const _ as *const u8
+  } else {
+    return Err(type_error(
+      "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
+    ));
+  };
+
   let big_int: v8::Local<v8::Value> =
-    v8::BigInt::new_from_u64(scope, buf.as_ptr() as u64).into();
+    v8::BigInt::new_from_u64(scope, pointer as u64).into();
   Ok(big_int.into())
+}
+
+unsafe extern "C" fn noop_deleter_callback(
+  _data: *mut c_void,
+  _byte_length: usize,
+  _deleter_data: *mut c_void,
+) {
+}
+
+#[op(v8)]
+fn op_ffi_get_buf<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut deno_core::OpState,
+  src: serde_v8::Value<'scope>,
+  len: usize,
+) -> Result<serde_v8::Value<'scope>, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#arrayBuffer");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let value = v8::Local::<v8::BigInt>::try_from(src.v8_value)
+    .map_err(|_| type_error("Invalid FFI pointer value, expected BigInt"))?;
+  let ptr = value.u64_value().0 as usize as *mut c_void;
+  if std::ptr::eq(ptr, std::ptr::null()) {
+    return Err(type_error("Invalid FFI pointer value, got nullptr"));
+  }
+
+  // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
+  let backing_store = unsafe {
+    v8::ArrayBuffer::new_backing_store_from_ptr(
+      ptr,
+      len,
+      noop_deleter_callback,
+      std::ptr::null_mut(),
+    )
+  }
+  .make_shared();
+  let array_buffer: v8::Local<v8::Value> =
+    v8::ArrayBuffer::with_backing_store(scope, &backing_store).into();
+  Ok(array_buffer.into())
 }
 
 #[op]
@@ -1915,11 +1985,12 @@ where
   }
 }
 
-#[op]
-fn op_ffi_cstr_read<FP>(
+#[op(v8)]
+fn op_ffi_cstr_read<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   ptr: u64,
-) -> Result<String, AnyError>
+) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -1928,10 +1999,15 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let ptr = ptr as *const c_char;
-  // SAFETY: ptr is user provided
-  // lifetime validity is not an issue because we allocate a new string.
-  Ok(unsafe { CStr::from_ptr(ptr) }.to_str()?.to_string())
+  // SAFETY: Pointer is user provided.
+  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+  let value: v8::Local<v8::Value> =
+    v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
+      .ok_or_else(|| {
+        type_error("Invalid CString pointer, string exceeds max length")
+      })?
+      .into();
+  Ok(value.into())
 }
 
 #[op]
