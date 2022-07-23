@@ -363,6 +363,8 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
 
+    // TODO(bartlomieju): remove this whole block, `js_uncaught_exception_cb` is
+    // not needed anymore
     if let Some(exception) = tc_scope.exception() {
       if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
         tc_scope.reset(); // Cancel pending exception.

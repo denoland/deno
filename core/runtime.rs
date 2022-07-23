@@ -1335,7 +1335,15 @@ impl JsRuntime {
         .expect("Expected to get promise as module evaluation result");
       let promise_global = v8::Global::new(tc_scope, promise);
       let mut state = state_rc.borrow_mut();
-      state.pending_promise_exceptions.remove(&promise_global);
+      {
+        let pending_mod_evaluate = state.pending_mod_evaluate.as_ref().unwrap();
+        let pending_rejection_was_already_handled = pending_mod_evaluate
+          .handled_promise_rejections
+          .contains(&promise_global);
+        if !pending_rejection_was_already_handled {
+          state.pending_promise_exceptions.remove(&promise_global);
+        }
+      }
       let promise_global = v8::Global::new(tc_scope, promise);
       state.pending_mod_evaluate.as_mut().unwrap().promise =
         Some(promise_global);
