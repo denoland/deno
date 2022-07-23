@@ -9,7 +9,7 @@ const V_WGPU = "0.13";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
-  const { status } = await Deno.spawn("bash", {
+  const { success, code } = await Deno.spawn("bash", {
     ...opts,
     args: ["-c", subcmd],
     stdout: "inherit",
@@ -17,8 +17,8 @@ async function bash(subcmd, opts = {}) {
   });
 
   // Exit process on failure
-  if (!status.success) {
-    Deno.exit(status.code);
+  if (!success) {
+    Deno.exit(code);
   }
 }
 
