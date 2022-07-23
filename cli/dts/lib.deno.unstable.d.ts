@@ -488,7 +488,7 @@ declare namespace Deno {
    * system pointer values are represented as numbers if the value is below
    * `Number.MAX_SAFE_INTEGER`.
    */
-  type PointerValue = number | bigint;
+  export type PointerValue = number | bigint;
 
   /** **UNSTABLE**: Unsafe and new API, beware!
    *
