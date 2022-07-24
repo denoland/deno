@@ -49,7 +49,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
 }
 
 pub(crate) fn codegen(sym: &crate::Symbol) -> String {
-  let mut c = String::from("#include <stdint.h>\n");
+  let mut c = String::from(include_str!("prelude.h"));
   let ret = native_to_c(&sym.result_type);
 
   // extern <return_type> func(
