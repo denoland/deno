@@ -131,7 +131,7 @@ declare namespace Deno {
    */
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
@@ -191,11 +191,11 @@ declare namespace Deno {
    */
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBigIntType, number | bigint>
     & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeBufferType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>;
+    & Record<NativePointerType, PointerValue | null>
+    & Record<NativeBufferType, PointerValue | null>
+    & Record<NativeFunctionType, PointerValue | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -350,7 +350,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = number | bigint;
+  export type PointerValue = Record<string | number | symbol, never>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -360,8 +360,14 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
+    /** Create a pointer from a numeric value. This is one is <i>really</i> dangerous! */
+    static create(value: number | bigint): PointerValue;
     /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    /** Return a new pointer offset from the original by `offset` bytes. */
+    static offset(value: PointerValue, offset: number): PointerValue
+    /** Get the numeric value of a pointer */
+    static value(value: PointerValue): number | bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -400,16 +406,18 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): PointerValue;
+    getBigUint64(offset?: number): number | bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): PointerValue;
+    getBigInt64(offset?: number): number | bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the
      * pointer. */
     getFloat64(offset?: number): number;
+    /** Gets a pointer at the specified byte offset from the pointer */
+    getPointer(offset?: number): PointerValue;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
