@@ -165,6 +165,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_call_ptr::decl::<P>(),
       op_ffi_call_ptr_nonblocking::decl::<P>(),
       op_ffi_ptr_of::decl::<P>(),
+      op_ffi_get_buf::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
       op_ffi_read_u8::decl::<P>(),
@@ -1910,6 +1911,50 @@ where
   let big_int: v8::Local<v8::Value> =
     v8::BigInt::new_from_u64(scope, pointer as u64).into();
   Ok(big_int.into())
+}
+
+unsafe extern "C" fn noop_deleter_callback(
+  _data: *mut c_void,
+  _byte_length: usize,
+  _deleter_data: *mut c_void,
+) {
+}
+
+#[op(v8)]
+fn op_ffi_get_buf<FP, 'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut deno_core::OpState,
+  src: serde_v8::Value<'scope>,
+  len: usize,
+) -> Result<serde_v8::Value<'scope>, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#arrayBuffer");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  let value = v8::Local::<v8::BigInt>::try_from(src.v8_value)
+    .map_err(|_| type_error("Invalid FFI pointer value, expected BigInt"))?;
+  let ptr = value.u64_value().0 as usize as *mut c_void;
+  if std::ptr::eq(ptr, std::ptr::null()) {
+    return Err(type_error("Invalid FFI pointer value, got nullptr"));
+  }
+
+  // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
+  let backing_store = unsafe {
+    v8::ArrayBuffer::new_backing_store_from_ptr(
+      ptr,
+      len,
+      noop_deleter_callback,
+      std::ptr::null_mut(),
+    )
+  }
+  .make_shared();
+  let array_buffer: v8::Local<v8::Value> =
+    v8::ArrayBuffer::with_backing_store(scope, &backing_store).into();
+  Ok(array_buffer.into())
 }
 
 #[op]
