@@ -10,13 +10,11 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::v8::fast_api;
-use std::sync::mpsc::sync_channel;
-
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::v8::fast_api;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -33,16 +31,29 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
+use std::mem::size_of;
 use std::os::raw::c_char;
+use std::os::raw::c_short;
 use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::mpsc::sync_channel;
 
 #[cfg(not(target_os = "windows"))]
 mod jit_trampoline;
 #[cfg(not(target_os = "windows"))]
 mod tcc;
+
+#[cfg(not(target_pointer_width = "64"))]
+compile_error!("platform not supported");
+
+// Assert assumptions made in `prelude.h`
+const _: () = {
+  assert!(size_of::<c_char>() == 1);
+  assert!(size_of::<c_short>() == 2);
+  assert!(size_of::<*const ()>() == 8);
+};
 
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
