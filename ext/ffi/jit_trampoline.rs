@@ -56,7 +56,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
 }
 
 pub(crate) fn codegen(sym: &crate::Symbol) -> String {
-  let mut c = String::from("#include <stdint.h>\n");
+  let mut c = String::from(include_str!("prelude.h"));
   let ret = native_to_c(&sym.result_type);
 
   // extern <return_type> func(
@@ -130,75 +130,72 @@ mod tests {
     super::codegen(&sym)
   }
 
+  const PRELUDE: &str = include_str!("prelude.h");
+  fn assert_codegen(expected: String, actual: &str) {
+    assert_eq!(expected, format!("{PRELUDE}\n{}", actual))
+  }
+
   #[test]
   fn test_gen_trampoline() {
-    assert_eq!(
+    assert_codegen(
       codegen(vec![], NativeType::Void),
-      "#include <stdint.h>\n\n\
-      extern void func();\n\n\
+      "extern void func();\n\n\
       void func_trampoline(void* recv) {\
         \n  return func();\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::U32, NativeType::U32], NativeType::U32),
-      "#include <stdint.h>\n\n\
-      extern uint32_t func(uint32_t p0, uint32_t p1);\n\n\
+      "extern uint32_t func(uint32_t p0, uint32_t p1);\n\n\
       uint32_t func_trampoline(void* recv, uint32_t p0, uint32_t p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::I32, NativeType::I32], NativeType::I32),
-      "#include <stdint.h>\n\n\
-      extern int32_t func(int32_t p0, int32_t p1);\n\n\
+      "extern int32_t func(int32_t p0, int32_t p1);\n\n\
       int32_t func_trampoline(void* recv, int32_t p0, int32_t p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::F32, NativeType::F32], NativeType::F32),
-      "#include <stdint.h>\n\n\
-      extern float func(float p0, float p1);\n\n\
+      "extern float func(float p0, float p1);\n\n\
       float func_trampoline(void* recv, float p0, float p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::F64, NativeType::F64], NativeType::F64),
-      "#include <stdint.h>\n\n\
-      extern double func(double p0, double p1);\n\n\
+      "extern double func(double p0, double p1);\n\n\
       double func_trampoline(void* recv, double p0, double p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
   }
 
   #[test]
   fn test_gen_trampoline_implicit_cast() {
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::I8, NativeType::U8], NativeType::I8),
-      "#include <stdint.h>\n\n\
-      extern int8_t func(int8_t p0, uint8_t p1);\n\n\
+      "extern int8_t func(int8_t p0, uint8_t p1);\n\n\
       int8_t func_trampoline(void* recv, int32_t p0, uint32_t p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::ISize, NativeType::U64], NativeType::Void),
-      "#include <stdint.h>\n\n\
-      extern void func(intptr_t p0, uint64_t p1);\n\n\
+      "extern void func(intptr_t p0, uint64_t p1);\n\n\
       void func_trampoline(void* recv, intptr_t p0, uint64_t p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
-    assert_eq!(
+    assert_codegen(
       codegen(vec![NativeType::USize, NativeType::USize], NativeType::U32),
-      "#include <stdint.h>\n\n\
-      extern uint32_t func(uintptr_t p0, uintptr_t p1);\n\n\
+      "extern uint32_t func(uintptr_t p0, uintptr_t p1);\n\n\
       uint32_t func_trampoline(void* recv, uintptr_t p0, uintptr_t p1) {\
         \n  return func(p0, p1);\n\
-      }\n\n"
+      }\n\n",
     );
   }
 }
