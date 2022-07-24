@@ -265,6 +265,12 @@ console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_i64(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
+console.log(dylib.symbols.add_u64(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_i64(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_i64(Number.MIN_SAFE_INTEGER, -1));
+console.log(dylib.symbols.add_usize(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_isize(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_isize(Number.MIN_SAFE_INTEGER, -1));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
@@ -280,6 +286,12 @@ console.log(
 console.log(
   await dylib.symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn),
 );
+console.log(await dylib.symbols.add_u64_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_i64_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_i64_nonblocking(Number.MIN_SAFE_INTEGER, -1));
+console.log(await dylib.symbols.add_usize_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_isize_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_isize_nonblocking(Number.MIN_SAFE_INTEGER, -1));
 console.log(await dylib.symbols.add_f32_nonblocking(123.123, 456.789));
 console.log(await dylib.symbols.add_f64_nonblocking(123.123, 456.789));
 
@@ -439,7 +451,7 @@ console.log("Static u32:", dylib.symbols.static_u32);
 console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
-  typeof dylib.symbols.static_ptr === "bigint",
+  typeof dylib.symbols.static_ptr === "number",
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());

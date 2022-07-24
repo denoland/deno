@@ -12,11 +12,19 @@
     TypeError,
   } = window.__bootstrap.primordials;
 
-  function unpackU64([hi, lo]) {
+  function unpackU64(returnValue) {
+    if (typeof returnValue === "number") {
+      return returnValue;
+    }
+    const [hi, lo] = returnValue;
     return BigInt(hi) << 32n | BigInt(lo);
   }
 
-  function unpackI64([hi, lo]) {
+  function unpackI64(returnValue) {
+    if (typeof returnValue === "number") {
+      return returnValue;
+    }
+    const [hi, lo] = returnValue;
     const u64 = unpackU64([hi, lo]);
     return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
   }
@@ -31,77 +39,77 @@
     getUint8(offset = 0) {
       return core.opSync(
         "op_ffi_read_u8",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt8(offset = 0) {
       return core.opSync(
         "op_ffi_read_i8",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getUint16(offset = 0) {
       return core.opSync(
         "op_ffi_read_u16",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt16(offset = 0) {
       return core.opSync(
         "op_ffi_read_i16",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getUint32(offset = 0) {
       return core.opSync(
         "op_ffi_read_u32",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt32(offset = 0) {
       return core.opSync(
         "op_ffi_read_i32",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getBigUint64(offset = 0) {
       return core.opSync(
         "op_ffi_read_u64",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getBigInt64(offset = 0) {
       return core.opSync(
-        "op_ffi_read_u64",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        "op_ffi_read_i64",
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat32(offset = 0) {
       return core.opSync(
         "op_ffi_read_f32",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat64(offset = 0) {
       return core.opSync(
         "op_ffi_read_f64",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getCString(offset = 0) {
       return core.opSync(
         "op_ffi_cstr_read",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
@@ -116,7 +124,7 @@
     copyInto(destination, offset = 0) {
       core.opSync(
         "op_ffi_buf_copy_into",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
         destination,
         destination.byteLength,
       );
