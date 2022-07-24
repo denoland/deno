@@ -6,6 +6,8 @@ use std::ffi::c_void;
 use std::ffi::CString;
 use std::fmt::Write as _;
 
+assert_eq!(size_of::<fn()>(), size_of::<usize>());
+
 pub(crate) struct Allocation {
   pub addr: *mut c_void,
   _ctx: Compiler,
