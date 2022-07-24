@@ -113,25 +113,25 @@
       );
     }
 
-    static getCString(pointer) {
+    static getCString(pointer, offset = 0) {
       return core.opSync(
         "op_ffi_cstr_read",
-        pointer,
+        offset ? BigInt(pointer) + BigInt(offset) : pointer,
       );
     }
 
     getArrayBuffer(byteLength, offset = 0) {
       return core.opSync(
         "op_ffi_get_buf",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
         byteLength,
       );
     }
 
-    static getArrayBuffer(pointer, byteLength) {
+    static getArrayBuffer(pointer, byteLength, offset = 0) {
       return core.opSync(
         "op_ffi_get_buf",
-        pointer,
+        offset ? BigInt(pointer) + BigInt(offset) : pointer,
         byteLength,
       );
     }
@@ -145,10 +145,10 @@
       );
     }
 
-    static copyInto(pointer, destination) {
+    static copyInto(pointer, destination, offset = 0) {
       core.opSync(
         "op_ffi_buf_copy_into",
-        pointer,
+        offset ? BigInt(pointer) + BigInt(offset) : pointer,
         destination,
         destination.byteLength,
       );
