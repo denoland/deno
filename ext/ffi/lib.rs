@@ -107,8 +107,8 @@ struct PtrSymbol {
 }
 
 impl PtrSymbol {
-  fn new(fn_ptr: usize, def: &ForeignFunction) -> Self {
-    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+  fn new(fn_ptr: *const c_void, def: &ForeignFunction) -> Self {
+    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr);
     let cif = libffi::middle::Cif::new(
       def
         .parameters
@@ -142,13 +142,13 @@ impl Resource for DynamicLibraryResource {
 }
 
 impl DynamicLibraryResource {
-  fn get_static(&self, symbol: String) -> Result<*const c_void, AnyError> {
+  fn get_static(&self, symbol: String) -> Result<*mut c_void, AnyError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
     //
     // SAFETY: The obtained T symbol is the size of a pointer.
-    match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+    match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
         "Failed to register symbol {}: {}",
@@ -176,23 +176,24 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_load::decl::<P>(),
       op_ffi_get_static::decl(),
       op_ffi_call_nonblocking::decl(),
-      op_ffi_call_ptr::decl::<P>(),
-      op_ffi_call_ptr_nonblocking::decl::<P>(),
+      op_ffi_call_ptr::decl(),
+      op_ffi_call_ptr_nonblocking::decl(),
       op_ffi_ptr_of::decl::<P>(),
-      op_ffi_get_buf::decl::<P>(),
-      op_ffi_buf_copy_into::decl::<P>(),
-      op_ffi_cstr_read::decl::<P>(),
-      op_ffi_read_u8::decl::<P>(),
-      op_ffi_read_i8::decl::<P>(),
-      op_ffi_read_u16::decl::<P>(),
-      op_ffi_read_i16::decl::<P>(),
-      op_ffi_read_u32::decl::<P>(),
-      op_ffi_read_i32::decl::<P>(),
-      op_ffi_read_u64::decl::<P>(),
-      op_ffi_read_i64::decl::<P>(),
-      op_ffi_read_f32::decl::<P>(),
-      op_ffi_read_f64::decl::<P>(),
-      op_ffi_unsafe_callback_create::decl::<P>(),
+      op_ffi_get_ptr_value::decl(),
+      op_ffi_get_buf::decl(),
+      op_ffi_buf_copy_into::decl(),
+      op_ffi_cstr_read::decl(),
+      op_ffi_read_u8::decl(),
+      op_ffi_read_i8::decl(),
+      op_ffi_read_u16::decl(),
+      op_ffi_read_i16::decl(),
+      op_ffi_read_u32::decl(),
+      op_ffi_read_i32::decl(),
+      op_ffi_read_u64::decl(),
+      op_ffi_read_i64::decl(),
+      op_ffi_read_f32::decl(),
+      op_ffi_read_f64::decl(),
+      op_ffi_unsafe_callback_create::decl(),
       op_ffi_unsafe_callback_ref::decl(),
     ])
     .event_loop_middleware(|op_state_rc, _cx| {
@@ -304,7 +305,7 @@ union NativeValue {
   isize_value: isize,
   f32_value: f32,
   f64_value: f64,
-  pointer: *const u8,
+  pointer: *mut c_void,
 }
 
 impl NativeValue {
@@ -476,13 +477,8 @@ impl NativeValue {
         local_value.into()
       }
       NativeType::Pointer | NativeType::Function => {
-        let value = self.pointer as u64;
         let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as u64 {
-            v8::BigInt::new_from_u64(scope, value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
+          v8::External::new(scope, self.pointer as *mut c_void).into();
         local_value.into()
       }
     }
@@ -662,7 +658,7 @@ where
         // message to include the name of symbol.
         let fn_ptr =
           // SAFETY: The obtained T symbol is the size of a pointer.
-          match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
+          match unsafe { resource.lib.symbol::<fn()>(symbol) } {
             Ok(value) => Ok(value),
             Err(err) => Err(generic_error(format!(
               "Failed to register symbol {}: {}",
@@ -1031,40 +1027,37 @@ fn ffi_parse_pointer_arg(
       })?
       .get_backing_store();
     if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
+      &backing_store[byte_offset..] as *const _ as *const c_void
     } else {
-      &backing_store[..] as *const _ as *const u8
+      &backing_store[..] as *const _ as *const c_void
     }
-  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *const u8
-  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
+    value.value() as *const c_void
   } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
     let backing_store = value.get_backing_store();
-    &backing_store[..] as *const _ as *const u8
+    &backing_store[..] as *const _ as *const c_void
   } else if arg.is_null() {
     ptr::null()
   } else {
     return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
   };
+  let pointer = pointer as *mut c_void;
   Ok(NativeValue { pointer })
 }
 
 #[inline]
 fn ffi_parse_function_arg(
-  scope: &mut v8::HandleScope,
+  _scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
   // 2. Number: Common and supported by Fast API, optimise this case as second.
   // 3. Null: Very uncommon / can be represented by a 0.
-  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *const u8
-  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
-    value.integer_value(scope).unwrap() as usize as *const u8
+  let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
+    value.value()
   } else if arg.is_null() {
-    ptr::null()
+    ptr::null_mut()
   } else {
     return Err(type_error(
       "Invalid FFI function type, expected null, integer, or BigInt",
@@ -1258,7 +1251,7 @@ where
         f64_value: cif.call::<f64>(*fun_ptr, &call_args),
       },
       NativeType::Pointer | NativeType::Function => NativeValue {
-        pointer: cif.call::<*const u8>(*fun_ptr, &call_args),
+        pointer: cif.call::<*mut c_void>(*fun_ptr, &call_args),
       },
     })
   }
@@ -1324,7 +1317,7 @@ fn ffi_call(
         f64_value: cif.call::<f64>(fun_ptr, &call_args),
       },
       NativeType::Pointer | NativeType::Function => NativeValue {
-        pointer: cif.call::<*const u8>(fun_ptr, &call_args),
+        pointer: cif.call::<*mut c_void>(fun_ptr, &call_args),
       },
     })
   }
@@ -1491,12 +1484,8 @@ unsafe fn do_ffi_callback(
         }
       }
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        let result = *((*val) as *const u64);
-        if result > MAX_SAFE_INTEGER as u64 {
-          v8::BigInt::new_from_u64(scope, result).into()
-        } else {
-          v8::Number::new(scope, result as f64).into()
-        }
+        let result = *((*val) as *const *mut c_void);
+        v8::External::new(scope, result).into()
       }
       FFI_TYPE_VOID => v8::undefined(scope).into(),
       _ => {
@@ -1593,17 +1582,15 @@ unsafe fn do_ffi_callback(
           .expect("Unable to deserialize result parameter.")
           .get_backing_store();
         if byte_offset > 0 {
-          &backing_store[byte_offset..] as *const _ as *const u8
+          &backing_store[byte_offset..] as *const _ as *const c_void
         } else {
-          &backing_store[..] as *const _ as *const u8
+          &backing_store[..] as *const _ as *const c_void
         }
-      } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
-        value.u64_value().0 as usize as *const u8
+      } else if let Ok(value) = v8::Local::<v8::External>::try_from(value) {
+        value.value() as *const c_void
       } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
         let backing_store = value.get_backing_store();
-        &backing_store[..] as *const _ as *const u8
-      } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
-        value.value() as usize as *const u8
+        &backing_store[..] as *const _ as *const c_void
       } else if value.is_null() {
         ptr::null()
       } else {
@@ -1612,9 +1599,9 @@ unsafe fn do_ffi_callback(
         value
           .integer_value(scope)
           .expect("Unable to deserialize result parameter.") as usize
-          as *const u8
+          as *const c_void
       };
-      *(result as *mut *const u8) = pointer;
+      *(result as *mut *mut c_void) = pointer as *mut c_void;
     }
     FFI_TYPE_SINT8 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
@@ -1711,18 +1698,13 @@ struct RegisterCallbackArgs {
 }
 
 #[op(v8)]
-fn op_ffi_unsafe_callback_create<FP, 'scope>(
+fn op_ffi_unsafe_callback_create<'scope>(
   state: &mut deno_core::OpState,
   scope: &mut v8::HandleScope<'scope>,
   args: RegisterCallbackArgs,
   cb: serde_v8::Value<'scope>,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   check_unstable(state, "Deno.UnsafeCallback");
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
 
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
@@ -1752,16 +1734,12 @@ where
   );
 
   let closure = libffi::middle::Closure::new(cif, deno_ffi_callback, info);
-  let ptr = *closure.code_ptr() as usize;
+  let ptr = *closure.code_ptr() as *mut c_void;
   let resource = UnsafeCallbackResource { closure, info };
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
-  let ptr_local: v8::Local<v8::Value> = if ptr > MAX_SAFE_INTEGER as usize {
-    v8::BigInt::new_from_u64(scope, ptr as u64).into()
-  } else {
-    v8::Number::new(scope, ptr as f64).into()
-  };
+  let ptr_local: v8::Local<v8::Value> = v8::External::new(scope, ptr).into();
   let array = v8::Array::new(scope, 2);
   array.set_index(scope, 0, rid_local.into());
   array.set_index(scope, 1, ptr_local);
@@ -1771,22 +1749,16 @@ where
 }
 
 #[op(v8)]
-fn op_ffi_call_ptr<FP, 'scope>(
+fn op_ffi_call_ptr<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<deno_core::OpState>>,
-  pointer: usize,
+  pointer: serde_v8::Value<'scope>,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
-  {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
-  };
+
+  let pointer = v8::Local::<v8::External>::try_from(pointer.v8_value)?.value();
 
   let symbol = PtrSymbol::new(pointer, &def);
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
@@ -1814,22 +1786,16 @@ fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
 }
 
 #[op(v8)]
-fn op_ffi_call_ptr_nonblocking<'scope, FP>(
+fn op_ffi_call_ptr_nonblocking<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<deno_core::OpState>>,
-  pointer: usize,
+  pointer: serde_v8::Value<'scope>,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
-) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<impl Future<Output = Result<Value, AnyError>>, AnyError> {
   check_unstable2(&state, "Deno.UnsafeFnPointer#call");
-  {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
-  };
+
+  let pointer = v8::Local::<v8::External>::try_from(pointer.v8_value)?.value();
 
   let symbol = PtrSymbol::new(pointer, &def);
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
@@ -1963,13 +1929,9 @@ fn op_ffi_get_static<'scope>(
       number.into()
     }
     NativeType::Pointer | NativeType::Function => {
-      let result = data_ptr as u64;
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-        v8::BigInt::new_from_u64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
-      integer.into()
+      let external: v8::Local<v8::Value> =
+        v8::External::new(scope, data_ptr).into();
+      external.into()
     }
   })
 }
@@ -2020,7 +1982,7 @@ fn op_ffi_call_nonblocking<'scope>(
 fn op_ffi_ptr_of<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  buf: serde_v8::Value<'scope>,
+  buf_or_number: serde_v8::Value<'scope>,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
 where
   FP: FfiPermissions + 'static,
@@ -2029,8 +1991,10 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
+  let buf_or_number = buf_or_number.v8_value;
+
   let pointer = if let Ok(value) =
-    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
+    v8::Local::<v8::ArrayBufferView>::try_from(buf_or_number)
   {
     let backing_store = value
       .buffer(scope)
@@ -2044,23 +2008,24 @@ where
     } else {
       &backing_store[..] as *const _ as *const u8
     }
-  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
+  } else if let Ok(value) =
+    v8::Local::<v8::ArrayBuffer>::try_from(buf_or_number)
   {
     let backing_store = value.get_backing_store();
     &backing_store[..] as *const _ as *const u8
+  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(buf_or_number) {
+    value.u64_value().0 as usize as *const u8
+  } else if let Ok(value) = v8::Local::<v8::Number>::try_from(buf_or_number) {
+    value.value() as usize as *const u8
   } else {
     return Err(type_error(
       "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
     ));
   };
 
-  let integer: v8::Local<v8::Value> =
-    if pointer as usize > MAX_SAFE_INTEGER as usize {
-      v8::BigInt::new_from_u64(scope, pointer as u64).into()
-    } else {
-      v8::Number::new(scope, pointer as usize as f64).into()
-    };
-  Ok(integer.into())
+  let external: v8::Local<v8::Value> =
+    v8::External::new(scope, pointer as *mut c_void).into();
+  Ok(external.into())
 }
 
 unsafe extern "C" fn noop_deleter_callback(
@@ -2071,31 +2036,58 @@ unsafe extern "C" fn noop_deleter_callback(
 }
 
 #[op(v8)]
-fn op_ffi_get_buf<FP, 'scope>(
+fn op_ffi_get_ptr_value<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value<'scope>,
+) -> Result<serde_v8::Value<'scope>, AnyError> {
+  check_unstable(state, "Deno.UnsafePointer#getPointerValue");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const c_char
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr_value = ptr as usize;
+
+  let value: v8::Local<v8::Value> = if ptr as isize > MAX_SAFE_INTEGER {
+    v8::BigInt::new_from_u64(scope, ptr_value as u64).into()
+  } else {
+    v8::Number::new(scope, ptr_value as f64).into()
+  };
+
+  Ok(value.into())
+}
+
+#[op(v8)]
+fn op_ffi_get_buf<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
   src: serde_v8::Value<'scope>,
+  offset: usize,
   len: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#arrayBuffer");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  let ptr = if let Ok(value) = v8::Local::<v8::Number>::try_from(src.v8_value) {
-    value.value() as usize as *mut c_void
-  } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(src.v8_value) {
-    value.u64_value().0 as usize as *mut c_void
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(src.v8_value)
+  {
+    value.value()
   } else {
-    return Err(type_error("Invalid FFI pointer value, expected BigInt"));
+    return Err(type_error("Invalid FFI pointer value"));
   };
 
   if std::ptr::eq(ptr, std::ptr::null()) {
     return Err(type_error("Invalid FFI pointer value, got nullptr"));
   }
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: Trust the user to have provided a real pointer, and a valid matching size to it. Since this is a foreign pointer, we should not do any deletion.
   let backing_store = unsafe {
@@ -2112,27 +2104,35 @@ where
   Ok(array_buffer.into())
 }
 
-#[op]
-fn op_ffi_buf_copy_into<FP>(
+#[op(v8)]
+fn op_ffi_buf_copy_into(
   state: &mut deno_core::OpState,
-  src: usize,
+  src: serde_v8::Value,
+  offset: usize,
   mut dst: ZeroCopyBuf,
   len: usize,
-) -> Result<(), AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#copyInto");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
 
   if dst.len() < len {
     Err(range_error(
       "Destination length is smaller than source length",
     ))
   } else {
-    let src = src as *const u8;
+    let src =
+      if let Ok(value) = v8::Local::<v8::External>::try_from(src.v8_value) {
+        value.value() as *const u8
+      } else {
+        return Err(type_error("Invalid FFI pointer value"));
+      };
+
+    let src = if offset != 0 {
+      // SAFETY: Offset is user provided
+      unsafe { src.add(offset) }
+    } else {
+      src
+    };
+
     // SAFETY: src is user defined.
     // dest is properly aligned and is valid for writes of len * size_of::<T>() bytes.
     unsafe { ptr::copy(src, dst.as_mut_ptr(), len) };
@@ -2141,21 +2141,30 @@ where
 }
 
 #[op(v8)]
-fn op_ffi_cstr_read<FP, 'scope>(
+fn op_ffi_cstr_read<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#getCString");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const c_char
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: Pointer is user provided.
-  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
+  let cstr = unsafe { CStr::from_ptr(ptr) }.to_bytes();
   let value: v8::Local<v8::Value> =
     v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
       .ok_or_else(|| {
@@ -2165,125 +2174,187 @@ where
   Ok(value.into())
 }
 
-#[op]
-fn op_ffi_read_u8<FP>(
+#[op(v8)]
+fn op_ffi_read_u8(
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<u8, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<u8, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#getUint8");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const u8
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u8) })
-}
-
-#[op]
-fn op_ffi_read_i8<FP>(
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<i8, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getInt8");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i8) })
-}
-
-#[op]
-fn op_ffi_read_u16<FP>(
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<u16, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getUint16");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u16) })
-}
-
-#[op]
-fn op_ffi_read_i16<FP>(
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<i16, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getInt16");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i16) })
-}
-
-#[op]
-fn op_ffi_read_u32<FP>(
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<u32, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getUint32");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const u32) })
-}
-
-#[op]
-fn op_ffi_read_i32<FP>(
-  state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<i32, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getInt32");
-
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
-
-  // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const i32) })
+  Ok(unsafe { ptr::read_unaligned(ptr) })
 }
 
 #[op(v8)]
-fn op_ffi_read_u64<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+fn op_ffi_read_i8(
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-  'scope: 'scope,
-{
-  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<i8, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getInt8");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const i8
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: ptr is user provided.
-  let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
+  Ok(unsafe { ptr::read_unaligned(ptr) })
+}
+
+#[op(v8)]
+fn op_ffi_read_u16(
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<u16, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getUint16");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const u16
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
+
+  // SAFETY: ptr is user provided.
+  Ok(unsafe { ptr::read_unaligned(ptr) })
+}
+
+#[op(v8)]
+fn op_ffi_read_i16(
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<i16, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getInt16");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const i16
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
+
+  // SAFETY: ptr is user provided.
+  Ok(unsafe { ptr::read_unaligned(ptr) })
+}
+
+#[op(v8)]
+fn op_ffi_read_u32(
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<u32, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getUint32");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const u32
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
+
+  // SAFETY: ptr is user provided.
+  Ok(unsafe { ptr::read_unaligned(ptr) })
+}
+
+#[op(v8)]
+fn op_ffi_read_i32(
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<i32, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getInt32");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const i32
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
+
+  // SAFETY: ptr is user provided.
+  Ok(unsafe { ptr::read_unaligned(ptr) })
+}
+
+#[op(v8)]
+fn op_ffi_read_u64<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut deno_core::OpState,
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<serde_v8::Value<'scope>, AnyError> {
+  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const u64
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
+
+  // SAFETY: ptr is user provided.
+  let result = unsafe { ptr::read_unaligned(ptr) };
 
   let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
     v8::BigInt::new_from_u64(scope, result).into()
@@ -2295,22 +2366,30 @@ where
 }
 
 #[op(v8)]
-fn op_ffi_read_i64<FP, 'scope>(
+fn op_ffi_read_i64<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<serde_v8::Value<'scope>, AnyError>
-where
-  FP: FfiPermissions + 'static,
-  'scope: 'scope,
-{
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<serde_v8::Value<'scope>, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const i64
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: ptr is user provided.
-  let result = unsafe { ptr::read_unaligned(ptr as *const i64) };
+  let result = unsafe { ptr::read_unaligned(ptr) };
 
   let integer: v8::Local<v8::Value> =
     if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64 {
@@ -2323,37 +2402,55 @@ where
 }
 
 #[op]
-fn op_ffi_read_f32<FP>(
+fn op_ffi_read_f32(
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<f32, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<f32, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#getFloat32");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const f32
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const f32) })
+  Ok(unsafe { ptr::read_unaligned(ptr) })
 }
 
 #[op]
-fn op_ffi_read_f64<FP>(
+fn op_ffi_read_f64(
   state: &mut deno_core::OpState,
-  ptr: usize,
-) -> Result<f64, AnyError>
-where
-  FP: FfiPermissions + 'static,
-{
+  ptr: serde_v8::Value,
+  offset: usize,
+) -> Result<f64, AnyError> {
   check_unstable(state, "Deno.UnsafePointerView#getFloat64");
 
-  let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  let ptr = if let Ok(value) = v8::Local::<v8::External>::try_from(ptr.v8_value)
+  {
+    value.value() as *const f64
+  } else {
+    return Err(type_error("Invalid FFI pointer value"));
+  };
+
+  let ptr = if offset != 0 {
+    // SAFETY: Offset is user provided
+    unsafe { ptr.add(offset) }
+  } else {
+    ptr
+  };
 
   // SAFETY: ptr is user provided.
-  Ok(unsafe { ptr::read_unaligned(ptr as *const f64) })
+  Ok(unsafe { ptr::read_unaligned(ptr) })
 }
 
 #[cfg(test)]

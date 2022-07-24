@@ -451,8 +451,9 @@ console.log("Static u32:", dylib.symbols.static_u32);
 console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
-  typeof dylib.symbols.static_ptr === "number",
+  typeof dylib.symbols.static_ptr === "object",
 );
+debugger;
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
 
