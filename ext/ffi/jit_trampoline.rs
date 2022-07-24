@@ -5,8 +5,9 @@ use crate::{tcc::Compiler, Symbol};
 use std::ffi::c_void;
 use std::ffi::CString;
 use std::fmt::Write as _;
+use std::mem::size_of;
 
-assert_eq!(size_of::<fn()>(), size_of::<usize>());
+const _: () = assert!(size_of::<fn()>() == size_of::<usize>());
 
 pub(crate) struct Allocation {
   pub addr: *mut c_void,
