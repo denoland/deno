@@ -305,6 +305,11 @@ Deno.bench("nop_buffer()", () => {
   nop_buffer(buffer);
 });
 
+const buffer_ptr = Deno.UnsafePointer.of(buffer);
+Deno.bench("nop_buffer() number", () => {
+  nop_buffer(buffer_ptr);
+});
+
 const { return_u8 } = dylib.symbols;
 Deno.bench("return_u8()", () => {
   return_u8();
@@ -442,6 +447,10 @@ Deno.bench("nop_buffer_nonblocking()", async () => {
   await nop_buffer_nonblocking(buffer);
 });
 
+Deno.bench("nop_buffer_nonblocking() number", async () => {
+  await nop_buffer_nonblocking(buffer_ptr);
+});
+
 const { return_u8_nonblocking } = dylib.symbols;
 Deno.bench("return_u8_nonblocking()", async () => {
   await return_u8_nonblocking();
@@ -537,6 +546,38 @@ Deno.bench("nop_many_parameters()", () => {
     135.26437e3,
     264.3576468623546834,
     buffer2,
+  );
+});
+
+const buffer2_ptr = Deno.UnsafePointer.of(buffer2);
+Deno.bench("nop_many_parameters() number", () => {
+  nop_many_parameters(
+    135,
+    47,
+    356,
+    -236,
+    7457,
+    -1356,
+    16471468,
+    -1334748136,
+    132658769535,
+    -42745856824,
+    13567.26437,
+    7.686234e-3,
+    buffer_ptr,
+    64,
+    -42,
+    83,
+    -136,
+    3657,
+    -2376,
+    3277918,
+    -474628146,
+    344657895,
+    -2436732,
+    135.26437e3,
+    264.3576468623546834,
+    buffer2_ptr,
   );
 });
 
