@@ -5,6 +5,9 @@ use crate::{tcc::Compiler, Symbol};
 use std::ffi::c_void;
 use std::ffi::CString;
 use std::fmt::Write as _;
+use std::mem::size_of;
+
+const _: () = assert!(size_of::<fn()>() == size_of::<usize>());
 
 pub(crate) struct Allocation {
   pub addr: *mut c_void,
@@ -22,12 +25,14 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
   match ty {
     NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
     NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
-    NativeType::U64 | NativeType::USize => "uint64_t",
-    NativeType::I64 | NativeType::ISize => "int64_t",
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
-    _ => unimplemented!(),
+    NativeType::U64 => "uint64_t",
+    NativeType::I64 => "int64_t",
+    NativeType::ISize => "intptr_t",
+    NativeType::USize => "uintptr_t",
+    NativeType::Pointer | NativeType::Function => "void*",
   }
 }
 
@@ -42,9 +47,11 @@ fn native_to_c(ty: &NativeType) -> &'static str {
     NativeType::Void => "void",
     NativeType::F32 => "float",
     NativeType::F64 => "double",
-    NativeType::U64 | NativeType::USize => "uint64_t",
-    NativeType::I64 | NativeType::ISize => "int64_t",
-    _ => unimplemented!(),
+    NativeType::U64 => "uint64_t",
+    NativeType::I64 => "int64_t",
+    NativeType::ISize => "intptr_t",
+    NativeType::USize => "uintptr_t",
+    NativeType::Pointer | NativeType::Function => "void*",
   }
 }
 
@@ -180,16 +187,16 @@ mod tests {
     assert_eq!(
       codegen(vec![NativeType::ISize, NativeType::U64], NativeType::Void),
       "#include <stdint.h>\n\n\
-      extern void func(int64_t p0, uint64_t p1);\n\n\
-      void func_trampoline(void* recv, int64_t p0, uint64_t p1) {\
+      extern void func(intptr_t p0, uint64_t p1);\n\n\
+      void func_trampoline(void* recv, intptr_t p0, uint64_t p1) {\
         \n  return func(p0, p1);\n\
       }\n\n"
     );
     assert_eq!(
       codegen(vec![NativeType::USize, NativeType::USize], NativeType::U32),
       "#include <stdint.h>\n\n\
-      extern uint32_t func(uint64_t p0, uint64_t p1);\n\n\
-      uint32_t func_trampoline(void* recv, uint64_t p0, uint64_t p1) {\
+      extern uint32_t func(uintptr_t p0, uintptr_t p1);\n\n\
+      uint32_t func_trampoline(void* recv, uintptr_t p0, uintptr_t p1) {\
         \n  return func(p0, p1);\n\
       }\n\n"
     );
