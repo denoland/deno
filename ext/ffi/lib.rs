@@ -328,9 +328,7 @@ impl NativeValue {
       NativeType::I32 => Value::from(self.i32_value),
       NativeType::U64 => {
         let value = self.u64_value;
-        if cfg!(target_pointer_width = "64")
-          && (value > MAX_SAFE_INTEGER as u64)
-        {
+        if value > MAX_SAFE_INTEGER as u64 {
           json!(U32x2::from(self.u64_value))
         } else {
           Value::from(value)
@@ -338,36 +336,23 @@ impl NativeValue {
       }
       NativeType::I64 => {
         let value = self.i64_value;
-        if cfg!(target_pointer_width = "64")
-          && (value > MAX_SAFE_INTEGER as i64
-            || value < MIN_SAFE_INTEGER as i64)
-        {
+        if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64 {
           json!(U32x2::from(self.i64_value as u64))
         } else {
           Value::from(value)
         }
       }
-      #[cfg(target_pointer_width = "32")]
-      NativeType::USize => Value::from(self.usize_value as u32),
-      #[cfg(target_pointer_width = "64")]
       NativeType::USize => {
         let value = self.usize_value;
-        if cfg!(target_pointer_width = "64")
-          && (value > MAX_SAFE_INTEGER as usize)
-        {
+        if value > MAX_SAFE_INTEGER as usize {
           json!(U32x2::from(self.usize_value as u64))
         } else {
           Value::from(value)
         }
       }
-      #[cfg(target_pointer_width = "32")]
-      NativeType::ISize => Value::from(self.isize_value as i32),
-      #[cfg(target_pointer_width = "64")]
       NativeType::ISize => {
         let value = self.isize_value;
-        if cfg!(target_pointer_width = "64")
-          && (value > MAX_SAFE_INTEGER || value < MIN_SAFE_INTEGER)
-        {
+        if value > MAX_SAFE_INTEGER || value < MIN_SAFE_INTEGER {
           json!(U32x2::from(self.isize_value as u64))
         } else {
           Value::from(value)
@@ -375,16 +360,9 @@ impl NativeValue {
       }
       NativeType::F32 => Value::from(self.f32_value),
       NativeType::F64 => Value::from(self.f64_value),
-      #[cfg(target_pointer_width = "32")]
-      NativeType::Pointer | NativeType::Function => {
-        Value::from(self.pointer as usize)
-      }
-      #[cfg(target_pointer_width = "64")]
       NativeType::Pointer | NativeType::Function => {
         let value = self.pointer as usize;
-        if cfg!(target_pointer_width = "64")
-          && (value > MAX_SAFE_INTEGER as usize)
-        {
+        if value > MAX_SAFE_INTEGER as usize {
           json!(U32x2::from(value as u64))
         } else {
           Value::from(value)
@@ -456,13 +434,6 @@ impl NativeValue {
           };
         local_value.into()
       }
-      #[cfg(target_pointer_width = "32")]
-      NativeType::USize => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, self.usize_value as u32).into();
-        local_value.into()
-      }
-      #[cfg(target_pointer_width = "64")]
       NativeType::USize => {
         let value = self.usize_value;
         let local_value: v8::Local<v8::Value> =
@@ -473,13 +444,6 @@ impl NativeValue {
           };
         local_value.into()
       }
-      #[cfg(target_pointer_width = "32")]
-      NativeType::ISize => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, self.isize_value as i32).into();
-        local_value.into()
-      }
-      #[cfg(target_pointer_width = "64")]
       NativeType::ISize => {
         let value = self.isize_value;
         let local_value: v8::Local<v8::Value> =
@@ -500,13 +464,6 @@ impl NativeValue {
           v8::Number::new(scope, self.f64_value).into();
         local_value.into()
       }
-      #[cfg(target_pointer_width = "32")]
-      NativeType::Pointer | NativeType::Function => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, self.pointer as u32).into();
-        local_value.into()
-      }
-      #[cfg(target_pointer_width = "64")]
       NativeType::Pointer | NativeType::Function => {
         let value = self.pointer as u64;
         let local_value: v8::Local<v8::Value> =
@@ -777,15 +734,7 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::Void => fast_api::Type::Void,
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
-      #[cfg(target_pointer_width = "32")]
-      NativeType::ISize => fast_api::Type::Int32,
-      #[cfg(target_pointer_width = "32")]
-      NativeType::USize | NativeType::Function | NativeType::Pointer => {
-        fast_api::Type::Uint32
-      }
-      #[cfg(target_pointer_width = "64")]
       NativeType::ISize => fast_api::Type::Int64,
-      #[cfg(target_pointer_width = "64")]
       NativeType::USize | NativeType::Function | NativeType::Pointer => {
         fast_api::Type::Uint64
       }
@@ -795,9 +744,6 @@ impl From<&NativeType> for fast_api::Type {
 
 #[cfg(not(target_os = "windows"))]
 fn is_fast_api_rv(rv: NativeType) -> bool {
-  #[cfg(target_pointer_width = "32")]
-  return !matches!(rv, NativeType::I64 | NativeType::U64);
-  #[cfg(target_pointer_width = "64")]
   return !matches!(
     rv,
     NativeType::Function
@@ -995,41 +941,6 @@ fn ffi_parse_i64_arg(
 }
 
 #[inline]
-#[cfg(target_pointer_width = "32")]
-fn ffi_parse_usize_arg(
-  _scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
-) -> Result<NativeValue, AnyError> {
-  // No support for BigInt input values, as they're entirely unnecessary on 32 bit systems and shouldn't appear anywhere.
-  let usize_value: usize =
-    if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
-      value.value() as usize
-    } else {
-      return Err(type_error(
-        "Invalid FFI usize type, expected unsigned integer",
-      ));
-    };
-  Ok(NativeValue { usize_value })
-}
-
-#[inline]
-#[cfg(target_pointer_width = "32")]
-fn ffi_parse_isize_arg(
-  _scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
-) -> Result<NativeValue, AnyError> {
-  // No support for BigInt input values, as they're entirely unnecessary on 32 bit systems and shouldn't appear anywhere.
-  let isize_value: isize =
-    if let Ok(value) = v8::Local::<v8::Int32>::try_from(arg) {
-      value.value() as isize
-    } else {
-      return Err(type_error("Invalid FFI isize type, expected integer"));
-    };
-  Ok(NativeValue { isize_value })
-}
-
-#[inline]
-#[cfg(target_pointer_width = "64")]
 fn ffi_parse_usize_arg(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
@@ -1049,7 +960,6 @@ fn ffi_parse_usize_arg(
 }
 
 #[inline]
-#[cfg(target_pointer_width = "64")]
 fn ffi_parse_isize_arg(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
@@ -1089,46 +999,6 @@ fn ffi_parse_f64_arg(
 }
 
 #[inline]
-#[cfg(target_pointer_width = "32")]
-fn ffi_parse_pointer_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
-) -> Result<NativeValue, AnyError> {
-  // Order of checking:
-  // 1. ArrayBufferView: Common and not supported by Fast API, optimise this case.
-  // 2. Uint32: Common and supported by Fast API, optimise this second.
-  // 3. ArrayBuffer: Fairly common and not supported by Fast API.
-  // 4. Null: Very uncommon / can be represented by a 0.
-  let pointer = if let Ok(value) =
-    v8::Local::<v8::ArrayBufferView>::try_from(arg)
-  {
-    let byte_offset = value.byte_offset();
-    let backing_store = value
-      .buffer(scope)
-      .ok_or_else(|| {
-        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
-      })?
-      .get_backing_store();
-    if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
-    } else {
-      &backing_store[..] as *const _ as *const u8
-    }
-  } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
-    value.value() as usize as *const u8
-  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    let backing_store = value.get_backing_store();
-    &backing_store[..] as *const _ as *const u8
-  } else if arg.is_null() {
-    ptr::null()
-  } else {
-    return Err(type_error("Invalid FFI pointer type, expected null, integer, BigInt, ArrayBuffer, or ArrayBufferView"));
-  };
-  Ok(NativeValue { pointer })
-}
-
-#[inline]
-#[cfg(target_pointer_width = "64")]
 fn ffi_parse_pointer_arg(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
@@ -1170,30 +1040,6 @@ fn ffi_parse_pointer_arg(
 }
 
 #[inline]
-#[cfg(target_pointer_width = "32")]
-fn ffi_parse_function_arg(
-  arg: v8::Local<v8::Value>,
-) -> Result<NativeValue, AnyError> {
-  // Order of checking:
-  // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
-  // 2. Uint32: Common and supported by Fast API, optimise this case as second.
-  // 3. Null: Very uncommon / can be represented by a 0.
-  let pointer = if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
-    value.u64_value().0 as usize as *const u8
-  } else if let Ok(value) = v8::Local::<v8::Uint32>::try_from(arg) {
-    value.value() as usize as *const u8
-  } else if arg.is_null() {
-    ptr::null()
-  } else {
-    return Err(type_error(
-      "Invalid FFI function type, expected null, integer, or BigInt",
-    ));
-  };
-  Ok(NativeValue { pointer })
-}
-
-#[inline]
-#[cfg(target_pointer_width = "64")]
 fn ffi_parse_function_arg(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
@@ -1633,12 +1479,6 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      #[cfg(target_pointer_width = "32")]
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        let result = *((*val) as *const u32);
-        v8::Integer::new_from_unsigned(scope, result).into()
-      }
-      #[cfg(target_pointer_width = "64")]
       FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
@@ -1906,10 +1746,6 @@ where
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
-  #[cfg(target_pointer_width = "32")]
-  let ptr_local: v8::Local<v8::Value> =
-    v8::Integer::new_from_unsigned(scope, ptr as u32);
-  #[cfg(target_pointer_width = "64")]
   let ptr_local: v8::Local<v8::Value> = if ptr > MAX_SAFE_INTEGER as usize {
     v8::BigInt::new_from_u64(scope, ptr as u64).into()
   } else {
@@ -2080,15 +1916,6 @@ fn op_ffi_get_static<'scope>(
       };
       integer.into()
     }
-    #[cfg(target_pointer_width = "32")]
-    NativeType::USize => {
-      // SAFETY: ptr is user provided
-      let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
-      let integer: v8::Local<v8::Value> =
-        v8::Integer::new_from_unsigned(scope, result as u32).into();
-      integer.into()
-    }
-    #[cfg(target_pointer_width = "64")]
     NativeType::USize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
@@ -2100,15 +1927,6 @@ fn op_ffi_get_static<'scope>(
       };
       integer.into()
     }
-    #[cfg(target_pointer_width = "32")]
-    NativeType::ISize => {
-      // SAFETY: ptr is user provided
-      let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
-      let integer: v8::Local<v8::Value> =
-        v8::Integer::new(scope, result as i32).into();
-      integer.into()
-    }
-    #[cfg(target_pointer_width = "64")]
     NativeType::ISize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
@@ -2133,14 +1951,6 @@ fn op_ffi_get_static<'scope>(
       let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
       number.into()
     }
-    #[cfg(target_pointer_width = "32")]
-    NativeType::Pointer | NativeType::Function => {
-      let result = data_ptr as u32;
-      let integer: v8::Local<v8::Value> =
-        v8::Integer::new_from_unsigned(scope, result).into();
-      integer.into()
-    }
-    #[cfg(target_pointer_width = "64")]
     NativeType::Pointer | NativeType::Function => {
       let result = data_ptr as u64;
       let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
@@ -2233,13 +2043,12 @@ where
     ));
   };
 
-  let integer: v8::Local<v8::Value> = if cfg!(target_pointer_width = "32") {
-    v8::Integer::new_from_unsigned(scope, pointer as u32).into()
-  } else if pointer as usize > MAX_SAFE_INTEGER as usize {
-    v8::BigInt::new_from_u64(scope, pointer as u64).into()
-  } else {
-    v8::Number::new(scope, pointer as usize as f64).into()
-  };
+  let integer: v8::Local<v8::Value> =
+    if pointer as usize > MAX_SAFE_INTEGER as usize {
+      v8::BigInt::new_from_u64(scope, pointer as u64).into()
+    } else {
+      v8::Number::new(scope, pointer as usize as f64).into()
+    };
   Ok(integer.into())
 }
 
