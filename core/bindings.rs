@@ -324,8 +324,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let mut state = state_rc.borrow_mut();
 
   if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
-    let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
-
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
@@ -358,51 +356,9 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         if !pending_mod_evaluate.has_evaluated {
           pending_mod_evaluate
             .handled_promise_rejections
-            .push(promise_global.clone());
+            .push(promise_global);
         }
       }
-    }
-
-    // TODO(bartlomieju): remove this whole block, `js_uncaught_exception_cb` is
-    // not needed anymore
-    if let Some(exception) = tc_scope.exception() {
-      if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
-        tc_scope.reset(); // Cancel pending exception.
-        {
-          let mut state = state_rc.borrow_mut();
-          if let Some(pending_mod_evaluate) =
-            state.pending_mod_evaluate.as_mut()
-          {
-            if !pending_mod_evaluate.has_evaluated {
-              pending_mod_evaluate
-                .handled_promise_rejections
-                .push(promise_global);
-            }
-          }
-        }
-        js_uncaught_exception_cb.open(tc_scope).call(
-          tc_scope,
-          undefined,
-          &[exception],
-        );
-      }
-    }
-
-    if tc_scope.has_caught() {
-      // TODO(bartlomieju): ensure that TODO provided below is still valid.
-      // If we get here, an exception was thrown by the unhandledRejection
-      // handler and there is ether no uncaughtException handler or the
-      // handler threw an exception of its own.
-      //
-      // TODO(bnoordhuis) Node terminates the process or worker thread
-      // but we don't really have that option. The exception won't bubble
-      // up either because V8 cancels it when this function returns.
-      let exception = tc_scope
-        .stack_trace()
-        .or_else(|| tc_scope.exception())
-        .map(|value| value.to_rust_string_lossy(tc_scope))
-        .unwrap_or_else(|| "no exception".into());
-      eprintln!("Unhandled exception: {}", exception);
     }
   } else {
     let promise = message.get_promise();

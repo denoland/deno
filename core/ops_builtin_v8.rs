@@ -26,7 +26,6 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_set_macrotask_callback::decl(),
     op_set_next_tick_callback::decl(),
     op_set_promise_reject_callback::decl(),
-    op_set_uncaught_exception_callback::decl(),
     op_run_microtasks::decl(),
     op_has_tick_scheduled::decl(),
     op_set_has_tick_scheduled::decl(),
@@ -105,18 +104,6 @@ fn op_set_promise_reject_callback<'a>(
   let cb = to_v8_fn(scope, cb)?;
   let state_rc = JsRuntime::state(scope);
   let old = state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
-  let old = old.map(|v| v8::Local::new(scope, v));
-  Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
-}
-
-#[op(v8)]
-fn op_set_uncaught_exception_callback<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  cb: serde_v8::Value,
-) -> Result<Option<serde_v8::Value<'a>>, Error> {
-  let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_uncaught_exception_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
