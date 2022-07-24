@@ -744,7 +744,7 @@ impl From<&NativeType> for fast_api::Type {
 
 #[cfg(not(target_os = "windows"))]
 fn is_fast_api_rv(rv: NativeType) -> bool {
-  return !matches!(
+  !matches!(
     rv,
     NativeType::Function
       | NativeType::Pointer
@@ -752,7 +752,7 @@ fn is_fast_api_rv(rv: NativeType) -> bool {
       | NativeType::ISize
       | NativeType::U64
       | NativeType::USize
-  );
+  )
 }
 
 // Create a JavaScript function for synchronous FFI call to
