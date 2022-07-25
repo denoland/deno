@@ -781,8 +781,8 @@ fn make_sync_fn<'s>(
   let mut fast_allocations: Option<*mut ()> = None;
 
   #[cfg(target_os = "linux")]
-  let selinux_is_enabled =
-    selinux::kernel_support() != selinux::KernelSupport::Unsupported;
+  // SAFETY: Assuming this SELinux function is safe
+  let selinux_is_enabled = unsafe { selinux_sys::is_selinux_enabled() } == 1;
   #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
   let selinux_is_enabled = false;
 
