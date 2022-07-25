@@ -224,6 +224,7 @@ fn v8_init(
   v8::V8::initialize();
 
   let flags = concat!(
+    " --no-no-freeze-flags-after-init",
     " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
