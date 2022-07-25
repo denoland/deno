@@ -40,6 +40,8 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
 
+#[cfg(target_os = "linux")]
+extern crate selinux_sys;
 #[cfg(not(target_os = "windows"))]
 mod jit_trampoline;
 #[cfg(not(target_os = "windows"))]
@@ -780,8 +782,15 @@ fn make_sync_fn<'s>(
 
   #[cfg(not(target_os = "windows"))]
   let mut fast_allocations: Option<*mut ()> = None;
+
+  #[cfg(target_os = "linux")]
+  let selinux_is_enabled = unsafe { selinux_sys::is_selinux_enabled() } != 0;
+  #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
+  let selinux_is_enabled = false;
+
   #[cfg(not(target_os = "windows"))]
-  if !sym.can_callback && is_fast_api_rv(sym.result_type) {
+  if !selinux_is_enabled && !sym.can_callback && is_fast_api_rv(sym.result_type)
+  {
     let ret = fast_api::Type::from(&sym.result_type);
 
     let mut args = sym
@@ -1842,7 +1851,7 @@ where
   Ok(async move {
     let result = join_handle
       .await
-      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
+      .map_err(|err| anyhow!("Nonblocking FFI6 call failed: {}", err))??;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
     Ok(unsafe { result.to_value(def.result) })
   })
