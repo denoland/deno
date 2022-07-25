@@ -527,9 +527,15 @@ async fn check_command(
   flags: Flags,
   check_flags: CheckFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  load_and_type_check(&ps, &check_flags.files).await?;
-  Ok(0)
+  if flags.watch.is_some() {
+    // TODO Watch
+    Ok(0)
+  } else {
+    let ps = ProcState::build(flags).await?;
+    load_and_type_check(&ps, &check_flags.files).await?;
+    Ok(0)
+  }
+  
 }
 
 async fn load_and_type_check(

@@ -748,6 +748,10 @@ fn check_subcommand<'a>() -> Command<'a> {
         .min_values(1)
         .value_hint(ValueHint::FilePath),
     )
+    .arg(
+      watch_arg(false)
+    )
+    .arg(no_clear_screen_arg())
     .about("Type-check the dependencies")
     .long_about(
       "Download and type-check without execution.
@@ -2236,6 +2240,8 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
+  watch_arg_parse(flags, matches, false);
+  
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
 }
 
