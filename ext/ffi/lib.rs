@@ -39,9 +39,6 @@ use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
-
-#[cfg(target_os = "linux")]
-extern crate selinux_sys;
 #[cfg(not(target_os = "windows"))]
 mod jit_trampoline;
 #[cfg(not(target_os = "windows"))]
@@ -784,7 +781,8 @@ fn make_sync_fn<'s>(
   let mut fast_allocations: Option<*mut ()> = None;
 
   #[cfg(target_os = "linux")]
-  let selinux_is_enabled = unsafe { selinux_sys::is_selinux_enabled() } != 0;
+  let selinux_is_enabled =
+    selinux::kernel_support() != selinux::KernelSupport::Unsupported;
   #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
   let selinux_is_enabled = false;
 

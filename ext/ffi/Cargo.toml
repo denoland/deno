@@ -24,4 +24,4 @@ tokio = { version = "1.17", features = ["full"] }
 winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
 
 [target.'cfg(target_os="linux")'.dependencies]
-selinux-sys = { version = "0.5.2" }
+selinux = { version = "0.2.7" }

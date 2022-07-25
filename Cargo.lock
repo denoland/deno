@@ -1090,7 +1090,7 @@ dependencies = [
  "deno_core",
  "dlopen",
  "libffi",
- "selinux-sys",
+ "selinux",
  "serde",
  "tokio",
  "winapi 0.3.9",
@@ -3481,6 +3481,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "reference-counted-singleton"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef445213a92fdddc4bc69d9111156d20ffd50704a86ad82b372aab701a0d3a9a"
+
+[[package]]
 name = "regex"
 version = "1.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3854,6 +3860,20 @@ checksum = "0160a13a177a45bfb43ce71c01580998474f556ad854dcbca936dd2841a5c556"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "selinux"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c4534fb886814d0015bcc290979263692213627bdf8ed4091746bb1c77acb0d"
+dependencies = [
+ "bitflags",
+ "libc",
+ "once_cell",
+ "reference-counted-singleton",
+ "selinux-sys",
+ "thiserror",
 ]
 
 [[package]]
