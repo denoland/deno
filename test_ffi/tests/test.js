@@ -174,6 +174,10 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     callback: true,
   },
+  log_many_parameters: {
+    parameters: ["u8", "u16", "u32", "u64", "f64", "f32", "i64", "i32", "i16", "i8", "isize", "usize", "f64", "f32", "f64", "f32", "f64", "f32", "f64"],
+    result: "void",
+  },
   // Statics
   "static_u32": {
     type: "u32",
@@ -267,6 +271,26 @@ console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+
+function addF32Fast(a, b) {
+  return dylib.symbols.add_f32(a, b);
+};
+
+%PrepareFunctionForOptimization(addF32Fast);
+console.log(addF32Fast(123.123, 456.789));
+%OptimizeFunctionOnNextCall(addF32Fast);
+console.log(addF32Fast(123.123, 456.789));
+assertFastCall(addF32Fast);
+
+function addF64Fast(a, b) {
+  return dylib.symbols.add_f64(a, b);
+};
+
+%PrepareFunctionForOptimization(addF64Fast);
+console.log(addF64Fast(123.123, 456.789));
+%OptimizeFunctionOnNextCall(addF64Fast);
+console.log(addF64Fast(123.123, 456.789));
+assertFastCall(addF64Fast);
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
@@ -405,6 +429,17 @@ call_stored_function();
 dylib.symbols.store_function_2(ptr(add10Callback));
 dylib.symbols.call_stored_function_2(20);
 
+function logManyParametersFast(a, b, c, d, e, f, g, h, i , j , k, l, m, n, o, p, q, r, s) {
+  return dylib.symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
+};
+
+%PrepareFunctionForOptimization(logManyParametersFast);
+logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
+%OptimizeFunctionOnNextCall(logManyParametersFast);
+logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
+assertFastCall(logManyParametersFast);
+
+
 const nestedCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
@@ -472,5 +507,5 @@ After: ${postStr}`,
 
 function assertFastCall(fn) {
   const status = % GetOptimizationStatus(fn);
-  assert(status & (1 << 4));
+  assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
 }

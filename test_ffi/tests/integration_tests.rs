@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use pretty_assertions::assert_eq;
 use std::process::Command;
 use test_util::deno_cmd;
 
@@ -72,6 +73,10 @@ fn basic() {
     -8589934590n\n\
     579.9119873046875\n\
     579.912\n\
+    579.9119873046875\n\
+    579.9119873046875\n\
+    579.912\n\
+    579.912\n\
     579\n\
     8589934590n\n\
     -8589934590n\n\
@@ -91,6 +96,8 @@ fn basic() {
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\
     30\n\
+    255 65535 4294967295 4294967296 123.456 789.876 -1 -2 -3 -4 -1000 1000 12345.67891 12345.679 12345.67891 12345.679 12345.67891 12345.679 12345.67891\n\
+    255 65535 4294967295 4294967296 123.456 789.876 -1 -2 -3 -4 -1000 1000 12345.67891 12345.679 12345.67891 12345.679 12345.67891 12345.679 12345.67891\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
     Thread safe call counter: 0\n\

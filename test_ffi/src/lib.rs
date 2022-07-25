@@ -243,6 +243,31 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
   });
 }
 
+#[no_mangle]
+pub extern "C" fn log_many_parameters(
+  a: u8,
+  b: u16,
+  c: u32,
+  d: u64,
+  e: f64,
+  f: f32,
+  g: i64,
+  h: i32,
+  i: i16,
+  j: i8,
+  k: isize,
+  l: usize,
+  m: f64,
+  n: f32,
+  o: f64,
+  p: f32,
+  q: f64,
+  r: f32,
+  s: f64,
+) {
+  println!("{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}");
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}

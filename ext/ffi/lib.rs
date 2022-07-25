@@ -10,7 +10,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::v8::fast_api;
 use std::sync::mpsc::sync_channel;
 
 use deno_core::serde_json::json;
@@ -38,6 +37,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
+
+mod fast_call;
 
 thread_local! {
   static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
@@ -639,95 +640,12 @@ where
   ))
 }
 
-pub struct FfiFastCallTemplate {
-  args: Box<[fast_api::Type]>,
-  ret: fast_api::CType,
-  symbol_ptr: *const c_void,
-}
-
-impl fast_api::FastFunction for FfiFastCallTemplate {
-  fn function(&self) -> *const c_void {
-    self.symbol_ptr
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    Box::leak(self.args.clone())
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    self.ret
-  }
-}
-
-impl From<&NativeType> for fast_api::Type {
-  fn from(native_type: &NativeType) -> Self {
-    match native_type {
-      NativeType::U8 | NativeType::U16 | NativeType::U32 => {
-        fast_api::Type::Uint32
-      }
-      NativeType::I8 | NativeType::I16 | NativeType::I32 => {
-        fast_api::Type::Int32
-      }
-      NativeType::F32 => fast_api::Type::Float32,
-      NativeType::F64 => fast_api::Type::Float64,
-      NativeType::Void => fast_api::Type::Void,
-      NativeType::I64 | NativeType::ISize => fast_api::Type::Int64,
-      NativeType::U64 | NativeType::USize => fast_api::Type::Uint64,
-      NativeType::Function | NativeType::Pointer => {
-        panic!("Cannot be fast api")
-      }
-    }
-  }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_fast_api_rv(rv: NativeType) -> bool {
-  !matches!(
-    rv,
-    NativeType::Function
-      | NativeType::Pointer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize
-  )
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_fast_api_arg(rv: NativeType) -> bool {
-  !matches!(rv, NativeType::Function | NativeType::Pointer)
-}
-
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  #[cfg(not(target_os = "windows"))]
-  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(target_os = "windows")]
-  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(not(target_os = "windows"))]
-  if !sym.can_callback
-    && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
-    && is_fast_api_rv(sym.result_type)
-  {
-    let args = sym
-      .parameter_types
-      .iter()
-      .map(|t| t.into())
-      .collect::<Vec<_>>();
-
-    fast_ffi_templ = Some(FfiFastCallTemplate {
-      args: args.into_boxed_slice(),
-      ret: (&fast_api::Type::from(&sym.result_type)).into(),
-      symbol_ptr: sym.ptr.as_ptr() as *const c_void,
-    });
-  }
-
   let sym = Box::leak(sym);
   let builder = v8::FunctionTemplate::builder(
     |scope: &mut v8::HandleScope,
@@ -752,8 +670,17 @@ fn make_sync_fn<'s>(
   )
   .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
 
-  let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
-    builder.build_fast(scope, &fast_ffi_templ, None)
+  let mut fast_call_alloc = None;
+
+  let func = if fast_call::is_compatible(sym) {
+    let trampoline = fast_call::compile_trampoline(sym);
+    let func = builder.build_fast(
+      scope,
+      &fast_call::make_template(sym, &trampoline),
+      None,
+    );
+    fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
+    func
   } else {
     builder.build(scope)
   };
@@ -767,6 +694,14 @@ fn make_sync_fn<'s>(
       // from Box::into_raw, hence, satisfies memory layout requirements.
       unsafe {
         Box::from_raw(sym);
+      }
+      if let Some(fast_call_ptr) = fast_call_alloc {
+        // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
+        // SAFETY: This is never called twice. pointer obtained
+        // from Box::into_raw, hence, satisfies memory layout requirements.
+        unsafe {
+          Box::from_raw(fast_call_ptr);
+        }
       }
     }),
   );
@@ -970,25 +905,7 @@ where
     Vec::with_capacity(parameter_types.len());
 
   for (index, native_type) in parameter_types.iter().enumerate() {
-    let value = if index == 0 {
-      // sync callbacks are called with the first parameter as the receiver (ie f.call(first, ...rest))
-      // see DinamicLibrary constructor in 00_ffi.js for more details
-      let receiver = args.this();
-      if receiver.is_big_int_object() {
-        // V8 converts BigInt to object when used as receiver
-        receiver
-          .to_big_int(scope)
-          .expect("BigInt object should be able to convert to BigInt")
-          .into()
-      } else if receiver == scope.get_current_context().global(scope) {
-        // V8 converts null or undefined to the global object when used as receiver
-        v8::null(scope).into()
-      } else {
-        receiver.into()
-      }
-    } else {
-      args.get(index as i32 - 1)
-    };
+    let value = args.get(index as i32);
     match native_type {
       NativeType::Void => {
         unreachable!();

@@ -11,4 +11,5 @@ publish = false
 crate-type = ["cdylib"]
 
 [dev-dependencies]
+pretty_assertions = "1.2.1"
 test_util = { path = "../test_util" }
