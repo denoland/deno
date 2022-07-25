@@ -45,14 +45,21 @@ impl Trampoline {
   }
 
   fn compile(sym: &Symbol) -> Self {
+    /// Count the number of arguments passed, classified by argument class
+    /// as defined in section 3.2.3 of the System V ABI spec
+    /// https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
     #[derive(Clone, Copy)]
     struct ArgCounter {
+      // > Arguments of types (signed and unsigned) _Bool, char, short, int,
+      // > long, long long, and pointers are in the INTEGER class.
       integer: i32,
+      // > Arguments of types float, double, _Decimal32, _Decimal64 and
+      // > __m64 are in class SSE.
       sse: i32,
     }
     let mut counter = ArgCounter {
-      integer: -6,
-      sse: -8,
+      integer: -6, // rdi, rsi, rdx, rcx, r8, r9
+      sse: -8,     // xmm0-xmm7
     };
     let args_to_shift: Vec<_> = sym
       .parameter_types
