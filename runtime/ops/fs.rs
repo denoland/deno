@@ -4,6 +4,7 @@ use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
+use deno_core::StringOrBuffer;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -128,6 +129,7 @@ pub struct OpenOptions {
   create_new: bool,
 }
 
+#[inline]
 fn open_helper(
   state: &mut OpState,
   args: &OpenArgs,
@@ -208,12 +210,13 @@ pub struct WriteFileArgs {
   mode: Option<u32>,
   append: bool,
   create: bool,
-  data: ZeroCopyBuf,
+  data: StringOrBuffer,
   cancel_rid: Option<ResourceId>,
 }
 
 impl WriteFileArgs {
-  fn into_open_args_and_data(self) -> (OpenArgs, ZeroCopyBuf) {
+  #[inline]
+  fn into_open_args_and_data(self) -> (OpenArgs, StringOrBuffer) {
     (
       OpenArgs {
         path: self.path,
@@ -268,11 +271,12 @@ async fn op_write_file_async(
   Ok(())
 }
 
+#[inline]
 fn write_file(
   path: &Path,
   open_options: std::fs::OpenOptions,
   _open_args: &OpenArgs,
-  data: ZeroCopyBuf,
+  data: StringOrBuffer,
 ) -> Result<(), AnyError> {
   let mut std_file = open_options.open(path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))

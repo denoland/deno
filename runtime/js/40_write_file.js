@@ -57,8 +57,7 @@
     data,
     options = {},
   ) {
-    const encoder = new TextEncoder();
-    return writeFileSync(path, encoder.encode(data), options);
+    return writeFileSync(path, data, options);
   }
 
   function writeTextFile(
