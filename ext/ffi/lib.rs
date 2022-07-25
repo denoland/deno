@@ -1849,7 +1849,7 @@ where
   Ok(async move {
     let result = join_handle
       .await
-      .map_err(|err| anyhow!("Nonblocking FFI6 call failed: {}", err))??;
+      .map_err(|err| anyhow!("Nonblocking FFI call failed: {}", err))??;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
     Ok(unsafe { result.to_value(def.result) })
   })
