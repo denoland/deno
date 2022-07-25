@@ -12,8 +12,8 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
 
-use super::common::fast_insecure_hash;
 use super::common::run_sqlite_pragma;
+use super::common::FastInsecureHasher;
 
 /// Cache used to skip formatting/linting a file again when we
 /// know it is already formatted or has no lint diagnostics.
@@ -79,8 +79,9 @@ impl IncrementalCacheInner {
     state: &TState,
     initial_file_paths: &[PathBuf],
   ) -> Result<Self, AnyError> {
-    let state_hash =
-      fast_insecure_hash(serde_json::to_string(state).unwrap().as_bytes());
+    let state_hash = FastInsecureHasher::new()
+      .write_str(&serde_json::to_string(state).unwrap())
+      .finish();
     let sql_cache = SqlIncrementalCache::new(db_file_path, state_hash)?;
     Ok(Self::from_sql_incremental_cache(
       sql_cache,
@@ -123,13 +124,15 @@ impl IncrementalCacheInner {
 
   pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
     match self.previous_hashes.get(file_path) {
-      Some(hash) => *hash == fast_insecure_hash(file_text.as_bytes()),
+      Some(hash) => {
+        *hash == FastInsecureHasher::new().write_str(file_text).finish()
+      }
       None => false,
     }
   }
 
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
-    let hash = fast_insecure_hash(file_text.as_bytes());
+    let hash = FastInsecureHasher::new().write_str(file_text).finish();
     if let Some(previous_hash) = self.previous_hashes.get(file_path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
@@ -334,7 +337,7 @@ mod test {
         .unwrap();
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
-    let file_hash = fast_insecure_hash(file_text.as_bytes());
+    let file_hash = FastInsecureHasher::new().write_str(file_text).finish();
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,

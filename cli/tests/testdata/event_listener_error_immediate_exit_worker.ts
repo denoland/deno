@@ -1,4 +1,4 @@
 new Worker(
-  new URL("event_listener_error_immediate_exit.ts", import.meta.url).href,
+  import.meta.resolve("./event_listener_error_immediate_exit.ts"),
   { type: "module" },
 );
