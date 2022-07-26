@@ -3,8 +3,8 @@ import { write } from "bun";
 
 const file = "/tmp/file.txt";
 
-bench("writeTextFileSync()", async () => {
+bench("write()", async () => {
   await write(file, "hello world");
-})
+});
 
 await run();
