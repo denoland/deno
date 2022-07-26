@@ -334,12 +334,15 @@
         if (needsUnpacking && !isNonBlocking) {
           const call = this.symbols[symbol];
           const parameters = symbols[symbol].parameters;
-          const v = new Int32Array(2);
-          const b = new BigInt64Array(v.buffer);
+          const vi = new Int32Array(2);
+          const b = new BigInt64Array(vi.buffer);
+          const max = BigInt(Number.MAX_SAFE_INTEGER);
           if (parameters.length == 0) {
             this.symbols[symbol] = function () {
-              call(v);
-              return b[0];
+              call(vi);
+              const n = b[0];
+              if (n < max) return Number(n);
+              return n;
             };
           } else {
             // Make sure V8 has no excuse to not optimize this function.
@@ -351,8 +354,10 @@
               }) {
                 call(${
                 parameters.map((_, index) => `p${index}`).join(", ")
-              }, v);
-                return b[0];
+              }, vi);
+                const n = b[0];
+                if (n < max) return Number(n);   
+                return n;
               }`,
             );
           }
