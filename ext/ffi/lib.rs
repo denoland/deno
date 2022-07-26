@@ -24,6 +24,7 @@ use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
 use libffi::raw::*;
+#[cfg(target_os = "linux")]
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
