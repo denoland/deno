@@ -57,11 +57,24 @@ fn native_to_c(ty: &NativeType) -> &'static str {
 
 pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   let mut c = String::from(include_str!("prelude.h"));
-  let ret = native_to_c(&sym.result_type);
+  let needs_unwrap = matches!(
+    &sym.result_type,
+    NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize
+  );
+  let ret = if needs_unwrap {
+    "void"
+  } else {
+    native_to_c(&sym.result_type)
+  };
 
   // extern <return_type> func(
   c += "\nextern ";
-  c += ret;
+  c += native_to_c(&sym.result_type);
   c += " func(";
   // <param_type> p0, <param_type> p1, ...);
   for (i, ty) in sym.parameter_types.iter().enumerate() {
@@ -82,16 +95,31 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
     c += native_arg_to_c(ty);
     let _ = write!(c, " p{i}");
   }
-  c += ") {\n";
-  // return func(p0, p1, ...);
-  c += "  return func(";
-  for (i, _) in sym.parameter_types.iter().enumerate() {
-    if i > 0 {
-      c += ", ";
-    }
-    let _ = write!(c, "p{i}");
+  if needs_unwrap {
+    let _ = write!(c, ", struct FastApiTypedArray *p_ret");
   }
-  c += ");\n}\n\n";
+  c += ") {\n";
+  // func(p0, p1, ...);
+  let mut call_s = String::from("func(");
+  {
+    for (i, _) in sym.parameter_types.iter().enumerate() {
+      if i > 0 {
+        call_s += ", ";
+      }
+      let _ = write!(call_s, "p{i}");
+    }
+    call_s += ");\n";
+  }
+  if needs_unwrap {
+    // <return_type> r = func(p0, p1, ...);
+    let ret = native_to_c(&sym.result_type);
+    let _ = write!(c, " {ret} r = {call_s}");
+    c += " p_ret->data = (uint32_t *)&r;\n";
+  } else {
+    // return func(p0, p1, ...);
+    let _ = write!(c, " return {call_s}");
+  }
+  c += "}\n\n";
   c
 }
 
@@ -103,7 +131,6 @@ pub(crate) fn gen_trampoline(
   // SAFETY: symbol satisfies ABI requirement.
   unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
   let c = codegen(&sym);
-
   ctx.compile_string(cstr!(c))?;
   let alloc = Allocation {
     addr: ctx.relocate_and_get_symbol(cstr!("func_trampoline"))?,

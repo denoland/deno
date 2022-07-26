@@ -209,6 +209,10 @@
       type === "usize" || type === "isize";
   }
 
+  function isI64(type) {
+    return type === "i64" || type === "isize";
+  }
+
   class UnsafeCallback {
     #refcount;
     #rid;
@@ -293,11 +297,11 @@
           );
           continue;
         }
+        const resultType = symbols[symbol].result;
+        const needsUnpacking = isReturnedAsBigInt(resultType);
 
         const isNonBlocking = symbols[symbol].nonblocking;
         if (isNonBlocking) {
-          const resultType = symbols[symbol].result;
-          const needsUnpacking = isReturnedAsBigInt(resultType);
           ObjectDefineProperty(
             this.symbols,
             symbol,
@@ -325,6 +329,33 @@
               writable: false,
             },
           );
+        }
+
+        if (needsUnpacking && !isNonBlocking) {
+          const call = this.symbols[symbol];
+          const parameters = symbols[symbol].parameters;
+          const v = new Int32Array(2);
+          const b = new BigInt64Array(v.buffer);
+          if (parameters.length == 0) {
+            this.symbols[symbol] = function () {
+              call(v);
+              return b[0];
+            };
+          } else {
+            // Make sure V8 has no excuse to not optimize this function.
+            eval(
+              `this.symbols[symbol] = function (${
+                parameters.map(
+                  (_, index) => `p${index}`,
+                ).join(", ")
+              }) {
+                call(${
+                parameters.map((_, index) => `p${index}`).join(", ")
+              }, v);
+                return b[0];
+              }`,
+            );
+          }
         }
       }
     }
