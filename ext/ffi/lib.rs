@@ -24,6 +24,7 @@ use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
 use libffi::raw::*;
+use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -765,6 +766,24 @@ fn is_fast_api_rv(rv: NativeType) -> bool {
   )
 }
 
+#[cfg(target_os = "linux")]
+fn is_fastapi_available() -> &'static bool {
+  static FASTAPI_IS_AVAILABLE: OnceCell<bool> = OnceCell::new();
+  FASTAPI_IS_AVAILABLE.get_or_init(|| {
+    // SAFETY: mprotect should fail on malloc-ed memory on SELinux which prevent tinycc from working
+    unsafe {
+      let ptr = libc::malloc(1);
+      if ptr.is_null() {
+        let result = libc::mprotect(ptr, 1, libc::PROT_WRITE);
+        libc::free(ptr);
+        result != -1
+      } else {
+        false
+      }
+    }
+  })
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
@@ -781,13 +800,14 @@ fn make_sync_fn<'s>(
   let mut fast_allocations: Option<*mut ()> = None;
 
   #[cfg(target_os = "linux")]
-  // SAFETY: Assuming this SELinux function is safe
-  let selinux_is_enabled = unsafe { selinux_sys::is_selinux_enabled() } == 1;
+  let fastapi_is_available = *is_fastapi_available();
   #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
-  let selinux_is_enabled = false;
+  let fastapi_is_available = true;
 
   #[cfg(not(target_os = "windows"))]
-  if !selinux_is_enabled && !sym.can_callback && is_fast_api_rv(sym.result_type)
+  if fastapi_is_available
+    && !sym.can_callback
+    && is_fast_api_rv(sym.result_type)
   {
     let ret = fast_api::Type::from(&sym.result_type);
 
