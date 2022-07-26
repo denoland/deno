@@ -27,6 +27,11 @@
     openFdCache.delete(path);
   });
 
+  function invalidateFdCache(fsFile, create, append, mode) {
+    if (!fsFile || fsFile.mode || mode) return true;
+    return fsFile.append !== append || fsFile.create !== create;
+  }
+
   async function writeFile(
     pathOrURL,
     data,
@@ -42,14 +47,20 @@
     }
     const path = pathFromURL(pathOrURL);
     let fsFile = openFdCache.get(path);
-    if (!fsFile) {
-      fsFile = openSync(path, {
+    const append = options.append ?? false;
+    const create = options.create ?? true;
+    if (invalidateFdCache(fsFile, create, append, options.mode)) {
+      const fd = openSync(path, {
         mode: options.mode,
+        read: false,
         write: true,
-        append: options.append ?? false,
-        create: options.create ?? true,
+        create,
+        truncate: !append,
+        append,
+        createNew: false,
       });
-      if (openFdCache.size < 20) openFdCache.set(path, fsFile);
+      fsFile = { rid: fd.rid, append, create, mode: options.mode };
+      if (options.mode === undefined && openFdCache.size < 20) openFdCache.set(path, fsFile);
     }
     try {
       registry.register({ fsFile, path });

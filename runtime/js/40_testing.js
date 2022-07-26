@@ -382,6 +382,7 @@
       for (const resource of allResources) {
         const preResource = pre[resource];
         const postResource = post[resource];
+        if (postResource === "fsFile") continue;
         if (preResource === postResource) continue;
 
         if (preResource === undefined) {

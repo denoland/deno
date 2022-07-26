@@ -4,13 +4,13 @@ use super::io::StdFileResource;
 use super::utils::into_string;
 use crate::fs_util::canonicalize_path;
 use crate::permissions::Permissions;
-use deno_core::StringOrBuffer;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 
 use deno_core::Extension;
