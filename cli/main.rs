@@ -1050,7 +1050,19 @@ async fn run_command(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let main_module = resolve_url_or_path(&run_flags.script)?;
+  let main_module = if flags.compat {
+    let bin_file = std::env::current_dir()
+      .unwrap()
+      .join("node_modules/.bin/")
+      .join(&run_flags.script);
+    if bin_file.exists() {
+      deno_core::resolve_path(&bin_file.to_string_lossy())?
+    } else {
+      resolve_url_or_path(&run_flags.script)?
+    }
+  } else {
+    resolve_url_or_path(&run_flags.script)?
+  };
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options());
@@ -1282,6 +1294,13 @@ fn get_subcommand(
     DenoSubcommand::Lint(lint_flags) => {
       lint_command(flags, lint_flags).boxed_local()
     }
+    DenoSubcommand::Node(node_flags) => run_command(
+      flags,
+      RunFlags {
+        script: node_flags.script,
+      },
+    )
+    .boxed_local(),
     DenoSubcommand::Repl(repl_flags) => {
       repl_command(flags, repl_flags).boxed_local()
     }

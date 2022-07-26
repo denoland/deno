@@ -158,6 +158,11 @@ pub struct ReplFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct NodeFlags {
+  pub script: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct RunFlags {
   pub script: String,
 }
@@ -213,14 +218,15 @@ pub enum DenoSubcommand {
   Fmt(FmtFlags),
   Info(InfoFlags),
   Install(InstallFlags),
-  Uninstall(UninstallFlags),
-  Lsp,
   Lint(LintFlags),
+  Lsp,
+  Node(NodeFlags),
   Repl(ReplFlags),
   Run(RunFlags),
   Task(TaskFlags),
   Test(TestFlags),
   Types,
+  Uninstall(UninstallFlags),
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
 }
@@ -552,6 +558,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("install", m)) => install_parse(&mut flags, m),
     Some(("lint", m)) => lint_parse(&mut flags, m),
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
+    Some(("node", m)) => node_parse(&mut flags, m),
     Some(("repl", m)) => repl_parse(&mut flags, m),
     Some(("run", m)) => run_parse(&mut flags, m),
     Some(("task", m)) => task_parse(&mut flags, m, &args),
@@ -628,6 +635,7 @@ fn clap_root(version: &str) -> Command {
     .subcommand(uninstall_subcommand())
     .subcommand(lsp_subcommand())
     .subcommand(lint_subcommand())
+    .subcommand(node_subcommand())
     .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
     .subcommand(task_subcommand())
@@ -1397,6 +1405,25 @@ fn repl_subcommand<'a>() -> Command<'a> {
         .value_name("code"),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
+}
+
+fn node_subcommand<'a>() -> Command<'a> {
+  runtime_args(Command::new("node"), true, true)
+    .arg(
+      watch_arg(true)
+        .conflicts_with("inspect")
+        .conflicts_with("inspect-brk"),
+    )
+    .arg(no_clear_screen_arg())
+    .trailing_var_arg(true)
+    .arg(script_arg().required(true))
+    .about("Run a JavaScript or TypeScript program emulating Node.js")
+    .long_about(
+      "Run a JavaScript or TypeScript program emulating Node.js
+
+Using this command implies --allow-read and --allow-env permissions, as well
+as --unstable flag.",
+    )
 }
 
 fn run_subcommand<'a>() -> Command<'a> {
@@ -2540,6 +2567,29 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       eval: matches.value_of("eval").map(ToOwned::to_owned),
     },
   );
+}
+
+fn node_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  runtime_args_parse(flags, matches, true, true);
+
+  let mut script: Vec<String> = matches
+    .values_of("script_arg")
+    .unwrap()
+    .map(String::from)
+    .collect();
+  assert!(!script.is_empty());
+  let script_args = script.split_off(1);
+  let script = script[0].to_string();
+  for v in script_args {
+    flags.argv.push(v);
+  }
+
+  watch_arg_parse(flags, matches, true);
+  flags.allow_read = Some(vec![]);
+  flags.allow_env = Some(vec![]);
+  flags.unstable = true;
+  flags.compat = true;
+  flags.subcommand = DenoSubcommand::Node(NodeFlags { script });
 }
 
 fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
