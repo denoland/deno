@@ -219,7 +219,6 @@ fn v8_init(
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
   let flags = concat!(
-    " --no_freeze_flags_after_init",
     " --experimental-wasm-threads",
     " --wasm-test-streaming",
     " --harmony-import-assertions",
