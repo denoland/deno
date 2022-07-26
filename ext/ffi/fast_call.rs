@@ -14,7 +14,6 @@ use crate::Symbol;
 pub(crate) fn is_compatible(sym: &Symbol) -> bool {
   cfg!(all(target_arch = "x86_64", target_family = "unix"))
     && !sym.can_callback
-    && !sym.parameter_types.iter().any(|t| !is_fast_api_arg(*t))
     && is_fast_api_rv(sym.result_type)
 }
 
@@ -169,10 +168,11 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::F32 => fast_api::Type::Float32,
       NativeType::F64 => fast_api::Type::Float64,
       NativeType::Void => fast_api::Type::Void,
-      NativeType::I64 | NativeType::ISize => fast_api::Type::Int64,
-      NativeType::U64 | NativeType::USize => fast_api::Type::Uint64,
-      NativeType::Function | NativeType::Pointer => {
-        panic!("Cannot be fast api")
+      NativeType::I64 => fast_api::Type::Int64,
+      NativeType::U64 => fast_api::Type::Uint64,
+      NativeType::ISize => fast_api::Type::Int64,
+      NativeType::USize | NativeType::Function | NativeType::Pointer => {
+        fast_api::Type::Uint64
       }
     }
   }
@@ -188,8 +188,4 @@ fn is_fast_api_rv(rv: NativeType) -> bool {
       | NativeType::U64
       | NativeType::USize
   )
-}
-
-fn is_fast_api_arg(rv: NativeType) -> bool {
-  !matches!(rv, NativeType::Function | NativeType::Pointer)
 }

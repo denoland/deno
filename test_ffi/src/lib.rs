@@ -418,4 +418,4 @@ pub struct Structure {
 }
 
 #[no_mangle]
-pub static static_ptr: Structure = Structure { _data: 42 };
+pub static mut static_ptr: Structure = Structure { _data: 42 };
