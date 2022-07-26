@@ -35,7 +35,7 @@ pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
 
 /// Trampoline for fast-call FFI functions
 ///
-/// Removes first argument (Javascript object receiver) and shifts the rest of arguments to the left
+/// Removes first argument (Javascript receiver object) and shifts the rest of arguments to the left
 pub(crate) struct Trampoline(ExecutableBuffer);
 
 impl Trampoline {
