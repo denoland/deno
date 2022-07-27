@@ -404,3 +404,10 @@ pub struct Structure {
 
 #[no_mangle]
 pub static mut static_ptr: Structure = Structure { _data: 42 };
+
+/// Invalid UTF-8 characters, array of length 14
+#[no_mangle]
+pub static static_char: [u8; 14] = [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00,
+];
