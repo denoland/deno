@@ -34,7 +34,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -1123,11 +1122,7 @@ async fn test_specifiers(
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
-  let tests: Arc<RwLock<IndexMap<usize, TestDescription>>> =
-    Arc::new(RwLock::new(IndexMap::new()));
-  let mut test_steps = IndexMap::new();
 
-  let tests_ = tests.clone();
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
       let ps = ps.clone();
@@ -1136,7 +1131,6 @@ async fn test_specifiers(
       let mode = mode.clone();
       let mut sender = sender.clone();
       let options = options.clone();
-      let tests = tests_.clone();
 
       tokio::task::spawn_blocking(move || {
         let origin = specifier.to_string();
@@ -1148,30 +1142,12 @@ async fn test_specifiers(
           &sender,
           options,
         ));
-        log::debug!("result of origin: {}, {:?}", &origin, &file_result); //
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(TestEvent::UncaughtError(
               origin.clone(),
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
-            log::debug!("uncaught error at origin: {}", &origin);
-            for desc in tests.read().values() {
-              log::debug!(
-                "found desc at origin: {} {{ name: \"{}\", id: {} }}",
-                &desc.origin,
-                desc.name,
-                desc.id
-              );
-              if desc.origin == origin {
-                log::debug!("send cancelled event for test id {}", desc.id);
-                sender.send(TestEvent::Result(
-                  desc.id,
-                  TestResult::Cancelled,
-                  0,
-                ))?
-              }
-            }
           } else {
             return Err(error);
           }
@@ -1190,6 +1166,8 @@ async fn test_specifiers(
   let handler = {
     tokio::task::spawn(async move {
       let earlier = Instant::now();
+      let mut tests = IndexMap::new();
+      let mut test_steps = IndexMap::new();
       let mut tests_with_result = HashSet::new();
       let mut summary = TestSummary::new();
       let mut used_only = false;
@@ -1198,7 +1176,7 @@ async fn test_specifiers(
         match event {
           TestEvent::Register(description) => {
             reporter.report_register(&description);
-            tests.write().insert(description.id, description);
+            tests.insert(description.id, description);
           }
 
           TestEvent::Plan(plan) => {
@@ -1213,7 +1191,7 @@ async fn test_specifiers(
           }
 
           TestEvent::Wait(id) => {
-            reporter.report_wait(tests.read().get(&id).unwrap());
+            reporter.report_wait(tests.get(&id).unwrap());
           }
 
           TestEvent::Output(output) => {
@@ -1222,23 +1200,20 @@ async fn test_specifiers(
 
           TestEvent::Result(id, result, elapsed) => {
             if tests_with_result.insert(id) {
-              let description = tests.read().get(&id).unwrap().clone();
+              let description = tests.get(&id).unwrap().clone();
               match &result {
                 TestResult::Ok => {
-                  log::debug!("receive passed event for test id {}", id);
                   summary.passed += 1;
                 }
                 TestResult::Ignored => {
                   summary.ignored += 1;
                 }
                 TestResult::Failed(error) => {
-                  log::debug!("receive failed event for test id {}", id);
                   summary.failed += 1;
                   summary.failures.push((description.clone(), error.clone()));
                 }
                 TestResult::Cancelled => {
-                  log::debug!("receive cancelled event for test id {}", id);
-                  summary.failed += 1;
+                  unreachable!("should be handled in TestEvent::UncaughtError");
                 }
               }
               reporter.report_result(&description, &result, elapsed);
@@ -1246,10 +1221,15 @@ async fn test_specifiers(
           }
 
           TestEvent::UncaughtError(origin, error) => {
-            log::debug!("receive uncaught error event for origin: {}", &origin);
             reporter.report_uncaught_error(&origin, &error);
             summary.failed += 1;
-            summary.uncaught_errors.push((origin, error));
+            summary.uncaught_errors.push((origin.clone(), error));
+            for desc in tests.values() {
+              if desc.origin == origin && tests_with_result.insert(desc.id) {
+                summary.failed += 1;
+                reporter.report_result(desc, &TestResult::Cancelled, 0);
+              }
+            }
           }
 
           TestEvent::StepRegister(description) => {
