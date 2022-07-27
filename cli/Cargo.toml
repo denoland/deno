@@ -63,7 +63,7 @@ clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
 data-url = "=0.1.1"
 dissimilar = "=1.0.3"
-dprint-plugin-json = "=0.15.3"
+dprint-plugin-json = "=0.15.4"
 dprint-plugin-markdown = "=0.13.3"
 dprint-plugin-typescript = "=0.71.1"
 encoding_rs = "=0.8.31"
@@ -73,7 +73,7 @@ fancy-regex = "=0.9.0"
 http = "=0.2.6"
 import_map = "=0.12.1"
 indexmap = "1.8.1"
-jsonc-parser = { version = "=0.19.0", features = ["serde"] }
+jsonc-parser = { version = "=0.20.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
 mitata = '=0.0.7'
