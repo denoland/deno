@@ -1145,7 +1145,7 @@ async fn test_specifiers(
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(TestEvent::UncaughtError(
-              origin.clone(),
+              origin,
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
           } else {
