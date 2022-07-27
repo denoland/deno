@@ -837,7 +837,7 @@ fn make_sync_fn<'s>(
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
                 let bs = unsafe {
-                  &mut *(&backing_store[0..2] as *const _ as *mut [u8]
+                  &mut *(&backing_store[..] as *const _ as *mut [u8]
                     as *mut i64)
                 };
                 // SAFETY: We already checked that type == I64
@@ -847,7 +847,7 @@ fn make_sync_fn<'s>(
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
                 let bs = unsafe {
-                  &mut *(&backing_store[0..2] as *const _ as *mut [u8]
+                  &mut *(&backing_store[..] as *const _ as *mut [u8]
                     as *mut u64)
                 };
                 // SAFETY: We checked that type == U64
