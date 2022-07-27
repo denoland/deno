@@ -13,9 +13,12 @@
     TypeError,
     Uint8Array,
     PromiseAll,
+    SymbolFor,
   } = window.__bootstrap.primordials;
   const { readableStreamForRid, writableStreamForRid } =
     window.__bootstrap.streamUtils;
+
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
   function spawnChild(command, {
     args = [],
@@ -71,6 +74,8 @@
 
   class Child {
     #rid;
+    #waitPromiseId;
+    #unrefed = false;
 
     #pid;
     get pid() {
@@ -85,6 +90,8 @@
       return this.#stdin;
     }
 
+    #stdoutPromiseId;
+    #stdoutRid;
     #stdout = null;
     get stdout() {
       if (this.#stdout == null) {
@@ -93,6 +100,8 @@
       return this.#stdout;
     }
 
+    #stderrPromiseId;
+    #stderrRid;
     #stderr = null;
     get stderr() {
       if (this.#stderr == null) {
@@ -121,17 +130,27 @@
       }
 
       if (stdoutRid !== null) {
-        this.#stdout = readableStreamForRid(stdoutRid);
+        this.#stdoutRid = stdoutRid;
+        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
+          this.#stdoutPromiseId = promise[promiseIdSymbol];
+          if (this.#unrefed) core.unrefOp(this.#stdoutPromiseId);
+        });
       }
 
       if (stderrRid !== null) {
-        this.#stderr = readableStreamForRid(stderrRid);
+        this.#stderrRid = stderrRid;
+        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
+          this.#stderrPromiseId = promise[promiseIdSymbol];
+          if (this.#unrefed) core.unrefOp(this.#stderrPromiseId);
+        });
       }
 
       const onAbort = () => this.kill("SIGTERM");
       signal?.[add](onAbort);
 
-      this.#status = core.opAsync("op_spawn_wait", this.#rid).then((res) => {
+      const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
+      this.#waitPromiseId = waitPromise[promiseIdSymbol];
+      this.#status = waitPromise.then((res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -185,6 +204,20 @@
         throw new TypeError("Child process has already terminated.");
       }
       core.opSync("op_kill", this.#pid, signo);
+    }
+
+    ref() {
+      this.#unrefed = false;
+      core.refOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
+    }
+
+    unref() {
+      this.#unrefed = true;
+      core.unrefOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
     }
   }
 

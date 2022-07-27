@@ -6,11 +6,10 @@ Deno.test("broadcastchannel worker", async () => {
   const intercom = new BroadcastChannel("intercom");
   let count = 0;
 
-  const url = new URL(
+  const url = import.meta.resolve(
     "../testdata/workers/broadcast_channel.ts",
-    import.meta.url,
   );
-  const worker = new Worker(url.href, { type: "module", name: "worker" });
+  const worker = new Worker(url, { type: "module", name: "worker" });
   worker.onmessage = () => intercom.postMessage(++count);
 
   const promise = deferred();

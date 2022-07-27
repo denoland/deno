@@ -98,7 +98,9 @@ pub(crate) struct DynImportModEvaluate {
 }
 
 pub(crate) struct ModEvaluate {
-  promise: v8::Global<v8::Promise>,
+  pub(crate) promise: Option<v8::Global<v8::Promise>>,
+  pub(crate) has_evaluated: bool,
+  pub(crate) handled_promise_rejections: Vec<v8::Global<v8::Promise>>,
   sender: oneshot::Sender<Result<(), Error>>,
 }
 
@@ -152,7 +154,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
@@ -392,7 +393,6 @@ impl JsRuntime {
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
-      js_uncaught_exception_cb: None,
       js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
@@ -1288,7 +1288,26 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
+    {
+      let mut state = state_rc.borrow_mut();
+      assert!(
+        state.pending_mod_evaluate.is_none(),
+        "There is already pending top level module evaluation"
+      );
+      state.pending_mod_evaluate = Some(ModEvaluate {
+        promise: None,
+        has_evaluated: false,
+        handled_promise_rejections: vec![],
+        sender,
+      });
+    }
+
     let maybe_value = module.evaluate(tc_scope);
+    {
+      let mut state = state_rc.borrow_mut();
+      let pending_mod_evaluate = state.pending_mod_evaluate.as_mut().unwrap();
+      pending_mod_evaluate.has_evaluated = true;
+    }
 
     // Update status after evaluating.
     status = module.get_status();
@@ -1297,7 +1316,12 @@ impl JsRuntime {
       state_rc.borrow_mut().explicit_terminate_exception.take();
     if let Some(exception) = explicit_terminate_exception {
       let exception = v8::Local::new(tc_scope, exception);
-      sender
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
+      pending_mod_evaluate
+        .sender
         .send(exception_to_err_result(tc_scope, exception, false))
         .expect("Failed to send module evaluation error.");
     } else if let Some(value) = maybe_value {
@@ -1309,20 +1333,25 @@ impl JsRuntime {
         .expect("Expected to get promise as module evaluation result");
       let promise_global = v8::Global::new(tc_scope, promise);
       let mut state = state_rc.borrow_mut();
-      state.pending_promise_exceptions.remove(&promise_global);
+      {
+        let pending_mod_evaluate = state.pending_mod_evaluate.as_ref().unwrap();
+        let pending_rejection_was_already_handled = pending_mod_evaluate
+          .handled_promise_rejections
+          .contains(&promise_global);
+        if !pending_rejection_was_already_handled {
+          state.pending_promise_exceptions.remove(&promise_global);
+        }
+      }
       let promise_global = v8::Global::new(tc_scope, promise);
-      assert!(
-        state.pending_mod_evaluate.is_none(),
-        "There is already pending top level module evaluation"
-      );
-
-      state.pending_mod_evaluate = Some(ModEvaluate {
-        promise: promise_global,
-        sender,
-      });
+      state.pending_mod_evaluate.as_mut().unwrap().promise =
+        Some(promise_global);
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      sender.send(Err(
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
+      pending_mod_evaluate.sender.send(Err(
         generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
       )).expect("Failed to send module evaluation error.");
     } else {
@@ -1530,10 +1559,11 @@ impl JsRuntime {
       return;
     }
 
-    let module_evaluation = maybe_module_evaluation.unwrap();
+    let mut module_evaluation = maybe_module_evaluation.unwrap();
     let scope = &mut self.handle_scope();
 
-    let promise = module_evaluation.promise.open(scope);
+    let promise_global = module_evaluation.promise.clone().unwrap();
+    let promise = promise_global.open(scope);
     let promise_state = promise.state();
 
     match promise_state {
@@ -1546,14 +1576,24 @@ impl JsRuntime {
         scope.perform_microtask_checkpoint();
         // Receiver end might have been already dropped, ignore the result
         let _ = module_evaluation.sender.send(Ok(()));
+        module_evaluation.handled_promise_rejections.clear();
       }
       v8::PromiseState::Rejected => {
         let exception = promise.result(scope);
         scope.perform_microtask_checkpoint();
+
         // Receiver end might have been already dropped, ignore the result
-        let _ = module_evaluation
-          .sender
-          .send(exception_to_err_result(scope, exception, false));
+        if module_evaluation
+          .handled_promise_rejections
+          .contains(&promise_global)
+        {
+          let _ = module_evaluation.sender.send(Ok(()));
+          module_evaluation.handled_promise_rejections.clear();
+        } else {
+          let _ = module_evaluation
+            .sender
+            .send(exception_to_err_result(scope, exception, false));
+        }
       }
     }
   }
@@ -3169,7 +3209,6 @@ assertEquals(1, notify_return_value);
   #[tokio::test]
   async fn test_set_promise_reject_callback() {
     static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
-    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
     fn op_promise_reject() -> Result<(), AnyError> {
@@ -3177,17 +3216,8 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    #[op]
-    fn op_uncaught_exception() -> Result<(), AnyError> {
-      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
-      Ok(())
-    }
-
     let extension = Extension::builder()
-      .ops(vec![
-        op_promise_reject::decl(),
-        op_uncaught_exception::decl(),
-      ])
+      .ops(vec![op_promise_reject::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3207,23 +3237,17 @@ assertEquals(1, notify_return_value);
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
+          Deno.core.opSync("op_store_pending_promise_exception", promise);
           Deno.core.opSync("op_promise_reject");
-          throw Error("promiseReject"); // Triggers uncaughtException handler.
-        });
-
-        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
-          if (err.message !== "promiseReject") throw err;
-          Deno.core.opSync("op_uncaught_exception");
         });
 
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
 
     runtime
       .execute_script(
@@ -3235,23 +3259,86 @@ assertEquals(1, notify_return_value);
           });
         }
 
-        {
-          const prev = Deno.core.opSync("op_set_uncaught_exception_callback", (...args) => {
-            prev(...args);
-            throw Error("fail");
-          });
-        }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    // Exception from uncaughtException handler doesn't bubble up but is
-    // printed to stderr.
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback_top_level_await() {
+    static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
+
+    #[op]
+    fn op_promise_reject() -> Result<(), AnyError> {
+      PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![op_promise_reject::decl()])
+      .build();
+
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let source = r#"
+        Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
+          Deno.core.opSync("op_promise_reject");
+        });
+        
+        throw new Error('top level throw');
+        "#;
+
+        async move {
+          Ok(ModuleSource {
+            code: source.as_bytes().to_vec().into_boxed_slice(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      module_loader: Some(Rc::new(ModsLoader)),
+      ..Default::default()
+    });
+
+    let id = runtime
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
+      .await
+      .unwrap();
+    let receiver = runtime.mod_evaluate(id);
+    runtime.run_event_loop(false).await.unwrap();
+    receiver.await.unwrap().unwrap_err();
+
+    assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
   }
 
   #[test]

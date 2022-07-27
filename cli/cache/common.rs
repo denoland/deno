@@ -1,16 +1,37 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::hash::Hasher;
+
 use deno_core::error::AnyError;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-/// Very fast non-cryptographically secure hash.
-pub fn fast_insecure_hash(bytes: &[u8]) -> u64 {
-  use std::hash::Hasher;
-  use twox_hash::XxHash64;
+/// A very fast insecure hasher that uses the xxHash algorithm.
+#[derive(Default)]
+pub struct FastInsecureHasher(twox_hash::XxHash64);
 
-  let mut hasher = XxHash64::default();
-  hasher.write(bytes);
-  hasher.finish()
+impl FastInsecureHasher {
+  pub fn new() -> Self {
+    Self::default()
+  }
+
+  pub fn write_str(&mut self, text: &str) -> &mut Self {
+    self.write(text.as_bytes());
+    self
+  }
+
+  pub fn write(&mut self, bytes: &[u8]) -> &mut Self {
+    self.0.write(bytes);
+    self
+  }
+
+  pub fn write_u64(&mut self, value: u64) -> &mut Self {
+    self.0.write_u64(value);
+    self
+  }
+
+  pub fn finish(&self) -> u64 {
+    self.0.finish()
+  }
 }
 
 /// Runs the common sqlite pragma.
