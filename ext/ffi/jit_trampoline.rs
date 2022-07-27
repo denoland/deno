@@ -117,7 +117,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
     c += " p_ret->data = (uint32_t *)&r;\n";
   } else {
     // return func(p0, p1, ...);
-    let _ = write!(c, " return {call_s}");
+    let _ = write!(c, "  return {call_s}");
   }
   c += "}\n\n";
   c
