@@ -348,6 +348,7 @@
           const _call = this.symbols[symbol];
           const parameters = symbols[symbol].parameters;
           const vi = new Int32Array(2);
+          const _vui = new Uint32Array(vi.buffer);
           const _b = new BigInt64Array(vi.buffer);
 
           // Make sure V8 has no excuse to not optimize this function.
@@ -364,8 +365,8 @@
               isI64(resultType) ? `const n1 = Number(_b[0])` : `const n1 = ${
                 // Faster path for u64
                 isLittleEndian()
-                  ? "vi[0] + 2 ** 32 * vi[1]"
-                  : "vi[1] + 2 ** 32 * vi[0]"}`
+                  ? "_vui[0] + 2 ** 32 * _vui[1]"
+                  : "_vui[1] + 2 ** 32 * _vui[0]"}`
             };
               if (Number.isSafeInteger(n1)) return n1;
               return _b[0];
