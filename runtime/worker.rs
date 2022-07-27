@@ -117,6 +117,7 @@ impl MainWorker {
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
+      deno_cache::init(),
       deno_console::init(),
       deno_url::init(),
       deno_web::init::<Permissions>(

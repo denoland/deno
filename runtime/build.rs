@@ -142,6 +142,7 @@ mod not_docs {
   fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     let extensions: Vec<Extension> = vec![
       deno_webidl::init(),
+      deno_cache::init(),
       deno_console::init(),
       deno_url::init(),
       deno_tls::init(),

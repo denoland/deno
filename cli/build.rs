@@ -81,6 +81,7 @@ fn create_compiler_snapshot(
 ) {
   // libs that are being provided by op crates.
   let mut op_crate_libs = HashMap::new();
+  op_crate_libs.insert("deno.caches", deno_cache::get_declaration());
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());

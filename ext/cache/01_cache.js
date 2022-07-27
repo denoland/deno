@@ -3,105 +3,195 @@
 /// <reference path="../../core/internal.d.ts" />
 
 ((window) => {
-  const core = window.Deno.core;
-  const webidl = window.__bootstrap.webidl;
-  const {
-    SafeArrayIterator,
-    Symbol,
-    SymbolFor,
-    ObjectDefineProperty,
-    ObjectFromEntries,
-    ObjectEntries,
-    ReflectGet,
-    ReflectHas,
-    Proxy,
-  } = window.__bootstrap.primordials;
+  function queryCache(requestQuery, options = {}, targetStorage = new Map()) {
+    const resultList = new Map();
+    // let storage = null;
+    // Ignore step 2-4;
+    for (const [request, response] of targetStorage.entries()) {
+      if (requestMatchesCatchedItem(requestQuery, request, response, options)) {
+        resultList.set(request, response);
+      }
+    }
+    return resultList;
+  }
 
-  const _persistent = Symbol("[[persistent]]");
+  function requestMatchesCachedItem(
+    requestQuery,
+    request,
+    response = null,
+    options = {},
+  ) {
+    // Step 1.
+    if (options["ignoreMethod"] === false && request.method !== "GET") {
+      return false;
+    }
+
+    // Step 2.
+    let queryURL = requestQuery.url;
+    let cachedURL = request.url;
+    if (options["ignoreSearch"] === true) {
+      queryURL = "";
+      cachedURL = "";
+    }
+
+    // Step 5.
+    {
+      const a = new URL(queryURL);
+      const b = new URL(cachedURL);
+      if (
+        a.host !== b.host || a.pathname !== b.pathname || a.search !== b.search
+      ) {
+        // TODO(@satyarohith): think about exclude fragment flag
+        return false;
+      }
+    }
+
+    // Step 6.
+    if (
+      (response === null && options["ignoreVary"] === true) ||
+      !response.headers.has("Vary")
+    ) {
+      return true;
+    }
+
+    // Step 7.
+    const varyHeader = response.headers.get("Vary");
+    // TODO(@satyarohith): do the parsing of the vary header.
+    const fieldValues = varyHeader.split(",").map((field) => field.trim());
+    for (const fieldValue of fieldValues) {
+      if (
+        fieldValue === "*" ||
+        request.headers.get(fieldValue) !== requestQuery.headers.get(fieldValue)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   class CacheStorage {
     #storage;
 
     constructor() {
-      webidl.illegalConstructor();
+      this.#storage = new Map();
+      return this;
     }
 
-    get length() {
-      webidl.assertBranded(this, StoragePrototype);
-      return core.opSync("op_webstorage_length", this[_persistent]);
+    // deno-lint-ignore require-await
+    async match(_request, _options) {
+      // TODO(@satyarohith): implement the algorithm.
+      return Promise.resolve(new Response("hello world"));
     }
-
-    key(index) {
-      webidl.assertBranded(this, StoragePrototype);
-      const prefix = "Failed to execute 'key' on 'Storage'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      index = webidl.converters["unsigned long"](index, {
-        prefix,
-        context: "Argument 1",
-      });
-
-      return core.opSync("op_webstorage_key", index, this[_persistent]);
+    // deno-lint-ignore require-await
+    async open(cacheName) {
+      if (!this.#storage.has(cacheName)) {
+        this.#storage.set(cacheName, new Cache(cacheName));
+      }
+      return Promise.resolve(this.#storage.get(cacheName));
     }
-
-    setItem(key, value) {
-      webidl.assertBranded(this, StoragePrototype);
-      const prefix = "Failed to execute 'setItem' on 'Storage'";
-      webidl.requiredArguments(arguments.length, 2, { prefix });
-      key = webidl.converters.DOMString(key, {
-        prefix,
-        context: "Argument 1",
-      });
-      value = webidl.converters.DOMString(value, {
-        prefix,
-        context: "Argument 2",
-      });
-
-      core.opSync("op_webstorage_set", key, value, this[_persistent]);
+    // deno-lint-ignore require-await
+    async has(cacheName) {
+      return Promise.resolve(this.#storage.has(cacheName));
     }
-
-    getItem(key) {
-      webidl.assertBranded(this, StoragePrototype);
-      const prefix = "Failed to execute 'getItem' on 'Storage'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      key = webidl.converters.DOMString(key, {
-        prefix,
-        context: "Argument 1",
-      });
-
-      return core.opSync("op_webstorage_get", key, this[_persistent]);
+    // deno-lint-ignore require-await
+    async delete(cacheName) {
+      return Promise.resolve(this.#storage.delete(cacheName));
     }
-
-    removeItem(key) {
-      webidl.assertBranded(this, StoragePrototype);
-      const prefix = "Failed to execute 'removeItem' on 'Storage'";
-      webidl.requiredArguments(arguments.length, 1, { prefix });
-      key = webidl.converters.DOMString(key, {
-        prefix,
-        context: "Argument 1",
-      });
-
-      core.opSync("op_webstorage_remove", key, this[_persistent]);
-    }
-
-    clear() {
-      webidl.assertBranded(this, StoragePrototype);
-      core.opSync("op_webstorage_clear", this[_persistent]);
+    // deno-lint-ignore require-await
+    async keys() {
+      return Promise.resolve(Array.from(this.#storage.keys()));
     }
   }
 
-  window.__bootstrap.webStorage = {
-    localStorage() {
-      if (!localStorage) {
-        localStorage = createStorage(true);
+  class Cache {
+    #storage;
+    #name;
+    constructor(cacheName) {
+      this.#name = cacheName;
+      this.#storage = new Map();
+      return this;
+    }
+    // async match(request, options) {}
+
+    // deno-lint-ignore require-await
+    async matchAll(request, options = {}) {
+      let r = null;
+      // Step 2.
+      if (request instanceof Request) {
+        if (request.method !== "GET" && !options?.ignoreMethod) {
+          return Promise.resolve([]);
+        }
+        r = request;
+      } else if (request instanceof string) {
+        try {
+          r = new Request(request);
+        } catch (error) {
+          return Promise.reject(error);
+        }
       }
-      return localStorage;
-    },
-    sessionStorage() {
-      if (!sessionStorage) {
-        sessionStorage = createStorage(false);
+
+      // Step 5.
+      const responses = [];
+      // Step 5.2
+      if (r === null) {
+        for (const [_request, response] of this.#storage.entries()) {
+          responses.push(response);
+        }
+        // Step 5.3
+      } else {
+        const requestResponses = queryCache(r, options, this.#storage);
+        for (const response of requestResponses.values()) {
+          responses.push(response);
+        }
+        // Skip 5.4.
       }
-      return sessionStorage;
-    },
-    Storage,
+      // Step 5.5
+
+      return Promise.resolve(responses);
+    }
+
+    // deno-lint-ignore require-await
+    async add(request) {
+      const requests = [request];
+      return this.addAll(requests);
+    }
+
+    // async addAll(requests) {
+    //   const responsePromises = [];
+    //   const requestList = [];
+    //   for (const request of requests) {
+    //     if (
+    //       request instanceof Request &&
+    //         request.scheme !== "http" && request.scheme !== "https" ||
+    //       request.method !== "GET"
+    //     ) {
+    //       return Promise.reject(new TypeError("type error"));
+    //     }
+    //   }
+    // }
+
+    // put(request, response) {
+    //   let innerRequest = null;
+    //   if (request instanceof Request) {
+    //     innerRequest = request;
+    //   } else {
+    //     try {
+    //       innerRequest = new Request(request);
+    //     } catch (error) {
+    //       throw Promise.reject(error);
+    //     }
+    //   }
+    // }
+
+    // async delete(request, options) {}
+    // deno-lint-ignore require-await
+    async keys() {
+      return Promise.resolve(Array.from(this.#storage.keys()));
+    }
+  }
+
+  window.__bootstrap.caches = {
+    CacheStorage,
   };
 })(this);
