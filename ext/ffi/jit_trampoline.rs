@@ -32,7 +32,8 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
     NativeType::I64 => "int64_t",
     NativeType::ISize => "intptr_t",
     NativeType::USize => "uintptr_t",
-    NativeType::Pointer | NativeType::Function => "void*",
+    NativeType::Pointer => "struct FastApiTypedArray*",
+    NativeType::Function => "void*",
   }
 }
 
@@ -85,11 +86,15 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   c += ") {\n";
   // return func(p0, p1, ...);
   c += "  return func(";
-  for (i, _) in sym.parameter_types.iter().enumerate() {
+  for (i, ty) in sym.parameter_types.iter().enumerate() {
     if i > 0 {
       c += ", ";
     }
-    let _ = write!(c, "p{i}");
+    if matches!(ty, NativeType::Pointer) {
+      let _ = write!(c, "p{i}->data");
+    } else {
+      let _ = write!(c, "p{i}");
+    }
   }
   c += ");\n}\n\n";
   c
@@ -103,7 +108,6 @@ pub(crate) fn gen_trampoline(
   // SAFETY: symbol satisfies ABI requirement.
   unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
   let c = codegen(&sym);
-
   ctx.compile_string(cstr!(c))?;
   let alloc = Allocation {
     addr: ctx.relocate_and_get_symbol(cstr!("func_trampoline"))?,

@@ -746,9 +746,8 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Function | NativeType::Pointer => {
-        fast_api::Type::Uint64
-      }
+      NativeType::USize | NativeType::Function => fast_api::Type::Uint64,
+      NativeType::Pointer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
     }
   }
 }

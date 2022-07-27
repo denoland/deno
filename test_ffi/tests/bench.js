@@ -12,6 +12,7 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 const dylib = Deno.dlopen(libPath, {
   "nop": { parameters: [], result: "void" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
+  "hash": { parameters: ["pointer", "u32"], result: "u32" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -229,6 +230,13 @@ Deno.bench("nop()", () => {
 const { add_u32 } = dylib.symbols;
 Deno.bench("add_u32()", () => {
   add_u32(1, 2);
+});
+
+const bytes = new Uint8Array(64);
+
+const { hash } = dylib.symbols;
+Deno.bench("hash()", () => {
+  hash(bytes, bytes.byteLength);
 });
 
 const { nop_u8 } = dylib.symbols;
