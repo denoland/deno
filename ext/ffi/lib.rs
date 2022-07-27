@@ -746,9 +746,8 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Function | NativeType::Pointer => {
-        fast_api::Type::Uint64
-      }
+      NativeType::USize | NativeType::Function => fast_api::Type::Uint64,
+      NativeType::Pointer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
     }
   }
 }
@@ -1030,11 +1029,7 @@ fn ffi_parse_pointer_arg(
         type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
       .get_backing_store();
-    if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
-    } else {
-      &backing_store[..] as *const _ as *const u8
-    }
+    &backing_store[byte_offset..] as *const _ as *const u8
   } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
     value.u64_value().0 as usize as *const u8
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
@@ -1592,11 +1587,7 @@ unsafe fn do_ffi_callback(
           .buffer(scope)
           .expect("Unable to deserialize result parameter.")
           .get_backing_store();
-        if byte_offset > 0 {
-          &backing_store[byte_offset..] as *const _ as *const u8
-        } else {
-          &backing_store[..] as *const _ as *const u8
-        }
+        &backing_store[byte_offset..] as *const _ as *const u8
       } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         value.u64_value().0 as usize as *const u8
       } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
@@ -2039,11 +2030,7 @@ where
       })?
       .get_backing_store();
     let byte_offset = value.byte_offset();
-    if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
-    } else {
-      &backing_store[..] as *const _ as *const u8
-    }
+    &backing_store[byte_offset..] as *const _ as *const u8
   } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
   {
     let backing_store = value.get_backing_store();
