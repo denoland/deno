@@ -176,6 +176,20 @@ mod tests {
         \n  return func(p0, p1);\n\
       }\n\n",
     );
+    assert_codegen(
+      codegen(vec![NativeType::Pointer, NativeType::U32], NativeType::U32),
+      "extern uint32_t func(void* p0, uint32_t p1);\n\n\
+      uint32_t func_trampoline(void* recv, struct FastApiTypedArray* p0, uint32_t p1) {\
+        \n  return func(p0->data, p1);\n\
+      }\n\n",
+    );
+    assert_codegen(
+      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U32),
+      "extern uint32_t func(void* p0, void* p1);\n\n\
+      uint32_t func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1) {\
+        \n  return func(p0->data, p1->data);\n\
+      }\n\n",
+    );
   }
 
   #[test]
