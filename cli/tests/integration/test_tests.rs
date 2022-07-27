@@ -80,30 +80,29 @@ itest!(test_with_malformed_config {
   output: "test/collect_with_malformed_config.out",
 });
 
-itest!(jobs_flag {
-  args: "test test/short-pass.ts --jobs",
+itest!(parallel_flag {
+  args: "test test/short-pass.ts --parallel",
   exit_code: 0,
   output: "test/short-pass.out",
 });
 
-itest!(jobs_flag_with_numeric_value {
-  args: "test test/short-pass.ts --jobs=2",
-  exit_code: 0,
-  output: "test/short-pass-jobs-flag-with-numeric-value.out",
-});
-
-itest!(jobs_flag_with_env_variable {
-  args: "test test/short-pass.ts --jobs",
+itest!(parallel_flag_with_env_variable {
+  args: "test test/short-pass.ts --parallel",
   envs: vec![("DENO_JOBS".to_owned(), "2".to_owned())],
   exit_code: 0,
   output: "test/short-pass.out",
 });
 
-itest!(jobs_flag_with_numeric_value_and_env_var {
-  args: "test test/short-pass.ts --jobs=2",
-  envs: vec![("DENO_JOBS".to_owned(), "3".to_owned())],
+itest!(jobs_flag {
+  args: "test test/short-pass.ts --jobs",
   exit_code: 0,
-  output: "test/short-pass-jobs-flag-with-numeric-value.out",
+  output: "test/short-pass-jobs-flag-warning.out",
+});
+
+itest!(jobs_flag_with_numeric_value {
+  args: "test test/short-pass.ts --jobs=2",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-warning.out",
 });
 
 itest!(load_unload {
@@ -345,6 +344,12 @@ itest!(no_prompt_with_denied_perms {
   args: "test --quiet --allow-read test/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "test/no_prompt_with_denied_perms.out",
+});
+
+itest!(test_with_custom_jsx {
+  args: "test --quiet --allow-read test/hello_world.ts --config=test/deno_custom_jsx.json",
+  exit_code: 0,
+  output: "test/hello_world.out",
 });
 
 #[test]

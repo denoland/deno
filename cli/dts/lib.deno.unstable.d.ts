@@ -366,9 +366,9 @@ declare namespace Deno {
 
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, bigint | number>
-    & Record<NativePointerType, TypedArray | bigint | null>
-    & Record<NativeFunctionType, bigint | null>;
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativePointerType, TypedArray | PointerValue | null>
+    & Record<NativeFunctionType, PointerValue | null>;
 
   /** Type conversion for foreign symbol parameters and unsafe callback return types */
   type ToNativeType<T extends NativeType = NativeType> = ToNativeTypeMap[T];
@@ -391,9 +391,9 @@ declare namespace Deno {
 
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, bigint>
-    & Record<NativePointerType, bigint>
-    & Record<NativeFunctionType, bigint>;
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>;
 
   /** Type conversion for foreign symbol return types and unsafe callback parameters */
   type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
@@ -481,6 +481,15 @@ declare namespace Deno {
     | BigInt64Array
     | BigUint64Array;
 
+  /**
+   * Pointer type depends on the architecture and actual pointer value.
+   *
+   * On a 32 bit system all pointer values are plain numbers. On a 64 bit
+   * system pointer values are represented as numbers if the value is below
+   * `Number.MAX_SAFE_INTEGER`.
+   */
+  export type PointerValue = number | bigint;
+
   /** **UNSTABLE**: Unsafe and new API, beware!
    *
    * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
@@ -489,7 +498,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): bigint;
+    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
   }
 
   /** **UNSTABLE**: Unsafe and new API, beware!
@@ -517,9 +526,9 @@ declare namespace Deno {
     /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
-    getBigUint64(offset?: number): bigint;
+    getBigUint64(offset?: number): PointerValue;
     /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
-    getBigInt64(offset?: number): bigint;
+    getBigInt64(offset?: number): PointerValue;
     /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the pointer. */

@@ -3,9 +3,4 @@ globalThis.addEventListener("unhandledrejection", (e) => {
   e.preventDefault();
 });
 
-function Foo() {
-  this.bar = Promise.reject(new Error("bar not available"));
-}
-
-new Foo();
-Promise.reject();
+throw new Error("boom!");
