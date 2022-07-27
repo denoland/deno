@@ -13,6 +13,7 @@ const dylib = Deno.dlopen(libPath, {
   "nop": { parameters: [], result: "void" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
+  "ffi_string": { parameters: [], result: "pointer" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -226,6 +227,12 @@ const { nop } = dylib.symbols;
 Deno.bench("nop()", () => {
   nop();
 });
+
+const { ffi_string } = dylib.symbols;
+Deno.bench(
+  "c string",
+  () => new Deno.UnsafePointerView(ffi_string()).getCString(),
+);
 
 const { add_u32 } = dylib.symbols;
 Deno.bench("add_u32()", () => {

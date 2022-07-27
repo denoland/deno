@@ -10,6 +10,8 @@
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     TypeError,
+    Int32Array,
+    BigInt64Array,
   } = window.__bootstrap.primordials;
 
   function unpackU64(returnValue) {
@@ -213,6 +215,14 @@
     return type === "i64" || type === "isize";
   }
 
+  function isLittleEndian() {
+    const uInt32 = new Uint32Array([0x11223344]);
+    const uInt8 = new Uint8Array(uInt32.buffer);
+    if (uInt8[0] === 0x44) return true;
+    else if (uInt8[0] === 0x11) return false;
+    throw new Error("Unknown endianness");
+  }
+
   class UnsafeCallback {
     #refcount;
     #rid;
@@ -332,35 +342,32 @@
         }
 
         if (needsUnpacking && !isNonBlocking) {
-          const call = this.symbols[symbol];
+          const _call = this.symbols[symbol];
           const parameters = symbols[symbol].parameters;
           const vi = new Int32Array(2);
-          const b = new BigInt64Array(vi.buffer);
-          const max = BigInt(Number.MAX_SAFE_INTEGER);
-          if (parameters.length == 0) {
-            this.symbols[symbol] = function () {
-              call(vi);
-              const n = b[0];
-              if (n < max) return Number(n);
-              return n;
+          const _b = new BigInt64Array(vi.buffer);
+
+          // Make sure V8 has no excuse to not optimize this function.
+          eval(
+            `this.symbols[symbol] = function (${
+              parameters.map(
+                (_, index) => `p${index}`,
+              ).join(", ")
+            }) {
+              _call(${parameters.map((_, index) => `p${index}`).join(", ")}${
+              parameters.length > 0 ? ", " : ""
+            }vi);
+              ${
+              isI64(resultType) ? `const n1 = Number(_b[0])` : `const n1 = ${
+                // Faster path for u64
+                isLittleEndian()
+                  ? "vi[0] + 2 ** 32 * vi[1]"
+                  : "vi[1] + 2 ** 32 * vi[0]"}`
             };
-          } else {
-            // Make sure V8 has no excuse to not optimize this function.
-            eval(
-              `this.symbols[symbol] = function (${
-                parameters.map(
-                  (_, index) => `p${index}`,
-                ).join(", ")
-              }) {
-                call(${
-                parameters.map((_, index) => `p${index}`).join(", ")
-              }, vi);
-                const n = b[0];
-                if (n < max) return Number(n);   
-                return n;
-              }`,
-            );
-          }
+              if (Number.isSafeInteger(n1)) return n1;
+              return _b[0];
+            }`,
+          );
         }
       }
     }
