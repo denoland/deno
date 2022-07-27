@@ -70,6 +70,7 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+
 use args::CliOptions;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -528,31 +529,23 @@ async fn check_command(
   check_flags: CheckFlags,
 ) -> Result<i32, AnyError> {
   if flags.watch.is_some() {
-    // TODO Watch
-    Ok(0)
+    tools::check::run_check_with_watch(flags, check_flags).await?;
   } else {
     let ps = ProcState::build(flags).await?;
     load_and_type_check(&ps, &check_flags.files).await?;
-    Ok(0)
   }
-  
+  Ok(0)
 }
 
 async fn load_and_type_check(
   ps: &ProcState,
   files: &Vec<String>,
 ) -> Result<(), AnyError> {
-  let lib = ps.options.ts_type_lib_window();
-
   for file in files {
     let specifier = resolve_url_or_path(file)?;
-    ps.prepare_module_load(
-      vec![specifier],
-      false,
-      lib,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
+    tools::check::do_check(
+      specifier,
+      ps,
     )
     .await?;
   }
