@@ -136,7 +136,6 @@ pub(crate) fn gen_trampoline(
   // SAFETY: symbol satisfies ABI requirement.
   unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
   let c = codegen(&sym);
-  println!("{}", c);
   ctx.compile_string(cstr!(c))?;
   let alloc = Allocation {
     addr: ctx.relocate_and_get_symbol(cstr!("func_trampoline"))?,
