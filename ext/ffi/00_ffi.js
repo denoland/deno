@@ -15,6 +15,7 @@
     Uint8Array,
     Error,
     BigInt64Array,
+    Function,
   } = window.__bootstrap.primordials;
 
   function unpackU64(returnValue) {
@@ -345,33 +346,32 @@
         }
 
         if (needsUnpacking && !isNonBlocking) {
-          const _call = this.symbols[symbol];
+          const call = this.symbols[symbol];
           const parameters = symbols[symbol].parameters;
           const vi = new Int32Array(2);
-          const _vui = new Uint32Array(vi.buffer);
-          const _b = new BigInt64Array(vi.buffer);
+          const vui = new Uint32Array(vi.buffer);
+          const b = new BigInt64Array(vi.buffer);
 
+          const params = parameters.map((_, index) => `p${index}`);
           // Make sure V8 has no excuse to not optimize this function.
-          eval(
-            `this.symbols[symbol] = function (${
-              parameters.map(
-                (_, index) => `p${index}`,
-              ).join(", ")
-            }) {
-              _call(${parameters.map((_, index) => `p${index}`).join(", ")}${
-              parameters.length > 0 ? ", " : ""
-            }vi);
-              ${
-              isI64(resultType) ? `const n1 = Number(_b[0])` : `const n1 = ${
+          this.symbols[symbol] = new Function(
+            "vi",
+            "vui",
+            "b",
+            "call",
+            `return function (${params.join(", ")}) {
+            call(${params.join(", ")}${parameters.length > 0 ? ", " : ""}vi);
+            ${
+              isI64(resultType) ? `const n1 = Number(b[0])` : `const n1 = ${
                 // Faster path for u64
                 isLittleEndian()
-                  ? "_vui[0] + 2 ** 32 * _vui[1]"
-                  : "_vui[1] + 2 ** 32 * _vui[0]"}`
+                  ? "vui[0] + 2 ** 32 * vui[1]"
+                  : "vui[1] + 2 ** 32 * vui[0]"}`
             };
-              if (Number.isSafeInteger(n1)) return n1;
-              return _b[0];
-            }`,
-          );
+            if (Number.isSafeInteger(n1)) return n1;
+            return b[0];
+          }`,
+          )(vi, vui, b, call);
         }
       }
     }
