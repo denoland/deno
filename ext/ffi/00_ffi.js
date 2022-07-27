@@ -11,6 +11,9 @@
     PromisePrototypeThen,
     TypeError,
     Int32Array,
+    Uint32Array,
+    Uint8Array,
+    Error,
     BigInt64Array,
   } = window.__bootstrap.primordials;
 
