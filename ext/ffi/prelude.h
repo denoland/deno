@@ -21,5 +21,5 @@ typedef unsigned long int uintptr_t;
 // https://source.chromium.org/chromium/chromium/src/+/main:v8/include/v8-fast-api-calls.h;l=336
 struct FastApiTypedArray {
   uintptr_t length_;
-  uint32_t* data;
+  void* data;
 };
