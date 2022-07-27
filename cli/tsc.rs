@@ -315,7 +315,7 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
 }
 
 #[op]
-fn op_cwd(s: &mut OpState, _args: Value) -> Result<String, AnyError> {
+fn op_cwd(s: &mut OpState) -> Result<String, AnyError> {
   let state = s.borrow_mut::<State>();
   if let Some(config_specifier) = &state.maybe_config_specifier {
     let cwd = config_specifier.join("./")?;
