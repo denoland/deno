@@ -483,7 +483,11 @@ assertEquals([...uint8Array], [
   0x00
 ]);
 
-assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
+try {
+  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
+} catch (_err) {
+  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+}
 
 (function cleanup() {
   dylib.close();
