@@ -12,8 +12,6 @@
     TypeError,
     Int32Array,
     Uint32Array,
-    Uint8Array,
-    Error,
     BigInt64Array,
     Function,
   } = window.__bootstrap.primordials;
@@ -219,14 +217,6 @@
     return type === "i64" || type === "isize";
   }
 
-  function isLittleEndian() {
-    const uInt32 = new Uint32Array([0x11223344]);
-    const uInt8 = new Uint8Array(uInt32.buffer);
-    if (uInt8[0] === 0x44) return true;
-    else if (uInt8[0] === 0x11) return false;
-    throw new Error("Unknown endianness");
-  }
-
   class UnsafeCallback {
     #refcount;
     #rid;
@@ -362,11 +352,9 @@
             `return function (${params.join(", ")}) {
             call(${params.join(", ")}${parameters.length > 0 ? ", " : ""}vi);
             ${
-              isI64(resultType) ? `const n1 = Number(b[0])` : `const n1 = ${
-                // Faster path for u64
-                isLittleEndian()
-                  ? "vui[0] + 2 ** 32 * vui[1]"
-                  : "vui[1] + 2 ** 32 * vui[0]"}`
+              isI64(resultType)
+                ? `const n1 = Number(b[0])`
+                : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
             };
             if (Number.isSafeInteger(n1)) return n1;
             return b[0];

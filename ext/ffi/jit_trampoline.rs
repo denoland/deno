@@ -97,7 +97,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
     let _ = write!(c, " p{i}");
   }
   if needs_unwrap {
-    let _ = write!(c, ", struct FastApiTypedArray *p_ret");
+    let _ = write!(c, ", struct FastApiTypedArray* p_ret");
   }
   c += ") {\n";
   // func(p0, p1, ...);
@@ -108,9 +108,9 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
         call_s += ", ";
       }
       if matches!(ty, NativeType::Pointer) {
-        let _ = write!(c, "p{i}->data");
+        let _ = write!(call_s, "p{i}->data");
       } else {
-        let _ = write!(c, "p{i}");
+        let _ = write!(call_s, "p{i}");
       }
     }
     call_s += ");\n";
@@ -136,6 +136,7 @@ pub(crate) fn gen_trampoline(
   // SAFETY: symbol satisfies ABI requirement.
   unsafe { ctx.add_symbol(cstr!("func"), sym.ptr.0 as *const c_void) };
   let c = codegen(&sym);
+  println!("{}", c);
   ctx.compile_string(cstr!(c))?;
   let alloc = Allocation {
     addr: ctx.relocate_and_get_symbol(cstr!("func_trampoline"))?,
@@ -216,6 +217,22 @@ mod tests {
       "extern uint32_t func(void* p0, void* p1);\n\n\
       uint32_t func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1) {\
         \n  return func(p0->data, p1->data);\n\
+      }\n\n",
+    );
+    assert_codegen(
+      codegen(vec![], NativeType::U64),
+      "extern uint64_t func();\n\n\
+      void func_trampoline(void* recv, struct FastApiTypedArray* p_ret) {\
+        \n uint64_t r = func();\
+        \n p_ret->data = (uint32_t *)&r;\n\
+      }\n\n",
+    );
+    assert_codegen(
+      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U64),
+      "extern uint64_t func(void* p0, void* p1);\n\n\
+      void func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1, struct FastApiTypedArray* p_ret) {\
+        \n uint64_t r = func(p0->data, p1->data);\
+        \n p_ret->data = (uint32_t *)&r;\n\
       }\n\n",
     );
   }
