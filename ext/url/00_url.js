@@ -300,6 +300,11 @@
   webidl.configurePrototype(URLSearchParams);
   const URLSearchParamsPrototype = URLSearchParams.prototype;
 
+  webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
+    "URLSearchParams",
+    URLSearchParamsPrototype,
+  );
+
   const _url = Symbol("url");
 
   class URL {
