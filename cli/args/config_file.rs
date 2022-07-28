@@ -557,23 +557,24 @@ impl ConfigFile {
     text: &str,
     specifier: &ModuleSpecifier,
   ) -> Result<Self, AnyError> {
-    let jsonc = match jsonc_parser::parse_to_serde_value(text) {
-      Ok(None) => json!({}),
-      Ok(Some(value)) if value.is_object() => value,
-      Ok(Some(_)) => {
-        return Err(anyhow!(
-          "config file JSON {:?} should be an object",
-          specifier,
-        ))
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to parse config file JSON {:?} because of {}",
-          specifier,
-          e.to_string()
-        ))
-      }
-    };
+    let jsonc =
+      match jsonc_parser::parse_to_serde_value(text, &Default::default()) {
+        Ok(None) => json!({}),
+        Ok(Some(value)) if value.is_object() => value,
+        Ok(Some(_)) => {
+          return Err(anyhow!(
+            "config file JSON {:?} should be an object",
+            specifier,
+          ))
+        }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to parse config file JSON {:?} because of {}",
+            specifier,
+            e.to_string()
+          ))
+        }
+      };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
     Ok(Self {
