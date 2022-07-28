@@ -3859,6 +3859,7 @@ dependencies = [
  "bytes",
  "derive_more",
  "serde",
+ "serde_bytes",
  "serde_json",
  "smallvec",
  "v8",
