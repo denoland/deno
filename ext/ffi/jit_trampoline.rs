@@ -74,9 +74,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   let ret = if needs_unwrap { "void" } else { ffi_ret };
 
   // extern <return_type> func(
-  c += "\nextern ";
-  c += ffi_ret;
-  c += " func(";
+  let _ = write!(c, "\nextern {ffi_ret} func(");
   // <param_type> p0, <param_type> p1, ...);
   for (i, ty) in sym.parameter_types.iter().enumerate() {
     if i > 0 {
