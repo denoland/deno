@@ -58,15 +58,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
 
 pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   let mut c = String::from(include_str!("prelude.h"));
-  let needs_unwrap = matches!(
-    &sym.result_type,
-    NativeType::Function
-      | NativeType::Pointer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize
-  );
+  let needs_unwrap = crate::needs_unwrap(sym.result_type);
 
   // Return type of the FFI call.
   let ffi_ret = native_to_c(&sym.result_type);
