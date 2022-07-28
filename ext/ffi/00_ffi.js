@@ -8,6 +8,7 @@
     BigInt,
     ObjectDefineProperty,
     ArrayPrototypeMap,
+    Number,
     NumberIsSafeInteger,
     ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
