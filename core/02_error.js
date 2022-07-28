@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
     Error,
     ObjectFreeze,
@@ -81,7 +82,7 @@
     const fileName = callSite.getFileName();
 
     if (fileName) {
-      result += core.opSync("op_format_file_name", fileName);
+      result += ops.op_format_file_name(fileName);
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();
@@ -201,7 +202,7 @@
       if (fileName && lineNumber != null && columnNumber != null) {
         return patchCallSite(
           callSite,
-          core.opSync("op_apply_source_map", {
+          ops.op_apply_source_map({
             fileName,
             lineNumber,
             columnNumber,
