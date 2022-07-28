@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -31,22 +32,22 @@
     name,
     workerType,
   ) {
-    return core.opSync("op_create_worker", {
+    return core.unwrapOpResult(ops.op_create_worker({
       hasSourceCode,
       name,
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
       workerType,
-    });
+    }));
   }
 
   function hostTerminateWorker(id) {
-    core.opSync("op_host_terminate_worker", id);
+    ops.op_host_terminate_worker(id);
   }
 
   function hostPostMessage(id, data) {
-    core.opSync("op_host_post_message", id, data);
+    core.unwrapOpResult(ops.op_host_post_message(id, data));
   }
 
   function hostRecvCtrl(id) {
