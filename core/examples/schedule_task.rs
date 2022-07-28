@@ -54,7 +54,7 @@ fn main() {
     js_runtime
     .execute_script(
       "<usage>", 
-      r#"for (let i = 1; i <= 10; i++) Deno.core.opSync("op_schedule_task", i);"#
+      r#"for (let i = 1; i <= 10; i++) Deno.core.unwrapOpResult(Deno.core.ops.op_schedule_task(i));"#
     )
     .unwrap();
     js_runtime.run_event_loop(false).await
