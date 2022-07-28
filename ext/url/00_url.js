@@ -301,7 +301,7 @@
   const URLSearchParamsPrototype = URLSearchParams.prototype;
 
   webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
-    "Blob",
+    "URLSearchParams",
     URLSearchParamsPrototype,
   );
 
