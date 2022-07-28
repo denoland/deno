@@ -7,18 +7,18 @@
 
 declare namespace Deno {
   namespace core {
+    function unwrapOpResult(res: unknown): any;
+
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): any;
 
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): Promise<any>;
 
     /** Mark following promise as "ref", ie. event loop won't exit
