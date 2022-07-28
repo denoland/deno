@@ -154,7 +154,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
@@ -403,7 +402,6 @@ impl JsRuntime {
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
-      js_uncaught_exception_cb: None,
       js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
@@ -3220,7 +3218,6 @@ assertEquals(1, notify_return_value);
   #[tokio::test]
   async fn test_set_promise_reject_callback() {
     static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
-    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
     fn op_promise_reject() -> Result<(), AnyError> {
@@ -3228,17 +3225,8 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    #[op]
-    fn op_uncaught_exception() -> Result<(), AnyError> {
-      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
-      Ok(())
-    }
-
     let extension = Extension::builder()
-      .ops(vec![
-        op_promise_reject::decl(),
-        op_uncaught_exception::decl(),
-      ])
+      .ops(vec![op_promise_reject::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3258,23 +3246,17 @@ assertEquals(1, notify_return_value);
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
+          Deno.core.opSync("op_store_pending_promise_exception", promise);
           Deno.core.opSync("op_promise_reject");
-          throw Error("promiseReject"); // Triggers uncaughtException handler.
-        });
-
-        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
-          if (err.message !== "promiseReject") throw err;
-          Deno.core.opSync("op_uncaught_exception");
         });
 
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
 
     runtime
       .execute_script(
@@ -3286,29 +3268,18 @@ assertEquals(1, notify_return_value);
           });
         }
 
-        {
-          const prev = Deno.core.opSync("op_set_uncaught_exception_callback", (...args) => {
-            prev(...args);
-            throw Error("fail");
-          });
-        }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    // Exception from uncaughtException handler doesn't bubble up but is
-    // printed to stderr.
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
   }
 
   #[tokio::test]
   async fn test_set_promise_reject_callback_top_level_await() {
     static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
-    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
     fn op_promise_reject() -> Result<(), AnyError> {
@@ -3316,17 +3287,8 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    #[op]
-    fn op_uncaught_exception() -> Result<(), AnyError> {
-      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
-      Ok(())
-    }
-
     let extension = Extension::builder()
-      .ops(vec![
-        op_promise_reject::decl(),
-        op_uncaught_exception::decl(),
-      ])
+      .ops(vec![op_promise_reject::decl()])
       .build();
 
     #[derive(Default)]
@@ -3354,11 +3316,6 @@ assertEquals(1, notify_return_value);
         let source = r#"
         Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
           Deno.core.opSync("op_promise_reject");
-          throw reason;
-        });
-        
-        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
-          Deno.core.opSync("op_uncaught_exception");
         });
         
         throw new Error('top level throw');
@@ -3388,10 +3345,9 @@ assertEquals(1, notify_return_value);
       .unwrap();
     let receiver = runtime.mod_evaluate(id);
     runtime.run_event_loop(false).await.unwrap();
-    receiver.await.unwrap().unwrap();
+    receiver.await.unwrap().unwrap_err();
 
     assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
   }
 
   #[test]
