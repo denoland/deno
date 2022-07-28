@@ -768,10 +768,12 @@ fn is_fast_api_rv(rv: NativeType) -> bool {
   )
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "windows"))]
 fn is_fastapi_available() -> &'static bool {
+  #[cfg(target_os = "linux")]
   static FASTAPI_IS_AVAILABLE: OnceCell<bool> = OnceCell::new();
-  FASTAPI_IS_AVAILABLE.get_or_init(|| {
+  #[cfg(target_os = "linux")]
+  return FASTAPI_IS_AVAILABLE.get_or_init(|| {
     // SAFETY: mprotect should fail on malloc-ed memory on SELinux which prevent tinycc from working
     unsafe {
       let ptr = libc::malloc(1);
@@ -783,7 +785,9 @@ fn is_fastapi_available() -> &'static bool {
         false
       }
     }
-  })
+  });
+  #[cfg(not(target_os = "linux"))]
+  return true;
 }
 
 // Create a JavaScript function for synchronous FFI call to
@@ -801,10 +805,8 @@ fn make_sync_fn<'s>(
   #[cfg(not(target_os = "windows"))]
   let mut fast_allocations: Option<*mut ()> = None;
 
-  #[cfg(target_os = "linux")]
+  #[cfg(not(target_os = "windows"))]
   let fastapi_is_available = *is_fastapi_available();
-  #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
-  let fastapi_is_available = true;
 
   #[cfg(not(target_os = "windows"))]
   if fastapi_is_available
