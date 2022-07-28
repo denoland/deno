@@ -7,6 +7,9 @@
   const {
     BigInt,
     ObjectDefineProperty,
+    ArrayPrototypeMap,
+    NumberIsSafeInteger,
+    ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     TypeError,
@@ -342,24 +345,29 @@
           const vui = new Uint32Array(vi.buffer);
           const b = new BigInt64Array(vi.buffer);
 
-          const params = parameters.map((_, index) => `p${index}`);
+          const params = ArrayPrototypeJoin(
+            ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
+            ", ",
+          );
           // Make sure V8 has no excuse to not optimize this function.
           this.symbols[symbol] = new Function(
             "vi",
             "vui",
             "b",
             "call",
-            `return function (${params.join(", ")}) {
-            call(${params.join(", ")}${parameters.length > 0 ? ", " : ""}vi);
+            "NumberIsSafeInteger",
+            "Number",
+            `return function (${params}) {
+            call(${params}${parameters.length > 0 ? ", " : ""}vi);
             ${
               isI64(resultType)
                 ? `const n1 = Number(b[0])`
                 : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
             };
-            if (Number.isSafeInteger(n1)) return n1;
+            if (NumberIsSafeInteger(n1)) return n1;
             return b[0];
           }`,
-          )(vi, vui, b, call);
+          )(vi, vui, b, call, NumberIsSafeInteger, Number);
         }
       }
     }

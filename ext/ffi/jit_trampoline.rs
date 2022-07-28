@@ -67,15 +67,15 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
       | NativeType::U64
       | NativeType::USize
   );
-  let ret = if needs_unwrap {
-    "void"
-  } else {
-    native_to_c(&sym.result_type)
-  };
+
+  // Return type of the FFI call.
+  let ffi_ret = native_to_c(&sym.result_type);
+  // Return type of the trampoline.
+  let ret = if needs_unwrap { "void" } else { ffi_ret };
 
   // extern <return_type> func(
   c += "\nextern ";
-  c += native_to_c(&sym.result_type);
+  c += ffi_ret;
   c += " func(";
   // <param_type> p0, <param_type> p1, ...);
   for (i, ty) in sym.parameter_types.iter().enumerate() {
@@ -97,7 +97,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
     let _ = write!(c, " p{i}");
   }
   if needs_unwrap {
-    let _ = write!(c, ", struct FastApiTypedArray* p_ret");
+    let _ = write!(c, ", struct FastApiTypedArray* const p_ret");
   }
   c += ") {\n";
   // func(p0, p1, ...);
@@ -118,9 +118,8 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
   if needs_unwrap {
     // <return_type> r = func(p0, p1, ...);
     // ((<return_type>*)p_ret->data)[0] = r;
-    let ret = native_to_c(&sym.result_type);
-    let _ = write!(c, " {ret} r = {call_s}");
-    let _ = writeln!(c, " (({ret}*)p_ret->data)[0] = r;");
+    let _ = write!(c, " {ffi_ret} r = {call_s}");
+    let _ = writeln!(c, " (({ffi_ret}*)p_ret->data)[0] = r;");
   } else {
     // return func(p0, p1, ...);
     let _ = write!(c, "  return {call_s}");
@@ -222,7 +221,7 @@ mod tests {
     assert_codegen(
       codegen(vec![], NativeType::U64),
       "extern uint64_t func();\n\n\
-      void func_trampoline(void* recv, struct FastApiTypedArray* p_ret) {\
+      void func_trampoline(void* recv, struct FastApiTypedArray* const p_ret) {\
         \n uint64_t r = func();\
         \n ((uint64_t*)p_ret->data)[0] = r;\n\
       }\n\n",
@@ -230,7 +229,7 @@ mod tests {
     assert_codegen(
       codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U64),
       "extern uint64_t func(void* p0, void* p1);\n\n\
-      void func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1, struct FastApiTypedArray* p_ret) {\
+      void func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1, struct FastApiTypedArray* const p_ret) {\
         \n uint64_t r = func(p0->data, p1->data);\
         \n ((uint64_t*)p_ret->data)[0] = r;\n\
       }\n\n",
