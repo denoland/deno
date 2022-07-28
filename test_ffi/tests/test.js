@@ -197,7 +197,20 @@ dylib.symbols.print_buffer(buffer, buffer.length);
 const subarray = buffer.subarray(3);
 dylib.symbols.print_buffer(subarray, subarray.length - 2);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
-const ptr0 = dylib.symbols.return_buffer();
+
+const { return_buffer } = symbols;
+function returnBuffer() { return return_buffer(); };
+
+%PrepareFunctionForOptimization(returnBuffer);
+returnBuffer();
+%OptimizeFunctionOnNextCall(returnBuffer);
+const ptr0 = returnBuffer();
+
+const status = %GetOptimizationStatus(returnBuffer);
+if (!(status & (1 << 4))) {
+  throw new Error("returnBuffer is not optimized");
+}
+
 dylib.symbols.print_buffer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
