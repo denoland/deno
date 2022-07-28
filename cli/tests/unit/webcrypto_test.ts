@@ -716,28 +716,27 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 });
 
 Deno.test(async function testECDH() {
-  for (const keySize of [256, 384]) {
-    const keyPair = await crypto.subtle.generateKey(
-      {
-        name: "ECDH",
-        namedCurve: "P-" + keySize,
-      },
-      true,
-      ["deriveBits"],
-    );
+  const namedCurve = "P-256";
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve,
+    },
+    true,
+    ["deriveBits"],
+  );
 
-    const derivedKey = await crypto.subtle.deriveBits(
-      {
-        name: "ECDH",
-        public: keyPair.publicKey,
-      },
-      keyPair.privateKey,
-      keySize,
-    );
+  const derivedKey = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keyPair.publicKey,
+    },
+    keyPair.privateKey,
+    256,
+  );
 
-    assert(derivedKey instanceof ArrayBuffer);
-    assertEquals(derivedKey.byteLength, keySize / 8);
-  }
+  assert(derivedKey instanceof ArrayBuffer);
+  assertEquals(derivedKey.byteLength, 256 / 8);
 });
 
 Deno.test(async function testWrapKey() {
@@ -1300,17 +1299,22 @@ Deno.test(async function testImportEcDhJwk() {
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
+    // deriveBits still not implemented for P384
+    if (size != 256) {
+      continue;
+    }
+
     const derivedKey = await subtle.deriveBits(
       {
         name: "ECDH",
         public: publicKeyECDH,
       },
       privateKeyECDH,
-      size,
+      256,
     );
 
     assert(derivedKey instanceof ArrayBuffer);
-    assertEquals(derivedKey.byteLength, size / 8);
+    assertEquals(derivedKey.byteLength, 256 / 8);
   }
 });
 

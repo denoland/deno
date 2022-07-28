@@ -7,32 +7,17 @@
   const {
     BigInt,
     ObjectDefineProperty,
-    ArrayPrototypeMap,
-    Number,
-    NumberIsSafeInteger,
-    ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     TypeError,
-    Int32Array,
-    Uint32Array,
-    BigInt64Array,
-    Function,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
-  function unpackU64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
+  function unpackU64([hi, lo]) {
     return BigInt(hi) << 32n | BigInt(lo);
   }
 
-  function unpackI64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
+  function unpackI64([hi, lo]) {
     const u64 = unpackU64([hi, lo]);
     return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
   }
@@ -47,92 +32,90 @@
     getUint8(offset = 0) {
       return core.opSync(
         "op_ffi_read_u8",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt8(offset = 0) {
       return core.opSync(
         "op_ffi_read_i8",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getUint16(offset = 0) {
       return core.opSync(
         "op_ffi_read_u16",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt16(offset = 0) {
       return core.opSync(
         "op_ffi_read_i16",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getUint32(offset = 0) {
       return core.opSync(
         "op_ffi_read_u32",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getInt32(offset = 0) {
       return core.opSync(
         "op_ffi_read_i32",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getBigUint64(offset = 0) {
       return core.opSync(
         "op_ffi_read_u64",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getBigInt64(offset = 0) {
       return core.opSync(
-        "op_ffi_read_i64",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        "op_ffi_read_u64",
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat32(offset = 0) {
       return core.opSync(
         "op_ffi_read_f32",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat64(offset = 0) {
       return core.opSync(
         "op_ffi_read_f64",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getCString(offset = 0) {
       return core.opSync(
         "op_ffi_cstr_read",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
       );
     }
 
     getArrayBuffer(byteLength, offset = 0) {
-      return core.opSync(
-        "op_ffi_get_buf",
-        offset ? this.pointer + BigInt(offset) : this.pointer,
-        byteLength,
-      );
+      const uint8array = new Uint8Array(byteLength);
+      this.copyInto(uint8array, offset);
+      return uint8array.buffer;
     }
 
     copyInto(destination, offset = 0) {
       core.opSync(
         "op_ffi_buf_copy_into",
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        offset ? this.pointer + BigInt(offset) : this.pointer,
         destination,
         destination.byteLength,
       );
@@ -215,10 +198,6 @@
   function isReturnedAsBigInt(type) {
     return isPointerType(type) || type === "u64" || type === "i64" ||
       type === "usize" || type === "isize";
-  }
-
-  function isI64(type) {
-    return type === "i64" || type === "isize";
   }
 
   class UnsafeCallback {
@@ -305,11 +284,11 @@
           );
           continue;
         }
-        const resultType = symbols[symbol].result;
-        const needsUnpacking = isReturnedAsBigInt(resultType);
 
         const isNonBlocking = symbols[symbol].nonblocking;
         if (isNonBlocking) {
+          const resultType = symbols[symbol].result;
+          const needsUnpacking = isReturnedAsBigInt(resultType);
           ObjectDefineProperty(
             this.symbols,
             symbol,
@@ -337,38 +316,6 @@
               writable: false,
             },
           );
-        }
-
-        if (needsUnpacking && !isNonBlocking) {
-          const call = this.symbols[symbol];
-          const parameters = symbols[symbol].parameters;
-          const vi = new Int32Array(2);
-          const vui = new Uint32Array(vi.buffer);
-          const b = new BigInt64Array(vi.buffer);
-
-          const params = ArrayPrototypeJoin(
-            ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
-            ", ",
-          );
-          // Make sure V8 has no excuse to not optimize this function.
-          this.symbols[symbol] = new Function(
-            "vi",
-            "vui",
-            "b",
-            "call",
-            "NumberIsSafeInteger",
-            "Number",
-            `return function (${params}) {
-            call(${params}${parameters.length > 0 ? ", " : ""}vi);
-            ${
-              isI64(resultType)
-                ? `const n1 = Number(b[0])`
-                : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
-            };
-            if (NumberIsSafeInteger(n1)) return n1;
-            return b[0];
-          }`,
-          )(vi, vui, b, call, NumberIsSafeInteger, Number);
         }
       }
     }
