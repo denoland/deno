@@ -268,6 +268,32 @@ pub extern "C" fn log_many_parameters(
   println!("{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}");
 }
 
+#[no_mangle]
+pub extern "C" fn cast_u8_u32(x: u8) -> u32 {
+  x as u32
+}
+
+#[no_mangle]
+pub extern "C" fn cast_u32_u8(x: u32) -> u8 {
+  x as u8
+}
+
+#[no_mangle]
+pub extern "C" fn add_10_u8(
+  a: u8,
+  b: u8,
+  c: u8,
+  d: u8,
+  e: u8,
+  f: u8,
+  g: u8,
+  h: u8,
+  i: u8,
+  j: u8,
+) -> u8 {
+  a + b + c + d + e + f + g + h + i + j
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}

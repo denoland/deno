@@ -181,6 +181,18 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["u8", "u16", "u32", "u64", "f64", "f32", "i64", "i32", "i16", "i8", "isize", "usize", "f64", "f32", "f64", "f32", "f64", "f32", "f64"],
     result: "void",
   },
+  cast_u8_u32: {
+    parameters: ["u8"],
+    result: "u32",
+  },
+  cast_u32_u8: {
+    parameters: ["u32"],
+    result: "u8",
+  },
+  add_10_u8: {
+    parameters: ["u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", ],
+    result: "u8",
+  },
   // Statics
   "static_u32": {
     type: "u32",
@@ -444,8 +456,8 @@ call_stored_function();
 dylib.symbols.store_function_2(ptr(add10Callback));
 dylib.symbols.call_stored_function_2(20);
 
-function logManyParametersFast(a, b, c, d, e, f, g, h, i , j , k, l, m, n, o, p, q, r, s) {
-  return dylib.symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
+function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s) {
+  return symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
 };
 
 %PrepareFunctionForOptimization(logManyParametersFast);
@@ -453,6 +465,36 @@ logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, 
 %OptimizeFunctionOnNextCall(logManyParametersFast);
 logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
 assertFastCall(logManyParametersFast);
+
+function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
+
+%PrepareFunctionForOptimization(castU8U32Fast);
+console.log(castU8U32Fast(256));
+%OptimizeFunctionOnNextCall(castU8U32Fast);
+// In SysV AMD64 compilers rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
+// If the trampoline did not zero/sign-extend arguments, this would return 256 instead of the expected 0 (in optimized builds)
+console.log(castU8U32Fast(256));
+assertFastCall(castU8U32Fast);
+
+function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
+
+%PrepareFunctionForOptimization(castU32U8Fast);
+console.log(castU32U8Fast(256));
+%OptimizeFunctionOnNextCall(castU32U8Fast);
+// In SysV AMD64 compilers rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
+// If the trampoline did not zero/sign-extend the return value, this would return 256 instead of the expected 0 (in optimized builds)
+console.log(castU32U8Fast(256));
+assertFastCall(castU32U8Fast);
+
+function add10U8Fast(a, b, c, d, e, f, g, h, i, j) { return symbols.add_10_u8(a, b, c, d, e, f, g, h, i, j); };
+
+%PrepareFunctionForOptimization(add10U8Fast);
+console.log(add10U8Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+%OptimizeFunctionOnNextCall(add10U8Fast);
+// In SysV AMD64 the arguments after the 6th are passed on the stack. Generally the trampoline tail-calls into the FFI function, but
+// in certain cases (e.g. when returning 8 or 16 bit integers) the tail call is not possible and a new stack frame must be created
+console.log(add10U8Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+assertFastCall(add10U8Fast);
 
 
 const nestedCallback = new Deno.UnsafeCallback(
