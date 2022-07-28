@@ -2241,7 +2241,7 @@ fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.type_check_mode = TypeCheckMode::All;
   }
   watch_arg_parse(flags, matches, false);
-  
+
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod bench;
+pub mod check;
 pub mod coverage;
 pub mod doc;
 pub mod fmt;
@@ -12,4 +13,3 @@ pub mod task;
 pub mod test;
 pub mod upgrade;
 pub mod vendor;
-pub mod check;
