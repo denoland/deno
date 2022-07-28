@@ -2145,12 +2145,11 @@ where
   let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }
     .to_str()
     .map_err(|_| type_error("Invalid CString pointer, not valid UTF-8"))?;
-  let value: v8::Local<v8::Value> =
-    v8::String::new(scope, cstr)
-      .ok_or_else(|| {
-        type_error("Invalid CString pointer, string exceeds max length")
-      })?
-      .into();
+  let value: v8::Local<v8::Value> = v8::String::new(scope, cstr)
+    .ok_or_else(|| {
+      type_error("Invalid CString pointer, string exceeds max length")
+    })?
+    .into();
   Ok(value.into())
 }
 
