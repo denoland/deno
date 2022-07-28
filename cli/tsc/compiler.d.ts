@@ -36,11 +36,14 @@ declare global {
   }
 
   interface DenoCore {
+    // deno-lint-ignore no-explicit-any
+    unwrapOpResult(res: unknown): any;
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;
-    ops(): void;
-    print(msg: string, stderr: bool): void;
+    // deno-lint-ignore no-explicit-any
+    ops: Record<string, (...args: unknown[]) => any>;
+    print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,

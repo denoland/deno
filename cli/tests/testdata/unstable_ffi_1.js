@@ -1,1 +1,1 @@
-Deno.core.opSync("op_ffi_load", { path: "", symbols: {} });
+Deno.core.unwrapOpResult(Deno.core.ops.op_ffi_load({ path: "", symbols: {} }));

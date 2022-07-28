@@ -250,7 +250,7 @@ delete Object.prototype.__proto__;
       }
 
       this.#lastCheckTimeMs = timeMs;
-      return core.opSync("op_is_cancelled", {});
+      return core.ops.op_is_cancelled();
     }
 
     throwIfCancellationRequested() {
@@ -274,11 +274,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.opSync("op_exists", { specifier });
+      return core.ops.op_exists({ specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.opSync("op_load", { specifier }).data;
+      return core.ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -309,9 +309,10 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = core.opSync(
-        "op_load",
-        { specifier },
+      const { data, scriptKind, version } = core.unwrapOpResult(
+        core.ops.op_load(
+          { specifier },
+        ),
       );
       assert(
         data != null,
@@ -338,14 +339,13 @@ delete Object.prototype.__proto__;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      return core.opSync(
-        "op_emit",
+      return core.ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
-      return cwd ?? core.opSync("op_cwd", null);
+      return cwd ?? core.unwrapOpResult(core.ops.op_cwd());
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -361,10 +361,10 @@ delete Object.prototype.__proto__;
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.opSync("op_resolve", {
+      const resolved = core.unwrapOpResult(core.ops.op_resolve({
         specifiers,
         base,
-      });
+      }));
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
@@ -384,7 +384,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.opSync("op_create_hash", { data }).hash;
+      return core.unwrapOpResult(core.ops.op_create_hash({ data })).hash;
     },
 
     // LanguageServiceHost
@@ -399,7 +399,7 @@ delete Object.prototype.__proto__;
       if (scriptFileNamesCache) {
         return scriptFileNamesCache;
       }
-      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
+      return scriptFileNamesCache = core.ops.op_script_names();
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -412,7 +412,9 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = core.opSync("op_script_version", { specifier });
+      const scriptVersion = core.unwrapOpResult(
+        core.ops.op_script_version({ specifier }),
+      );
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -433,10 +435,9 @@ delete Object.prototype.__proto__;
         };
       }
 
-      const fileInfo = core.opSync(
-        "op_load",
+      const fileInfo = core.unwrapOpResult(core.ops.op_load(
         { specifier },
-      );
+      ));
       if (fileInfo) {
         scriptVersionCache.set(specifier, fileInfo.version);
         return ts.ScriptSnapshot.fromString(fileInfo.data);
@@ -567,7 +568,7 @@ delete Object.prototype.__proto__;
 
     performanceProgram({ program });
 
-    core.opSync("op_respond", {
+    core.ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -579,7 +580,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.opSync("op_respond", { id, data });
+    core.ops.op_respond({ id, data });
   }
 
   /**
@@ -942,7 +943,7 @@ delete Object.prototype.__proto__;
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
 
-  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
+  const { buildSpecifier, libs } = core.ops.op_build_info();
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
