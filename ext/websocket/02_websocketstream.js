@@ -5,6 +5,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
@@ -128,10 +129,11 @@
         fillHeaders(headers, options.headers);
       }
 
-      const cancelRid = core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
-        this[_url],
-        true,
+      const cancelRid = core.unwrapOpResult(
+        ops.op_ws_check_permission_and_cancel_handle(
+          this[_url],
+          true,
+        ),
       );
 
       if (options.signal?.aborted) {
