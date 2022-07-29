@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
@@ -19,7 +20,7 @@
     offset,
     whence,
   ) {
-    return core.opSync("op_seek_sync", { rid, offset, whence });
+    return core.unwrapOpResult(ops.op_seek_sync({ rid, offset, whence }));
   }
 
   function seek(
@@ -36,9 +37,10 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = core.opSync(
-      "op_open_sync",
-      { path: pathFromURL(path), options, mode },
+    const rid = core.unwrapOpResult(
+      ops.op_open_sync(
+        { path: pathFromURL(path), options, mode },
+      ),
     );
 
     return new FsFile(rid);
