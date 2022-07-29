@@ -198,7 +198,7 @@
   }
 
   function queueMicrotask(cb) {
-    return ops.op_queue_microtask(cb);
+    return unwrapOpResult(ops.op_queue_microtask(cb));
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
