@@ -38,7 +38,7 @@ fn bench_op_nop(b: &mut Bencher) {
 }
 
 fn bench_op_async(b: &mut Bencher) {
-  bench_js_async(b, r#"Deno.core.opAsync("op_pi_async", null);"#, setup);
+  bench_js_async(b, r#"Deno.core.opAsync("op_pi_async");"#, setup);
 }
 
 fn bench_is_proxy(b: &mut Bencher) {

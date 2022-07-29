@@ -5,7 +5,7 @@
   const {
     Event,
     EventTarget,
-    Deno: { core: { ops } },
+    Deno: { core, core: { ops } },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
   const { pathFromURL } = window.__bootstrap.util;
