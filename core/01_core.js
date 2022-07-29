@@ -174,14 +174,14 @@
     if (!hasPromise(promiseId)) {
       return;
     }
-    ops.op_ref_op(promiseId);
+    unwrapOpResult(ops.op_ref_op(promiseId));
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    ops.op_unref_op(promiseId);
+    unwrapOpResult(ops.op_unref_op(promiseId));
   }
 
   function resources() {
@@ -251,7 +251,8 @@
       unwrapOpResult(ops.op_set_next_tick_callback(fn)),
     runMicrotasks: () => ops.op_run_microtasks(),
     hasTickScheduled: () => ops.op_has_tick_scheduled(),
-    setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
+    setHasTickScheduled: (bool) =>
+      unwrapOpResult(ops.op_set_has_tick_scheduled(bool)),
     evalContext: (source, specifier) =>
       unwrapOpResult(ops.op_eval_context(source, specifier)),
     createHostObject: () => ops.op_create_host_object(),

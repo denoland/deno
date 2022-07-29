@@ -43,7 +43,7 @@
   }
 
   function hostTerminateWorker(id) {
-    ops.op_host_terminate_worker(id);
+    core.unwrapOpResult(ops.op_host_terminate_worker(id));
   }
 
   function hostPostMessage(id, data) {

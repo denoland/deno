@@ -82,7 +82,7 @@
     const fileName = callSite.getFileName();
 
     if (fileName) {
-      result += ops.op_format_file_name(fileName);
+      result += core.unwrapOpResult(ops.op_format_file_name(fileName));
     } else {
       if (callSite.isEval()) {
         const evalOrigin = callSite.getEvalOrigin();
@@ -202,11 +202,11 @@
       if (fileName && lineNumber != null && columnNumber != null) {
         return patchCallSite(
           callSite,
-          ops.op_apply_source_map({
+          core.unwrapOpResult(ops.op_apply_source_map({
             fileName,
             lineNumber,
             columnNumber,
-          }),
+          })),
         );
       }
       return callSite;
