@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
   const { BlobPrototype } = window.__bootstrap.file;
@@ -68,15 +69,16 @@
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
   function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
-    return core.opSync(
-      "op_fetch",
-      method,
-      url,
-      headers,
-      clientRid,
-      hasBody,
-      bodyLength,
-      body,
+    return core.unwrapOpResult(
+      ops.op_fetch(
+        method,
+        url,
+        headers,
+        clientRid,
+        hasBody,
+        bodyLength,
+        body,
+      ),
     );
   }
 
@@ -560,7 +562,7 @@
       }
 
       // Pass the resolved URL to v8.
-      core.opSync("op_wasm_streaming_set_url", rid, res.url);
+      core.unwrapOpResult(ops.op_wasm_streaming_set_url(rid, res.url));
 
       if (res.body !== null) {
         // 2.6.
@@ -571,7 +573,7 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.opSync("op_wasm_streaming_feed", rid, chunk);
+            core.unwrapOpResult(ops.op_wasm_streaming_feed(rid, chunk));
           }
         })().then(
           // 2.7
