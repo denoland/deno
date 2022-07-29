@@ -30,10 +30,10 @@ declare namespace Deno {
     function unrefOps(promiseId: number): void;
 
     /**
-     * Retrieve a list of all registered ops, in the form of a map that maps op
+     * List of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.
      */
-    function ops(): Record<string, number>;
+    const ops: Record<string, (...args: unknown[]) => any>;
 
     /**
      * Retrieve a list of all open resources, in the form of a map that maps
