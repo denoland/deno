@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
+//const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
+const targetDir = "/home/aapoalas/build/deno/target/release";
 const [libPrefix, libSuffix] = {
   darwin: ["lib", "dylib"],
   linux: ["lib", "so"],
@@ -337,6 +338,8 @@ Deno.bench("nop_f64()", () => {
 
 const { nop_buffer } = dylib.symbols;
 const buffer = new Uint8Array(8).fill(5);
+// Make sure the buffer does not get collected
+globalThis.buffer = buffer;
 Deno.bench("nop_buffer()", () => {
   nop_buffer(buffer);
 });
@@ -539,6 +542,8 @@ Deno.bench("return_buffer_nonblocking()", async () => {
 
 const { nop_many_parameters } = dylib.symbols;
 const buffer2 = new Uint8Array(8).fill(25);
+// Make sure the buffer does not get collected
+globalThis.buffer2 = buffer2;
 Deno.bench("nop_many_parameters()", () => {
   nop_many_parameters(
     135,
