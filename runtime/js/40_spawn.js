@@ -151,7 +151,6 @@
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
       this.#status = waitPromise.then((res) => {
-        this.#rid = null;
         signal?.[remove](onAbort);
         return res;
       });
@@ -200,10 +199,7 @@
     }
 
     kill(signo = "SIGTERM") {
-      if (this.#rid === null) {
-        throw new TypeError("Child process has already terminated.");
-      }
-      core.opSync("op_kill", this.#pid, signo);
+      core.opSync("op_spawn_kill", this.#rid, signo);
     }
 
     ref() {

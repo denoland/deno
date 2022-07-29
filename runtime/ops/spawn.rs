@@ -3,9 +3,11 @@
 use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
+use super::process::kill;
 use super::process::Stdio;
 use super::process::StdioOrRid;
 use crate::permissions::Permissions;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
@@ -31,11 +33,14 @@ pub fn init() -> Extension {
       op_spawn_child::decl(),
       op_spawn_wait::decl(),
       op_spawn_sync::decl(),
+      op_spawn_kill::decl(),
     ])
     .build()
 }
 
-struct ChildResource(tokio::process::Child);
+/// Second member stores the pid separately from the RefCell. It's needed for
+/// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
+struct ChildResource(RefCell<tokio::process::Child>, u32);
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
@@ -210,7 +215,9 @@ fn op_spawn_child(
     .take()
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state.resource_table.add(ChildResource(child));
+  let child_rid = state
+    .resource_table
+    .add(ChildResource(RefCell::new(child), pid));
 
   Ok(Child {
     rid: child_rid,
@@ -226,17 +233,18 @@ async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
+  #![allow(clippy::await_holding_refcell_ref)]
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(rid)?;
-  Rc::try_unwrap(resource)
-    .ok()
-    .unwrap()
-    .0
-    .wait()
-    .await?
-    .try_into()
+    .get::<ChildResource>(rid)?;
+  let result = resource.0.borrow_mut().wait().await?.try_into();
+  state
+    .borrow_mut()
+    .resource_table
+    .close(rid)
+    .expect("shouldn't have closed until now");
+  result
 }
 
 #[op]
@@ -261,4 +269,17 @@ fn op_spawn_sync(
       None
     },
   })
+}
+
+#[op]
+fn op_spawn_kill(
+  state: &mut OpState,
+  rid: ResourceId,
+  signal: String,
+) -> Result<(), AnyError> {
+  if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
+    kill(child_resource.1 as i32, &signal)?;
+    return Ok(());
+  }
+  Err(type_error("Child process has already terminated."))
 }

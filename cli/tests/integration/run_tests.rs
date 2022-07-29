@@ -2792,3 +2792,8 @@ itest!(unhandled_rejection_sync_error {
   args: "run --check unhandled_rejection_sync_error.ts",
   output: "unhandled_rejection_sync_error.ts.out",
 });
+
+itest!(spawn_kill_permissions {
+  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
+  output_str: Some(""),
+});
