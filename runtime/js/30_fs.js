@@ -114,10 +114,10 @@
 
   function readDirSync(path) {
     return core.unwrapOpResult(
-      ops.op_read_dir_sync(pathFromURL(path))[
-        SymbolIterator
-      ](),
-    );
+      ops.op_read_dir_sync(pathFromURL(path)),
+    )[
+      SymbolIterator
+    ];
   }
 
   function readDir(path) {
