@@ -542,7 +542,7 @@ async fn load_and_type_check(
 ) -> Result<(), AnyError> {
   for file in files {
     let specifier = resolve_url_or_path(file)?;
-    tools::check::do_check(specifier, ps).await?;
+    tools::check::do_check(specifier, ps, false).await?;
   }
 
   Ok(())

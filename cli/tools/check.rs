@@ -24,7 +24,7 @@ pub async fn run_check_with_watch(
   // Check first time.
   for file in files {
     let specifier = resolve_url_or_path(&file)?;
-    do_check(specifier, &ps).await?;
+    do_check(specifier, &ps, true).await?;
   }
 
   // Check Watch
@@ -64,7 +64,7 @@ pub async fn run_check_with_watch(
 
     async move {
       for check_module in modules_to_reload {
-        do_check(check_module, &ps).await?;
+        do_check(check_module, &ps, true).await?;
       }
       Ok(())
     }
@@ -88,6 +88,7 @@ pub async fn run_check_with_watch(
 pub async fn do_check(
   check_module: ModuleSpecifier,
   ps: &ProcState,
+  reload_on_watch: bool,
 ) -> Result<(), AnyError> {
   ps.prepare_module_load(
     vec![check_module],
@@ -95,7 +96,7 @@ pub async fn do_check(
     ps.options.ts_type_lib_window(),
     Permissions::allow_all(),
     Permissions::allow_all(),
-    false,
+    reload_on_watch,
   )
   .await?;
 
