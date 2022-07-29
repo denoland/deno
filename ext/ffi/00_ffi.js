@@ -7,9 +7,17 @@
   const {
     BigInt,
     ObjectDefineProperty,
+    ArrayPrototypeMap,
+    Number,
+    NumberIsSafeInteger,
+    ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     TypeError,
+    Int32Array,
+    Uint32Array,
+    BigInt64Array,
+    Function,
   } = window.__bootstrap.primordials;
 
   function unpackU64(returnValue) {
@@ -233,6 +241,10 @@
       type === "usize" || type === "isize";
   }
 
+  function isI64(type) {
+    return type === "i64" || type === "isize";
+  }
+
   class UnsafeCallback {
     #refcount;
     #rid;
@@ -317,11 +329,11 @@
           );
           continue;
         }
+        const resultType = symbols[symbol].result;
+        const needsUnpacking = isReturnedAsBigInt(resultType);
 
         const isNonBlocking = symbols[symbol].nonblocking;
         if (isNonBlocking) {
-          const resultType = symbols[symbol].result;
-          const needsUnpacking = isReturnedAsBigInt(resultType);
           ObjectDefineProperty(
             this.symbols,
             symbol,
@@ -349,6 +361,38 @@
               writable: false,
             },
           );
+        }
+
+        if (needsUnpacking && !isNonBlocking) {
+          const call = this.symbols[symbol];
+          const parameters = symbols[symbol].parameters;
+          const vi = new Int32Array(2);
+          const vui = new Uint32Array(vi.buffer);
+          const b = new BigInt64Array(vi.buffer);
+
+          const params = ArrayPrototypeJoin(
+            ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
+            ", ",
+          );
+          // Make sure V8 has no excuse to not optimize this function.
+          this.symbols[symbol] = new Function(
+            "vi",
+            "vui",
+            "b",
+            "call",
+            "NumberIsSafeInteger",
+            "Number",
+            `return function (${params}) {
+            call(${params}${parameters.length > 0 ? ", " : ""}vi);
+            ${
+              isI64(resultType)
+                ? `const n1 = Number(b[0])`
+                : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
+            };
+            if (NumberIsSafeInteger(n1)) return n1;
+            return b[0];
+          }`,
+          )(vi, vui, b, call, NumberIsSafeInteger, Number);
         }
       }
     }

@@ -1961,23 +1961,13 @@ impl CompletionEntryDetails {
   }
 }
 
-#[derive(Debug, Deserialize_repr, Serialize_repr)]
-#[repr(u32)]
-pub enum CompletionInfoFlags {
-  None = 0,
-  MayIncludeAutoImports = 1,
-  IsImportStatementCompletion = 2,
-  IsContinuation = 4,
-  ResolvedModuleSpecifiers = 8,
-  ResolvedModuleSpecifiersBeyondLimit = 16,
-  MayIncludeMethodSnippets = 32,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionInfo {
   entries: Vec<CompletionEntry>,
-  flags: Option<CompletionInfoFlags>,
+  // this is only used by Microsoft's telemetrics, which Deno doesn't use and
+  // there are issues with the value not matching the type definitions.
+  // flags: Option<CompletionInfoFlags>,
   is_global_completion: bool,
   is_member_completion: bool,
   is_new_identifier_location: bool,
