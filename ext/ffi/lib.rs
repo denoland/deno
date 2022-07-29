@@ -776,9 +776,9 @@ fn is_fastapi_available() -> &'static bool {
   static FASTAPI_IS_AVAILABLE: OnceCell<bool> = OnceCell::new();
   #[cfg(target_os = "linux")]
   return FASTAPI_IS_AVAILABLE.get_or_init(|| {
-    // SAFETY: mprotect should fail on malloc-ed memory on SELinux which prevent tinycc from working
+    // SAFETY: mprotect should fail on memaligned memory on SELinux which prevent tinycc from working
     unsafe {
-      let ptr = libc::malloc(1);
+      let ptr = libc::memalign(libc::_SC_PAGESIZE as libc::size_t, 1);
       if !ptr.is_null() {
         let result = libc::mprotect(ptr, 1, libc::PROT_WRITE);
         libc::free(ptr);
