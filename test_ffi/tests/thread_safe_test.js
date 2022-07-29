@@ -90,7 +90,10 @@ cleanupCallback.ref();
 
 function cleanup() {
   cleanupCallback.unref();
-  console.log("Isolate should now exit");
+  // Keep isolate alive for a bit more to make sure everything finishes properly.
+  setTimeout(() => {
+    console.log("Isolate should now exit");
+  }, 100);
 }
 
 dylib.symbols.store_function(cleanupCallback.pointer);
