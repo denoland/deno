@@ -274,11 +274,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.ops.op_exists({ specifier });
+      return core.unwrapOpResult(core.ops.op_exists({ specifier }));
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.ops.op_load({ specifier }).data;
+      return core.unwrapOpResult(core.ops.op_load({ specifier })).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -339,9 +339,9 @@ delete Object.prototype.__proto__;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      return core.ops.op_emit(
+      return core.unwrapOpResult(core.ops.op_emit(
         { fileName, data },
-      );
+      ));
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
@@ -568,10 +568,10 @@ delete Object.prototype.__proto__;
 
     performanceProgram({ program });
 
-    core.ops.op_respond({
+    core.unwrapOpResult(core.ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
-    });
+    }));
     debug("<<< exec stop");
   }
 
@@ -580,7 +580,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.ops.op_respond({ id, data });
+    core.unwrapOpResult(core.ops.op_respond({ id, data }));
   }
 
   /**
