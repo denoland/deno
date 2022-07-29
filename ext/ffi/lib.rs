@@ -779,7 +779,7 @@ fn is_fastapi_available() -> &'static bool {
     // SAFETY: mprotect should fail on malloc-ed memory on SELinux which prevent tinycc from working
     unsafe {
       let ptr = libc::malloc(1);
-      if ptr.is_null() {
+      if !ptr.is_null() {
         let result = libc::mprotect(ptr, 1, libc::PROT_WRITE);
         libc::free(ptr);
         result != -1
