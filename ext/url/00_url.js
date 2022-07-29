@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayIsArray,
@@ -43,10 +44,12 @@
 
   // Helper functions
   function opUrlReparse(href, setter, value) {
-    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
+    return _urlParts(
+      core.unwrapOpResult(ops.op_url_reparse(href, [setter, value])),
+    );
   }
   function opUrlParse(href, maybeBase) {
-    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
+    return _urlParts(core.unwrapOpResult(ops.op_url_parse(href, maybeBase)));
   }
   function _urlParts(internalParts) {
     // WARNING: must match UrlParts serialization rust's url_result()
@@ -101,7 +104,7 @@
         if (init[0] == "?") {
           init = StringPrototypeSlice(init, 1);
         }
-        this[_list] = core.opSync("op_url_parse_search_params", init);
+        this[_list] = core.unwrapOpResult(ops.op_url_parse_search_params(init));
       } else if (ArrayIsArray(init)) {
         // Overload: sequence<sequence<USVString>>
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -291,7 +294,9 @@
      */
     toString() {
       webidl.assertBranded(this, URLSearchParamsPrototype);
-      return core.opSync("op_url_stringify_search_params", this[_list]);
+      return core.unwrapOpResult(
+        ops.op_url_stringify_search_params(this[_list]),
+      );
     }
   }
 
@@ -348,10 +353,9 @@
     #updateSearchParams() {
       if (this.#queryObject !== null) {
         const params = this.#queryObject[_list];
-        const newParams = core.opSync(
-          "op_url_parse_search_params",
+        const newParams = core.unwrapOpResult(ops.op_url_parse_search_params(
           StringPrototypeSlice(this.search, 1),
-        );
+        ));
         ArrayPrototypeSplice(
           params,
           0,
@@ -617,7 +621,7 @@
    * @returns {[string, string][]}
    */
   function parseUrlEncoded(bytes) {
-    return core.opSync("op_url_parse_search_params", null, bytes);
+    return core.unwrapOpResult(ops.op_url_parse_search_params(null, bytes));
   }
 
   webidl
