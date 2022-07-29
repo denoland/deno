@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Error,
     SymbolFor,
@@ -11,31 +12,31 @@
   const windowDispatchEvent = window.dispatchEvent.bind(window);
 
   function loadavg() {
-    return core.opSync("op_loadavg");
+    return core.unwrapOpResult(ops.op_loadavg());
   }
 
   function hostname() {
-    return core.opSync("op_hostname");
+    return core.unwrapOpResult(ops.op_hostname());
   }
 
   function osRelease() {
-    return core.opSync("op_os_release");
+    return core.unwrapOpResult(ops.op_os_release());
   }
 
   function systemMemoryInfo() {
-    return core.opSync("op_system_memory_info");
+    return core.unwrapOpResult(ops.op_system_memory_info());
   }
 
   function networkInterfaces() {
-    return core.opSync("op_network_interfaces");
+    return core.unwrapOpResult(ops.op_network_interfaces());
   }
 
   function getGid() {
-    return core.opSync("op_getgid");
+    return core.unwrapOpResult(ops.op_getgid());
   }
 
   function getUid() {
-    return core.opSync("op_getuid");
+    return core.unwrapOpResult(ops.op_getuid());
   }
 
   // This is an internal only method used by the test harness to override the
@@ -48,7 +49,7 @@
   function exit(code) {
     // Set exit code first so unload event listeners can override it.
     if (typeof code === "number") {
-      core.opSync("op_set_exit_code", code);
+      core.unwrapOpResult(ops.op_set_exit_code(code));
     } else {
       code = 0;
     }
@@ -65,33 +66,33 @@
       return;
     }
 
-    core.opSync("op_exit");
+    core.unwrapOpResult(ops.op_exit());
     throw new Error("Code not reachable");
   }
 
   function setEnv(key, value) {
-    core.opSync("op_set_env", key, value);
+    core.unwrapOpResult(ops.op_set_env(key, value));
   }
 
   function getEnv(key) {
-    return core.opSync("op_get_env", key) ?? undefined;
+    return core.unwrapOpResult(ops.op_get_env(key)) ?? undefined;
   }
 
   function deleteEnv(key) {
-    core.opSync("op_delete_env", key);
+    core.unwrapOpResult(ops.op_delete_env(key));
   }
 
   const env = {
     get: getEnv,
     toObject() {
-      return core.opSync("op_env");
+      return core.unwrapOpResult(ops.op_env());
     },
     set: setEnv,
     delete: deleteEnv,
   };
 
   function execPath() {
-    return core.opSync("op_exec_path");
+    return core.unwrapOpResult(ops.op_exec_path());
   }
 
   window.__bootstrap.os = {
