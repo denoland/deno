@@ -97,11 +97,10 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-  let cb = state
+  let cb = JsRuntime::state(scope)
+    .borrow()
     .js_build_custom_error_cb
-    .as_ref()
+    .clone()
     .expect("Custom error builder must be set");
   let cb = cb.open(scope);
   let this = v8::undefined(scope).into();
