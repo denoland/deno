@@ -66,7 +66,7 @@ declare namespace Deno {
     /**
      * Print a message to stdout or stderr
      */
-     function print(message: string, is_err?: boolean): void;
+    function print(message: string, is_err?: boolean): void;
 
     /**
      * Shutdown a resource
