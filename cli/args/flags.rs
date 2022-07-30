@@ -5908,6 +5908,22 @@ mod tests {
   }
 
   #[test]
+  fn run_watch_with_check() {
+    let r = flags_from_vec(svec!["deno", "check", "--watch", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        watch: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn no_config() {
     let r = flags_from_vec(svec!["deno", "run", "--no-config", "script.ts",]);
     assert_eq!(
