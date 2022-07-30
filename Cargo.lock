@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.24.0"
+version = "1.24.1"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -896,7 +896,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -916,14 +916,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.144.0"
+version = "0.145.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.76.0"
+version = "0.77.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.85.0"
+version = "0.86.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -1027,7 +1027,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "async-compression",
  "base64 0.13.0",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "once_cell",
  "proc-macro-crate",
@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.70.0"
+version = "0.71.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1188,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.49.0"
+version = "0.50.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1202,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1214,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.93.0"
+version = "0.94.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1242,14 +1242,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.57.0"
+version = "0.58.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1371,9 +1371,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.15.3"
+version = "0.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1e5fe967adc699073aa92ce4c931de1932ee58f4b755c3b32fed15580636558"
+checksum = "db127f7ccb9b497b5b32e5e8eca4b19a7f191e38a3505195f029d5fbb728e51a"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2342,9 +2342,9 @@ dependencies = [
 
 [[package]]
 name = "jsonc-parser"
-version = "0.19.0"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34bbb0cd324c4ed32861be1d00c58635b94d03a2d2c70f6aec5f1a419c532783"
+checksum = "ccff81ff106af12c93c06935c50ee0723325095e8cbb8c0b41ed276b9469c4cb"
 dependencies = [
  "serde_json",
 ]
@@ -3853,12 +3853,13 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.55.0"
+version = "0.56.0"
 dependencies = [
  "bencher",
  "bytes",
  "derive_more",
  "serde",
+ "serde_bytes",
  "serde_json",
  "smallvec",
  "v8",
@@ -5190,9 +5191,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.47.0"
+version = "0.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bfba6cf63e2f839461fc45c75be2d0d803164123c50646c0dc6b2ef193b00a1"
+checksum = "be156dece7a023d5959a72dc0d398d6c95100ec601a2cea10d868da143e85166"
 dependencies = [
  "bitflags",
  "fslock",

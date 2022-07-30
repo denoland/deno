@@ -95,6 +95,16 @@ pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
 }
 
 #[no_mangle]
+unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 {
+  let buf = std::slice::from_raw_parts(ptr, length as usize);
+  let mut hash: u32 = 0;
+  for byte in buf {
+    hash = hash.wrapping_mul(0x10001000).wrapping_add(*byte as u32);
+  }
+  hash
+}
+
+#[no_mangle]
 pub extern "C" fn sleep_blocking(ms: u64) {
   let duration = Duration::from_millis(ms);
   sleep(duration);
@@ -393,4 +403,11 @@ pub struct Structure {
 }
 
 #[no_mangle]
-pub static static_ptr: Structure = Structure { _data: 42 };
+pub static mut static_ptr: Structure = Structure { _data: 42 };
+
+static STRING: &str = "Hello, world!\0";
+
+#[no_mangle]
+extern "C" fn ffi_string() -> *const u8 {
+  STRING.as_ptr()
+}
