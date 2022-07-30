@@ -2792,3 +2792,9 @@ itest!(unhandled_rejection_sync_error {
   args: "run --check unhandled_rejection_sync_error.ts",
   output: "unhandled_rejection_sync_error.ts.out",
 });
+
+itest!(nested_error {
+  args: "run nested_error.ts",
+  output: "nested_error.ts.out",
+  exit_code: 1,
+});
