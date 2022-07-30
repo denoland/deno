@@ -17,7 +17,7 @@ pub use esm_resolver::NodeEsmResolver;
 
 // WARNING: Ensure this is the only deno_std version reference as this
 // is automatically updated by the version bump workflow.
-pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.149.0/";
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.150.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -93,8 +93,12 @@ pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
 
 fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
+    let ext = match specifier {
+      "stream/promises" => "mjs",
+      _ => "ts",
+    };
     let module_url =
-      format!("{}node/{}.ts", NODE_COMPAT_URL.as_str(), specifier);
+      format!("{}node/{}.{}", NODE_COMPAT_URL.as_str(), specifier, ext);
     Some(Url::parse(&module_url).unwrap())
   } else {
     None
