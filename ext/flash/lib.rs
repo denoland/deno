@@ -1,9 +1,7 @@
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::RuntimeOptions;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use http::header::HeaderName;
@@ -12,7 +10,6 @@ use http::header::CONTENT_LENGTH;
 use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
 use http::header::UPGRADE;
-use http::response;
 use http::HeaderValue;
 use mio::net::TcpListener;
 use mio::net::TcpStream;
@@ -29,7 +26,6 @@ use std::intrinsics::transmute;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
-use std::sync::mpsc::channel;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -83,7 +79,9 @@ impl Read for Stream {
 struct NextRequest {
   socket: *mut Stream,
   inner: InnerRequest,
+  #[allow(dead_code)]
   no_more_requests: bool,
+  #[allow(dead_code)]
   upgrade: bool,
 }
 
@@ -388,6 +386,7 @@ fn op_listen(
               // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
               let mut no_more_requests = inner_req.req.version.unwrap() == 1;
               let mut upgrade = false;
+              #[allow(unused_variables)]
               let mut expect_continue = false;
               let mut transfer_encoding: Option<()> = None;
               #[inline]
@@ -432,8 +431,11 @@ fn op_listen(
                     // Handle content length
                   }
                   Ok(EXPECT) => {
-                    expect_continue =
-                      header.value.eq_ignore_ascii_case(b"100-continue");
+                    #[allow(unused_assignments)]
+                    {
+                      expect_continue =
+                        header.value.eq_ignore_ascii_case(b"100-continue");
+                    }
                   }
                   _ => {}
                 }
@@ -444,7 +446,7 @@ fn op_listen(
                 inner: inner_req,
                 no_more_requests,
                 upgrade,
-              });
+              }).ok();
             }
           }
         }
