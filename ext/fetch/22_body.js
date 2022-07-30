@@ -452,15 +452,13 @@
   webidl.converters["BodyInit_DOMString"] = (V, opts) => {
     // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
     if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
-      // TODO(lucacasonato): ReadableStream is not branded
-      return V;
+      return webidl.converters["ReadableStream"](V, opts);
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, opts);
     } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
       return webidl.converters["FormData"](V, opts);
     } else if (ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, V)) {
-      // TODO(lucacasonato): URLSearchParams is not branded
-      return V;
+      return webidl.converters["URLSearchParams"](V, opts);
     }
     if (typeof V === "object") {
       if (
