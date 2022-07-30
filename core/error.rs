@@ -190,6 +190,7 @@ impl JsError {
     let scope = &mut v8::HandleScope::new(scope);
 
     let msg = v8::Exception::create_message(scope, exception);
+
     let mut exception_message = None;
     // Nest this state borrow. A mutable borrow can occur when accessing `stack`
     // in this outer scope, invoking `Error.prepareStackTrace()` which calls
@@ -247,6 +248,7 @@ impl JsError {
       let stack: Option<v8::Local<v8::String>> =
         stack.and_then(|s| s.try_into().ok());
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
+
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
       // Ignore non-array values
