@@ -12,8 +12,8 @@ use http::header::CONTENT_LENGTH;
 use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
 use http::header::UPGRADE;
-use http::HeaderValue;
 use http::response;
+use http::HeaderValue;
 use mio::net::TcpListener;
 use mio::net::TcpStream;
 use mio::Events;
@@ -42,6 +42,8 @@ struct ServerContext {
 struct InnerRequest {
   _headers: Vec<httparse::Header<'static>>,
   req: httparse::Request<'static, 'static>,
+  body_offset: usize,
+  buffer: [u8; 1024],
 }
 
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
@@ -126,7 +128,7 @@ fn op_respond(
 fn op_respond_chuncked(
   op_state: &mut OpState,
   token: u32,
-  response: Option<ZeroCopyBuf>, 
+  response: Option<ZeroCopyBuf>,
   shutdown: bool,
 ) {
   let ctx = op_state.borrow_mut::<ServerContext>();
@@ -147,10 +149,10 @@ fn op_respond_chuncked(
     let _ = sock.write(format!("{:x}", response.len()).as_bytes());
     let _ = sock.write(b"\r\n");
     let _ = sock.write(&response);
-    let _ = sock.write(b"\r\n");  
+    let _ = sock.write(b"\r\n");
   }
   // The last chunk
-  if shutdown { 
+  if shutdown {
     let _ = sock.write(b"0\r\n\r\n");
   }
 }
@@ -233,6 +235,32 @@ fn op_headers(
     .collect()
 }
 
+#[op]
+async fn op_read_body(
+  state: Rc<RefCell<OpState>>,
+  token: u32,
+  mut buf: ZeroCopyBuf,
+) -> usize {
+  let op_state = &mut state.borrow_mut();
+  let ctx = op_state.borrow_mut::<ServerContext>();
+  let tx = ctx.response.get_mut(&token).unwrap();
+  let sock = unsafe { &mut *tx.socket };
+
+  if tx.inner.body_offset != 0 {
+    use std::io::Read;
+    let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
+    let n = buffer.read(&mut buf).unwrap();
+    if n == 0 {
+      tx.inner.body_offset = 0;
+    } else {
+      tx.inner.body_offset += n;
+    }
+    n
+  } else {
+    sock.read(&mut buf[..]).unwrap()
+  }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct ListenOpts {
   cert: String,
@@ -289,7 +317,6 @@ fn op_listen(
       };
       let mut sockets = HashMap::with_capacity(1000);
       let mut counter: usize = 1;
-      let mut buffer: [u8; 1024] = [0_u8; 1024];
       let mut events = Events::with_capacity(1024);
       loop {
         poll.poll(&mut events, None).unwrap();
@@ -321,6 +348,7 @@ fn op_listen(
               }
             },
             token => {
+              let mut buffer: [u8; 1024] = [0_u8; 1024];
               let socket = sockets.get_mut(&token).unwrap();
               debug_assert!(event.is_readable());
               let sock_ptr = socket as *mut _;
@@ -328,6 +356,7 @@ fn op_listen(
 
               let mut headers = vec![httparse::EMPTY_HEADER; 40];
               let mut req = httparse::Request::new(&mut headers);
+              let body_offset;
               match nread {
                 Ok(0) => {
                   sockets.remove(&token);
@@ -337,7 +366,7 @@ fn op_listen(
                   let r = req.parse(&buffer[0..n]).unwrap();
                   // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
                   match r {
-                    httparse::Status::Complete(_) => {}
+                    httparse::Status::Complete(n) => body_offset = n,
                     _ => unreachable!(),
                   }
                 }
@@ -351,6 +380,8 @@ fn op_listen(
                 _headers: unsafe {
                   transmute::<Vec<httparse::Header<'_>>, _>(headers)
                 },
+                buffer,
+                body_offset,
               };
               // h1
               // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
@@ -426,7 +457,7 @@ fn op_listen(
 
 #[op]
 async fn op_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
-   let ctx = {
+  let ctx = {
     let mut op_state = op_state.borrow_mut();
     let ctx = op_state.borrow_mut::<ServerContext>();
     ctx as *mut ServerContext
@@ -440,12 +471,11 @@ async fn op_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
   if tokens == 0 {
     if let Some(req) = ctx.rx.recv().await {
       ctx.response.insert(tokens, req);
-      tokens += 1; 
+      tokens += 1;
     }
   }
   tokens
 }
-
 
 #[op]
 fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
@@ -475,6 +505,7 @@ pub fn init() -> Extension {
       op_respond_stream::decl(),
       op_next::decl(),
       op_next_async::decl(),
+      op_read_body::decl(),
     ])
     .state(|op_state| {
       let (tx, rx) = mpsc::channel(100);

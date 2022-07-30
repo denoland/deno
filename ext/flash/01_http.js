@@ -93,6 +93,28 @@
       }
       return this.#headers;
     }
+
+    async arrayBuffer() {
+      let u8 = new Uint8Array(1024 * 1024);
+      let written = 0;
+      while (true) {
+        // TODO(@littledivy): This can be a fast api call.
+        const n = await core.opAsync("op_read_body", this.#token, u8);
+        if (n === 0) {
+          break;
+        }
+        written += n;
+      }
+      return u8.subarray(0, written).buffer;
+    }
+
+    async text() {
+      return core.decode(await this.arrayBuffer());
+    }
+
+    async json() {
+      return JSON.parse((await this.text()).trim());
+    }
   }
 
   const methods = {
@@ -391,7 +413,8 @@
           // const resourceRid = getReadableStreamRid(respBody);
           let reader = respBody.getReader();
           let first = true;
-          a: while (true) {
+          a:
+          while (true) {
             const { value, done } = await reader.read();
             if (first) {
               first = false;
@@ -400,7 +423,7 @@
                 http1Response(
                   innerResp.status ?? 200,
                   innerResp.headerList,
-                  null
+                  null,
                 ),
                 value,
                 false,
