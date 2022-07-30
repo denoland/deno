@@ -1,3 +1,4 @@
+// deno-fmt-ignore-file
 /**
  * Bundled by jsDelivr using Rollup v2.75.7 and Terser v5.14.1.
  * Original file: /npm/react-dom@18.2.0/server.browser.js
