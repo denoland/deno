@@ -243,11 +243,11 @@ async fn op_read_body(
   let ctx = op_state.borrow_mut::<ServerContext>();
   let tx = ctx.response.get_mut(&token).unwrap();
   let sock = unsafe { &mut *tx.socket };
-
   if tx.inner.body_offset != 0 {
     use std::io::Read;
     let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
     let n = buffer.read(&mut buf).unwrap();
+    
     if n == 0 {
       tx.inner.body_offset = 0;
     } else {

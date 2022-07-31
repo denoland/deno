@@ -81,7 +81,7 @@
       if (!this.#url) {
         this.#url = core.ops.op_path(this.#token);
       }
-      return `http://localhost:9000`;
+      return `http://localhost:9000${this.#url}`;
     }
 
     get headers() {
@@ -114,6 +114,18 @@
 
     async json() {
       return JSON.parse((await this.text()).trim());
+    }
+
+    blob() {}
+    formData() {}
+    get bodyUsed() {}
+
+    #stream;
+    get body() {
+      if (!this.#stream) {
+        this.#stream = createRequestBodyStream(this.#token);
+      }
+      return this.#stream;
     }
   }
 
@@ -250,8 +262,31 @@
     await listener;
   }
 
-  function readRequest(streamRid, buf) {
-    return core.opAsync("op_http_read", streamRid, buf);
+  function createRequestBodyStream(token) {
+    return new ReadableStream({
+      type: "bytes",
+      async pull(controller) {
+        try {
+          // This is the largest possible size for a single packet on a TLS
+          // stream.
+          const chunk = new Uint8Array(16 * 1024 + 256);
+          const read = await core.opAsync("op_read_body", token, chunk);
+          
+          if (read > 0) {
+            // We read some data. Enqueue it onto the stream.
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
+          } else {
+            // We have reached the end of the body, so we close the stream.
+            controller.close();
+          }
+        } catch (err) {
+          // There was an error while reading a chunk of the body, so we
+          // error.
+          controller.error(err);
+          controller.close();
+        }
+      },
+    });
   }
 
   window.__bootstrap.flash = {
