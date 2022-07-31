@@ -30,6 +30,7 @@ deno_fetch = { version = "0.86.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.50.0", path = "../ext/ffi" }
 deno_http = { version = "0.57.0", path = "../ext/http" }
 deno_net = { version = "0.55.0", path = "../ext/net" }
+deno_node = { version = "0.0.1", path = "../ext/node" }
 deno_tls = { version = "0.50.0", path = "../ext/tls" }
 deno_url = { version = "0.63.0", path = "../ext/url" }
 deno_web = { version = "0.94.0", path = "../ext/web" }
@@ -53,6 +54,7 @@ deno_fetch = { version = "0.86.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.50.0", path = "../ext/ffi" }
 deno_http = { version = "0.57.0", path = "../ext/http" }
 deno_net = { version = "0.55.0", path = "../ext/net" }
+deno_node = { version = "0.0.1", path = "../ext/node" }
 deno_tls = { version = "0.50.0", path = "../ext/tls" }
 deno_url = { version = "0.63.0", path = "../ext/url" }
 deno_web = { version = "0.94.0", path = "../ext/web" }
