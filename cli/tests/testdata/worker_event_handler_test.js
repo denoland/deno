@@ -1,5 +1,5 @@
 const w = new Worker(
-  new URL("./workers/worker_event_handlers.js", import.meta.url).href,
+  import.meta.resolve("./workers/worker_event_handlers.js"),
   { type: "module" },
 );
 w.postMessage({});

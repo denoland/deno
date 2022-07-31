@@ -6,6 +6,81 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.24.1 / 2022.07.28
+
+- Revert "feat(ops): V8 Fast Calls (#15122)" (#15276)
+- feat(ops): V8 Fast Calls (#15122)
+- fix(cli): unset jsxFragmentFactory & jsxFactory options (#15264)
+- fix(ext/fetch): resolve TODOs about WebIDL conversions in body init (#15312)
+- fix(lsp): remove CompletionInfo.flags (#15288)
+- fix(tools): upgrade to new `Deno.spawn` api (#15265)
+- fix: Child.unref() unrefs stdio streams properly (#15275)
+- fix: proper typings for unhandledrejection event (#15271)
+- fix: unhandledrejection handling for sync throw in top level (#15279)
+- perf(ext/ffi): Optimise common pointer related APIs (#15144)
+- serde_v8: improvements to avoid hitting unimplemented codepaths (#13915)
+
+### 1.24.0 / 2022.07.20
+
+- BREAKING(unstable): Improve Deno.spawn() stdio API (#14919)
+- feat(cli): support configuring the test tool in the config file (#15079)
+- feat(cli/lsp): Sort repl completions (#15171)
+- feat(cli/test): add `DENO_JOBS` env variable for `test` subcommand (#14929)
+- feat(ext/ffi): Support 64 bit parameters in Fast API calls (#15140)
+- feat(fmt): do not add a newline between a template and its tag (#15195)
+- feat(lsp): provide import map remapping diags and fixes (#15165)
+- feat(test): add `--parallel` flag, soft deprecate `--jobs` (#15259)
+- feat(unstable): Ability to ref/unref "Child" in "Deno.spawnChild()" API
+  (#15151)
+- feat(web): add beforeunload event (#14830)
+- feat: add "unhandledrejection" event support (#12994, #15211)
+- feat: import.meta.resolve() (#15074)
+- fix(cli): Improve error message in watch mode (#15184)
+- fix(cli): expand tsc roots when using checkJs (#15164)
+- fix(cli): synchronize async stdio/file reads and writes (#15092)
+- fix(cli/dts): allow passing arguments to `WebAssembly` error constructors
+  (#15149)
+- fix(core): unhandled rejection in top-level scope (#15204)
+- fix(coverage): do not verify emit source hash for coverage (#15260)
+- fix(ext/ffi): allow setting a custom lib path for libtcc.a (#15208)
+- fix(ext/ffi): i64 arg to C mapping was wrong (#15162)
+- fix(ext/web): align DOMException better with spec (#15097)
+- fix(fmt): improve curried arrow functions (#15251)
+- fix(repl): do not panic for import completions when the import specifier is
+  empty (#15177)
+- fix(task): do not overflow attempting to parse large number as redirect
+  (#15249)
+- fix(task): resolve deno configuration file first from specified `--cwd` arg
+  (#15257)
+- fix: WebSocketStream ping event causes pending promises (#15235)
+- fix: fallback to no type checking cache when db file can't be created (#15180)
+- fix: revert changes to test output for uncaught errors (#15231)
+- perf: emit files on demand and fix racy emit (#15220)
+- perf: use emit from swc instead of tsc (#15118)
+
+### 1.23.4 / 2022.07.12
+
+- feat(core): Re-export v8 use_custom_libcxx feature (#14475)
+- fix(core): deflake WASM termination test (#15103)
+- fix(coverage): better handling of multi-byte characters (#15159)
+- fix(ext/console): Fix a typo in a warning when .timeEnd is called on an
+  unknown timer (#15135)
+- fix(ext/crypto): Adjust typings for `Crypto.getRandomValues()` (#15130)
+- fix(ext/ffi): Avoid keeping JsRuntimeState RefCell borrowed for event loop
+  middleware calls (#15116)
+- fix(ext/ffi): allow opting out of fast ffi calls (#15131)
+- fix(ext/ffi): trampoline for fast calls (#15139)
+- fix(ext/http) nextRequest return type annotation from ResponseEvent to
+  RequestEvent (#15100)
+- fix(ext/http): reading headers with ongoing body reader (#15161)
+- fix(ext/url): missing primordial (#15096)
+- fix(lsp): enable auto imports (#15145)
+- fix(net): don't panic on failed UDS removal (#15157)
+- fix: upgrade deno_ast to 0.17 (#15152)
+- perf(cli/proc_state): Get error source lines from memory (#15031)
+- perf(ext/ffi): leverage V8 Fast Calls (#15125)
+- perf(ext/http): skip `core.isProxy` check for default ResponseInit (#15077)
+
 ### 1.23.3 / 2022.07.05
 
 - Revert "refactor(snapshots): to their own crate (#14794)" (#15076)

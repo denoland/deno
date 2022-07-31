@@ -76,7 +76,7 @@ pub struct ChildStatus {
   signal: Option<String>,
 }
 
-impl TryFrom<std::process::ExitStatus> for ChildStatus {
+impl TryFrom<ExitStatus> for ChildStatus {
   type Error = AnyError;
 
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {

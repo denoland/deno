@@ -41,7 +41,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use super::incremental_cache::IncrementalCache;
+use crate::cache::IncrementalCache;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
@@ -70,7 +70,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   } = lint_flags;
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
-  // over config file, ie. if there's `files.ignore` in config file
+  // over config file, i.e. if there's `files.ignore` in config file
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();

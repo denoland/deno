@@ -98,7 +98,9 @@ pub(crate) struct DynImportModEvaluate {
 }
 
 pub(crate) struct ModEvaluate {
-  promise: v8::Global<v8::Promise>,
+  pub(crate) promise: Option<v8::Global<v8::Promise>>,
+  pub(crate) has_evaluated: bool,
+  pub(crate) handled_promise_rejections: Vec<v8::Global<v8::Promise>>,
   sender: oneshot::Sender<Result<(), Error>>,
 }
 
@@ -152,7 +154,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_uncaught_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
@@ -227,6 +228,7 @@ fn v8_init(
     " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
+    " --turbo_fast_api_calls",
   );
 
   if predictable {
@@ -391,7 +393,6 @@ impl JsRuntime {
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
-      js_uncaught_exception_cb: None,
       js_format_exception_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
@@ -925,8 +926,7 @@ impl JsRuntime {
     // Event loop middlewares
     let mut maybe_scheduling = false;
     {
-      let state = state_rc.borrow();
-      let op_state = state.op_state.clone();
+      let op_state = state_rc.borrow().op_state.clone();
       for f in &self.event_loop_middlewares {
         if f(op_state.clone(), cx) {
           maybe_scheduling = true;
@@ -937,38 +937,23 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    let mut state = state_rc.borrow_mut();
-    let module_map = module_map_rc.borrow();
-
-    let has_pending_refed_ops =
-      state.pending_ops.len() > state.unrefed_ops.len();
-    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-    let has_pending_dyn_module_evaluation =
-      !state.pending_dyn_mod_evaluate.is_empty();
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-    let has_pending_background_tasks =
-      self.v8_isolate().has_pending_background_tasks();
-    let has_tick_scheduled = state.has_tick_scheduled;
+    let pending_state = Self::event_loop_pending_state(self.v8_isolate());
     let inspector_has_active_sessions = self
       .inspector
       .as_ref()
       .map(|i| i.has_active_sessions())
       .unwrap_or(false);
 
-    if !has_pending_refed_ops
-      && !has_pending_dyn_imports
-      && !has_pending_dyn_module_evaluation
-      && !has_pending_module_evaluation
-      && !has_pending_background_tasks
-      && !has_tick_scheduled
-      && !maybe_scheduling
-    {
+    if !pending_state.is_pending() && !maybe_scheduling {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
       }
 
       return Poll::Ready(Ok(()));
     }
+
+    let mut state = state_rc.borrow_mut();
+    let module_map = module_map_rc.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -978,19 +963,19 @@ impl JsRuntime {
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
     if state.have_unpolled_ops
-      || has_pending_background_tasks
-      || has_tick_scheduled
+      || pending_state.has_pending_background_tasks
+      || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
       state.waker.wake();
     }
 
-    if has_pending_module_evaluation {
-      if has_pending_refed_ops
-        || has_pending_dyn_imports
-        || has_pending_dyn_module_evaluation
-        || has_pending_background_tasks
-        || has_tick_scheduled
+    if pending_state.has_pending_module_evaluation {
+      if pending_state.has_pending_refed_ops
+        || pending_state.has_pending_dyn_imports
+        || pending_state.has_pending_dyn_module_evaluation
+        || pending_state.has_pending_background_tasks
+        || pending_state.has_tick_scheduled
         || maybe_scheduling
       {
         // pass, will be polled again
@@ -1000,11 +985,11 @@ impl JsRuntime {
       }
     }
 
-    if has_pending_dyn_module_evaluation {
-      if has_pending_refed_ops
-        || has_pending_dyn_imports
-        || has_pending_background_tasks
-        || has_tick_scheduled
+    if pending_state.has_pending_dyn_module_evaluation {
+      if pending_state.has_pending_refed_ops
+        || pending_state.has_pending_dyn_imports
+        || pending_state.has_pending_background_tasks
+        || pending_state.has_tick_scheduled
       {
         // pass, will be polled again
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
@@ -1030,28 +1015,44 @@ Pending dynamic modules:\n".to_string();
     Poll::Pending
   }
 
-  pub fn event_loop_has_work(&mut self) -> bool {
-    let state_rc = Self::state(self.v8_isolate());
-    let module_map_rc = Self::module_map(self.v8_isolate());
+  pub(crate) fn event_loop_pending_state(
+    isolate: &mut v8::Isolate,
+  ) -> EventLoopPendingState {
+    let state_rc = Self::state(isolate);
+    let module_map_rc = Self::module_map(isolate);
     let state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
-    let has_pending_refed_ops =
-      state.pending_ops.len() > state.unrefed_ops.len();
-    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
-    let has_pending_dyn_module_evaluation =
-      !state.pending_dyn_mod_evaluate.is_empty();
-    let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
-    let has_pending_background_tasks =
-      self.v8_isolate().has_pending_background_tasks();
-    let has_tick_scheduled = state.has_tick_scheduled;
+    EventLoopPendingState {
+      has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
+      has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
+      has_pending_dyn_module_evaluation: !state
+        .pending_dyn_mod_evaluate
+        .is_empty(),
+      has_pending_module_evaluation: state.pending_mod_evaluate.is_some(),
+      has_pending_background_tasks: isolate.has_pending_background_tasks(),
+      has_tick_scheduled: state.has_tick_scheduled,
+    }
+  }
+}
 
-    has_pending_refed_ops
-      || has_pending_dyn_imports
-      || has_pending_dyn_module_evaluation
-      || has_pending_module_evaluation
-      || has_pending_background_tasks
-      || has_tick_scheduled
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct EventLoopPendingState {
+  has_pending_refed_ops: bool,
+  has_pending_dyn_imports: bool,
+  has_pending_dyn_module_evaluation: bool,
+  has_pending_module_evaluation: bool,
+  has_pending_background_tasks: bool,
+  has_tick_scheduled: bool,
+}
+impl EventLoopPendingState {
+  pub fn is_pending(&self) -> bool {
+    self.has_pending_refed_ops
+      || self.has_pending_dyn_imports
+      || self.has_pending_dyn_module_evaluation
+      || self.has_pending_module_evaluation
+      || self.has_pending_background_tasks
+      || self.has_tick_scheduled
   }
 }
 
@@ -1287,7 +1288,26 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
+    {
+      let mut state = state_rc.borrow_mut();
+      assert!(
+        state.pending_mod_evaluate.is_none(),
+        "There is already pending top level module evaluation"
+      );
+      state.pending_mod_evaluate = Some(ModEvaluate {
+        promise: None,
+        has_evaluated: false,
+        handled_promise_rejections: vec![],
+        sender,
+      });
+    }
+
     let maybe_value = module.evaluate(tc_scope);
+    {
+      let mut state = state_rc.borrow_mut();
+      let pending_mod_evaluate = state.pending_mod_evaluate.as_mut().unwrap();
+      pending_mod_evaluate.has_evaluated = true;
+    }
 
     // Update status after evaluating.
     status = module.get_status();
@@ -1296,7 +1316,12 @@ impl JsRuntime {
       state_rc.borrow_mut().explicit_terminate_exception.take();
     if let Some(exception) = explicit_terminate_exception {
       let exception = v8::Local::new(tc_scope, exception);
-      sender
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
+      pending_mod_evaluate
+        .sender
         .send(exception_to_err_result(tc_scope, exception, false))
         .expect("Failed to send module evaluation error.");
     } else if let Some(value) = maybe_value {
@@ -1308,20 +1333,25 @@ impl JsRuntime {
         .expect("Expected to get promise as module evaluation result");
       let promise_global = v8::Global::new(tc_scope, promise);
       let mut state = state_rc.borrow_mut();
-      state.pending_promise_exceptions.remove(&promise_global);
+      {
+        let pending_mod_evaluate = state.pending_mod_evaluate.as_ref().unwrap();
+        let pending_rejection_was_already_handled = pending_mod_evaluate
+          .handled_promise_rejections
+          .contains(&promise_global);
+        if !pending_rejection_was_already_handled {
+          state.pending_promise_exceptions.remove(&promise_global);
+        }
+      }
       let promise_global = v8::Global::new(tc_scope, promise);
-      assert!(
-        state.pending_mod_evaluate.is_none(),
-        "There is already pending top level module evaluation"
-      );
-
-      state.pending_mod_evaluate = Some(ModEvaluate {
-        promise: promise_global,
-        sender,
-      });
+      state.pending_mod_evaluate.as_mut().unwrap().promise =
+        Some(promise_global);
       tc_scope.perform_microtask_checkpoint();
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
-      sender.send(Err(
+      let pending_mod_evaluate = {
+        let mut state = state_rc.borrow_mut();
+        state.pending_mod_evaluate.take().unwrap()
+      };
+      pending_mod_evaluate.sender.send(Err(
         generic_error("Cannot evaluate module, because JavaScript execution has been terminated.")
       )).expect("Failed to send module evaluation error.");
     } else {
@@ -1529,10 +1559,11 @@ impl JsRuntime {
       return;
     }
 
-    let module_evaluation = maybe_module_evaluation.unwrap();
+    let mut module_evaluation = maybe_module_evaluation.unwrap();
     let scope = &mut self.handle_scope();
 
-    let promise = module_evaluation.promise.open(scope);
+    let promise_global = module_evaluation.promise.clone().unwrap();
+    let promise = promise_global.open(scope);
     let promise_state = promise.state();
 
     match promise_state {
@@ -1545,14 +1576,24 @@ impl JsRuntime {
         scope.perform_microtask_checkpoint();
         // Receiver end might have been already dropped, ignore the result
         let _ = module_evaluation.sender.send(Ok(()));
+        module_evaluation.handled_promise_rejections.clear();
       }
       v8::PromiseState::Rejected => {
         let exception = promise.result(scope);
         scope.perform_microtask_checkpoint();
+
         // Receiver end might have been already dropped, ignore the result
-        let _ = module_evaluation
-          .sender
-          .send(exception_to_err_result(scope, exception, false));
+        if module_evaluation
+          .handled_promise_rejections
+          .contains(&promise_global)
+        {
+          let _ = module_evaluation.sender.send(Ok(()));
+          module_evaluation.handled_promise_rejections.clear();
+        } else {
+          let _ = module_evaluation
+            .sender
+            .send(exception_to_err_result(scope, exception, false));
+        }
       }
     }
   }
@@ -3168,7 +3209,6 @@ assertEquals(1, notify_return_value);
   #[tokio::test]
   async fn test_set_promise_reject_callback() {
     static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
-    static UNCAUGHT_EXCEPTION: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
     fn op_promise_reject() -> Result<(), AnyError> {
@@ -3176,17 +3216,8 @@ assertEquals(1, notify_return_value);
       Ok(())
     }
 
-    #[op]
-    fn op_uncaught_exception() -> Result<(), AnyError> {
-      UNCAUGHT_EXCEPTION.fetch_add(1, Ordering::Relaxed);
-      Ok(())
-    }
-
     let extension = Extension::builder()
-      .ops(vec![
-        op_promise_reject::decl(),
-        op_uncaught_exception::decl(),
-      ])
+      .ops(vec![op_promise_reject::decl()])
       .build();
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -3206,23 +3237,17 @@ assertEquals(1, notify_return_value);
           if (reason.message !== "reject") {
             throw Error("unexpected reason: " + reason);
           }
+          Deno.core.opSync("op_store_pending_promise_exception", promise);
           Deno.core.opSync("op_promise_reject");
-          throw Error("promiseReject"); // Triggers uncaughtException handler.
-        });
-
-        Deno.core.opSync("op_set_uncaught_exception_callback", (err) => {
-          if (err.message !== "promiseReject") throw err;
-          Deno.core.opSync("op_uncaught_exception");
         });
 
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(1, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
 
     runtime
       .execute_script(
@@ -3234,23 +3259,86 @@ assertEquals(1, notify_return_value);
           });
         }
 
-        {
-          const prev = Deno.core.opSync("op_set_uncaught_exception_callback", (...args) => {
-            prev(...args);
-            throw Error("fail");
-          });
-        }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
       .unwrap();
-    // Exception from uncaughtException handler doesn't bubble up but is
-    // printed to stderr.
-    runtime.run_event_loop(false).await.unwrap();
+    runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
-    assert_eq!(2, UNCAUGHT_EXCEPTION.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback_top_level_await() {
+    static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
+
+    #[op]
+    fn op_promise_reject() -> Result<(), AnyError> {
+      PROMISE_REJECT.fetch_add(1, Ordering::Relaxed);
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![op_promise_reject::decl()])
+      .build();
+
+    #[derive(Default)]
+    struct ModsLoader;
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///main.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let source = r#"
+        Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
+          Deno.core.opSync("op_promise_reject");
+        });
+        
+        throw new Error('top level throw');
+        "#;
+
+        async move {
+          Ok(ModuleSource {
+            code: source.as_bytes().to_vec().into_boxed_slice(),
+            module_url_specified: "file:///main.js".to_string(),
+            module_url_found: "file:///main.js".to_string(),
+            module_type: ModuleType::JavaScript,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      module_loader: Some(Rc::new(ModsLoader)),
+      ..Default::default()
+    });
+
+    let id = runtime
+      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
+      .await
+      .unwrap();
+    let receiver = runtime.mod_evaluate(id);
+    runtime.run_event_loop(false).await.unwrap();
+    receiver.await.unwrap().unwrap_err();
+
+    assert_eq!(1, PROMISE_REJECT.load(Ordering::Relaxed));
   }
 
   #[test]
