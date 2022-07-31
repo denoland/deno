@@ -32,6 +32,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use serde_v8::Serializable;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -155,6 +156,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -167,7 +169,9 @@ pub(crate) struct JsRuntimeState {
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub(crate) source_map_cache: SourceMapCache,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
-  pub(crate) unrefed_ops: HashSet<i32>,
+  pub(crate) promise_id_counter: u32,
+  pub(crate) op_resolvers: HashMap<PromiseId, v8::Global<v8::PromiseResolver>>,
+  pub(crate) unrefed_ops: HashSet<PromiseId>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   #[allow(dead_code)]
@@ -394,8 +398,11 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_format_exception_cb: None,
+      js_build_custom_error_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
+      op_resolvers: HashMap::new(),
+      promise_id_counter: 0,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
@@ -634,10 +641,17 @@ impl JsRuntime {
     let recv_cb =
       Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
     let recv_cb = v8::Global::new(scope, recv_cb);
+    let build_custom_error_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+        .unwrap();
+    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
     // Put global handles in state
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
+    state
+      .js_build_custom_error_cb
+      .replace(build_custom_error_cb);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -706,6 +720,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_build_custom_error_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -1814,8 +1829,17 @@ impl JsRuntime {
         let (promise_id, op_id, resp) = item;
         state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new_from_unsigned(scope, promise_id).into());
         args.push(resp.to_v8(scope).unwrap());
+
+        let resolver = state.op_resolvers.remove(&promise_id).unwrap();
+        let resolver = resolver.open(scope);
+        let resp_value = resp.to_v8(scope).unwrap();
+        if let OpResult::Ok(_) = resp {
+          resolver.resolve(scope, resp_value);
+        } else {
+          resolver.reject(scope, resp_value);
+        }
       }
     }
 
@@ -2011,6 +2035,20 @@ pub fn queue_async_op(
   let mut state = state_rc.borrow_mut();
   state.pending_ops.push(OpCall::eager(op));
   state.have_unpolled_ops = true;
+}
+
+#[inline]
+pub fn prepare_async_op(
+  scope: &mut v8::HandleScope,
+) -> PromiseId {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  let promise_id = state.promise_id_counter;
+  state.promise_id_counter += 1;
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let resolver = v8::Global::new(scope, resolver);
+  state.op_resolvers.insert(promise_id, resolver);
+  promise_id
 }
 
 #[cfg(test)]

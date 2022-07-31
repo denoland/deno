@@ -1,3 +1,4 @@
+use crate::PromiseId;
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
 use crate::error::is_instance_of_error;
@@ -21,6 +22,7 @@ use v8::ValueSerializerHelper;
 
 pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
   vec![
+    op_get_promise::decl(),
     op_ref_op::decl(),
     op_unref_op::decl(),
     op_set_macrotask_callback::decl(),
@@ -63,13 +65,25 @@ fn to_v8_fn(
 }
 
 #[op(v8)]
-fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
+fn op_get_promise<'scope>(scope: &mut v8::HandleScope<'scope>, promise_id: PromiseId) -> Result<serde_v8::Value<'scope>, Error> {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow_mut();
+  let resolver = state.op_resolvers.get(&promise_id).unwrap();
+  let resolver = resolver.open(scope);
+  let promise = resolver.get_promise(scope);
+  //let promise = promise.resolve(scope, )
+  let promise: v8::Local<v8::Value> = promise.into();
+  Ok(promise.into())
+}
+
+#[op(v8)]
+fn op_ref_op(scope: &mut v8::HandleScope, promise_id: PromiseId) {
   let state_rc = JsRuntime::state(scope);
   state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
-fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
+fn op_unref_op(scope: &mut v8::HandleScope, promise_id: PromiseId) {
   let state_rc = JsRuntime::state(scope);
   state_rc.borrow_mut().unrefed_ops.insert(promise_id);
 }

@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::runtime::GetErrorClassFn;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -89,6 +90,25 @@ impl std::error::Error for CustomError {}
 /// class name. In all other cases this function returns `None`.
 pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
   error.downcast_ref::<CustomError>().map(|e| e.class)
+}
+
+pub fn to_v8_error<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  get_class: GetErrorClassFn,
+  error: &Error,
+) -> v8::Local<'a, v8::Value> {
+  let state_rc = JsRuntime::state(scope);
+  let state = state_rc.borrow();
+  let cb = state
+    .js_build_custom_error_cb
+    .as_ref()
+    .expect("Custom error builder must be set");
+  let cb = cb.open(scope);
+  let this = v8::undefined(scope).into();
+  let class = v8::String::new(scope, get_class(error)).unwrap();
+  let message = v8::String::new(scope, &error.to_string()).unwrap();
+  cb.call(scope, this, &[class.into(), message.into()])
+    .expect("Custom error class must have a builder registered")
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and

@@ -127,6 +127,15 @@
     errorMap[className] = errorBuilder;
   }
 
+  function buildCustomError(className, message) {
+    const error = errorMap[className]?.(message);
+    // Strip buildCustomError() calls from stack trace
+    if (typeof error == "object") {
+      ErrorCaptureStackTrace(error, buildCustomError);
+    }
+    return error;
+  }
+
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
@@ -147,10 +156,7 @@
   }
 
   function opAsync(opName, ...args) {
-    const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
+    const promiseId = ops[opName](promiseId, ...args);
     let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
@@ -229,6 +235,7 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
+    buildCustomError,
     opresolve,
     BadResource,
     BadResourcePrototype,

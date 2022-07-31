@@ -169,35 +169,43 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let (pre_result, mut result_fut) = match asyncness {
-    true => (
-      quote! {},
-      quote! { Self::call::<#type_params>(#args_head #args_tail).await; },
-    ),
-    false => (
+  let (pre_result, result_fut, result_wrapper) = match (
+    asyncness,
+    is_result(&f.sig.output),
+  ) {
+    // async fn which returns a Result: call, await and use Result
+    (true, true) => (
       quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
-      quote! { result_fut.await; },
+      quote! { let result = result_fut.await; },
+      quote! {},
     ),
-  };
-  let result_wrapper = match is_result(&f.sig.output) {
-    true => {
-      // Support `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
-      if !asyncness {
-        result_fut = quote! { result_fut; };
-        quote! {
-          let result = match result {
-            Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
-          };
-        }
-      } else {
-        quote! {}
-      }
-    }
-    false => quote! { let result = Ok(result); },
+    (true, false) => (
+      // async fn which does not return a Result: call, await and wrap with Ok()
+      quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
+      quote! { let result = result_fut.await; },
+      quote! { let result = Ok(result); },
+    ),
+    // sync fn which returns a `Result<impl Future<Output = Result<T>, AnyError>> + 'static, AnyError>`:
+    // call, match the result and await 
+    (false, true) => (
+      quote! { let result = Self::call::<#type_params>(#args_head #args_tail); }, // TODO: Return error op result directly
+      quote! {},
+      quote! {
+        let result = match result {
+          Ok(fut) => fut.await,
+          Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+        };
+      },
+    ),
+    // sync fn which returns an `impl Future<Output = T>`, call, await and wrap with Ok()
+    (false, false) => (
+      quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
+      quote! { let result = result_fut.await; },
+      quote! { let result = Ok(result); },
+    ),
   };
 
   quote! {
@@ -208,19 +216,6 @@ fn codegen_v8_async(
       as *const #core::_ops::OpCtx)
     };
     let op_id = ctx.id;
-
-    let promise_id = args.get(0);
-    let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
-      .map(|l| l.value() as #core::PromiseId)
-      .map_err(#core::anyhow::Error::from);
-    // Fail if promise id invalid (not an int)
-    let promise_id: #core::PromiseId = match promise_id {
-      Ok(promise_id) => promise_id,
-      Err(err) => {
-        #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
-        return;
-      }
-    };
 
     #arg_decls
 
@@ -234,8 +229,10 @@ fn codegen_v8_async(
     };
 
     #pre_result
+    let promise_id = #core::_ops::prepare_async_op(scope);
+    rv.set_uint32(promise_id as u32);
     #core::_ops::queue_async_op(scope, async move {
-      let result = #result_fut
+      #result_fut
       #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
@@ -278,7 +275,7 @@ fn codegen_v8_sync(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
@@ -304,7 +301,6 @@ fn codegen_args(
   core: &TokenStream2,
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
-  v8_i0: usize,   // Index of first generic arg in v8/js
 ) -> (TokenStream2, TokenStream2) {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
@@ -317,7 +313,7 @@ fn codegen_args(
   let decls: TokenStream2 = inputs
     .clone()
     .map(|(i, arg)| {
-      codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
+      codegen_arg(core, arg, format!("arg_{i}").as_ref(), i)
     })
     .collect();
   (decls, ident_seq)
@@ -363,6 +359,18 @@ fn codegen_sync_ret(
     return quote! {
       rv.set_uint32(result as u32);
     };
+  } else if is_i32_rv(output) {
+    return quote! {
+      rv.set_int32(result as i32);
+    }
+  } else if is_double_rv(output) {
+    return quote! {
+      rv.set_double(result as f64);
+    }
+  } else if is_bool_rv(output) {
+    return quote! {
+      rv.set_bool(result);
+    }
   }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
@@ -371,6 +379,18 @@ fn codegen_sync_ret(
   } else if is_u32_rv_result(output) {
     quote! {
       rv.set_uint32(result as u32);
+    }
+    } else if is_i32_rv_result(output) {
+    quote! {
+      rv.set_int32(result as i32);
+    }
+  } else if is_double_rv_result(output) {
+    quote! {
+      rv.set_double(result as f64);
+    }
+  } else if is_bool_rv_result(output) {
+    quote! {
+      rv.set_bool(result);
     }
   } else {
     quote! {
@@ -423,6 +443,18 @@ fn is_u32_rv(ty: impl ToTokens) -> bool {
   ["u32", "u8", "u16"].iter().any(|&s| tokens(&ty) == s) || is_resource_id(&ty)
 }
 
+fn is_i32_rv(ty: impl ToTokens) -> bool {
+  ["i32", "i8", "i16"].iter().any(|&s| tokens(&ty) == s)
+}
+
+fn is_double_rv(ty: impl ToTokens) -> bool {
+  ["f32", "f64"].iter().any(|&s| tokens(&ty) == s)
+}
+
+fn is_bool_rv(ty: impl ToTokens) -> bool {
+  tokens(&ty) == "bool"
+}
+
 /// Detects if the type is of the format Result<u32/u8/u16, Err>
 fn is_u32_rv_result(ty: impl ToTokens) -> bool {
   is_result(&ty)
@@ -430,6 +462,21 @@ fn is_u32_rv_result(ty: impl ToTokens) -> bool {
       || tokens(&ty).contains("Result < u8")
       || tokens(&ty).contains("Result < u16")
       || is_resource_id(&ty))
+}
+
+fn is_i32_rv_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && (tokens(&ty).contains("Result < i32")
+      || tokens(&ty).contains("Result < i8")
+      || tokens(&ty).contains("Result < i16"))
+}
+
+fn is_double_rv_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && (tokens(&ty).contains("Result < f32")
+      || tokens(&ty).contains("Result < f64"))
+}
+
+fn is_bool_rv_result(ty: impl ToTokens) -> bool {
+  is_result(&ty) && tokens(&ty).contains("Result < bool")
 }
 
 /// Detects if a type is of the form Result<(), Err>
