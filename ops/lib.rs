@@ -384,9 +384,12 @@ fn codegen_sync_ret(
   }
 
   if is_u32_rv(output) {
-    return (quote! {
-      rv.set_uint32(result as u32);
-    }, needs_scope);
+    return (
+      quote! {
+        rv.set_uint32(result as u32);
+      },
+      needs_scope,
+    );
   }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
