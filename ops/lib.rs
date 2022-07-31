@@ -314,7 +314,7 @@ fn codegen_v8_sync(
 
       let result = Self::call::<#type_params>(#args_head #args_tail);
 
-      let op_state = &mut ctx.state.borrow();
+      let op_state = &*ctx.state.borrow();
       op_state.tracker.track_sync(ctx.id);
 
       #ret
@@ -383,9 +383,19 @@ fn codegen_sync_ret(
     return (quote! {}, needs_scope);
   }
 
+  if is_u32_rv(output) {
+    return (quote! {
+      rv.set_uint32(result as u32);
+    }, needs_scope);
+  }
+
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
   let ok_block = if is_unit_result(output) {
     quote! {}
+  } else if is_u32_rv_result(output) {
+    quote! {
+      rv.set_uint32(result as u32);
+    }
   } else {
     needs_scope = true;
     quote! {
@@ -437,9 +447,29 @@ fn is_result(ty: impl ToTokens) -> bool {
   }
 }
 
+/// Detects if the type can be set using `rv.set_uint32` fast path
+fn is_u32_rv(ty: impl ToTokens) -> bool {
+  ["u32", "u8", "u16"].iter().any(|&s| tokens(&ty) == s) || is_resource_id(&ty)
+}
+
+/// Detects if the type is of the format Result<u32/u8/u16, Err>
+fn is_u32_rv_result(ty: impl ToTokens) -> bool {
+  is_result(&ty)
+    && (tokens(&ty).contains("Result < u32")
+      || tokens(&ty).contains("Result < u8")
+      || tokens(&ty).contains("Result < u16")
+      || is_resource_id(&ty))
+}
+
 /// Detects if a type is of the form Result<(), Err>
 fn is_unit_result(ty: impl ToTokens) -> bool {
   is_result(&ty) && tokens(&ty).contains("Result < ()")
+}
+
+fn is_resource_id(arg: impl ToTokens) -> bool {
+  static RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#": (?:deno_core :: )?ResourceId$"#).unwrap());
+  RE.is_match(&tokens(arg))
 }
 
 fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {

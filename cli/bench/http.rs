@@ -1,9 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::{collections::HashMap, path::Path, process::Command, time::Duration};
 pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
-
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -31,6 +31,9 @@ pub fn benchmark(
     let entry = entry?;
     let pathbuf = entry.path();
     let path = pathbuf.to_str().unwrap();
+    if path.ends_with(".lua") {
+      continue;
+    }
     let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
@@ -44,9 +47,32 @@ pub fn benchmark(
     if name.starts_with("node") {
       // node <path> <port>
       res.insert(
-        name,
+        file_stem.to_string(),
         run(
           &["node", path, &port.to_string()],
+          port,
+          None,
+          None,
+          maybe_lua,
+        )?,
+      );
+    } else if name.starts_with("bun") && !cfg!(target_os = "windows") {
+      // Bun does not support Windows.
+      #[cfg(target_arch = "x86_64")]
+      #[cfg(not(target_vendor = "apple"))]
+      let bun_exe = test_util::prebuilt_tool_path("bun");
+      #[cfg(target_vendor = "apple")]
+      #[cfg(target_arch = "x86_64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-x64");
+      #[cfg(target_vendor = "apple")]
+      #[cfg(target_arch = "aarch64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
+
+      // bun <path> <port>
+      res.insert(
+        file_stem.to_string(),
+        run(
+          &[bun_exe.to_str().unwrap(), path, &port.to_string()],
           port,
           None,
           None,
@@ -56,7 +82,7 @@ pub fn benchmark(
     } else {
       // deno run -A --unstable <path> <addr>
       res.insert(
-        name,
+        file_stem.to_string(),
         run(
           &[
             deno_exe,
@@ -150,18 +176,11 @@ fn run(
   Ok(parse_wrk_output(&output))
 }
 
+static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
 fn get_port() -> u16 {
-  static mut NEXT_PORT: u16 = 4544;
-
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  let port = unsafe {
-    let p = NEXT_PORT;
-    NEXT_PORT += 1;
-    p
-  };
-
-  port
+  let p = NEXT_PORT.load(Ordering::SeqCst);
+  NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
+  p
 }
 
 fn server_addr(port: u16) -> String {

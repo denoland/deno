@@ -1,8 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::emit::TypeLib;
+use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+
+use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -37,13 +39,14 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
+    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
     ts_check: bool,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
-    checked_libs: HashSet<TypeLib>,
+    checked_libs: HashSet<TsTypeLib>,
     maybe_types: Option<Resolved>,
   },
   Configuration {
@@ -145,6 +148,7 @@ impl GraphData {
           };
           let module_entry = ModuleEntry::Module {
             code,
+            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
             ts_check,
             media_type,
@@ -161,8 +165,10 @@ impl GraphData {
     }
   }
 
-  pub fn entries(&self) -> HashMap<&ModuleSpecifier, &ModuleEntry> {
-    self.modules.iter().collect()
+  pub fn entries(
+    &self,
+  ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
+    self.modules.iter()
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.
@@ -385,7 +391,7 @@ impl GraphData {
   pub fn set_type_checked(
     &mut self,
     roots: &[(ModuleSpecifier, ModuleKind)],
-    lib: &TypeLib,
+    lib: TsTypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
       match self.walk(roots, true, true, true) {
@@ -396,7 +402,7 @@ impl GraphData {
       if let ModuleEntry::Module { checked_libs, .. } =
         self.modules.get_mut(&specifier).unwrap()
       {
-        checked_libs.insert(lib.clone());
+        checked_libs.insert(lib);
       }
     }
   }
@@ -405,7 +411,7 @@ impl GraphData {
   pub fn is_type_checked(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
-    lib: &TypeLib,
+    lib: &TsTypeLib,
   ) -> bool {
     roots.iter().all(|(r, _)| {
       let found = self.follow_redirect(r);

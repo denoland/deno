@@ -73,6 +73,68 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   await promise;
 });
 
+// https://github.com/denoland/deno/issues/15107
+Deno.test(
+  { permissions: { net: true } },
+  async function httpLazyHeadersIssue15107() {
+    let headers: Headers;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 2333 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request } = e;
+      request.text();
+      headers = request.headers;
+      httpConn.close();
+    })();
+
+    const conn = await Deno.connect({ port: 2333 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+    assertEquals(headers!.get("content-length"), "5");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpReadHeadersAfterClose() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 2334 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+
+      await request.text(); // Read body
+      await respondWith(new Response("Hello World")); // Closes request
+
+      assertThrows(() => request.headers, TypeError, "request closed");
+      httpConn.close();
+    })();
+
+    const conn = await Deno.connect({ port: 2334 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerGetRequestBody() {
@@ -1166,12 +1228,12 @@ Deno.test(
     async function client() {
       const url = `http://${hostname}:${port}/`;
       const args = ["-X", "DELETE", url];
-      const { status } = await Deno.spawn("curl", {
+      const { success } = await Deno.spawn("curl", {
         args,
         stdout: "null",
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
     }
 
     await Promise.all([server(), client()]);
@@ -1288,11 +1350,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
@@ -1391,11 +1453,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout).toLocaleLowerCase();
       assert(output.includes("vary: accept-encoding\r\n"));
       assert(!output.includes("content-encoding: "));
@@ -1445,11 +1507,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip;q=0.8, br;q=1.0, *;q=0.1",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: br\r\n"));
@@ -1496,11 +1558,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding, Accept\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
@@ -1551,11 +1613,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(
@@ -1608,11 +1670,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(
@@ -1665,11 +1727,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(!output.includes("content-encoding: "));
@@ -1719,11 +1781,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(!output.includes("content-encoding: "));
@@ -1779,11 +1841,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));
@@ -1901,11 +1963,11 @@ Deno.test({
         "--header",
         "Accept-Encoding: gzip, deflate, br",
       ];
-      const { status, stdout } = await Deno.spawn("curl", {
+      const { success, stdout } = await Deno.spawn("curl", {
         args,
         stderr: "null",
       });
-      assert(status.success);
+      assert(success);
       const output = decoder.decode(stdout);
       assert(output.includes("vary: Accept-Encoding\r\n"));
       assert(output.includes("content-encoding: gzip\r\n"));

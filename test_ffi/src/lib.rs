@@ -75,6 +75,11 @@ pub extern "C" fn add_usize(a: usize, b: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn add_usize_fast(a: usize, b: usize) -> u32 {
+  (a + b) as u32
+}
+
+#[no_mangle]
 pub extern "C" fn add_isize(a: isize, b: isize) -> isize {
   a + b
 }
@@ -87,6 +92,16 @@ pub extern "C" fn add_f32(a: f32, b: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
   a + b
+}
+
+#[no_mangle]
+unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 {
+  let buf = std::slice::from_raw_parts(ptr, length as usize);
+  let mut hash: u32 = 0;
+  for byte in buf {
+    hash = hash.wrapping_mul(0x10001000).wrapping_add(*byte as u32);
+  }
+  hash
 }
 
 #[no_mangle]
@@ -209,6 +224,33 @@ pub extern "C" fn call_stored_function_2(arg: u8) {
     }
     println!("{}", STORED_FUNCTION_2.unwrap()(arg));
   }
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe_and_log() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+      println!("STORED_FUNCTION called");
+    }
+  });
 }
 
 // FFI performance helper functions
@@ -361,4 +403,11 @@ pub struct Structure {
 }
 
 #[no_mangle]
-pub static static_ptr: Structure = Structure { _data: 42 };
+pub static mut static_ptr: Structure = Structure { _data: 42 };
+
+static STRING: &str = "Hello, world!\0";
+
+#[no_mangle]
+extern "C" fn ffi_string() -> *const u8 {
+  STRING.as_ptr()
+}

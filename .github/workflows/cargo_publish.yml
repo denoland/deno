@@ -30,12 +30,14 @@ jobs:
       - name: Install deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.x
+          # use a recent version instead of the latest version in case
+          # the latest version ever has issues that breaks publishing
+          deno-version: v1.23.2
 
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: ./tools/release/03_publish_crates.ts --real
+        run: ./tools/release/03_publish_crates.ts
 
       - name: Create release tag and check forward commit to main
         env:

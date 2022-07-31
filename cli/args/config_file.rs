@@ -2,6 +2,8 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::fs_util;
 use crate::fs_util::canonicalize_path;
 use crate::fs_util::specifier_parent;
 use crate::fs_util::specifier_to_file_path;
@@ -11,7 +13,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::normalize_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
@@ -91,68 +92,64 @@ impl Serialize for IgnoredCompilerOptions {
 pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
-  "baseUrl",
-  "declaration",
-  "declarationMap",
-  "downlevelIteration",
-  "esModuleInterop",
-  "emitDeclarationOnly",
-  "importHelpers",
-  "inlineSourceMap",
-  "inlineSources",
-  "module",
-  "noEmitHelpers",
-  "noErrorTruncation",
-  "noLib",
-  "noResolve",
-  "outDir",
-  "paths",
-  "preserveConstEnums",
-  "reactNamespace",
-  "resolveJsonModule",
-  "rootDir",
-  "rootDirs",
-  "skipLibCheck",
-  "sourceMap",
-  "sourceRoot",
-  "target",
-  "useDefineForClassFields",
-];
-
-pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
+  "baseUrl",
   "build",
   "charset",
   "composite",
+  "declaration",
+  "declarationMap",
   "diagnostics",
   "disableSizeLimit",
+  "downlevelIteration",
   "emitBOM",
+  "emitDeclarationOnly",
+  "esModuleInterop",
+  "experimentalDecorators",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
   "help",
+  "importHelpers",
   "incremental",
   "init",
+  "inlineSourceMap",
+  "inlineSources",
   "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
   "maxNodeModuleJsDepth",
+  "module",
+  "moduleDetection",
   "moduleResolution",
   "newLine",
   "noEmit",
+  "noEmitHelpers",
   "noEmitOnError",
+  "noErrorTruncation",
+  "noLib",
+  "noResolve",
   "out",
   "outDir",
   "outFile",
+  "paths",
+  "preserveConstEnums",
   "preserveSymlinks",
   "preserveWatchOutput",
   "pretty",
   "project",
+  "reactNamespace",
   "resolveJsonModule",
+  "rootDir",
+  "rootDirs",
   "showConfig",
   "skipDefaultLibCheck",
+  "skipLibCheck",
+  "sourceMap",
+  "sourceRoot",
   "stripInternal",
+  "target",
   "traceResolution",
   "tsBuildInfoFile",
   "typeRoots",
@@ -160,66 +157,6 @@ pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "version",
   "watch",
 ];
-
-/// Filenames that Deno will recognize when discovering config.
-const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
-
-pub fn discover(flags: &Flags) -> Result<Option<ConfigFile>, AnyError> {
-  match &flags.config_flag {
-    ConfigFlag::Disabled => Ok(None),
-    ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
-    ConfigFlag::Discover => {
-      if let Some(config_path_args) = flags.config_path_args() {
-        let mut checked = HashSet::new();
-        for f in config_path_args {
-          if let Some(cf) = discover_from(&f, &mut checked)? {
-            return Ok(Some(cf));
-          }
-        }
-        // From CWD walk up to root looking for deno.json or deno.jsonc
-        let cwd = std::env::current_dir()?;
-        discover_from(&cwd, &mut checked)
-      } else {
-        Ok(None)
-      }
-    }
-  }
-}
-
-pub fn discover_from(
-  start: &Path,
-  checked: &mut HashSet<PathBuf>,
-) -> Result<Option<ConfigFile>, AnyError> {
-  for ancestor in start.ancestors() {
-    if checked.insert(ancestor.to_path_buf()) {
-      for config_filename in CONFIG_FILE_NAMES {
-        let f = ancestor.join(config_filename);
-        match ConfigFile::read(f) {
-          Ok(cf) => {
-            return Ok(Some(cf));
-          }
-          Err(e) => {
-            if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-              use std::io::ErrorKind::*;
-              match ioerr.kind() {
-                InvalidInput | PermissionDenied | NotFound => {
-                  // ok keep going
-                }
-                _ => {
-                  return Err(e); // Unknown error. Stop.
-                }
-              }
-            } else {
-              return Err(e); // Parse error or something else. Stop.
-            }
-          }
-        }
-      }
-    }
-  }
-  // No config file found.
-  Ok(None)
-}
 
 /// A function that works like JavaScript's `Object.assign()`.
 pub fn json_merge(a: &mut Value, b: &Value) {
@@ -235,69 +172,16 @@ pub fn json_merge(a: &mut Value, b: &Value) {
   }
 }
 
-/// Based on an optional command line import map path and an optional
-/// configuration file, return a resolved module specifier to an import map.
-pub fn resolve_import_map_specifier(
-  maybe_import_map_path: Option<&str>,
-  maybe_config_file: Option<&ConfigFile>,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
-  if let Some(import_map_path) = maybe_import_map_path {
-    if let Some(config_file) = &maybe_config_file {
-      if config_file.to_import_map_path().is_some() {
-        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", crate::colors::yellow("Warning"), config_file.specifier);
-      }
-    }
-    let specifier = deno_core::resolve_url_or_path(import_map_path)
-      .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
-    return Ok(Some(specifier));
-  } else if let Some(config_file) = &maybe_config_file {
-    // when the import map is specifier in a config file, it needs to be
-    // resolved relative to the config file, versus the CWD like with the flag
-    // and with config files, we support both local and remote config files,
-    // so we have treat them differently.
-    if let Some(import_map_path) = config_file.to_import_map_path() {
-      let specifier =
-          // with local config files, it might be common to specify an import
-          // map like `"importMap": "import-map.json"`, which is resolvable if
-          // the file is resolved like a file path, so we will coerce the config
-          // file into a file path if possible and join the import map path to
-          // the file path.
-          if let Ok(config_file_path) = config_file.specifier.to_file_path() {
-            let import_map_file_path = normalize_path(config_file_path
-              .parent()
-              .ok_or_else(|| {
-                anyhow!("Bad config file specifier: {}", config_file.specifier)
-              })?
-              .join(&import_map_path));
-            ModuleSpecifier::from_file_path(import_map_file_path).unwrap()
-          // otherwise if the config file is remote, we have no choice but to
-          // use "import resolution" with the config file as the base.
-          } else {
-            deno_core::resolve_import(&import_map_path, config_file.specifier.as_str())
-              .context(format!(
-                "Bad URL (\"{}\") for import map.",
-                import_map_path
-              ))?
-          };
-      return Ok(Some(specifier));
-    }
-  }
-  Ok(None)
-}
-
 fn parse_compiler_options(
   compiler_options: &HashMap<String, Value>,
   maybe_specifier: Option<ModuleSpecifier>,
-  is_runtime: bool,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   let mut filtered: HashMap<String, Value> = HashMap::new();
   let mut items: Vec<String> = Vec::new();
 
   for (key, value) in compiler_options.iter() {
     let key = key.as_str();
-    if (!is_runtime && IGNORED_COMPILER_OPTIONS.contains(&key))
-      || IGNORED_RUNTIME_COMPILER_OPTIONS.contains(&key)
-    {
+    if IGNORED_COMPILER_OPTIONS.contains(&key) {
       items.push(key.to_string());
     } else {
       filtered.insert(key.to_string(), value.to_owned());
@@ -371,19 +255,6 @@ impl TsConfig {
     } else {
       Ok(None)
     }
-  }
-
-  /// Take a map of compiler options, filtering out any that are ignored, then
-  /// merge it with the current configuration, returning any options that might
-  /// have been ignored.
-  pub fn merge_user_config(
-    &mut self,
-    user_options: &HashMap<String, Value>,
-  ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
-    let (value, maybe_ignored_options) =
-      parse_compiler_options(user_options, None, true)?;
-    self.merge(&value);
-    Ok(maybe_ignored_options)
   }
 }
 
@@ -530,6 +401,28 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedTestConfig {
+  pub files: SerializedFilesConfig,
+}
+
+impl SerializedTestConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &ModuleSpecifier,
+  ) -> Result<TestConfig, AnyError> {
+    Ok(TestConfig {
+      files: self.files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TestConfig {
+  pub files: FilesConfig,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -538,6 +431,7 @@ pub struct ConfigFileJson {
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
   pub tasks: Option<Value>,
+  pub test: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -547,6 +441,78 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
+  pub fn discover(flags: &Flags) -> Result<Option<ConfigFile>, AnyError> {
+    match &flags.config_flag {
+      ConfigFlag::Disabled => Ok(None),
+      ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
+      ConfigFlag::Discover => {
+        if let Some(config_path_args) = flags.config_path_args() {
+          let mut checked = HashSet::new();
+          for f in config_path_args {
+            if let Some(cf) = Self::discover_from(&f, &mut checked)? {
+              return Ok(Some(cf));
+            }
+          }
+          // attempt to resolve the config file from the task subcommand's
+          // `--cwd` when specified
+          if let crate::args::DenoSubcommand::Task(TaskFlags {
+            cwd: Some(path),
+            ..
+          }) = &flags.subcommand
+          {
+            let task_cwd = fs_util::canonicalize_path(&PathBuf::from(path))?;
+            if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
+              return Ok(Some(path));
+            }
+          };
+          // From CWD walk up to root looking for deno.json or deno.jsonc
+          let cwd = std::env::current_dir()?;
+          Self::discover_from(&cwd, &mut checked)
+        } else {
+          Ok(None)
+        }
+      }
+    }
+  }
+
+  pub fn discover_from(
+    start: &Path,
+    checked: &mut HashSet<PathBuf>,
+  ) -> Result<Option<ConfigFile>, AnyError> {
+    /// Filenames that Deno will recognize when discovering config.
+    const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
+
+    for ancestor in start.ancestors() {
+      if checked.insert(ancestor.to_path_buf()) {
+        for config_filename in CONFIG_FILE_NAMES {
+          let f = ancestor.join(config_filename);
+          match ConfigFile::read(f) {
+            Ok(cf) => {
+              return Ok(Some(cf));
+            }
+            Err(e) => {
+              if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+                use std::io::ErrorKind::*;
+                match ioerr.kind() {
+                  InvalidInput | PermissionDenied | NotFound => {
+                    // ok keep going
+                  }
+                  _ => {
+                    return Err(e); // Unknown error. Stop.
+                  }
+                }
+              } else {
+                return Err(e); // Parse error or something else. Stop.
+              }
+            }
+          }
+        }
+      }
+    }
+    // No config file found.
+    Ok(None)
+  }
+
   pub fn read(path_ref: impl AsRef<Path>) -> Result<Self, AnyError> {
     let path = Path::new(path_ref.as_ref());
     let config_file = if path.is_absolute() {
@@ -591,23 +557,24 @@ impl ConfigFile {
     text: &str,
     specifier: &ModuleSpecifier,
   ) -> Result<Self, AnyError> {
-    let jsonc = match jsonc_parser::parse_to_serde_value(text) {
-      Ok(None) => json!({}),
-      Ok(Some(value)) if value.is_object() => value,
-      Ok(Some(_)) => {
-        return Err(anyhow!(
-          "config file JSON {:?} should be an object",
-          specifier,
-        ))
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to parse config file JSON {:?} because of {}",
-          specifier,
-          e.to_string()
-        ))
-      }
-    };
+    let jsonc =
+      match jsonc_parser::parse_to_serde_value(text, &Default::default()) {
+        Ok(None) => json!({}),
+        Ok(Some(value)) if value.is_object() => value,
+        Ok(Some(_)) => {
+          return Err(anyhow!(
+            "config file JSON {:?} should be an object",
+            specifier,
+          ))
+        }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to parse config file JSON {:?} because of {}",
+            specifier,
+            e.to_string()
+          ))
+        }
+      };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
     Ok(Self {
@@ -636,7 +603,7 @@ impl ConfigFile {
       let options: HashMap<String, Value> =
         serde_json::from_value(compiler_options)
           .context("compilerOptions should be an object")?;
-      parse_compiler_options(&options, Some(self.specifier.to_owned()), false)
+      parse_compiler_options(&options, Some(self.specifier.to_owned()))
     } else {
       Ok((json!({}), None))
     }
@@ -650,6 +617,16 @@ impl ConfigFile {
     if let Some(config) = self.json.lint.clone() {
       let lint_config: SerializedLintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
+      Ok(Some(lint_config.into_resolved(&self.specifier)?))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+    if let Some(config) = self.json.test.clone() {
+      let lint_config: SerializedTestConfig = serde_json::from_value(config)
+        .context("Failed to parse \"test\" configuration")?;
       Ok(Some(lint_config.into_resolved(&self.specifier)?))
     } else {
       Ok(None)
@@ -744,12 +721,36 @@ impl ConfigFile {
       Ok(None)
     }
   }
+
+  pub fn resolve_tasks_config(
+    &self,
+  ) -> Result<BTreeMap<String, String>, AnyError> {
+    let maybe_tasks_config = self.to_tasks_config()?;
+    if let Some(tasks_config) = maybe_tasks_config {
+      for key in tasks_config.keys() {
+        if key.is_empty() {
+          bail!("Configuration file task names cannot be empty");
+        } else if !key
+          .chars()
+          .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
+        {
+          bail!("Configuration file task names must only contain alpha-numeric characters, colons (:), underscores (_), or dashes (-). Task: {}", key);
+        } else if !key.chars().next().unwrap().is_ascii_alphabetic() {
+          bail!("Configuration file task names must start with an alphabetic character. Task: {}", key);
+        }
+      }
+      Ok(tasks_config)
+    } else {
+      bail!("No tasks found in configuration file")
+    }
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use deno_core::serde_json::json;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn read_config_file_relative() {
@@ -938,38 +939,6 @@ mod tests {
   }
 
   #[test]
-  fn test_tsconfig_merge_user_options() {
-    let mut tsconfig = TsConfig::new(json!({
-      "target": "esnext",
-      "module": "esnext",
-    }));
-    let user_options = serde_json::from_value(json!({
-      "target": "es6",
-      "build": true,
-      "strict": false,
-    }))
-    .expect("could not convert to hashmap");
-    let maybe_ignored_options = tsconfig
-      .merge_user_config(&user_options)
-      .expect("could not merge options");
-    assert_eq!(
-      tsconfig.0,
-      json!({
-        "module": "esnext",
-        "target": "es6",
-        "strict": false,
-      })
-    );
-    assert_eq!(
-      maybe_ignored_options,
-      Some(IgnoredCompilerOptions {
-        items: vec!["build".to_string()],
-        maybe_specifier: None
-      })
-    );
-  }
-
-  #[test]
   fn test_tsconfig_as_bytes() {
     let mut tsconfig1 = TsConfig::new(json!({
       "strict": true,
@@ -996,7 +965,9 @@ mod tests {
     let testdata = test_util::testdata_path();
     let c_md = testdata.join("fmt/with_config/subdir/c.md");
     let mut checked = HashSet::new();
-    let config_file = discover_from(&c_md, &mut checked).unwrap().unwrap();
+    let config_file = ConfigFile::discover_from(&c_md, &mut checked)
+      .unwrap()
+      .unwrap();
     assert!(checked.contains(c_md.parent().unwrap()));
     assert!(!checked.contains(&testdata));
     let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
@@ -1012,7 +983,9 @@ mod tests {
     }
 
     // If we call discover_from again starting at testdata, we ought to get None.
-    assert!(discover_from(&testdata, &mut checked).unwrap().is_none());
+    assert!(ConfigFile::discover_from(&testdata, &mut checked)
+      .unwrap()
+      .is_none());
   }
 
   #[test]
@@ -1020,83 +993,71 @@ mod tests {
     let testdata = test_util::testdata_path();
     let d = testdata.join("malformed_config/");
     let mut checked = HashSet::new();
-    let err = discover_from(&d, &mut checked).unwrap_err();
+    let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
   }
 
-  #[cfg(not(windows))]
   #[test]
-  fn resolve_import_map_config_file() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap())
+  fn tasks_no_tasks() {
+    run_task_error_test(r#"{}"#, "No tasks found in configuration file");
+  }
+
+  #[test]
+  fn task_name_invalid_chars() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "some%test": "deno bundle mod.ts"
+        }
+      }"#,
+      concat!(
+        "Configuration file task names must only contain alpha-numeric ",
+        "characters, colons (:), underscores (_), or dashes (-). Task: some%test",
+      ),
     );
   }
 
   #[test]
-  fn resolve_import_map_config_file_remote() {
-    let config_text = r#"{
-      "importMap": "./import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(
-      actual,
-      Some(
-        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
-      )
+  fn task_name_non_alpha_starting_char() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "1test": "deno bundle mod.ts"
+        }
+      }"#,
+      concat!(
+        "Configuration file task names must start with an ",
+        "alphabetic character. Task: 1test",
+      ),
     );
   }
 
   #[test]
-  fn resolve_import_map_flags_take_precedence() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual =
-      resolve_import_map_specifier(Some("import-map.json"), Some(&config_file));
-    let import_map_path =
-      std::env::current_dir().unwrap().join("import-map.json");
-    let expected_specifier =
-      ModuleSpecifier::from_file_path(&import_map_path).unwrap();
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, Some(expected_specifier));
+  fn task_name_empty() {
+    run_task_error_test(
+      r#"{
+        "tasks": {
+          "build": "deno test",
+          "": "deno bundle mod.ts"
+        }
+      }"#,
+      "Configuration file task names cannot be empty",
+    );
   }
 
-  #[test]
-  fn resolve_import_map_none() {
-    let config_text = r#"{}"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+  fn run_task_error_test(config_text: &str, expected_error: &str) {
+    let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
+    let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(None, Some(&config_file));
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, None);
-  }
-
-  #[test]
-  fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None);
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, None);
+    assert_eq!(
+      config_file
+        .resolve_tasks_config()
+        .err()
+        .unwrap()
+        .to_string(),
+      expected_error,
+    );
   }
 }

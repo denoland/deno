@@ -1,13 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
-use std::task::Context;
+use std::{cell::RefCell, rc::Rc, task::Context};
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
-pub type OpEventLoopFn = dyn Fn(&mut OpState, &mut Context) -> bool;
+pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
 #[derive(Clone, Copy)]
 pub struct OpDecl {
@@ -90,13 +90,13 @@ impl Extension {
 
   pub fn run_event_loop_middleware(
     &self,
-    op_state: &mut OpState,
+    op_state_rc: Rc<RefCell<OpState>>,
     cx: &mut Context,
   ) -> bool {
     self
       .event_loop_middleware
       .as_ref()
-      .map(|f| f(op_state, cx))
+      .map(|f| f(op_state_rc, cx))
       .unwrap_or(false)
   }
 
@@ -148,7 +148,7 @@ impl ExtensionBuilder {
 
   pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&mut OpState, &mut Context) -> bool + 'static,
+    F: Fn(Rc<RefCell<OpState>>, &mut Context) -> bool + 'static,
   {
     self.event_loop_middleware = Some(Box::new(middleware_fn));
     self

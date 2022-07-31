@@ -5,7 +5,7 @@
 // `Worker.prototype.terminate()`.
 
 const worker = new Worker(
-  new URL("./workers/close_race_worker.js", import.meta.url),
+  import.meta.resolve("./workers/close_race_worker.js"),
   { type: "module" },
 );
 

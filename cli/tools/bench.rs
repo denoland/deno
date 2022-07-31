@@ -3,11 +3,9 @@
 use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
-use crate::cache;
 use crate::colors;
 use crate::compat;
 use crate::create_main_worker;
-use crate::emit;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
@@ -15,11 +13,8 @@ use crate::fs_util::is_supported_bench_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
-use crate::lockfile;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 
@@ -33,14 +28,13 @@ use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -337,8 +331,8 @@ async fn check_specifiers(
   ps: &ProcState,
   permissions: Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  lib: emit::TypeLib,
 ) -> Result<(), AnyError> {
+  let lib = ps.options.ts_type_lib_window();
   ps.prepare_module_load(
     specifiers,
     false,
@@ -365,7 +359,11 @@ async fn bench_specifier(
     &ps,
     specifier.clone(),
     permissions,
-    vec![ops::bench::init(channel.clone(), filter, ps.flags.unstable)],
+    vec![ops::bench::init(
+      channel.clone(),
+      filter,
+      ps.options.unstable(),
+    )],
     Default::default(),
   );
 
@@ -404,6 +402,12 @@ async fn bench_specifier(
 
   worker.js_runtime.resolve_value(bench_result).await?;
 
+  loop {
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+    worker.run_event_loop(false).await?;
+  }
   worker.dispatch_unload_event(&located_script_name!())?;
 
   Ok(())
@@ -416,7 +420,7 @@ async fn bench_specifiers(
   specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.flags.log_level;
+  let log_level = ps.options.log_level();
 
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
 
@@ -430,7 +434,7 @@ async fn bench_specifiers(
     tokio::task::spawn_blocking(move || {
       let future = bench_specifier(ps, permissions, specifier, sender, options);
 
-      run_basic(future)
+      run_local(future)
     })
   });
 
@@ -518,8 +522,9 @@ pub async fn run_benchmarks(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&ps.flags.permissions_options());
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
   let specifiers = collect_specifiers(
     bench_flags.include.unwrap_or_else(|| vec![".".to_string()]),
     &bench_flags.ignore.clone(),
@@ -530,15 +535,9 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  let lib = if ps.flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-  check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib).await?;
-
-  let compat = ps.flags.compat;
+  let compat = ps.options.compat();
   bench_specifiers(
     ps,
     permissions,
@@ -558,51 +557,23 @@ pub async fn run_benchmarks_with_watch(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
-  let ps = ProcState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
-
-  let lib = if flags.unstable {
-    emit::TypeLib::UnstableDenoWindow
-  } else {
-    emit::TypeLib::DenoWindow
-  };
+  let ps = ProcState::build(flags).await?;
+  let permissions =
+    Permissions::from_options(&ps.options.permissions_options());
 
   let include = bench_flags.include.unwrap_or_else(|| vec![".".to_string()]);
   let ignore = bench_flags.ignore.clone();
   let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-  let no_check = ps.flags.type_check_mode == TypeCheckMode::None;
+  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-
     let paths_to_watch = paths_to_watch.clone();
     let paths_to_watch_clone = paths_to_watch.clone();
 
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps.maybe_config_file.as_ref().and_then(|cf| {
-      cf.to_maybe_jsx_import_source_module()
-        .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-    });
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_imports = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.to_maybe_imports());
     let files_changed = changed.is_some();
     let include = include.clone();
     let ignore = ignore.clone();
-    let check_js = ps
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false);
+    let ps = ps.clone();
 
     async move {
       let bench_modules =
@@ -617,33 +588,15 @@ pub async fn run_benchmarks_with_watch(
           .map(|url| (url.clone(), ModuleKind::Esm))
           .collect()
       };
-      let maybe_imports = if let Some(result) = maybe_imports {
-        result?
-      } else {
-        None
-      };
-      let maybe_resolver = if maybe_jsx_resolver.is_some() {
-        maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-      } else {
-        maybe_import_map_resolver
-          .as_ref()
-          .map(|im| im.as_resolver())
-      };
-      let graph = deno_graph::create_graph(
-        bench_modules
-          .iter()
-          .map(|s| (s.clone(), ModuleKind::Esm))
-          .collect(),
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await;
-      graph_valid(&graph, !no_check, check_js)?;
+      let graph = ps
+        .create_graph(
+          bench_modules
+            .iter()
+            .map(|s| (s.clone(), ModuleKind::Esm))
+            .collect(),
+        )
+        .await?;
+      graph_valid(&graph, !no_check, ps.options.check_js())?;
 
       // TODO(@kitsonk) - This should be totally derivable from the graph.
       for specifier in bench_modules {
@@ -733,11 +686,9 @@ pub async fn run_benchmarks_with_watch(
   };
 
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let flags = flags.clone();
     let filter = bench_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
-    let lib = lib.clone();
     let permissions = permissions.clone();
     let ps = ps.clone();
 
@@ -749,19 +700,14 @@ pub async fn run_benchmarks_with_watch(
           .cloned()
           .collect::<Vec<ModuleSpecifier>>();
 
-      check_specifiers(&ps, permissions.clone(), specifiers.clone(), lib)
-        .await?;
+      check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-      bench_specifiers(
-        ps,
-        permissions.clone(),
-        specifiers,
-        BenchSpecifierOptions {
-          compat_mode: flags.compat,
-          filter: filter.clone(),
-        },
-      )
-      .await?;
+      let specifier_options = BenchSpecifierOptions {
+        compat_mode: ps.options.compat(),
+        filter: filter.clone(),
+      };
+      bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)
+        .await?;
 
       Ok(())
     }
@@ -772,7 +718,7 @@ pub async fn run_benchmarks_with_watch(
     operation,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen: !flags.no_clear_screen,
+      clear_screen: !ps.options.no_clear_screen(),
     },
   )
   .await?;

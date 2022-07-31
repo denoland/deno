@@ -87,11 +87,11 @@ mod tests {
 
   #[test]
   fn bytes_layout() {
-    // SAFETY: ensuring layout is the same
     let u1: [usize; 4] =
+      // SAFETY: ensuring layout is the same
       unsafe { mem::transmute(from_static(HELLO.as_bytes())) };
-    // SAFETY: ensuring layout is the same
     let u2: [usize; 4] =
+      // SAFETY: ensuring layout is the same
       unsafe { mem::transmute(bytes::Bytes::from_static(HELLO.as_bytes())) };
     assert_eq!(u1[..3], u2[..3]); // Struct bytes are equal besides Vtables
   }
