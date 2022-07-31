@@ -382,11 +382,7 @@ fn get_check_hash(
   graph_data: &GraphData,
   options: &CheckOptions,
 ) -> CheckHashResult {
-  // twox hash is insecure, but fast so it works for our purposes
-  use std::hash::Hasher;
-  use twox_hash::XxHash64;
-
-  let mut hasher = XxHash64::default();
+  let mut hasher = FastInsecureHasher::new();
   hasher.write_u8(match options.type_check_mode {
     TypeCheckMode::All => 0,
     TypeCheckMode::Local => 1,
@@ -437,8 +433,8 @@ fn get_check_hash(
         | MediaType::Wasm
         | MediaType::Unknown => continue,
       }
-      hasher.write(specifier.as_str().as_bytes());
-      hasher.write(code.as_bytes());
+      hasher.write_str(specifier.as_str());
+      hasher.write_str(code);
     }
   }
 
