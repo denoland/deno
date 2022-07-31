@@ -24,6 +24,11 @@ impl FastInsecureHasher {
     self
   }
 
+  pub fn write_u8(&mut self, value: u8) -> &mut Self {
+    self.0.write_u8(value);
+    self
+  }
+
   pub fn write_u64(&mut self, value: u64) -> &mut Self {
     self.0.write_u64(value);
     self
