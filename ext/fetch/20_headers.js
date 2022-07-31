@@ -147,6 +147,39 @@
   }
 
   /**
+   * https://fetch.spec.whatwg.org/#extract-header-list-values
+   * @param {string} name
+   * @param {HeaderList} list
+   */
+  function extractingHeaderListValues(name, list) {
+    const lowercaseName = byteLowerCase(name);
+
+    const headerList = ArrayPrototypeFilter(
+      list,
+      (entry) => byteLowerCase(entry[0]) === lowercaseName,
+    );
+
+    // 1.
+    if (headerList.length === 0) {
+      return null;
+    }
+
+    // 2. not applicable
+
+    // 3.
+    const values = [];
+
+    // 4.
+    for (const header of headerList) {
+      const extract = getHeader(header, name);
+      values.concat(extract.split("\x2C\x20"));
+    }
+
+    // 5.
+    return values;
+  }
+
+  /**
    * https://fetch.spec.whatwg.org/#concept-header-list-get-decode-split
    * @param {HeaderList} list
    * @param {string} name
@@ -471,5 +504,6 @@
     fillHeaders,
     getDecodeSplitHeader,
     guardFromHeaders,
+    extractingHeaderListValues,
   };
 })(this);

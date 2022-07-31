@@ -64,14 +64,33 @@
    */
 
   /**
+   * @typedef InnerRequestOptions
+   * @property {[string, string][]} headerList
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @property {boolean} maybeBlob
+   * @property {string} referrer
+   * @property {ReferrerPolicy} referrerPolicy
+   */
+
+  /**
    * @param {string} method
    * @param {string} url
-   * @param {[string, string][]} headerList
-   * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
-   * @param {boolean} maybeBlob
-   * @returns
+   * @param {InnerRequestOptions} options
+   * @returns {InnerRequest}
    */
-  function newInnerRequest(method, url, headerList, body, maybeBlob) {
+  function newInnerRequest(
+    method,
+    url,
+    options,
+  ) {
+    const {
+      headerList,
+      body,
+      maybeBlob,
+      referrer,
+      referrerPolicy,
+    } = options;
+
     let blobUrlEntry = null;
     if (maybeBlob && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
@@ -85,11 +104,8 @@
       urlList: [url],
       clientRid: null,
       blobUrlEntry,
-      // https://fetch.spec.whatwg.org/#dom-request
-      // 13.5
-      referrer: "client",
-      // 13.6
-      referrerPolicy: "",
+      referrer: referrer,
+      referrerPolicy: referrerPolicy,
       url() {
         return this.urlList[0];
       },
@@ -219,7 +235,17 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, [], null, true);
+        request = newInnerRequest(
+          "GET",
+          parsedURL.href,
+          {
+            headerList: [],
+            body: null,
+            maybeBlob: true,
+            referrer: "client",
+            referrerPolicy: "",
+          },
+        );
       } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");

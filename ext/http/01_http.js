@@ -111,7 +111,8 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const [streamRid, method, headerList, url, referrer, referrerPolicy] =
+        nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -126,9 +127,13 @@
       const innerRequest = newInnerRequest(
         method,
         url,
-        headersList,
-        body !== null ? new InnerBody(body) : null,
-        false,
+        {
+          headerList,
+          body: body !== null ? new InnerBody(body) : null,
+          maybeBlob: false,
+          referrer,
+          referrerPolicy,
+        },
       );
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");

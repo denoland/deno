@@ -53,11 +53,27 @@
     WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
+  const {
+    extractingHeaderListValues,
+  } = window.__bootstrap.headers;
+
   const REQUEST_BODY_HEADER_NAMES = [
     "content-encoding",
     "content-language",
     "content-location",
     "content-type",
+  ];
+
+  const REFERRER_POLICY_VALUES = [
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "origin",
+    "origin-when-cross-origin",
+    "same-origin",
+    "strict-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
   ];
 
   const requestBodyReaders = new WeakMap();
@@ -151,6 +167,245 @@
   }
 
   /**
+   * https://w3c.github.io/webappsec-referrer-policy/#strip-url
+   * @param {URL} url
+   * @param {Boolean} originOnly
+   * @returns {string}
+   */
+  function stripUrlForUseAsAReferrer(url, originOnly = false) {
+    // 1.
+    if (url === null) {
+      return "no-referrer";
+    }
+
+    // 2.
+    if (/(about|blob|data):/.test(url.protocol)) {
+      return "no-referrer";
+    }
+
+    // 3.
+    url.username = "";
+
+    // 4.
+    url.password = "";
+
+    // 5.
+    url.hash = "";
+
+    // 6.
+    if (originOnly) {
+      // 6.1.
+      url.pathname = "";
+
+      // 6.2.
+      url.search = "";
+    }
+
+    // 7.
+    return url;
+  }
+
+  /**
+   * https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy
+   * @param {URL} url
+   * @returns {boolean}
+   */
+  function isOriginPotentiallyTrustworthy(url) {
+    // 1. and 2. not applicable
+
+    // 3.
+    if (/(http|ws)s:/.test(url.protocol)) {
+      return true;
+    }
+
+    // 4.
+    // modification of https://stackoverflow.com/a/8426365
+    if (/^127\.|^\[*(?:0*\:)*?:?0*1\]*$/.test(url.host)) {
+      return true;
+    }
+
+    // 5.
+    if (/^(.+\.)*localhost$/.test(url.host)) {
+      return false;
+    }
+
+    // 6.
+    if (url.protocol === "file:") {
+      return true;
+    }
+
+    // 7. and 8. Not supported
+
+    // 9.
+    return false;
+  }
+
+  /**
+   * https://w3c.github.io/webappsec-secure-contexts/#potentially-trustworthy-url
+   * @param {URL} url
+   * @returns {boolean}
+   */
+  function isUrlPotentiallyTrustworthy(url) {
+    // 1.
+    if (/about:(blank|srcdoc)/.test(url)) {
+      return true;
+    }
+
+    // 2.
+    if (url.protocol === "data:") {
+      return true;
+    }
+
+    // Note: The origin of blob: URLs is the origin of the context in which they were created.
+    // Therefore, blobs created in a trustworthy origin will themselves be potentially trustworthy.
+    if (url.protocol === "blob:") {
+      return true;
+    }
+
+    return isOriginPotentiallyTrustworthy(url);
+  }
+
+  /**
+   * https://w3c.github.io/webappsec-referrer-policy/#determine-requests-referrer
+   * @param {Request} request
+   * @returns {string}
+   */
+  function determineRequestReferrer(request) {
+    // 1.
+    const policy = request.referrerPolicy;
+
+    // 2. not applicable
+
+    // 3. switch "client"
+    if (request.referrer === "client") {
+      return "no-referrer";
+    }
+
+    // 3. switch URL
+    const referrerSource = request.referrer;
+
+    // 4.
+    // request referrer can be a string but stripUrlForUseAsAReferrer needs to operate with URL object that's why we need new URL()
+    let referrerURL = stripUrlForUseAsAReferrer(new URL(referrerSource));
+
+    // 5.
+    // second call of stripUrlForUseAsAReferrer method needs an a new URL object to not remove data from previously created referrerSource URL object
+    const referrerOrigin = stripUrlForUseAsAReferrer(
+      new URL(referrerSource),
+      true,
+    );
+
+    // 6.
+    if (referrerURL.toString().length > 4096) {
+      referrerURL = referrerOrigin;
+    }
+
+    // 7. The user agent MAY alter referrerURL or referrerOrigin. As for now no cases to alter anything.
+    // Due to InnerRequest(23_request.js ) structure: url() { return this.urlList[0]; } there is a need
+    // to create a new URL object
+    const currentURL = new URL(request.currentUrl());
+
+    // 8.
+    switch (policy) {
+      case "no-referrer":
+        return "no-referrer";
+
+      case "origin":
+        return referrerOrigin;
+
+      case "unsafe-url":
+        return referrerURL;
+
+      case "strict-origin":
+        // 1.
+        if (
+          isUrlPotentiallyTrustworthy(referrerURL) &&
+          !isUrlPotentiallyTrustworthy(currentURL)
+        ) {
+          return "no-referrer";
+        }
+
+        // 2.
+        return referrerOrigin;
+
+      case "strict-origin-when-cross-origin":
+        // 1.
+        if (referrerURL.origin === currentURL.origin) {
+          return referrerURL;
+        }
+
+        // 2.
+        if (
+          isUrlPotentiallyTrustworthy(referrerURL) &&
+          !isUrlPotentiallyTrustworthy(currentURL)
+        ) {
+          return "no-referrer";
+        }
+
+        // 3.
+        return referrerOrigin;
+
+      case "same-origin":
+        // 1.
+        if (referrerURL.origin === currentURL.origin) {
+          return referrerURL;
+        }
+
+        // 2.
+        return "no-referrer";
+
+      case "origin-when-cross-origin":
+        // 1.
+        if (referrerURL.origin === currentURL.origin) {
+          return referrerURL;
+        }
+
+        // 2.
+        return referrerOrigin;
+
+      case "no-referrer-when-downgrade":
+        // 1.
+        if (
+          isUrlPotentiallyTrustworthy(referrerURL) &&
+          !isUrlPotentiallyTrustworthy(currentURL)
+        ) {
+          return "no-referrer";
+        }
+
+        // 2.
+        return referrerURL;
+    }
+  }
+
+  /**
+   * https://w3c.github.io/webappsec-referrer-policy/#set-requests-referrer-policy-on-redirect
+   * @param {[string, string][]} headerList
+   * @returns {string}
+   */
+  function parseReferrerPolicyFromHeader(headerList) {
+    // 1.
+    const policyTokens = extractingHeaderListValues(
+      "Referrer-Policy",
+      headerList,
+    );
+
+    // 2.
+    let policy = "";
+
+    // 3.
+    if (policyTokens) {
+      for (const token of policyTokens) {
+        if (REFERRER_POLICY_VALUES.includes(token) && token !== "") {
+          policy = token;
+        }
+      }
+    }
+
+    // 4.
+    return policy;
+  }
+
+  /**
    * @param {InnerRequest} req
    * @param {boolean} recursive
    * @param {AbortSignal} terminator
@@ -216,6 +471,49 @@
         // TODO(@AaronO): plumb support for StringOrBuffer all the way
         reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
       }
+    }
+
+    // https://fetch.spec.whatwg.org/#main-fetch 7.
+    if (req.referrerPolicy === "") {
+      req.referrerPolicy = "strict-origin-when-cross-origin";
+    }
+
+    // https://fetch.spec.whatwg.org/#main-fetch 8.
+    if (req.referrer !== "no-referrer") {
+      req.referrer = determineRequestReferrer(req).toString();
+    }
+
+    let setReferrer = false;
+    let setReferrerPolicy = false;
+    let referrerHeaderIndex = null;
+
+    for (let i = 0; i < req.headerList.length; i++) {
+      if (req.headerList[i] && req.headerList[i][0] === "Referrer") {
+        req.headerList[i] = ["Referrer", req.referrer];
+        setReferrer = true;
+        referrerHeaderIndex = i;
+      }
+      if (req.headerList[i] && req.headerList[i][0] === "Referrer-Policy") {
+        req.headerList[i] = ["Referrer-Policy", req.referrerPolicy];
+        setReferrerPolicy = true;
+      }
+    }
+
+    if (!setReferrer) {
+      ArrayPrototypePush(req.headerList, ["Referrer", req.referrer]);
+      referrerHeaderIndex = req.headerList.length - 1;
+    }
+
+    if (!setReferrerPolicy) {
+      ArrayPrototypePush(req.headerList, [
+        "Referrer-Policy",
+        req.referrerPolicy,
+      ]);
+    }
+
+    // On redirects, at some point the new referrer value can be empty and there is a need to remove the old value from the header
+    if (req.referrer === "no-referrer" && referrerHeaderIndex) {
+      ArrayPrototypeSplice(req.headerList, referrerHeaderIndex, 1);
     }
 
     const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
@@ -403,6 +701,16 @@
         }
       }
     }
+
+    // https://w3c.github.io/webappsec-referrer-policy/#set-requests-referrer-policy-on-redirect
+    const responseReferrerPolicy = parseReferrerPolicyFromHeader(
+      response.headerList,
+    );
+
+    if (responseReferrerPolicy) {
+      request.referrerPolicy = responseReferrerPolicy;
+    }
+
     if (request.body !== null) {
       const res = extractBody(request.body.source);
       request.body = res.body;

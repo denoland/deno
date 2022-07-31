@@ -37,6 +37,10 @@ declare namespace globalThis {
       function guardFromHeaders(
         headers: Headers,
       ): "immutable" | "request" | "request-no-cors" | "response" | "none";
+      function extractingHeaderListValues(
+        name: string,
+        list: HeaderList,
+      ): string[] | null;
     }
 
     declare namespace formData {
@@ -89,8 +93,7 @@ declare namespace globalThis {
       function newInnerRequest(
         method: string,
         url: any,
-        headerList?: [string, string][],
-        body?: globalThis.__bootstrap.fetchBody.InnerBody,
+        options: InnerRequestOptions,
       ): InnerResponse;
       function toInnerResponse(response: Response): InnerResponse;
       function fromInnerResponse(

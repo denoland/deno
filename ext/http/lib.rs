@@ -369,6 +369,10 @@ struct NextRequestResponse(
   Vec<(ByteString, ByteString)>,
   // url:
   String,
+  // referrer:
+  String,
+  // referrer_policy:
+  String,
 );
 
 #[op]
@@ -403,12 +407,28 @@ async fn op_http_accept(
   });
 
   let method = request.method().to_string();
+  let referrer = match request.headers().get("Referrer") {
+    Some(header) => header.to_str().unwrap().to_string(),
+    None => "".to_string(),
+  };
+
+  let referrer_policy = match request.headers().get("Referrer-Policy") {
+    Some(header) => header.to_str().unwrap().to_string(),
+    None => "".to_string(),
+  };
   let headers = req_headers(request);
   let url = req_url(request, conn.scheme(), conn.addr());
 
   let stream_rid = state.borrow_mut().resource_table.add_rc(stream);
 
-  let r = NextRequestResponse(stream_rid, method, headers, url);
+  let r = NextRequestResponse(
+    stream_rid,
+    method,
+    headers,
+    url,
+    referrer,
+    referrer_policy,
+  );
   Ok(Some(r))
 }
 

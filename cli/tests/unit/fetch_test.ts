@@ -644,6 +644,7 @@ Deno.test(
       "foo: Bar\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
+      "referrer-policy: strict-origin-when-cross-origin\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
@@ -676,6 +677,7 @@ Deno.test(
       "content-length: 0\r\n",
       "accept: text/html\r\n",
       "accept-language: en-US\r\n",
+      "referrer-policy: strict-origin-when-cross-origin\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
@@ -712,6 +714,7 @@ Deno.test(
       "content-type: text/plain;charset=UTF-8\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
+      "referrer-policy: strict-origin-when-cross-origin\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
@@ -750,6 +753,7 @@ Deno.test(
       "foo: Bar\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
+      "referrer-policy: strict-origin-when-cross-origin\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
@@ -1108,6 +1112,7 @@ Deno.test(
       "foo: Bar\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
+      "referrer-policy: strict-origin-when-cross-origin\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
       "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
@@ -1578,3 +1583,760 @@ Deno.test(async function staticResponseJson() {
   const res = await resp.json();
   assertEquals(res, data);
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function noReferrerReferrerPolicy() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), null);
+      assertEquals(request.referrer, "");
+
+      assertEquals(request.headers.get("referrer-policy"), "no-referrer");
+      assertEquals(request.referrerPolicy, "no-referrer");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://127.0.0.1:4501/test",
+      referrerPolicy: "no-referrer",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function unsafeReferrerPolicy() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://deno.land/");
+      assertEquals(request.referrer, "http://deno.land/");
+
+      assertEquals(request.referrerPolicy, "unsafe-url");
+      assertEquals(request.headers.get("referrer-policy"), "unsafe-url");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://deno.land/",
+      referrerPolicy: "unsafe-url",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function noReferrerWhenDowngradeReferrerPolicyDowngrade() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), null);
+      assertEquals(request.referrer, "");
+
+      assertEquals(request.referrerPolicy, "no-referrer-when-downgrade");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "no-referrer-when-downgrade",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "https://deno.land",
+      referrerPolicy: "no-referrer-when-downgrade",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function noReferrerWhenDowngradeReferrerPolicyDowngradeLoopback() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "https://deno.land/");
+      assertEquals(request.referrer, "https://deno.land/");
+
+      assertEquals(request.referrerPolicy, "no-referrer-when-downgrade");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "no-referrer-when-downgrade",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "https://deno.land",
+      referrerPolicy: "no-referrer-when-downgrade",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function noReferrerWhenDowngradeReferrerPolicySameHttp() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://deno.land/");
+      assertEquals(request.referrer, "http://deno.land/");
+
+      assertEquals(request.referrerPolicy, "no-referrer-when-downgrade");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "no-referrer-when-downgrade",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://deno.land",
+      referrerPolicy: "no-referrer-when-downgrade",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function noReferrerWhenDowngradeReferrerPolicySameHttps() {
+    const hostname = "localhost";
+    const port = 4501;
+    const promise = (async () => {
+      const listener = Deno.listenTls({
+        hostname,
+        port,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "https://deno.land/");
+      assertEquals(request.referrer, "https://deno.land/");
+
+      assertEquals(request.referrerPolicy, "no-referrer-when-downgrade");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "no-referrer-when-downgrade",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      // TODO(ry) If we don't call httpConn.nextRequest() here we get "error sending
+      // request for url (https://localhost:4501/): connection closed before
+      // message completed".
+      assertEquals(await httpConn.nextRequest(), null);
+
+      listener.close();
+    })();
+
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+
+    await fetch(`https://${hostname}:${port}/`, {
+      client,
+      headers: { "connection": "close" },
+      referrer: "https://deno.land",
+      referrerPolicy: "no-referrer-when-downgrade",
+    }).then((resp) => resp.text());
+
+    await promise;
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function originReferrerPolicyWithPath() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://deno.land/");
+      assertEquals(request.referrer, "http://deno.land/");
+
+      assertEquals(request.referrerPolicy, "origin");
+      assertEquals(request.headers.get("referrer-policy"), "origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://deno.land/test",
+      referrerPolicy: "origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function originReferrerPolicyNotSame() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://deno.land/");
+      assertEquals(request.referrer, "http://deno.land/");
+
+      assertEquals(request.referrerPolicy, "origin");
+      assertEquals(request.headers.get("referrer-policy"), "origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://deno.land",
+      referrerPolicy: "origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function sameOriginReferrerPolicyTrue() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(
+        request.headers.get("referrer"),
+        "http://localhost:4501/test",
+      );
+      assertEquals(request.referrer, "http://localhost:4501/test");
+
+      assertEquals(request.referrerPolicy, "same-origin");
+      assertEquals(request.headers.get("referrer-policy"), "same-origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://localhost:4501/test",
+      referrerPolicy: "same-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function sameOriginReferrerPolicyFalse() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), null);
+      assertEquals(request.referrer, "");
+
+      assertEquals(request.referrerPolicy, "same-origin");
+      assertEquals(request.headers.get("referrer-policy"), "same-origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://deno.land/test",
+      referrerPolicy: "same-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function originWhenCrossOriginReferrerPolicyTrue() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(
+        request.headers.get("referrer"),
+        "http://localhost:4501/test",
+      );
+      assertEquals(request.referrer, "http://localhost:4501/test");
+
+      assertEquals(request.referrerPolicy, "origin-when-cross-origin");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "origin-when-cross-origin",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://localhost:4501/test",
+      referrerPolicy: "origin-when-cross-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function originWhenCrossOriginReferrerPolicyFalse() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://deno.land/");
+      assertEquals(request.referrer, "http://deno.land/");
+
+      assertEquals(request.referrerPolicy, "origin-when-cross-origin");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "origin-when-cross-origin",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://deno.land/test",
+      referrerPolicy: "origin-when-cross-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginReferrerPolicyLoopback() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "https://deno.land/");
+      assertEquals(request.referrer, "https://deno.land/");
+
+      assertEquals(request.referrerPolicy, "strict-origin");
+      assertEquals(request.headers.get("referrer-policy"), "strict-origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "https://deno.land/test",
+      referrerPolicy: "strict-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginReferrerPolicyNotSame() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), null);
+      assertEquals(request.referrer, "");
+
+      assertEquals(request.referrerPolicy, "strict-origin");
+      assertEquals(request.headers.get("referrer-policy"), "strict-origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "https://deno.land",
+      referrerPolicy: "strict-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginReferrerPolicySame() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "http://127.0.0.1:4501/");
+      assertEquals(request.referrer, "http://127.0.0.1:4501/");
+
+      assertEquals(request.referrerPolicy, "strict-origin");
+      assertEquals(request.headers.get("referrer-policy"), "strict-origin");
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://127.0.0.1:4501/test",
+      referrerPolicy: "strict-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginWhenCrossOriginReferrerPolicySame() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(
+        request.headers.get("referrer"),
+        "http://127.0.0.1:4501/test",
+      );
+      assertEquals(request.referrer, "http://127.0.0.1:4501/test");
+
+      assertEquals(request.referrerPolicy, "strict-origin-when-cross-origin");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "strict-origin-when-cross-origin",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "http://127.0.0.1:4501/test",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginWhenCrossOriginReferrerPolicyNotSameAndNotTrustworthy() {
+    const promise = (async () => {
+      const listener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), null);
+      assertEquals(request.referrer, "");
+
+      assertEquals(request.referrerPolicy, "strict-origin-when-cross-origin");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "strict-origin-when-cross-origin",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://127.0.0.1:4501/test",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function strictOriginWhenCrossOriginReferrerPolicyTrustworthy() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const evt = await httpConn.nextRequest();
+      assert(evt);
+      const { request, respondWith } = evt;
+
+      assertEquals(request.headers.get("referrer"), "https://deno.land/");
+      assertEquals(request.referrer, "https://deno.land/");
+
+      assertEquals(request.referrerPolicy, "strict-origin-when-cross-origin");
+      assertEquals(
+        request.headers.get("referrer-policy"),
+        "strict-origin-when-cross-origin",
+      );
+
+      await respondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      httpConn.close();
+      listener.close();
+    })();
+
+    await fetch("http://127.0.0.1:4501/", {
+      referrer: "https://deno.land/test",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function referrerPolicyWorkingOnRedirects() {
+    const promise = (async () => {
+      const firstListener = Deno.listen({ hostname: "localhost", port: 4501 });
+      const firstConn = await firstListener.accept();
+      const firstHttpConn = Deno.serveHttp(firstConn);
+      const firstEvt = await firstHttpConn.nextRequest();
+      assert(firstEvt);
+      const { request: firstRequest, respondWith: firstRespondWith } = firstEvt;
+
+      await firstRespondWith(
+        Response.redirect("http://127.0.0.1:4502/", 301),
+      );
+
+      const secondListener = Deno.listen({ port: 4502 });
+      const secondConn = await secondListener.accept();
+      const secondHttpConn = Deno.serveHttp(secondConn);
+      const secondEvt = await secondHttpConn.nextRequest();
+      assert(secondEvt);
+      const { request: secondRequest, respondWith: secondRespondWith } =
+        secondEvt;
+
+      assertEquals(
+        firstRequest.headers.get("referrer"),
+        "http://localhost:4501/test",
+      );
+      assertEquals(firstRequest.referrer, "http://localhost:4501/test");
+
+      assertEquals(firstRequest.referrerPolicy, "same-origin");
+      assertEquals(firstRequest.headers.get("referrer-policy"), "same-origin");
+
+      assertEquals(secondRequest.headers.get("referrer"), null);
+      assertEquals(secondRequest.referrer, "");
+
+      assertEquals(secondRequest.referrerPolicy, "same-origin");
+      assertEquals(secondRequest.headers.get("referrer-policy"), "same-origin");
+
+      await secondRespondWith(
+        new Response("", {
+          status: 200,
+        }),
+      );
+
+      firstHttpConn.close();
+      firstListener.close();
+      secondHttpConn.close();
+      secondListener.close();
+    })();
+
+    await fetch("http://localhost:4501/", {
+      referrer: "http://localhost:4501/test",
+      referrerPolicy: "same-origin",
+    }).then((resp) => resp.text());
+
+    await promise;
+  },
+);
