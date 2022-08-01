@@ -31,7 +31,7 @@ static FILE_PROTO_RE: Lazy<Regex> =
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
 const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
-const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
+pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
