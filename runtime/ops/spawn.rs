@@ -238,7 +238,7 @@ async fn op_spawn_wait(
     .borrow_mut()
     .resource_table
     .get::<ChildResource>(rid)?;
-  let result = resource.0.borrow_mut().wait().await?.try_into();
+  let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
   state
     .borrow_mut()
     .resource_table
