@@ -2778,6 +2778,11 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
+itest!(spawn_kill_permissions {
+  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
+  output_str: Some(""),
+});
+
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
@@ -2793,7 +2798,8 @@ itest!(unhandled_rejection_sync_error {
   output: "unhandled_rejection_sync_error.ts.out",
 });
 
-itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
-  output_str: Some(""),
+itest!(nested_error {
+  args: "run nested_error.ts",
+  output: "nested_error.ts.out",
+  exit_code: 1,
 });
