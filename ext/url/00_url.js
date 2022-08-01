@@ -20,6 +20,7 @@
     ObjectKeys,
     SafeArrayIterator,
     StringPrototypeSlice,
+    StringPrototypeSplit,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -61,7 +62,7 @@
       8: protocol,
       9: search,
       10: username,
-    } = internalParts.split("\n");
+    } = StringPrototypeSplit(internalParts, "\n");
     return {
       href,
       hash,
@@ -298,6 +299,11 @@
 
   webidl.configurePrototype(URLSearchParams);
   const URLSearchParamsPrototype = URLSearchParams.prototype;
+
+  webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
+    "URLSearchParams",
+    URLSearchParamsPrototype,
+  );
 
   const _url = Symbol("url");
 

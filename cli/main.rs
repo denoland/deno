@@ -9,7 +9,6 @@ mod compat;
 mod deno_dir;
 mod diagnostics;
 mod diff;
-mod disk_cache;
 mod display;
 mod emit;
 mod errors;
@@ -59,6 +58,7 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
+use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
@@ -90,7 +90,7 @@ use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::PreloadModuleCb;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::run_basic;
+use deno_runtime::tokio_util::run_local;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -168,20 +168,19 @@ fn create_web_worker_callback(
         .map(ToOwned::to_owned),
       root_cert_store: Some(ps.root_cert_store.clone()),
       seed: ps.options.seed(),
-      module_loader,
       create_web_worker_cb,
       preload_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: Some(Box::new(ps.clone())),
+      source_map_getter: Some(Box::new(module_loader.clone())),
+      module_loader,
       worker_type: args.worker_type,
       maybe_inspector_server,
-      get_error_class_fn: Some(&crate::errors::get_error_class_name),
+      get_error_class_fn: Some(&errors::get_error_class_name),
       blob_store: ps.blob_store.clone(),
       broadcast_channel: ps.broadcast_channel.clone(),
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
-      startup_snapshot: Some(deno_snapshots::cli_snapshot()),
     };
 
     WebWorker::bootstrap_from_options(
@@ -249,21 +248,20 @@ pub fn create_main_worker(
       .map(ToOwned::to_owned),
     root_cert_store: Some(ps.root_cert_store.clone()),
     seed: ps.options.seed(),
-    source_map_getter: Some(Box::new(ps.clone())),
+    source_map_getter: Some(Box::new(module_loader.clone())),
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
-    get_error_class_fn: Some(&crate::errors::get_error_class_name),
+    get_error_class_fn: Some(&errors::get_error_class_name),
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
     shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
     compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
     stdio,
-    startup_snapshot: Some(deno_snapshots::cli_snapshot()),
   };
 
   MainWorker::bootstrap_from_options(main_module, permissions, options)
@@ -365,23 +363,23 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = vec![
-    crate::tsc::DENO_NS_LIB,
-    crate::tsc::DENO_CONSOLE_LIB,
-    crate::tsc::DENO_URL_LIB,
-    crate::tsc::DENO_WEB_LIB,
-    crate::tsc::DENO_FETCH_LIB,
-    crate::tsc::DENO_WEBGPU_LIB,
-    crate::tsc::DENO_WEBSOCKET_LIB,
-    crate::tsc::DENO_WEBSTORAGE_LIB,
-    crate::tsc::DENO_CRYPTO_LIB,
-    crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
-    crate::tsc::DENO_NET_LIB,
-    crate::tsc::SHARED_GLOBALS_LIB,
-    crate::tsc::WINDOW_LIB,
+    tsc::DENO_NS_LIB,
+    tsc::DENO_CONSOLE_LIB,
+    tsc::DENO_URL_LIB,
+    tsc::DENO_WEB_LIB,
+    tsc::DENO_FETCH_LIB,
+    tsc::DENO_WEBGPU_LIB,
+    tsc::DENO_WEBSOCKET_LIB,
+    tsc::DENO_WEBSTORAGE_LIB,
+    tsc::DENO_CRYPTO_LIB,
+    tsc::DENO_BROADCAST_CHANNEL_LIB,
+    tsc::DENO_NET_LIB,
+    tsc::SHARED_GLOBALS_LIB,
+    tsc::WINDOW_LIB,
   ];
 
   if unstable {
-    types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(tsc::UNSTABLE_NS_LIB);
   }
 
   types.join("\n")
@@ -450,37 +448,9 @@ async fn info_command(
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
-    let mut cache = cache::FetchCacher::new(
-      ps.dir.gen_cache.clone(),
-      ps.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
-    let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-    let maybe_import_map_resolver =
-      ps.maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = ps
-      .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
-    let maybe_resolver = if maybe_jsx_resolver.is_some() {
-      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      maybe_import_map_resolver
-        .as_ref()
-        .map(|im| im.as_resolver())
-    };
-    let graph = deno_graph::create_graph(
-      vec![(specifier, deno_graph::ModuleKind::Esm)],
-      false,
-      None,
-      &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      None,
-      None,
-    )
-    .await;
+    let graph = ps
+      .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
+      .await?;
 
     if info_flags.json {
       write_json_to_stdout(&json!(graph))?;
@@ -548,10 +518,28 @@ async fn cache_command(
   cache_flags: CacheFlags,
 ) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &cache_flags.files).await?;
+  ps.cache_module_emits()?;
+  Ok(0)
+}
+
+async fn check_command(
+  flags: Flags,
+  check_flags: CheckFlags,
+) -> Result<i32, AnyError> {
+  let ps = ProcState::build(flags).await?;
+  load_and_type_check(&ps, &check_flags.files).await?;
+  Ok(0)
+}
+
+async fn load_and_type_check(
+  ps: &ProcState,
+  files: &Vec<String>,
+) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
 
-  for file in cache_flags.files {
-    let specifier = resolve_url_or_path(&file)?;
+  for file in files {
+    let specifier = resolve_url_or_path(file)?;
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -563,20 +551,7 @@ async fn cache_command(
     .await?;
   }
 
-  Ok(0)
-}
-
-async fn check_command(
-  flags: Flags,
-  check_flags: CheckFlags,
-) -> Result<i32, AnyError> {
-  cache_command(
-    flags,
-    CacheFlags {
-      files: check_flags.files,
-    },
-  )
-  .await
+  Ok(())
 }
 
 async fn eval_command(
@@ -639,7 +614,7 @@ async fn create_graph_and_maybe_check(
   debug: bool,
 ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
   let mut cache = cache::FetchCacher::new(
-    ps.dir.gen_cache.clone(),
+    ps.emit_cache.clone(),
     ps.file_fetcher.clone(),
     Permissions::allow_all(),
     Permissions::allow_all(),
@@ -684,26 +659,24 @@ async fn create_graph_and_maybe_check(
   if ps.options.type_check_mode() != TypeCheckMode::None {
     let ts_config_result =
       ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
-        tsc_emit: false,
         lib: ps.options.ts_type_lib_window(),
       })?;
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       eprintln!("{}", ignored_options);
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let check_result = emit::check_and_maybe_emit(
+    let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
+    let check_result = emit::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
-      &ps.dir.gen_cache,
+      &cache,
       emit::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
-        emit_with_diagnostics: false,
         maybe_config_specifier,
         ts_config: ts_config_result.ts_config,
         log_checks: true,
         reload: ps.options.reload_flag(),
-        reload_exclusions: Default::default(),
       },
     )?;
     debug!("{}", check_result.stats);
@@ -1349,13 +1322,9 @@ fn setup_panic_hook() {
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
-    eprintln!(
-      "Platform: {} {}",
-      std::env::consts::OS,
-      std::env::consts::ARCH
-    );
+    eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
     eprintln!("Version: {}", version::deno());
-    eprintln!("Args: {:?}", std::env::args().collect::<Vec<_>>());
+    eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
     std::process::exit(1);
@@ -1422,7 +1391,7 @@ pub fn main() {
     exit_code
   };
 
-  let exit_code = unwrap_or_exit(run_basic(exit_code));
+  let exit_code = unwrap_or_exit(run_local(exit_code));
 
   std::process::exit(exit_code);
 }

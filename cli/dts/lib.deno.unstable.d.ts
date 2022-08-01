@@ -4,6 +4,8 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
+  export {}; // stop default export type behavior
+
   export interface BenchDefinition {
     fn: () => void | Promise<void>;
     name: string;
@@ -364,9 +366,9 @@ declare namespace Deno {
 
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, bigint | number>
-    & Record<NativePointerType, TypedArray | bigint | null>
-    & Record<NativeFunctionType, bigint | null>;
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativePointerType, TypedArray | PointerValue | null>
+    & Record<NativeFunctionType, PointerValue | null>;
 
   /** Type conversion for foreign symbol parameters and unsafe callback return types */
   type ToNativeType<T extends NativeType = NativeType> = ToNativeTypeMap[T];
@@ -389,9 +391,9 @@ declare namespace Deno {
 
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, bigint>
-    & Record<NativePointerType, bigint>
-    & Record<NativeFunctionType, bigint>;
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>;
 
   /** Type conversion for foreign symbol return types and unsafe callback parameters */
   type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
@@ -428,6 +430,8 @@ declare namespace Deno {
     result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
     nonblocking?: NonBlocking;
+    /** When true, function calls can safely callback into JS or trigger a GC event. Default is `false`. */
+    callback?: boolean;
   }
 
   export interface ForeignStatic<Type extends NativeType = NativeType> {
@@ -477,6 +481,15 @@ declare namespace Deno {
     | BigInt64Array
     | BigUint64Array;
 
+  /**
+   * Pointer type depends on the architecture and actual pointer value.
+   *
+   * On a 32 bit system all pointer values are plain numbers. On a 64 bit
+   * system pointer values are represented as numbers if the value is below
+   * `Number.MAX_SAFE_INTEGER`.
+   */
+  export type PointerValue = number | bigint;
+
   /** **UNSTABLE**: Unsafe and new API, beware!
    *
    * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
@@ -485,7 +498,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): bigint;
+    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
   }
 
   /** **UNSTABLE**: Unsafe and new API, beware!
@@ -513,9 +526,9 @@ declare namespace Deno {
     /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
-    getBigUint64(offset?: number): bigint;
+    getBigUint64(offset?: number): PointerValue;
     /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
-    getBigInt64(offset?: number): bigint;
+    getBigInt64(offset?: number): PointerValue;
     /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
@@ -1132,7 +1145,11 @@ declare namespace Deno {
   /**
    * Spawns a child process.
    *
-   * If stdin is set to "piped", the stdin WritableStream needs to be closed manually.
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Child` or its `SpawnOutput` will throw a `TypeError`.
+   *
+   * If stdin is set to `"piped"`, the stdin WritableStream needs to be closed
+   * manually.
    *
    * ```ts
    * const child = Deno.spawnChild(Deno.execPath(), {
@@ -1151,27 +1168,26 @@ declare namespace Deno {
    * const status = await child.status;
    * ```
    */
-  export function spawnChild<T extends SpawnOptions = SpawnOptions>(
+  export function spawnChild(
     command: string | URL,
-    options?: T,
-  ): Child<T>;
+    options?: SpawnOptions,
+  ): Child;
 
-  export class Child<T extends SpawnOptions> {
-    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
-      : null;
-    readonly stdout: T["stdout"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
-    readonly stderr: T["stderr"] extends "inherit" | "null" ? null
-      : ReadableStream<Uint8Array>;
-
+  export class Child {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<ChildStatus>;
 
     /** Waits for the child to exit completely, returning all its output and status. */
-    output(): Promise<SpawnOutput<T>>;
+    output(): Promise<SpawnOutput>;
     /** Kills the process with given Signal. Defaults to SIGTERM. */
     kill(signo?: Signal): void;
+
+    ref(): void;
+    unref(): void;
   }
 
   /**
@@ -1179,61 +1195,60 @@ declare namespace Deno {
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
    *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
    * ```ts
-   * const { status, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   * const { code, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
    *   args: [
    *     "eval",
    *        "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert(status.code === 0);
+   * console.assert(code === 0);
    * console.assert("hello\n" === new TextDecoder().decode(stdout));
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
-  export function spawn<T extends SpawnOptions = SpawnOptions>(
+  export function spawn(
     command: string | URL,
-    options?: T,
-  ): Promise<SpawnOutput<T>>;
+    options?: SpawnOptions,
+  ): Promise<SpawnOutput>;
 
   /**
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
    *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
    * ```ts
-   * const { status, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   * const { code, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
    *   args: [
    *     "eval",
    *       "console.log('hello'); console.error('world')",
    *   ],
    * });
-   * console.assert(status.code === 0);
+   * console.assert(code === 0);
    * console.assert("hello\n" === new TextDecoder().decode(stdout));
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    */
-  export function spawnSync<T extends SpawnOptions = SpawnOptions>(
+  export function spawnSync(
     command: string | URL,
-    options?: T,
-  ): SpawnOutput<T>;
+    options?: SpawnOptions,
+  ): SpawnOutput;
 
-  export type ChildStatus =
-    | {
-      success: true;
-      code: 0;
-      signal: null;
-    }
-    | {
-      success: false;
-      code: number;
-      signal: Signal | null;
-    };
+  export interface ChildStatus {
+    success: boolean;
+    code: number;
+    signal: Signal | null;
+  }
 
-  export interface SpawnOutput<T extends SpawnOptions> {
-    status: ChildStatus;
-    stdout: T["stdout"] extends "inherit" | "null" ? null : Uint8Array;
-    stderr: T["stderr"] extends "inherit" | "null" ? null : Uint8Array;
+  export interface SpawnOutput extends ChildStatus {
+    get stdout(): Uint8Array;
+    get stderr(): Uint8Array;
   }
 }
 

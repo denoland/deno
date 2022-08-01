@@ -1,123 +1,14 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::ConfigFile;
-use crate::args::Flags;
-use crate::cache::FetchCacher;
-use crate::graph_util::graph_valid;
 use crate::http_cache;
-use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
 
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::create_basic_runtime;
-use import_map::ImportMap;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::thread;
 use std::time::SystemTime;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-
-type Request = (
-  Vec<(ModuleSpecifier, deno_graph::ModuleKind)>,
-  oneshot::Sender<Result<(), AnyError>>,
-);
-
-/// A "server" that handles requests from the language server to cache modules
-/// in its own thread.
-#[derive(Debug)]
-pub struct CacheServer(mpsc::UnboundedSender<Request>);
-
-impl CacheServer {
-  pub async fn new(
-    maybe_cache_path: Option<PathBuf>,
-    maybe_import_map: Option<Arc<ImportMap>>,
-    maybe_config_file: Option<ConfigFile>,
-    maybe_ca_stores: Option<Vec<String>>,
-    maybe_ca_file: Option<String>,
-    unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  ) -> Self {
-    let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
-    let _join_handle = thread::spawn(move || {
-      let runtime = create_basic_runtime();
-      runtime.block_on(async {
-        let ps = ProcState::build(Flags {
-          cache_path: maybe_cache_path,
-          ca_stores: maybe_ca_stores,
-          ca_file: maybe_ca_file,
-          unsafely_ignore_certificate_errors,
-          ..Default::default()
-        })
-        .await
-        .unwrap();
-        let maybe_import_map_resolver =
-          maybe_import_map.map(ImportMapResolver::new);
-        let maybe_jsx_resolver = maybe_config_file.as_ref().and_then(|cf| {
-          cf.to_maybe_jsx_import_source_module()
-            .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()))
-        });
-        let maybe_resolver = if maybe_jsx_resolver.is_some() {
-          maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-        } else {
-          maybe_import_map_resolver
-            .as_ref()
-            .map(|im| im.as_resolver())
-        };
-        let maybe_imports = maybe_config_file
-          .and_then(|cf| cf.to_maybe_imports().ok())
-          .flatten();
-        let mut cache = FetchCacher::new(
-          ps.dir.gen_cache.clone(),
-          ps.file_fetcher.clone(),
-          Permissions::allow_all(),
-          Permissions::allow_all(),
-        );
-
-        while let Some((roots, tx)) = rx.recv().await {
-          let graph = deno_graph::create_graph(
-            roots,
-            false,
-            maybe_imports.clone(),
-            &mut cache,
-            maybe_resolver,
-            None,
-            None,
-            None,
-          )
-          .await;
-
-          if tx.send(graph_valid(&graph, true, false)).is_err() {
-            log::warn!("cannot send to client");
-          }
-        }
-      })
-    });
-
-    Self(tx)
-  }
-
-  /// Attempt to cache the supplied module specifiers and their dependencies in
-  /// the current DENO_DIR, returning any errors, so they can be returned to the
-  /// client.
-  pub async fn cache(
-    &self,
-    roots: Vec<(ModuleSpecifier, deno_graph::ModuleKind)>,
-  ) -> Result<(), AnyError> {
-    let (tx, rx) = oneshot::channel::<Result<(), AnyError>>();
-    if self.0.send((roots, tx)).is_err() {
-      return Err(anyhow!("failed to send request to cache thread"));
-    }
-    rx.await?
-  }
-}
 
 /// Calculate a version for for a given path.
 pub fn calculate_fs_version(path: &Path) -> Option<String> {

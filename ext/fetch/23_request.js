@@ -43,6 +43,8 @@
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
+  const _getHeaders = Symbol("get headers");
+  const _headersCache = Symbol("headers cache");
   const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
@@ -52,7 +54,7 @@
    * @property {string} method
    * @property {() => string} url
    * @property {() => string} currentUrl
-   * @property {[string, string][]} headerList
+   * @property {() => [string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
@@ -65,7 +67,7 @@
 
   /**
    * @typedef InnerRequestOptions
-   * @property {[string, string][]} headerList
+   * @property {() => [string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {boolean} maybeBlob
    * @property {string} referrer
@@ -97,15 +99,28 @@
     }
     return {
       method,
-      headerList,
+      headerListInner: null,
+      get headerList() {
+        if (this.headerListInner === null) {
+          try {
+            this.headerListInner = headerList();
+          } catch {
+            throw new TypeError("cannot read headers: request closed");
+          }
+        }
+        return this.headerListInner;
+      },
+      set headerList(value) {
+        this.headerListInner = value;
+      },
       body,
       redirectMode: "follow",
       redirectCount: 0,
       urlList: [url],
       clientRid: null,
       blobUrlEntry,
-      referrer: referrer,
-      referrerPolicy: referrerPolicy,
+      referrer,
+      referrerPolicy,
       url() {
         return this.urlList[0];
       },
@@ -192,7 +207,21 @@
     /** @type {InnerRequest} */
     [_request];
     /** @type {Headers} */
-    [_headers];
+    [_headersCache];
+    [_getHeaders];
+
+    /** @type {Headers} */
+    get [_headers]() {
+      if (this[_headersCache] === undefined) {
+        this[_headersCache] = this[_getHeaders]();
+      }
+      return this[_headersCache];
+    }
+
+    set [_headers](value) {
+      this[_headersCache] = value;
+    }
+
     /** @type {AbortSignal} */
     [_signal];
     get [_mimeType]() {
@@ -239,7 +268,7 @@
           "GET",
           parsedURL.href,
           {
-            headerList: [],
+            headerList: () => [],
             body: null,
             maybeBlob: true,
             referrer: "client",
@@ -553,7 +582,7 @@
     const request = webidl.createBranded(Request);
     request[_request] = inner;
     request[_signal] = signal;
-    request[_headers] = headersFromHeaderList(inner.headerList, guard);
+    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
     return request;
   }
 

@@ -488,25 +488,25 @@
     let referrerHeaderIndex = null;
 
     for (let i = 0; i < req.headerList.length; i++) {
-      if (req.headerList[i] && req.headerList[i][0] === "Referrer") {
-        req.headerList[i] = ["Referrer", req.referrer];
+      if (req.headerList[i] && req.headerList[i][0] === "referrer") {
+        req.headerList[i] = ["referrer", req.referrer];
         setReferrer = true;
         referrerHeaderIndex = i;
       }
-      if (req.headerList[i] && req.headerList[i][0] === "Referrer-Policy") {
-        req.headerList[i] = ["Referrer-Policy", req.referrerPolicy];
+      if (req.headerList[i] && req.headerList[i][0] === "referrer-policy") {
+        req.headerList[i] = ["referrer-policy", req.referrerPolicy];
         setReferrerPolicy = true;
       }
     }
 
     if (!setReferrer) {
-      ArrayPrototypePush(req.headerList, ["Referrer", req.referrer]);
+      ArrayPrototypePush(req.headerList, ["referrer", req.referrer]);
       referrerHeaderIndex = req.headerList.length - 1;
     }
 
     if (!setReferrerPolicy) {
       ArrayPrototypePush(req.headerList, [
-        "Referrer-Policy",
+        "referrer-policy",
         req.referrerPolicy,
       ]);
     }

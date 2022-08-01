@@ -9,7 +9,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_runtime::permissions::Permissions;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -19,10 +18,7 @@ use crate::args::VendorFlags;
 use crate::fs_util;
 use crate::fs_util::relative_specifier;
 use crate::fs_util::specifier_to_file_path;
-use crate::lockfile;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
 use crate::tools::fmt::format_json;
 
 mod analyze;
@@ -207,7 +203,9 @@ fn update_config_text(
 ) -> Option<String> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
-  let ast = jsonc_parser::parse_to_ast(text, &Default::default()).ok()?;
+  let ast =
+    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())
+      .ok()?;
   let obj = match ast.value {
     Some(Value::Object(obj)) => obj,
     _ => return None, // shouldn't happen, so ignore
@@ -271,43 +269,7 @@ async fn create_graph(
     })
     .collect::<Result<Vec<_>, AnyError>>()?;
 
-  // todo(dsherret): there is a lot of copy and paste here from
-  // other parts of the codebase. We should consolidate this.
-  let mut cache = crate::cache::FetchCacher::new(
-    ps.dir.gen_cache.clone(),
-    ps.file_fetcher.clone(),
-    Permissions::allow_all(),
-    Permissions::allow_all(),
-  );
-  let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
-  let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_import_map_resolver =
-    ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .options
-    .to_maybe_jsx_import_source_module()
-    .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
-  let maybe_resolver = if maybe_jsx_resolver.is_some() {
-    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-  } else {
-    maybe_import_map_resolver
-      .as_ref()
-      .map(|im| im.as_resolver())
-  };
-
-  Ok(
-    deno_graph::create_graph(
-      entry_points,
-      false,
-      maybe_imports,
-      &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      None,
-      None,
-    )
-    .await,
-  )
+  ps.create_graph(entry_points).await
 }
 
 #[cfg(test)]

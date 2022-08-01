@@ -21,7 +21,7 @@ declare namespace WebAssembly {
    */
   export class CompileError extends Error {
     /** Creates a new `WebAssembly.CompileError` object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -72,7 +72,7 @@ declare namespace WebAssembly {
    */
   export class LinkError extends Error {
     /** Creates a new WebAssembly.LinkError object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -132,7 +132,7 @@ declare namespace WebAssembly {
    */
   export class RuntimeError extends Error {
     /** Creates a new `WebAssembly.RuntimeError` object. */
-    constructor();
+    constructor(message?: string, options?: ErrorOptions);
   }
 
   /**
@@ -398,6 +398,17 @@ declare class ErrorEvent extends Event {
   readonly colno: number;
   readonly error: any;
   constructor(type: string, eventInitDict?: ErrorEventInit);
+}
+
+interface PromiseRejectionEventInit extends EventInit {
+  promise: Promise<any>;
+  reason?: any;
+}
+
+declare class PromiseRejectionEvent extends Event {
+  readonly promise: Promise<any>;
+  readonly reason: any;
+  constructor(type: string, eventInitDict?: PromiseRejectionEventInit);
 }
 
 interface AbstractWorkerEventMap {

@@ -28,6 +28,7 @@
     ArrayPrototypeSort,
     ArrayPrototypeJoin,
     ArrayPrototypeSplice,
+    ArrayPrototypeSlice,
     ArrayPrototypeFilter,
     ObjectPrototypeHasOwnProperty,
     ObjectEntries,
@@ -167,12 +168,13 @@
     // 2. not applicable
 
     // 3.
-    const values = [];
+    let values = [];
 
     // 4.
     for (const header of headerList) {
-      const extract = getHeader(header, name);
-      values.concat(extract.split("\x2C\x20"));
+      const extract = ArrayPrototypeSlice(header, 1);
+
+      values = values.concat(extract);
     }
 
     // 5.

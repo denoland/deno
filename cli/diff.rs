@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
-/// Diff format is loosely based on Github diff formatting.
+/// Diff format is loosely based on GitHub diff formatting.
 pub fn diff(orig_text: &str, edit_text: &str) -> String {
   if orig_text == edit_text {
     return String::new();

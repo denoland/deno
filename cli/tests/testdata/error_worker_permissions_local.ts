@@ -1,4 +1,4 @@
 new Worker(
-  new URL("./subdeb/worker_types.ts", import.meta.url).toString(),
+  import.meta.resolve("./subdeb/worker_types.ts"),
   { type: "module" },
 );

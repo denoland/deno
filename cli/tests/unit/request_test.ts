@@ -136,3 +136,10 @@ Deno.test(function requestReferrerPolicyTypeError() {
     TypeError,
   );
 });
+
+Deno.test(function requestConstructorTakeURLObjectAsParameter() {
+  assertEquals(
+    new Request(new URL("http://foo/")).url,
+    "http://foo/",
+  );
+});

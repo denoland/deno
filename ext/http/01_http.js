@@ -54,6 +54,9 @@
     Uint8Array,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
+  const {
+    extractingHeaderListValues,
+  } = window.__bootstrap.headers;
 
   const connErrorSymbol = Symbol("connError");
   const _deferred = Symbol("upgradeHttpDeferred");
@@ -81,7 +84,7 @@
       return this.#rid;
     }
 
-    /** @returns {Promise<ResponseEvent | null>} */
+    /** @returns {Promise<RequestEvent | null>} */
     async nextRequest() {
       let nextRequest;
       try {
@@ -111,9 +114,16 @@
         return null;
       }
 
-      const [streamRid, method, headerList, url, referrer, referrerPolicy] =
-        nextRequest;
+      const [streamRid, method, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
+
+      const headerList = () => core.opSync("op_http_headers", streamRid);
+      const headers = headerList();
+
+      const [referrer] = extractingHeaderListValues("referrer", headers) ||
+        [""];
+      const [referrerPolicy] =
+        extractingHeaderListValues("referrer-policy", headers) || [""];
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
       let body = null;
