@@ -10,7 +10,6 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Duration;
 

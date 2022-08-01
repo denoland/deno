@@ -189,7 +189,7 @@ fn codegen_v8_async(
       quote! { let result = Ok(result); },
     ),
     // sync fn which returns a `Result<impl Future<Output = Result<T>, AnyError>> + 'static, AnyError>`:
-    // call, match the result and await 
+    // call, match the result and await
     (false, true) => (
       quote! { let result = Self::call::<#type_params>(#args_head #args_tail); }, // TODO: Return error op result directly
       quote! {},
@@ -230,12 +230,12 @@ fn codegen_v8_async(
 
     #pre_result
     let promise_id = #core::_ops::prepare_async_op(scope);
-    rv.set_uint32(promise_id as u32);
     #core::_ops::queue_async_op(scope, async move {
       #result_fut
       #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
+    rv.set_uint32(promise_id as u32);
   }
 }
 
@@ -312,9 +312,7 @@ fn codegen_args(
     .unwrap();
   let decls: TokenStream2 = inputs
     .clone()
-    .map(|(i, arg)| {
-      codegen_arg(core, arg, format!("arg_{i}").as_ref(), i)
-    })
+    .map(|(i, arg)| codegen_arg(core, arg, format!("arg_{i}").as_ref(), i))
     .collect();
   (decls, ident_seq)
 }
@@ -362,15 +360,15 @@ fn codegen_sync_ret(
   } else if is_i32_rv(output) {
     return quote! {
       rv.set_int32(result as i32);
-    }
+    };
   } else if is_double_rv(output) {
     return quote! {
       rv.set_double(result as f64);
-    }
+    };
   } else if is_bool_rv(output) {
     return quote! {
       rv.set_bool(result);
-    }
+    };
   }
 
   // Optimize Result<(), Err> to skip serde_v8 when Ok(...)
@@ -380,7 +378,7 @@ fn codegen_sync_ret(
     quote! {
       rv.set_uint32(result as u32);
     }
-    } else if is_i32_rv_result(output) {
+  } else if is_i32_rv_result(output) {
     quote! {
       rv.set_int32(result as i32);
     }
@@ -465,13 +463,15 @@ fn is_u32_rv_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_i32_rv_result(ty: impl ToTokens) -> bool {
-  is_result(&ty) && (tokens(&ty).contains("Result < i32")
+  is_result(&ty)
+    && (tokens(&ty).contains("Result < i32")
       || tokens(&ty).contains("Result < i8")
       || tokens(&ty).contains("Result < i16"))
 }
 
 fn is_double_rv_result(ty: impl ToTokens) -> bool {
-  is_result(&ty) && (tokens(&ty).contains("Result < f32")
+  is_result(&ty)
+    && (tokens(&ty).contains("Result < f32")
       || tokens(&ty).contains("Result < f64"))
 }
 

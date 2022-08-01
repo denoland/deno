@@ -12,7 +12,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::convert::TryFrom;
 use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;

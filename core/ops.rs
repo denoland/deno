@@ -81,7 +81,8 @@ where
 }
 
 pub type PromiseId = u32;
-pub type OpAsyncFuture = OpCall<(v8::Global<v8::PromiseResolver>, OpId, OpResult)>;
+pub type OpAsyncFuture =
+  OpCall<(v8::Global<v8::PromiseResolver>, OpId, OpResult)>;
 pub type OpFn =
   fn(&mut v8::HandleScope, v8::FunctionCallbackArguments, v8::ReturnValue);
 pub type OpId = usize;
@@ -113,9 +114,9 @@ impl OpResult {
 #[serde(rename_all = "camelCase")]
 pub struct OpError {
   #[serde(rename = "$err_class_name")]
-  class_name: &'static str,
-  message: String,
-  code: Option<&'static str>,
+  pub(crate) class_name: &'static str,
+  pub(crate) message: String,
+  pub(crate) code: Option<&'static str>,
 }
 
 impl OpError {

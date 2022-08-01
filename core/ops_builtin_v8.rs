@@ -65,27 +65,49 @@ fn to_v8_fn(
 }
 
 #[op(v8)]
-fn op_get_promise<'scope>(scope: &mut v8::HandleScope<'scope>, promise_id: PromiseId) -> Result<serde_v8::Value<'scope>, Error> {
+fn op_get_promise<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  promise_id: PromiseId,
+) -> Result<serde_v8::Value<'scope>, Error> {
   let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow_mut();
-  let resolver = state.op_resolvers.get(&promise_id).unwrap();
-  let resolver = resolver.open(scope);
-  let promise = resolver.get_promise(scope);
-  //let promise = promise.resolve(scope, )
-  let promise: v8::Local<v8::Value> = promise.into();
+  let state = &mut state_rc.borrow_mut();
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+
+  state
+    .promise_ring
+    .as_mut()
+    .unwrap()
+    .set(promise_id, v8::Global::new(scope, resolver));
+  let promise: v8::Local<v8::Value> = resolver.get_promise(scope).into();
   Ok(promise.into())
 }
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: PromiseId) {
   let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  if state_rc
+    .borrow()
+    .promise_ring
+    .as_ref()
+    .unwrap()
+    .has(promise_id)
+  {
+    state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
+  }
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: PromiseId) {
   let state_rc = JsRuntime::state(scope);
-  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  if state_rc
+    .borrow()
+    .promise_ring
+    .as_ref()
+    .unwrap()
+    .has(promise_id)
+  {
+    state_rc.borrow_mut().unrefed_ops.insert(promise_id);
+  }
 }
 
 #[op(v8)]

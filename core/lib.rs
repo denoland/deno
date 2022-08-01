@@ -15,6 +15,7 @@ mod ops;
 mod ops_builtin;
 mod ops_builtin_v8;
 mod ops_metrics;
+mod promise_ring;
 mod resources;
 mod runtime;
 mod source_map;
@@ -115,8 +116,8 @@ pub mod _ops {
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
-  pub use super::runtime::queue_async_op;
   pub use super::runtime::prepare_async_op;
+  pub use super::runtime::queue_async_op;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
