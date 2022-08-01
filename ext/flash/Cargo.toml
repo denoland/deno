@@ -14,9 +14,9 @@ description = "Fast HTTP/1 server implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { path = "../../core", version = "0.144.0" }
+deno_core = { path = "../../core", version = "0.145.0" }
 # For HTTP/2 and websocket upgrades
-deno_websocket = { version = "0.67.0", path = "../websocket" }
+deno_websocket = { version = "0.68.0", path = "../websocket" }
 http = "0.2.6"
 httparse = "1.7"
 hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }

@@ -247,7 +247,7 @@ async fn op_read_body(
     use std::io::Read;
     let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
     let n = buffer.read(&mut buf).unwrap();
-    
+
     if n == 0 {
       tx.inner.body_offset = 0;
     } else {
