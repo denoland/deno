@@ -46,7 +46,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+type PendingOpFuture = OpCall<(PromiseId, Option<OpId>, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -148,7 +148,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
-pub(crate) struct JsRuntimeState {
+pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
@@ -382,7 +382,6 @@ impl JsRuntime {
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
-
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context)),
       pending_promise_exceptions: HashMap::new(),
@@ -495,7 +494,7 @@ impl JsRuntime {
     isolate
   }
 
-  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+  pub fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
   }
@@ -1022,7 +1021,6 @@ Pending dynamic modules:\n".to_string();
     let module_map_rc = Self::module_map(isolate);
     let state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
-
     EventLoopPendingState {
       has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
       has_pending_dyn_imports: module_map.has_pending_dynamic_imports(),
@@ -1813,7 +1811,9 @@ impl JsRuntime {
       {
         let (promise_id, op_id, resp) = item;
         state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
+        if let Some(op_id) = op_id {
+          state.op_state.borrow().tracker.track_async_completed(op_id);
+        }
         args.push(v8::Integer::new(scope, promise_id as i32).into());
         args.push(resp.to_v8(scope).unwrap());
       }
@@ -2005,9 +2005,19 @@ impl JsRealm {
 #[inline]
 pub fn queue_async_op(
   scope: &v8::Isolate,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (PromiseId, Option<OpId>, OpResult)> + 'static,
 ) {
   let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.pending_ops.push(OpCall::eager(op));
+  state.have_unpolled_ops = true;
+}
+
+#[inline]
+pub fn queue_async_op2(
+  state_rc: Rc<RefCell<JsRuntimeState>>,
+  op: impl Future<Output = (PromiseId, Option<OpId>, OpResult)> + 'static,
+) {
   let mut state = state_rc.borrow_mut();
   state.pending_ops.push(OpCall::eager(op));
   state.have_unpolled_ops = true;

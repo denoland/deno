@@ -310,36 +310,49 @@
 
         const isNonBlocking = symbols[symbol].nonblocking;
         if (isNonBlocking) {
-          ObjectDefineProperty(
-            this.symbols,
-            symbol,
-            {
-              configurable: false,
-              enumerable: true,
-              value: (...parameters) => {
-                const promise = core.opAsync(
-                  "op_ffi_call_nonblocking",
-                  this.#rid,
-                  symbol,
-                  parameters,
-                );
-
-                if (needsUnpacking) {
-                  return PromisePrototypeThen(
-                    promise,
-                    (result) =>
-                      unpackNonblockingReturnValue(resultType, result),
-                  );
-                }
-
-                return promise;
-              },
-              writable: false,
-            },
+          const call = this.symbols[symbol];
+          const parameters = symbols[symbol].parameters;
+          const params = ArrayPrototypeJoin(
+            ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
+            ", ",
           );
-        }
+          // Make sure V8 has no excuse to not optimize this function.
+          this.symbols[symbol] = new Function(
+            "call",
+            "callAsync",
+            `return function(${params}) {
+            function op(promiseId) { return call(promiseId, ${params}) };
+            return callAsync(op);
+          }`,
+          )(call, core.callAsync);
+          // ObjectDefineProperty(
+          //   this.symbols,
+          //   symbol,
+          //   {
+          //     configurable: false,
+          //     enumerable: true,
+          //     value: (...parameters) => {
+          //       const promise = core.opAsync(
+          //         "op_ffi_call_nonblocking",
+          //         this.#rid,
+          //         symbol,
+          //         parameters,
+          //       );
 
-        if (needsUnpacking && !isNonBlocking) {
+          //       if (needsUnpacking) {
+          //         return PromisePrototypeThen(
+          //           promise,
+          //           (result) =>
+          //             unpackNonblockingReturnValue(resultType, result),
+          //         );
+          //       }
+
+          //       return promise;
+          //     },
+          //     writable: false,
+          //   },
+          // );
+        } else if (needsUnpacking) {
           const call = this.symbols[symbol];
           const parameters = symbols[symbol].parameters;
           const vi = new Int32Array(2);

@@ -145,6 +145,14 @@
     return res;
   }
 
+  function callAsync(cb) {
+    const promiseId = nextPromiseId++;
+    cb(promiseId);
+    const p = setPromise(promiseId);
+    p[promiseIdSymbol] = promiseId;
+    return p;
+  }
+
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
     const maybeError = ops[opName](promiseId, ...args);
@@ -223,6 +231,7 @@
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
+    callAsync,
     opSync,
     resources,
     metrics,

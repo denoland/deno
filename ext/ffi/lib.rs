@@ -16,6 +16,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::fast_api;
 use deno_core::Extension;
+use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -623,15 +624,18 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 #[op(v8)]
 fn op_ffi_load<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
+  state: Rc<RefCell<deno_core::OpState>>,
   args: FfiLoadArgs,
 ) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
+  check_unstable2(&state, "Deno.dlopen");
+
+  let state_ptr = Rc::into_raw(JsRuntime::state(scope));
+  let state = &mut state.borrow_mut();
   let path = args.path;
 
-  check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
@@ -689,15 +693,13 @@ where
         });
 
         resource.symbols.insert(symbol_key, sym.clone());
-        match foreign_fn.non_blocking {
-          // Generate functions for synchronous calls.
-          Some(false) | None => {
-            let function = make_sync_fn(scope, sym);
-            obj.set(scope, func_key.into(), function.into());
-          }
-          // This optimization is not yet supported for non-blocking calls.
-          _ => {}
-        };
+        let function = make_jit_fn(
+          state_ptr as _,
+          scope,
+          sym,
+          matches!(foreign_fn.non_blocking, Some(true)),
+        );
+        obj.set(scope, func_key.into(), function.into());
       }
     }
   }
@@ -770,9 +772,11 @@ fn is_i64(rv: NativeType) -> bool {
 
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
-fn make_sync_fn<'s>(
+fn make_jit_fn<'s>(
+  state: *const c_void,
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
+  nonblocking: bool,
 ) -> v8::Local<'s, v8::Function> {
   #[cfg(not(target_os = "windows"))]
   let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
@@ -797,11 +801,14 @@ fn make_sync_fn<'s>(
       .collect::<Vec<_>>();
     // recv
     args.insert(0, fast_api::Type::V8Value);
-    if needs_unwrap {
+    if nonblocking {
+      args.insert(1, fast_api::Type::Int32);
+    } else if needs_unwrap {
       args.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
     }
     let symbol_trampoline =
-      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
+      jit_trampoline::gen_trampoline(state, sym.clone(), nonblocking)
+        .expect("gen_trampoline");
     fast_ffi_templ = Some(FfiFastCallTemplate {
       args: args.into_boxed_slice(),
       ret: (&ret).into(),
@@ -811,63 +818,118 @@ fn make_sync_fn<'s>(
   }
 
   let sym = Box::leak(sym);
-  let builder = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> =
-        args.data().unwrap().try_into().unwrap();
-      // SAFETY: The pointer will not be deallocated until the function is
-      // garbage collected.
-      let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(symbol.result_type) {
-        true => Some(args.get(symbol.parameter_types.len() as i32)),
-        false => None,
-      };
-      match ffi_call_sync(scope, args, symbol) {
-        Ok(result) => {
-          match needs_unwrap {
-            Some(v) => {
-              let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
-              let backing_store =
-                view.buffer(scope).unwrap().get_backing_store();
+  let builder = if nonblocking {
+    v8::FunctionTemplate::builder(
+      |scope: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       _: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        // SAFETY: The pointer will not be deallocated until the function is
+        // garbage collected.
+        let symbol = unsafe { &*(external.value() as *const Symbol) };
 
-              if is_i64(symbol.result_type) {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut i64)
-                };
-                // SAFETY: We already checked that type == I64
-                let value = unsafe { result.i64_value };
-                *bs = value;
-              } else {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut u64)
-                };
-                // SAFETY: We checked that type == U64
-                let value = unsafe { result.u64_value };
-                *bs = value;
+        let promise_id = args.get(0).int32_value(scope).unwrap();
+        let array = v8::Array::new(scope, args.length());
+        for i in 1..args.length() {
+          let arg = args.get(i);
+          array.set_index(scope, i as u32, arg);
+        }
+
+        let call_args = ffi_parse_args(
+          scope,
+          serde_v8::Value {
+            v8_value: array.into(),
+          },
+          &symbol.parameter_types,
+        )
+        .unwrap();
+        let result_type = symbol.result_type;
+        let join_handle = tokio::task::spawn_blocking(move || {
+          let Symbol {
+            cif,
+            ptr,
+            parameter_types,
+            result_type,
+            ..
+          } = symbol.clone();
+          ffi_call(call_args, &cif, ptr, &parameter_types, result_type)
+        });
+
+        deno_core::_ops::queue_async_op(scope, async move {
+          let result = join_handle.await.unwrap().unwrap();
+          // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+          (
+            promise_id,
+            None,
+            deno_core::OpResult::Ok(
+              unsafe { result.to_value(result_type) }.into(),
+            ),
+          )
+        });
+      },
+    )
+    .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into())
+  } else {
+    v8::FunctionTemplate::builder(
+      |scope: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       mut rv: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        // SAFETY: The pointer will not be deallocated until the function is
+        // garbage collected.
+        let symbol = unsafe { &*(external.value() as *const Symbol) };
+        let needs_unwrap = match needs_unwrap(symbol.result_type) {
+          true => Some(args.get(symbol.parameter_types.len() as i32)),
+          false => None,
+        };
+        match ffi_call_sync(scope, args, symbol) {
+          Ok(result) => {
+            match needs_unwrap {
+              Some(v) => {
+                let view: v8::Local<v8::ArrayBufferView> =
+                  v.try_into().unwrap();
+                let backing_store =
+                  view.buffer(scope).unwrap().get_backing_store();
+
+                if is_i64(symbol.result_type) {
+                  // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+                  // it points to a fixed continuous slice of bytes on the heap.
+                  let bs = unsafe {
+                    &mut *(&backing_store[..] as *const _ as *mut [u8]
+                      as *mut i64)
+                  };
+                  // SAFETY: We already checked that type == I64
+                  let value = unsafe { result.i64_value };
+                  *bs = value;
+                } else {
+                  // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+                  // it points to a fixed continuous slice of bytes on the heap.
+                  let bs = unsafe {
+                    &mut *(&backing_store[..] as *const _ as *mut [u8]
+                      as *mut u64)
+                  };
+                  // SAFETY: We checked that type == U64
+                  let value = unsafe { result.u64_value };
+                  *bs = value;
+                }
+              }
+              None => {
+                // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+                let result = unsafe { result.to_v8(scope, symbol.result_type) };
+                rv.set(result.v8_value);
               }
             }
-            None => {
-              // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-              let result = unsafe { result.to_v8(scope, symbol.result_type) };
-              rv.set(result.v8_value);
-            }
           }
-        }
-        Err(err) => {
-          deno_core::_ops::throw_type_error(scope, err.to_string());
-        }
-      };
-    },
-  )
-  .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
+          Err(err) => {
+            deno_core::_ops::throw_type_error(scope, err.to_string());
+          }
+        };
+      },
+    )
+    .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into())
+  };
 
   let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
     builder.build_fast(scope, &fast_ffi_templ, None)
