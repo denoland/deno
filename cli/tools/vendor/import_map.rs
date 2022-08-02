@@ -333,12 +333,12 @@ fn handle_remote_dep_specifier(
       return;
     }
 
-    let base_specifier = mappings.base_specifier(specifier);
+    let base_referrer = mappings.base_specifier(referrer);
     let base_dir = import_map.base_dir().clone();
-    let imports = import_map.scope(base_specifier);
+    let imports = import_map.scope(base_referrer);
     if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
-      let mut local_base_specifier = mappings.local_uri(base_specifier);
+      let mut local_base_specifier = mappings.local_uri(base_referrer);
       local_base_specifier = local_base_specifier
         // path includes "/" so make it relative
         .join(&format!(".{}", unresolved_specifier.path()))
