@@ -68,6 +68,14 @@ pub fn build(
   graph.lock()?;
   graph.valid()?;
 
+  let graph_errors = graph.errors();
+  if !graph_errors.is_empty() {
+    for err in &graph_errors {
+      log::error!("{}", err);
+    }
+    bail!("failed vendoring");
+  }
+
   // figure out how to map remote modules to local
   let all_modules = graph.modules();
   let remote_modules = all_modules
@@ -1001,6 +1009,26 @@ mod test {
         "directory is not supported (\"./vendor/\").",
       )
     );
+  }
+
+  #[tokio::test]
+  async fn vendor_file_fails_loading_dynamic_import() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "await import('./test.ts');");
+        loader.add_failure(
+          "https://localhost/test.ts",
+          "500 Internal Server Error",
+        );
+      })
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(err.to_string(), "failed vendoring");
   }
 
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {
