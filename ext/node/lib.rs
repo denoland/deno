@@ -1,7 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::include_js_files;
+use deno_core::op;
 use deno_core::Extension;
+use std::path::PathBuf;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -9,6 +11,109 @@ pub fn init() -> Extension {
       prefix "deno:ext/node",
       "01_require.js",
     ))
-    // .ops(vec![])
+    .ops(vec![
+      op_require_init_paths::decl(),
+      op_require_node_module_paths::decl(),
+    ])
     .build()
+}
+
+#[op]
+pub fn op_require_init_paths() -> Vec<String> {
+  let (home_dir, node_path) = if cfg!(target_os = "windows") {
+    (
+      std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
+      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+    )
+  } else {
+    (
+      std::env::var("HOME").unwrap_or_else(|_| "".into()),
+      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+    )
+  };
+
+  let mut prefix_dir = std::env::current_exe().unwrap();
+  if cfg!(target_os = "windows") {
+    prefix_dir = prefix_dir.join("..").join("..")
+  } else {
+    prefix_dir = prefix_dir.join("..")
+  }
+
+  let mut paths = vec![prefix_dir.join("lib").join("node")];
+
+  if !home_dir.is_empty() {
+    paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
+    paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
+  }
+
+  let mut paths = paths
+    .into_iter()
+    .map(|p| p.to_string_lossy().to_string())
+    .collect();
+
+  if !node_path.is_empty() {
+    let delimiter = if cfg!(target_os = "windows") {
+      ";"
+    } else {
+      ":"
+    };
+    let mut node_paths: Vec<String> = node_path
+      .split(delimiter)
+      .filter(|e| !e.is_empty())
+      .map(|s| s.to_string())
+      .collect();
+    node_paths.append(&mut paths);
+    paths = node_paths;
+  }
+
+  paths
+}
+
+#[op]
+pub fn op_require_node_module_paths(from: String) -> Vec<String> {
+  // Guarantee that "from" is absolute.
+  let from = deno_core::resolve_path(&from)
+    .unwrap()
+    .to_file_path()
+    .unwrap();
+
+  if cfg!(target_os = "windows") {
+    // return root node_modules when path is 'D:\\'.
+    let from_str = from.to_str().unwrap();
+    if from_str.len() >= 3 {
+      let bytes = from_str.as_bytes();
+      if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
+      {
+        let p = from_str.to_owned() + "node_modules";
+        return vec![p];
+      }
+    }
+  } else {
+    // Return early not only to avoid unnecessary work, but to *avoid* returning
+    // an array of two items for a root: [ '//node_modules', '/node_modules' ]
+    if from.to_string_lossy() == "/" {
+      return vec!["/node_modules".to_string()];
+    }
+  }
+
+  let mut paths = vec![];
+  let mut current_path = from.as_path();
+  loop {
+    let maybe_parent = current_path.parent();
+    if let Some(parent) = maybe_parent {
+      if !parent.ends_with("/node_modules") {
+        paths.push(parent.join("node_modules").to_string_lossy().to_string());
+        current_path = parent;
+      }
+    } else {
+      break;
+    }
+  }
+
+  if cfg!(target_os = "windows") {
+    // Append /node_modules to handle root paths.
+    paths.push("/node_modules".to_string());
+  }
+
+  paths
 }
