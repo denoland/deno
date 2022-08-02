@@ -9,6 +9,41 @@ use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
 use std::fmt::Write as _;
 
+#[derive(Debug, PartialEq, Clone)]
+struct ErrorIdentity {
+  name: Option<String>,
+  message: Option<String>,
+  stack: Option<String>,
+  // `cause` omitted, because it is absent in nested errors referring to a
+  // parent
+  exception_message: String,
+  frames: Vec<JsStackFrame>,
+  source_line: Option<String>,
+  source_line_frame_index: Option<usize>,
+  aggregated: Option<Vec<JsError>>,
+}
+
+#[derive(Debug, Clone)]
+struct ErrorReference {
+  from: ErrorIdentity,
+  to: ErrorIdentity,
+}
+
+impl From<&JsError> for ErrorIdentity {
+  fn from(error: &JsError) -> ErrorIdentity {
+    ErrorIdentity {
+      name: error.name.clone(),
+      message: error.message.clone(),
+      stack: error.stack.clone(),
+      exception_message: error.exception_message.clone(),
+      frames: error.frames.clone(),
+      source_line: error.source_line.clone(),
+      source_line_frame_index: error.source_line_frame_index.clone(),
+      aggregated: error.aggregated.clone(),
+    }
+  }
+}
+
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
@@ -150,12 +185,63 @@ fn format_maybe_source_line(
   format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
 }
 
-fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
+// TOOD: make this non-recursive
+fn find_error_references_inner(
+  history: &mut Vec<ErrorIdentity>,
+  parent: Option<ErrorIdentity>,
+  js_error: &JsError,
+) -> Option<ErrorReference> {
+  assert!(history.is_empty() == parent.is_none());
+
+  let error_identity = ErrorIdentity::from(js_error);
+  history.push(error_identity.clone());
+
+  if let Some(cause) = &js_error.cause {
+    let cause_identity = ErrorIdentity::from(cause.as_ref());
+
+    if let Some(seen) = history.iter().find(|&el| el == &cause_identity) {
+      return Some(ErrorReference {
+        from: parent.unwrap().clone(),
+        to: seen.clone(),
+      });
+    } else {
+      return find_error_references_inner(
+        history,
+        Some(error_identity),
+        cause.as_ref(),
+      );
+    }
+  } else {
+    return None;
+  }
+}
+
+fn find_error_references(js_error: &JsError) -> Option<ErrorReference> {
+  let mut history = Vec::<ErrorIdentity>::new();
+  return find_error_references_inner(&mut history, None, js_error);
+}
+
+fn format_js_error_inner(
+  circular: Option<ErrorReference>,
+  js_error: &JsError,
+  is_child: bool,
+) -> String {
   let mut s = String::new();
+
+  let error_identity = ErrorIdentity::from(js_error);
+
   s.push_str(&js_error.exception_message);
+
+  if let Some(c) = &circular {
+    if error_identity == c.to {
+      write!(s, " {}", cyan("<ref *1>")).unwrap();
+    }
+  }
+
   if let Some(aggregated) = &js_error.aggregated {
     for aggregated_error in aggregated {
-      let error_string = format_js_error_inner(aggregated_error, true);
+      // TOOD: handle aggregate errors
+      let error_string = format_js_error_inner(None, aggregated_error, true);
       for line in error_string.trim_start_matches("Uncaught ").lines() {
         write!(s, "\n    {}", line).unwrap();
       }
@@ -178,7 +264,22 @@ fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
     write!(s, "\n    at {}", format_frame(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
-    let error_string = format_js_error_inner(cause, true);
+    let is_circular = if let Some(c) = &circular {
+      if ErrorIdentity::from(cause.as_ref()) == c.from {
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    };
+
+    let error_string = if is_circular {
+      cyan("[Circular *1]").to_string()
+    } else {
+      format_js_error_inner(circular, cause, true)
+    };
+
     write!(
       s,
       "\nCaused by: {}",
@@ -191,7 +292,8 @@ fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
 
 /// Format a [`JsError`] for terminal output.
 pub fn format_js_error(js_error: &JsError) -> String {
-  format_js_error_inner(js_error, false)
+  let circular = find_error_references(js_error);
+  format_js_error_inner(circular, js_error, false)
 }
 
 #[cfg(test)]
