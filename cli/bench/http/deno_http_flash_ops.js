@@ -1,4 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file
+
 const { core } = Deno;
 const listener = core.opAsync("op_listen");
 while (true) {
