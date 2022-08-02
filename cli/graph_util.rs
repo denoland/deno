@@ -75,13 +75,19 @@ impl GraphData {
       for (specifier, dependency) in &graph_import.dependencies {
         if !matches!(dependency.maybe_type, Resolved::None) {
           dependencies.insert(specifier.clone(), dependency.maybe_type.clone());
-          if let Resolved::Ok { specifier, range, .. } = &dependency.maybe_type {
+          if let Resolved::Ok {
+            specifier, range, ..
+          } = &dependency.maybe_type
+          {
             let entry = self.referrer_map.entry(specifier.clone());
             entry.or_insert_with(|| range.clone());
           }
         }
       }
-      self.modules.insert(graph_import.referrer.clone(), ModuleEntry::Configuration { dependencies });
+      self.modules.insert(
+        graph_import.referrer.clone(),
+        ModuleEntry::Configuration { dependencies },
+      );
       self.configurations.insert(graph_import.referrer.clone());
     }
 
