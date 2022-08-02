@@ -14,6 +14,7 @@ pub fn init() -> Extension {
     .ops(vec![
       op_require_init_paths::decl(),
       op_require_node_module_paths::decl(),
+      op_require_proxy_path::decl(),
     ])
     .build()
 }
@@ -116,4 +117,21 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
   }
 
   paths
+}
+
+#[op]
+fn op_require_proxy_path(filename: String) -> String {
+  // Allow a directory to be passed as the filename
+  let trailing_slash = if cfg!(target_os = "windows") {
+    filename.ends_with('\\')
+  } else {
+    filename.ends_with('/')
+  };
+
+  if trailing_slash {
+    let p = PathBuf::from(filename);
+    p.join("noop.js").to_string_lossy().to_string()
+  } else {
+    filename
+  }
 }

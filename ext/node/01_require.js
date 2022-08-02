@@ -24,6 +24,7 @@
   let requireDepth = 0;
   let statCache = null;
   let isPreloading = false;
+  let mainModule = null;
 
   function updateChildren(parent, child, scan) {
     if (!parent) {
@@ -163,11 +164,40 @@
   };
 
   function createRequireFromPath(filename) {
-    throw new Error("not implemented");
+    const proxyPath = core.opSync("op_require_proxy_path", filename);
+    const mod = new Module(proxyPath);
+    mod.filename = proxyPath;
+    mod.paths = Module._nodeModulePaths(mod.path);
+    return makeRequireFunction(mod);
+  }
+
+  function makeRequireFunction(mod) {
+    const require = function require(path) {
+      return mod.require(path);
+    };
+
+    function resolve(request, options) {
+      return Module._resolveFilename(request, mod, false, options);
+    }
+
+    require.resolve = resolve;
+
+    function paths(request) {
+      return Module._resolveLookupPaths(request, mod);
+    }
+
+    resolve.paths = paths;
+    require.main = mainModule;
+    // Enable support to add extra extension types.
+    require.extensions = Module._extensions;
+    require.cache = Module._cache;
+
+    return require;
   }
 
   function createRequire(filename) {
-    throw new Error("not implemented");
+    // FIXME: handle URLs and validation
+    return createRequireFromPath(filename);
   }
 
   Module.createRequire = createRequire;
