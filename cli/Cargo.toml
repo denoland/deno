@@ -47,9 +47,9 @@ winres = "=0.1.12"
 [dependencies]
 deno_ast = { version = "0.17.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.146.0", path = "../core" }
-deno_doc = "0.38.0"
-deno_emit = "0.4.0"
-deno_graph = "0.29.0"
+deno_doc = { git = "https://github.com/kitsonk/deno_doc", branch = "deno_graph_imports" }
+deno_emit = { git = "https://github.com/kitsonk/deno_emit", branch = "deno_graph_imports" }
+deno_graph = { git = "https://github.com/kitsonk/deno_graph", branch = "chore_sourcemap_601" }
 deno_lint = { version = "0.32.0", features = ["docs"] }
 deno_runtime = { version = "0.72.0", path = "../runtime" }
 deno_task_shell = "0.5.0"
@@ -68,8 +68,8 @@ dprint-plugin-markdown = "=0.14.0"
 dprint-plugin-typescript = "=0.71.2"
 encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
-eszip = "=0.22.0"
-fancy-regex = "=0.9.0"
+eszip = { git = "https://github.com/kitsonk/eszip", branch = "deno_graph_imports" }
+fancy-regex = "=0.10.0"
 http = "=0.2.6"
 import_map = "=0.12.1"
 indexmap = "1.8.1"
@@ -84,13 +84,13 @@ os_pipe = "=1.0.1"
 percent-encoding = "=2.1.0"
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 rand = { version = "=0.8.5", features = ["small_rng"] }
-regex = "=1.5.6"
+regex = "=1.6.0"
 ring = "=0.16.20"
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 semver-parser = "=0.10.2"
-serde = { version = "=1.0.139", features = ["derive"] }
+serde = { version = "=1.0.141", features = ["derive"] }
 serde_repr = "=0.1.8"
 shell-escape = "=0.1.5"
 text-size = "=1.1.0"
