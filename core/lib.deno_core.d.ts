@@ -64,6 +64,11 @@ declare namespace Deno {
     function write(rid: number, buf: Uint8Array): Promise<number>;
 
     /**
+     * Print a message to stdout or stderr
+     */
+    function print(message: string, is_err?: boolean): void;
+
+    /**
      * Shutdown a resource
      */
     function shutdown(rid: number): Promise<void>;
