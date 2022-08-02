@@ -106,8 +106,17 @@ pub fn to_v8_error<'a>(
   let this = v8::undefined(scope).into();
   let class = v8::String::new(scope, get_class(error)).unwrap();
   let message = v8::String::new(scope, &error.to_string()).unwrap();
-  cb.call(scope, this, &[class.into(), message.into()])
-    .expect("Custom error class must have a builder registered")
+  let exception = cb
+    .call(scope, this, &[class.into(), message.into()])
+    .expect("Custom error class must have a builder registered");
+  if let Some(object) = exception.to_object(scope) {
+    if let Some(code) = crate::error_codes::get_error_code(error) {
+      let key = v8::String::new(scope, "code").unwrap();
+      let value = v8::String::new(scope, code).unwrap();
+      object.set(scope, key.into(), value.into());
+    }
+  }
+  exception
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
