@@ -2,6 +2,7 @@
 
 use crate::bindings;
 use crate::error::generic_error;
+use crate::error::op_error_to_v8;
 use crate::error::to_v8_type_error;
 use crate::error::JsError;
 use crate::extensions::OpDecl;
@@ -155,7 +156,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -395,7 +395,6 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_format_exception_cb: None,
-      js_build_custom_error_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
@@ -631,20 +630,7 @@ impl JsRuntime {
     })
   }
 
-  /// Grabs a reference to core.js' buildCustomError
-  fn init_cbs(&mut self) {
-    let scope = &mut self.handle_scope();
-    let build_custom_error_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
-        .unwrap();
-    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
-    // Put global handles in state
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state
-      .js_build_custom_error_cb
-      .replace(build_custom_error_cb);
-  }
+  fn init_cbs(&mut self) {}
 
   /// Returns the runtime's op state, which can be used to maintain ops
   /// and access resources between op calls.
@@ -711,7 +697,6 @@ impl JsRuntime {
         state.borrow().op_state.clone(),
       ))));
     // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_build_custom_error_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -1834,13 +1819,6 @@ impl JsRuntime {
     }
 
     if !resolved_ops.is_empty() {
-      let error_builder_handle = state_rc
-        .borrow()
-        .js_build_custom_error_cb
-        .clone()
-        .expect("Custom error builder must be set");
-      let error_builder = error_builder_handle.open(scope);
-      let this = v8::undefined(scope).into();
       for (resp, resolver) in resolved_ops {
         let resolver = resolver.open(scope);
         match resp {
@@ -1849,35 +1827,8 @@ impl JsRuntime {
             resolver.resolve(scope, value);
           }
           OpResult::Err(err) => {
-            let class = v8::String::new_from_utf8(
-              scope,
-              err.class_name.as_bytes(),
-              v8::NewStringType::Internalized,
-            )
-            .unwrap()
-            .into();
-            let message = v8::String::new_from_utf8(
-              scope,
-              err.message.as_bytes(),
-              v8::NewStringType::Internalized,
-            )
-            .unwrap()
-            .into();
-            let code: v8::Local<v8::Value> = if let Some(code) = err.code {
-              v8::String::new_from_utf8(
-                scope,
-                code.as_bytes(),
-                v8::NewStringType::Internalized,
-              )
-              .unwrap()
-              .into()
-            } else {
-              this
-            };
-            let error = error_builder
-              .call(scope, this, &[class, message, code])
-              .expect("Custom error class must have a builder registered");
-            resolver.reject(scope, error);
+            let error_args = op_error_to_v8(scope, &err);
+            resolver.reject(scope, error_args);
           }
         }
       }

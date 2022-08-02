@@ -69,11 +69,9 @@ fn op_get_promise<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   promise_id: PromiseId,
 ) -> Result<serde_v8::Value<'scope>, Error> {
-  let state_rc = JsRuntime::state(scope);
-  let state = &mut state_rc.borrow_mut();
   let resolver = v8::PromiseResolver::new(scope).unwrap();
-
-  state
+  JsRuntime::state(scope)
+    .borrow_mut()
     .promise_ring
     .as_mut()
     .unwrap()

@@ -16,7 +16,7 @@
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeFinally,
-    // PromisePrototypeThen,
+    PromisePrototypeThen,
     // PromiseResolve,
     StringPrototypeSlice,
     ObjectAssign,
@@ -60,7 +60,7 @@
     errorMap[className] = errorBuilder;
   }
 
-  function buildCustomError(className, message, code) {
+  function buildAndThrowCustomError([className, message, code]) {
     const errorBuilder = errorMap[className];
     const error = errorBuilder ? errorBuilder(message) : new Error(
       `Unregistered error class: "${className}"\n  ${message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
@@ -69,9 +69,9 @@
       // Set .code if error was a known OS error, see error_codes.rs
       error.code = code;
     }
-    // Strip buildCustomError() and errorBuilder() calls from stack trace
-    ErrorCaptureStackTrace(error, buildCustomError);
-    return error;
+    // Strip buildAndThrowCustomError() and errorBuilder() calls from stack trace
+    ErrorCaptureStackTrace(error, buildAndThrowCustomError);
+    throw error;
   }
 
   function unwrapOpResult(res) {
@@ -100,8 +100,12 @@
     // If this theory is true, then it should mean that multiple V8 Fast API
     // async op calls could be called synchronously before a single slow op call needs to be called
     // to create the related promises.
-    let p = ops.op_get_promise(promiseId);
     // let p = PromisePrototypeThen(PromiseResolve(promiseId), ops.op_get_promise);
+    let p = PromisePrototypeThen(
+      ops.op_get_promise(promiseId),
+      undefined,
+      buildAndThrowCustomError,
+    );
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.
@@ -165,7 +169,6 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
-    buildCustomError,
     BadResource,
     BadResourcePrototype,
     Interrupted,
