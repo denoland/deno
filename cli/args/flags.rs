@@ -178,6 +178,7 @@ pub struct TestFlags {
   pub include: Vec<String>,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub parallel: bool,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
 }
@@ -2674,28 +2675,30 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
-  let concurrent_jobs = if matches.is_present("parallel") {
-    if let Ok(value) = env::var("DENO_JOBS") {
+  let (parallel, concurrent_jobs) = if matches.is_present("parallel") {
+    let concurrent_jobs = if let Ok(value) = env::var("DENO_JOBS") {
       value
         .parse::<NonZeroUsize>()
         .unwrap_or(NonZeroUsize::new(1).unwrap())
     } else {
       std::thread::available_parallelism()
         .unwrap_or(NonZeroUsize::new(1).unwrap())
-    }
+    };
+    (true, concurrent_jobs)
   } else if matches.is_present("jobs") {
     println!(
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
-    if let Some(value) = matches.value_of("jobs") {
+    let concurrent_jobs = if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
     } else {
       std::thread::available_parallelism()
         .unwrap_or(NonZeroUsize::new(1).unwrap())
-    }
+    };
+    (true, concurrent_jobs)
   } else {
-    NonZeroUsize::new(1).unwrap()
+    (false, NonZeroUsize::new(1).unwrap())
   };
 
   let include: Vec<String> = if matches.is_present("files") {
@@ -2719,6 +2722,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     filter,
     shuffle,
     allow_none,
+    parallel,
     concurrent_jobs,
     trace_ops,
   });
@@ -5013,6 +5017,7 @@ mod tests {
           include: svec!["dir1/", "dir2/"],
           ignore: vec![],
           shuffle: None,
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: true,
         }),
@@ -5084,6 +5089,7 @@ mod tests {
           shuffle: None,
           include: vec![],
           ignore: vec![],
+          parallel: true,
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
           trace_ops: false,
         }),
@@ -5112,6 +5118,7 @@ mod tests {
           shuffle: None,
           include: vec![],
           ignore: vec![],
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5144,6 +5151,7 @@ mod tests {
           shuffle: None,
           include: vec![],
           ignore: vec![],
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5170,6 +5178,7 @@ mod tests {
           shuffle: Some(1),
           include: vec![],
           ignore: vec![],
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5196,6 +5205,7 @@ mod tests {
           shuffle: None,
           include: vec![],
           ignore: vec![],
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),
@@ -5223,6 +5233,7 @@ mod tests {
           shuffle: None,
           include: vec![],
           ignore: vec![],
+          parallel: false,
           concurrent_jobs: NonZeroUsize::new(1).unwrap(),
           trace_ops: false,
         }),

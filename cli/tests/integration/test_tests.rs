@@ -447,3 +447,9 @@ itest!(non_error_thrown {
   output: "test/non_error_thrown.out",
   exit_code: 1,
 });
+
+itest!(parallel_output {
+  args: "test --parallel --reload test/parallel_output.ts",
+  output: "test/parallel_output.out",
+  exit_code: 1,
+});
