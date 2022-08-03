@@ -5,4 +5,13 @@
 // }
 
 const { serve } = Deno.flash;
-serve((_) => new Response("Hello World"));
+serve(async (req) => {
+  try {
+    await req.json()
+    console.log("bar");
+  } catch (e) {
+    console.log(e);
+  }
+
+  return new Response("Hello World");
+});

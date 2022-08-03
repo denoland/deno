@@ -16,7 +16,7 @@
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
-  const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
+  const { mixinBody, extractBody, InnerBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const { extractMimeType } = window.__bootstrap.mimesniff;
   const { blobFromObjectUrl } = window.__bootstrap.file;
@@ -48,6 +48,7 @@
   const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
+  const _flash = Symbol("flash");
 
   /**
    * @typedef InnerRequest
@@ -207,7 +208,11 @@
       return extractMimeType(values);
     }
     get [_body]() {
-      return this[_request].body;
+      if (this[_flash]) {
+        return this[_flash].body;
+      } else {
+        return this[_request].body;
+      }
     }
 
     /**
@@ -362,17 +367,29 @@
 
     get method() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].method;
+      if (this[_flash]) {
+        return this[_flash].method();
+      } else {
+        return this[_request].method;
+      }
     }
 
     get url() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].url();
+      if (this[_flash]) {
+        return `http://localhost:9000${this[_flash].url()}`;
+      } else {
+        return this[_request].url();
+      }
     }
 
     get headers() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_headers];
+      if (this[_flash]) {
+        return this[_flash].headers();
+      } else {
+        return this[_headers];
+      }
     }
 
     get redirect() {
@@ -484,9 +501,24 @@
     return request;
   }
 
+  /**
+   * @param {ReadableStream} body
+   * @param {() => void} method
+   * @param {() => void} url
+   * @param {() => void} headers
+   * @returns {Request}
+   */
+  function fromInnerFlashRequest(body, method, url, headers) {
+    const request = webidl.createBranded(Request);
+    request[_flash] = { body: new InnerBody(body), method, url };
+    request[_getHeaders] = headers;
+    return request;
+  }
+
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Request = Request;
   window.__bootstrap.fetch.toInnerRequest = toInnerRequest;
+  window.__bootstrap.fetch.fromInnerFlashRequest = fromInnerFlashRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
 })(globalThis);

@@ -9,6 +9,7 @@
   const {
     ResponsePrototype,
     fromInnerRequest,
+    fromInnerFlashRequest,
     toInnerResponse,
     newInnerRequest,
     newInnerResponse,
@@ -155,7 +156,15 @@
       let token = core.ops.op_next();
       if (token === 0) token = await core.opAsync("op_next_async");
       for (let i = 0; i < token; i++) {
-        const req = new Request(i);
+        const req = fromInnerFlashRequest(
+          createRequestBodyStream(i),
+          () => core.ops.op_method(i),
+          () => core.ops.op_path(i),
+          () =>
+          headersFromHeaderList(
+            core.ops.op_headers(i),
+            "request",
+          ));
         const resp = await handler(req);
         const innerResp = toInnerResponse(resp);
 
