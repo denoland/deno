@@ -7,7 +7,7 @@
 const { serve } = Deno.flash;
 serve(async (req) => {
   try {
-    await req.json()
+    await req.json();
     console.log("bar");
   } catch (e) {
     console.log(e);

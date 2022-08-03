@@ -2,18 +2,10 @@
 "use strict";
 
 ((window) => {
-  const webidl = window.__bootstrap.webidl;
-  const { InnerBody } = window.__bootstrap.fetchBody;
-  const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { BlobPrototype } = window.__bootstrap.file;
   const {
-    ResponsePrototype,
-    fromInnerRequest,
     fromInnerFlashRequest,
     toInnerResponse,
-    newInnerRequest,
-    newInnerResponse,
-    fromInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
@@ -32,104 +24,16 @@
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
-  const { TcpConn, UnixConn } = window.__bootstrap.net;
-  const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred, getReadableStreamRid, readableStreamClose } =
-    window.__bootstrap.streams;
   const {
-    ArrayPrototypeIncludes,
-    ArrayPrototypePush,
-    ArrayPrototypeSome,
-    Error,
     ObjectPrototypeIsPrototypeOf,
-    Set,
-    SetPrototypeAdd,
-    SetPrototypeDelete,
-    SetPrototypeValues,
-    StringPrototypeIncludes,
-    StringPrototypeToLowerCase,
-    StringPrototypeSplit,
     Symbol,
-    SymbolAsyncIterator,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
   const { headersFromHeaderList } = window.__bootstrap.headers;
-
-  const connErrorSymbol = Symbol("connError");
-  const _deferred = Symbol("upgradeHttpDeferred");
-
-  class Request {
-    #token;
-    #method;
-    #url;
-    #headers;
-
-    constructor(token) {
-      this.#token = token;
-    }
-
-    get method() {
-      if (!this.#method) {
-        this.#method = core.ops.op_method(this.#token);
-      }
-      return this.#method;
-    }
-
-    get url() {
-      if (!this.#url) {
-        this.#url = core.ops.op_path(this.#token);
-      }
-      return `http://localhost:9000${this.#url}`;
-    }
-
-    get headers() {
-      if (!this.#headers) {
-        this.#headers = headersFromHeaderList(
-          core.ops.op_headers(this.#token),
-          "request",
-        );
-      }
-      return this.#headers;
-    }
-
-    async arrayBuffer() {
-      let u8 = new Uint8Array(1024 * 1024);
-      let written = 0;
-      while (true) {
-        // TODO(@littledivy): This can be a fast api call.
-        const n = await core.opAsync("op_read_body", this.#token, u8);
-        if (n === 0) {
-          break;
-        }
-        written += n;
-      }
-      return u8.subarray(0, written).buffer;
-    }
-
-    async text() {
-      return core.decode(await this.arrayBuffer());
-    }
-
-    async json() {
-      return JSON.parse((await this.text()).trim());
-    }
-
-    blob() {}
-    formData() {}
-    get bodyUsed() {}
-
-    #stream;
-    get body() {
-      if (!this.#stream) {
-        this.#stream = createRequestBodyStream(this.#token);
-      }
-      return this.#stream;
-    }
-  }
-
+  
   const methods = {
     200: "OK",
   };
@@ -161,10 +65,11 @@
           () => core.ops.op_method(i),
           () => core.ops.op_path(i),
           () =>
-          headersFromHeaderList(
-            core.ops.op_headers(i),
-            "request",
-          ));
+            headersFromHeaderList(
+              core.ops.op_headers(i),
+              "request",
+            ),
+        );
         const resp = await handler(req);
         const innerResp = toInnerResponse(resp);
 
