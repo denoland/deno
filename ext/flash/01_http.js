@@ -171,7 +171,6 @@
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
           const read = await core.opAsync("op_flash_read_body", token, chunk);
-
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
             controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));

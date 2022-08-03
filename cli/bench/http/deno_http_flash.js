@@ -6,12 +6,11 @@
 
 const { serve } = Deno.flash;
 serve(async (req) => {
-  // try {
-  //   await req.json();
-  //   console.log("bar");
-  // } catch (e) {
-  //   console.log(e);
-  // }
+  try {
+    console.log("JSON response", await req.json());
+  } catch (e) {
+    console.log("Failed to parse JSON", e);
+  }
 
   return new Response("Hello World");
 });

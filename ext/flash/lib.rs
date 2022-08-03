@@ -39,6 +39,7 @@ struct InnerRequest {
   _headers: Vec<httparse::Header<'static>>,
   req: httparse::Request<'static, 'static>,
   body_offset: usize,
+  body_len: usize,
   buffer: [u8; 1024],
 }
 
@@ -245,7 +246,7 @@ async fn op_flash_read_body(
   let sock = unsafe { &mut *tx.socket };
   if tx.inner.body_offset != 0 {
     use std::io::Read;
-    let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
+    let mut buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
     let n = buffer.read(&mut buf).unwrap();
 
     if n == 0 {
@@ -355,12 +356,15 @@ fn op_flash_listen(
               let mut headers = vec![httparse::EMPTY_HEADER; 40];
               let mut req = httparse::Request::new(&mut headers);
               let body_offset;
+              let body_len;
+
               match nread {
                 Ok(0) => {
                   sockets.remove(&token);
                   continue;
                 }
                 Ok(n) => {
+                  body_len = n;
                   let r = req.parse(&buffer[0..n]).unwrap();
                   // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
                   match r {
@@ -380,6 +384,7 @@ fn op_flash_listen(
                 },
                 buffer,
                 body_offset,
+                body_len,
               };
               // h1
               // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
