@@ -53,19 +53,23 @@
       "op_flash_listen",
       opts,
     );
+    // FIXME(bartlomieju): should be a field on "listener"
+    const serverId = 0;
     while (true) {
-      let token = core.ops.op_flash_next();
-      if (token === 0) token = await core.opAsync("op_flash_next_async");
+      let token = core.ops.op_flash_next(serverId);
+      if (token === 0) {
+        token = await core.opAsync("op_flash_next_async", serverId);
+      }
       for (let i = 0; i < token; i++) {
   
         const req = fromInnerFlashRequest(
           null,
-          // createRequestBodyStream(i),
-          () => core.ops.op_flash_method(i),
-          () => core.ops.op_flash_path(i),
+          // createRequestBodyStream(serverId, i),
+          () => core.ops.op_flash_method(serverId, i),
+          () => core.ops.op_flash_path(serverId, i),
           () =>
             headersFromHeaderList(
-              core.ops.op_flash_headers(i),
+              core.ops.op_flash_headers(serverId, i),
               "request",
             ),
         );
@@ -140,6 +144,7 @@
             if (first) {
               first = false;
               core.ops.op_flash_respond(
+                serverId,
                 i,
                 http1Response(
                   innerResp.status ?? 200,
@@ -151,6 +156,7 @@
               );
             } else {
               core.ops.op_flash_respond_chuncked(
+                serverId,
                 i,
                 value,
                 done,
@@ -160,6 +166,7 @@
           }
         } else {
           core.ops.op_flash_respond(
+            serverId,
             i,
             http1Response(
               innerResp.status ?? 200,
@@ -198,7 +205,7 @@
     await listener;
   }
 
-  function createRequestBodyStream(token) {
+  function createRequestBodyStream(serverId, token) {
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -206,7 +213,12 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await core.opAsync("op_flash_read_body", token, chunk);
+          const read = await core.opAsync(
+            "op_flash_read_body",
+            serverId,
+            token,
+            chunk,
+          );
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
             controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));

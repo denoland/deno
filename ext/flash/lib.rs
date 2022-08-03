@@ -115,6 +115,7 @@ unsafe impl Send for NextRequest {}
 #[op]
 fn op_flash_respond(
   op_state: &mut OpState,
+  _server_id: u32,
   token: u32,
   response: StringOrBuffer,
   maybe_body: Option<ZeroCopyBuf>,
@@ -146,6 +147,7 @@ fn op_flash_respond(
 #[op]
 fn op_flash_respond_chuncked(
   op_state: &mut OpState,
+  _server_id: u32,
   token: u32,
   response: Option<ZeroCopyBuf>,
   shutdown: bool,
@@ -179,6 +181,7 @@ fn op_flash_respond_chuncked(
 #[op]
 async fn op_flash_respond_stream(
   state: Rc<RefCell<OpState>>,
+  _server_id: u32,
   token: u32,
   data: String,
   rid: u32,
@@ -202,7 +205,11 @@ async fn op_flash_respond_stream(
 }
 
 #[op]
-fn op_flash_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
+fn op_flash_method(
+  state: Rc<RefCell<OpState>>,
+  _server_id: u32,
+  token: u32,
+) -> String {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   ctx
@@ -217,7 +224,11 @@ fn op_flash_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
 }
 
 #[op]
-fn op_flash_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
+fn op_flash_path(
+  state: Rc<RefCell<OpState>>,
+  _server_id: u32,
+  token: u32,
+) -> String {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   ctx
@@ -234,6 +245,7 @@ fn op_flash_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
 #[op]
 fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
+  _server_id: u32,
   token: u32,
 ) -> Vec<(ByteString, ByteString)> {
   let mut op_state = state.borrow_mut();
@@ -249,6 +261,7 @@ fn op_flash_headers(
 #[op]
 async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
+  _server_id: u32,
   token: u32,
   mut buf: ZeroCopyBuf,
 ) -> usize {
@@ -488,7 +501,10 @@ fn op_flash_listen(
 // heavy load, it should be used as a fallback if there are no buffered
 // requests i.e `op_flash_next() == 0`.
 #[op]
-async fn op_flash_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
+async fn op_flash_next_async(
+  op_state: Rc<RefCell<OpState>>,
+  _server_id: u32,
+) -> u32 {
   let ctx = {
     let mut op_state = op_state.borrow_mut();
     let ctx = op_state.borrow_mut::<ServerContext>();
@@ -512,7 +528,7 @@ async fn op_flash_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
+fn op_flash_next(op_state: Rc<RefCell<OpState>>, _server_id: u32) -> u32 {
   let mut op_state = op_state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   let mut tokens = 0;
