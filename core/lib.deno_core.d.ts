@@ -73,9 +73,6 @@ declare namespace Deno {
      */
     function shutdown(rid: number): Promise<void>;
 
-    /** Get heap stats for current isolate/worker */
-    function heapStats(): Record<string, number>;
-
     /** Encode a string to its Uint8Array representation. */
     function encode(input: string): Uint8Array;
 
