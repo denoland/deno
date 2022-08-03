@@ -88,7 +88,7 @@ struct NextRequest {
 unsafe impl Send for NextRequest {}
 
 #[op]
-fn op_respond(
+fn op_flash_respond(
   op_state: &mut OpState,
   token: u32,
   response: StringOrBuffer,
@@ -123,7 +123,7 @@ fn op_respond(
 }
 
 #[op]
-fn op_respond_chuncked(
+fn op_flash_respond_chuncked(
   op_state: &mut OpState,
   token: u32,
   response: Option<ZeroCopyBuf>,
@@ -156,7 +156,7 @@ fn op_respond_chuncked(
 }
 
 #[op]
-async fn op_respond_stream(
+async fn op_flash_respond_stream(
   state: Rc<RefCell<OpState>>,
   token: u32,
   data: String,
@@ -181,7 +181,7 @@ async fn op_respond_stream(
 }
 
 #[op]
-fn op_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
+fn op_flash_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   ctx
@@ -196,7 +196,7 @@ fn op_method(state: Rc<RefCell<OpState>>, token: u32) -> String {
 }
 
 #[op]
-fn op_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
+fn op_flash_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   ctx
@@ -214,7 +214,7 @@ fn op_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
 // - use ByteString for headers
 // - maybe use typedarray with fast api calls?
 #[op]
-fn op_headers(
+fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
   token: u32,
 ) -> Vec<(String, String)> {
@@ -234,7 +234,7 @@ fn op_headers(
 }
 
 #[op]
-async fn op_read_body(
+async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
   token: u32,
   mut buf: ZeroCopyBuf,
@@ -266,7 +266,7 @@ pub struct ListenOpts {
 }
 
 #[op]
-fn op_listen(
+fn op_flash_listen(
   state: &mut OpState,
   opts: Option<ListenOpts>,
 ) -> impl Future<Output = ()> + 'static {
@@ -458,7 +458,7 @@ fn op_listen(
 }
 
 #[op]
-async fn op_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
+async fn op_flash_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
   let ctx = {
     let mut op_state = op_state.borrow_mut();
     let ctx = op_state.borrow_mut::<ServerContext>();
@@ -480,7 +480,7 @@ async fn op_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
 }
 
 #[op]
-fn op_next(op_state: Rc<RefCell<OpState>>) -> u32 {
+fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   let mut op_state = op_state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   let mut tokens = 0;
@@ -498,16 +498,16 @@ pub fn init() -> Extension {
       "01_http.js",
     ))
     .ops(vec![
-      op_listen::decl(),
-      op_respond::decl(),
-      op_respond_chuncked::decl(),
-      op_method::decl(),
-      op_path::decl(),
-      op_headers::decl(),
-      op_respond_stream::decl(),
-      op_next::decl(),
-      op_next_async::decl(),
-      op_read_body::decl(),
+      op_flash_listen::decl(),
+      op_flash_respond::decl(),
+      op_flash_respond_chuncked::decl(),
+      op_flash_method::decl(),
+      op_flash_path::decl(),
+      op_flash_headers::decl(),
+      op_flash_respond_stream::decl(),
+      op_flash_next::decl(),
+      op_flash_next_async::decl(),
+      op_flash_read_body::decl(),
     ])
     .state(|op_state| {
       let (tx, rx) = mpsc::channel(100);

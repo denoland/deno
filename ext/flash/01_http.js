@@ -8,32 +8,18 @@
     toInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
-  const abortSignal = window.__bootstrap.abortSignal;
   const { _ws } = window.__bootstrap.http;
   const {
-    WebSocket,
-    _rid,
-    _readyState,
-    _eventLoop,
-    _protocol,
-    _server,
-    _idleTimeoutDuration,
-    _idleTimeoutTimeout,
-    _serverHandleIdleTimeout,
-  } = window.__bootstrap.webSocket;
-  const {
     ObjectPrototypeIsPrototypeOf,
-    Symbol,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
   const { headersFromHeaderList } = window.__bootstrap.headers;
-  
+
   const methods = {
     200: "OK",
   };
@@ -53,20 +39,20 @@
 
   async function serve(handler, opts) {
     const listener = core.opAsync(
-      "op_listen",
+      "op_flash_listen",
       opts,
     );
     while (true) {
-      let token = core.ops.op_next();
-      if (token === 0) token = await core.opAsync("op_next_async");
+      let token = core.ops.op_flash_next();
+      if (token === 0) token = await core.opAsync("op_flash_next_async");
       for (let i = 0; i < token; i++) {
         const req = fromInnerFlashRequest(
           createRequestBodyStream(i),
-          () => core.ops.op_method(i),
-          () => core.ops.op_path(i),
+          () => core.ops.op_flash_method(i),
+          () => core.ops.op_flash_path(i),
           () =>
             headersFromHeaderList(
-              core.ops.op_headers(i),
+              core.ops.op_flash_headers(i),
               "request",
             ),
         );
@@ -133,14 +119,14 @@
         const ws = resp[_ws];
         if (isStreamingResponseBody === true) {
           // const resourceRid = getReadableStreamRid(respBody);
-          let reader = respBody.getReader();
+          const reader = respBody.getReader();
           let first = true;
           a:
           while (true) {
             const { value, done } = await reader.read();
             if (first) {
               first = false;
-              core.ops.op_respond(
+              core.ops.op_flash_respond(
                 i,
                 http1Response(
                   innerResp.status ?? 200,
@@ -151,7 +137,7 @@
                 false,
               );
             } else {
-              core.ops.op_respond_chuncked(
+              core.ops.op_flash_respond_chuncked(
                 i,
                 value,
                 done,
@@ -160,7 +146,7 @@
             if (done) break a;
           }
         } else {
-          core.ops.op_respond(
+          core.ops.op_flash_respond(
             i,
             http1Response(
               innerResp.status ?? 200,
@@ -184,7 +170,7 @@
           // This is the largest possible size for a single packet on a TLS
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await core.opAsync("op_read_body", token, chunk);
+          const read = await core.opAsync("op_flash_read_body", token, chunk);
 
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
