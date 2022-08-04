@@ -314,7 +314,11 @@ fn op_flash_listen(
       let mut counter: usize = 1;
       let mut events = Events::with_capacity(1024);
       loop {
-        poll.poll(&mut events, None).unwrap();
+        match poll.poll(&mut events, None) {
+          Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+          Err(e) => panic!("{}", e),
+          Ok(()) => (),
+        }
         for event in &events {
           let token = event.token();
           match token {
