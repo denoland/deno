@@ -37,14 +37,38 @@
     200: "OK",
   };
 
+  // Construct an HTTP response message. 
+  // All HTTP/1.1 messages consist of a start-line followed by a sequence
+  // of octets.
+  //
+  //  HTTP-message = start-line
+  //    *( header-field CRLF )
+  //    CRLF
+  //    [ message-body ]
+  //
   function http1Response(status, headerList, body) {
+    // HTTP uses a "<major>.<minor>" numbering scheme
+    //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
+    //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
+    //
+    // status-line = HTTP-version SP status-code SP reason-phrase CRLF
     let str = `HTTP/1.1 ${status} ${methods[status]}\r\n`;
     for (const [name, value] of headerList) {
+      // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
     if (body) {
+      // TODO: If status code == 304, MUST NOT send Content-Length if body length equals length that
+      // would have been sent in the payload body of a response if the same request had used the GET method.
+      // TODO: MUST NOT send Content-Length if status code is 1xx or 204.
+      // TODO: MUST NOT send Content-Length if status code is 2xx to a CONNECT request
       str += `Content-Length: ${body?.length}\r\n\r\n`;
     } else {
+      // TODO: support compression.
+      // TODO: MUST NOT send transfer-encoding if:
+      //   * status code is 1xx or 204
+      //   * status code is 2xx to a CONNECT request
+      //   * request indicates HTTP/1.1
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
     return str + (body ?? "");
@@ -77,7 +101,6 @@
         );
 
         const resp = await handler(req);
-        // Probably an http connect upgrade
         if (resp === undefined) {
           continue;
         }
