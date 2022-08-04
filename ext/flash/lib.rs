@@ -39,11 +39,11 @@ use tokio::task::JoinHandle;
 pub struct FlashContext {
   next_server_id: u32,
   join_handles: HashMap<u32, JoinHandle<()>>,
-  // servers: HashMap<u32, ServerContext>,
+  servers: HashMap<u32, ServerContext>,
 }
 
 pub struct ServerContext {
-  addr: Option<SocketAddr>,
+  addr: SocketAddr,
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
   response: HashMap<u32, NextRequest>,
@@ -124,13 +124,14 @@ unsafe impl Send for NextRequest {}
 #[op]
 fn op_flash_respond(
   op_state: &mut OpState,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
   response: StringOrBuffer,
   maybe_body: Option<ZeroCopyBuf>,
   shutdown: bool,
 ) {
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
 
   let sock = match shutdown {
     true => {
@@ -156,12 +157,13 @@ fn op_flash_respond(
 #[op]
 fn op_flash_respond_chuncked(
   op_state: &mut OpState,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
   response: Option<ZeroCopyBuf>,
   shutdown: bool,
 ) {
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
 
   let sock = match shutdown {
     true => {
@@ -190,13 +192,14 @@ fn op_flash_respond_chuncked(
 #[op]
 async fn op_flash_respond_stream(
   state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
   data: String,
   rid: u32,
 ) -> Result<(), AnyError> {
   let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let tx = ctx.response.remove(&token).unwrap();
   let sock = unsafe { &mut *tx.socket };
   let _n = sock.write(data.as_bytes()).unwrap();
@@ -216,11 +219,12 @@ async fn op_flash_respond_stream(
 #[op]
 fn op_flash_method(
   state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
 ) -> String {
   let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   ctx
     .response
     .get(&token)
@@ -235,24 +239,26 @@ fn op_flash_method(
 #[op]
 fn op_flash_path(
   state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
 ) -> String {
   let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let path = ctx.response.get(&token).unwrap().inner.req.path.unwrap();
 
-  ctx.addr.unwrap().to_string() + path
+  ctx.addr.to_string() + path
 }
 
 #[op]
 fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
 ) -> Vec<(ByteString, ByteString)> {
   let mut op_state = state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let inner_req = &ctx.response.get(&token).unwrap().inner.req;
   inner_req
     .headers
@@ -264,12 +270,13 @@ fn op_flash_headers(
 #[op]
 async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
   token: u32,
   mut buf: ZeroCopyBuf,
 ) -> usize {
   let op_state = &mut state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let tx = ctx.response.get_mut(&token).unwrap();
   let sock = unsafe { &mut *tx.socket };
   if tx.inner.body_offset != 0 {
@@ -502,21 +509,25 @@ fn op_flash_serve(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError> {
-  let join_handle = {
-    let ctx = state.borrow_mut::<ServerContext>();
-    let tx = ctx.tx.clone();
-    let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
-    ctx.addr = Some(addr);
-    let maybe_cert = opts.cert;
-    let maybe_key = opts.key;
-    tokio::task::spawn_blocking(move || {
-      run_server(tx, addr, maybe_cert, maybe_key)
-    })
+  let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+  let (tx, rx) = mpsc::channel(100);
+  let ctx = ServerContext {
+    addr,
+    tx,
+    rx,
+    response: HashMap::with_capacity(1000),
   };
+  let tx = ctx.tx.clone();
+  let maybe_cert = opts.cert;
+  let maybe_key = opts.key;
+  let join_handle = tokio::task::spawn_blocking(move || {
+    run_server(tx, addr, maybe_cert, maybe_key)
+  });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
   flash_ctx.next_server_id += 1;
   flash_ctx.join_handles.insert(server_id, join_handle);
+  flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
 }
 
@@ -540,11 +551,12 @@ fn op_flash_drive_server(
 #[op]
 async fn op_flash_next_async(
   op_state: Rc<RefCell<OpState>>,
-  _server_id: u32,
+  server_id: u32,
 ) -> u32 {
   let ctx = {
     let mut op_state = op_state.borrow_mut();
-    let ctx = op_state.borrow_mut::<ServerContext>();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
     ctx as *mut ServerContext
   };
   let ctx = unsafe { &mut *ctx };
@@ -565,9 +577,10 @@ async fn op_flash_next_async(
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next(op_state: Rc<RefCell<OpState>>, _server_id: u32) -> u32 {
+fn op_flash_next(op_state: Rc<RefCell<OpState>>, server_id: u32) -> u32 {
   let mut op_state = op_state.borrow_mut();
-  let ctx = op_state.borrow_mut::<ServerContext>();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let mut tokens = 0;
   while let Ok(token) = ctx.rx.try_recv() {
     ctx.response.insert(tokens, token);
@@ -644,11 +657,13 @@ pub fn detach_socket(
 #[op]
 async fn op_flash_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
+  server_id: u32,
   token: u32,
 ) -> Result<deno_core::ResourceId, AnyError> {
   let stream = {
     let op_state = &mut state.borrow_mut();
-    detach_socket(op_state.borrow_mut::<ServerContext>(), token)?
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    detach_socket(flash_ctx.servers.get_mut(&server_id).unwrap(), token)?
   };
   deno_websocket::ws_create_server_stream(
     &state,
@@ -681,13 +696,7 @@ pub fn init() -> Extension {
       op_state.put(FlashContext {
         next_server_id: 0,
         join_handles: HashMap::default(),
-      });
-      let (tx, rx) = mpsc::channel(100);
-      op_state.put(ServerContext {
-        addr: None,
-        tx,
-        rx,
-        response: HashMap::with_capacity(1000),
+        servers: HashMap::default(),
       });
       Ok(())
     })
