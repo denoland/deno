@@ -117,10 +117,6 @@ fn op_flash_respond(
     let _ = sock.write(&response);
     let _ = sock.write(b"\r\n");
   }
-  // if tx.no_more_requests && !tx.upgrade {
-  //  dbg!("closing socket");
-  //   sock.flush().unwrap();
-  // }
 }
 
 #[op]

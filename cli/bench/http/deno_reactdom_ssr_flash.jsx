@@ -1,6 +1,5 @@
 import { renderToReadableStream } from "https://esm.run/react-dom/server";
 import * as React from "https://esm.run/react";
-
 const App = () => (
   <html>
     <body>
