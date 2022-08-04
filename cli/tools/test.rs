@@ -248,7 +248,6 @@ pub struct TestSummary {
 #[derive(Debug, Clone)]
 struct TestSpecifierOptions {
   compat_mode: bool,
-  parallel: bool,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   filter: TestFilter,
@@ -1089,7 +1088,6 @@ async fn test_specifiers(
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let sender = TestEventSender::new(sender);
-  let parallel = options.parallel;
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
@@ -1131,7 +1129,7 @@ async fn test_specifiers(
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let mut reporter = Box::new(PrettyTestReporter::new(
-    parallel,
+    concurrent_jobs.get() > 1,
     log_level != Some(Level::Error),
   ));
 
@@ -1414,7 +1412,6 @@ pub async fn run_tests(
     specifiers_with_mode,
     TestSpecifierOptions {
       compat_mode: compat,
-      parallel: test_flags.parallel,
       concurrent_jobs: test_flags.concurrent_jobs,
       fail_fast: test_flags.fail_fast,
       filter: TestFilter::from_flag(&test_flags.filter),
@@ -1599,7 +1596,6 @@ pub async fn run_tests_with_watch(
         specifiers_with_mode,
         TestSpecifierOptions {
           compat_mode: cli_options.compat(),
-          parallel: test_flags.parallel,
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
           filter: TestFilter::from_flag(&filter),
