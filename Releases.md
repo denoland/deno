@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.24.2 / 2022.08.04
 
-- core: Add types for `Deno.core.print()` (#15283)
-- core: remove heapStats type definition (#15393)
 - feat(ext/ffi): Add support to get ArrayBuffers from UnsafePointerView (#15143)
 - feat(ext/ffi): Safe number pointers (#15173)
 - fix(compat): use mjs extension for stream/promises (#15341)
