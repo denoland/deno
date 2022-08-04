@@ -66,7 +66,6 @@ pub fn build(
 
   // build the graph
   graph.lock()?;
-  graph.valid()?;
 
   let graph_errors = graph.errors();
   if !graph_errors.is_empty() {
@@ -825,6 +824,52 @@ mod test {
     assert_eq!(
       output.files,
       to_file_vec(&[("/vendor/localhost/other.ts", "import './mod.ts';")]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_remote_dep_bare_specifier() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map2.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "twind".to_string(),
+        "https://localhost/twind.ts".to_string(),
+      )
+      .unwrap();
+
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://remote/mod.ts';");
+        loader.add("https://remote/mod.ts", "import 'twind';");
+        loader.add("https://localhost/twind.ts", "export class Test {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "https://remote/": "./remote/"
+        },
+        "scopes": {
+          "./remote/": {
+            "twind": "./localhost/twind.ts"
+          },
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/twind.ts", "export class Test {}"),
+        ("/vendor/remote/mod.ts", "import 'twind';"),
+      ]),
     );
   }
 
