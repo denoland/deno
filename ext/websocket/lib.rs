@@ -69,16 +69,17 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
+
 pub enum WebSocketStreamType {
   Client {
-    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<WsStream>>,
+    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
   },
   Server {
-    tx:
-      AsyncRefCell<SplitSink<WebSocketStream<Pin<Box<dyn Upgraded>>>, Message>>,
-    rx: AsyncRefCell<SplitStream<WebSocketStream<Pin<Box<dyn Upgraded>>>>>,
+    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
   },
 }
 
@@ -327,7 +328,7 @@ where
   };
 
   let client = client_async(request, socket);
-  let (stream, response): (WsStream, Response) =
+  let (stream, response): (ClientWsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
       client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {

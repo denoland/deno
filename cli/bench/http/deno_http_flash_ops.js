@@ -3,7 +3,7 @@
 // deno-lint-ignore-file
 
 const { core } = Deno;
-const listener = core.opAsync("op_flash_listen");
+const listener = core.opAsync("op_flash_serve");
 // FIXME(bartlomieju): should be a field on "listener"
 const serverId = 0;
 while (true) {

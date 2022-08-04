@@ -37,7 +37,7 @@
     200: "OK",
   };
 
-  // Construct an HTTP response message. 
+  // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
   // of octets.
   //
@@ -58,14 +58,14 @@
       str += `${name}: ${value}\r\n`;
     }
     if (body) {
-      // TODO: If status code == 304, MUST NOT send Content-Length if body length equals length that
+      // TODO(littledivy): If status code == 304, MUST NOT send Content-Length if body length equals length that
       // would have been sent in the payload body of a response if the same request had used the GET method.
-      // TODO: MUST NOT send Content-Length if status code is 1xx or 204.
-      // TODO: MUST NOT send Content-Length if status code is 2xx to a CONNECT request
+      // TODO(littledivy): MUST NOT send Content-Length if status code is 1xx or 204.
+      // TODO(littledivy): MUST NOT send Content-Length if status code is 2xx to a CONNECT request
       str += `Content-Length: ${body?.length}\r\n\r\n`;
     } else {
-      // TODO: support compression.
-      // TODO: MUST NOT send transfer-encoding if:
+      // TODO(littledivy): support compression.
+      // TODO(littledivy): MUST NOT send transfer-encoding if:
       //   * status code is 1xx or 204
       //   * status code is 2xx to a CONNECT request
       //   * request indicates HTTP/1.1
@@ -75,11 +75,11 @@
   }
 
   async function serve(handler, opts) {
-    const listener = core.opAsync(
-      "op_flash_listen",
+    const server = core.opAsync(
+      "op_flash_serve",
       { hostname: "127.0.0.1", port: 9000, ...opts },
     );
-    // FIXME(bartlomieju): should be a field on "listener"
+    // FIXME(bartlomieju): should be a field on "server"
     const serverId = 0;
     while (true) {
       let token = core.ops.op_flash_next(serverId);
@@ -232,7 +232,7 @@
       }
     }
     // deno-lint-ignore no-unreachable
-    await listener;
+    await server;
   }
 
   // deno-lint-ignore no-unused-vars
