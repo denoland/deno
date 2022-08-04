@@ -377,7 +377,7 @@
     get url() {
       webidl.assertBranded(this, RequestPrototype);
       if (this[_flash]) {
-        return `http://localhost:9000${this[_flash].url()}`;
+        return this[_flash].url();
       } else {
         return this[_request].url();
       }

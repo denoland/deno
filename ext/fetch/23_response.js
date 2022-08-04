@@ -199,6 +199,7 @@
           "Response with null body status cannot have body",
         );
       }
+      // deno-lint-ignore no-unused-vars
       const { body, contentType } = bodyWithType;
       response[_response].body = body;
       // if (contentType !== null && !headers.has("content-type")) {

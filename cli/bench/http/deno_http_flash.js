@@ -2,4 +2,4 @@
 const { serve } = Deno.flash;
 serve(async (req) => {
   return new Response("Hello World");
-});
+}, { hostname: "127.0.0.1", port: 9000 });

@@ -29,12 +29,14 @@ use std::io::Write;
 use std::os::unix::prelude::AsRawFd;
 use std::os::unix::prelude::FromRawFd;
 use std::pin::Pin;
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use tokio::sync::mpsc;
 
 struct ServerContext {
+  addr: Option<SocketAddr>,
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
   response: HashMap<u32, NextRequest>,
@@ -231,15 +233,9 @@ fn op_flash_path(
 ) -> String {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
-  ctx
-    .response
-    .get(&token)
-    .unwrap()
-    .inner
-    .req
-    .path
-    .unwrap()
-    .to_string()
+  let path = ctx.response.get(&token).unwrap().inner.req.path.unwrap();
+
+  ctx.addr.unwrap().to_string() + path
 }
 
 #[op]
@@ -287,21 +283,24 @@ async fn op_flash_read_body(
 
 #[derive(Serialize, Deserialize)]
 pub struct ListenOpts {
-  cert: String,
-  key: String,
+  cert: Option<String>,
+  key: Option<String>,
+  hostname: String,
+  port: u16,
 }
 
 #[op]
 fn op_flash_listen(
   state: &mut OpState,
-  opts: Option<ListenOpts>,
+  opts: ListenOpts,
 ) -> impl Future<Output = ()> + 'static {
   let ctx = state.borrow_mut::<ServerContext>();
   let tx = ctx.tx.clone();
+  let addr = SocketAddr::new(opts.hostname.parse().unwrap(), opts.port);
+  ctx.addr = Some(addr.clone());
 
   async move {
     tokio::task::spawn_blocking(move || {
-      let addr = "127.0.0.1:9000".parse().unwrap();
       let mut listener = TcpListener::bind(addr).unwrap();
       let mut poll = Poll::new().unwrap();
       let token = Token(0);
@@ -310,23 +309,24 @@ fn op_flash_listen(
         .register(&mut listener, token, Interest::READABLE)
         .unwrap();
 
-      let tls_context: Option<Arc<rustls::ServerConfig>> = match opts {
-        Some(opts) => {
+      let tls_context: Option<Arc<rustls::ServerConfig>> = {
+        if let Some(cert) = opts.cert {
+          let key = opts.key.unwrap();
           let certificate_chain: Vec<rustls::Certificate> =
-          rustls_pemfile::certs(&mut opts.cert.as_bytes()).unwrap()
+          rustls_pemfile::certs(&mut cert.as_bytes()).unwrap()
               .into_iter()
               .map(rustls::Certificate)
               .collect();
           let private_key = rustls::PrivateKey({
             let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(
-                &mut opts.key.as_bytes(),
+                &mut key.as_bytes(),
             )
             .expect("file contains invalid pkcs8 private key (encrypted keys are not supported)");
 
             if let Some(pkcs8_key) = pkcs8_keys.first() {
                 pkcs8_key.clone()
             } else {
-                let rsa_keys = rustls_pemfile::rsa_private_keys(&mut opts.key.as_bytes()).expect("file contains invalid rsa private key");
+                let rsa_keys = rustls_pemfile::rsa_private_keys(&mut key.as_bytes()).expect("file contains invalid rsa private key");
                 rsa_keys[0].clone()
             }
         });
@@ -336,8 +336,9 @@ fn op_flash_listen(
             .with_no_client_auth()
             .with_single_cert(certificate_chain, private_key).unwrap();
           Some(Arc::new(config))
+        } else {
+          None
         }
-        None => None,
       };
       let mut sockets = HashMap::with_capacity(1000);
       let mut counter: usize = 1;
@@ -634,6 +635,7 @@ pub fn init() -> Extension {
     .state(|op_state| {
       let (tx, rx) = mpsc::channel(100);
       op_state.put(ServerContext {
+        addr: None,
         tx,
         rx,
         response: HashMap::with_capacity(1000),

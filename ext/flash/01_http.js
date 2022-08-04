@@ -51,7 +51,7 @@
   async function serve(handler, opts) {
     const listener = core.opAsync(
       "op_flash_listen",
-      opts,
+      { hostname: "127.0.0.1", port: 9000, ...opts },
     );
     // FIXME(bartlomieju): should be a field on "listener"
     const serverId = 0;
@@ -202,6 +202,7 @@
         }
       }
     }
+    // deno-lint-ignore no-unreachable
     await listener;
   }
 
