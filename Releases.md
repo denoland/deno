@@ -20,7 +20,6 @@ https://github.com/denoland/deno_install
 - fix(vendor): error on dynamic imports that fail to load instead of panicking
   (#15391)
 - fix(vendor): existing import map with bare specifier in remote (#15390)
-- fix: Update `Object.prototype.__proto__` related comments (#15394)
 - fix: increase websocket message size (#15406)
 - perf(ext/ffi): support Uint8Array in fast calls (#15319)
 - perf(ext/ffi): use fast api calls for 64bit return types (#15313)
