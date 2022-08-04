@@ -40,7 +40,6 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::client_async;
 use tokio_tungstenite::client_async_with_config;
 use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -91,6 +90,7 @@ pub async fn ws_create_server_stream(
     Role::Server,
     Some(WebSocketConfig {
       max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
       ..Default::default()
     }),
   )
@@ -336,6 +336,7 @@ where
     socket,
     Some(WebSocketConfig {
       max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
       ..Default::default()
     }),
   );
