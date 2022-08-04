@@ -61,6 +61,7 @@ static SUPPORTED_MODULES: &[&str] = &[
   "util/types",
   "v8",
   "vm",
+  "worker_threads",
   "zlib",
 ];
 
