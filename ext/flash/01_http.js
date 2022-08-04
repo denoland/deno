@@ -61,7 +61,6 @@
         token = await core.opAsync("op_flash_next_async", serverId);
       }
       for (let i = 0; i < token; i++) {
-  
         const req = fromInnerFlashRequest(
           null,
           // createRequestBodyStream(serverId, i),
@@ -73,7 +72,7 @@
               "request",
             ),
         );
-        
+
         const resp = await handler(req);
         const innerResp = toInnerResponse(resp);
 
@@ -206,6 +205,7 @@
     await listener;
   }
 
+  // deno-lint-ignore no-unused-vars
   function createRequestBodyStream(serverId, token) {
     return new ReadableStream({
       type: "bytes",
