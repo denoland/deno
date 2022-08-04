@@ -19,10 +19,8 @@ deno_core = { path = "../../core", version = "0.145.0" }
 deno_websocket = { version = "0.68.0", path = "../websocket" }
 http = "0.2.6"
 httparse = "1.7"
-hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
-mio = { version = "0.8", features = ["os-poll", "net"] }
+mio = { version = "0.8.1", features = ["os-poll", "net"] }
 rustls = { version = "0.20" }
 rustls-pemfile = { version = "0.2.1" }
 serde = { version = "1.0.136", features = ["derive"] }
 tokio = { version = "1.19", features = ["full"] }
-tokio-core = "0.1.18"
