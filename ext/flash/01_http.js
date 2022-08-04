@@ -4,10 +4,12 @@
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
   const {
+    _flash,
     fromInnerFlashRequest,
     toInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
+  const { TcpConn } = window.__bootstrap.net;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
   const {
@@ -71,9 +73,14 @@
               core.ops.op_flash_headers(serverId, i),
               "request",
             ),
+          i,
         );
 
         const resp = await handler(req);
+        // Probably an http connect upgrade
+        if (!resp) {
+          continue;
+        }
         const innerResp = toInnerResponse(resp);
 
         // If response body length is known, it will be sent synchronously in a
@@ -237,7 +244,15 @@
     });
   }
 
+  function upgradeHttp(req) {
+    const { streamRid } = req[_flash];
+    const connRid = core.ops.op_flash_upgrade_http(streamRid);
+    // TODO(@littledivy): return already read first packet too.
+    return [new TcpConn(connRid), new Uint8Array()];
+  }
+
   window.__bootstrap.flash = {
     serve,
+    upgradeHttp,
   };
 })(this);

@@ -504,9 +504,9 @@
    * @param {() => void} headers
    * @returns {Request}
    */
-  function fromInnerFlashRequest(body, method, url, headers) {
+  function fromInnerFlashRequest(body, method, url, headers, streamRid) {
     const request = webidl.createBranded(Request);
-    request[_flash] = { body: new InnerBody(body), method, url };
+    request[_flash] = { body: new InnerBody(body), method, url, streamRid };
     request[_getHeaders] = headers;
     return request;
   }
@@ -517,4 +517,5 @@
   window.__bootstrap.fetch.fromInnerFlashRequest = fromInnerFlashRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
+  window.__bootstrap.fetch._flash = _flash;
 })(globalThis);

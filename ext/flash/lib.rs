@@ -35,7 +35,7 @@ use std::sync::Arc;
 use std::task::Context;
 use tokio::sync::mpsc;
 
-struct ServerContext {
+pub struct ServerContext {
   addr: Option<SocketAddr>,
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
@@ -297,7 +297,7 @@ fn op_flash_listen(
   let ctx = state.borrow_mut::<ServerContext>();
   let tx = ctx.tx.clone();
   let addr = SocketAddr::new(opts.hostname.parse().unwrap(), opts.port);
-  ctx.addr = Some(addr.clone());
+  ctx.addr = Some(addr);
 
   async move {
     tokio::task::spawn_blocking(move || {
@@ -577,40 +577,48 @@ impl tokio::io::AsyncWrite for UpgradedStream {
 
 impl deno_websocket::Upgraded for UpgradedStream {}
 
-#[op]
-async fn op_flash_upgrade_websocket(
-  state: Rc<RefCell<OpState>>,
+#[inline]
+pub fn detach_socket(
+  ctx: &mut ServerContext,
   token: u32,
-) -> Result<deno_core::ResourceId, AnyError> {
+) -> Result<tokio::net::TcpStream, AnyError> {
   // Two main 'hacks' to get this working:
   //   * make server thread forget about the socket. `detach_ownership` prevents the socket from being
   //      dropped on the server thread.
   //   * conversion from mio::net::TcpStream -> tokio::net::TcpStream.  There is no public API so we
   //      use raw fds.
-  let tx = {
-    let op_state = &mut state.borrow_mut();
-    let ctx = op_state.borrow_mut::<ServerContext>();
-    ctx.response.remove(&token).unwrap()
-  };
+  let tx = ctx.response.remove(&token).unwrap();
   // SAFETY: Stream is owned by server thread.
   let stream = unsafe { &mut *tx.socket };
   // prevent socket from being dropped on server thread.
   // TODO(@littledivy): Box-ify, since there is no overhead.
   stream.detach_ownership();
-
-  let transport = match stream {
+  match stream {
     Stream::Tcp(sock, _) => {
       let fd = sock.as_raw_fd();
       // SAFETY: `fd` is a valid file descriptor.
       let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
       let stream = tokio::net::TcpStream::from_std(std_stream)?;
-      Box::pin(UpgradedStream(stream))
+      Ok(stream)
     }
     _ => todo!(),
+  }
+}
+
+#[op]
+async fn op_flash_upgrade_websocket(
+  state: Rc<RefCell<OpState>>,
+  token: u32,
+) -> Result<deno_core::ResourceId, AnyError> {
+  let stream = {
+    let op_state = &mut state.borrow_mut();
+    detach_socket(op_state.borrow_mut::<ServerContext>(), token)?
   };
-  let ws_rid =
-    deno_websocket::ws_create_server_stream(&state, transport).await?;
-  Ok(ws_rid)
+  deno_websocket::ws_create_server_stream(
+    &state,
+    Box::pin(UpgradedStream(stream)),
+  )
+  .await
 }
 
 pub fn init() -> Extension {
