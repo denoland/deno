@@ -75,12 +75,20 @@
   }
 
   async function serve(handler, opts) {
-    const server = core.opAsync(
-      "op_flash_serve",
+    const serverId = core.ops.op_flash_serve(
       { hostname: "127.0.0.1", port: 9000, ...opts },
     );
-    // FIXME(bartlomieju): should be a field on "server"
-    const serverId = 0;
+    const serverPromise = core.opAsync("op_flash_drive_server", serverId);
+
+    const server = {
+      id: serverId,
+      serverPromise,
+    };
+
+    (async () => {
+      await server.serverPromise;
+    });
+
     while (true) {
       let token = core.ops.op_flash_next(serverId);
       if (token === 0) {
@@ -231,8 +239,6 @@
         }
       }
     }
-    // deno-lint-ignore no-unreachable
-    await server;
   }
 
   // deno-lint-ignore no-unused-vars

@@ -34,6 +34,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+pub struct FlashContext {
+  next_server_id: u32,
+  join_handles: HashMap<u32, JoinHandle<()>>,
+  // servers: HashMap<u32, ServerContext>,
+}
 
 pub struct ServerContext {
   addr: Option<SocketAddr>,
@@ -494,19 +501,36 @@ fn run_server(
 fn op_flash_serve(
   state: &mut OpState,
   opts: ListenOpts,
-) -> impl Future<Output = ()> + 'static {
-  let ctx = state.borrow_mut::<ServerContext>();
-  let tx = ctx.tx.clone();
-  let addr = SocketAddr::new(opts.hostname.parse().unwrap(), opts.port);
-  ctx.addr = Some(addr);
-  let maybe_cert = opts.cert;
-  let maybe_key = opts.key;
-  async move {
+) -> Result<u32, AnyError> {
+  let join_handle = {
+    let ctx = state.borrow_mut::<ServerContext>();
+    let tx = ctx.tx.clone();
+    let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+    ctx.addr = Some(addr);
+    let maybe_cert = opts.cert;
+    let maybe_key = opts.key;
     tokio::task::spawn_blocking(move || {
       run_server(tx, addr, maybe_cert, maybe_key)
     })
-    .await
-    .unwrap();
+  };
+  let flash_ctx = state.borrow_mut::<FlashContext>();
+  let server_id = flash_ctx.next_server_id;
+  flash_ctx.next_server_id += 1;
+  flash_ctx.join_handles.insert(server_id, join_handle);
+  Ok(server_id)
+}
+
+#[op]
+fn op_flash_drive_server(
+  state: &mut OpState,
+  server_id: u32,
+) -> impl Future<Output = ()> + 'static {
+  let join_handle = {
+    let flash_ctx = state.borrow_mut::<FlashContext>();
+    flash_ctx.join_handles.remove(&server_id).unwrap()
+  };
+  async move {
+    join_handle.await.unwrap();
   }
 }
 
@@ -651,8 +675,13 @@ pub fn init() -> Extension {
       op_flash_next_async::decl(),
       op_flash_read_body::decl(),
       op_flash_upgrade_websocket::decl(),
+      op_flash_drive_server::decl(),
     ])
     .state(|op_state| {
+      op_state.put(FlashContext {
+        next_server_id: 0,
+        join_handles: HashMap::default(),
+      });
       let (tx, rx) = mpsc::channel(100);
       op_state.put(ServerContext {
         addr: None,
