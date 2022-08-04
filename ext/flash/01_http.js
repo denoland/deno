@@ -78,7 +78,7 @@
 
         const resp = await handler(req);
         // Probably an http connect upgrade
-        if (!resp) {
+        if (resp === undefined) {
           continue;
         }
         const innerResp = toInnerResponse(resp);
