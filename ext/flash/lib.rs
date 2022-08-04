@@ -1,6 +1,6 @@
 use deno_core::error::AnyError;
-use deno_core::futures::stream;
 use deno_core::op;
+use deno_core::ByteString;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
@@ -50,6 +50,7 @@ struct InnerRequest {
 
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 
+// A Tcp or Tls stream.
 enum Stream {
   Tcp(TcpStream, bool),
   Tls(TlsTcpStream, bool),
@@ -57,12 +58,13 @@ enum Stream {
 
 impl Stream {
   pub fn detach_ownership(&mut self) {
-   match self {
+    match self {
       Stream::Tcp(_, detached) => *detached = true,
-      Stream::Tls(_, detached) => *detached = true, 
-   } 
+      Stream::Tls(_, detached) => *detached = true,
+    }
   }
 }
+
 impl Write for Stream {
   #[inline]
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -91,6 +93,13 @@ impl Read for Stream {
 }
 
 struct NextRequest {
+  // Pointer to stream owned by the server loop thread.
+  //
+  // Why not Arc<Mutex<Stream>>? Performance. The stream
+  // is never written to by the server loop thread.
+  //
+  // Dereferencing is safe until server thread finishes and
+  // op_flash_listen resolves or websocket upgrade is performed.
   socket: *mut Stream,
   inner: InnerRequest,
   #[allow(dead_code)]
@@ -99,6 +108,8 @@ struct NextRequest {
   upgrade: bool,
 }
 
+// SAFETY: Sent from server thread to JS thread.
+// See comment above for `socket`.
 unsafe impl Send for NextRequest {}
 
 #[op]
@@ -220,26 +231,18 @@ fn op_flash_path(state: Rc<RefCell<OpState>>, token: u32) -> String {
     .to_string()
 }
 
-// TODO(@littledivy):
-// - use ByteString for headers
-// - maybe use typedarray with fast api calls?
 #[op]
 fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
   token: u32,
-) -> Vec<(String, String)> {
+) -> Vec<(ByteString, ByteString)> {
   let mut op_state = state.borrow_mut();
   let ctx = op_state.borrow_mut::<ServerContext>();
   let inner_req = &ctx.response.get(&token).unwrap().inner.req;
   inner_req
     .headers
     .iter()
-    .map(|h| {
-      (
-        h.name.to_string(),
-        String::from_utf8_lossy(h.value).to_string(),
-      )
-    })
+    .map(|h| (h.name.as_bytes().into(), h.value.into()))
     .collect()
 }
 
@@ -481,6 +484,9 @@ fn op_flash_listen(
   }
 }
 
+// Asychronous version of op_flash_next. This can be a bottleneck under
+// heavy load, it should be used as a fallback if there are no buffered
+// requests i.e `op_flash_next() == 0`.
 #[op]
 async fn op_flash_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
   let ctx = {
@@ -503,6 +509,8 @@ async fn op_flash_next_async(op_state: Rc<RefCell<OpState>>) -> u32 {
   tokens
 }
 
+// Syncrhonous version of op_flash_next_async. Under heavy load,
+// this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
 fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   let mut op_state = op_state.borrow_mut();
@@ -515,6 +523,8 @@ fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   tokens
 }
 
+// Wrapper type for tokio::net::TcpStream that implements
+// deno_websocket::UpgradedStream
 struct UpgradedStream(tokio::net::TcpStream);
 impl tokio::io::AsyncRead for UpgradedStream {
   fn poll_read(
@@ -555,16 +565,26 @@ async fn op_flash_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   token: u32,
 ) -> Result<deno_core::ResourceId, AnyError> {
+  // Two main 'hacks' to get this working:
+  //   * make server thread forget about the socket. `detach_ownership` prevents the socket from being
+  //      dropped on the server thread.
+  //   * conversion from mio::net::TcpStream -> tokio::net::TcpStream.  There is no public API so we
+  //      use raw fds.
   let tx = {
     let op_state = &mut state.borrow_mut();
     let ctx = op_state.borrow_mut::<ServerContext>();
     ctx.response.remove(&token).unwrap()
   };
+  // SAFETY: Stream is owned by server thread.
   let stream = unsafe { &mut *tx.socket };
+  // prevent socket from being dropped on server thread.
+  // TODO(@littledivy): Box-ify, since there is no overhead.
   stream.detach_ownership();
+
   let transport = match stream {
     Stream::Tcp(sock, _) => {
       let fd = sock.as_raw_fd();
+      // SAFETY: `fd` is a valid file descriptor.
       let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
       let stream = tokio::net::TcpStream::from_std(std_stream)?;
       Box::pin(UpgradedStream(stream))
