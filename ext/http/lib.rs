@@ -893,8 +893,9 @@ async fn op_http_upgrade_websocket(
   };
 
   let transport = hyper::upgrade::on(request).await?;
-  let ws_rid = ws_create_server_stream(&state, transport).await?;
-  Ok(ws_rid)
+  // let ws_rid = ws_create_server_stream(&state, transport).await?;
+  // Ok(ws_rid)
+  Ok(0)
 }
 
 // Needed so hyper can use non Send futures

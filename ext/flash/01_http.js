@@ -10,6 +10,17 @@
   const core = window.Deno.core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
+  const {
+    WebSocket,
+    _rid,
+    _readyState,
+    _eventLoop,
+    _protocol,
+    _server,
+    _idleTimeoutDuration,
+    _idleTimeoutTimeout,
+    _serverHandleIdleTimeout,
+  } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
     ObjectPrototypeIsPrototypeOf,
@@ -46,8 +57,10 @@
       let token = core.ops.op_flash_next();
       if (token === 0) token = await core.opAsync("op_flash_next_async");
       for (let i = 0; i < token; i++) {
+  
         const req = fromInnerFlashRequest(
-          createRequestBodyStream(i),
+          null,
+          // createRequestBodyStream(i),
           () => core.ops.op_flash_method(i),
           () => core.ops.op_flash_path(i),
           () =>
@@ -56,6 +69,7 @@
               "request",
             ),
         );
+        
         const resp = await handler(req);
         const innerResp = toInnerResponse(resp);
 
@@ -116,7 +130,6 @@
           respBody = new Uint8Array(0);
         }
 
-        const ws = resp[_ws];
         if (isStreamingResponseBody === true) {
           // const resourceRid = getReadableStreamRid(respBody);
           const reader = respBody.getReader();
@@ -156,6 +169,29 @@
             null,
             false,
           );
+        }
+
+        const ws = resp[_ws];
+        if (ws) {
+          const wsRid = await core.opAsync(
+            "op_flash_upgrade_websocket",
+            i,
+          );
+          ws[_rid] = wsRid;
+          ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
+
+          ws[_eventLoop]();
+          if (ws[_idleTimeoutDuration]) {
+            ws.addEventListener(
+              "close",
+              () => clearTimeout(ws[_idleTimeoutTimeout]),
+            );
+          }
+          ws[_serverHandleIdleTimeout]();
         }
       }
     }

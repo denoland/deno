@@ -1,4 +1,5 @@
 use deno_core::error::AnyError;
+use deno_core::futures::stream;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -25,8 +26,12 @@ use std::future::Future;
 use std::intrinsics::transmute;
 use std::io::Read;
 use std::io::Write;
+use std::os::unix::prelude::AsRawFd;
+use std::os::unix::prelude::FromRawFd;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::Context;
 use tokio::sync::mpsc;
 
 struct ServerContext {
@@ -46,23 +51,31 @@ struct InnerRequest {
 type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 
 enum Stream {
-  Tcp(TcpStream),
-  Tls(TlsTcpStream),
+  Tcp(TcpStream, bool),
+  Tls(TlsTcpStream, bool),
 }
 
+impl Stream {
+  pub fn detach_ownership(&mut self) {
+   match self {
+      Stream::Tcp(_, detached) => *detached = true,
+      Stream::Tls(_, detached) => *detached = true, 
+   } 
+  }
+}
 impl Write for Stream {
   #[inline]
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
     match self {
-      Stream::Tcp(stream) => stream.write(buf),
-      Stream::Tls(stream) => stream.write(buf),
+      Stream::Tcp(stream, _) => stream.write(buf),
+      Stream::Tls(stream, _) => stream.write(buf),
     }
   }
   #[inline]
   fn flush(&mut self) -> std::io::Result<()> {
     match self {
-      Stream::Tcp(stream) => stream.flush(),
-      Stream::Tls(stream) => stream.flush(),
+      Stream::Tcp(stream, _) => stream.flush(),
+      Stream::Tls(stream, _) => stream.flush(),
     }
   }
 }
@@ -71,8 +84,8 @@ impl Read for Stream {
   #[inline]
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     match self {
-      Stream::Tcp(stream) => stream.read(buf),
-      Stream::Tls(stream) => stream.read(buf),
+      Stream::Tcp(stream, _) => stream.read(buf),
+      Stream::Tls(stream, _) => stream.read(buf),
     }
   }
 }
@@ -334,9 +347,9 @@ fn op_flash_listen(
                   let stream = match tls_context {
                     Some(ref tls_conf) => {
                       let connection = rustls::ServerConnection::new(tls_conf.clone()).unwrap();
-                      Stream::Tls(rustls::StreamOwned::new(connection, socket))
+                      Stream::Tls(rustls::StreamOwned::new(connection, socket), false)
                     }
-                    None => Stream::Tcp(socket)
+                    None => Stream::Tcp(socket, false)
                   };
                   sockets.insert(token, stream);
                 }
@@ -349,6 +362,12 @@ fn op_flash_listen(
             token => {
               let mut buffer: [u8; 1024] = [0_u8; 1024];
               let socket = sockets.get_mut(&token).unwrap();
+              match socket {
+                Stream::Tcp(_, true) | Stream::Tls(_, true) => {
+                  continue
+                },
+                _ => {},
+              }
               debug_assert!(event.is_readable());
               let sock_ptr = socket as *mut _;
               let nread = socket.read(&mut buffer);
@@ -496,6 +515,67 @@ fn op_flash_next(op_state: Rc<RefCell<OpState>>) -> u32 {
   tokens
 }
 
+struct UpgradedStream(tokio::net::TcpStream);
+impl tokio::io::AsyncRead for UpgradedStream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut tokio::io::ReadBuf,
+  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+  }
+}
+
+impl tokio::io::AsyncWrite for UpgradedStream {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+  }
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_flush(cx)
+  }
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+  }
+}
+
+impl deno_websocket::Upgraded for UpgradedStream {}
+
+#[op]
+async fn op_flash_upgrade_websocket(
+  state: Rc<RefCell<OpState>>,
+  token: u32,
+) -> Result<deno_core::ResourceId, AnyError> {
+  let tx = {
+    let op_state = &mut state.borrow_mut();
+    let ctx = op_state.borrow_mut::<ServerContext>();
+    ctx.response.remove(&token).unwrap()
+  };
+  let stream = unsafe { &mut *tx.socket };
+  stream.detach_ownership();
+  let transport = match stream {
+    Stream::Tcp(sock, _) => {
+      let fd = sock.as_raw_fd();
+      let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+      let stream = tokio::net::TcpStream::from_std(std_stream)?;
+      Box::pin(UpgradedStream(stream))
+    }
+    _ => todo!(),
+  };
+  let ws_rid =
+    deno_websocket::ws_create_server_stream(&state, transport).await?;
+  Ok(ws_rid)
+}
+
 pub fn init() -> Extension {
   Extension::builder()
     .js(deno_core::include_js_files!(
@@ -513,6 +593,7 @@ pub fn init() -> Extension {
       op_flash_next::decl(),
       op_flash_next_async::decl(),
       op_flash_read_body::decl(),
+      op_flash_upgrade_websocket::decl(),
     ])
     .state(|op_state| {
       let (tx, rx) = mpsc::channel(100);

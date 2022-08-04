@@ -385,11 +385,7 @@
 
     get headers() {
       webidl.assertBranded(this, RequestPrototype);
-      if (this[_flash]) {
-        return this[_flash].headers();
-      } else {
-        return this[_headers];
-      }
+      return this[_headers];
     }
 
     get redirect() {
