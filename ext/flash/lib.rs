@@ -1,3 +1,9 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+// TODO(bartlomieju): remove me
+#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::missing_safety_doc)]
+
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ByteString;
@@ -62,7 +68,7 @@ type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
 // A Tcp or Tls stream.
 enum Stream {
   Tcp(TcpStream, bool),
-  Tls(TlsTcpStream, bool),
+  Tls(Box<TlsTcpStream>, bool),
 }
 
 impl Stream {
@@ -377,7 +383,7 @@ fn run_server(
                   let connection =
                     rustls::ServerConnection::new(tls_conf.clone()).unwrap();
                   Stream::Tls(
-                    rustls::StreamOwned::new(connection, socket),
+                    Box::new(rustls::StreamOwned::new(connection, socket)),
                     false,
                   )
                 }
