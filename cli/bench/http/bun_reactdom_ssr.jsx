@@ -14,9 +14,9 @@ const App = () => (
   </html>
 );
 
-export default {
+Bun.serve({
   async fetch(req) {
     return new Response(await renderToReadableStream(<App />), headers);
   },
   port: 9000,
-};
+});
