@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
