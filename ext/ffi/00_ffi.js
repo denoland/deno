@@ -111,10 +111,28 @@
       ));
     }
 
+    static getCString(pointer, offset = 0) {
+      return core.opSync(
+        "op_ffi_cstr_read",
+        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+      );
+    }
+
     getArrayBuffer(byteLength, offset = 0) {
-      return core.unwrapOpResult(ops.op_ffi_get_buf(
-        offset ? this.pointer + BigInt(offset) : this.pointer,
-        byteLength,
+      return core.unwrapOpResult(
+        ops.op_ffi_get_buf(
+          offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+          byteLength,
+        ),
+      );
+    }
+
+    static getArrayBuffer(pointer, byteLength, offset = 0) {
+      return core.unwrapOpResult(
+        ops.op_ffi_get_buf(
+          offset ? BigInt(pointer) + BigInt(offset) : pointer,
+          byteLength,
+        ),
       ));
     }
 
@@ -124,6 +142,15 @@
         destination,
         destination.byteLength,
       ));
+    }
+
+    static copyInto(pointer, destination, offset = 0) {
+      core.opSync(
+        "op_ffi_buf_copy_into",
+        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        destination,
+        destination.byteLength,
+      );
     }
   }
 
