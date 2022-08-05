@@ -34,7 +34,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -279,38 +278,9 @@ impl TestSummary {
   }
 }
 
-pub trait TestReporter {
-  fn report_register(&mut self, plan: &TestDescription);
-  fn report_plan(&mut self, plan: &TestPlan);
-  fn report_wait(&mut self, description: &TestDescription);
-  fn report_output(&mut self, output: &[u8]);
-  fn report_result(
-    &mut self,
-    description: &TestDescription,
-    result: &TestResult,
-    elapsed: u64,
-  );
-  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
-  fn report_step_register(&mut self, description: &TestStepDescription);
-  fn report_step_wait(&mut self, description: &TestStepDescription);
-  fn report_step_result(
-    &mut self,
-    description: &TestStepDescription,
-    result: &TestStepResult,
-    elapsed: u64,
-  );
-  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
-}
-
-enum DeferredStepOutput {
-  StepWait(TestStepDescription),
-  StepResult(TestStepDescription, TestStepResult, u64),
-}
-
 struct PrettyTestReporter {
-  concurrent: bool,
+  parallel: bool,
   echo_output: bool,
-  deferred_step_output: IndexMap<usize, Vec<DeferredStepOutput>>,
   in_new_line: bool,
   last_wait_id: Option<usize>,
   cwd: Url,
@@ -319,12 +289,11 @@ struct PrettyTestReporter {
 }
 
 impl PrettyTestReporter {
-  fn new(concurrent: bool, echo_output: bool) -> PrettyTestReporter {
+  fn new(parallel: bool, echo_output: bool) -> PrettyTestReporter {
     PrettyTestReporter {
-      concurrent,
+      parallel,
       echo_output,
       in_new_line: true,
-      deferred_step_output: IndexMap::new(),
       last_wait_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
@@ -335,6 +304,15 @@ impl PrettyTestReporter {
   fn force_report_wait(&mut self, description: &TestDescription) {
     if !self.in_new_line {
       println!();
+    }
+    if self.parallel {
+      print!(
+        "{}",
+        colors::gray(format!(
+          "{} => ",
+          self.to_relative_path_or_remote_url(&description.origin)
+        ))
+      );
     }
     print!("{} ...", description.name);
     self.in_new_line = false;
@@ -409,12 +387,13 @@ impl PrettyTestReporter {
       self.did_have_user_output = false;
     }
   }
-}
 
-impl TestReporter for PrettyTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
   fn report_plan(&mut self, plan: &TestPlan) {
+    if self.parallel {
+      return;
+    }
     let inflection = if plan.total == 1 { "test" } else { "tests" };
     println!(
       "{}",
@@ -429,7 +408,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
-    if !self.concurrent {
+    if !self.parallel {
       self.force_report_wait(description);
     }
     self.started_tests = true;
@@ -442,7 +421,9 @@ impl TestReporter for PrettyTestReporter {
 
     if !self.did_have_user_output && self.started_tests {
       self.did_have_user_output = true;
-      println!();
+      if !self.in_new_line {
+        println!();
+      }
       println!("{}", colors::gray("------- output -------"));
       self.in_new_line = true;
     }
@@ -458,29 +439,8 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    if self.concurrent {
+    if self.parallel {
       self.force_report_wait(description);
-
-      if let Some(step_outputs) =
-        self.deferred_step_output.remove(&description.id)
-      {
-        for step_output in step_outputs {
-          match step_output {
-            DeferredStepOutput::StepWait(description) => {
-              self.force_report_step_wait(&description)
-            }
-            DeferredStepOutput::StepResult(
-              step_description,
-              step_result,
-              elapsed,
-            ) => self.force_report_step_result(
-              &step_description,
-              &step_result,
-              elapsed,
-            ),
-          }
-        }
-      }
     }
 
     self.write_output_end();
@@ -519,13 +479,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_step_register(&mut self, _description: &TestStepDescription) {}
 
   fn report_step_wait(&mut self, description: &TestStepDescription) {
-    if self.concurrent {
-      self
-        .deferred_step_output
-        .entry(description.root_id)
-        .or_insert_with(Vec::new)
-        .push(DeferredStepOutput::StepWait(description.clone()));
-    } else {
+    if !self.parallel {
       self.force_report_step_wait(description);
     }
   }
@@ -535,20 +489,40 @@ impl TestReporter for PrettyTestReporter {
     description: &TestStepDescription,
     result: &TestStepResult,
     elapsed: u64,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    if self.concurrent {
-      self
-        .deferred_step_output
-        .entry(description.root_id)
-        .or_insert_with(Vec::new)
-        .push(DeferredStepOutput::StepResult(
-          description.clone(),
-          result.clone(),
-          elapsed,
-        ));
-    } else {
-      self.force_report_step_result(description, result, elapsed);
+    if self.parallel {
+      self.write_output_end();
+      let root;
+      let mut ancestor_names = vec![];
+      let mut current_desc = description;
+      loop {
+        if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
+          ancestor_names.push(&step_desc.name);
+          current_desc = step_desc;
+        } else {
+          root = tests.get(&current_desc.parent_id).unwrap();
+          break;
+        }
+      }
+      ancestor_names.reverse();
+      print!(
+        "{}",
+        colors::gray(format!(
+          "{} =>",
+          self.to_relative_path_or_remote_url(&description.origin)
+        ))
+      );
+      print!(" {} ...", root.name);
+      for name in ancestor_names {
+        print!(" {} ...", name);
+      }
+      print!(" {} ...", description.name);
+      self.in_new_line = false;
+      self.last_wait_id = Some(description.id);
     }
+    self.force_report_step_result(description, result, elapsed);
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -734,13 +708,6 @@ pub fn format_test_error(js_error: &JsError) -> String {
     .trim_start_matches("Uncaught ")
     .to_string();
   format_js_error(&js_error)
-}
-
-fn create_reporter(
-  concurrent: bool,
-  echo_output: bool,
-) -> Box<dyn TestReporter + Send> {
-  Box::new(PrettyTestReporter::new(concurrent, echo_output))
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -1123,11 +1090,7 @@ async fn test_specifiers(
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
-  let tests: Arc<RwLock<IndexMap<usize, TestDescription>>> =
-    Arc::new(RwLock::new(IndexMap::new()));
-  let mut test_steps = IndexMap::new();
 
-  let tests_ = tests.clone();
   let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
       let ps = ps.clone();
@@ -1136,7 +1099,6 @@ async fn test_specifiers(
       let mode = mode.clone();
       let mut sender = sender.clone();
       let options = options.clone();
-      let tests = tests_.clone();
 
       tokio::task::spawn_blocking(move || {
         let origin = specifier.to_string();
@@ -1151,18 +1113,9 @@ async fn test_specifiers(
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(TestEvent::UncaughtError(
-              origin.clone(),
+              origin,
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
-            for desc in tests.read().values() {
-              if desc.origin == origin {
-                sender.send(TestEvent::Result(
-                  desc.id,
-                  TestResult::Cancelled,
-                  0,
-                ))?
-              }
-            }
           } else {
             return Err(error);
           }
@@ -1175,12 +1128,16 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter =
-    create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
+  let mut reporter = Box::new(PrettyTestReporter::new(
+    concurrent_jobs.get() > 1,
+    log_level != Some(Level::Error),
+  ));
 
   let handler = {
     tokio::task::spawn(async move {
       let earlier = Instant::now();
+      let mut tests = IndexMap::new();
+      let mut test_steps = IndexMap::new();
       let mut tests_with_result = HashSet::new();
       let mut summary = TestSummary::new();
       let mut used_only = false;
@@ -1189,7 +1146,7 @@ async fn test_specifiers(
         match event {
           TestEvent::Register(description) => {
             reporter.report_register(&description);
-            tests.write().insert(description.id, description);
+            tests.insert(description.id, description);
           }
 
           TestEvent::Plan(plan) => {
@@ -1204,7 +1161,7 @@ async fn test_specifiers(
           }
 
           TestEvent::Wait(id) => {
-            reporter.report_wait(tests.read().get(&id).unwrap());
+            reporter.report_wait(tests.get(&id).unwrap());
           }
 
           TestEvent::Output(output) => {
@@ -1213,7 +1170,7 @@ async fn test_specifiers(
 
           TestEvent::Result(id, result, elapsed) => {
             if tests_with_result.insert(id) {
-              let description = tests.read().get(&id).unwrap().clone();
+              let description = tests.get(&id).unwrap().clone();
               match &result {
                 TestResult::Ok => {
                   summary.passed += 1;
@@ -1226,7 +1183,7 @@ async fn test_specifiers(
                   summary.failures.push((description.clone(), error.clone()));
                 }
                 TestResult::Cancelled => {
-                  summary.failed += 1;
+                  unreachable!("should be handled in TestEvent::UncaughtError");
                 }
               }
               reporter.report_result(&description, &result, elapsed);
@@ -1236,7 +1193,13 @@ async fn test_specifiers(
           TestEvent::UncaughtError(origin, error) => {
             reporter.report_uncaught_error(&origin, &error);
             summary.failed += 1;
-            summary.uncaught_errors.push((origin, error));
+            summary.uncaught_errors.push((origin.clone(), error));
+            for desc in tests.values() {
+              if desc.origin == origin && tests_with_result.insert(desc.id) {
+                summary.failed += 1;
+                reporter.report_result(desc, &TestResult::Cancelled, 0);
+              }
+            }
           }
 
           TestEvent::StepRegister(description) => {
@@ -1268,6 +1231,8 @@ async fn test_specifiers(
               test_steps.get(&id).unwrap(),
               &result,
               duration,
+              &tests,
+              &test_steps,
             );
           }
         }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.77.0"
+version = "0.78.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -24,8 +24,8 @@ block-modes = "0.9.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
 const-oid = "0.9.0"
 ctr = "0.9.1"
-deno_core = { version = "0.145.0", path = "../../core" }
-deno_web = { version = "0.94.0", path = "../web" }
+deno_core = { version = "0.146.0", path = "../../core" }
+deno_web = { version = "0.95.0", path = "../web" }
 elliptic-curve = { version = "0.12.1", features = ["std", "pem"] }
 num-traits = "0.2.14"
 once_cell = "1.10.0"

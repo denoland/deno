@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.94.0"
+version = "0.95.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -16,7 +16,7 @@ path = "lib.rs"
 [dependencies]
 async-trait = "0.1.51"
 base64-simd = "0.6.2"
-deno_core = { version = "0.145.0", path = "../../core" }
+deno_core = { version = "0.146.0", path = "../../core" }
 encoding_rs = "0.8.31"
 flate2 = "1"
 serde = "1.0.136"
@@ -24,9 +24,9 @@ tokio = { version = "1.17", features = ["full"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
-deno_bench_util = { version = "0.57.0", path = "../../bench_util" }
-deno_url = { version = "0.63.0", path = "../url" }
-deno_webidl = { version = "0.63.0", path = "../webidl" }
+deno_bench_util = { version = "0.58.0", path = "../../bench_util" }
+deno_url = { version = "0.64.0", path = "../url" }
+deno_webidl = { version = "0.64.0", path = "../webidl" }
 
 [[bench]]
 name = "encoding"

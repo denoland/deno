@@ -1,7 +1,7 @@
 # Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "serde_v8"
-version = "0.56.0"
+version = "0.57.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
