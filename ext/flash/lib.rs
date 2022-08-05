@@ -42,6 +42,12 @@ use std::task::Context;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+enum Encoding {
+  Identity,
+  Gzip,
+  Brotli,
+}
+
 pub struct FlashContext {
   next_server_id: u32,
   join_handles: HashMap<u32, JoinHandle<()>>,
@@ -121,6 +127,8 @@ struct NextRequest {
   no_more_requests: bool,
   #[allow(dead_code)]
   upgrade: bool,
+  content_length: Option<u64>,
+  te_chunked: bool,
 }
 
 // SAFETY: Sent from server thread to JS thread.
@@ -301,6 +309,43 @@ async fn op_flash_read_body(
   }
 }
 
+// https://github.com/hyperium/hyper/blob/0c8ee93d7f557afc63ca2a5686d19071813ab2b7/src/headers.rs#L67
+#[inline]
+fn from_digits(bytes: &[u8]) -> Option<u64> {
+  // cannot use FromStr for u64, since it allows a signed prefix
+  let mut result = 0u64;
+  const RADIX: u64 = 10;
+  if bytes.is_empty() {
+    return None;
+  }
+  for &b in bytes {
+    // can't use char::to_digit, since we haven't verified these bytes
+    // are utf-8.
+    match b {
+      b'0'..=b'9' => {
+        result = result.checked_mul(RADIX)?;
+        result = result.checked_add((b - b'0') as u64)?;
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+  Some(result)
+}
+
+#[inline]
+fn connection_has(value: &HeaderValue, needle: &str) -> bool {
+  if let Ok(s) = value.to_str() {
+    for val in s.split(',') {
+      if val.trim().eq_ignore_ascii_case(needle) {
+        return true;
+      }
+    }
+  }
+  false
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct ListenOpts {
   cert: Option<String>,
@@ -444,18 +489,9 @@ fn run_server(
           let mut upgrade = false;
           #[allow(unused_variables)]
           let mut expect_continue = false;
-          let mut transfer_encoding: Option<()> = None;
-          #[inline]
-          fn connection_has(value: &HeaderValue, needle: &str) -> bool {
-            if let Ok(s) = value.to_str() {
-              for val in s.split(',') {
-                if val.trim().eq_ignore_ascii_case(needle) {
-                  return true;
-                }
-              }
-            }
-            false
-          }
+          let mut te = false;
+          let mut te_chunked = false;
+          let mut content_length = None;
           for header in inner_req.req.headers.iter() {
             match HeaderName::from_bytes(header.name.as_bytes()) {
               Ok(CONNECTION) => {
@@ -476,17 +512,37 @@ fn run_server(
               Ok(TRANSFER_ENCODING) => {
                 // https://tools.ietf.org/html/rfc7230#section-3.3.3
                 debug_assert!(inner_req.req.version.unwrap() == 1);
-                transfer_encoding = Some(());
+                // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
+                te = true;
+                let value = unsafe {
+                  HeaderValue::from_maybe_shared_unchecked(header.value)
+                };
+                if let Ok(Some(encoding)) = value.to_str().map(|s| s.rsplit(',').next()) {
+                  // Chunked must always be the last encoding
+                  if encoding.trim().eq_ignore_ascii_case("chunked") {
+                    te_chunked = true;
+                  }
+                }
                 // Handle chunked encoding
               }
               Ok(CONTENT_LENGTH) => {
                 // Transfer-Encoding overrides the Content-Length.
-                if transfer_encoding.is_some() {
+                if te {
                   // request smuggling detected ;)
                   continue;
                 }
                 // TODO: Must respond with 400 and close conneciton if no TE and invalid / multiple Content-Length headers.
-                // content_len = ...
+                if let Some(len) = from_digits(header.value) {
+                  if let Some(prev) = content_length {
+                    if prev != len {
+                      // TODO: invalid content length
+                    }
+                    continue;
+                  }
+                  content_length = Some(len);
+                } else {
+                  // TODO: invalid content length
+                }
               }
               Ok(EXPECT) => {
                 // TODO: Must ignore if HTTP/1.0
@@ -505,6 +561,8 @@ fn run_server(
             inner: inner_req,
             no_more_requests,
             upgrade,
+            te_chunked,
+            content_length,
           })
           .ok();
         }
