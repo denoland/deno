@@ -251,9 +251,15 @@ fn op_flash_path(
   let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let path = ctx.response.get(&token).unwrap().inner.req.path.unwrap();
-
-  ctx.addr.to_string() + path
+  ctx
+    .response
+    .get(&token)
+    .unwrap()
+    .inner
+    .req
+    .path
+    .unwrap()
+    .to_string()
 }
 
 #[op]

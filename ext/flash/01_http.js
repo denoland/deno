@@ -150,6 +150,9 @@
 
     const server = {
       id: serverId,
+      transport: opts.cert && opts.key ? "https" : "http",
+      hostname: opts.hostname,
+      port: opts.port,
       serverPromise,
     };
 
@@ -188,7 +191,10 @@
         const req = fromInnerFlashRequest(
           body,
           () => core.ops.op_flash_method(serverId, i),
-          () => core.ops.op_flash_path(serverId, i),
+          () => {
+            const path = core.ops.op_flash_path(serverId, i);
+            return `${server.transport}://${server.hostname}:${server.port}${path}`;
+          },
           () =>
             headersFromHeaderList(
               core.ops.op_flash_headers(serverId, i),
@@ -331,7 +337,6 @@
     }
   }
 
-  // deno-lint-ignore no-unused-vars
   function createRequestBodyStream(serverId, token) {
     return new ReadableStream({
       type: "bytes",
