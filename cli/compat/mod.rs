@@ -17,7 +17,7 @@ pub use esm_resolver::NodeEsmResolver;
 
 // WARNING: Ensure this is the only deno_std version reference as this
 // is automatically updated by the version bump workflow.
-pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.150.0/";
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.151.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -61,6 +61,7 @@ static SUPPORTED_MODULES: &[&str] = &[
   "util/types",
   "v8",
   "vm",
+  "worker_threads",
   "zlib",
 ];
 
