@@ -323,7 +323,13 @@
           );
         }
       }
-      const requiredLimits = descriptor.requiredLimits;
+      let requiredLimits = descriptor.requiredLimits;
+      if (requiredLimits) {
+        requiredLimits = {
+          ...this[_adapter].limits[_limits],
+          ...requiredLimits,
+        };
+      }
       // TODO(lucacasonato): validate requiredLimits
 
       const { rid, features, limits } = await core.opAsync(

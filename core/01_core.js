@@ -17,6 +17,7 @@
     Promise,
     ObjectFromEntries,
     MapPrototypeGet,
+    MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,

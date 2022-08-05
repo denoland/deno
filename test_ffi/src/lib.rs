@@ -404,3 +404,10 @@ pub struct Structure {
 
 #[no_mangle]
 pub static mut static_ptr: Structure = Structure { _data: 42 };
+
+static STRING: &str = "Hello, world!\0";
+
+#[no_mangle]
+extern "C" fn ffi_string() -> *const u8 {
+  STRING.as_ptr()
+}
