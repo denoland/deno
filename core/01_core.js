@@ -125,6 +125,20 @@
     return unwrapOpResult(ops[opName](...args));
   }
 
+  function refOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    opSync("op_ref_op", promiseId);
+  }
+
+  function unrefOp(promiseId) {
+    if (!hasPromise(promiseId)) {
+      return;
+    }
+    opSync("op_unref_op", promiseId);
+  }
+
   function resources() {
     return ObjectFromEntries(opSync("op_resources"));
   }
@@ -176,6 +190,8 @@
     enableOpCallTracing,
     isOpCallTracingEnabled,
     opCallTraces,
+    refOp,
+    unrefOp,
     close: opSync.bind(null, "op_close"),
     tryClose: opSync.bind(null, "op_try_close"),
     read: opAsync.bind(null, "op_read"),

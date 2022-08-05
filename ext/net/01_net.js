@@ -249,12 +249,12 @@
 
     #refOpAccept() {
       if (typeof this.#promiseId === "number") {
-        core.unwrapOpResult(core.ops.op_ref_op(this.#promiseId));
+        core.refOp(this.#promiseId);
       }
     }
     #unrefOpAccept() {
       if (typeof this.#promiseId === "number") {
-        core.unwrapOpResult(core.ops.op_unref_op(this.#promiseId));
+        core.unrefOp(this.#promiseId);
       }
     }
   }
