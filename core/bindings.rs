@@ -14,7 +14,10 @@ use std::os::raw::c_void;
 use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
-pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
+pub fn external_references(
+  ops: &[OpCtx],
+  snapshot_loaded: bool,
+) -> v8::ExternalReferences {
   let mut references = vec![
     v8::ExternalReference {
       function: call_console.map_fn_to(),
@@ -30,14 +33,18 @@ pub fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
     references.push(v8::ExternalReference {
       function: ctx.decl.v8_fn_ptr,
     });
-    if let Some(fast_fn) = &ctx.decl.fast_fn {
-      references.push(v8::ExternalReference {
-        pointer: fast_fn.function() as _,
-      });
+    if snapshot_loaded {
+      if let Some(fast_fn) = &ctx.decl.fast_fn {
+        references.push(v8::ExternalReference {
+          pointer: fast_fn.function() as _,
+        });
+      }
     }
   }
 
-  v8::ExternalReferences::new(&references)
+  let refs = v8::ExternalReferences::new(&references);
+  std::mem::forget(references);
+  refs
 }
 
 // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
