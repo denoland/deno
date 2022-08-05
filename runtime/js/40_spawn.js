@@ -133,9 +133,7 @@
         this.#stdoutRid = stdoutRid;
         this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
           this.#stdoutPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) {
-            core.unrefOp(this.#stdoutPromiseId);
-          }
+          if (this.#unrefed) core.unrefOp(this.#stdoutPromiseId);
         });
       }
 
@@ -143,9 +141,7 @@
         this.#stderrRid = stderrRid;
         this.#stderr = readableStreamForRid(stderrRid, (promise) => {
           this.#stderrPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) {
-            core.unrefOp(this.#stderrPromiseId);
-          }
+          if (this.#unrefed) core.unrefOp(this.#stderrPromiseId);
         });
       }
 
@@ -213,23 +209,13 @@
     ref() {
       this.#unrefed = false;
       core.refOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) {
-        core.refOp(this.#stdoutPromiseId);
-      }
-      if (this.#stderrPromiseId) {
-        core.refOp(this.#stderrPromiseId);
-      }
+      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
+      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
     }
 
     unref() {
-      this.#unrefed = true;
-      core.unrefOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) {
-        core.unrefOp(this.#stdoutPromiseId);
-      }
-      if (this.#stderrPromiseId) {
-        core.unrefOp(this.#stderrPromiseId);
-      }
+      this.#unrefed = truecore.unrefOp(this.#waitPromiseId);
+      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
     }
   }
 
