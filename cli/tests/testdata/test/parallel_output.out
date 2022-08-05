@@ -1,0 +1,57 @@
+Check [WILDCARD]/test/parallel_output.ts
+./test/parallel_output.ts => step output ... step 1 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step output ... step 2 ... ok ([WILDCARD]ms)
+------- output -------
+Hello, world! (from step 3)
+----- output end -----
+./test/parallel_output.ts => step output ... step 3 ... ok ([WILDCARD]ms)
+------- output -------
+Hello, world! (from step 4)
+----- output end -----
+./test/parallel_output.ts => step output ... step 4 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step output ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step failures ... step 1 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step failures ... step 2 ... FAILED ([WILDCARD]ms)
+    error: Error: Fail.
+        throw new Error("Fail.");
+              ^
+        at file:///[WILDCARD]/test/parallel_output.ts:15:11
+        at [WILDCARD]
+        at file:///[WILDCARD]/test/parallel_output.ts:14:11
+./test/parallel_output.ts => step failures ... step 3 ... FAILED ([WILDCARD]ms)
+    error: Error: Fail.
+      await t.step("step 3", () => Promise.reject(new Error("Fail.")));
+                                                  ^
+        at file:///[WILDCARD]/test/parallel_output.ts:17:47
+        at [WILDCARD]
+        at file:///[WILDCARD]/test/parallel_output.ts:17:11
+./test/parallel_output.ts => step failures ... FAILED ([WILDCARD]ms)
+./test/parallel_output.ts => step nested failure ... step 1 ... inner 1 ... ok ([WILDCARD]ms)
+./test/parallel_output.ts => step nested failure ... step 1 ... inner 2 ... FAILED ([WILDCARD]ms)
+      error: Error: Failed.
+            throw new Error("Failed.");
+                  ^
+          at file:///[WILDCARD]/test/parallel_output.ts:24:13
+          at [WILDCARD]
+          at file:///[WILDCARD]/test/parallel_output.ts:23:13
+./test/parallel_output.ts => step nested failure ... step 1 ... FAILED ([WILDCARD]ms)
+./test/parallel_output.ts => step nested failure ... FAILED ([WILDCARD]ms)
+
+ ERRORS 
+
+step failures => ./test/parallel_output.ts:12:6
+error: Error: 2 test steps failed.
+    at [WILDCARD]
+
+step nested failure => ./test/parallel_output.ts:20:6
+error: Error: 1 test step failed.
+    at [WILDCARD]
+
+ FAILURES 
+
+step failures => ./test/parallel_output.ts:12:6
+step nested failure => ./test/parallel_output.ts:20:6
+
+FAILED | 1 passed (6 steps) | 2 failed (4 steps) ([WILDCARD]ms)
+
+error: Test failed
