@@ -374,13 +374,12 @@ impl TestRun {
       .buffer_unordered(concurrent_jobs)
       .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-    let mut reporter: Box<dyn test::TestReporter + Send> =
-      Box::new(LspTestReporter::new(
-        self,
-        client.clone(),
-        maybe_root_uri,
-        self.tests.clone(),
-      ));
+    let mut reporter = Box::new(LspTestReporter::new(
+      self,
+      client.clone(),
+      maybe_root_uri,
+      self.tests.clone(),
+    ));
 
     let handler = {
       tokio::task::spawn(async move {
@@ -653,9 +652,7 @@ impl LspTestReporter {
         },
       ));
   }
-}
 
-impl test::TestReporter for LspTestReporter {
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
   fn report_register(&mut self, desc: &test::TestDescription) {
