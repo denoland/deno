@@ -20,7 +20,7 @@ deno_core = { version = "0.146.0", path = "../../core" }
 deno_tls = { version = "0.51.0", path = "../tls" }
 dyn-clone = "1"
 http = "0.2.6"
-reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 serde = { version = "1.0.136", features = ["derive"] }
 tokio = { version = "1.17", features = ["full"] }
 tokio-stream = "0.1.8"
