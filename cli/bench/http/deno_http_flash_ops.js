@@ -2,7 +2,9 @@
 
 // deno-lint-ignore-file
 
-const { core: { opAsync, ops: { op_flash_next, op_flash_respond, op_flash_serve } } } = Deno;
+const {
+  core: { opAsync, ops: { op_flash_next, op_flash_respond, op_flash_serve } },
+} = Deno;
 const serverId = op_flash_serve({ hostname: "127.0.0.1", port: 9000 });
 const serverPromise = opAsync("op_flash_drive_server", serverId);
 
