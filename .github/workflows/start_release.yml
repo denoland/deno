@@ -46,6 +46,7 @@ jobs:
           deno-version: v1.23.2
 
       - name: Run start release
-        run: |
-          git remote add upstream https://github.com/denoland/deno
-          ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}
+        env:
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GH_WORKFLOW_ACTOR: ${{ github.actor }}
+        run: ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}
