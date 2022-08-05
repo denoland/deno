@@ -68,12 +68,12 @@ pub struct GpuRenderPassColorAttachment {
 pub struct GpuRenderPassDepthStencilAttachment {
   view: ResourceId,
   depth_clear_value: f32,
-  depth_load_op: wgpu_core::command::LoadOp,
-  depth_store_op: wgpu_core::command::StoreOp,
+  depth_load_op: Option<wgpu_core::command::LoadOp>,
+  depth_store_op: Option<wgpu_core::command::StoreOp>,
   depth_read_only: bool,
   stencil_clear_value: u32,
-  stencil_load_op: wgpu_core::command::LoadOp,
-  stencil_store_op: wgpu_core::command::StoreOp,
+  stencil_load_op: Option<wgpu_core::command::LoadOp>,
+  stencil_store_op: Option<wgpu_core::command::StoreOp>,
   stencil_read_only: bool,
 }
 
@@ -138,14 +138,22 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       Some(wgpu_core::command::RenderPassDepthStencilAttachment {
         view: texture_view_resource.0,
         depth: wgpu_core::command::PassChannel {
-          load_op: attachment.depth_load_op,
-          store_op: attachment.depth_store_op,
+          load_op: attachment
+            .depth_load_op
+            .unwrap_or(wgpu_core::command::LoadOp::Load),
+          store_op: attachment
+            .depth_store_op
+            .unwrap_or(wgpu_core::command::StoreOp::Store),
           clear_value: attachment.depth_clear_value,
           read_only: attachment.depth_read_only,
         },
         stencil: wgpu_core::command::PassChannel {
-          load_op: attachment.stencil_load_op,
-          store_op: attachment.stencil_store_op,
+          load_op: attachment
+            .stencil_load_op
+            .unwrap_or(wgpu_core::command::LoadOp::Load),
+          store_op: attachment
+            .stencil_store_op
+            .unwrap_or(wgpu_core::command::StoreOp::Store),
           clear_value: attachment.stencil_clear_value,
           read_only: attachment.stencil_read_only,
         },
