@@ -150,6 +150,9 @@
 
     const server = {
       id: serverId,
+      transport: opts.cert && opts.key ? "https" : "http",
+      hostname: opts.hostname,
+      port: opts.port,
       serverPromise,
     };
 
@@ -173,11 +176,25 @@
         token = await core.opAsync("op_flash_next_async", serverId);
       }
       for (let i = 0; i < token; i++) {
+        // FIXME(bartlomieju): this is an additional op overhead,
+        // ideally we could bitshift token to figure out what is the request
+        // method
+        const method = core.ops.op_flash_method(serverId, i);
+        let body = null;
+        // There might be a body, but we don't expose it for GET/HEAD requests.
+        // It will be closed automatically once the request has been handled and
+        // the response has been sent.
+        if (method !== "GET" && method !== "HEAD") {
+          body = createRequestBodyStream(serverId, i);
+        }
+
         const req = fromInnerFlashRequest(
-          null,
-          // createRequestBodyStream(serverId, i),
+          body,
           () => core.ops.op_flash_method(serverId, i),
-          () => core.ops.op_flash_path(serverId, i),
+          () => {
+            const path = core.ops.op_flash_path(serverId, i);
+            return `${server.transport}://${server.hostname}:${server.port}${path}`;
+          },
           () =>
             headersFromHeaderList(
               core.ops.op_flash_headers(serverId, i),
@@ -320,7 +337,6 @@
     }
   }
 
-  // deno-lint-ignore no-unused-vars
   function createRequestBodyStream(serverId, token) {
     return new ReadableStream({
       type: "bytes",

@@ -107,7 +107,12 @@
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
-    flash: __bootstrap.flash,
+    serve: __bootstrap.flash.serve,
+    // TODO(bartlomieju): remove me, once `flash.upgradeHttp` is merged
+    // with `Deno.upgradeHttp`
+    flash: {
+      upgradeHttp: __bootstrap.flash.upgradeHttp,
+    },
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     upgradeHttp: __bootstrap.http.upgradeHttp,

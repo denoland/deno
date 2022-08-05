@@ -14,8 +14,7 @@ const headers = {
   },
 };
 
-const { serve } = Deno.flash;
-serve(
+Deno.serve(
   async (_) => {
     return new Response(await renderToReadableStream(<App />), headers);
   },
