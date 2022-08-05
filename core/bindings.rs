@@ -14,16 +14,10 @@ use std::os::raw::c_void;
 use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
-pub fn external_references(
-  ops: &[OpCtx],
-  snapshot_loaded: bool,
-) -> v8::ExternalReferences {
+pub fn external_references(ops: &[OpCtx], snapshot_loaded: bool) -> v8::ExternalReferences {
   let mut references = vec![
     v8::ExternalReference {
       function: call_console.map_fn_to(),
-    },
-    v8::ExternalReference {
-      pointer: ops as *const _ as _,
     },
   ];
 
