@@ -173,9 +173,20 @@
         token = await core.opAsync("op_flash_next_async", serverId);
       }
       for (let i = 0; i < token; i++) {
+        // FIXME(bartlomieju): this is an additional op overhead,
+        // ideally we could bitshift token to figure out what is the request
+        // method
+        const method = core.ops.op_flash_method(serverId, i);
+        let body = null;
+        // There might be a body, but we don't expose it for GET/HEAD requests.
+        // It will be closed automatically once the request has been handled and
+        // the response has been sent.
+        if (method !== "GET" && method !== "HEAD") {
+          body = createRequestBodyStream(serverId, i);
+        }
+
         const req = fromInnerFlashRequest(
-          null,
-          // createRequestBodyStream(serverId, i),
+          body,
           () => core.ops.op_flash_method(serverId, i),
           () => core.ops.op_flash_path(serverId, i),
           () =>
