@@ -117,7 +117,7 @@
 
   function sourceMapCallSiteEval(cse) {
     if (cse.fileName && cse.lineNumber != null && cse.columnNumber != null) {
-      return { ...cse, ...core.opSync("op_apply_source_map", cse) };
+      return { ...cse, ...core.unwrapOpResult(core.op_apply_source_map(cse)) };
     }
     return cse;
   }
