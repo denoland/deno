@@ -201,7 +201,8 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
 
       let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
-      if let Ok(mut op_state) = op_state_rc.try_borrow_mut() {
+      {
+        let mut op_state = op_state_rc.borrow_mut();
         let ffi_state = op_state.borrow_mut::<FfiState>();
 
         while let Ok(Some(async_work_fut)) =
