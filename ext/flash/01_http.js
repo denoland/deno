@@ -95,6 +95,9 @@
     511: "Network Authentication Required",
   };
 
+  let dateInterval;
+  let date;
+
   // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
   // of octets.
@@ -110,16 +113,22 @@
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
     //
     // status-line = HTTP-version SP status-code SP reason-phrase CRLF
-    let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\n`;
+    // Date header: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
+    let str = `HTTP/1.1 ${status} ${statusCodes[status]}\r\nDate: ${date}\r\n`;
     for (const [name, value] of headerList) {
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
+
+    // TODO: MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
+    // TODO: MUST generate an Allow header field in a 405 response containing a list of the target
+    //      resource's currently supported methods.
+    // TODD: Don't send body for HEAD requests.
+    // null body status is validated by inititalizeAResponse in ext/fetch
+    // * MUST NOT generate a payload in a 205 response https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
+    // * MUST NOT send Content-Length if status code is 1xx or 204.
+    // * MUST NOT send Content-Length if status code is 2xx to a CONNECT request
     if (body) {
-      // TODO(littledivy): If status code == 304, MUST NOT send Content-Length if body length equals length that
-      // would have been sent in the payload body of a response if the same request had used the GET method.
-      // TODO(littledivy): MUST NOT send Content-Length if status code is 1xx or 204.
-      // TODO(littledivy): MUST NOT send Content-Length if status code is 2xx to a CONNECT request
       str += `Content-Length: ${body?.length}\r\n\r\n`;
     } else {
       // TODO(littledivy): support compression.
@@ -129,13 +138,7 @@
       //   * request indicates HTTP/1.1
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
-    // TODD: Don't send body for HEAD requests
-    // TODO: MUST NOT generate a payload in a 205 response
-    //       https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
-    // TODO: MUST generate an Allow header field in a 405 response containing a list of the target
-    //      resource's currently supported methods.
-    // TODO: MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
-    // TODO: MUST send a Date header field. https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
+
     return str + (body ?? "");
   }
 
@@ -159,6 +162,11 @@
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
     }
 
+    if (!dateInterval) {
+      dateInterval = setInterval(() => {
+        date = new Date().toUTCString();
+      }, 1000);
+    }
     while (true) {
       let token = nextRequestSync();
       if (token === 0) {
