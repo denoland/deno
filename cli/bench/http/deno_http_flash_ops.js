@@ -8,7 +8,6 @@ const {
 const serverId = op_flash_serve({ hostname: "127.0.0.1", port: 9000 });
 const serverPromise = opAsync("op_flash_drive_server", serverId);
 
-// FIXME(bartlomieju): should be a field on "listener"
 while (true) {
   let token = op_flash_next();
   if (token === 0) token = await opAsync("op_flash_next_async", serverId);
