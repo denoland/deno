@@ -1,6 +1,6 @@
 [package]
 name = "deno_ops"
-version = "0.23.0"
+version = "0.24.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
