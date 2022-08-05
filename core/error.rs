@@ -111,18 +111,18 @@ pub fn op_error_to_v8<'scope>(
   )
   .unwrap()
   .into();
-  let code: v8::Local<v8::Value> = if let Some(code) = error.code {
-    v8::String::new_from_utf8(
+  if let Some(code) = error.code {
+    let code: v8::Local<v8::Value> = v8::String::new_from_utf8(
       scope,
       code.as_bytes(),
       v8::NewStringType::Internalized,
     )
     .unwrap()
-    .into()
+    .into();
+    v8::Array::new_with_elements(scope, &[class, message, code]).into()
   } else {
-    v8::undefined(scope).into()
-  };
-  v8::Array::new_with_elements(scope, &[class, message, code]).into()
+    v8::Array::new_with_elements(scope, &[class, message]).into()
+  }
 }
 
 /// A `JsError` represents an exception coming from V8, with stack frames and
