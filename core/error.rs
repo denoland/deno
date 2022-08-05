@@ -93,31 +93,11 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
   error.downcast_ref::<CustomError>().map(|e| e.class)
 }
 
-/// V8 global value wrapper which can be casted to `AnyError`. It should only
-/// be used to directly return from a sync `#[op(v8)]`, in which case the
-/// wrapped value will be thrown to JS. Unsafe if passed around any other way.
-/// Only exposed in core for now due to these caveats.
-#[derive(Debug)]
-pub(crate) struct V8Error(pub v8::Global<v8::Value>);
-
-impl Display for V8Error {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-    write!(f, "{:?}", self)
-  }
-}
-
-impl std::error::Error for V8Error {}
-unsafe impl Send for V8Error {}
-unsafe impl Sync for V8Error {}
-
 pub fn to_v8_error<'a>(
   scope: &mut v8::HandleScope<'a>,
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  if let Some(v8_error) = error.downcast_ref::<V8Error>() {
-    return v8::Local::new(scope, v8_error.0.clone());
-  }
   let cb = JsRealm::state_from_scope(scope)
     .borrow()
     .js_build_custom_error_cb

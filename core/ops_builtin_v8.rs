@@ -4,7 +4,6 @@ use crate::error::is_instance_of_error;
 use crate::error::range_error;
 use crate::error::type_error;
 use crate::error::JsError;
-use crate::error::V8Error;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
@@ -473,8 +472,8 @@ fn op_serialize(
   let ret =
     value_serializer.write_value(scope.get_current_context(), value.v8_value);
   if scope.has_caught() || scope.has_terminated() {
-    let exception = scope.exception().unwrap();
-    Err(V8Error(v8::Global::new(scope, exception)).into())
+    scope.rethrow();
+    Err(type_error("unreachable"))
   } else if let Some(true) = ret {
     let vector = value_serializer.release();
     Ok(vector.into())
