@@ -64,12 +64,14 @@ declare namespace Deno {
     function write(rid: number, buf: Uint8Array): Promise<number>;
 
     /**
+     * Print a message to stdout or stderr
+     */
+    function print(message: string, is_err?: boolean): void;
+
+    /**
      * Shutdown a resource
      */
     function shutdown(rid: number): Promise<void>;
-
-    /** Get heap stats for current isolate/worker */
-    function heapStats(): Record<string, number>;
 
     /** Encode a string to its Uint8Array representation. */
     function encode(input: string): Uint8Array;

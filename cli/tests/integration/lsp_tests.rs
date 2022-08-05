@@ -775,7 +775,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(local)",
           "sortText": "1",
           "insertText": ".",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "..",
@@ -783,7 +783,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(local)",
           "sortText": "1",
           "insertText": "..",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "std",
@@ -791,7 +791,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "std",
           "insertText": "std",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "fs",
@@ -799,7 +799,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "fs",
           "insertText": "fs",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "/~",
@@ -807,7 +807,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "/~",
           "insertText": "/~",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -889,7 +889,7 @@ fn lsp_import_map_import_completions() {
             },
             "newText": "/~/b.ts"
           },
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
