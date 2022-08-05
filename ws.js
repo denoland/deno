@@ -1,5 +1,4 @@
-const { serve } = Deno.flash;
-serve((request) => {
+Deno.serve((request) => {
   const {
     response,
     socket,
