@@ -109,6 +109,7 @@
         );
 
         const resp = await handler(req);
+        // there might've been an HTTP upgrade.
         if (resp === undefined) {
           continue;
         }

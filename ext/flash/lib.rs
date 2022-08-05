@@ -480,11 +480,13 @@ fn run_server(
                 // Handle chunked encoding
               }
               Ok(CONTENT_LENGTH) => {
-                // ignore if transfer_encoding is present
+                // Transfer-Encoding overrides the Content-Length.
                 if transfer_encoding.is_some() {
+                  // request smuggling detected ;)
                   continue;
                 }
-                // Handle content length
+                // TODO: Must respond with 400 and close conneciton if no TE and invalid / multiple Content-Length headers.
+                // content_len = ... 
               }
               Ok(EXPECT) => {
                 #[allow(unused_assignments)]
