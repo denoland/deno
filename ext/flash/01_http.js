@@ -129,7 +129,13 @@
       //   * request indicates HTTP/1.1
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
-    // TOOD: Don't send body for HEAD requests
+    // TODD: Don't send body for HEAD requests
+    // TODO: MUST NOT generate a payload in a 205 response
+    //       https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
+    // TODO: MUST generate an Allow header field in a 405 response containing a list of the target
+    //      resource's currently supported methods.
+    // TODO: MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
+    // TODO: MUST send a Date header field. https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.2
     return str + (body ?? "");
   }
 
