@@ -584,9 +584,26 @@ async fn op_flash_next_async(
 
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
+//
+// perf: please do not add any arguments to this op. With optimizations enabled,
+// the ContextScope creation is optimized away and the op is as simple as:
+//   f(info: *const v8::FunctionCallbackInfo) { let rv = ...; rv.set_uint32(op_flash_next()); }
 #[op]
-fn op_flash_next(op_state: Rc<RefCell<OpState>>, server_id: u32) -> u32 {
-  let mut op_state = op_state.borrow_mut();
+fn op_flash_next(op_state: &mut OpState) -> u32 {
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&0).unwrap();
+  let mut tokens = 0;
+  while let Ok(token) = ctx.rx.try_recv() {
+    ctx.response.insert(tokens, token);
+    tokens += 1;
+  }
+  tokens
+}
+
+// Syncrhonous version of op_flash_next_async. Under heavy load,
+// this can collect buffered requests from rx channel and return tokens in a single batch.
+#[op]
+fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let mut tokens = 0;
@@ -695,6 +712,7 @@ pub fn init() -> Extension {
       op_flash_headers::decl(),
       op_flash_respond_stream::decl(),
       op_flash_next::decl(),
+      op_flash_next_server::decl(),
       op_flash_next_async::decl(),
       op_flash_read_body::decl(),
       op_flash_upgrade_websocket::decl(),

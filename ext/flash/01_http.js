@@ -89,8 +89,13 @@
       await server.serverPromise;
     });
 
+    let nextRequestSync = core.ops.op_flash_next;
+    if (serverId > 0) {
+      nextRequestSync = () => core.ops.op_flash_next_server(serverId);
+    }
+
     while (true) {
-      let token = core.ops.op_flash_next(serverId);
+      let token = nextRequestSync();
       if (token === 0) {
         token = await core.opAsync("op_flash_next_async", serverId);
       }
