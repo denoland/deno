@@ -214,7 +214,9 @@
     }
 
     unref() {
-      this.#unrefed = truecore.unrefOp(this.#waitPromiseId);
+      this.#unrefed = true;
+      core.unrefOp(this.#waitPromiseId);
+      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
       if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
     }
   }
