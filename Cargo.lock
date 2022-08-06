@@ -1041,6 +1041,7 @@ dependencies = [
 name = "deno_flash"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "deno_core",
  "deno_websocket",
  "http",

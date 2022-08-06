@@ -338,13 +338,22 @@
   }
 
   function createRequestBodyStream(serverId, token) {
+    let readFirstPacket = false;
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
         try {
+          if (readFirstPacket === false) {
+            // The first packet is left over bytes after parsing the request
+            // which is always less than 1024 bytes.
+            const chunk = new Uint8Array(1024);
+            const read = core.ops.op_flash_first_packet(serverId, token, chunk);
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
+            readFirstPacket = true;
+          }
           // This is the largest possible size for a single packet on a TLS
           // stream.
-          const chunk = new Uint8Array(1024);
+          const chunk = new Uint8Array(16 * 1024 + 256);
           const read = await core.opAsync(
             "op_flash_read_body",
             serverId,

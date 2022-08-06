@@ -24,3 +24,4 @@ rustls = { version = "0.20" }
 rustls-pemfile = { version = "0.2.1" }
 serde = { version = "1.0.136", features = ["derive"] }
 tokio = { version = "1.19", features = ["full"] }
+bytes = "*"
