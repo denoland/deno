@@ -22,6 +22,8 @@
     StringPrototypeIndexOf,
     StringPrototypeSlice,
     StringPrototypeStartsWith,
+    StringPrototypeCharCodeAt,
+    RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
 
@@ -40,6 +42,23 @@
   let statCache = null;
   let isPreloading = false;
   let mainModule = null;
+
+  function stat(filename) {
+    // TODO: required only on windows
+    // filename = path.toNamespacedPath(filename);
+    if (statCache !== null) {
+      const result = statCache.get(filename);
+      if (result !== undefined) {
+        return result;
+      }
+    }
+    const result = core.opSync("op_require_stat", filename);
+    if (statCache !== null && result >= 0) {
+      statCache.set(filename, result);
+    }
+
+    return result;
+  }
 
   function updateChildren(parent, child, scan) {
     if (!parent) {
@@ -146,8 +165,10 @@
   let modulePaths = [];
   Module.globalPaths = modulePaths;
 
+  const CHAR_FORWARD_SLASH = 47;
+  const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
   Module._findPath = function (request, paths, isMain) {
-    const absoluteRequest = path.isAbsolute(request);
+    const absoluteRequest = core.opSync("op_require_path_is_absolute", request);
     if (absoluteRequest) {
       paths = [""];
     } else if (!paths || paths.length === 0) {
@@ -165,7 +186,7 @@
       StringPrototypeCharCodeAt(request, request.length - 1) ===
         CHAR_FORWARD_SLASH;
     if (!trailingSlash) {
-      trailingSlash = RegExpPrototypeTest(trailingSlashRegex, request);
+      trailingSlash = RegExpPrototypeTest(TRAILING_SLASH_REGEX, request);
     }
 
     // For each path

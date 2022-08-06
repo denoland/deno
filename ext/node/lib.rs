@@ -206,6 +206,24 @@ fn op_require_resolve_lookup_paths(
 }
 
 #[op]
+fn op_require_path_is_absolute(p: String) -> bool {
+  PathBuf::from(p).is_absolute()
+}
+
+#[op]
+fn op_require_stat(filename: String) -> i32 {
+  if let Ok(metadata) = std::fs::metadata(&path) {
+    if metadata.is_file() {
+      return 0;
+    } else {
+      return 1;
+    }
+  }
+
+  -1
+}
+
+#[op]
 fn op_require_(request: String) {}
 
 #[op]
