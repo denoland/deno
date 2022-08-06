@@ -2042,8 +2042,6 @@ impl JsRealm {
       .clone()
   }
 
-  /// Gets the state associated to a scope's current context, and calls the
-  /// passed callback with it.
   pub(crate) fn state_from_scope(
     scope: &mut v8::HandleScope,
   ) -> Rc<RefCell<ContextState>> {
