@@ -224,6 +224,12 @@ fn op_require_stat(filename: String) -> i32 {
 }
 
 #[op]
+fn op_require_real_path(request: String) -> String {
+  // TODO:
+  request
+}
+
+#[op]
 fn op_require_(request: String) {}
 
 #[op]

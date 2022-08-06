@@ -17,6 +17,7 @@
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
+    SafeMap,
     SafeWeakMap,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
@@ -69,6 +70,34 @@
     if (children && !(scan && ArrayPrototypeIncludes(children, child))) {
       ArrayPrototypePush(children, child);
     }
+  }
+
+  function tryFile(requestPath, _isMain) {
+    const rc = stat(requestPath);
+    if (rc !== 0) return;
+    return toRealPath(requestPath);
+  }
+
+  const realpathCache = new SafeMap();
+  function toRealPath(requestPath) {
+    const maybeCached = realpathCache.get(requestPath)
+    if (maybeCached) {
+      return maybeCached;
+    }
+    const rp = core.opSync("op_require_real_path", requestPath);
+    realpathCache.set(requestPath, rp);
+    return rp;
+  }
+
+  function tryExtensions(p, exts, isMain) {
+    for (let i = 0; i < exts.length; i++) {
+      const filename = tryFile(p + exts[i], isMain);
+  
+      if (filename) {
+        return filename;
+      }
+    }
+    return false;
   }
 
   // Find the longest (possibly multi-dot) extension registered in
