@@ -1,8 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 const { serve } = Deno;
 
-async function handler(r) {
-  console.log(await r.text());
+async function handler() {
   return new Response("Hello World");
 }
 

@@ -43,6 +43,7 @@ use std::task::Context;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+mod chunked;
 enum Encoding {
   Identity,
   Gzip,
@@ -83,6 +84,13 @@ impl Stream {
     match self {
       Stream::Tcp(_, detached) => *detached = true,
       Stream::Tls(_, detached) => *detached = true,
+    }
+  }
+
+  fn reattach_ownership(&mut self) {
+    match self {
+      Stream::Tcp(_, detached) => *detached = false,
+      Stream::Tls(_, detached) => *detached = false,
     }
   }
 }
@@ -168,6 +176,7 @@ fn op_flash_respond(
     let _ = sock.write(&response);
     let _ = sock.write(b"\r\n");
   }
+  sock.reattach_ownership();
 }
 
 #[op]
@@ -203,6 +212,7 @@ fn op_flash_respond_chuncked(
   if shutdown {
     let _ = sock.write(b"0\r\n\r\n");
   }
+  sock.reattach_ownership();
 }
 
 #[op]
@@ -289,194 +299,6 @@ fn op_flash_headers(
     .collect()
 }
 
-fn step_chunked_read<R: Read + ?Sized>(
-  sock: &mut R,
-  tx: &mut NextRequest,
-  buf: &mut [u8],
-) -> usize {
-  macro_rules! read_byte {
-    ($sock: expr, $byte: literal) => {
-      match $sock.next() {
-        Some(Ok($byte)) => {}
-        _ => panic!("Invalid input"),
-      }
-    };
-    ($byte: literal) => {
-      read_byte!(sock.bytes(), $byte);
-    };
-  }
-  if tx.inner.body_offset != 0 {
-    let source = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-    let mut bytes = source.bytes();
-    let mut offset = 0;
-    let remaining_chunk_size = match tx.remaining_chunks_size {
-      Some(c) => c,
-      None => {
-        let mut chunk_size_bytes = Vec::new();
-        let mut has_ext = false;
-
-        loop {
-          let byte = match bytes.next() {
-            Some(Ok(b)) => b,
-            _ => panic!("Invalid input"),
-          };
-          offset += 1;
-
-          if byte == b'\r' {
-            break;
-          }
-
-          if byte == b';' {
-            has_ext = true;
-            break;
-          }
-
-          // TODO: break after some iterations
-
-          chunk_size_bytes.push(byte);
-        }
-
-        // Ignore extensions for now
-        if has_ext {
-          loop {
-            let byte = match bytes.next() {
-              Some(Ok(b)) => b,
-              _ => panic!("Invalid input"),
-            };
-            offset += 1;
-            if byte == b'\r' {
-              break;
-            }
-          }
-        }
-
-        read_byte!(bytes, b'\n');
-        offset += 1;
-
-        let size = String::from_utf8(chunk_size_bytes)
-          .ok()
-          .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
-          .expect("Invalid input");
-        offset += size;
-        if size == 0 {
-          // 0\r\n\r\n
-          read_byte!(bytes, b'\r');
-          read_byte!(bytes, b'\n');
-          return 0;
-        }
-
-        size
-      }
-    };
-    tx.inner.body_offset += offset as usize;
-    let mut source =
-      Cursor::new(&tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len]);
-    if buf.len() < remaining_chunk_size {
-      let read = source.read(buf).expect("Failed to read");
-      if read == 0 {
-        tx.inner.body_offset = 0;
-      } else {
-        tx.inner.body_offset += read;
-      }
-      tx.remaining_chunks_size = Some(remaining_chunk_size - read);
-      return read;
-    }
-
-    debug_assert!(buf.len() >= remaining_chunk_size);
-
-    let buf = &mut buf[..remaining_chunk_size];
-    let read = source.read(buf).expect("Failed to read");
-    tx.remaining_chunks_size = if read == remaining_chunk_size {
-      // \r\n
-      let last_two = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-      if &last_two[..2] != b"\r\n" {
-        panic!("Invalid input");
-      }
-      tx.inner.body_offset += 2;
-      None
-    } else {
-      Some(remaining_chunk_size - read)
-    };
-
-    return read;
-  }
-
-  // https://docs.rs/chunked_transfer/latest/src/chunked_transfer/decoder.rs.html#69
-  // TODO(@littledivy): This can be further optimized.
-  let remaining_chunk_size = match tx.remaining_chunks_size {
-    Some(c) => c,
-    None => {
-      let mut chunk_size_bytes = Vec::new();
-      let mut has_ext = false;
-
-      loop {
-        let byte = match sock.bytes().next() {
-          Some(Ok(b)) => b,
-          _ => panic!("Invalid input"),
-        };
-
-        if byte == b'\r' {
-          break;
-        }
-
-        if byte == b';' {
-          has_ext = true;
-          break;
-        }
-
-        chunk_size_bytes.push(byte);
-      }
-
-      // Ignore extensions for now
-      if has_ext {
-        loop {
-          let byte = match sock.bytes().next() {
-            Some(Ok(b)) => b,
-            _ => panic!("Invalid input"),
-          };
-          if byte == b'\r' {
-            break;
-          }
-        }
-      }
-
-      read_byte!(b'\n');
-
-      let size = String::from_utf8(chunk_size_bytes)
-        .ok()
-        .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
-        .expect("Invalid input");
-      if size == 0 {
-        read_byte!(b'\r');
-        read_byte!(b'\n');
-        return 0;
-      }
-
-      size
-    }
-  };
-
-  if buf.len() < remaining_chunk_size {
-    let read = sock.read(buf).expect("Failed to read");
-    tx.remaining_chunks_size = Some(remaining_chunk_size - read);
-    return read;
-  }
-
-  debug_assert!(buf.len() >= remaining_chunk_size);
-
-  let buf = &mut buf[..remaining_chunk_size];
-  let read = sock.read(buf).expect("Failed to read");
-  tx.remaining_chunks_size = if read == remaining_chunk_size {
-    read_byte!(b'\r');
-    read_byte!(b'\n');
-    None
-  } else {
-    Some(remaining_chunk_size - read)
-  };
-
-  read
-}
-
 #[op]
 async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
@@ -490,8 +312,26 @@ async fn op_flash_read_body(
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
+
   if tx.te_chunked {
-    return step_chunked_read(sock, tx, &mut buf);
+    if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
+      let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+      let cursor = Cursor::new(buffer);
+      let mut decoder = chunked::Decoder::new(cursor); 
+
+      let nread = decoder.read(&mut buf).expect("read error");
+      let cursor = decoder.into_inner();
+      let pos = cursor.position() as usize;
+
+      if pos == tx.inner.body_len {
+        tx.inner.body_offset = 0;
+      } else {
+        tx.inner.body_offset += pos;
+      }
+      return nread;
+    }
+    let mut decoder = chunked::Decoder::new(sock);
+    return decoder.read(&mut buf).expect("read error");
   }
 
   if tx.inner.body_offset != 0 {
