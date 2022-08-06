@@ -30,6 +30,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::intrinsics::transmute;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::net::SocketAddr;
@@ -288,75 +289,88 @@ fn op_flash_headers(
     .collect()
 }
 
-fn step_chunked_read<R: Read + ?Sized>(sock: &mut R, tx: &mut NextRequest, buf: &mut [u8]) -> usize {
+fn step_chunked_read<R: Read + ?Sized>(
+  sock: &mut R,
+  tx: &mut NextRequest,
+  buf: &mut [u8],
+) -> usize {
   macro_rules! read_byte {
-    ($sock: ident, $byte: literal) => {
-      match $sock.bytes().next() {
+    ($sock: expr, $byte: literal) => {
+      match $sock.next() {
         Some(Ok($byte)) => {}
         _ => panic!("Invalid input"),
       }
     };
     ($byte: literal) => {
-      read_byte!(sock, $byte);
-    }
+      read_byte!(sock.bytes(), $byte);
+    };
   }
   if tx.inner.body_offset != 0 {
-    let mut source = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-    let remaining_chunk_size = match tx.remaining_chunks_size { 
+    let source = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+    let mut bytes = source.bytes();
+    let mut offset = 0;
+    let remaining_chunk_size = match tx.remaining_chunks_size {
       Some(c) => c,
       None => {
         let mut chunk_size_bytes = Vec::new();
         let mut has_ext = false;
-  
+
         loop {
-          let byte = match source.bytes().next() {
+          let byte = match bytes.next() {
             Some(Ok(b)) => b,
             _ => panic!("Invalid input"),
           };
+          offset += 1;
 
           if byte == b'\r' {
             break;
           }
-  
+
           if byte == b';' {
             has_ext = true;
             break;
           }
-  
+
+          // TODO: break after some iterations
+
           chunk_size_bytes.push(byte);
         }
-        
+
         // Ignore extensions for now
         if has_ext {
           loop {
-            let byte = match source.bytes().next() {
+            let byte = match bytes.next() {
               Some(Ok(b)) => b,
               _ => panic!("Invalid input"),
             };
+            offset += 1;
             if byte == b'\r' {
               break;
             }
           }
         }
 
+        read_byte!(bytes, b'\n');
+        offset += 1;
 
-      read_byte!(source, b'\n');
+        let size = String::from_utf8(chunk_size_bytes)
+          .ok()
+          .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
+          .expect("Invalid input");
+        offset += size;
+        if size == 0 {
+          // 0\r\n\r\n
+          read_byte!(bytes, b'\r');
+          read_byte!(bytes, b'\n');
+          return 0;
+        }
 
-      let size = String::from_utf8(chunk_size_bytes)
-        .ok()
-        .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
-        .expect("Invalid input");
-        dbg!(size);
-      if size == 0 {
-        read_byte!(source, b'\r');
-        read_byte!(source, b'\n');
-        return 0;
-      }
-
-      size
+        size
       }
     };
-
+    tx.inner.body_offset += offset as usize;
+    let mut source =
+      Cursor::new(&tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len]);
     if buf.len() < remaining_chunk_size {
       let read = source.read(buf).expect("Failed to read");
       if read == 0 {
@@ -369,17 +383,20 @@ fn step_chunked_read<R: Read + ?Sized>(sock: &mut R, tx: &mut NextRequest, buf: 
     }
 
     debug_assert!(buf.len() >= remaining_chunk_size);
-  
+
     let buf = &mut buf[..remaining_chunk_size];
     let read = source.read(buf).expect("Failed to read");
     tx.remaining_chunks_size = if read == remaining_chunk_size {
-      read_byte!(b'\r');
-      read_byte!(b'\n');
+      // \r\n
+      let last_two = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+      if &last_two[..2] != b"\r\n" {
+        panic!("Invalid input");
+      }
+      tx.inner.body_offset += 2;
       None
     } else {
       Some(remaining_chunk_size - read)
     };
-    
 
     return read;
   }
@@ -473,7 +490,7 @@ async fn op_flash_read_body(
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
-  if tx.te_chunked {    
+  if tx.te_chunked {
     return step_chunked_read(sock, tx, &mut buf);
   }
 
@@ -748,7 +765,7 @@ fn run_server(
             upgrade,
             te_chunked,
             content_length,
-            remaining_chunks_size: None
+            remaining_chunks_size: None,
           })
           .ok();
         }
