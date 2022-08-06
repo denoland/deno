@@ -17,6 +17,8 @@
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
+    ObjectKeys,
+    ObjectCreate,
     SafeMap,
     SafeWeakMap,
     StringPrototypeEndsWith,
@@ -39,6 +41,7 @@
     return false;
   }
 
+  const relativeResolveCache = ObjectCreate(null);
   let requireDepth = 0;
   let statCache = null;
   let isPreloading = false;
@@ -78,9 +81,65 @@
     return toRealPath(requestPath);
   }
 
+  function tryPackage(requestPath, exts, isMain, originalPath) {
+    // const pkg = readPackage(requestPath)?.main;
+    let pkg = false;
+
+    if (!pkg) {
+      return tryExtensions(
+        core.opSync("op_require_path_resolve", [requestPath, "index"]),
+        exts,
+        isMain,
+      );
+    }
+
+    const filename = path.resolve(requestPath, pkg);
+    let actual = tryFile(filename, isMain) ||
+      tryExtensions(filename, exts, isMain) ||
+      tryExtensions(
+        core.opSync("op_require_path_resolve", [filename, "index"]),
+        exts,
+        isMain,
+      );
+    if (actual === false) {
+      actual = tryExtensions(
+        core.opSync("op_require_path_resolve", [requestPath, "index"]),
+        exts,
+        isMain,
+      );
+      if (!actual) {
+        // eslint-disable-next-line no-restricted-syntax
+        const err = new Error(
+          `Cannot find module '${filename}'. ` +
+            'Please verify that the package.json has a valid "main" entry',
+        );
+        err.code = "MODULE_NOT_FOUND";
+        err.path = core.opSync("op_require_path_resolve", [
+          requestPath,
+          "package.json",
+        ]);
+        err.requestPath = originalPath;
+        // TODO(BridgeAR): Add the requireStack as well.
+        throw err;
+      } else {
+        const jsonPath = core.opSync("op_require_path_resolve", [
+          requestPath,
+          "package.json",
+        ]);
+        process.emitWarning(
+          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+            "Please either fix that or report it to the module author",
+          "DeprecationWarning",
+          "DEP0128",
+        );
+      }
+    }
+    return actual;
+  }
+
   const realpathCache = new SafeMap();
   function toRealPath(requestPath) {
-    const maybeCached = realpathCache.get(requestPath)
+    const maybeCached = realpathCache.get(requestPath);
     if (maybeCached) {
       return maybeCached;
     }
@@ -92,7 +151,7 @@
   function tryExtensions(p, exts, isMain) {
     for (let i = 0; i < exts.length; i++) {
       const filename = tryFile(p + exts[i], isMain);
-  
+
       if (filename) {
         return filename;
       }
@@ -103,8 +162,7 @@
   // Find the longest (possibly multi-dot) extension registered in
   // Module._extensions
   function findLongestRegisteredExtension(filename) {
-    // TODO: get basename
-    const name = path.basename(filename);
+    const name = core.opSync("op_require_path_basename", filename);
     let currentExtension;
     let index;
     let startIndex = 0;
@@ -175,7 +233,7 @@
   const moduleParentCache = new SafeWeakMap();
   function Module(id = "", parent) {
     this.id = id;
-    this.path = path.dirname(id);
+    this.path = core.opSync("op_require_path_dirname", id);
     this.exports = {};
     moduleParentCache.set(this, parent);
     updateChildren(parent, this, false);
@@ -225,34 +283,25 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = resolveExports(curPath, request);
+        const exportsResolved = false;
+        // TODO:
+        // const exportsResolved = resolveExports(curPath, request);
         if (exportsResolved) {
           return exportsResolved;
         }
       }
 
-      const basePath = path.resolve(curPath, request);
+      const basePath = core.opSync("op_require_path_resolve", [
+        curPath,
+        request,
+      ]);
       let filename;
 
       const rc = stat(basePath);
       if (!trailingSlash) {
         if (rc === 0) { // File.
           if (!isMain) {
-            if (preserveSymlinks) {
-              filename = path.resolve(basePath);
-            } else {
-              filename = toRealPath(basePath);
-            }
-          } else if (preserveSymlinksMain) {
-            // For the main module, we use the preserveSymlinksMain flag instead
-            // mainly for backward compatibility, as the preserveSymlinks flag
-            // historically has not applied to the main module.  Most likely this
-            // was intended to keep .bin/ binaries working, as following those
-            // symlinks is usually required for the imports in the corresponding
-            // files to resolve; that said, in some use cases following symlinks
-            // causes bigger problems which is why the preserveSymlinksMain option
-            // is needed.
-            filename = path.resolve(basePath);
+            filename = toRealPath(basePath);
           } else {
             filename = toRealPath(basePath);
           }
@@ -556,12 +605,63 @@
     }
   };
 
+  Module.wrapper = [
+    // TODO:
+    // We provide non standard timer APIs in the CommonJS wrapper
+    // to avoid exposing them in global namespace.
+    "(function (exports, require, module, __filename, __dirname, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname) {",
+    "\n}).call(this, exports, require, module, __filename, __dirname); })",
+  ];
+  Module.wrap = function (script) {
+    script = script.replace(/^#!.*?\n/, "");
+    return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
+  };
+
+  function wrapSafe(
+    filename,
+    content,
+    cjsModuleInstance,
+  ) {
+    const wrapper = Module.wrap(content);
+    const [f, err] = core.evalContext(wrapper, filename);
+    if (err) {
+      console.log("TODO: wrapSafe check if main module");
+      throw err.thrown;
+    }
+    return f;
+  }
+
   Module.prototype._compile = function (content, filename) {
-    throw new Error("not implemented");
+    const compiledWrapper = wrapSafe(filename, content, this);
+
+    const dirname = core.opSync("op_require_path_dirname", filename);
+    const require = makeRequireFunction(this);
+    const exports = this.exports;
+    const thisValue = exports;
+    const module = this;
+    if (requireDepth === 0) {
+      statCache = new SafeMap();
+    }
+    const result = compiledWrapper.call(
+      thisValue,
+      exports,
+      require,
+      this,
+      filename,
+      dirname,
+    );
+    if (requireDepth === 0) {
+      statCache = null;
+    }
+    return result;
   };
 
   Module._extensions[".js"] = function (module, filename) {
-    throw new Error("not implemented");
+    const content = core.opSync("op_require_read_file", filename);
+
+    console.log(`TODO: Module._extensions[".js"] is ESM`);
+
+    module._compile(content, filename);
   };
 
   // Native extension for .json

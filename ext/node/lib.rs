@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::normalize_path;
 use deno_core::op;
 use deno_core::Extension;
 use std::path::PathBuf;
@@ -20,13 +22,20 @@ pub fn init() -> Extension {
       op_require_try_self_parent_path::decl(),
       op_require_try_self_parent_path::decl(),
       op_require_try_self::decl(),
+      op_require_real_path::decl(),
+      op_require_path_is_absolute::decl(),
+      op_require_path_dirname::decl(),
+      op_require_stat::decl(),
+      op_require_path_resolve::decl(),
+      op_require_path_basename::decl(),
+      op_require_read_file::decl(),
     ])
     .build()
 }
 
 #[op]
 pub fn op_require_init_paths() -> Vec<String> {
-  let (home_dir, node_path) = if cfg!(target_os = "windows") {
+  let (home_dir, node_path) = if cfg!(windows) {
     (
       std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
       std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
@@ -39,7 +48,7 @@ pub fn op_require_init_paths() -> Vec<String> {
   };
 
   let mut prefix_dir = std::env::current_exe().unwrap();
-  if cfg!(target_os = "windows") {
+  if cfg!(windows) {
     prefix_dir = prefix_dir.join("..").join("..")
   } else {
     prefix_dir = prefix_dir.join("..")
@@ -58,11 +67,7 @@ pub fn op_require_init_paths() -> Vec<String> {
     .collect();
 
   if !node_path.is_empty() {
-    let delimiter = if cfg!(target_os = "windows") {
-      ";"
-    } else {
-      ":"
-    };
+    let delimiter = if cfg!(windows) { ";" } else { ":" };
     let mut node_paths: Vec<String> = node_path
       .split(delimiter)
       .filter(|e| !e.is_empty())
@@ -83,7 +88,7 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
     .to_file_path()
     .unwrap();
 
-  if cfg!(target_os = "windows") {
+  if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
     let from_str = from.to_str().unwrap();
     if from_str.len() >= 3 {
@@ -116,7 +121,7 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
     }
   }
 
-  if cfg!(target_os = "windows") {
+  if cfg!(windows) {
     // Append /node_modules to handle root paths.
     paths.push("/node_modules".to_string());
   }
@@ -127,7 +132,7 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
 #[op]
 fn op_require_proxy_path(filename: String) -> String {
   // Allow a directory to be passed as the filename
-  let trailing_slash = if cfg!(target_os = "windows") {
+  let trailing_slash = if cfg!(windows) {
     filename.ends_with('\\')
   } else {
     filename.ends_with('/')
@@ -151,7 +156,7 @@ fn op_require_is_request_relative(request: String) -> bool {
     return true;
   }
 
-  if cfg!(target_os = "windows") {
+  if cfg!(windows) {
     if request.starts_with(".\\") {
       return true;
     }
@@ -212,7 +217,7 @@ fn op_require_path_is_absolute(p: String) -> bool {
 
 #[op]
 fn op_require_stat(filename: String) -> i32 {
-  if let Ok(metadata) = std::fs::metadata(&path) {
+  if let Ok(metadata) = std::fs::metadata(&filename) {
     if metadata.is_file() {
       return 0;
     } else {
@@ -224,13 +229,45 @@ fn op_require_stat(filename: String) -> i32 {
 }
 
 #[op]
-fn op_require_real_path(request: String) -> String {
-  // TODO:
-  request
+fn op_require_real_path(request: String) -> Result<String, AnyError> {
+  let mut canonicalized_path = PathBuf::from(request).canonicalize()?;
+  if cfg!(windows) {
+    canonicalized_path = PathBuf::from(
+      canonicalized_path
+        .display()
+        .to_string()
+        .trim_start_matches("\\\\?\\"),
+    );
+  }
+  Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
 #[op]
-fn op_require_(request: String) {}
+fn op_require_path_resolve(parts: Vec<String>) -> String {
+  assert!(!parts.is_empty());
+  let mut p = PathBuf::from(&parts[0]);
+  if parts.len() > 1 {
+    for part in &parts[1..] {
+      p = p.join(part);
+    }
+  }
+  normalize_path(p).to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_path_dirname(request: String) -> String {
+  let p = PathBuf::from(request);
+  p.parent().unwrap().to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_path_basename(request: String) -> String {
+  let p = PathBuf::from(request);
+  p.file_name().unwrap().to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_(_request: String) {}
 
 #[op]
 fn op_require_try_self_parent_path(
@@ -278,4 +315,10 @@ fn op_require_try_self(
     }
   }
   None
+}
+
+#[op]
+fn op_require_read_file(filename: String) -> Result<String, AnyError> {
+  let contents = std::fs::read_to_string(filename)?;
+  Ok(contents)
 }
