@@ -179,18 +179,17 @@
         // FIXME(bartlomieju): this is an additional op overhead,
         // ideally we could bitshift token to figure out what is the request
         // method
-        // const method = core.ops.op_flash_method(serverId, i);
-        // let body = null;
+        const method = core.ops.op_flash_method(serverId, i);
+        let body = null;
         // There might be a body, but we don't expose it for GET/HEAD requests.
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
-        // if (method !== "GET" && method !== "HEAD") {
-        //   body = createRequestBodyStream(serverId, i);
-        // }
+        if (method !== "GET" && method !== "HEAD") {
+           body = createRequestBodyStream(serverId, i);
+         }
 
         const req = fromInnerFlashRequest(
-          // body,
-          null,
+          body,
           () => core.ops.op_flash_method(serverId, i),
           () => {
             const path = core.ops.op_flash_path(serverId, i);
@@ -345,7 +344,7 @@
         try {
           // This is the largest possible size for a single packet on a TLS
           // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
+          const chunk = new Uint8Array(1024);
           const read = await core.opAsync(
             "op_flash_read_body",
             serverId,
