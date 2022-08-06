@@ -301,7 +301,7 @@ fn op_flash_first_packet(
     let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
   }
-  
+
   let mut buffer = &tx.inner.buffer[..];
   debug_assert!(buf.len() <= buffer.len());
 
@@ -319,11 +319,15 @@ async fn op_flash_read_body(
   token: u32,
   mut buf: ZeroCopyBuf,
 ) -> usize {
-  let ctx = unsafe { {
-    let op_state = &mut state.borrow_mut();
-    let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
-  }.as_mut().unwrap() };
+  let ctx = unsafe {
+    {
+      let op_state = &mut state.borrow_mut();
+      let flash_ctx = op_state.borrow_mut::<FlashContext>();
+      flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
+    }
+    .as_mut()
+    .unwrap()
+  };
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
@@ -332,7 +336,7 @@ async fn op_flash_read_body(
     // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
     //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
     //   let cursor = Cursor::new(buffer);
-    //   let mut decoder = chunked::Decoder::new(cursor); 
+    //   let mut decoder = chunked::Decoder::new(cursor);
 
     //   let nread = decoder.read(&mut buf).expect("read error");
     //   let cursor = decoder.into_inner();
@@ -472,7 +476,8 @@ fn run_server(
             }
             Ok(n) => {
               if let Some(tx) = &socket.read_tx {
-                tx.blocking_send(bytes::Bytes::copy_from_slice(&buffer[..n])).unwrap();
+                tx.blocking_send(bytes::Bytes::copy_from_slice(&buffer[..n]))
+                  .unwrap();
                 continue;
               }
               body_len = n;
@@ -577,7 +582,7 @@ fn run_server(
             upgrade,
             te_chunked,
             content_length,
-            expect_continue
+            expect_continue,
           })
           .ok();
         }
@@ -747,7 +752,6 @@ pub fn detach_socket(
   let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
   let stream = tokio::net::TcpStream::from_std(std_stream)?;
   Ok(stream)
-
 }
 
 #[op]

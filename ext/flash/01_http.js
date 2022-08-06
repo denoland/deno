@@ -185,8 +185,8 @@
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
         if (method !== "GET" && method !== "HEAD") {
-           body = createRequestBodyStream(serverId, i);
-         }
+          body = createRequestBodyStream(serverId, i);
+        }
 
         const req = fromInnerFlashRequest(
           body,
