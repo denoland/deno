@@ -6,19 +6,34 @@
 
 ((window) => {
   const {
+    ArrayIsArray,
     ArrayPrototypeIncludes,
-    ArrayPrototypeSlice,
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeJoin,
     ArrayPrototypePush,
-    StringPrototypeEndsWith,
-    StringPrototypeSlice,
-    StringPrototypeIndexOf,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    ObjectGetOwnPropertyDescriptor,
+    ObjectGetPrototypeOf,
+    ObjectPrototypeHasOwnProperty,
+    ObjectSetPrototypeOf,
     SafeWeakMap,
+    StringPrototypeEndsWith,
+    StringPrototypeIndexOf,
+    StringPrototypeSlice,
+    StringPrototypeStartsWith,
   } = window.__bootstrap.primordials;
+  const core = window.Deno.core;
 
   function assert(cond) {
     if (!cond) {
       throw Error("assert");
     }
+  }
+
+  // TODO:
+  function isProxy() {
+    return false;
   }
 
   let requireDepth = 0;
@@ -56,6 +71,59 @@
     return ".js";
   }
 
+  function getExportsForCircularRequire(module) {
+    if (
+      module.exports &&
+      !isProxy(module.exports) &&
+      ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
+      // Exclude transpiled ES6 modules / TypeScript code because those may
+      // employ unusual patterns for accessing 'module.exports'. That should
+      // be okay because ES6 modules have a different approach to circular
+      // dependencies anyway.
+      !module.exports.__esModule
+    ) {
+      // This is later unset once the module is done loading.
+      ObjectSetPrototypeOf(
+        module.exports,
+        CircularRequirePrototypeWarningProxy,
+      );
+    }
+
+    return module.exports;
+  }
+
+  // A Proxy that can be used as the prototype of a module.exports object and
+  // warns when non-existent properties are accessed.
+  const CircularRequirePrototypeWarningProxy = new Proxy({}, {
+    get(target, prop) {
+      // Allow __esModule access in any case because it is used in the output
+      // of transpiled code to determine whether something comes from an
+      // ES module, and is not used as a regular key of `module.exports`.
+      if (prop in target || prop === "__esModule") return target[prop];
+      // TODO:
+      // emitCircularRequireWarning(prop);
+      console.log("TODO: emitCircularRequireWarning");
+      return undefined;
+    },
+
+    getOwnPropertyDescriptor(target, prop) {
+      if (
+        ObjectPrototypeHasOwnProperty(target, prop) || prop === "__esModule"
+      ) {
+        return ObjectGetOwnPropertyDescriptor(target, prop);
+      }
+      // TODO:
+      // emitCircularRequireWarning(prop);
+      console.log("TODO: emitCircularRequireWarning");
+      return undefined;
+    },
+  });
+
+  function loadNativeModule() {
+    console.log("TODO: loadNativeModule");
+    return undefined;
+  }
+
   const moduleParentCache = new SafeWeakMap();
   function Module(id = "", parent) {
     this.id = id;
@@ -78,29 +146,322 @@
   let modulePaths = [];
   Module.globalPaths = modulePaths;
 
-  Module.prototype._findPath = function (request, paths, isMain) {
-    throw new Error("not implemented");
+  Module._findPath = function (request, paths, isMain) {
+    const absoluteRequest = path.isAbsolute(request);
+    if (absoluteRequest) {
+      paths = [""];
+    } else if (!paths || paths.length === 0) {
+      return false;
+    }
+
+    const cacheKey = request + "\x00" + ArrayPrototypeJoin(paths, "\x00");
+    const entry = Module._pathCache[cacheKey];
+    if (entry) {
+      return entry;
+    }
+
+    let exts;
+    let trailingSlash = request.length > 0 &&
+      StringPrototypeCharCodeAt(request, request.length - 1) ===
+        CHAR_FORWARD_SLASH;
+    if (!trailingSlash) {
+      trailingSlash = RegExpPrototypeTest(trailingSlashRegex, request);
+    }
+
+    // For each path
+    for (let i = 0; i < paths.length; i++) {
+      // Don't search further if path doesn't exist
+      const curPath = paths[i];
+      if (curPath && stat(curPath) < 1) continue;
+
+      if (!absoluteRequest) {
+        const exportsResolved = resolveExports(curPath, request);
+        if (exportsResolved) {
+          return exportsResolved;
+        }
+      }
+
+      const basePath = path.resolve(curPath, request);
+      let filename;
+
+      const rc = stat(basePath);
+      if (!trailingSlash) {
+        if (rc === 0) { // File.
+          if (!isMain) {
+            if (preserveSymlinks) {
+              filename = path.resolve(basePath);
+            } else {
+              filename = toRealPath(basePath);
+            }
+          } else if (preserveSymlinksMain) {
+            // For the main module, we use the preserveSymlinksMain flag instead
+            // mainly for backward compatibility, as the preserveSymlinks flag
+            // historically has not applied to the main module.  Most likely this
+            // was intended to keep .bin/ binaries working, as following those
+            // symlinks is usually required for the imports in the corresponding
+            // files to resolve; that said, in some use cases following symlinks
+            // causes bigger problems which is why the preserveSymlinksMain option
+            // is needed.
+            filename = path.resolve(basePath);
+          } else {
+            filename = toRealPath(basePath);
+          }
+        }
+
+        if (!filename) {
+          // Try it with each of the extensions
+          if (exts === undefined) {
+            exts = ObjectKeys(Module._extensions);
+          }
+          filename = tryExtensions(basePath, exts, isMain);
+        }
+      }
+
+      if (!filename && rc === 1) { // Directory.
+        // try it with each of the extensions at "index"
+        if (exts === undefined) {
+          exts = ObjectKeys(Module._extensions);
+        }
+        filename = tryPackage(basePath, exts, isMain, request);
+      }
+
+      if (filename) {
+        Module._pathCache[cacheKey] = filename;
+        return filename;
+      }
+    }
+
+    return false;
   };
 
-  Module.prototype._nodeModulePaths = function (from) {
+  Module._nodeModulePaths = function (from) {
     return core.opSync("op_require_node_module_paths", from);
   };
 
-  Module.prototype._resolveLookupPaths = function (request, parent) {
-    throw new Error("not implemented");
+  Module._resolveLookupPaths = function (request, parent) {
+    console.log("TODO: Module._resolveLookupPaths NativeModule");
+    return core.opSync(
+      "op_require_resolve_lookup_paths",
+      request,
+      parent?.paths,
+      parent?.filename ?? "",
+    );
   };
 
-  Module.prototype._load = function (request, parent, isMain) {
-    throw new Error("not implemented");
+  Module._load = function (request, parent, isMain) {
+    let relResolveCacheIdentifier;
+    if (parent) {
+      // Fast path for (lazy loaded) modules in the same directory. The indirect
+      // caching is required to allow cache invalidation without changing the old
+      // cache key names.
+      relResolveCacheIdentifier = `${parent.path}\x00${request}`;
+      const filename = relativeResolveCache[relResolveCacheIdentifier];
+      if (filename !== undefined) {
+        const cachedModule = Module._cache[filename];
+        if (cachedModule !== undefined) {
+          updateChildren(parent, cachedModule, true);
+          if (!cachedModule.loaded) {
+            return getExportsForCircularRequire(cachedModule);
+          }
+          return cachedModule.exports;
+        }
+        delete relativeResolveCache[relResolveCacheIdentifier];
+      }
+    }
+
+    const filename = Module._resolveFilename(request, parent, isMain);
+    if (StringPrototypeStartsWith(filename, "node:")) {
+      // Slice 'node:' prefix
+      const id = StringPrototypeSlice(filename, 5);
+
+      const module = loadNativeModule(id, request);
+      if (!module?.canBeRequiredByUsers) {
+        // TODO:
+        // throw new ERR_UNKNOWN_BUILTIN_MODULE(filename);
+        throw new Error("Unknown built-in module");
+      }
+
+      return module.exports;
+    }
+
+    const cachedModule = Module._cache[filename];
+    if (cachedModule !== undefined) {
+      updateChildren(parent, cachedModule, true);
+      if (!cachedModule.loaded) {
+        const parseCachedModule = cjsParseCache.get(cachedModule);
+        if (!parseCachedModule || parseCachedModule.loaded) {
+          return getExportsForCircularRequire(cachedModule);
+        }
+        parseCachedModule.loaded = true;
+      } else {
+        return cachedModule.exports;
+      }
+    }
+
+    const mod = loadNativeModule(filename, request);
+    if (
+      mod?.canBeRequiredByUsers &&
+      NativeModule.canBeRequiredWithoutScheme(filename)
+    ) {
+      return mod.exports;
+    }
+
+    // Don't call updateChildren(), Module constructor already does.
+    const module = cachedModule || new Module(filename, parent);
+
+    if (isMain) {
+      console.log("TODO: isMain CJS module not handled");
+      // process.mainModule = module;
+      // module.id = '.';
+    }
+
+    Module._cache[filename] = module;
+    if (parent !== undefined) {
+      relativeResolveCache[relResolveCacheIdentifier] = filename;
+    }
+
+    let threw = true;
+    try {
+      module.load(filename);
+      threw = false;
+    } finally {
+      if (threw) {
+        delete Module._cache[filename];
+        if (parent !== undefined) {
+          delete relativeResolveCache[relResolveCacheIdentifier];
+          const children = parent?.children;
+          if (ArrayIsArray(children)) {
+            const index = ArrayPrototypeIndexOf(children, module);
+            if (index !== -1) {
+              ArrayPrototypeSplice(children, index, 1);
+            }
+          }
+        }
+      } else if (
+        module.exports &&
+        !isProxy(module.exports) &&
+        ObjectGetPrototypeOf(module.exports) ===
+          CircularRequirePrototypeWarningProxy
+      ) {
+        ObjectSetPrototypeOf(module.exports, ObjectPrototype);
+      }
+    }
+
+    return module.exports;
   };
 
-  Module.prototype._resolveFilename = function (
+  Module._resolveFilename = function (
     request,
     parent,
     isMain,
     options,
   ) {
-    throw new Error("not implemented");
+    // TODO:
+    // if (StringPrototypeStartsWith(request, 'node:') ||
+    //   (NativeModule.canBeRequiredByUsers(request) &&
+    //   NativeModule.canBeRequiredWithoutScheme(request))) {
+    if (StringPrototypeStartsWith(request, "node:")) {
+      return request;
+    }
+
+    let paths;
+
+    if (typeof options === "object" && options !== null) {
+      if (ArrayIsArray(options.paths)) {
+        const isRelative = core.opSync(
+          "op_require_specifier_is_relative",
+          request,
+        );
+
+        if (isRelative) {
+          paths = options.paths;
+        } else {
+          const fakeParent = new Module("", null);
+
+          paths = [];
+
+          for (let i = 0; i < options.paths.length; i++) {
+            const path = options.paths[i];
+            fakeParent.paths = Module._nodeModulePaths(path);
+            const lookupPaths = Module._resolveLookupPaths(request, fakeParent);
+
+            for (let j = 0; j < lookupPaths.length; j++) {
+              if (!ArrayPrototypeIncludes(paths, lookupPaths[j])) {
+                ArrayPrototypePush(paths, lookupPaths[j]);
+              }
+            }
+          }
+        }
+      } else if (options.paths === undefined) {
+        paths = Module._resolveLookupPaths(request, parent);
+      } else {
+        // TODO:
+        // throw new ERR_INVALID_ARG_VALUE("options.paths", options.paths);
+        throw new Error("Invalid arg value options.paths", options.path);
+      }
+    } else {
+      paths = Module._resolveLookupPaths(request, parent);
+    }
+
+    if (parent?.filename) {
+      if (request[0] === "#") {
+        console.log("TODO: Module._resolveFilename with #specifier");
+        // const pkg = readPackageScope(parent.filename) || {};
+        // if (pkg.data?.imports != null) {
+        //   try {
+        //     return finalizeEsmResolution(
+        //       packageImportsResolve(
+        //         request,
+        //         pathToFileURL(parent.filename),
+        //         cjsConditions,
+        //       ),
+        //       parent.filename,
+        //       pkg.path,
+        //     );
+        //   } catch (e) {
+        //     if (e.code === "ERR_MODULE_NOT_FOUND") {
+        //       throw createEsmNotFoundErr(request);
+        //     }
+        //     throw e;
+        //   }
+        // }
+      }
+    }
+
+    // Try module self resolution first
+    // TODO(bartlomieju): make into a single op
+    const parentPath = core.opSync(
+      "op_require_try_self_parent_path",
+      !!parent,
+      parent?.filename,
+      parent?.id,
+    );
+    // const selfResolved = core.opSync("op_require_try_self", parentPath, request);
+    const selfResolved = false;
+    if (selfResolved) {
+      const cacheKey = request + "\x00" +
+        (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
+      Module._pathCache[cacheKey] = selfResolved;
+      return selfResolved;
+    }
+
+    // Look up the filename first, since that's the cache key.
+    const filename = Module._findPath(request, paths, isMain, false);
+    if (filename) return filename;
+    const requireStack = [];
+    for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
+      ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
+    }
+    let message = `Cannot find module '${request}'`;
+    if (requireStack.length > 0) {
+      message = message + "\nRequire stack:\n- " +
+        ArrayPrototypeJoin(requireStack, "\n- ");
+    }
+    // eslint-disable-next-line no-restricted-syntax
+    const err = new Error(message);
+    err.code = "MODULE_NOT_FOUND";
+    err.requireStack = requireStack;
+    throw err;
   };
 
   Module.prototype.load = function (filename) {

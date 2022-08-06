@@ -15,6 +15,11 @@ pub fn init() -> Extension {
       op_require_init_paths::decl(),
       op_require_node_module_paths::decl(),
       op_require_proxy_path::decl(),
+      op_require_is_request_relative::decl(),
+      op_require_resolve_lookup_paths::decl(),
+      op_require_try_self_parent_path::decl(),
+      op_require_try_self_parent_path::decl(),
+      op_require_try_self::decl(),
     ])
     .build()
 }
@@ -134,4 +139,119 @@ fn op_require_proxy_path(filename: String) -> String {
   } else {
     filename
   }
+}
+
+#[op]
+fn op_require_is_request_relative(request: String) -> bool {
+  if request.starts_with("./") {
+    return true;
+  }
+
+  if request.starts_with("../") {
+    return true;
+  }
+
+  if cfg!(target_os = "windows") {
+    if request.starts_with(".\\") {
+      return true;
+    }
+
+    if request.starts_with("..\\") {
+      return true;
+    }
+  }
+
+  false
+}
+
+#[op]
+fn op_require_resolve_lookup_paths(
+  request: String,
+  maybe_parent_paths: Option<Vec<String>>,
+  parent_filename: String,
+) -> Option<Vec<String>> {
+  if !request.starts_with(".")
+    || (request.len() > 1
+      && !request.starts_with("..")
+      && !request.starts_with("./")
+      && (!cfg!(windows) || !request.starts_with(".\\")))
+  {
+    let module_paths = vec![];
+    let mut paths = module_paths;
+    if let Some(mut parent_paths) = maybe_parent_paths {
+      if !parent_paths.is_empty() {
+        paths.append(&mut parent_paths);
+      }
+    }
+
+    if !paths.is_empty() {
+      return Some(paths);
+    } else {
+      return None;
+    }
+  }
+
+  // In REPL, parent.filename is null.
+  // if (!parent || !parent.id || !parent.filename) {
+  //   // Make require('./path/to/foo') work - normally the path is taken
+  //   // from realpath(__filename) but in REPL there is no filename
+  //   const mainPaths = ['.'];
+
+  //   debug('looking for %j in %j', request, mainPaths);
+  //   return mainPaths;
+  // }
+
+  let p = PathBuf::from(parent_filename);
+  Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
+}
+
+#[op]
+fn op_require_(request: String) {}
+
+#[op]
+fn op_require_try_self_parent_path(
+  has_parent: bool,
+  maybe_parent_filename: Option<String>,
+  maybe_parent_id: Option<String>,
+) -> Option<String> {
+  if !has_parent {
+    return None;
+  }
+
+  if let Some(parent_filename) = maybe_parent_filename {
+    return Some(parent_filename);
+  }
+
+  if let Some(parent_id) = maybe_parent_id {
+    if parent_id == "<repl>" || parent_id == "internal/preload" {
+      if let Ok(cwd) = std::env::current_dir() {
+        return Some(cwd.to_string_lossy().to_string());
+      }
+    }
+  }
+  None
+}
+
+#[op]
+fn op_require_try_self(
+  has_parent: bool,
+  maybe_parent_filename: Option<String>,
+  maybe_parent_id: Option<String>,
+) -> Option<String> {
+  if !has_parent {
+    return None;
+  }
+
+  if let Some(parent_filename) = maybe_parent_filename {
+    return Some(parent_filename);
+  }
+
+  if let Some(parent_id) = maybe_parent_id {
+    if parent_id == "<repl>" || parent_id == "internal/preload" {
+      if let Ok(cwd) = std::env::current_dir() {
+        return Some(cwd.to_string_lossy().to_string());
+      }
+    }
+  }
+  None
 }

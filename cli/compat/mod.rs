@@ -111,12 +111,21 @@ pub fn load_cjs_module(
   module: &str,
   main: bool,
 ) -> Result<(), AnyError> {
+  // let source_code = &format!(
+  //   r#"(async function loadCjsModule(module) {{
+  //     const Module = await import("{module_loader}");
+  //     Module.default._load(module, null, {main});
+  //   }})('{module}');"#,
+  //   module_loader = MODULE_URL_STR.as_str(),
+  //   main = main,
+  //   module = escape_for_single_quote_string(module),
+  // );
+
   let source_code = &format!(
-    r#"(async function loadCjsModule(module) {{
-      const Module = await import("{module_loader}");
-      Module.default._load(module, null, {main});
+    r#"(function loadCjsModule(module) {{
+      console.log(Deno.require);
+      Deno.require.Module._load(module, null, {main});
     }})('{module}');"#,
-    module_loader = MODULE_URL_STR.as_str(),
     main = main,
     module = escape_for_single_quote_string(module),
   );

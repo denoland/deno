@@ -14,4 +14,4 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.145.0", path = "../../core" }
+deno_core = { version = "0.146.0", path = "../../core" }
