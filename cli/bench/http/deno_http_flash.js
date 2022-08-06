@@ -1,5 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-Deno.serve(() => new Response("Hello World"), {
+const { serve } = Deno;
+
+async function handler(r) {
+  console.log(await r.text());
+  return new Response("Hello World");
+}
+
+serve(handler, {
   hostname: "127.0.0.1",
   port: 9000,
 });

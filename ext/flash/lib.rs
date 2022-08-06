@@ -129,6 +129,7 @@ struct NextRequest {
   upgrade: bool,
   content_length: Option<u64>,
   te_chunked: bool,
+  remaining_chunks_size: Option<usize>,
 }
 
 // SAFETY: Sent from server thread to JS thread.
@@ -287,6 +288,178 @@ fn op_flash_headers(
     .collect()
 }
 
+fn step_chunked_read<R: Read + ?Sized>(sock: &mut R, tx: &mut NextRequest, buf: &mut [u8]) -> usize {
+  macro_rules! read_byte {
+    ($sock: ident, $byte: literal) => {
+      match $sock.bytes().next() {
+        Some(Ok($byte)) => {}
+        _ => panic!("Invalid input"),
+      }
+    };
+    ($byte: literal) => {
+      read_byte!(sock, $byte);
+    }
+  }
+  if tx.inner.body_offset != 0 {
+    let mut source = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+    let remaining_chunk_size = match tx.remaining_chunks_size { 
+      Some(c) => c,
+      None => {
+        let mut chunk_size_bytes = Vec::new();
+        let mut has_ext = false;
+  
+        loop {
+          let byte = match source.bytes().next() {
+            Some(Ok(b)) => b,
+            _ => panic!("Invalid input"),
+          };
+
+          if byte == b'\r' {
+            break;
+          }
+  
+          if byte == b';' {
+            has_ext = true;
+            break;
+          }
+  
+          chunk_size_bytes.push(byte);
+        }
+        
+        // Ignore extensions for now
+        if has_ext {
+          loop {
+            let byte = match source.bytes().next() {
+              Some(Ok(b)) => b,
+              _ => panic!("Invalid input"),
+            };
+            if byte == b'\r' {
+              break;
+            }
+          }
+        }
+
+
+      read_byte!(source, b'\n');
+
+      let size = String::from_utf8(chunk_size_bytes)
+        .ok()
+        .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
+        .expect("Invalid input");
+        dbg!(size);
+      if size == 0 {
+        read_byte!(source, b'\r');
+        read_byte!(source, b'\n');
+        return 0;
+      }
+
+      size
+      }
+    };
+
+    if buf.len() < remaining_chunk_size {
+      let read = source.read(buf).expect("Failed to read");
+      if read == 0 {
+        tx.inner.body_offset = 0;
+      } else {
+        tx.inner.body_offset += read;
+      }
+      tx.remaining_chunks_size = Some(remaining_chunk_size - read);
+      return read;
+    }
+
+    debug_assert!(buf.len() >= remaining_chunk_size);
+  
+    let buf = &mut buf[..remaining_chunk_size];
+    let read = source.read(buf).expect("Failed to read");
+    tx.remaining_chunks_size = if read == remaining_chunk_size {
+      read_byte!(b'\r');
+      read_byte!(b'\n');
+      None
+    } else {
+      Some(remaining_chunk_size - read)
+    };
+    
+
+    return read;
+  }
+
+  // https://docs.rs/chunked_transfer/latest/src/chunked_transfer/decoder.rs.html#69
+  // TODO(@littledivy): This can be further optimized.
+  let remaining_chunk_size = match tx.remaining_chunks_size {
+    Some(c) => c,
+    None => {
+      let mut chunk_size_bytes = Vec::new();
+      let mut has_ext = false;
+
+      loop {
+        let byte = match sock.bytes().next() {
+          Some(Ok(b)) => b,
+          _ => panic!("Invalid input"),
+        };
+
+        if byte == b'\r' {
+          break;
+        }
+
+        if byte == b';' {
+          has_ext = true;
+          break;
+        }
+
+        chunk_size_bytes.push(byte);
+      }
+
+      // Ignore extensions for now
+      if has_ext {
+        loop {
+          let byte = match sock.bytes().next() {
+            Some(Ok(b)) => b,
+            _ => panic!("Invalid input"),
+          };
+          if byte == b'\r' {
+            break;
+          }
+        }
+      }
+
+      read_byte!(b'\n');
+
+      let size = String::from_utf8(chunk_size_bytes)
+        .ok()
+        .and_then(|c| usize::from_str_radix(c.trim(), 16).ok())
+        .expect("Invalid input");
+      if size == 0 {
+        read_byte!(b'\r');
+        read_byte!(b'\n');
+        return 0;
+      }
+
+      size
+    }
+  };
+
+  if buf.len() < remaining_chunk_size {
+    let read = sock.read(buf).expect("Failed to read");
+    tx.remaining_chunks_size = Some(remaining_chunk_size - read);
+    return read;
+  }
+
+  debug_assert!(buf.len() >= remaining_chunk_size);
+
+  let buf = &mut buf[..remaining_chunk_size];
+  let read = sock.read(buf).expect("Failed to read");
+  tx.remaining_chunks_size = if read == remaining_chunk_size {
+    read_byte!(b'\r');
+    read_byte!(b'\n');
+    None
+  } else {
+    Some(remaining_chunk_size - read)
+  };
+
+  read
+}
+
 #[op]
 async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
@@ -298,7 +471,12 @@ async fn op_flash_read_body(
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let tx = ctx.response.get_mut(&token).unwrap();
+  // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
+  if tx.te_chunked {    
+    return step_chunked_read(sock, tx, &mut buf);
+  }
+
   if tx.inner.body_offset != 0 {
     use std::io::Read;
     let mut buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
@@ -523,13 +701,14 @@ fn run_server(
                 let value = unsafe {
                   HeaderValue::from_maybe_shared_unchecked(header.value)
                 };
-                if let Ok(Some(encoding)) = value.to_str().map(|s| s.rsplit(',').next()) {
+                if let Ok(Some(encoding)) =
+                  value.to_str().map(|s| s.rsplit(',').next())
+                {
                   // Chunked must always be the last encoding
                   if encoding.trim().eq_ignore_ascii_case("chunked") {
                     te_chunked = true;
                   }
                 }
-                // Handle chunked encoding
               }
               Ok(CONTENT_LENGTH) => {
                 // Transfer-Encoding overrides the Content-Length.
@@ -569,6 +748,7 @@ fn run_server(
             upgrade,
             te_chunked,
             content_length,
+            remaining_chunks_size: None
           })
           .ok();
         }
