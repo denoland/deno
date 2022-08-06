@@ -1,6 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, createOctoKit, semver } from "./deps.ts";
 
 const currentDirPath = $.path.dirname($.path.fromFileUrl(import.meta.url));
