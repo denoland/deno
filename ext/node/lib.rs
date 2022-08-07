@@ -175,7 +175,7 @@ fn op_require_resolve_lookup_paths(
   maybe_parent_paths: Option<Vec<String>>,
   parent_filename: String,
 ) -> Option<Vec<String>> {
-  if !request.starts_with(".")
+  if !request.starts_with('.')
     || (request.len() > 1
       && !request.starts_with("..")
       && !request.starts_with("./")

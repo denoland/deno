@@ -21,6 +21,7 @@
     ObjectCreate,
     SafeMap,
     SafeWeakMap,
+    JSONParse,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
     StringPrototypeSlice,
@@ -29,6 +30,14 @@
     RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
+
+  function pathDirname(filepath) {
+    return core.opSync("op_require_path_dirname", filepath);
+  }
+
+  function pathResolve(...args) {
+    return core.opSync("op_require_path_resolve", args);
+  }
 
   function assert(cond) {
     if (!cond) {
@@ -87,7 +96,7 @@
 
     if (!pkg) {
       return tryExtensions(
-        core.opSync("op_require_path_resolve", [requestPath, "index"]),
+        pathResolve(requestPath, "index"),
         exts,
         isMain,
       );
@@ -97,13 +106,13 @@
     let actual = tryFile(filename, isMain) ||
       tryExtensions(filename, exts, isMain) ||
       tryExtensions(
-        core.opSync("op_require_path_resolve", [filename, "index"]),
+        pathResolve(filename, "index"),
         exts,
         isMain,
       );
     if (actual === false) {
       actual = tryExtensions(
-        core.opSync("op_require_path_resolve", [requestPath, "index"]),
+        pathResolve(requestPath, "index"),
         exts,
         isMain,
       );
@@ -114,24 +123,24 @@
             'Please verify that the package.json has a valid "main" entry',
         );
         err.code = "MODULE_NOT_FOUND";
-        err.path = core.opSync("op_require_path_resolve", [
+        err.path = pathResolve(
           requestPath,
           "package.json",
-        ]);
+        );
         err.requestPath = originalPath;
-        // TODO(BridgeAR): Add the requireStack as well.
         throw err;
       } else {
-        const jsonPath = core.opSync("op_require_path_resolve", [
-          requestPath,
-          "package.json",
-        ]);
-        process.emitWarning(
-          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
-            "Please either fix that or report it to the module author",
-          "DeprecationWarning",
-          "DEP0128",
-        );
+        console.log("TODO: tryPackage process.emitWarning");
+        // const jsonPath = pathResolve(
+        //   requestPath,
+        //   "package.json",
+        // );
+        // process.emitWarning(
+        //   `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+        //     "Please either fix that or report it to the module author",
+        //   "DeprecationWarning",
+        //   "DEP0128",
+        // );
       }
     }
     return actual;
@@ -233,7 +242,7 @@
   const moduleParentCache = new SafeWeakMap();
   function Module(id = "", parent) {
     this.id = id;
-    this.path = core.opSync("op_require_path_dirname", id);
+    this.path = pathDirname(id);
     this.exports = {};
     moduleParentCache.set(this, parent);
     updateChildren(parent, this, false);
@@ -285,16 +294,14 @@
       if (!absoluteRequest) {
         const exportsResolved = false;
         // TODO:
+        console.log("TODO: Module._findPath resolveExports");
         // const exportsResolved = resolveExports(curPath, request);
         if (exportsResolved) {
           return exportsResolved;
         }
       }
 
-      const basePath = core.opSync("op_require_path_resolve", [
-        curPath,
-        request,
-      ]);
+      const basePath = pathResolve(curPath, request);
       let filename;
 
       const rc = stat(basePath);
@@ -566,8 +573,11 @@
   Module.prototype.load = function (filename) {
     assert(!this.loaded);
     this.filename = filename;
-    // TODO: get dirname here
-    this.paths = Module._nodeModulePaths(filename);
+    console.log("TODO: Module.load use pathDirname");
+    this.paths = Module._nodeModulePaths(
+      // pathDirname(filename),
+      filename,
+    );
     const extension = findLongestRegisteredExtension(filename);
     // allow .mjs to be overriden
     if (
@@ -620,7 +630,7 @@
   function wrapSafe(
     filename,
     content,
-    cjsModuleInstance,
+    _cjsModuleInstance,
   ) {
     const wrapper = Module.wrap(content);
     const [f, err] = core.evalContext(wrapper, filename);
@@ -634,7 +644,7 @@
   Module.prototype._compile = function (content, filename) {
     const compiledWrapper = wrapSafe(filename, content, this);
 
-    const dirname = core.opSync("op_require_path_dirname", filename);
+    const dirname = pathDirname(filename);
     const require = makeRequireFunction(this);
     const exports = this.exports;
     const thisValue = exports;
@@ -664,14 +674,28 @@
     module._compile(content, filename);
   };
 
+  function stripBOM(content) {
+    if (content.charCodeAt(0) === 0xfeff) {
+      content = content.slice(1);
+    }
+    return content;
+  }
+
   // Native extension for .json
   Module._extensions[".json"] = function (module, filename) {
-    throw new Error("not implemented");
+    const content = core.opSync("op_require_read_file", filename);
+
+    try {
+      module.exports = JSONParse(stripBOM(content));
+    } catch (err) {
+      err.message = filename + ": " + err.message;
+      throw err;
+    }
   };
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    throw new Error("not implemented");
+    throw new Error("not implemented loading .node files");
   };
 
   function createRequireFromPath(filename) {
