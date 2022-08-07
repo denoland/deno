@@ -573,10 +573,8 @@
   Module.prototype.load = function (filename) {
     assert(!this.loaded);
     this.filename = filename;
-    console.log("TODO: Module.load use pathDirname");
     this.paths = Module._nodeModulePaths(
-      // pathDirname(filename),
-      filename,
+      pathDirname(filename),
     );
     const extension = findLongestRegisteredExtension(filename);
     // allow .mjs to be overriden
