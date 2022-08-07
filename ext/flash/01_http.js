@@ -120,8 +120,8 @@
       str += `${name}: ${value}\r\n`;
     }
 
-    // TODO: MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
-    // TODO: MUST generate an Allow header field in a 405 response containing a list of the target
+    // TODO(@littledivy): MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
+    // TODO(@littledivy): MUST generate an Allow header field in a 405 response containing a list of the target
     //      resource's currently supported methods.
     // TODD: Don't send body for HEAD requests.
     // null body status is validated by inititalizeAResponse in ext/fetch
