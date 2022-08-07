@@ -5,6 +5,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use deno_core::error::AnyError;
+use deno_core::futures::ready;
 use deno_core::op;
 use deno_core::ByteString;
 use deno_core::Extension;
@@ -40,7 +41,9 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
+use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 mod chunked;
@@ -74,8 +77,10 @@ struct InnerRequest {
 struct Stream {
   inner: TcpStream,
   detached: bool,
-  read_rx: Option<mpsc::Receiver<bytes::Bytes>>,
-  read_tx: Option<mpsc::Sender<bytes::Bytes>>,
+  read_rx: Option<oneshot::Receiver<()>>,
+  read_tx: Option<oneshot::Sender<()>>,
+  readiness_rx: Option<mpsc::Receiver<()>>,
+  readiness_tx: Option<mpsc::Sender<()>>,
 }
 
 impl Stream {
@@ -106,6 +111,39 @@ impl Read for Stream {
   }
 }
 
+impl Stream {
+  unsafe fn poll_read_priv<'a>(
+    &'a mut self,
+    cx: &mut Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> std::task::Poll<std::io::Result<()>> {
+    ready!(self.readiness_rx.as_mut().unwrap().poll_recv(cx));
+    let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>]
+      as *mut [u8]);
+
+    match self.read(b) {
+      Ok(n) => {
+        // Safety: We trust `TcpStream::read` to have filled up `n` bytes in the
+        // buffer.
+        buf.assume_init(n);
+        buf.advance(n);
+        std::task::Poll::Ready(Ok(()))
+      }
+      Err(e) => std::task::Poll::Ready(Err(e)),
+    }
+  }
+}
+
+impl AsyncRead for Stream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> std::task::Poll<std::io::Result<()>> {
+    unsafe { self.get_mut().poll_read_priv(cx, buf) }
+  }
+}
+
 struct NextRequest {
   // Pointer to stream owned by the server loop thread.
   //
@@ -120,6 +158,7 @@ struct NextRequest {
   no_more_requests: bool,
   #[allow(dead_code)]
   upgrade: bool,
+  content_read: usize,
   content_length: Option<u64>,
   te_chunked: bool,
   expect_continue: bool,
@@ -153,6 +192,14 @@ fn op_flash_respond(
     }
   };
 
+
+  if let Some(tx) = sock.read_tx.take() {
+    tx.send(()).unwrap();
+    sock.readiness_tx.take();
+    sock.readiness_rx.take();
+  }
+  
+
   let _ = sock.write(&response);
   if let Some(response) = maybe_body {
     let _ = sock.write(format!("{:x}", response.len()).as_bytes());
@@ -161,8 +208,6 @@ fn op_flash_respond(
     let _ = sock.write(b"\r\n");
   }
   sock.reattach_ownership();
-  sock.read_tx.take();
-  sock.read_rx.take();
 }
 
 #[op]
@@ -199,6 +244,8 @@ fn op_flash_respond_chuncked(
     let _ = sock.write(b"0\r\n\r\n");
   }
   sock.reattach_ownership();
+  sock.readiness_rx.take();
+  sock.readiness_tx.take();
 }
 
 #[op]
@@ -285,6 +332,8 @@ fn op_flash_headers(
     .collect()
 }
 
+// Remember the first packet we read? It probably also has some body data. This op quickly copies it into
+// a buffer and sets up channels for streaming the rest.
 #[op]
 fn op_flash_first_packet(
   op_state: &mut OpState,
@@ -297,19 +346,27 @@ fn op_flash_first_packet(
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
+
+  let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
+  // Oh there is nothing here.
+  if buffer.is_empty() {
+    return 0;
+  }
+  debug_assert!(buf.len() >= buffer.len());
+
+  {
+    let (tx, rx) = mpsc::channel(1);
+    sock.readiness_rx = Some(rx);
+    sock.readiness_tx = Some(tx);
+  }
+
   if tx.expect_continue {
     let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
   }
-  
-  let mut buffer = &tx.inner.buffer[..];
-  debug_assert!(buf.len() <= buffer.len());
-
-  let (tx, rx) = mpsc::channel(1);
-  sock.read_tx = Some(tx);
-  sock.read_rx = Some(rx);
-
-  buffer.read(&mut buf).unwrap()
+  let nread = buffer.read(&mut buf).unwrap();
+  tx.content_read += nread;
+  nread
 }
 
 #[op]
@@ -319,20 +376,31 @@ async fn op_flash_read_body(
   token: u32,
   mut buf: ZeroCopyBuf,
 ) -> usize {
-  let ctx = unsafe { {
-    let op_state = &mut state.borrow_mut();
-    let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
-  }.as_mut().unwrap() };
+  let ctx = unsafe {
+    {
+      let op_state = &mut state.borrow_mut();
+      let flash_ctx = op_state.borrow_mut::<FlashContext>();
+      flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
+    }
+    .as_mut()
+    .unwrap()
+  };
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
 
+  dbg!(tx.te_chunked);
+
+  if sock.read_rx.is_none() {  
+    let (tx, rx) = oneshot::channel();
+    sock.read_tx = Some(tx);
+    sock.read_rx = Some(rx);
+  }
   if tx.te_chunked {
     // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
     //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
     //   let cursor = Cursor::new(buffer);
-    //   let mut decoder = chunked::Decoder::new(cursor); 
+    //   let mut decoder = chunked::Decoder::new(cursor);
 
     //   let nread = decoder.read(&mut buf).expect("read error");
     //   let cursor = decoder.into_inner();
@@ -348,13 +416,12 @@ async fn op_flash_read_body(
     let mut decoder = chunked::Decoder::new(sock);
     return decoder.read(&mut buf).expect("read error");
   }
-
-  let bytes = match sock.read_rx.as_mut().unwrap().recv().await {
-    Some(bytes) => bytes,
-    None => return 0,
-  };
-
-  bytes.as_ref().read(&mut buf).unwrap()
+  if tx.content_read >= tx.content_length.unwrap() as usize {
+    return 0;
+  }
+  let nread = tokio::io::AsyncReadExt::read(sock, &mut buf).await.unwrap();
+  tx.content_read += nread;
+  nread
 }
 
 // https://github.com/hyperium/hyper/blob/0c8ee93d7f557afc63ca2a5686d19071813ab2b7/src/headers.rs#L67
@@ -442,6 +509,8 @@ fn run_server(
                 detached: false,
                 read_rx: None,
                 read_tx: None,
+                readiness_rx: None,
+                readiness_tx: None,
               };
               sockets.insert(token, stream);
             }
@@ -450,13 +519,25 @@ fn run_server(
           }
         },
         token => {
-          let mut buffer: [u8; 1024] = [0_u8; 1024];
           let socket = sockets.get_mut(&token).unwrap();
           if socket.detached {
+            // poll
+            //   .registry()
+            //   .deregister(&mut socket.inner)
+            //   .unwrap();
             continue;
+          }
+          if let Some(tx) = &socket.readiness_tx {
+            tx.blocking_send(()).unwrap();
+
+            if let Some(rx) = socket.read_rx.take() {
+              println!("read_rx");
+              let _ = rx.blocking_recv();
+            }
           }
 
           debug_assert!(event.is_readable());
+          let mut buffer: [u8; 1024] = [0_u8; 1024];
           let sock_ptr = socket as *mut _;
           let nread = socket.read(&mut buffer);
 
@@ -471,10 +552,6 @@ fn run_server(
               continue;
             }
             Ok(n) => {
-              if let Some(tx) = &socket.read_tx {
-                tx.blocking_send(bytes::Bytes::copy_from_slice(&buffer[..n])).unwrap();
-                continue;
-              }
               body_len = n;
               let r = req.parse(&buffer[0..n]).unwrap();
               // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
@@ -576,8 +653,9 @@ fn run_server(
             no_more_requests,
             upgrade,
             te_chunked,
+            content_read: 0,
             content_length,
-            expect_continue
+            expect_continue,
           })
           .ok();
         }
@@ -747,7 +825,6 @@ pub fn detach_socket(
   let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
   let stream = tokio::net::TcpStream::from_std(std_stream)?;
   Ok(stream)
-
 }
 
 #[op]

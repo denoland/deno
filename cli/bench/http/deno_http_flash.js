@@ -2,7 +2,7 @@
 const { serve } = Deno;
 
 async function handler(req) {
-  console.log(await req.text());
+  await req.text();
   return new Response("Hello World");
 }
 

@@ -180,11 +180,12 @@
         // ideally we could bitshift token to figure out what is the request
         // method
         const method = core.ops.op_flash_method(serverId, i);
+
         let body = null;
         // There might be a body, but we don't expose it for GET/HEAD requests.
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
-        if (method !== "GET" && method !== "HEAD") {
+        if (method === "POST" || method === "PUT") {
            body = createRequestBodyStream(serverId, i);
          }
 
@@ -338,18 +339,20 @@
   }
 
   function createRequestBodyStream(serverId, token) {
-    let readFirstPacket = false;
+    // The first packet is left over bytes after parsing the request
+    // which is always less than 1024 bytes.      
+    const readFirstPacket = new Uint8Array(1024);
+    const firstRead = core.ops.op_flash_first_packet(serverId, token, readFirstPacket);
+    let firstEnqueued = firstRead !== 0;
+
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
         try {
-          if (readFirstPacket === false) {
-            // The first packet is left over bytes after parsing the request
-            // which is always less than 1024 bytes.
-            const chunk = new Uint8Array(1024);
-            const read = core.ops.op_flash_first_packet(serverId, token, chunk);
-            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
-            readFirstPacket = true;
+          if (firstEnqueued === false) {
+            controller.enqueue(TypedArrayPrototypeSubarray(readFirstPacket, 0, firstRead));
+            firstEnqueued = true;
+            return;
           }
           // This is the largest possible size for a single packet on a TLS
           // stream.
