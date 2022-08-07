@@ -15,6 +15,7 @@
     ArrayPrototypeSplice,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
+    ObjectEntries,
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
     ObjectKeys,
@@ -234,11 +235,6 @@
     },
   });
 
-  function loadNativeModule() {
-    console.log("TODO: loadNativeModule");
-    return undefined;
-  }
-
   const moduleParentCache = new SafeWeakMap();
   function Module(id = "", parent) {
     this.id = id;
@@ -345,7 +341,6 @@
   };
 
   Module._resolveLookupPaths = function (request, parent) {
-    console.log("TODO: Module._resolveLookupPaths NativeModule");
     return core.opSync(
       "op_require_resolve_lookup_paths",
       request,
@@ -380,8 +375,8 @@
       // Slice 'node:' prefix
       const id = StringPrototypeSlice(filename, 5);
 
-      const module = loadNativeModule(id, request);
-      if (!module?.canBeRequiredByUsers) {
+      const module = loadNativeModule(id, id);
+      if (!module) {
         // TODO:
         // throw new ERR_UNKNOWN_BUILTIN_MODULE(filename);
         throw new Error("Unknown built-in module");
@@ -406,8 +401,7 @@
 
     const mod = loadNativeModule(filename, request);
     if (
-      mod?.canBeRequiredByUsers &&
-      NativeModule.canBeRequiredWithoutScheme(filename)
+      mod
     ) {
       return mod.exports;
     }
@@ -418,7 +412,7 @@
     if (isMain) {
       console.log("TODO: isMain CJS module not handled");
       // process.mainModule = module;
-      // module.id = '.';
+      module.id = ".";
     }
 
     Module._cache[filename] = module;
@@ -462,11 +456,10 @@
     isMain,
     options,
   ) {
-    // TODO:
-    // if (StringPrototypeStartsWith(request, 'node:') ||
-    //   (NativeModule.canBeRequiredByUsers(request) &&
-    //   NativeModule.canBeRequiredWithoutScheme(request))) {
-    if (StringPrototypeStartsWith(request, "node:")) {
+    if (
+      StringPrototypeStartsWith(request, "node:") ||
+      nativeModuleCanBeRequiredByUsers(request)
+    ) {
       return request;
     }
 
@@ -747,7 +740,69 @@
 
   Module.Module = Module;
 
+  const nativeModulePolyfill = new SafeMap();
+  const nativeModuleExports = {};
+
+  function createNativeModule(id, exports) {
+    const mod = new Module(id);
+    mod.exports = exports;
+    mod.loaded = true;
+    return mod;
+  }
+
+  const m = {
+    _cache: Module._cache,
+    _extensions: Module._extensions,
+    _findPath: Module._findPath,
+    _initPaths: Module._initPaths,
+    _load: Module._load,
+    _nodeModulePaths: Module._nodeModulePaths,
+    _pathCache: Module._pathCache,
+    _preloadModules: Module._preloadModules,
+    _resolveFilename: Module._resolveFilename,
+    _resolveLookupPaths: Module._resolveLookupPaths,
+    builtinModules: Module.builtinModules,
+    createRequire: Module.createRequire,
+    globalPaths: Module.globalPaths,
+    Module,
+    wrap: Module.wrap,
+  };
+
+  nativeModuleExports.module = m;
+
+  function loadNativeModule(_id, request) {
+    if (nativeModulePolyfill.has(request)) {
+      return nativeModulePolyfill.get(request);
+    }
+    const modExports = nativeModuleExports[request];
+    if (modExports) {
+      const nodeMod = createNativeModule(request, modExports);
+      nativeModulePolyfill.set(request, nodeMod);
+      return nodeMod;
+    }
+    return undefined;
+  }
+
+  function nativeModuleCanBeRequiredByUsers(request) {
+    return !!nativeModuleExports[request];
+  }
+
+  // TODO(bartlomieju): verify in other parts of this file that
+  // we have initialized the system before making APIs work
+  let cjsInitialized = false;
+
+  function initializeCommonJs(nodeModules, _processGlobal) {
+    assert(!cjsInitialized);
+    cjsInitialized = true;
+    for (const [name, exports] of ObjectEntries(nodeModules)) {
+      nativeModuleExports[name] = exports;
+      ArrayPrototypePush(Module.builtinModules, name);
+    }
+    console.log("TODO: initialize process global");
+  }
+
   window.__bootstrap.require = {
     Module,
+    initializeCommonJs,
   };
 })(globalThis);

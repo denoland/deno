@@ -81,6 +81,9 @@ pub static GLOBAL_URL: Lazy<Url> =
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
 
+static MODULE_ALL_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
+
 pub static MODULE_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
 
@@ -104,6 +107,23 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   } else {
     None
   }
+}
+
+pub async fn load_builtin_node_modules(
+  js_runtime: &mut JsRuntime,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
+      const nodeExports = await import(moduleAllUrl);
+      Deno.require.initializeCommonJs(nodeExports.default);
+    }})('{}');"#,
+    MODULE_ALL_URL_STR.as_str(),
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
 }
 
 pub fn load_cjs_module(
@@ -134,6 +154,7 @@ pub fn load_cjs_module(
   Ok(())
 }
 
+// TODO: switch to use ext/node instead
 pub fn add_global_require(
   js_runtime: &mut JsRuntime,
   main_module: &str,
