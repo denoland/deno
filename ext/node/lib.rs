@@ -117,7 +117,7 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
       maybe_parent = current_path.parent();
     }
   }
-  
+
   if !cfg!(windows) {
     // Append /node_modules to handle root paths.
     paths.push("/node_modules".to_string());
