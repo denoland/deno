@@ -75,6 +75,9 @@ static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
 static GLOBAL_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
 
+static PROCESS_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/process.ts", NODE_COMPAT_URL.as_str()));
+
 pub static GLOBAL_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
 
@@ -113,11 +116,15 @@ pub async fn load_builtin_node_modules(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
-      const nodeExports = await import(moduleAllUrl);
-      Deno.require.initializeCommonJs(nodeExports.default);
-    }})('{}');"#,
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, processUrl) {{
+      const [moduleAll, processModule] = await Promise.all([
+        import(moduleAllUrl),
+        import(processUrl)
+      ]);
+      Deno.require.initializeCommonJs(moduleAll.default, processModule.default);
+    }})('{}', '{}');"#,
     MODULE_ALL_URL_STR.as_str(),
+    PROCESS_URL_STR.as_str(),
   );
 
   let value =
@@ -131,19 +138,8 @@ pub fn load_cjs_module(
   module: &str,
   main: bool,
 ) -> Result<(), AnyError> {
-  // let source_code = &format!(
-  //   r#"(async function loadCjsModule(module) {{
-  //     const Module = await import("{module_loader}");
-  //     Module.default._load(module, null, {main});
-  //   }})('{module}');"#,
-  //   module_loader = MODULE_URL_STR.as_str(),
-  //   main = main,
-  //   module = escape_for_single_quote_string(module),
-  // );
-
   let source_code = &format!(
     r#"(function loadCjsModule(module) {{
-      console.log(Deno.require);
       Deno.require.Module._load(module, null, {main});
     }})('{module}');"#,
     main = main,
@@ -154,18 +150,15 @@ pub fn load_cjs_module(
   Ok(())
 }
 
-// TODO: switch to use ext/node instead
 pub fn add_global_require(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function setupGlobalRequire(main) {{
-      const Module = await import("{}");
-      const require = Module.createRequire(main);
+    r#"(function setupGlobalRequire(main) {{
+      const require = Deno.require.Module.createRequire(main);
       globalThis.require = require;
     }})('{}');"#,
-    MODULE_URL_STR.as_str(),
     escape_for_single_quote_string(main_module),
   );
 
@@ -175,21 +168,6 @@ pub fn add_global_require(
 
 fn escape_for_single_quote_string(text: &str) -> String {
   text.replace('\\', r"\\").replace('\'', r"\'")
-}
-
-pub fn setup_builtin_modules(
-  js_runtime: &mut JsRuntime,
-) -> Result<(), AnyError> {
-  let mut script = String::new();
-  for module in SUPPORTED_MODULES {
-    // skipping the modules that contains '/' as they are not available in NodeJS repl as well
-    if !module.contains('/') {
-      script = format!("{}const {} = require('{}');\n", script, module, module);
-    }
-  }
-
-  js_runtime.execute_script("setup_node_builtins.js", &script)?;
-  Ok(())
 }
 
 /// Translates given CJS module into ESM. This function will perform static

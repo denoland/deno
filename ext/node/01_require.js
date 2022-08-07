@@ -51,6 +51,13 @@
     return false;
   }
 
+  // TODO(bartlomieju): verify in other parts of this file that
+  // we have initialized the system before making APIs work
+  let cjsInitialized = false;
+  let processGlobal = null;
+  const nativeModulePolyfill = new SafeMap();
+  const nativeModuleExports = ObjectCreate(null);
+
   const relativeResolveCache = ObjectCreate(null);
   let requireDepth = 0;
   let statCache = null;
@@ -131,17 +138,16 @@
         err.requestPath = originalPath;
         throw err;
       } else {
-        console.log("TODO: tryPackage process.emitWarning");
-        // const jsonPath = pathResolve(
-        //   requestPath,
-        //   "package.json",
-        // );
-        // process.emitWarning(
-        //   `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
-        //     "Please either fix that or report it to the module author",
-        //   "DeprecationWarning",
-        //   "DEP0128",
-        // );
+        const jsonPath = pathResolve(
+          requestPath,
+          "package.json",
+        );
+        process.emitWarning(
+          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+            "Please either fix that or report it to the module author",
+          "DeprecationWarning",
+          "DEP0128",
+        );
       }
     }
     return actual;
@@ -410,8 +416,7 @@
     const module = cachedModule || new Module(filename, parent);
 
     if (isMain) {
-      console.log("TODO: isMain CJS module not handled");
-      // process.mainModule = module;
+      processGlobal.mainModule = module;
       module.id = ".";
     }
 
@@ -740,16 +745,6 @@
 
   Module.Module = Module;
 
-  const nativeModulePolyfill = new SafeMap();
-  const nativeModuleExports = {};
-
-  function createNativeModule(id, exports) {
-    const mod = new Module(id);
-    mod.exports = exports;
-    mod.loaded = true;
-    return mod;
-  }
-
   const m = {
     _cache: Module._cache,
     _extensions: Module._extensions,
@@ -776,7 +771,9 @@
     }
     const modExports = nativeModuleExports[request];
     if (modExports) {
-      const nodeMod = createNativeModule(request, modExports);
+      const nodeMod = new Module(request);
+      nodeMod.exports = modExports;
+      nodeMod.loaded = true;
       nativeModulePolyfill.set(request, nodeMod);
       return nodeMod;
     }
@@ -787,18 +784,14 @@
     return !!nativeModuleExports[request];
   }
 
-  // TODO(bartlomieju): verify in other parts of this file that
-  // we have initialized the system before making APIs work
-  let cjsInitialized = false;
-
-  function initializeCommonJs(nodeModules, _processGlobal) {
+  function initializeCommonJs(nodeModules, process) {
     assert(!cjsInitialized);
     cjsInitialized = true;
     for (const [name, exports] of ObjectEntries(nodeModules)) {
       nativeModuleExports[name] = exports;
       ArrayPrototypePush(Module.builtinModules, name);
     }
-    console.log("TODO: initialize process global");
+    processGlobal = process;
   }
 
   window.__bootstrap.require = {

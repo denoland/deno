@@ -2,9 +2,10 @@
 // deno-lint-ignore no-undef
 const processMod = require("process");
 const osMod = require("node:os");
-console.log("process", processMod);
-console.log("os", osMod);
+console.log("process.pid", processMod.pid);
+console.log("os.EOL", osMod.EOL);
 const leftPad = require("left-pad");
 const json = require("./data");
 console.log(json);
 console.log(leftPad("foo", 5)); // => "  foo"
+console.log("main module", process.mainModule.filename);
