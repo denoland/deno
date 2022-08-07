@@ -600,7 +600,8 @@
   const testStates = new Map();
   /** @type {BenchDescription[]} */
   const benchDescs = [];
-  let isTestOrBenchSubcommand = false;
+  let isTestSubcommand = false;
+  let isBenchSubcommand = false;
 
   // Main test function provided by Deno.
   function test(
@@ -608,7 +609,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isTestSubcommand) {
       return;
     }
 
@@ -727,7 +728,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isBenchSubcommand) {
       return;
     }
 
@@ -1032,11 +1033,12 @@
     return core.opSync("op_bench_now");
   }
 
-  // This function is called by Rust side if we're in `deno test` or
-  // `deno bench` subcommand. If this function is not called then `Deno.test()`
-  // and `Deno.bench()` become noops.
-  function enableTestAndBench() {
-    isTestOrBenchSubcommand = true;
+  function enableTest() {
+    isTestSubcommand = true;
+  }
+
+  function enableBench() {
+    isBenchSubcommand = true;
   }
 
   async function runTests({
@@ -1390,15 +1392,12 @@
     return testFn;
   }
 
-  window.__bootstrap.internals = {
-    ...window.__bootstrap.internals ?? {},
-    enableTestAndBench,
-    runTests,
-    runBenchmarks,
-  };
-
   window.__bootstrap.testing = {
-    test,
     bench,
+    enableBench,
+    enableTest,
+    runBenchmarks,
+    runTests,
+    test,
   };
 })(this);

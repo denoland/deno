@@ -367,10 +367,7 @@ async fn bench_specifier(
     Default::default(),
   );
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].enableTestAndBench()"#,
-  )?;
+  worker.enable_bench();
 
   if options.compat_mode {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
@@ -395,12 +392,7 @@ async fn bench_specifier(
 
   worker.dispatch_load_event(&located_script_name!())?;
 
-  let bench_result = worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].runBenchmarks()"#,
-  )?;
-
-  worker.js_runtime.resolve_value(bench_result).await?;
+  worker.run_benchmarks().await?;
 
   loop {
     if !worker.dispatch_beforeunload_event(&located_script_name!())? {

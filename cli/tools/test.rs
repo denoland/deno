@@ -34,7 +34,6 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
@@ -732,10 +731,7 @@ async fn test_specifier(
     },
   );
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].enableTestAndBench()"#,
-  )?;
+  worker.enable_test();
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     ps.coverage_dir
@@ -790,15 +786,7 @@ async fn test_specifier(
 
   worker.dispatch_load_event(&located_script_name!())?;
 
-  let test_result = worker.js_runtime.execute_script(
-    &located_script_name!(),
-    &format!(
-      r#"Deno[Deno.internal].runTests({})"#,
-      json!({ "shuffle": options.shuffle }),
-    ),
-  )?;
-
-  worker.js_runtime.resolve_value(test_result).await?;
+  worker.run_tests(&options.shuffle).await?;
 
   loop {
     if !worker.dispatch_beforeunload_event(&located_script_name!())? {

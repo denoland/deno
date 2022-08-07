@@ -167,10 +167,7 @@ async fn test_specifier(
       },
     );
 
-    worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    worker.enable_test();
 
     worker
       .execute_script(
@@ -185,12 +182,7 @@ async fn test_specifier(
 
     worker.dispatch_load_event(&located_script_name!())?;
 
-    let test_result = worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runTests()"#,
-    )?;
-
-    worker.js_runtime.resolve_value(test_result).await?;
+    worker.run_tests(&None).await?;
 
     loop {
       if !worker.dispatch_beforeunload_event(&located_script_name!())? {
