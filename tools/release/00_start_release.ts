@@ -13,7 +13,7 @@ const result = await octoKit.request("POST /gists", {
   description: `Deno CLI v${nextVersion} release checklist`,
   public: false,
   files: {
-    [`release_instructions_${nextVersion}.md`]: {
+    [`release_${nextVersion}.md`]: {
       content: buildDenoReleaseInstructionsDoc(),
     },
   },
