@@ -18,6 +18,7 @@ use http::header::EXPECT;
 use http::header::TRANSFER_ENCODING;
 use http::header::UPGRADE;
 use http::HeaderValue;
+use log::trace;
 use mio::net::TcpListener;
 use mio::net::TcpStream;
 use mio::Events;
@@ -44,7 +45,6 @@ use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use log::trace;
 
 mod chunked;
 enum Encoding {
@@ -123,13 +123,13 @@ impl Stream {
     loop {
       trace!("poll JS stream readiness");
       match self.readiness_rx.as_mut().unwrap().poll_recv(cx) {
-        std::task::Poll::Ready(_) => {},
+        std::task::Poll::Ready(_) => {}
         std::task::Poll::Pending => return std::task::Poll::Pending,
       };
-    
+
       let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>]
         as *mut [u8]);
-  
+
       match self.read(b) {
         Ok(n) => {
           // Safety: We trust `TcpStream::read` to have filled up `n` bytes in the
@@ -201,14 +201,15 @@ fn op_flash_respond(
       let tx = ctx.response.get(&token).unwrap();
       let sock = unsafe { &mut *tx.socket };
       if let Some(read_tx) = sock.read_tx.take() {
-        read_tx.send(tx.content_length.unwrap() as usize - tx.content_read).unwrap();
+        read_tx
+          .send(tx.content_length.unwrap() as usize - tx.content_read)
+          .unwrap();
         trace!("JS unblocked read");
       }
 
       sock
     }
   };
-
 
   let _ = sock.write(&response);
   if let Some(response) = maybe_body {
@@ -377,19 +378,19 @@ fn consume_body(sock: &mut Stream) -> usize {
   //   let mut decoder = chunked::Decoder::new(sock);
   //   return decoder.read(&mut buf).expect("read error");
   // }
-  
+
   if sock.cursor >= sock.content_length {
     return 0;
   }
-  
+
   loop {
     match sock.inner.read(&mut buf) {
       Ok(n) => {
         sock.cursor += n;
         return n;
       }
-      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {},
-      Err(_) => return 0, 
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+      Err(_) => return 0,
     }
   }
 }
@@ -437,7 +438,7 @@ async fn op_flash_read_body(
   if tx.content_read >= tx.content_length.unwrap() as usize {
     return 0;
   }
-  
+
   let nread = tokio::io::AsyncReadExt::read(sock, &mut buf).await.unwrap();
   tx.content_read += nread;
   nread
@@ -534,7 +535,7 @@ fn run_server(
                 content_length: 0,
                 consuming: false,
               };
-              
+
               trace!("New connection: {}", token.0);
               sockets.insert(token, stream);
             }
@@ -545,16 +546,14 @@ fn run_server(
         token => {
           let socket = sockets.get_mut(&token).unwrap();
           if socket.detached {
-            poll
-              .registry()
-              .deregister(&mut socket.inner)
-              .unwrap();
+            poll.registry().deregister(&mut socket.inner).unwrap();
             trace!("Socket detached: {}", token.0);
             continue;
           }
 
           trace!("Socket readable: {}", token.0);
           if let Some(tx) = &socket.readiness_tx {
+            trace!("Sending readiness notification: {}", token.0);
             tx.blocking_send(()).unwrap();
             trace!("Rediness notification sent: {}", token.0);
             if let Some(rx) = socket.read_rx.take() {
@@ -569,8 +568,9 @@ fn run_server(
                 socket.consuming = false;
                 socket.content_length = 0;
               }
-              continue;
             }
+
+            continue;
           }
 
           debug_assert!(event.is_readable());
