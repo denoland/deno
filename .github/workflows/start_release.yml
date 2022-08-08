@@ -32,8 +32,6 @@ jobs:
 
       - name: Clone repository
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.DENOBOT_PAT }}
 
       - name: Install deno
         uses: denoland/setup-deno@v1
@@ -44,6 +42,6 @@ jobs:
 
       - name: Run start release
         env:
-          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_GIST_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}
