@@ -22,7 +22,7 @@ const result = await octoKit.request("POST /gists", {
 $.log("==============================================");
 $.log("Created gist with instructions!");
 $.log("");
-$.log(`  ${result.html_url}`);
+$.log(`  ${result.data.html_url}`);
 $.log("");
 $.log("Please fork the gist and follow the checklist.");
 $.log("==============================================");
