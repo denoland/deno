@@ -10,10 +10,10 @@ const nextVersion = getNextVersion(semver.parse(getCliVersion())!);
 $.logStep("Creating gist with instructions...");
 const octoKit = createOctoKit();
 const result = await octoKit.request("POST /gists", {
-  description: `Deno CLI v${nextVersion.toString()} release checklist`,
+  description: `Deno CLI v${nextVersion} release checklist`,
   public: false,
   files: {
-    "release_instructions.md": {
+    [`release_instructions_${nextVersion}.md`]: {
       content: buildDenoReleaseInstructionsDoc(),
     },
   },
@@ -22,7 +22,7 @@ const result = await octoKit.request("POST /gists", {
 $.log("==============================================");
 $.log("Created gist with instructions!");
 $.log("");
-$.log(`  ${result.url}`);
+$.log(`  ${result.html_url}`);
 $.log("");
 $.log("Please fork the gist and follow the checklist.");
 $.log("==============================================");

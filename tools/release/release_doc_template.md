@@ -1,4 +1,6 @@
-## Pre-flight checklist
+- [ ] Fork this gist and follow the instructions there.
+
+## Pre-flight
 
 - Forks and local clones of
   [`denoland/deno`](https://github.com/denoland/deno/),
@@ -13,7 +15,7 @@ release from) should be frozen and no commits should land until the release is
 cut.**
 
 - [ ] Write a message in company's #cli channel:
-      `:lock: deno and deno_std are now locked (<LINK TO THIS GIST GOES HERE>)`
+      `:lock: deno and deno_std are now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
 
 ## Patch release preparation
 
@@ -90,7 +92,7 @@ verify on GitHub that everything looks correct.
 - [ ] Wait for the workflow to complete and for a pull request to be
       automatically opened. Review the pull request, make any necessary changes,
       and merge it.
-  - ⛔ DO NOT create a release tag manually.
+  - ⛔ DO NOT create a release tag manually That will automatically happen.
 
   <details>
      <summary>❌ Failure Steps</summary>
