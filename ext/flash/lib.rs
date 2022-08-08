@@ -5,7 +5,6 @@
 #![allow(clippy::missing_safety_doc)]
 
 use deno_core::error::AnyError;
-use deno_core::futures::ready;
 use deno_core::op;
 use deno_core::ByteString;
 use deno_core::Extension;
@@ -45,6 +44,7 @@ use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use log::trace;
 
 mod chunked;
 enum Encoding {
@@ -117,19 +117,27 @@ impl Stream {
     cx: &mut Context<'_>,
     buf: &mut tokio::io::ReadBuf<'_>,
   ) -> std::task::Poll<std::io::Result<()>> {
-    ready!(self.readiness_rx.as_mut().unwrap().poll_recv(cx));
-    let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>]
-      as *mut [u8]);
-
-    match self.read(b) {
-      Ok(n) => {
-        // Safety: We trust `TcpStream::read` to have filled up `n` bytes in the
-        // buffer.
-        buf.assume_init(n);
-        buf.advance(n);
-        std::task::Poll::Ready(Ok(()))
+    loop {
+      trace!("poll JS stream readiness");
+      match self.readiness_rx.as_mut().unwrap().poll_recv(cx) {
+        std::task::Poll::Ready(_) => {},
+        std::task::Poll::Pending => return std::task::Poll::Pending,
+      };
+    
+      let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>]
+        as *mut [u8]);
+  
+      match self.read(b) {
+        Ok(n) => {
+          // Safety: We trust `TcpStream::read` to have filled up `n` bytes in the
+          // buffer.
+          buf.assume_init(n);
+          buf.advance(n);
+          return std::task::Poll::Ready(Ok(()));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        Err(e) => return std::task::Poll::Ready(Err(e)),
       }
-      Err(e) => std::task::Poll::Ready(Err(e)),
     }
   }
 }
@@ -192,13 +200,11 @@ fn op_flash_respond(
     }
   };
 
-
   if let Some(tx) = sock.read_tx.take() {
     tx.send(()).unwrap();
-    sock.readiness_tx.take();
-    sock.readiness_rx.take();
+    trace!("JS unblocked read");
   }
-  
+  sock.read_rx.take();
 
   let _ = sock.write(&response);
   if let Some(response) = maybe_body {
@@ -244,8 +250,6 @@ fn op_flash_respond_chuncked(
     let _ = sock.write(b"0\r\n\r\n");
   }
   sock.reattach_ownership();
-  sock.readiness_rx.take();
-  sock.readiness_tx.take();
 }
 
 #[op]
@@ -354,12 +358,6 @@ fn op_flash_first_packet(
   }
   debug_assert!(buf.len() >= buffer.len());
 
-  {
-    let (tx, rx) = mpsc::channel(1);
-    sock.readiness_rx = Some(rx);
-    sock.readiness_tx = Some(tx);
-  }
-
   if tx.expect_continue {
     let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
@@ -389,13 +387,6 @@ async fn op_flash_read_body(
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
 
-  dbg!(tx.te_chunked);
-
-  if sock.read_rx.is_none() {  
-    let (tx, rx) = oneshot::channel();
-    sock.read_tx = Some(tx);
-    sock.read_rx = Some(rx);
-  }
   if tx.te_chunked {
     // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
     //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
@@ -419,6 +410,7 @@ async fn op_flash_read_body(
   if tx.content_read >= tx.content_length.unwrap() as usize {
     return 0;
   }
+  
   let nread = tokio::io::AsyncReadExt::read(sock, &mut buf).await.unwrap();
   tx.content_read += nread;
   nread
@@ -512,6 +504,8 @@ fn run_server(
                 readiness_rx: None,
                 readiness_tx: None,
               };
+              
+              trace!("New connection: {}", token.0);
               sockets.insert(token, stream);
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
@@ -521,18 +515,22 @@ fn run_server(
         token => {
           let socket = sockets.get_mut(&token).unwrap();
           if socket.detached {
-            // poll
-            //   .registry()
-            //   .deregister(&mut socket.inner)
-            //   .unwrap();
+            poll
+              .registry()
+              .deregister(&mut socket.inner)
+              .unwrap();
+            trace!("Socket detached: {}", token.0);
             continue;
           }
+
+          trace!("Socket readable: {}", token.0);
           if let Some(tx) = &socket.readiness_tx {
             tx.blocking_send(()).unwrap();
-
+            trace!("Rediness notification sent: {}", token.0);
             if let Some(rx) = socket.read_rx.take() {
-              println!("read_rx");
               let _ = rx.blocking_recv();
+              trace!("Read unblocked: {}", token.0);
+              continue;
             }
           }
 
@@ -540,7 +538,6 @@ fn run_server(
           let mut buffer: [u8; 1024] = [0_u8; 1024];
           let sock_ptr = socket as *mut _;
           let nread = socket.read(&mut buffer);
-
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
           let mut req = httparse::Request::new(&mut headers);
           let body_offset;
@@ -552,6 +549,7 @@ fn run_server(
               continue;
             }
             Ok(n) => {
+              // println!("{}", String::from_utf8_lossy(&buffer[..n]));
               body_len = n;
               let r = req.parse(&buffer[0..n]).unwrap();
               // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
@@ -562,6 +560,16 @@ fn run_server(
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
             Err(_) => break,
+          }
+          if let Some(method) = &req.method {
+            if method == &"POST" || method == &"PUT" {
+              let (tx, rx) = oneshot::channel();
+              socket.read_tx = Some(tx);
+              socket.read_rx = Some(rx);
+              let (tx, rx) = mpsc::channel(1);
+              socket.readiness_rx = Some(rx);
+              socket.readiness_tx = Some(tx);
+            }
           }
           let inner_req = InnerRequest {
             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },

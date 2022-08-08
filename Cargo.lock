@@ -1046,6 +1046,7 @@ dependencies = [
  "deno_websocket",
  "http",
  "httparse",
+ "log 0.4.17",
  "mio",
  "rustls",
  "rustls-pemfile 0.2.1",
