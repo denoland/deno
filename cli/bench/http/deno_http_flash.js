@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-const { serve } = Deno;
+// const { serve } = Deno;
+import { serve } from "http://deno.land/std/http/server.ts"
 
 async function handler(req) {
-  console.log(req.text());
+  console.log(await req.text());
   return new Response("Hello World");
 }
 

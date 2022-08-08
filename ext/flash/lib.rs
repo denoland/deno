@@ -77,10 +77,13 @@ struct InnerRequest {
 struct Stream {
   inner: TcpStream,
   detached: bool,
-  read_rx: Option<oneshot::Receiver<()>>,
-  read_tx: Option<oneshot::Sender<()>>,
+  read_rx: Option<oneshot::Receiver<usize>>,
+  read_tx: Option<oneshot::Sender<usize>>,
   readiness_rx: Option<mpsc::Receiver<()>>,
   readiness_tx: Option<mpsc::Sender<()>>,
+  cursor: usize,
+  content_length: usize,
+  consuming: bool,
 }
 
 impl Stream {
@@ -196,15 +199,16 @@ fn op_flash_respond(
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.response.get(&token).unwrap();
-      unsafe { &mut *tx.socket }
+      let sock = unsafe { &mut *tx.socket };
+      if let Some(read_tx) = sock.read_tx.take() {
+        read_tx.send(tx.content_length.unwrap() as usize - tx.content_read).unwrap();
+        trace!("JS unblocked read");
+      }
+
+      sock
     }
   };
 
-  if let Some(tx) = sock.read_tx.take() {
-    tx.send(()).unwrap();
-    trace!("JS unblocked read");
-  }
-  sock.read_rx.take();
 
   let _ = sock.write(&response);
   if let Some(response) = maybe_body {
@@ -367,6 +371,29 @@ fn op_flash_first_packet(
   nread
 }
 
+fn consume_body(sock: &mut Stream) -> usize {
+  let mut buf = [0; 1024];
+  // if te_chunked {
+  //   let mut decoder = chunked::Decoder::new(sock);
+  //   return decoder.read(&mut buf).expect("read error");
+  // }
+  
+  if sock.cursor >= sock.content_length {
+    return 0;
+  }
+  
+  loop {
+    match sock.inner.read(&mut buf) {
+      Ok(n) => {
+        sock.cursor += n;
+        return n;
+      }
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {},
+      Err(_) => return 0, 
+    }
+  }
+}
+
 #[op]
 async fn op_flash_read_body(
   state: Rc<RefCell<OpState>>,
@@ -503,6 +530,9 @@ fn run_server(
                 read_tx: None,
                 readiness_rx: None,
                 readiness_tx: None,
+                cursor: 0,
+                content_length: 0,
+                consuming: false,
               };
               
               trace!("New connection: {}", token.0);
@@ -528,8 +558,17 @@ fn run_server(
             tx.blocking_send(()).unwrap();
             trace!("Rediness notification sent: {}", token.0);
             if let Some(rx) = socket.read_rx.take() {
-              let _ = rx.blocking_recv();
-              trace!("Read unblocked: {}", token.0);
+              let content_length = rx.blocking_recv().unwrap();
+              trace!("Read unblocked: {} {}", token.0, content_length);
+              socket.consuming = true;
+              socket.content_length = content_length;
+            }
+
+            if socket.consuming {
+              if consume_body(socket) == 0 {
+                socket.consuming = false;
+                socket.content_length = 0;
+              }
               continue;
             }
           }
