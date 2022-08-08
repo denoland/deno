@@ -53,7 +53,7 @@ verify on GitHub that everything looks correct.
   - ⛔ DO NOT create a release tag manually. That will automatically happen.
 
   <details>
-    <summary>❌ Failure Steps</summary>
+    <summary>Failure Steps</summary>
 
   1. Checkout the latest main.
   2. Manually run `./_tools/release/01_bump_version.ts --minor`
@@ -69,7 +69,7 @@ verify on GitHub that everything looks correct.
   - [ ] Review the draft release and then publish it.
 
   <details>
-    <summary>❌ Failure Steps</summary>
+    <summary>Failure Steps</summary>
 
   1. Tag the repo manually in the format `x.x.x`
   2. Draft a new GH release by copying and pasting the release notes from
@@ -95,7 +95,7 @@ verify on GitHub that everything looks correct.
   - ⛔ DO NOT create a release tag manually That will automatically happen.
 
   <details>
-     <summary>❌ Failure Steps</summary>
+     <summary>Failure Steps</summary>
 
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
@@ -112,7 +112,7 @@ verify on GitHub that everything looks correct.
   1. Run it on the same branch that you used before and wait for it to complete.
 
   <details>
-     <summary>❌ Failure Steps</summary>
+     <summary>Failure Steps</summary>
 
   1. The workflow was designed to be restartable. Try restarting it.
   2. If that doesn't work, then do the following:
@@ -142,7 +142,8 @@ verify on GitHub that everything looks correct.
 
 - ⛔ Verify that:
   - [ ] There are 8 assets on the release draft.
-  - [ ] There are 4 zip files for this version on dl.deno.land
+  - [ ] There are 4 zip files for this version on
+        [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release).
   - [ ] The aarch64 Mac build was built from the correct branch AFTER the
         version bump and has the same version as the release when doing
         `deno -V` (ask someone with an M1 Mac to verify this if you don't have
@@ -156,7 +157,7 @@ verify on GitHub that everything looks correct.
   - [ ] This should open a PR. Review and merge it.
 
   <details>
-     <summary>❌ Failure Steps</summary>
+     <summary>Failure Steps</summary>
 
   1. Update https://github.com/denoland/dotland/blob/main/versions.json
      manually.
@@ -185,7 +186,7 @@ queries the GitHub API to determine what it needs to change and update.
   - This will open a PR. Review it and merge, which will trigger a deployment.
 
   <details>
-     <summary>❌ Failure Steps</summary>
+     <summary>Failure Steps</summary>
 
   1. Checkout a new branch for docland (e.g. `git checkout -b deno_1.17.0`).
   2. Execute `deno task build`
