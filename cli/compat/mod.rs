@@ -121,7 +121,7 @@ pub async fn load_builtin_node_modules(
         import(moduleAllUrl),
         import(processUrl)
       ]);
-      Deno.require.initializeCommonJs(moduleAll.default, processModule.default);
+      Deno[Deno.internal].require.initializeCommonJs(moduleAll.default, processModule.default);
     }})('{}', '{}');"#,
     MODULE_ALL_URL_STR.as_str(),
     PROCESS_URL_STR.as_str(),
@@ -140,7 +140,7 @@ pub fn load_cjs_module(
 ) -> Result<(), AnyError> {
   let source_code = &format!(
     r#"(function loadCjsModule(module) {{
-      Deno.require.Module._load(module, null, {main});
+      Deno[Deno.internal].require.Module._load(module, null, {main});
     }})('{module}');"#,
     main = main,
     module = escape_for_single_quote_string(module),
@@ -156,7 +156,7 @@ pub fn add_global_require(
 ) -> Result<(), AnyError> {
   let source_code = &format!(
     r#"(function setupGlobalRequire(main) {{
-      const require = Deno.require.Module.createRequire(main);
+      const require = Deno[Deno.internal].require.Module.createRequire(main);
       globalThis.require = require;
     }})('{}');"#,
     escape_for_single_quote_string(main_module),

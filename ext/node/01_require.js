@@ -32,6 +32,9 @@
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
 
+  // Map used to store CJS parsing data.
+  const cjsParseCache = new SafeWeakMap();
+
   function pathDirname(filepath) {
     return core.opSync("op_require_path_dirname", filepath);
   }
@@ -794,8 +797,17 @@
     processGlobal = process;
   }
 
-  window.__bootstrap.require = {
+  function readPackageScope() {
+    throw new Error("not implemented");
+  }
+
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
     Module,
+    wrapSafe,
+    toRealPath,
+    cjsParseCache,
+    readPackageScope,
     initializeCommonJs,
   };
 })(globalThis);
