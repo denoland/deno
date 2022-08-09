@@ -3,6 +3,7 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
+import { assertEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
 } from "../../test_util/std/testing/asserts.ts";
@@ -184,6 +185,12 @@ const dylib = Deno.dlopen(libPath, {
     type: "i64",
   },
   "static_ptr": {
+    type: "pointer",
+  },
+  /**
+   * Invalid UTF-8 characters, buffer of length 14
+   */
+  "static_char": {
     type: "pointer",
   },
 });
@@ -477,6 +484,23 @@ console.log("uint32Array[0]:", uint32Array[0]);
 uint32Array[0] = 55; // MUTATES!
 console.log("uint32Array[0] after mutation:", uint32Array[0]);
 console.log("Static ptr value after mutation:", view.getUint32());
+
+// Test non-UTF-8 characters
+
+const charView = new Deno.UnsafePointerView(dylib.symbols.static_char);
+
+const charArrayBuffer = charView.getArrayBuffer(14);
+const uint8Array = new Uint8Array(charArrayBuffer);
+assertEquals([...uint8Array], [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00
+]);
+
+try {
+  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
+} catch (_err) {
+  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+}
 
 (function cleanup() {
   dylib.close();
