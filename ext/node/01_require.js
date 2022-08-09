@@ -476,7 +476,7 @@
     if (typeof options === "object" && options !== null) {
       if (ArrayIsArray(options.paths)) {
         const isRelative = core.opSync(
-          "op_require_specifier_is_relative",
+          "op_require_is_request_relative",
           request,
         );
 
