@@ -803,11 +803,13 @@
 
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
-    Module,
-    wrapSafe,
-    toRealPath,
-    cjsParseCache,
-    readPackageScope,
-    initializeCommonJs,
+    require: {
+      Module,
+      wrapSafe,
+      toRealPath,
+      cjsParseCache,
+      readPackageScope,
+      initializeCommonJs,
+    },
   };
 })(globalThis);

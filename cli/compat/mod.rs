@@ -112,6 +112,7 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
+#[allow(unused)]
 pub async fn load_builtin_node_modules(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
@@ -133,7 +134,8 @@ pub async fn load_builtin_node_modules(
   Ok(())
 }
 
-pub fn load_cjs_module(
+#[allow(unused)]
+pub fn load_cjs_module_from_ext_node(
   js_runtime: &mut JsRuntime,
   module: &str,
   main: bool,
@@ -150,15 +152,36 @@ pub fn load_cjs_module(
   Ok(())
 }
 
+pub fn load_cjs_module(
+  js_runtime: &mut JsRuntime,
+  module: &str,
+  main: bool,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function loadCjsModule(module) {{
+      const Module = await import("{module_loader}");
+      Module.default._load(module, null, {main});
+    }})('{module}');"#,
+    module_loader = MODULE_URL_STR.as_str(),
+    main = main,
+    module = escape_for_single_quote_string(module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
+}
+
 pub fn add_global_require(
   js_runtime: &mut JsRuntime,
   main_module: &str,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(function setupGlobalRequire(main) {{
-      const require = Deno[Deno.internal].require.Module.createRequire(main);
+    r#"(async function setupGlobalRequire(main) {{
+      const Module = await import("{}");
+      const require = Module.createRequire(main);
       globalThis.require = require;
     }})('{}');"#,
+    MODULE_URL_STR.as_str(),
     escape_for_single_quote_string(main_module),
   );
 
@@ -168,6 +191,21 @@ pub fn add_global_require(
 
 fn escape_for_single_quote_string(text: &str) -> String {
   text.replace('\\', r"\\").replace('\'', r"\'")
+}
+
+pub fn setup_builtin_modules(
+  js_runtime: &mut JsRuntime,
+) -> Result<(), AnyError> {
+  let mut script = String::new();
+  for module in SUPPORTED_MODULES {
+    // skipping the modules that contains '/' as they are not available in NodeJS repl as well
+    if !module.contains('/') {
+      script = format!("{}const {} = require('{}');\n", script, module, module);
+    }
+  }
+
+  js_runtime.execute_script("setup_node_builtins.js", &script)?;
+  Ok(())
 }
 
 /// Translates given CJS module into ESM. This function will perform static

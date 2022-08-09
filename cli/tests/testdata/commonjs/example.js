@@ -8,4 +8,4 @@ const leftPad = require("left-pad");
 const json = require("./data");
 console.log(json);
 console.log(leftPad("foo", 5)); // => "  foo"
-console.log("main module", process.mainModule.filename);
+console.log("main module", processMod.mainModule.filename);

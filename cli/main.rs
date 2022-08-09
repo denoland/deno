@@ -869,7 +869,8 @@ async fn repl_command(
   if ps.options.compat() {
     worker.execute_side_module(&compat::GLOBAL_URL).await?;
     compat::add_global_require(&mut worker.js_runtime, main_module.as_str())?;
-    compat::load_builtin_node_modules(&mut worker.js_runtime).await?;
+    worker.run_event_loop(false).await?;
+    compat::setup_builtin_modules(&mut worker.js_runtime)?;
   }
   worker.run_event_loop(false).await?;
 
@@ -1098,7 +1099,6 @@ async fn run_command(
       worker.execute_main_module(&main_module).await?;
     } else {
       // CJS module execution in Node compatiblity mode
-      compat::load_builtin_node_modules(&mut worker.js_runtime).await?;
       compat::load_cjs_module(
         &mut worker.js_runtime,
         &main_module.to_file_path().unwrap().display().to_string(),

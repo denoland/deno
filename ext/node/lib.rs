@@ -264,9 +264,6 @@ fn op_require_path_basename(request: String) -> String {
 }
 
 #[op]
-fn op_require_(_request: String) {}
-
-#[op]
 fn op_require_try_self_parent_path(
   has_parent: bool,
   maybe_parent_filename: Option<String>,

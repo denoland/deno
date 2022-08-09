@@ -381,7 +381,6 @@ async fn bench_specifier(
     if use_esm_loader {
       worker.execute_side_module(&specifier).await?;
     } else {
-      compat::load_builtin_node_modules(&mut worker.js_runtime).await?;
       compat::load_cjs_module(
         &mut worker.js_runtime,
         &specifier.to_file_path().unwrap().display().to_string(),

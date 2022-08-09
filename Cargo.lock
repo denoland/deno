@@ -1117,7 +1117,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "deno_core",
 ]
