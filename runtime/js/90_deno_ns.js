@@ -113,7 +113,6 @@
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
-    require: __bootstrap.require,
   };
 
   __bootstrap.denoNsUnstable = {
