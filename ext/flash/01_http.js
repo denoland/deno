@@ -4,7 +4,6 @@
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
   const {
-    _flash,
     fromInnerFlashRequest,
     toInnerResponse,
   } = window.__bootstrap.fetch;
@@ -176,14 +175,14 @@
         token = await core.opAsync("op_flash_next_async", serverId);
       }
       for (let i = 0; i < token; i++) {
-       let body = null;
+        let body = null;
         // There might be a body, but we don't expose it for GET/HEAD requests.
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
         // TODO: mask into the token maybe?
-       if (core.ops.op_flash_has_body_stream(serverId, i)) {
-         body = createRequestBodyStream(serverId, i);
-       }
+        if (core.ops.op_flash_has_body_stream(serverId, i)) {
+          body = createRequestBodyStream(serverId, i);
+        }
 
         const req = fromInnerFlashRequest(
           body,
@@ -336,9 +335,13 @@
 
   function createRequestBodyStream(serverId, token) {
     // The first packet is left over bytes after parsing the request
-    // which is always less than 1024 bytes.      
+    // which is always less than 1024 bytes.
     const readFirstPacket = new Uint8Array(1024);
-    const firstRead = core.ops.op_flash_first_packet(serverId, token, readFirstPacket);
+    const firstRead = core.ops.op_flash_first_packet(
+      serverId,
+      token,
+      readFirstPacket,
+    );
     let firstEnqueued = firstRead === 0;
 
     return new ReadableStream({
@@ -346,7 +349,9 @@
       async pull(controller) {
         try {
           if (firstEnqueued === false) {
-            controller.enqueue(TypedArrayPrototypeSubarray(readFirstPacket, 0, firstRead));
+            controller.enqueue(
+              TypedArrayPrototypeSubarray(readFirstPacket, 0, firstRead),
+            );
             firstEnqueued = true;
             return;
           }
@@ -376,15 +381,7 @@
     });
   }
 
-  function upgradeHttp(req) {
-    const { streamRid } = req[_flash];
-    const connRid = core.ops.op_flash_upgrade_http(streamRid);
-    // TODO(@littledivy): return already read first packet too.
-    return [new TcpConn(connRid), new Uint8Array()];
-  }
-
   window.__bootstrap.flash = {
     serve,
-    upgradeHttp,
   };
 })(this);

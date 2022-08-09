@@ -3,6 +3,7 @@ const { serve } = Deno;
 // import { serve } from "http://deno.land/std/http/server.ts"
 
 async function handler(req) {
+  // await req.arrayBuffer();
   return new Response("Hello World");
 }
 

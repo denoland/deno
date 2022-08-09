@@ -57,7 +57,7 @@ enum Encoding {
 pub struct FlashContext {
   next_server_id: u32,
   join_handles: HashMap<u32, JoinHandle<()>>,
-  servers: HashMap<u32, ServerContext>,
+  pub servers: HashMap<u32, ServerContext>,
 }
 
 pub struct ServerContext {

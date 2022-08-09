@@ -13,6 +13,7 @@
     newInnerRequest,
     newInnerResponse,
     fromInnerResponse,
+    _flash,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype } = core;
@@ -475,6 +476,14 @@
   }
 
   function upgradeHttp(req) {
+    if (req[_flash]) {
+      const { streamRid } = req[_flash];
+      // TODO: Store serverId in req[_flash] and use it here.
+      const connRid = core.ops.op_flash_upgrade_http(streamRid, 0);
+      // TODO(@littledivy): return already read first packet too.
+      return [new TcpConn(connRid), new Uint8Array()];
+    }
+
     req[_deferred] = new Deferred();
     return req[_deferred].promise;
   }
