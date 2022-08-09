@@ -159,6 +159,7 @@ fn op_flash_respond(
       let sock = unsafe { &mut *tx.socket };
       trace!("read_tx take");
       sock.read_tx.take();
+      sock.read_rx.take();
 
       sock
     }
@@ -323,7 +324,6 @@ fn op_flash_first_packet(
   let nread = buffer.read(&mut buf).unwrap();
   tx.content_read += nread;
 
-  dbg!(tx.content_read, tx.content_length);
   nread
 }
 
@@ -394,7 +394,6 @@ async fn op_flash_read_body(
   let l = sock.read_lock.clone();
   let _lock = l.lock().unwrap();
   loop {
-    dbg!(tx.content_read, tx.content_length);
     if tx.content_read >= tx.content_length.unwrap() as usize {
       return 0;
     }
@@ -520,10 +519,13 @@ fn run_server(
           if let Some(tx) = &socket.read_tx {
             {
               let l = socket.read_lock.clone();
+              println!("Mutex locked");
               let _l = l.lock().unwrap();
+              println!("Mutex unlocked");
+              
             }
             trace!("Sending readiness notification: {}", token.0);
-            tx.blocking_send(()).unwrap();
+            let _ = tx.blocking_send(());
             
             continue;
           }
@@ -549,7 +551,6 @@ fn run_server(
               match r {
                 Ok(httparse::Status::Complete(n)) => body_offset = n,
                 Err(e) => {
-                  println!("{}", String::from_utf8_lossy(&buffer[..n]));
                   panic!("{}", e);
                 }
                 _ => unreachable!(),
