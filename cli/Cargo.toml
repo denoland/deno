@@ -31,6 +31,7 @@ deno_core = { version = "0.146.0", path = "../core" }
 deno_crypto = { version = "0.78.0", path = "../ext/crypto" }
 deno_fetch = { version = "0.87.0", path = "../ext/fetch" }
 deno_net = { version = "0.56.0", path = "../ext/net" }
+deno_node = { version = "0.1.0", path = "../ext/node" }
 deno_url = { version = "0.64.0", path = "../ext/url" }
 deno_web = { version = "0.95.0", path = "../ext/web" }
 deno_webgpu = { version = "0.65.0", path = "../ext/webgpu" }

@@ -801,6 +801,7 @@ dependencies = [
  "deno_graph",
  "deno_lint",
  "deno_net",
+ "deno_node",
  "deno_runtime",
  "deno_task_shell",
  "deno_url",
@@ -1115,6 +1116,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_node"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_ops"
 version = "0.24.0"
 dependencies = [
@@ -1139,6 +1147,7 @@ dependencies = [
  "deno_ffi",
  "deno_http",
  "deno_net",
+ "deno_node",
  "deno_tls",
  "deno_url",
  "deno_web",
