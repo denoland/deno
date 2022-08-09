@@ -279,6 +279,21 @@ fn op_flash_path(
 }
 
 #[op]
+fn op_flash_has_body_stream(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+) -> bool {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+
+  let resp = ctx.response.get(&token).unwrap();
+  let sock = unsafe { &*resp.socket };
+  sock.read_rx.is_some()
+}
+
+#[op]
 fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
   server_id: u32,
@@ -405,7 +420,7 @@ async fn op_flash_read_body(
       _ => {
         drop(_lock);
         sock.read_rx.as_mut().unwrap().recv().await.unwrap();
-      },
+      }
     }
   }
 }
@@ -514,8 +529,7 @@ fn run_server(
           }
 
           debug_assert!(event.is_readable());
-          
-          
+
           trace!("Socket readable: {}", token.0);
           if let Some(tx) = &socket.read_tx {
             {
@@ -523,17 +537,16 @@ fn run_server(
               println!("Mutex locked");
               let _l = l.lock().unwrap();
               println!("Mutex unlocked");
-              
             }
             trace!("Sending readiness notification: {}", token.0);
             let _ = tx.blocking_send(());
-            
+
             continue;
           }
 
           let mut buffer: [u8; 1024] = [0_u8; 1024];
           let sock_ptr = socket as *mut _;
-          
+
           let nread = socket.read(&mut buffer);
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
           let mut req = httparse::Request::new(&mut headers);
@@ -870,6 +883,7 @@ pub fn init() -> Extension {
       op_flash_upgrade_websocket::decl(),
       op_flash_drive_server::decl(),
       op_flash_first_packet::decl(),
+      op_flash_has_body_stream::decl(),
     ])
     .state(|op_state| {
       op_state.put(FlashContext {

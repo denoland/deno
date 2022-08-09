@@ -176,18 +176,14 @@
         token = await core.opAsync("op_flash_next_async", serverId);
       }
       for (let i = 0; i < token; i++) {
-        // FIXME(bartlomieju): this is an additional op overhead,
-        // ideally we could bitshift token to figure out what is the request
-        // method
-        const method = core.ops.op_flash_method(serverId, i);
-
-        let body = null;
+       let body = null;
         // There might be a body, but we don't expose it for GET/HEAD requests.
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
-       //if (method === "POST" || method === "PUT") {
-           body = createRequestBodyStream(serverId, i);
-         //}
+        // TODO: mask into the token maybe?
+       if (core.ops.op_flash_has_body_stream(serverId, i)) {
+         body = createRequestBodyStream(serverId, i);
+       }
 
         const req = fromInnerFlashRequest(
           body,
