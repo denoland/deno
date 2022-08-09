@@ -20,7 +20,6 @@ pub fn init() -> Extension {
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
       op_require_try_self_parent_path::decl(),
-      op_require_try_self_parent_path::decl(),
       op_require_try_self::decl(),
       op_require_real_path::decl(),
       op_require_path_is_absolute::decl(),
