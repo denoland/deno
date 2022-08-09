@@ -392,8 +392,8 @@ async fn op_flash_read_body(
   }
 
   let l = sock.read_lock.clone();
-  let _lock = l.lock().unwrap();
   loop {
+    let _lock = l.lock().unwrap();
     if tx.content_read >= tx.content_length.unwrap() as usize {
       return 0;
     }
@@ -403,6 +403,7 @@ async fn op_flash_read_body(
         return n;
       }
       _ => {
+        drop(_lock);
         sock.read_rx.as_mut().unwrap().recv().await.unwrap();
       },
     }
