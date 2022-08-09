@@ -311,7 +311,6 @@ fn op_require_try_self(
 }
 
 #[op]
-fn op_require_read_file(filename: String) -> Result<String, AnyError> {
-  let contents = std::fs::read_to_string(filename)?;
-  Ok(contents)
+fn op_require_read_file(_filename: String) -> Result<String, AnyError> {
+  todo!("not implemented");
 }
