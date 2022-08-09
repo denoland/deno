@@ -36,8 +36,8 @@ deno_web = { version = "0.95.0", path = "../ext/web" }
 deno_webgpu = { version = "0.65.0", path = "../ext/webgpu" }
 deno_websocket = { version = "0.69.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.59.0", path = "../ext/webstorage" }
-regex = "=1.5.6"
-serde = { version = "=1.0.139", features = ["derive"] }
+regex = "=1.6.0"
+serde = { version = "=1.0.141", features = ["derive"] }
 zstd = '=0.11.1'
 
 [target.'cfg(windows)'.build-dependencies]
