@@ -21,28 +21,26 @@ import {
 } from "./test_util.ts";
 
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
+  const ac = new AbortController();
+
   const promise = (async () => {
     await Deno.serve(async (request) => {
       console.log("request url", request.url, request.method);
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
       return new Response("Hello World", { headers: { "foo": "bar" } });
-    }, { port: 4501 });
+    }, { port: 4501, signal: ac.signal });
   })();
 
   const resp = await fetch("http://127.0.0.1:4501/", {
     headers: { "connection": "close" },
   });
-  console.log("after fetch");
   const clone = resp.clone();
   const text = await resp.text();
-  console.log("text", text);
-  console.log("text", resp.headers);
   assertEquals(text, "Hello World");
   assertEquals(resp.headers.get("foo"), "bar");
   const cloneText = await clone.text();
   assertEquals(cloneText, "Hello World");
-  console.log("before close");
+  ac.abort();
   await promise;
-  console.log("finished");
 });

@@ -7,6 +7,9 @@
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ByteString;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
@@ -42,6 +45,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
+use std::time::Duration;
 use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -65,6 +69,8 @@ pub struct ServerContext {
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
   response: HashMap<u32, NextRequest>,
+  close_tx: mpsc::Sender<()>,
+  cancel_handle: Rc<CancelHandle>,
 }
 
 struct InnerRequest {
@@ -256,6 +262,15 @@ fn op_flash_method(
     .method
     .unwrap()
     .to_string()
+}
+
+#[op]
+async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  ctx.cancel_handle.cancel();
+  let _ = ctx.close_tx.send(()).await;
 }
 
 #[op]
@@ -472,6 +487,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<NextRequest>,
+  mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
@@ -487,13 +503,23 @@ fn run_server(
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
-  loop {
-    match poll.poll(&mut events, None) {
+  'outer: loop {
+    let result = close_rx.try_recv();
+    if let Ok(_) = result {
+      break 'outer;
+    }
+    // FIXME(bartlomieju): how does Tokio handle it? I just put random 100ms
+    // timeout here to handle close signal.
+    match poll.poll(&mut events, Some(Duration::from_millis(100))) {
       Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
       Err(e) => panic!("{}", e),
       Ok(()) => (),
     }
     for event in &events {
+      let result = close_rx.try_recv();
+      if let Ok(_) = result {
+        break 'outer;
+      }
       let token = event.token();
       match token {
         Token(0) => loop {
@@ -688,17 +714,20 @@ fn op_flash_serve(
 ) -> Result<u32, AnyError> {
   let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
   let (tx, rx) = mpsc::channel(100);
+  let (close_tx, close_rx) = mpsc::channel(1);
   let ctx = ServerContext {
     addr,
     tx,
     rx,
     response: HashMap::with_capacity(1000),
+    close_tx,
+    cancel_handle: CancelHandle::new_rc(),
   };
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, addr, maybe_cert, maybe_key)
+    run_server(tx, close_rx, addr, maybe_cert, maybe_key)
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
@@ -737,13 +766,14 @@ async fn op_flash_next_async(
     ctx as *mut ServerContext
   };
   let ctx = unsafe { &mut *ctx };
+  let cancel_handle = &ctx.cancel_handle;
   let mut tokens = 0;
   while let Ok(token) = ctx.rx.try_recv() {
     ctx.response.insert(tokens, token);
     tokens += 1;
   }
   if tokens == 0 {
-    if let Some(req) = ctx.rx.recv().await {
+    if let Ok(Some(req)) = ctx.rx.recv().or_cancel(cancel_handle).await {
       ctx.response.insert(tokens, req);
       tokens += 1;
     }
@@ -884,6 +914,7 @@ pub fn init() -> Extension {
       op_flash_drive_server::decl(),
       op_flash_first_packet::decl(),
       op_flash_has_body_stream::decl(),
+      op_flash_close_server::decl(),
     ])
     .state(|op_state| {
       op_state.put(FlashContext {

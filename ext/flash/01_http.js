@@ -143,6 +143,8 @@
 
   async function serve(handler, opts = {}) {
     opts = { hostname: "127.0.0.1", port: 9000, ...opts };
+    const signal = opts.signal;
+    delete opts.signal;
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
@@ -151,13 +153,33 @@
       transport: opts.cert && opts.key ? "https" : "http",
       hostname: opts.hostname,
       port: opts.port,
-      serverPromise,
+      closed: false,
+      finished: (async () => {
+        return await serverPromise;
+      })(),
+      async close() {
+        if (server.closed) {
+          return;
+        }
+        server.closed = true;
+        await core.opAsync("op_flash_close_server", serverId);
+        await server.finished;
+      },
       async serve() {
         while (true) {
+          if (server.closed) {
+            break;
+          }
+
           let token = nextRequestSync();
           if (token === 0) {
             token = await core.opAsync("op_flash_next_async", serverId);
           }
+
+          if (server.closed) {
+            break;
+          }
+
           for (let i = 0; i < token; i++) {
             let body = null;
             // There might be a body, but we don't expose it for GET/HEAD requests.
@@ -315,11 +337,20 @@
             }
           }
         }
+        await server.finished;
       },
     };
 
+    signal?.addEventListener("abort", () => {
+      clearInterval(dateInterval);
+      server.close().then(() => {}, () => {});
+    }, {
+      once: true,
+    });
+
+    // NOTE(bartlomieju): this drives the server
     (async () => {
-      await server.serverPromise;
+      await server.finished;
     });
 
     let nextRequestSync = core.ops.op_flash_next;
