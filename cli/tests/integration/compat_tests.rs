@@ -173,6 +173,7 @@ fn native_modules_as_global_vars() {
   assert!(out.contains("true"));
 }
 
+#[ignore] // todo(dsherret): re-enable
 #[test]
 fn ext_node_cjs_execution() {
   let (out, _err) = util::run_and_collect_output_with_args(
