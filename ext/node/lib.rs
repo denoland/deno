@@ -32,7 +32,7 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[op]
+#[op(unstable)]
 pub fn op_require_init_paths() -> Vec<String> {
   let (home_dir, node_path) = if cfg!(windows) {
     (
@@ -79,7 +79,7 @@ pub fn op_require_init_paths() -> Vec<String> {
   paths
 }
 
-#[op]
+#[op(unstable)]
 pub fn op_require_node_module_paths(from: String) -> Vec<String> {
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(&from)
@@ -125,7 +125,7 @@ pub fn op_require_node_module_paths(from: String) -> Vec<String> {
   paths
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_proxy_path(filename: String) -> String {
   // Allow a directory to be passed as the filename
   let trailing_slash = if cfg!(windows) {
@@ -142,7 +142,7 @@ fn op_require_proxy_path(filename: String) -> String {
   }
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_is_request_relative(request: String) -> bool {
   if request.starts_with("./") {
     return true;
@@ -165,7 +165,7 @@ fn op_require_is_request_relative(request: String) -> bool {
   false
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_resolve_lookup_paths(
   request: String,
   maybe_parent_paths: Option<Vec<String>>,
@@ -206,12 +206,12 @@ fn op_require_resolve_lookup_paths(
   Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_path_is_absolute(p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_stat(filename: String) -> i32 {
   if let Ok(metadata) = std::fs::metadata(&filename) {
     if metadata.is_file() {
@@ -224,7 +224,7 @@ fn op_require_stat(filename: String) -> i32 {
   -1
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_real_path(request: String) -> Result<String, AnyError> {
   let mut canonicalized_path = PathBuf::from(request).canonicalize()?;
   if cfg!(windows) {
@@ -238,7 +238,7 @@ fn op_require_real_path(request: String) -> Result<String, AnyError> {
   Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_path_resolve(parts: Vec<String>) -> String {
   assert!(!parts.is_empty());
   let mut p = PathBuf::from(&parts[0]);
@@ -250,19 +250,19 @@ fn op_require_path_resolve(parts: Vec<String>) -> String {
   normalize_path(p).to_string_lossy().to_string()
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_path_dirname(request: String) -> String {
   let p = PathBuf::from(request);
   p.parent().unwrap().to_string_lossy().to_string()
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_path_basename(request: String) -> String {
   let p = PathBuf::from(request);
   p.file_name().unwrap().to_string_lossy().to_string()
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_try_self_parent_path(
   has_parent: bool,
   maybe_parent_filename: Option<String>,
@@ -286,7 +286,7 @@ fn op_require_try_self_parent_path(
   None
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_try_self(
   has_parent: bool,
   maybe_parent_filename: Option<String>,
@@ -310,7 +310,7 @@ fn op_require_try_self(
   None
 }
 
-#[op]
+#[op(unstable)]
 fn op_require_read_file(_filename: String) -> Result<String, AnyError> {
   todo!("not implemented");
 }
