@@ -185,9 +185,9 @@
         // There might be a body, but we don't expose it for GET/HEAD requests.
         // It will be closed automatically once the request has been handled and
         // the response has been sent.
-        if (method === "POST" || method === "PUT") {
+       //if (method === "POST" || method === "PUT") {
            body = createRequestBodyStream(serverId, i);
-         }
+         //}
 
         const req = fromInnerFlashRequest(
           body,
@@ -343,7 +343,7 @@
     // which is always less than 1024 bytes.      
     const readFirstPacket = new Uint8Array(1024);
     const firstRead = core.ops.op_flash_first_packet(serverId, token, readFirstPacket);
-    let firstEnqueued = firstRead !== 0;
+    let firstEnqueued = firstRead === 0;
 
     return new ReadableStream({
       type: "bytes",

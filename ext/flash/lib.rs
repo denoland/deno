@@ -40,6 +40,7 @@ use std::os::unix::prelude::FromRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
@@ -77,13 +78,10 @@ struct InnerRequest {
 struct Stream {
   inner: TcpStream,
   detached: bool,
-  read_rx: Option<oneshot::Receiver<usize>>,
-  read_tx: Option<oneshot::Sender<usize>>,
-  readiness_rx: Option<mpsc::Receiver<()>>,
-  readiness_tx: Option<mpsc::Sender<()>>,
-  cursor: usize,
-  content_length: usize,
-  consuming: bool,
+  read_rx: Option<mpsc::Receiver<()>>,
+  read_tx: Option<mpsc::Sender<()>>,
+
+  read_lock: Arc<Mutex<()>>,
 }
 
 impl Stream {
@@ -111,47 +109,6 @@ impl Read for Stream {
   #[inline]
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
     self.inner.read(buf)
-  }
-}
-
-impl Stream {
-  unsafe fn poll_read_priv<'a>(
-    &'a mut self,
-    cx: &mut Context<'_>,
-    buf: &mut tokio::io::ReadBuf<'_>,
-  ) -> std::task::Poll<std::io::Result<()>> {
-    loop {
-      trace!("poll JS stream readiness");
-      match self.readiness_rx.as_mut().unwrap().poll_recv(cx) {
-        std::task::Poll::Ready(_) => {}
-        std::task::Poll::Pending => return std::task::Poll::Pending,
-      };
-
-      let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>]
-        as *mut [u8]);
-
-      match self.read(b) {
-        Ok(n) => {
-          // Safety: We trust `TcpStream::read` to have filled up `n` bytes in the
-          // buffer.
-          buf.assume_init(n);
-          buf.advance(n);
-          return std::task::Poll::Ready(Ok(()));
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-        Err(e) => return std::task::Poll::Ready(Err(e)),
-      }
-    }
-  }
-}
-
-impl AsyncRead for Stream {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-    buf: &mut tokio::io::ReadBuf<'_>,
-  ) -> std::task::Poll<std::io::Result<()>> {
-    unsafe { self.get_mut().poll_read_priv(cx, buf) }
   }
 }
 
@@ -200,12 +157,8 @@ fn op_flash_respond(
     false => {
       let tx = ctx.response.get(&token).unwrap();
       let sock = unsafe { &mut *tx.socket };
-      if let Some(read_tx) = sock.read_tx.take() {
-        read_tx
-          .send(tx.content_length.unwrap() as usize - tx.content_read)
-          .unwrap();
-        trace!("JS unblocked read");
-      }
+      trace!("read_tx take");
+      sock.read_tx.take();
 
       sock
     }
@@ -369,31 +322,33 @@ fn op_flash_first_packet(
   }
   let nread = buffer.read(&mut buf).unwrap();
   tx.content_read += nread;
+
+  dbg!(tx.content_read, tx.content_length);
   nread
 }
 
-fn consume_body(sock: &mut Stream) -> usize {
-  let mut buf = [0; 1024];
-  // if te_chunked {
-  //   let mut decoder = chunked::Decoder::new(sock);
-  //   return decoder.read(&mut buf).expect("read error");
-  // }
+// fn consume_body(sock: &mut Stream) -> usize {
+//   let mut buf = [0; 1024];
+//   // if te_chunked {
+//   //   let mut decoder = chunked::Decoder::new(sock);
+//   //   return decoder.read(&mut buf).expect("read error");
+//   // }
 
-  if sock.cursor >= sock.content_length {
-    return 0;
-  }
+//   if sock.cursor >= sock.content_length {
+//     return 0;
+//   }
 
-  loop {
-    match sock.inner.read(&mut buf) {
-      Ok(n) => {
-        sock.cursor += n;
-        return n;
-      }
-      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-      Err(_) => return 0,
-    }
-  }
-}
+//   loop {
+//     match sock.inner.read(&mut buf) {
+//       Ok(n) => {
+//         sock.cursor += n;
+//         return n;
+//       }
+//       Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+//       Err(_) => return 0,
+//     }
+//   }
+// }
 
 #[op]
 async fn op_flash_read_body(
@@ -435,13 +390,24 @@ async fn op_flash_read_body(
     let mut decoder = chunked::Decoder::new(sock);
     return decoder.read(&mut buf).expect("read error");
   }
-  if tx.content_read >= tx.content_length.unwrap() as usize {
-    return 0;
-  }
 
-  let nread = tokio::io::AsyncReadExt::read(sock, &mut buf).await.unwrap();
-  tx.content_read += nread;
-  nread
+  let l = sock.read_lock.clone();
+  let _lock = l.lock().unwrap();
+  loop {
+    dbg!(tx.content_read, tx.content_length);
+    if tx.content_read >= tx.content_length.unwrap() as usize {
+      return 0;
+    }
+    match sock.read(&mut buf) {
+      Ok(n) => {
+        tx.content_read += n;
+        return n;
+      }
+      _ => {
+        sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+      },
+    }
+  }
 }
 
 // https://github.com/hyperium/hyper/blob/0c8ee93d7f557afc63ca2a5686d19071813ab2b7/src/headers.rs#L67
@@ -529,11 +495,7 @@ fn run_server(
                 detached: false,
                 read_rx: None,
                 read_tx: None,
-                readiness_rx: None,
-                readiness_tx: None,
-                cursor: 0,
-                content_length: 0,
-                consuming: false,
+                read_lock: Arc::new(Mutex::new(())),
               };
 
               trace!("New connection: {}", token.0);
@@ -551,31 +513,24 @@ fn run_server(
             continue;
           }
 
+          debug_assert!(event.is_readable());
+          
+          
           trace!("Socket readable: {}", token.0);
-          if let Some(tx) = &socket.readiness_tx {
+          if let Some(tx) = &socket.read_tx {
+            {
+              let l = socket.read_lock.clone();
+              let _l = l.lock().unwrap();
+            }
             trace!("Sending readiness notification: {}", token.0);
             tx.blocking_send(()).unwrap();
-            trace!("Rediness notification sent: {}", token.0);
-            if let Some(rx) = socket.read_rx.take() {
-              let content_length = rx.blocking_recv().unwrap();
-              trace!("Read unblocked: {} {}", token.0, content_length);
-              socket.consuming = true;
-              socket.content_length = content_length;
-            }
-
-            if socket.consuming {
-              if consume_body(socket) == 0 {
-                socket.consuming = false;
-                socket.content_length = 0;
-              }
-            }
-
+            
             continue;
           }
 
-          debug_assert!(event.is_readable());
           let mut buffer: [u8; 1024] = [0_u8; 1024];
           let sock_ptr = socket as *mut _;
+          
           let nread = socket.read(&mut buffer);
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
           let mut req = httparse::Request::new(&mut headers);
@@ -588,12 +543,15 @@ fn run_server(
               continue;
             }
             Ok(n) => {
-              // println!("{}", String::from_utf8_lossy(&buffer[..n]));
               body_len = n;
-              let r = req.parse(&buffer[0..n]).unwrap();
+              let r = req.parse(&buffer[0..n]);
               // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
               match r {
-                httparse::Status::Complete(n) => body_offset = n,
+                Ok(httparse::Status::Complete(n)) => body_offset = n,
+                Err(e) => {
+                  println!("{}", String::from_utf8_lossy(&buffer[..n]));
+                  panic!("{}", e);
+                }
                 _ => unreachable!(),
               }
             }
@@ -602,12 +560,9 @@ fn run_server(
           }
           if let Some(method) = &req.method {
             if method == &"POST" || method == &"PUT" {
-              let (tx, rx) = oneshot::channel();
+              let (tx, rx) = mpsc::channel(100);
               socket.read_tx = Some(tx);
               socket.read_rx = Some(rx);
-              let (tx, rx) = mpsc::channel(1);
-              socket.readiness_rx = Some(rx);
-              socket.readiness_tx = Some(tx);
             }
           }
           let inner_req = InnerRequest {
