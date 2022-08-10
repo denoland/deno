@@ -1866,8 +1866,8 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission for the target path.
-   * Also requires `allow-read` permission for the CWD if the target path is
-   * relative. */
+   * Also requires `allow-read` permission for the current working
+   * directory if the target path is relative. */
   export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1882,8 +1882,8 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission for the target path.
-   * Also requires `allow-read` permission for the CWD if the target path is
-   * relative. */
+   * Also requires `allow-read` permission for the current working
+   * directory if the target path is relative. */
   export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
@@ -2455,18 +2455,8 @@ declare namespace Deno {
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
    *
-   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
-   * Doesn't guarantee that only `opt.env` variables are present,
-   * as the OS may set environmental variables for processes.
-   *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
-   *
-   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
-   * in the child process. Failure in the setuid call will cause the spawn to fail.
-   *
-   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
-   * This has the same semantics as the uid field.
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -

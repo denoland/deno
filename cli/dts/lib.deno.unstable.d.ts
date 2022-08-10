@@ -228,7 +228,7 @@ declare namespace Deno {
   export function loadavg(): number[];
 
   /** **Unstable** new API. yet to be vetted. Under consideration to possibly move to
-   * Deno.build or Deno.versions and if it should depend sys-info, which may not
+   * Deno.build or Deno.version and if it should depend sys-info, which may not
    * be desireable.
    *
    * Returns the release version of the Operating System.
