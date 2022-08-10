@@ -5662,7 +5662,6 @@ mod tests {
       }
     );
 
-    eprintln!("HERE");
     let r = flags_from_vec(svec!["deno", "task", "--cwd", "foo", "build"]);
     assert_eq!(
       r.unwrap(),
