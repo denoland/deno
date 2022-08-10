@@ -71,6 +71,7 @@ encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
 eszip = "=0.23.0"
 fancy-regex = "=0.10.0"
+flate2 = "=1.0.24"
 http = "=0.2.6"
 import_map = "=0.12.1"
 indexmap = "1.8.1"
@@ -90,10 +91,11 @@ ring = "=0.16.20"
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
-semver-parser = "=0.10.2"
+semver = "=1.0.13"
 serde = { version = "=1.0.141", features = ["derive"] }
 serde_repr = "=0.1.8"
 shell-escape = "=0.1.5"
+tar = "=0.4.38"
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
 tokio = { version = "=1.19", features = ["full"] }
