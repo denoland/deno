@@ -1184,7 +1184,13 @@ impl Permissions {
         .as_ref()
         .map(|v| {
           v.iter()
-            .map(|x| NetDescriptor::from_string(x.clone()))
+            .filter_map(|x| {
+              if x.is_empty() {
+                None
+              } else {
+                Some(NetDescriptor::from_string(x.clone()))
+              }
+            })
             .collect()
         })
         .unwrap_or_else(HashSet::new),
@@ -1201,7 +1207,17 @@ impl Permissions {
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(EnvDescriptor::new).collect())
+        .map(|v| {
+          v.iter()
+            .filter_map(|x| {
+              if x.is_empty() {
+                None
+              } else {
+                Some(EnvDescriptor::new(x))
+              }
+            })
+            .collect()
+        })
         .unwrap_or_else(HashSet::new),
       prompt,
       ..Default::default()
@@ -1218,7 +1234,13 @@ impl Permissions {
         .as_ref()
         .map(|v| {
           v.iter()
-            .map(|x| RunDescriptor::from_str(x).unwrap())
+            .filter_map(|x| {
+              if x.is_empty() {
+                None
+              } else {
+                Some(RunDescriptor::from_str(x).unwrap())
+              }
+            })
             .collect()
         })
         .unwrap_or_else(HashSet::new),
@@ -1373,8 +1395,14 @@ pub fn resolve_read_allowlist(
 ) -> HashSet<ReadDescriptor> {
   if let Some(v) = allow {
     v.iter()
-      .map(|raw_path| {
-        ReadDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      .filter_map(|raw_path| {
+        if raw_path.as_os_str().is_empty() {
+          None
+        } else {
+          Some(ReadDescriptor(
+            resolve_from_cwd(Path::new(&raw_path)).unwrap(),
+          ))
+        }
       })
       .collect()
   } else {
@@ -1387,8 +1415,14 @@ pub fn resolve_write_allowlist(
 ) -> HashSet<WriteDescriptor> {
   if let Some(v) = allow {
     v.iter()
-      .map(|raw_path| {
-        WriteDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      .filter_map(|raw_path| {
+        if raw_path.as_os_str().is_empty() {
+          None
+        } else {
+          Some(WriteDescriptor(
+            resolve_from_cwd(Path::new(&raw_path)).unwrap(),
+          ))
+        }
       })
       .collect()
   } else {
@@ -1401,8 +1435,14 @@ pub fn resolve_ffi_allowlist(
 ) -> HashSet<FfiDescriptor> {
   if let Some(v) = allow {
     v.iter()
-      .map(|raw_path| {
-        FfiDescriptor(resolve_from_cwd(Path::new(&raw_path)).unwrap())
+      .filter_map(|raw_path| {
+        if raw_path.as_os_str().is_empty() {
+          None
+        } else {
+          Some(FfiDescriptor(
+            resolve_from_cwd(Path::new(&raw_path)).unwrap(),
+          ))
+        }
       })
       .collect()
   } else {
@@ -2894,5 +2934,15 @@ mod tests {
     )
     .unwrap();
     assert_eq!(worker_perms.write.denied_list, main_perms.write.denied_list);
+  }
+
+  #[test]
+  fn test_handle_empty_value() {
+    Permissions::new_read(&Some(vec![PathBuf::new()]), false);
+    Permissions::new_env(&Some(vec![String::new()]), false);
+    Permissions::new_run(&Some(vec![String::new()]), false);
+    Permissions::new_ffi(&Some(vec![PathBuf::new()]), false);
+    Permissions::new_net(&Some(svec![String::new()]), false);
+    Permissions::new_write(&Some(vec![PathBuf::new()]), false);
   }
 }
