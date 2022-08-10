@@ -164,8 +164,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -186,8 +185,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -206,8 +204,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }

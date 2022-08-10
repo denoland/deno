@@ -2582,7 +2582,8 @@ fn task_parse(
   }
 
   if let Some(mut index) = matches.index_of("task_name_and_args") {
-    index += 1; // skip `task`
+    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
+    let raw_args = &raw_args[task_word_index..];
 
     // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
     while index < raw_args.len() {
@@ -5759,6 +5760,25 @@ mod tests {
           task: "build".to_string(),
         }),
         argv: svec!["--test"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn task_with_global_flags() {
+    // can fail if the custom parser in task_parse() starts at the wrong index
+    let r =
+      flags_from_vec(svec!["deno", "--quiet", "--unstable", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: "build".to_string(),
+        }),
+        unstable: true,
+        log_level: Some(log::Level::Error),
         ..Flags::default()
       }
     );
