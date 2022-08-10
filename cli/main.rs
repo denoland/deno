@@ -485,7 +485,7 @@ async fn install_command(
     Default::default(),
   );
   // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_module(&main_module, true).await?;
+  worker.preload_main_module(&main_module).await?;
   tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
