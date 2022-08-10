@@ -567,10 +567,7 @@ fn run_server(
           trace!("Socket readable: {}", token.0);
           if let Some(tx) = &socket.read_tx {
             {
-              let l = socket.read_lock.clone();
-              println!("Mutex locked");
-              let _l = l.lock().unwrap();
-              println!("Mutex unlocked");
+              let _l = socket.read_lock.lock().unwrap();
             }
             trace!("Sending readiness notification: {}", token.0);
             let _ = tx.blocking_send(());

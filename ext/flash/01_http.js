@@ -9,7 +9,7 @@
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { TcpConn } = window.__bootstrap.net;
-  const { ReadableStream, ReadableStreamPrototype } =
+  const { ReadableStream, ReadableStreamPrototype, _state } =
     window.__bootstrap.streams;
   const {
     WebSocket,
@@ -174,10 +174,9 @@
           let token = nextRequestSync();
           if (token === 0) {
             token = await core.opAsync("op_flash_next_async", serverId);
-          }
-
-          if (server.closed) {
-            break;
+            if (server.closed) {
+              break;
+            }
           }
 
           for (let i = 0; i < token; i++) {
@@ -186,7 +185,8 @@
             // It will be closed automatically once the request has been handled and
             // the response has been sent.
             // TODO: mask into the token maybe?
-            if (core.ops.op_flash_has_body_stream(serverId, i)) {
+            const hasBody = core.ops.op_flash_has_body_stream(serverId, i);
+            if (hasBody) {
               body = createRequestBodyStream(serverId, i);
             }
 
@@ -209,6 +209,10 @@
             // there might've been an HTTP upgrade.
             if (resp === undefined) {
               continue;
+            }
+            if (hasBody && body[_state] !== "closed") {
+              // TODO(@littledivy): Optimize by draining in a single op.
+              await req.arrayBuffer();
             }
             const innerResp = toInnerResponse(resp);
 
@@ -302,16 +306,16 @@
               }
             } else {
               core.ops.op_flash_respond(
-                serverId,
-                i,
-                http1Response(
-                  innerResp.status ?? 200,
-                  innerResp.headerList,
-                  respBody,
-                ),
-                null,
-                !ws, // Don't close socket if there is a deferred websocket upgrade.
-              );
+                  serverId,
+                  i,
+                  http1Response(
+                    innerResp.status ?? 200,
+                    innerResp.headerList,
+                    respBody,
+                  ),
+                  null,
+                  !ws, // Don't close socket if there is a deferred websocket upgrade.
+                );
             }
 
             if (ws) {
