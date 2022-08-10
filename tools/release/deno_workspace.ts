@@ -1,13 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { path, ReleasesMdFile, Repo } from "./deps.ts";
+import { $, ReleasesMdFile, Repo } from "./deps.ts";
 
 export class DenoWorkspace {
   #repo: Repo;
 
   static get rootDirPath() {
-    const currentDirPath = path.dirname(path.fromFileUrl(import.meta.url));
-    return path.resolve(currentDirPath, "../../");
+    const currentDirPath = $.path.dirname($.path.fromFileUrl(import.meta.url));
+    return $.path.resolve(currentDirPath, "../../");
   }
 
   static async load(): Promise<DenoWorkspace> {
@@ -48,19 +48,13 @@ export class DenoWorkspace {
 
   getReleasesMdFile() {
     return new ReleasesMdFile(
-      path.join(DenoWorkspace.rootDirPath, "Releases.md"),
+      $.path.join(DenoWorkspace.rootDirPath, "Releases.md"),
     );
   }
 
-  runFormatter() {
-    return this.#repo.runCommandWithOutput([
-      "deno",
-      "run",
-      "--unstable",
-      "--allow-write",
-      "--allow-read",
-      "--allow-run",
-      "./tools/format.js",
-    ]);
+  async runFormatter() {
+    await this.#repo.command(
+      "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js",
+    );
   }
 }

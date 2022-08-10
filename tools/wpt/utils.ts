@@ -133,10 +133,10 @@ export function runPy<T extends Omit<Deno.SpawnOptions, "cwd">>(
 }
 
 export async function checkPy3Available() {
-  const { status, stdout } = await runPy(["--version"], {
+  const { success, stdout } = await runPy(["--version"], {
     stdout: "piped",
   }).output();
-  assert(status.success, "failed to run python --version");
+  assert(success, "failed to run python --version");
   const output = new TextDecoder().decode(stdout);
   assert(
     output.includes("Python 3."),
@@ -148,13 +148,13 @@ export async function checkPy3Available() {
 
 export async function cargoBuild() {
   if (binary) return;
-  const { status } = await Deno.spawn("cargo", {
+  const { success } = await Deno.spawn("cargo", {
     args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
     stdout: "inherit",
     stderr: "inherit",
   });
-  assert(status.success, "cargo build failed");
+  assert(success, "cargo build failed");
 }
 
 export function escapeLoneSurrogates(input: string): string;

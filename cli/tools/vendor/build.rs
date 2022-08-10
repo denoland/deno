@@ -66,7 +66,14 @@ pub fn build(
 
   // build the graph
   graph.lock()?;
-  graph.valid()?;
+
+  let graph_errors = graph.errors();
+  if !graph_errors.is_empty() {
+    for err in &graph_errors {
+      log::error!("{}", err);
+    }
+    bail!("failed vendoring");
+  }
 
   // figure out how to map remote modules to local
   let all_modules = graph.modules();
@@ -821,6 +828,52 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_remote_dep_bare_specifier() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map2.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "twind".to_string(),
+        "https://localhost/twind.ts".to_string(),
+      )
+      .unwrap();
+
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://remote/mod.ts';");
+        loader.add("https://remote/mod.ts", "import 'twind';");
+        loader.add("https://localhost/twind.ts", "export class Test {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "https://remote/": "./remote/"
+        },
+        "scopes": {
+          "./remote/": {
+            "twind": "./localhost/twind.ts"
+          },
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/twind.ts", "export class Test {}"),
+        ("/vendor/remote/mod.ts", "import 'twind';"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
   async fn existing_import_map_mapped_bare_specifier() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map.json");
@@ -1001,6 +1054,26 @@ mod test {
         "directory is not supported (\"./vendor/\").",
       )
     );
+  }
+
+  #[tokio::test]
+  async fn vendor_file_fails_loading_dynamic_import() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "await import('./test.ts');");
+        loader.add_failure(
+          "https://localhost/test.ts",
+          "500 Internal Server Error",
+        );
+      })
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(err.to_string(), "failed vendoring");
   }
 
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {

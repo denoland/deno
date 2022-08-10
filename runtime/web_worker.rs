@@ -419,8 +419,8 @@ impl WebWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      // napi
       deno_napi::init(),
+      // deno_node::init(), // todo(dsherret): re-enable
       ops::os::init_for_worker(),
       ops::permissions::init(),
       ops::process::init(),

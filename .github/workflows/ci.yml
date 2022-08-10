@@ -17,10 +17,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: fastci
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}

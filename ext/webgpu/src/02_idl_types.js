@@ -120,6 +120,7 @@
       "texture-compression-astc",
       "timestamp-query",
       "indirect-first-instance",
+      "shader-f16",
       // extended from spec
       "mappable-primary-buffers",
       "texture-binding-array",
@@ -150,7 +151,7 @@
   // DICTIONARY: GPUDeviceDescriptor
   const dictMembersGPUDeviceDescriptor = [
     {
-      key: "nonGuaranteedFeatures",
+      key: "requiredFeatures",
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUFeatureName"],
       ),
@@ -159,14 +160,11 @@
       },
     },
     {
-      key: "nonGuaranteedLimits",
+      key: "requiredLimits",
       converter: webidl.createRecordConverter(
         webidl.converters["DOMString"],
         webidl.converters["GPUSize32"],
       ),
-      get defaultValue() {
-        return {};
-      },
     },
   ];
   webidl.converters["GPUDeviceDescriptor"] = webidl.createDictionaryConverter(
@@ -341,6 +339,8 @@
       "depth24plus",
       "depth24plus-stencil8",
       "depth32float",
+      "depth24unorm-stencil8",
+      "depth32float-stencil8",
       "bc1-rgba-unorm",
       "bc1-rgba-unorm-srgb",
       "bc2-rgba-unorm",
@@ -393,8 +393,6 @@
       "astc-12x10-unorm-srgb",
       "astc-12x12-unorm",
       "astc-12x12-unorm-srgb",
-      "depth24unorm-stencil8",
-      "depth32float-stencil8",
     ],
   );
 
@@ -539,6 +537,15 @@
     ],
   );
 
+  // ENUM: GPUMipmapFilterMode
+  webidl.converters["GPUMipmapFilterMode"] = webidl.createEnumConverter(
+    "GPUMipmapFilterMode",
+    [
+      "nearest",
+      "linear",
+    ],
+  );
+
   // ENUM: GPUCompareFunction
   webidl.converters["GPUCompareFunction"] = webidl.createEnumConverter(
     "GPUCompareFunction",
@@ -583,7 +590,7 @@
     },
     {
       key: "mipmapFilter",
-      converter: webidl.converters["GPUFilterMode"],
+      converter: webidl.converters["GPUMipmapFilterMode"],
       defaultValue: "nearest",
     },
     {
@@ -935,9 +942,26 @@
   //   GPUCompilationInfo.prototype,
   // );
 
+  webidl.converters["GPUAutoLayoutMode"] = webidl.createEnumConverter(
+    "GPUAutoLayoutMode",
+    [
+      "auto",
+    ],
+  );
+
+  webidl.converters["GPUPipelineLayout or GPUAutoLayoutMode"] = (V, opts) => {
+    if (typeof V === "object") {
+      return webidl.converters["GPUPipelineLayout"](V, opts);
+    }
+    return webidl.converters["GPUAutoLayoutMode"](V, opts);
+  };
+
   // DICTIONARY: GPUPipelineDescriptorBase
   const dictMembersGPUPipelineDescriptorBase = [
-    { key: "layout", converter: webidl.converters["GPUPipelineLayout"] },
+    {
+      key: "layout",
+      converter: webidl.converters["GPUPipelineLayout or GPUAutoLayoutMode"],
+    },
   ];
   webidl.converters["GPUPipelineDescriptorBase"] = webidl
     .createDictionaryConverter(
@@ -1427,7 +1451,9 @@
     {
       key: "targets",
       converter: webidl.createSequenceConverter(
-        webidl.converters["GPUColorTargetState"],
+        webidl.createNullableConverter(
+          webidl.converters["GPUColorTargetState"],
+        ),
       ),
       required: true,
     },
@@ -1675,6 +1701,7 @@
   // ENUM: GPULoadOp
   webidl.converters["GPULoadOp"] = webidl.createEnumConverter("GPULoadOp", [
     "load",
+    "clear",
   ]);
 
   // DICTIONARY: GPUColorDict
@@ -1724,8 +1751,12 @@
     },
     { key: "resolveTarget", converter: webidl.converters["GPUTextureView"] },
     {
-      key: "loadValue",
-      converter: webidl.converters.any, /** put union here! **/
+      key: "clearValue",
+      converter: webidl.converters["GPUColor"],
+    },
+    {
+      key: "loadOp",
+      converter: webidl.converters["GPULoadOp"],
       required: true,
     },
     {
@@ -1748,14 +1779,17 @@
       required: true,
     },
     {
-      key: "depthLoadValue",
-      converter: webidl.converters.any, /** put union here! **/
-      required: true,
+      key: "depthClearValue",
+      converter: webidl.converters["float"],
+      defaultValue: 0,
+    },
+    {
+      key: "depthLoadOp",
+      converter: webidl.converters["GPULoadOp"],
     },
     {
       key: "depthStoreOp",
       converter: webidl.converters["GPUStoreOp"],
-      required: true,
     },
     {
       key: "depthReadOnly",
@@ -1763,14 +1797,17 @@
       defaultValue: false,
     },
     {
-      key: "stencilLoadValue",
-      converter: webidl.converters.any, /** put union here! **/
-      required: true,
+      key: "stencilClearValue",
+      converter: webidl.converters["GPUStencilValue"],
+      defaultValue: 0,
+    },
+    {
+      key: "stencilLoadOp",
+      converter: webidl.converters["GPULoadOp"],
     },
     {
       key: "stencilStoreOp",
       converter: webidl.converters["GPUStoreOp"],
-      required: true,
     },
     {
       key: "stencilReadOnly",
@@ -1795,7 +1832,9 @@
     {
       key: "colorAttachments",
       converter: webidl.createSequenceConverter(
-        webidl.converters["GPURenderPassColorAttachment"],
+        webidl.createNullableConverter(
+          webidl.converters["GPURenderPassColorAttachment"],
+        ),
       ),
       required: true,
     },
@@ -1840,7 +1879,7 @@
     {
       key: "colorFormats",
       converter: webidl.createSequenceConverter(
-        webidl.converters["GPUTextureFormat"],
+        webidl.createNullableConverter(webidl.converters["GPUTextureFormat"]),
       ),
       required: true,
     },

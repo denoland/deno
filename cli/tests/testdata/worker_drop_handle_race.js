@@ -7,6 +7,6 @@
 // The exception thrown in the worker will not terminate the worker, but it will
 // propagate to the main thread and cause it to exit.
 new Worker(
-  new URL("./workers/drop_handle_race.js", import.meta.url).href,
+  import.meta.resolve("./workers/drop_handle_race.js"),
   { type: "module" },
 );

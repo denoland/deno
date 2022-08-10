@@ -1,5 +1,5 @@
 const w = new Worker(
-  new URL("workers/worker_unstable.ts", import.meta.url).href,
+  import.meta.resolve("./workers/worker_unstable.ts"),
   { type: "module", name: "Unstable Worker" },
 );
 

@@ -162,6 +162,7 @@ impl MainWorker {
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_napi::init(),
+      // deno_node::init() // todo(dsherret): re-enable,
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),

@@ -4,6 +4,7 @@ use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 
+use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -38,6 +39,7 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
+    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
@@ -68,6 +70,27 @@ pub struct GraphData {
 impl GraphData {
   /// Store data from `graph` into `self`.
   pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+    for graph_import in &graph.imports {
+      let mut dependencies = BTreeMap::new();
+      for (specifier, dependency) in &graph_import.dependencies {
+        if !matches!(dependency.maybe_type, Resolved::None) {
+          dependencies.insert(specifier.clone(), dependency.maybe_type.clone());
+          if let Resolved::Ok {
+            specifier, range, ..
+          } = &dependency.maybe_type
+          {
+            let entry = self.referrer_map.entry(specifier.clone());
+            entry.or_insert_with(|| range.clone());
+          }
+        }
+      }
+      self.modules.insert(
+        graph_import.referrer.clone(),
+        ModuleEntry::Configuration { dependencies },
+      );
+      self.configurations.insert(graph_import.referrer.clone());
+    }
+
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
         continue;
@@ -80,27 +103,6 @@ impl GraphData {
       match result {
         Ok((_, _, media_type)) => {
           let module = graph.get(&specifier).unwrap();
-          if module.kind == ModuleKind::Synthetic {
-            let mut dependencies = BTreeMap::new();
-            for (specifier, dependency) in &module.dependencies {
-              if !matches!(dependency.maybe_type, Resolved::None) {
-                dependencies
-                  .insert(specifier.clone(), dependency.maybe_type.clone());
-                if let Resolved::Ok {
-                  specifier, range, ..
-                } = &dependency.maybe_type
-                {
-                  let entry = self.referrer_map.entry(specifier.clone());
-                  entry.or_insert_with(|| range.clone());
-                }
-              }
-            }
-            self.modules.insert(
-              module.specifier.clone(),
-              ModuleEntry::Configuration { dependencies },
-            );
-            self.configurations.insert(module.specifier.clone());
-          }
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
@@ -146,6 +148,7 @@ impl GraphData {
           };
           let module_entry = ModuleEntry::Module {
             code,
+            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
             ts_check,
             media_type,

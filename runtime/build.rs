@@ -158,6 +158,7 @@ mod not_docs {
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
+      // deno_node::init(), // todo(dsherret): re-enable
       deno_ffi::init::<Permissions>(false),
       deno_net::init::<Permissions>(
         None, false, // No --unstable.
