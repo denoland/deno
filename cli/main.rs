@@ -994,9 +994,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     ModuleSpecifier,
   )| {
     let flags = flags.clone();
-    let permissions =
-      Permissions::from_options(&flags.permissions_options()).unwrap();
-    async move {
+    let permissions = Permissions::from_options(&flags.permissions_options())?;
+    Ok(async move {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
@@ -1016,7 +1015,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       executor.execute(&main_module).await?;
 
       Ok(())
-    }
+    })
   };
 
   file_watcher::watch_func2(
