@@ -582,15 +582,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("lsp", m)) => lsp_parse(&mut flags, m),
     Some(("repl", m)) => repl_parse(&mut flags, m),
     Some(("run", m)) => run_parse(&mut flags, m),
-    Some(("task", m)) => task_parse(
-      &mut flags,
-      m,
-      // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
-      &args[args
-        .iter()
-        .position(|el| el == matches.subcommand_name().unwrap())
-        .unwrap()..],
-    ),
+    Some(("task", m)) => task_parse(&mut flags, m, &args),
     Some(("test", m)) => test_parse(&mut flags, m),
     Some(("types", m)) => types_parse(&mut flags, m),
     Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
@@ -2645,9 +2637,6 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.subcommand = DenoSubcommand::Run(RunFlags { script });
 }
 
-/// raw_args is the subcommand's command line, eg. for the deno invocation
-/// `deno task echo`
-/// raw_args has value ["task", "echo"]
 fn task_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
@@ -2669,6 +2658,9 @@ fn task_parse(
   }
 
   if let Some(mut index) = matches.index_of("task_name_and_args") {
+    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
+    let raw_args = &raw_args[task_word_index..];
+
     // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
     while index < raw_args.len() {
       match raw_args[index].as_str() {
@@ -5988,6 +5980,7 @@ mod tests {
       }
     );
 
+    eprintln!("HERE");
     let r = flags_from_vec(svec!["deno", "task", "--cwd", "foo", "build"]);
     assert_eq!(
       r.unwrap(),
