@@ -279,19 +279,22 @@ pub extern "C" fn cast_u32_u8(x: u32) -> u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn add_10_u8(
-  a: u8,
-  b: u8,
-  c: u8,
-  d: u8,
-  e: u8,
-  f: u8,
-  g: u8,
-  h: u8,
-  i: u8,
-  j: u8,
-) -> u8 {
-  a + b + c + d + e + f + g + h + i + j
+pub extern "C" fn add_many_u16(
+  a: u16,
+  b: u16,
+  c: u16,
+  d: u16,
+  e: u16,
+  f: u16,
+  g: u16,
+  h: u16,
+  i: u16,
+  j: u16,
+  k: u16,
+  l: u16,
+  m: u16,
+) -> u16 {
+  a + b + c + d + e + f + g + h + i + j + k + l + m
 }
 
 // FFI performance helper functions

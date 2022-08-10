@@ -189,9 +189,9 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["u32"],
     result: "u8",
   },
-  add_10_u8: {
-    parameters: ["u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", "u8", ],
-    result: "u8",
+  add_many_u16: {
+    parameters: ["u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16"],
+    result: "u16",
   },
   // Statics
   "static_u32": {
@@ -270,14 +270,14 @@ function addU32Fast(a, b) {
 console.log(addU32Fast(123, 456));
 %OptimizeFunctionOnNextCall(addU32Fast);
 console.log(addU32Fast(123, 456));
-assertFastCall(addU32Fast);
+assertOptimized(addU32Fast);
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
 %PrepareFunctionForOptimization(addU64Fast);
 console.log(addU64Fast(2, 3));
 %OptimizeFunctionOnNextCall(addU64Fast);
 console.log(addU64Fast(2, 3));
-assertFastCall(addU64Fast);
+assertOptimized(addU64Fast);
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -301,7 +301,7 @@ function addF32Fast(a, b) {
 console.log(addF32Fast(123.123, 456.789));
 %OptimizeFunctionOnNextCall(addF32Fast);
 console.log(addF32Fast(123.123, 456.789));
-assertFastCall(addF32Fast);
+assertOptimized(addF32Fast);
 
 function addF64Fast(a, b) {
   return dylib.symbols.add_f64(a, b);
@@ -311,7 +311,7 @@ function addF64Fast(a, b) {
 console.log(addF64Fast(123.123, 456.789));
 %OptimizeFunctionOnNextCall(addF64Fast);
 console.log(addF64Fast(123.123, 456.789));
-assertFastCall(addF64Fast);
+assertOptimized(addF64Fast);
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
@@ -464,37 +464,42 @@ function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q
 logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
 %OptimizeFunctionOnNextCall(logManyParametersFast);
 logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
-assertFastCall(logManyParametersFast);
+assertOptimized(logManyParametersFast);
 
 function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
 
 %PrepareFunctionForOptimization(castU8U32Fast);
 console.log(castU8U32Fast(256));
 %OptimizeFunctionOnNextCall(castU8U32Fast);
-// In SysV AMD64 compilers rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
+// Some ABIs rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
 // If the trampoline did not zero/sign-extend arguments, this would return 256 instead of the expected 0 (in optimized builds)
 console.log(castU8U32Fast(256));
-assertFastCall(castU8U32Fast);
+assertOptimized(castU8U32Fast);
 
 function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
 
 %PrepareFunctionForOptimization(castU32U8Fast);
 console.log(castU32U8Fast(256));
 %OptimizeFunctionOnNextCall(castU32U8Fast);
-// In SysV AMD64 compilers rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
+// Some ABIs rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
 // If the trampoline did not zero/sign-extend the return value, this would return 256 instead of the expected 0 (in optimized builds)
 console.log(castU32U8Fast(256));
-assertFastCall(castU32U8Fast);
+assertOptimized(castU32U8Fast);
 
-function add10U8Fast(a, b, c, d, e, f, g, h, i, j) { return symbols.add_10_u8(a, b, c, d, e, f, g, h, i, j); };
+// TODO: this test currently fails in aarch64-apple-darwin (also in branch main!). The reason is v8 does not follow Apple's custom
+// ABI properly (aligns arguments to 8 byte boundaries instead of the natural alignment of the parameter type).
+// A decision needs to be taken:
+// 1. leave it broken and wait for v8 to fix the bug
+// 2. Adapt to v8 bug and follow its ABI instead of Apple's. When V8 fixes the implementation, we'll have to fix it here as well
+function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m); };
 
-%PrepareFunctionForOptimization(add10U8Fast);
-console.log(add10U8Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-%OptimizeFunctionOnNextCall(add10U8Fast);
-// In SysV AMD64 the arguments after the 6th are passed on the stack. Generally the trampoline tail-calls into the FFI function, but
-// in certain cases (e.g. when returning 8 or 16 bit integers) the tail call is not possible and a new stack frame must be created
-console.log(add10U8Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-assertFastCall(add10U8Fast);
+%PrepareFunctionForOptimization(addManyU16Fast);
+console.log(addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+%OptimizeFunctionOnNextCall(addManyU16Fast);
+// Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
+// the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
+console.log(addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+assertOptimized(addManyU16Fast);
 
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -571,7 +576,7 @@ After: ${postStr}`,
   console.log("Correct number of resources");
 })();
 
-function assertFastCall(fn) {
+function assertOptimized(fn) {
   const status = % GetOptimizationStatus(fn);
   assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
 }
