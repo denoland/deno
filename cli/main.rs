@@ -23,6 +23,8 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+#[allow(unused)]
+mod npm;
 mod ops;
 mod proc_state;
 mod resolver;
