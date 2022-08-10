@@ -151,11 +151,10 @@ Deno.test(
     writer.write(new TextEncoder().encode("world"));
     writer.close();
 
-    // const promise = deferred();
     const ac = new AbortController();
 
     const server = Deno.serve((request) => {
-      // assert(!request.body);
+      assert(!request.body);
       return new Response(stream.readable);
     }, { port: 4501, signal: ac.signal });
 
@@ -166,3 +165,84 @@ Deno.test(
     await server;
   },
 );
+
+// TODO: rennable when te chunked works
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerStreamRequest() {
+//     const stream = new TransformStream();
+//     const writer = stream.writable.getWriter();
+//     writer.write(new TextEncoder().encode("hello "));
+//     writer.write(new TextEncoder().encode("world"));
+//     writer.close();
+
+//     const ac = new AbortController();
+//     const server = Deno.serve(async (request) => { 
+//       const reqBody = await request.text();
+//       assertEquals("hello world", reqBody);
+//       return new Response("");
+//     }, { port: 4501, signal: ac.signal });
+
+//     const resp = await fetch("http://127.0.0.1:4501/", {
+//       body: stream.readable,
+//       method: "POST",
+//       headers: { "connection": "close" },
+//     });
+
+//     await resp.arrayBuffer();
+//     ac.abort();
+//     await server;
+//   },
+// );
+
+Deno.test({ permissions: { net: true } }, async function httpServerClose() {
+  const ac = new AbortController();
+  const server = Deno.serve(() => {}, { port: 4501, signal: ac.signal });
+  const client = await Deno.connect({ port: 4501 });
+  client.close();
+  ac.abort();
+  await server;
+});
+
+// FIXME:
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerEmptyBlobResponse() {
+//     const ac = new AbortController();
+//     const server = Deno.serve(() => new Response(new Blob([])), { port: 4501, signal: ac.signal });
+
+//     const resp = await fetch("http://127.0.0.1:4501/"); 
+//     const respBody = await resp.text();
+
+//     assertEquals("", respBody);
+//     ac.abort();
+//     await server;
+//   },
+// );
+
+
+// Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
+//   const ac = new AbortController();
+//   const server = Deno.serve(async (request) => {
+//     const {
+//       response,
+//       socket,
+//     } = Deno.upgradeWebSocket(request);
+//     socket.onerror = () => fail();
+//     socket.onmessage = (m) => {
+//       socket.send(m.data);
+//       socket.close(1001);
+//     };
+//     return response;
+//   }, { port: 4501, signal: ac.signal });
+
+//   const def = deferred();
+//   const ws = new WebSocket("ws://localhost:4501");
+//   ws.onmessage = (m) => assertEquals(m.data, "foo");
+//   ws.onerror = () => fail();
+//   ws.onclose = () => def.resolve();
+//   ws.onopen = () => ws.send("foo");
+//   await def;
+//   ac.abort();
+//   await server;
+// });

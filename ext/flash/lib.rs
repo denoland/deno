@@ -177,7 +177,6 @@ fn op_flash_respond(
     let _ = sock.write(&response);
     let _ = sock.write(b"\r\n");
   }
-  sock.reattach_ownership();
 }
 
 #[op]
@@ -514,7 +513,7 @@ fn run_server(
   let mut events = Events::with_capacity(1024);
   'outer: loop {
     let result = close_rx.try_recv();
-    if let Ok(_) = result {
+    if result.is_ok() {
       break 'outer;
     }
     // FIXME(bartlomieju): how does Tokio handle it? I just put random 100ms
@@ -559,7 +558,7 @@ fn run_server(
           let socket = sockets.get_mut(&token).unwrap();
           if socket.detached {
             poll.registry().deregister(&mut socket.inner).unwrap();
-            trace!("Socket detached: {}", token.0);
+            println!("Socket detached: {}", token.0);
             continue;
           }
 
@@ -869,7 +868,10 @@ pub fn detach_socket(
   //      dropped on the server thread.
   //   * conversion from mio::net::TcpStream -> tokio::net::TcpStream.  There is no public API so we
   //      use raw fds.
-  let tx = ctx.response.remove(&token).unwrap();
+  let tx = ctx
+    .response
+    .remove(&token)
+    .ok_or_else(|| type_error("request closed"))?;
   // SAFETY: Stream is owned by server thread.
   let stream = unsafe { &mut *tx.socket };
   // prevent socket from being dropped on server thread.

@@ -269,6 +269,7 @@
               respBody = new Uint8Array(0);
             }
 
+            const ws = resp[_ws];
             if (isStreamingResponseBody === true) {
               // const resourceRid = getReadableStreamRid(respBody);
               const reader = respBody.getReader();
@@ -309,11 +310,10 @@
                   respBody,
                 ),
                 null,
-                true,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
               );
             }
 
-            const ws = resp[_ws];
             if (ws) {
               const wsRid = await core.opAsync(
                 "op_flash_upgrade_websocket",
