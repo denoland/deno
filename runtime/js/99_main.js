@@ -639,6 +639,18 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    const {
+      args,
+      location: locationHref,
+      noColor,
+      isTty,
+      pid,
+      ppid,
+      unstableFlag,
+      cpuCount,
+      userAgent: userAgentInfo,
+    } = runtimeOptions;
+
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -648,6 +660,18 @@ delete Intl.v8BreakIterator;
     delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
+
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (locationHref == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(locationHref);
+    }
+
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     if (runtimeOptions.unstableFlag) {
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
@@ -678,22 +702,8 @@ delete Intl.v8BreakIterator;
     });
 
     runtimeStart(runtimeOptions);
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      isTty,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-      userAgent: userAgentInfo,
-    } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
-    if (locationHref != null) {
-      location.setLocationHref(locationHref);
-    }
     numCpus = cpuCount;
     userAgent = userAgentInfo;
     registerErrors();
