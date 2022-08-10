@@ -50,9 +50,6 @@ pub enum ModuleEntry {
     checked_libs: HashSet<TsTypeLib>,
     maybe_types: Option<Resolved>,
   },
-  Configuration {
-    dependencies: BTreeMap<String, Resolved>,
-  },
   Error(ModuleGraphError),
   Redirect(ModuleSpecifier),
 }
@@ -249,16 +246,6 @@ impl GraphData {
             }
           }
         }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved in dependencies.values() {
-            if let Resolved::Ok { specifier, .. } = resolved {
-              if !seen.contains(specifier) {
-                seen.insert(specifier);
-                visiting.push_front(specifier);
-              }
-            }
-          }
-        }
         ModuleEntry::Error(_) => {}
         ModuleEntry::Redirect(specifier) => {
           if !seen.contains(specifier) {
@@ -367,20 +354,6 @@ impl GraphData {
                   return Some(Err(error.clone().into()));
                 }
               }
-            }
-          }
-        }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved_result in dependencies.values() {
-            if let Resolved::Err(error) = resolved_result {
-              let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
             }
           }
         }
