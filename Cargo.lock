@@ -801,6 +801,7 @@ dependencies = [
  "deno_graph",
  "deno_lint",
  "deno_net",
+ "deno_node",
  "deno_runtime",
  "deno_task_shell",
  "deno_url",
@@ -821,7 +822,7 @@ dependencies = [
  "fwdansi",
  "google-storage1",
  "http",
- "import_map 0.12.1",
+ "import_map",
  "indexmap",
  "jsonc-parser",
  "libc",
@@ -978,15 +979,15 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.38.0"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d323053b586448ee4b69d2f0b62f70463d27034586fa290b69b9fc5dd186bec"
+checksum = "f8afd542bb96b192f9cc640f0bc04daab2f7f93508627330511d5791bef86e44"
 dependencies = [
  "cfg-if",
  "deno_ast",
  "deno_graph",
  "futures",
- "import_map 0.11.0",
+ "import_map",
  "lazy_static",
  "regex",
  "serde",
@@ -996,9 +997,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2e2a0076182afa41ee8e697e7646facdcc069cca89df3b12ca982b5069758f4"
+checksum = "c73eaad7056d2fb8473236c8edecd3e24ad2eafc637d06534fe1620da4fd6cff"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1039,9 +1040,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.29.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91c6cc4d05b21c0dc80825a5dfb911ee09826004c89215c1bb92cbc1c44118d5"
+checksum = "d9f3c87eee6a5cf75a74f64d05ee34a3e17a13cec72c708c5b0251daf1423ef7"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1115,6 +1116,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_node"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+]
+
+[[package]]
 name = "deno_ops"
 version = "0.24.0"
 dependencies = [
@@ -1139,6 +1147,7 @@ dependencies = [
  "deno_ffi",
  "deno_http",
  "deno_net",
+ "deno_node",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1566,9 +1575,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d836148f2b8c14961b55faf3a88076dee3b9a51793cf01d420393d6235996c6"
+checksum = "abe2b413131dc7b90bc12e0e2cd4971b766c078ebb735ce38546ddb587c4109d"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1597,9 +1606,9 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fancy-regex"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "367dc842ccf982f1cebf8be5ecb65b347db9fd18bdd7fd255c5ad0d3fc02f6a6"
+checksum = "0678ab2d46fa5195aaf59ad034c083d351377d4af57f3e073c074d0da3e3c766"
 dependencies = [
  "bit-set",
  "regex",
@@ -2181,19 +2190,6 @@ name = "if_chain"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
-
-[[package]]
-name = "import_map"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5247edf057fe57036112a1fec3864baa68052b52116760dbea4909115731272f"
-dependencies = [
- "indexmap",
- "log 0.4.17",
- "serde",
- "serde_json",
- "url 2.2.2",
-]
 
 [[package]]
 name = "import_map"
@@ -3383,9 +3379,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.5.6"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d83f127d94bdbcda4c8cc2e50f6f84f4b611f69c902699ca385a39c3a75f9ff1"
+checksum = "4c4eb3267174b8c6c2f654116623910a0fef09c4753f8dd83db29c48a0df988b"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -3400,9 +3396,9 @@ checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
 
 [[package]]
 name = "regex-syntax"
-version = "0.6.26"
+version = "0.6.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49b3de9ec5dc0a3417da371aab17d729997c15010e7fd24ff707773a33bddb64"
+checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
 name = "relative-path"
@@ -3790,9 +3786,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.139"
+version = "1.0.141"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0171ebb889e45aa68b44aee0859b3eede84c6f5f5c228e6f140c0b2a0a46cad6"
+checksum = "7af873f2c95b99fcb0bd0fe622a43e29514658873c8ceba88c4cb88833a22500"
 dependencies = [
  "serde_derive",
 ]
@@ -3808,9 +3804,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.139"
+version = "1.0.141"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc1d3230c1de7932af58ad8ffbe1d784bd55efd5a9d84ac24f69c72d83543dfb"
+checksum = "75743a150d003dd863b51dc809bcad0d73f2102c53632f1e954e738192a3413f"
 dependencies = [
  "proc-macro2 1.0.39",
  "quote 1.0.18",
@@ -3819,9 +3815,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.81"
+version = "1.0.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b7ce2b32a1aed03c558dc61a5cd328f15aff2dbc17daad8fb8af04d2100e15c"
+checksum = "82c2c1fdcd807d1098552c5b9a36e425e42e9fbd7c6a37a8425f390f781f7fa7"
 dependencies = [
  "indexmap",
  "itoa 1.0.2",

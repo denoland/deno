@@ -1841,6 +1841,7 @@ where
 
 #[op]
 fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
+  check_unstable(state, "Deno.dlopen");
   let ffi_state = state.borrow_mut::<FfiState>();
   if inc_dec {
     ffi_state.active_refed_functions += 1;
