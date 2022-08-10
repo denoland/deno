@@ -337,8 +337,11 @@ impl Highlighter for EditorHelper {
                 } else if ident == *"async" || ident == *"of" {
                   colors::cyan(&line[range]).to_string()
                 } else {
-                  let next = lexed_items.peek().map(|item|&item.inner);
-                  if matches!(next, Some(deno_ast::TokenOrComment::Token(next_token)) if matches!(next_token, Token::LParen)) {
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
                     // We're looking for something that looks like a function
                     // We use a simple heuristic: 'ident' followed by 'LParen'
                     colors::intense_blue(&line[range]).to_string()
