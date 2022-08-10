@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-global-assign
 console.log(Location);
 console.log(Location.prototype);
 console.log(location);

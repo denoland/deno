@@ -11,6 +11,6 @@ globalThis.location = {
   pathname: "/bar",
   port: "",
   protocol: "https:",
-  search: "?baz"
+  search: "?baz",
 };
 console.log(location.pathname);
