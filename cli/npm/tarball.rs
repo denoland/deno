@@ -164,19 +164,19 @@ mod test {
       verify_tarball_integrity(&package_id, &Vec::new(), "test")
         .unwrap_err()
         .to_string(),
-      "not implemented integrity kind for package@1.0.0: test",
+      "Not implemented integrity kind for package@1.0.0: test",
     );
     assert_eq!(
       verify_tarball_integrity(&package_id, &Vec::new(), "sha1-test")
         .unwrap_err()
         .to_string(),
-      "not implemented hash function for package@1.0.0: sha1",
+      "Not implemented hash function for package@1.0.0: sha1",
     );
     assert_eq!(
       verify_tarball_integrity(&package_id, &Vec::new(), "sha512-test")
         .unwrap_err()
         .to_string(),
-      format!("tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {}", actual_checksum),
+      format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {}", actual_checksum),
     );
     assert!(verify_tarball_integrity(
       &package_id,
