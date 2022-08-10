@@ -1123,7 +1123,7 @@ declare namespace Deno {
     args?: string[];
     /**
      * The working directory of the process.
-     * If not specified, the cwd of the parent process is used.
+     * If not specified, the current working directory of the parent process is used.
      */
     cwd?: string | URL;
     /**
