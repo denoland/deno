@@ -49,6 +49,8 @@
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
   const _flash = Symbol("flash");
+  const _url = Symbol("url");
+  const _method = Symbol("method");
 
   /**
    * @typedef InnerRequest
@@ -367,19 +369,31 @@
 
     get method() {
       webidl.assertBranded(this, RequestPrototype);
+
+      if (this[_method]) {
+        return this[_method];
+      }
       if (this[_flash]) {
-        return this[_flash].method();
+        this[_method] = this[_flash].method();
+        return this[_method];
       } else {
-        return this[_request].method;
+        this[_method] = this[_request].method;
+        return this[_method];
       }
     }
 
     get url() {
       webidl.assertBranded(this, RequestPrototype);
+      if (this[_url]) {
+        return this[_url];
+      }
+
       if (this[_flash]) {
-        return this[_flash].url();
+        this[_url] = this[_flash].url();
+        return this[_url];
       } else {
-        return this[_request].url();
+        this[_url] = this[_request].url();
+        return this[_url];
       }
     }
 
