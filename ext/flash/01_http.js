@@ -199,7 +199,7 @@
               },
               () =>
                 headersFromHeaderList(
-                  core.ops.op_flash_headers(serverId, i),
+                  core.opSync("op_flash_headers", serverId, i),
                   "request",
                 ),
               i,
@@ -309,7 +309,7 @@
                   respBody,
                 ),
                 null,
-                false,
+                true,
               );
             }
 

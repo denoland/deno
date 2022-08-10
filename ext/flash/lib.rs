@@ -5,6 +5,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use deno_core::error::AnyError;
+use deno_core::error::type_error;
 use deno_core::op;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -78,7 +79,7 @@ struct InnerRequest {
   req: httparse::Request<'static, 'static>,
   body_offset: usize,
   body_len: usize,
-  buffer: [u8; 1024],
+  buffer: Pin<Box<[u8]>>,
 }
 
 struct Stream {
@@ -162,14 +163,12 @@ fn op_flash_respond(
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.response.get(&token).unwrap();
-      let sock = unsafe { &mut *tx.socket };
-      trace!("read_tx take");
-      sock.read_tx.take();
-      sock.read_rx.take();
-
-      sock
+      unsafe { &mut *tx.socket }
     }
   };
+
+  sock.read_tx.take();
+  sock.read_rx.take();
 
   let _ = sock.write(&response);
   if let Some(response) = maybe_body {
@@ -313,16 +312,16 @@ fn op_flash_headers(
   state: Rc<RefCell<OpState>>,
   server_id: u32,
   token: u32,
-) -> Vec<(ByteString, ByteString)> {
+) -> Result<Vec<(ByteString, ByteString)>, AnyError> {
   let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let inner_req = &ctx.response.get(&token).unwrap().inner.req;
-  inner_req
+  let ctx = flash_ctx.servers.get_mut(&server_id).ok_or_else(|| type_error("server closed"))?;
+  let inner_req = &ctx.response.get(&token).ok_or_else(|| type_error("request closed"))?.inner.req;
+  Ok(inner_req
     .headers
     .iter()
     .map(|h| (h.name.as_bytes().into(), h.value.into()))
-    .collect()
+    .collect())
 }
 
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into
@@ -570,7 +569,7 @@ fn run_server(
             continue;
           }
 
-          let mut buffer: [u8; 1024] = [0_u8; 1024];
+          let mut buffer = Pin::new(vec![0_u8; 1024].into_boxed_slice());
           let sock_ptr = socket as *mut _;
 
           let nread = socket.read(&mut buffer);
