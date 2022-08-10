@@ -4,8 +4,8 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::missing_safety_doc)]
 
-use deno_core::error::AnyError;
 use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -315,13 +315,23 @@ fn op_flash_headers(
 ) -> Result<Vec<(ByteString, ByteString)>, AnyError> {
   let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).ok_or_else(|| type_error("server closed"))?;
-  let inner_req = &ctx.response.get(&token).ok_or_else(|| type_error("request closed"))?.inner.req;
-  Ok(inner_req
-    .headers
-    .iter()
-    .map(|h| (h.name.as_bytes().into(), h.value.into()))
-    .collect())
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| type_error("server closed"))?;
+  let inner_req = &ctx
+    .response
+    .get(&token)
+    .ok_or_else(|| type_error("request closed"))?
+    .inner
+    .req;
+  Ok(
+    inner_req
+      .headers
+      .iter()
+      .map(|h| (h.name.as_bytes().into(), h.value.into()))
+      .collect(),
+  )
 }
 
 // Remember the first packet we read? It probably also has some body data. This op quickly copies it into

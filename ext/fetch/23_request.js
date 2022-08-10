@@ -506,7 +506,12 @@
    */
   function fromInnerFlashRequest(body, method, url, headers, streamRid) {
     const request = webidl.createBranded(Request);
-    request[_flash] = { body: new InnerBody(body), method, url, streamRid };
+    request[_flash] = {
+      body: body !== null ? new InnerBody(body) : null,
+      method,
+      url,
+      streamRid,
+    };
     request[_getHeaders] = headers;
     return request;
   }

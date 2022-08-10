@@ -98,45 +98,49 @@ Deno.test(
     await promise;
     conn.close();
 
-    assertThrows(() => {
-      req.headers;
-    }, TypeError, "request closed");
+    assertThrows(
+      () => {
+        req.headers;
+      },
+      TypeError,
+      "request closed",
+    );
 
     ac.abort();
     await server;
   },
 );
 
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerGetRequestBody() {
-//     const promise = deferred();
-//     const ac = new AbortController();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerGetRequestBody() {
+    const promise = deferred();
+    const ac = new AbortController();
 
-//     const server = Deno.serve((request) => {
-//       console.log("request body", request.body);
-//       assertEquals(request.body, null);
-//       promise.resolve();
-//       return new Response("", { headers: {} });
-//     }, { port: 4501, signal: ac.signal });
+    const server = Deno.serve((request) => {
+      assertEquals(request.body, null);
+      promise.resolve();
+      return new Response("", { headers: {} });
+    }, { port: 4501, signal: ac.signal });
 
-//     const conn = await Deno.connect({ port: 4501 });
-//     // Send GET request with a body + content-length.
-//     const encoder = new TextEncoder();
-//     const body =
-//       `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
-//     const writeResult = await conn.write(encoder.encode(body));
-//     assertEquals(body.length, writeResult);
+    const conn = await Deno.connect({ port: 4501 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
 
-//     const resp = new Uint8Array(200);
-//     const readResult = await conn.read(resp);
-//     assertEquals(readResult, 138);
+    const resp = new Uint8Array(200);
+    const readResult = await conn.read(resp);
+    assert(readResult > 0);
 
-//     conn.close();
-//     await promise;
-//     await server;
-//   },
-// );
+    conn.close();
+    await promise;
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },
