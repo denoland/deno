@@ -77,8 +77,10 @@ impl ReadonlyNpmCache {
   pub fn resolve_package_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    registry_url: &Url,
   ) -> Result<NpmPackageId, AnyError> {
-    match self.maybe_resolve_package_id_from_specifier(specifier) {
+    match self.maybe_resolve_package_id_from_specifier(specifier, &registry_url)
+    {
       Some(id) => Ok(id),
       None => bail!("could not find npm package for '{}'", specifier),
     }
@@ -87,8 +89,19 @@ impl ReadonlyNpmCache {
   fn maybe_resolve_package_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    registry_url: &Url,
   ) -> Option<NpmPackageId> {
-    let relative_url = self.root_dir_url.make_relative(specifier)?;
+    let registry_root_dir = self
+      .root_dir_url
+      .join(&format!(
+        "{}/",
+        fs_util::root_url_to_safe_local_dirname(registry_url)
+          .to_string_lossy()
+          .replace('\\', "/")
+      ))
+      // this not succeeding indicates a fatal issue, so unwrap
+      .unwrap();
+    let relative_url = registry_root_dir.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;
     }
@@ -202,7 +215,10 @@ impl NpmCache {
   pub fn resolve_package_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    registry_url: &Url,
   ) -> Result<NpmPackageId, AnyError> {
-    self.0.resolve_package_id_from_specifier(specifier)
+    self
+      .0
+      .resolve_package_id_from_specifier(specifier, registry_url)
   }
 }

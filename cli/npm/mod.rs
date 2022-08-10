@@ -165,8 +165,9 @@ impl NpmPackageResolver for GlobalNpmPackageResolver {
     name: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<LocalNpmPackageInfo, AnyError> {
-    let referrer_pkg_id =
-      self.cache.resolve_package_id_from_specifier(referrer)?;
+    let referrer_pkg_id = self
+      .cache
+      .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
     let pkg = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id)?;
@@ -177,7 +178,9 @@ impl NpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<LocalNpmPackageInfo, AnyError> {
-    let pkg_id = self.cache.resolve_package_id_from_specifier(specifier)?;
+    let pkg_id = self
+      .cache
+      .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.local_package_info(&pkg_id))
   }
 }
@@ -225,8 +228,9 @@ impl NpmPackageResolver for NpmPackageResolverSnapshot {
     name: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<LocalNpmPackageInfo, AnyError> {
-    let referrer_pkg_id =
-      self.cache.resolve_package_id_from_specifier(referrer)?;
+    let referrer_pkg_id = self
+      .cache
+      .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
     let pkg = self
       .snapshot
       .resolve_package_from_package(name, &referrer_pkg_id)?;
@@ -237,7 +241,9 @@ impl NpmPackageResolver for NpmPackageResolverSnapshot {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<LocalNpmPackageInfo, AnyError> {
-    let pkg_id = self.cache.resolve_package_id_from_specifier(specifier)?;
+    let pkg_id = self
+      .cache
+      .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.local_package_info(&pkg_id))
   }
 }
