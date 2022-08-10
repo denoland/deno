@@ -199,7 +199,6 @@
   function getExportsForCircularRequire(module) {
     if (
       module.exports &&
-      !isProxy(module.exports) &&
       ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
       // Exclude transpiled ES6 modules / TypeScript code because those may
       // employ unusual patterns for accessing 'module.exports'. That should
@@ -217,6 +216,13 @@
     return module.exports;
   }
 
+  function emitCircularRequireWarning(prop) {
+    processGlobal.emitWarning(
+      `Accessing non-existent property '${String(prop)}' of module exports ` +
+        "inside circular dependency",
+    );
+  }
+
   // A Proxy that can be used as the prototype of a module.exports object and
   // warns when non-existent properties are accessed.
   const CircularRequirePrototypeWarningProxy = new Proxy({}, {
@@ -225,9 +231,7 @@
       // of transpiled code to determine whether something comes from an
       // ES module, and is not used as a regular key of `module.exports`.
       if (prop in target || prop === "__esModule") return target[prop];
-      // TODO:
-      // emitCircularRequireWarning(prop);
-      console.log("TODO: emitCircularRequireWarning");
+      emitCircularRequireWarning(prop);
       return undefined;
     },
 
@@ -237,9 +241,7 @@
       ) {
         return ObjectGetOwnPropertyDescriptor(target, prop);
       }
-      // TODO:
-      // emitCircularRequireWarning(prop);
-      console.log("TODO: emitCircularRequireWarning");
+      emitCircularRequireWarning(prop);
       return undefined;
     },
   });
@@ -297,10 +299,7 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = false;
-        // TODO:
-        console.log("TODO: Module._findPath resolveExports");
-        // const exportsResolved = resolveExports(curPath, request);
+        const exportsResolved = resolveExports(curPath, request);
         if (exportsResolved) {
           return exportsResolved;
         }
