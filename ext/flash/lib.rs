@@ -539,13 +539,13 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
-              let stream = Stream {
+              let stream = std::cell::UnsafeCell::new(Stream {
                 inner: socket,
                 detached: false,
                 read_rx: None,
                 read_tx: None,
                 read_lock: Arc::new(Mutex::new(())),
-              };
+              });
 
               trace!("New connection: {}", token.0);
               sockets.insert(token, stream);
@@ -555,9 +555,13 @@ fn run_server(
           }
         },
         token => {
-          let socket = sockets.get_mut(&token).unwrap();
+          let cell = sockets.get_mut(&token).unwrap();
+          let sock_ptr = cell.get();
+          let socket = cell.get_mut();
+
           if socket.detached {
             poll.registry().deregister(&mut socket.inner).unwrap();
+            sockets.remove(&token).unwrap();
             println!("Socket detached: {}", token.0);
             continue;
           }
@@ -576,7 +580,6 @@ fn run_server(
           }
 
           let mut buffer = Pin::new(vec![0_u8; 1024].into_boxed_slice());
-          let sock_ptr = socket as *mut _;
 
           let nread = socket.read(&mut buffer);
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
