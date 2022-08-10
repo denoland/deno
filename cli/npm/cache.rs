@@ -79,7 +79,7 @@ impl ReadonlyNpmCache {
     specifier: &ModuleSpecifier,
     registry_url: &Url,
   ) -> Result<NpmPackageId, AnyError> {
-    match self.maybe_resolve_package_id_from_specifier(specifier, &registry_url)
+    match self.maybe_resolve_package_id_from_specifier(specifier, registry_url)
     {
       Some(id) => Ok(id),
       None => bail!("could not find npm package for '{}'", specifier),

@@ -111,9 +111,8 @@ impl GlobalNpmPackageResolver {
     self.resolution.add_package_reqs(packages).await
   }
 
-  /// Caches all the packages.
+  /// Caches all the packages in parallel.
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    // parallelize this work
     let handles = self.resolution.all_packages().into_iter().map(|package| {
       let cache = self.cache.clone();
       let registry_url = self.registry_url.clone();
