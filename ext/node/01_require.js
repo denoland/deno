@@ -49,11 +49,6 @@
     }
   }
 
-  // TODO:
-  function isProxy() {
-    return false;
-  }
-
   // TODO(bartlomieju): verify in other parts of this file that
   // we have initialized the system before making APIs work
   let cjsInitialized = false;
@@ -259,7 +254,6 @@
   }
 
   const builtinModules = [];
-  // TODO(bartlomieju): handle adding native modules
   Module.builtinModules = builtinModules;
 
   Module._extensions = Object.create(null);
@@ -446,7 +440,6 @@
         }
       } else if (
         module.exports &&
-        !isProxy(module.exports) &&
         ObjectGetPrototypeOf(module.exports) ===
           CircularRequirePrototypeWarningProxy
       ) {
@@ -625,15 +618,33 @@
     return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
   };
 
+  function enrichCJSError(error) {
+    if (error instanceof SyntaxError) {
+      if (
+        error.message.includes(
+          "Cannot use import statement outside a module",
+        ) ||
+        error.message.includes("Unexpected token 'export'")
+      ) {
+        console.error(
+          'To load an ES module, set "type": "module" in the package.json or use ' +
+            "the .mjs extension.",
+        );
+      }
+    }
+  }
+
   function wrapSafe(
     filename,
     content,
-    _cjsModuleInstance,
+    cjsModuleInstance,
   ) {
     const wrapper = Module.wrap(content);
     const [f, err] = core.evalContext(wrapper, filename);
     if (err) {
-      console.log("TODO: wrapSafe check if main module");
+      if (processGlobal.mainModule === cjsModuleInstance) {
+        enrichCJSError(err.thrown);
+      }
       throw err.thrown;
     }
     return f;
