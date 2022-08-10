@@ -133,7 +133,7 @@
           offset ? BigInt(pointer) + BigInt(offset) : pointer,
           byteLength,
         ),
-      ));
+      );
     }
 
     copyInto(destination, offset = 0) {
