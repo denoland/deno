@@ -11,7 +11,7 @@
   } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
-    return core.unwrapOpResult(ops.op_signal_bind(signo));
+    return ops.op_signal_bind(signo);
   }
 
   function pollSignal(rid) {
@@ -21,7 +21,7 @@
   }
 
   function unbindSignal(rid) {
-    core.unwrapOpResult(ops.op_signal_unbind(rid));
+    ops.op_signal_unbind(rid);
   }
 
   // Stores signal listeners and resource data. This has type of

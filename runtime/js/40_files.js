@@ -20,7 +20,7 @@
     offset,
     whence,
   ) {
-    return core.unwrapOpResult(ops.op_seek_sync({ rid, offset, whence }));
+    return ops.op_seek_sync({ rid, offset, whence });
   }
 
   function seek(
@@ -37,10 +37,8 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = core.unwrapOpResult(
-      ops.op_open_sync(
-        { path: pathFromURL(path), options, mode },
-      ),
+    const rid = ops.op_open_sync(
+      { path: pathFromURL(path), options, mode },
     );
 
     return new FsFile(rid);

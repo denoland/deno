@@ -17,7 +17,7 @@
   } = window.__bootstrap.primordials;
 
   function opKill(pid, signo) {
-    core.unwrapOpResult(ops.op_kill(pid, signo));
+    ops.op_kill(pid, signo);
   }
 
   function opRunStatus(rid) {
@@ -26,7 +26,7 @@
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return core.unwrapOpResult(ops.op_run(request));
+    return ops.op_run(request);
   }
 
   async function runStatus(rid) {

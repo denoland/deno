@@ -33,7 +33,7 @@
         context: "Argument 1",
       });
 
-      const rid = core.unwrapOpResult(ops.op_compression_new(format, false));
+      const rid = ops.op_compression_new(format, false);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
@@ -41,16 +41,14 @@
             prefix,
             context: "chunk",
           });
-          const output = core.unwrapOpResult(
-            ops.op_compression_write(
-              rid,
-              chunk,
-            ),
+          const output = ops.op_compression_write(
+            rid,
+            chunk,
           );
           maybeEnqueue(controller, output);
         },
         flush(controller) {
-          const output = core.unwrapOpResult(ops.op_compression_finish(rid));
+          const output = ops.op_compression_finish(rid);
           maybeEnqueue(controller, output);
         },
       });
@@ -83,7 +81,7 @@
         context: "Argument 1",
       });
 
-      const rid = core.unwrapOpResult(ops.op_compression_new(format, true));
+      const rid = ops.op_compression_new(format, true);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
@@ -91,16 +89,14 @@
             prefix,
             context: "chunk",
           });
-          const output = core.unwrapOpResult(
-            ops.op_compression_write(
-              rid,
-              chunk,
-            ),
+          const output = ops.op_compression_write(
+            rid,
+            chunk,
           );
           maybeEnqueue(controller, output);
         },
         flush(controller) {
-          const output = core.unwrapOpResult(ops.op_compression_finish(rid));
+          const output = ops.op_compression_finish(rid);
           maybeEnqueue(controller, output);
         },
       });

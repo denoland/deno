@@ -26,7 +26,7 @@
   const { assert } = window.__bootstrap.infra;
 
   function opNow() {
-    return core.unwrapOpResult(ops.op_now());
+    return ops.op_now();
   }
 
   // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@
       // TODO(@andreubotella): Deal with overflow.
       // https://github.com/whatwg/html/issues/7358
       id = nextId++;
-      const cancelRid = core.unwrapOpResult(ops.op_timer_handle());
+      const cancelRid = ops.op_timer_handle();
       timerInfo = { cancelRid, isRef: true, promiseId: -1 };
 
       // Step 4 in "run steps after a timeout".

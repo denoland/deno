@@ -104,7 +104,7 @@ delete Intl.v8BreakIterator;
     }
 
     isClosing = true;
-    core.unwrapOpResult(ops.op_worker_close());
+    ops.op_worker_close();
   }
 
   function postMessage(message, transferOrOptions = {}) {
@@ -134,7 +134,7 @@ delete Intl.v8BreakIterator;
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    core.unwrapOpResult(ops.op_worker_post_message(data));
+    ops.op_worker_post_message(data);
   }
 
   let isClosing = false;
@@ -185,7 +185,7 @@ delete Intl.v8BreakIterator;
   let loadedMainWorkerScript = false;
 
   function importScripts(...urls) {
-    if (core.unwrapOpResult(ops.op_worker_get_type()) === "module") {
+    if (ops.op_worker_get_type() === "module") {
       throw new TypeError("Can't import scripts in a module worker.");
     }
 
@@ -205,11 +205,9 @@ delete Intl.v8BreakIterator;
     // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
     // TODO(andreubotella) Refactor worker creation so the main script isn't
     // loaded with `importScripts()`.
-    const scripts = core.unwrapOpResult(
-      ops.op_worker_sync_fetch(
-        parsedUrls,
-        !loadedMainWorkerScript,
-      ),
+    const scripts = ops.op_worker_sync_fetch(
+      parsedUrls,
+      !loadedMainWorkerScript,
     );
     loadedMainWorkerScript = true;
 
@@ -222,7 +220,7 @@ delete Intl.v8BreakIterator;
   }
 
   function opMainModule() {
-    return core.unwrapOpResult(ops.op_main_module());
+    return ops.op_main_module();
   }
 
   function formatException(error) {
@@ -245,7 +243,7 @@ delete Intl.v8BreakIterator;
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-    core.unwrapOpResult(ops.op_set_format_exception_callback(formatException));
+    ops.op_set_format_exception_callback(formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
@@ -571,15 +569,13 @@ delete Intl.v8BreakIterator;
   function promiseRejectCallback(type, promise, reason) {
     switch (type) {
       case 0: {
-        core.unwrapOpResult(
-          ops.op_store_pending_promise_exception(promise, reason),
-        );
+        ops.op_store_pending_promise_exception(promise, reason);
         ArrayPrototypePush(pendingRejections, promise);
         WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
         break;
       }
       case 1: {
-        core.unwrapOpResult(ops.op_remove_pending_promise_exception(promise));
+        ops.op_remove_pending_promise_exception(promise);
         const index = ArrayPrototypeIndexOf(pendingRejections, promise);
         if (index > -1) {
           ArrayPrototypeSplice(pendingRejections, index, 1);
@@ -598,10 +594,8 @@ delete Intl.v8BreakIterator;
   function promiseRejectMacrotaskCallback() {
     while (pendingRejections.length > 0) {
       const promise = ArrayPrototypeShift(pendingRejections);
-      const hasPendingException = core.unwrapOpResult(
-        ops.op_has_pending_promise_exception(
-          promise,
-        ),
+      const hasPendingException = ops.op_has_pending_promise_exception(
+        promise,
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
       WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
@@ -618,7 +612,7 @@ delete Intl.v8BreakIterator;
 
       const errorEventCb = (event) => {
         if (event.error === reason) {
-          core.unwrapOpResult(ops.op_remove_pending_promise_exception(promise));
+          ops.op_remove_pending_promise_exception(promise);
         }
       };
       // Add a callback for "error" event - it will be dispatched
@@ -631,7 +625,7 @@ delete Intl.v8BreakIterator;
       // If event was not prevented (or "unhandledrejection" listeners didn't
       // throw) we will let Rust side handle it.
       if (event.defaultPrevented) {
-        core.unwrapOpResult(ops.op_remove_pending_promise_exception(promise));
+        ops.op_remove_pending_promise_exception(promise);
       }
     }
     return true;

@@ -23,7 +23,7 @@
     }
     let result = "";
     if (cse.fileName) {
-      result += core.unwrapOpResult(ops.op_format_file_name(cse.fileName));
+      result += ops.op_format_file_name(cse.fileName);
     } else {
       if (cse.isEval) {
         if (cse.evalOrigin == null) {
@@ -117,7 +117,7 @@
 
   function sourceMapCallSiteEval(cse) {
     if (cse.fileName && cse.lineNumber != null && cse.columnNumber != null) {
-      return { ...cse, ...core.unwrapOpResult(core.op_apply_source_map(cse)) };
+      return { ...cse, ...ops.op_apply_source_map(cse) };
     }
     return cse;
   }

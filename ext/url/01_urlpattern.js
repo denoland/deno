@@ -69,9 +69,7 @@
         });
       }
 
-      const components = core.unwrapOpResult(
-        ops.op_urlpattern_parse(input, baseURL),
-      );
+      const components = ops.op_urlpattern_parse(input, baseURL);
 
       for (const key of ObjectKeys(components)) {
         try {
@@ -147,11 +145,9 @@
         });
       }
 
-      const res = core.unwrapOpResult(
-        ops.op_urlpattern_process_match_input(
-          input,
-          baseURL,
-        ),
+      const res = ops.op_urlpattern_process_match_input(
+        input,
+        baseURL,
       );
       if (res === null) {
         return false;
@@ -188,11 +184,9 @@
         });
       }
 
-      const res = core.unwrapOpResult(
-        ops.op_urlpattern_process_match_input(
-          input,
-          baseURL,
-        ),
+      const res = ops.op_urlpattern_process_match_input(
+        input,
+        baseURL,
       );
       if (res === null) {
         return null;

@@ -129,11 +129,9 @@
         fillHeaders(headers, options.headers);
       }
 
-      const cancelRid = core.unwrapOpResult(
-        ops.op_ws_check_permission_and_cancel_handle(
-          this[_url],
-          true,
-        ),
+      const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+        this[_url],
+        true,
       );
 
       if (options.signal?.aborted) {

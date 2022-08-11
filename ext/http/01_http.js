@@ -126,7 +126,7 @@
       const innerRequest = newInnerRequest(
         method,
         url,
-        () => core.unwrapOpResult(ops.op_http_headers(streamRid)),
+        () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -438,9 +438,7 @@
       );
     }
 
-    const accept = core.unwrapOpResult(
-      ops.op_http_websocket_accept_header(websocketKey),
-    );
+    const accept = ops.op_http_websocket_accept_header(websocketKey);
 
     const r = newInnerResponse(101);
     r.headerList = [

@@ -941,14 +941,12 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_buffer(
-          device.rid,
-          descriptor.label,
-          descriptor.size,
-          descriptor.usage,
-          descriptor.mappedAtCreation,
-        ),
+      const { rid, err } = ops.op_webgpu_create_buffer(
+        device.rid,
+        descriptor.label,
+        descriptor.size,
+        descriptor.usage,
+        descriptor.mappedAtCreation,
       );
       device.pushError(err);
       /** @type {CreateGPUBufferOptions} */
@@ -993,11 +991,11 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(ops.op_webgpu_create_texture({
+      const { rid, err } = ops.op_webgpu_create_texture({
         deviceRid: device.rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
-      }));
+      });
       device.pushError(err);
 
       const texture = createGPUTexture(
@@ -1021,10 +1019,10 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(ops.op_webgpu_create_sampler({
+      const { rid, err } = ops.op_webgpu_create_sampler({
         deviceRid: device.rid,
         ...descriptor,
-      }));
+      });
       device.pushError(err);
 
       const sampler = createGPUSampler(
@@ -1061,12 +1059,10 @@
         }
       }
 
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_bind_group_layout(
-          device.rid,
-          descriptor.label,
-          descriptor.entries,
-        ),
+      const { rid, err } = ops.op_webgpu_create_bind_group_layout(
+        device.rid,
+        descriptor.label,
+        descriptor.entries,
       );
       device.pushError(err);
 
@@ -1105,12 +1101,10 @@
           return rid;
         },
       );
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_pipeline_layout(
-          device.rid,
-          descriptor.label,
-          bindGroupLayouts,
-        ),
+      const { rid, err } = ops.op_webgpu_create_pipeline_layout(
+        device.rid,
+        descriptor.label,
+        bindGroupLayouts,
       );
       device.pushError(err);
 
@@ -1201,13 +1195,11 @@
         }
       });
 
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_bind_group(
-          device.rid,
-          descriptor.label,
-          layout,
-          entries,
-        ),
+      const { rid, err } = ops.op_webgpu_create_bind_group(
+        device.rid,
+        descriptor.label,
+        layout,
+        entries,
       );
       device.pushError(err);
 
@@ -1232,13 +1224,11 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_shader_module(
-          device.rid,
-          descriptor.label,
-          descriptor.code,
-          descriptor.sourceMap,
-        ),
+      const { rid, err } = ops.op_webgpu_create_shader_module(
+        device.rid,
+        descriptor.label,
+        descriptor.code,
+        descriptor.sourceMap,
       );
       device.pushError(err);
 
@@ -1284,17 +1274,15 @@
         selfContext: "this",
       });
 
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_compute_pipeline(
-          device.rid,
-          descriptor.label,
-          layout,
-          {
-            module,
-            entryPoint: descriptor.compute.entryPoint,
-            constants: descriptor.compute.constants,
-          },
-        ),
+      const { rid, err } = ops.op_webgpu_create_compute_pipeline(
+        device.rid,
+        descriptor.label,
+        layout,
+        {
+          module,
+          entryPoint: descriptor.compute.entryPoint,
+          constants: descriptor.compute.constants,
+        },
       );
       device.pushError(err);
 
@@ -1357,22 +1345,20 @@
         };
       }
 
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_render_pipeline({
-          deviceRid: device.rid,
-          label: descriptor.label,
-          layout,
-          vertex: {
-            module,
-            entryPoint: descriptor.vertex.entryPoint,
-            buffers: descriptor.vertex.buffers,
-          },
-          primitive: descriptor.primitive,
-          depthStencil: descriptor.depthStencil,
-          multisample: descriptor.multisample,
-          fragment,
-        }),
-      );
+      const { rid, err } = ops.op_webgpu_create_render_pipeline({
+        deviceRid: device.rid,
+        label: descriptor.label,
+        layout,
+        vertex: {
+          module,
+          entryPoint: descriptor.vertex.entryPoint,
+          buffers: descriptor.vertex.buffers,
+        },
+        primitive: descriptor.primitive,
+        depthStencil: descriptor.depthStencil,
+        multisample: descriptor.multisample,
+        fragment,
+      });
       device.pushError(err);
 
       const renderPipeline = createGPURenderPipeline(
@@ -1406,11 +1392,9 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_command_encoder(
-          device.rid,
-          descriptor.label,
-        ),
+      const { rid, err } = ops.op_webgpu_create_command_encoder(
+        device.rid,
+        descriptor.label,
       );
       device.pushError(err);
 
@@ -1440,13 +1424,11 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_render_bundle_encoder(
-          {
-            deviceRid: device.rid,
-            ...descriptor,
-          },
-        ),
+      const { rid, err } = ops.op_webgpu_create_render_bundle_encoder(
+        {
+          deviceRid: device.rid,
+          ...descriptor,
+        },
       );
       device.pushError(err);
 
@@ -1475,10 +1457,10 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(ops.op_webgpu_create_query_set({
+      const { rid, err } = ops.op_webgpu_create_query_set({
         deviceRid: device.rid,
         ...descriptor,
-      }));
+      });
       device.pushError(err);
 
       const querySet = createGPUQuerySet(
@@ -1606,10 +1588,10 @@
           return rid;
         },
       );
-      const { err } = core.unwrapOpResult(ops.op_webgpu_queue_submit(
+      const { err } = ops.op_webgpu_queue_submit(
         device.rid,
         commandBufferRids,
-      ));
+      );
       for (const commandBuffer of commandBuffers) {
         commandBuffer[_rid] = undefined;
       }
@@ -1664,14 +1646,14 @@
         selfContext: "this",
         resourceContext: "Argument 1",
       });
-      const { err } = core.unwrapOpResult(ops.op_webgpu_write_buffer(
+      const { err } = ops.op_webgpu_write_buffer(
         device.rid,
         bufferRid,
         bufferOffset,
         dataOffset,
         size,
         new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
-      ));
+      );
       device.pushError(err);
     }
 
@@ -1711,7 +1693,7 @@
         selfContext: "this",
         resourceContext: "texture",
       });
-      const { err } = core.unwrapOpResult(ops.op_webgpu_write_texture(
+      const { err } = ops.op_webgpu_write_texture(
         device.rid,
         {
           texture: textureRid,
@@ -1724,7 +1706,7 @@
         dataLayout,
         normalizeGPUExtent3D(size),
         new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
-      ));
+      );
       device.pushError(err);
     }
 
@@ -1968,12 +1950,12 @@
       }
 
       const buffer = new ArrayBuffer(rangeSize);
-      const { rid } = core.unwrapOpResult(ops.op_webgpu_buffer_get_mapped_range(
+      const { rid } = ops.op_webgpu_buffer_get_mapped_range(
         bufferRid,
         offset,
         size,
         new Uint8Array(buffer),
-      ));
+      );
 
       ArrayPrototypePush(mappedRanges, [buffer, rid, offset]);
 
@@ -2022,11 +2004,11 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (const [buffer, mappedRid] of mappedRanges) {
-          const { err } = core.unwrapOpResult(ops.op_webgpu_buffer_unmap(
+          const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,
             ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []),
-          ));
+          );
           device.pushError(err);
           if (err) return;
         }
@@ -2159,12 +2141,10 @@
       });
       const device = assertDevice(this, { prefix, context: "this" });
       const textureRid = assertResource(this, { prefix, context: "this" });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_create_texture_view({
-          textureRid,
-          ...descriptor,
-        }),
-      );
+      const { rid, err } = ops.op_webgpu_create_texture_view({
+        textureRid,
+        ...descriptor,
+      });
       device.pushError(err);
 
       const textureView = createGPUTextureView(
@@ -2544,12 +2524,11 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.unwrapOpResult(
-        ops.op_webgpu_compute_pipeline_get_bind_group_layout(
+      const { rid, label, err } = ops
+        .op_webgpu_compute_pipeline_get_bind_group_layout(
           computePipelineRid,
           index,
-        ),
-      );
+        );
       device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
@@ -2622,12 +2601,11 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.unwrapOpResult(
-        ops.op_webgpu_render_pipeline_get_bind_group_layout(
+      const { rid, label, err } = ops
+        .op_webgpu_render_pipeline_get_bind_group_layout(
           renderPipelineRid,
           index,
-        ),
-      );
+        );
       device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
@@ -2817,13 +2795,11 @@
         },
       );
 
-      const { rid } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_begin_render_pass(
-          commandEncoderRid,
-          descriptor.label,
-          colorAttachments,
-          depthStencilAttachment,
-        ),
+      const { rid } = ops.op_webgpu_command_encoder_begin_render_pass(
+        commandEncoderRid,
+        descriptor.label,
+        colorAttachments,
+        depthStencilAttachment,
       );
 
       const renderPassEncoder = createGPURenderPassEncoder(
@@ -2853,11 +2829,9 @@
         context: "this",
       });
 
-      const { rid } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_begin_compute_pass(
-          commandEncoderRid,
-          descriptor.label,
-        ),
+      const { rid } = ops.op_webgpu_command_encoder_begin_compute_pass(
+        commandEncoderRid,
+        descriptor.label,
       );
 
       const computePassEncoder = createGPUComputePassEncoder(
@@ -2931,15 +2905,13 @@
         selfContext: "this",
       });
 
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_copy_buffer_to_buffer(
-          commandEncoderRid,
-          sourceRid,
-          sourceOffset,
-          destinationRid,
-          destinationOffset,
-          size,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_buffer(
+        commandEncoderRid,
+        sourceRid,
+        sourceOffset,
+        destinationRid,
+        destinationOffset,
+        size,
       );
       device.pushError(err);
     }
@@ -2990,23 +2962,21 @@
         selfContext: "this",
       });
 
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_copy_buffer_to_texture(
-          commandEncoderRid,
-          {
-            ...source,
-            buffer: sourceBufferRid,
-          },
-          {
-            texture: destinationTextureRid,
-            mipLevel: destination.mipLevel,
-            origin: destination.origin
-              ? normalizeGPUOrigin3D(destination.origin)
-              : undefined,
-            aspect: destination.aspect,
-          },
-          normalizeGPUExtent3D(copySize),
-        ),
+      const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_texture(
+        commandEncoderRid,
+        {
+          ...source,
+          buffer: sourceBufferRid,
+        },
+        {
+          texture: destinationTextureRid,
+          mipLevel: destination.mipLevel,
+          origin: destination.origin
+            ? normalizeGPUOrigin3D(destination.origin)
+            : undefined,
+          aspect: destination.aspect,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
@@ -3056,23 +3026,21 @@
         resourceContext: "buffer in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_copy_texture_to_buffer(
-          commandEncoderRid,
-          {
-            texture: sourceTextureRid,
-            mipLevel: source.mipLevel,
-            origin: source.origin
-              ? normalizeGPUOrigin3D(source.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          {
-            ...destination,
-            buffer: destinationBufferRid,
-          },
-          normalizeGPUExtent3D(copySize),
-        ),
+      const { err } = ops.op_webgpu_command_encoder_copy_texture_to_buffer(
+        commandEncoderRid,
+        {
+          texture: sourceTextureRid,
+          mipLevel: source.mipLevel,
+          origin: source.origin
+            ? normalizeGPUOrigin3D(source.origin)
+            : undefined,
+          aspect: source.aspect,
+        },
+        {
+          ...destination,
+          buffer: destinationBufferRid,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
@@ -3122,27 +3090,25 @@
         resourceContext: "texture in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_copy_texture_to_texture(
-          commandEncoderRid,
-          {
-            texture: sourceTextureRid,
-            mipLevel: source.mipLevel,
-            origin: source.origin
-              ? normalizeGPUOrigin3D(source.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          {
-            texture: destinationTextureRid,
-            mipLevel: destination.mipLevel,
-            origin: destination.origin
-              ? normalizeGPUOrigin3D(destination.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          normalizeGPUExtent3D(copySize),
-        ),
+      const { err } = ops.op_webgpu_command_encoder_copy_texture_to_texture(
+        commandEncoderRid,
+        {
+          texture: sourceTextureRid,
+          mipLevel: source.mipLevel,
+          origin: source.origin
+            ? normalizeGPUOrigin3D(source.origin)
+            : undefined,
+          aspect: source.aspect,
+        },
+        {
+          texture: destinationTextureRid,
+          mipLevel: destination.mipLevel,
+          origin: destination.origin
+            ? normalizeGPUOrigin3D(destination.origin)
+            : undefined,
+          aspect: source.aspect,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
@@ -3177,13 +3143,11 @@
         prefix,
         context: "Argument 1",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_clear_buffer(
-          commandEncoderRid,
-          bufferRid,
-          offset,
-          size,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_clear_buffer(
+        commandEncoderRid,
+        bufferRid,
+        offset,
+        size,
       );
       device.pushError(err);
     }
@@ -3205,11 +3169,9 @@
         prefix,
         context: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_push_debug_group(
-          commandEncoderRid,
-          groupLabel,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_push_debug_group(
+        commandEncoderRid,
+        groupLabel,
       );
       device.pushError(err);
     }
@@ -3222,10 +3184,8 @@
         prefix,
         context: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_pop_debug_group(
-          commandEncoderRid,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_pop_debug_group(
+        commandEncoderRid,
       );
       device.pushError(err);
     }
@@ -3247,11 +3207,9 @@
         prefix,
         context: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_insert_debug_marker(
-          commandEncoderRid,
-          markerLabel,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_insert_debug_marker(
+        commandEncoderRid,
+        markerLabel,
       );
       device.pushError(err);
     }
@@ -3287,12 +3245,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_write_timestamp(
-          commandEncoderRid,
-          querySetRid,
-          queryIndex,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_write_timestamp(
+        commandEncoderRid,
+        querySetRid,
+        queryIndex,
       );
       device.pushError(err);
     }
@@ -3358,15 +3314,13 @@
         resourceContext: "Argument 3",
         selfContext: "this",
       });
-      const { err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_resolve_query_set(
-          commandEncoderRid,
-          querySetRid,
-          firstQuery,
-          queryCount,
-          destinationRid,
-          destinationOffset,
-        ),
+      const { err } = ops.op_webgpu_command_encoder_resolve_query_set(
+        commandEncoderRid,
+        querySetRid,
+        firstQuery,
+        queryCount,
+        destinationRid,
+        destinationOffset,
       );
       device.pushError(err);
     }
@@ -3387,11 +3341,9 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_command_encoder_finish(
-          commandEncoderRid,
-          descriptor.label,
-        ),
+      const { rid, err } = ops.op_webgpu_command_encoder_finish(
+        commandEncoderRid,
+        descriptor.label,
       );
       device.pushError(err);
       /** @type {number | undefined} */
@@ -3488,7 +3440,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_viewport({
+      ops.op_webgpu_render_pass_set_viewport({
         renderPassRid,
         x,
         y,
@@ -3496,7 +3448,7 @@
         height,
         minDepth,
         maxDepth,
-      }));
+      });
     }
 
     /**
@@ -3535,13 +3487,13 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_scissor_rect(
+      ops.op_webgpu_render_pass_set_scissor_rect(
         renderPassRid,
         x,
         y,
         width,
         height,
-      ));
+      );
     }
 
     /**
@@ -3565,10 +3517,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_blend_constant(
+      ops.op_webgpu_render_pass_set_blend_constant(
         renderPassRid,
         normalizeGPUColor(color),
-      ));
+      );
     }
 
     /**
@@ -3592,10 +3544,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_stencil_reference(
+      ops.op_webgpu_render_pass_set_stencil_reference(
         renderPassRid,
         reference,
-      ));
+      );
     }
 
     beginOcclusionQuery(_queryIndex) {
@@ -3641,12 +3593,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(
-        ops.op_webgpu_render_pass_begin_pipeline_statistics_query(
-          renderPassRid,
-          querySetRid,
-          queryIndex,
-        ),
+      ops.op_webgpu_render_pass_begin_pipeline_statistics_query(
+        renderPassRid,
+        querySetRid,
+        queryIndex,
       );
     }
 
@@ -3663,10 +3613,8 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(
-        ops.op_webgpu_render_pass_end_pipeline_statistics_query(
-          renderPassRid,
-        ),
+      ops.op_webgpu_render_pass_end_pipeline_statistics_query(
+        renderPassRid,
       );
     }
 
@@ -3705,11 +3653,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_write_timestamp(
+      ops.op_webgpu_render_pass_write_timestamp(
         renderPassRid,
         querySetRid,
         queryIndex,
-      ));
+      );
     }
 
     /**
@@ -3743,10 +3691,10 @@
         });
         return rid;
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_execute_bundles(
+      ops.op_webgpu_render_pass_execute_bundles(
         renderPassRid,
         bundleRids,
-      ));
+      );
     }
 
     end() {
@@ -3761,10 +3709,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.unwrapOpResult(ops.op_webgpu_render_pass_end(
+      const { err } = ops.op_webgpu_render_pass_end(
         commandEncoderRid,
         renderPassRid,
-      ));
+      );
       device.pushError(err);
       this[_rid] = undefined;
     }
@@ -3808,14 +3756,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_bind_group(
+      ops.op_webgpu_render_pass_set_bind_group(
         renderPassRid,
         index,
         bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      ));
+      );
     }
 
     /**
@@ -3839,10 +3787,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_push_debug_group(
+      ops.op_webgpu_render_pass_push_debug_group(
         renderPassRid,
         groupLabel,
-      ));
+      );
     }
 
     popDebugGroup() {
@@ -3858,9 +3806,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(
-        ops.op_webgpu_render_pass_pop_debug_group(renderPassRid),
-      );
+      ops.op_webgpu_render_pass_pop_debug_group(renderPassRid);
     }
 
     /**
@@ -3884,10 +3830,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_insert_debug_marker(
+      ops.op_webgpu_render_pass_insert_debug_marker(
         renderPassRid,
         markerLabel,
-      ));
+      );
     }
 
     /**
@@ -3920,10 +3866,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_pipeline(
+      ops.op_webgpu_render_pass_set_pipeline(
         renderPassRid,
         pipelineRid,
-      ));
+      );
     }
 
     /**
@@ -3973,13 +3919,13 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_index_buffer(
+      ops.op_webgpu_render_pass_set_index_buffer(
         renderPassRid,
         bufferRid,
         indexFormat,
         offset,
         size,
-      ));
+      );
     }
 
     /**
@@ -4029,13 +3975,13 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_set_vertex_buffer(
+      ops.op_webgpu_render_pass_set_vertex_buffer(
         renderPassRid,
         slot,
         bufferRid,
         offset,
         size,
-      ));
+      );
     }
 
     /**
@@ -4073,13 +4019,13 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_draw(
+      ops.op_webgpu_render_pass_draw(
         renderPassRid,
         vertexCount,
         instanceCount,
         firstVertex,
         firstInstance,
-      ));
+      );
     }
 
     /**
@@ -4129,14 +4075,14 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_draw_indexed(
+      ops.op_webgpu_render_pass_draw_indexed(
         renderPassRid,
         indexCount,
         instanceCount,
         firstIndex,
         baseVertex,
         firstInstance,
-      ));
+      );
     }
 
     /**
@@ -4174,11 +4120,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_draw_indirect(
+      ops.op_webgpu_render_pass_draw_indirect(
         renderPassRid,
         indirectBufferRid,
         indirectOffset,
-      ));
+      );
     }
 
     /**
@@ -4216,11 +4162,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_pass_draw_indexed_indirect(
+      ops.op_webgpu_render_pass_draw_indexed_indirect(
         renderPassRid,
         indirectBufferRid,
         indirectOffset,
-      ));
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -4299,10 +4245,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_set_pipeline(
+      ops.op_webgpu_compute_pass_set_pipeline(
         computePassRid,
         pipelineRid,
-      ));
+      );
     }
 
     /**
@@ -4340,12 +4286,12 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_dispatch_workgroups(
+      ops.op_webgpu_compute_pass_dispatch_workgroups(
         computePassRid,
         workgroupCountX,
         workgroupCountY,
         workgroupCountZ,
-      ));
+      );
     }
 
     /**
@@ -4383,12 +4329,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(
-        ops.op_webgpu_compute_pass_dispatch_workgroups_indirect(
-          computePassRid,
-          indirectBufferRid,
-          indirectOffset,
-        ),
+      ops.op_webgpu_compute_pass_dispatch_workgroups_indirect(
+        computePassRid,
+        indirectBufferRid,
+        indirectOffset,
       );
     }
 
@@ -4427,12 +4371,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(
-        ops.op_webgpu_compute_pass_begin_pipeline_statistics_query(
-          computePassRid,
-          querySetRid,
-          queryIndex,
-        ),
+      ops.op_webgpu_compute_pass_begin_pipeline_statistics_query(
+        computePassRid,
+        querySetRid,
+        queryIndex,
       );
     }
 
@@ -4449,10 +4391,8 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(
-        ops.op_webgpu_compute_pass_end_pipeline_statistics_query(
-          computePassRid,
-        ),
+      ops.op_webgpu_compute_pass_end_pipeline_statistics_query(
+        computePassRid,
       );
     }
 
@@ -4491,11 +4431,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_write_timestamp(
+      ops.op_webgpu_compute_pass_write_timestamp(
         computePassRid,
         querySetRid,
         queryIndex,
-      ));
+      );
     }
 
     end() {
@@ -4510,10 +4450,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.unwrapOpResult(ops.op_webgpu_compute_pass_end(
+      const { err } = ops.op_webgpu_compute_pass_end(
         commandEncoderRid,
         computePassRid,
-      ));
+      );
       device.pushError(err);
       this[_rid] = undefined;
     }
@@ -4557,14 +4497,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_set_bind_group(
+      ops.op_webgpu_compute_pass_set_bind_group(
         computePassRid,
         index,
         bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      ));
+      );
     }
 
     /**
@@ -4588,10 +4528,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_push_debug_group(
+      ops.op_webgpu_compute_pass_push_debug_group(
         computePassRid,
         groupLabel,
-      ));
+      );
     }
 
     popDebugGroup() {
@@ -4607,9 +4547,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(
-        ops.op_webgpu_compute_pass_pop_debug_group(computePassRid),
-      );
+      ops.op_webgpu_compute_pass_pop_debug_group(computePassRid);
     }
 
     /**
@@ -4633,10 +4571,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.unwrapOpResult(ops.op_webgpu_compute_pass_insert_debug_marker(
+      ops.op_webgpu_compute_pass_insert_debug_marker(
         computePassRid,
         markerLabel,
-      ));
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -4743,11 +4681,9 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.unwrapOpResult(
-        ops.op_webgpu_render_bundle_encoder_finish(
-          renderBundleEncoderRid,
-          descriptor.label,
-        ),
+      const { rid, err } = ops.op_webgpu_render_bundle_encoder_finish(
+        renderBundleEncoderRid,
+        descriptor.label,
       );
       device.pushError(err);
       this[_rid] = undefined;
@@ -4796,14 +4732,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_set_bind_group(
+      ops.op_webgpu_render_bundle_encoder_set_bind_group(
         renderBundleEncoderRid,
         index,
         bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      ));
+      );
     }
 
     /**
@@ -4823,10 +4759,10 @@
         prefix,
         context: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_push_debug_group(
+      ops.op_webgpu_render_bundle_encoder_push_debug_group(
         renderBundleEncoderRid,
         groupLabel,
-      ));
+      );
     }
 
     popDebugGroup() {
@@ -4838,9 +4774,9 @@
         prefix,
         context: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_pop_debug_group(
+      ops.op_webgpu_render_bundle_encoder_pop_debug_group(
         renderBundleEncoderRid,
-      ));
+      );
     }
 
     /**
@@ -4860,11 +4796,9 @@
         prefix,
         context: "this",
       });
-      core.unwrapOpResult(
-        ops.op_webgpu_render_bundle_encoder_insert_debug_marker(
-          renderBundleEncoderRid,
-          markerLabel,
-        ),
+      ops.op_webgpu_render_bundle_encoder_insert_debug_marker(
+        renderBundleEncoderRid,
+        markerLabel,
       );
     }
 
@@ -4894,10 +4828,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_set_pipeline(
+      ops.op_webgpu_render_bundle_encoder_set_pipeline(
         renderBundleEncoderRid,
         pipelineRid,
-      ));
+      );
     }
 
     /**
@@ -4941,13 +4875,13 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_set_index_buffer(
+      ops.op_webgpu_render_bundle_encoder_set_index_buffer(
         renderBundleEncoderRid,
         bufferRid,
         indexFormat,
         offset,
         size,
-      ));
+      );
     }
 
     /**
@@ -4991,13 +4925,13 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_set_vertex_buffer(
+      ops.op_webgpu_render_bundle_encoder_set_vertex_buffer(
         renderBundleEncoderRid,
         slot,
         bufferRid,
         offset,
         size,
-      ));
+      );
     }
 
     /**
@@ -5031,13 +4965,13 @@
         prefix,
         context: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_draw(
+      ops.op_webgpu_render_bundle_encoder_draw(
         renderBundleEncoderRid,
         vertexCount,
         instanceCount,
         firstVertex,
         firstInstance,
-      ));
+      );
     }
 
     /**
@@ -5083,14 +5017,14 @@
         prefix,
         context: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_draw_indexed(
+      ops.op_webgpu_render_bundle_encoder_draw_indexed(
         renderBundleEncoderRid,
         indexCount,
         instanceCount,
         firstIndex,
         baseVertex,
         firstInstance,
-      ));
+      );
     }
 
     /**
@@ -5124,11 +5058,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.unwrapOpResult(ops.op_webgpu_render_bundle_encoder_draw_indirect(
+      ops.op_webgpu_render_bundle_encoder_draw_indirect(
         renderBundleEncoderRid,
         indirectBufferRid,
         indirectOffset,
-      ));
+      );
     }
 
     drawIndexedIndirect(_indirectBuffer, _indirectOffset) {

@@ -6,11 +6,11 @@
   const ops = core.ops;
 
   function consoleSize(rid) {
-    return core.unwrapOpResult(ops.op_console_size(rid));
+    return ops.op_console_size(rid);
   }
 
   function isatty(rid) {
-    return core.unwrapOpResult(ops.op_isatty(rid));
+    return ops.op_isatty(rid);
   }
 
   const DEFAULT_SET_RAW_OPTIONS = {
@@ -19,7 +19,7 @@
 
   function setRaw(rid, mode, options = {}) {
     const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-    core.unwrapOpResult(ops.op_set_raw({ rid, mode, options: rOptions }));
+    ops.op_set_raw({ rid, mode, options: rOptions });
   }
 
   window.__bootstrap.tty = {

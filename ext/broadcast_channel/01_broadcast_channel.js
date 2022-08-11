@@ -93,7 +93,7 @@
       if (rid === null) {
         // Create the rid immediately, otherwise there is a time window (and a
         // race condition) where messages can get lost, because recv() is async.
-        rid = core.unwrapOpResult(ops.op_broadcast_subscribe());
+        rid = ops.op_broadcast_subscribe();
         recv();
       }
     }
@@ -130,7 +130,7 @@
 
       ArrayPrototypeSplice(channels, index, 1);
       if (channels.length === 0) {
-        core.unwrapOpResult(ops.op_broadcast_unsubscribe(rid));
+        ops.op_broadcast_unsubscribe(rid);
       }
     }
   }

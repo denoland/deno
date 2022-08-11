@@ -30,19 +30,11 @@ async fn op_pi_async() -> i64 {
 }
 
 fn bench_op_pi_json(b: &mut Bencher) {
-  bench_js_sync(
-    b,
-    r#"Deno.core.unwrapOpResult(Deno.core.ops.op_pi_json());"#,
-    setup,
-  );
+  bench_js_sync(b, r#"Deno.core.ops.op_pi_json();"#, setup);
 }
 
 fn bench_op_nop(b: &mut Bencher) {
-  bench_js_sync(
-    b,
-    r#"Deno.core.unwrapOpResult(Deno.core.ops.op_nop());"#,
-    setup,
-  );
+  bench_js_sync(b, r#"Deno.core.ops.op_nop();"#, setup);
 }
 
 fn bench_op_async(b: &mut Bencher) {

@@ -92,7 +92,7 @@
       return 0;
     }
 
-    const nread = core.unwrapOpResult(ops.op_read_sync(rid, buffer));
+    const nread = ops.op_read_sync(rid, buffer);
 
     return nread === 0 ? null : nread;
   }
@@ -108,7 +108,7 @@
   }
 
   function writeSync(rid, data) {
-    return core.unwrapOpResult(ops.op_write_sync(rid, data));
+    return ops.op_write_sync(rid, data);
   }
 
   function write(rid, data) {

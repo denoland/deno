@@ -27,7 +27,7 @@
       context: "Argument 1",
     });
     try {
-      return core.unwrapOpResult(ops.op_base64_atob(data));
+      return ops.op_base64_atob(data);
     } catch (e) {
       if (e instanceof TypeError) {
         throw new DOMException(
@@ -51,7 +51,7 @@
       context: "Argument 1",
     });
     try {
-      return core.unwrapOpResult(ops.op_base64_btoa(data));
+      return ops.op_base64_btoa(data);
     } catch (e) {
       if (e instanceof TypeError) {
         throw new DOMException(

@@ -9,7 +9,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 Deno.bench(
   "op_void_sync",
   { n: 1e7 },
-  () => Deno.core.unwrapOpResult(Deno.core.ops.op_void_sync()),
+  () => Deno.core.ops.op_void_sync(),
 );
 
 Deno.bench(

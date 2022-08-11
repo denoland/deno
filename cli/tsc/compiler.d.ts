@@ -36,8 +36,6 @@ declare global {
   }
 
   interface DenoCore {
-    // deno-lint-ignore no-explicit-any
-    unwrapOpResult(res: unknown): any;
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;

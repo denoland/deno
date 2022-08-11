@@ -17,7 +17,7 @@
   }
 
   function opListenTls(args) {
-    return core.unwrapOpResult(ops.op_tls_listen(args));
+    return ops.op_tls_listen(args);
   }
 
   function opStartTls(args) {

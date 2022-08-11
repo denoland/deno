@@ -16,7 +16,7 @@
   const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
-    core.unwrapOpResult(ops.op_chmod_sync({ path: pathFromURL(path), mode }));
+    ops.op_chmod_sync({ path: pathFromURL(path), mode });
   }
 
   async function chmod(path, mode) {
@@ -28,9 +28,7 @@
     uid,
     gid,
   ) {
-    core.unwrapOpResult(
-      ops.op_chown_sync({ path: pathFromURL(path), uid, gid }),
-    );
+    ops.op_chown_sync({ path: pathFromURL(path), uid, gid });
   }
 
   async function chown(
@@ -48,10 +46,10 @@
     fromPath,
     toPath,
   ) {
-    core.unwrapOpResult(ops.op_copy_file_sync({
+    ops.op_copy_file_sync({
       from: pathFromURL(fromPath),
       to: pathFromURL(toPath),
-    }));
+    });
   }
 
   async function copyFile(
@@ -65,15 +63,15 @@
   }
 
   function cwd() {
-    return core.unwrapOpResult(ops.op_cwd());
+    return ops.op_cwd();
   }
 
   function chdir(directory) {
-    core.unwrapOpResult(ops.op_chdir(pathFromURL(directory)));
+    ops.op_chdir(pathFromURL(directory));
   }
 
   function makeTempDirSync(options = {}) {
-    return core.unwrapOpResult(ops.op_make_temp_dir_sync(options));
+    return ops.op_make_temp_dir_sync(options);
   }
 
   function makeTempDir(options = {}) {
@@ -81,7 +79,7 @@
   }
 
   function makeTempFileSync(options = {}) {
-    return core.unwrapOpResult(ops.op_make_temp_file_sync(options));
+    return ops.op_make_temp_file_sync(options);
   }
 
   function makeTempFile(options = {}) {
@@ -102,7 +100,7 @@
   }
 
   function mkdirSync(path, options) {
-    core.unwrapOpResult(ops.op_mkdir_sync(mkdirArgs(path, options)));
+    ops.op_mkdir_sync(mkdirArgs(path, options));
   }
 
   async function mkdir(
@@ -113,9 +111,7 @@
   }
 
   function readDirSync(path) {
-    return core.unwrapOpResult(
-      ops.op_read_dir_sync(pathFromURL(path)),
-    )[
+    return ops.op_read_dir_sync(pathFromURL(path))[
       SymbolIterator
     ]();
   }
@@ -133,7 +129,7 @@
   }
 
   function readLinkSync(path) {
-    return core.unwrapOpResult(ops.op_read_link_sync(pathFromURL(path)));
+    return ops.op_read_link_sync(pathFromURL(path));
   }
 
   function readLink(path) {
@@ -141,7 +137,7 @@
   }
 
   function realPathSync(path) {
-    return core.unwrapOpResult(ops.op_realpath_sync(pathFromURL(path)));
+    return ops.op_realpath_sync(pathFromURL(path));
   }
 
   function realPath(path) {
@@ -152,10 +148,10 @@
     path,
     options = {},
   ) {
-    core.unwrapOpResult(ops.op_remove_sync({
+    ops.op_remove_sync({
       path: pathFromURL(path),
       recursive: !!options.recursive,
-    }));
+    });
   }
 
   async function remove(
@@ -169,10 +165,10 @@
   }
 
   function renameSync(oldpath, newpath) {
-    core.unwrapOpResult(ops.op_rename_sync({
+    ops.op_rename_sync({
       oldpath: pathFromURL(oldpath),
       newpath: pathFromURL(newpath),
-    }));
+    });
   }
 
   async function rename(oldpath, newpath) {
@@ -208,7 +204,7 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfo(core.unwrapOpResult(ops.op_fstat_sync(rid)));
+    return parseFileInfoops.op_fstat_sync(rid);
   }
 
   async function fstat(rid) {
@@ -224,10 +220,10 @@
   }
 
   function lstatSync(path) {
-    const res = core.unwrapOpResult(ops.op_stat_sync({
+    const res = ops.op_stat_sync({
       path: pathFromURL(path),
       lstat: true,
-    }));
+    });
     return parseFileInfo(res);
   }
 
@@ -240,10 +236,10 @@
   }
 
   function statSync(path) {
-    const res = core.unwrapOpResult(ops.op_stat_sync({
+    const res = ops.op_stat_sync({
       path: pathFromURL(path),
       lstat: false,
-    }));
+    });
     return parseFileInfo(res);
   }
 
@@ -256,7 +252,7 @@
   }
 
   function ftruncateSync(rid, len) {
-    core.unwrapOpResult(ops.op_ftruncate_sync({ rid, len: coerceLen(len) }));
+    ops.op_ftruncate_sync({ rid, len: coerceLen(len) });
   }
 
   async function ftruncate(rid, len) {
@@ -264,7 +260,7 @@
   }
 
   function truncateSync(path, len) {
-    core.unwrapOpResult(ops.op_truncate_sync({ path, len: coerceLen(len) }));
+    ops.op_truncate_sync({ path, len: coerceLen(len) });
   }
 
   async function truncate(path, len) {
@@ -272,11 +268,11 @@
   }
 
   function umask(mask) {
-    return core.unwrapOpResult(ops.op_umask(mask));
+    return ops.op_umask(mask);
   }
 
   function linkSync(oldpath, newpath) {
-    core.unwrapOpResult(ops.op_link_sync({ oldpath, newpath }));
+    ops.op_link_sync({ oldpath, newpath });
   }
 
   async function link(oldpath, newpath) {
@@ -309,11 +305,11 @@
     atime,
     mtime,
   ) {
-    core.unwrapOpResult(ops.op_futime_sync({
+    ops.op_futime_sync({
       rid,
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
-    }));
+    });
   }
 
   async function futime(
@@ -333,11 +329,11 @@
     atime,
     mtime,
   ) {
-    core.unwrapOpResult(ops.op_utime_sync({
+    ops.op_utime_sync({
       path: pathFromURL(path),
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
-    }));
+    });
   }
 
   async function utime(
@@ -357,11 +353,11 @@
     newpath,
     options,
   ) {
-    core.unwrapOpResult(ops.op_symlink_sync({
+    ops.op_symlink_sync({
       oldpath: pathFromURL(oldpath),
       newpath: pathFromURL(newpath),
       options,
-    }));
+    });
   }
 
   async function symlink(
@@ -377,7 +373,7 @@
   }
 
   function fdatasyncSync(rid) {
-    core.unwrapOpResult(ops.op_fdatasync_sync(rid));
+    ops.op_fdatasync_sync(rid);
   }
 
   async function fdatasync(rid) {
@@ -385,7 +381,7 @@
   }
 
   function fsyncSync(rid) {
-    core.unwrapOpResult(ops.op_fsync_sync(rid));
+    ops.op_fsync_sync(rid);
   }
 
   async function fsync(rid) {
@@ -393,7 +389,7 @@
   }
 
   function flockSync(rid, exclusive) {
-    core.unwrapOpResult(ops.op_flock_sync(rid, exclusive === true));
+    ops.op_flock_sync(rid, exclusive === true);
   }
 
   async function flock(rid, exclusive) {
@@ -401,7 +397,7 @@
   }
 
   function funlockSync(rid) {
-    core.unwrapOpResult(ops.op_funlock_sync(rid));
+    ops.op_funlock_sync(rid);
   }
 
   async function funlock(rid) {

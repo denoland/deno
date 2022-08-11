@@ -16,9 +16,7 @@
 
     constructor(paths, options) {
       const { recursive } = options;
-      this.#rid = core.unwrapOpResult(
-        ops.op_fs_events_open({ recursive, paths }),
-      );
+      this.#rid = ops.op_fs_events_open({ recursive, paths });
     }
 
     get rid() {

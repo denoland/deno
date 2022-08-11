@@ -17,7 +17,7 @@ core.registerErrorBuilder(
 );
 
 try {
-  core.unwrapOpResult(ops.op_err(undefined, null));
+  ops.op_err(undefined, null);
   throw new Error("op_err didn't throw!");
 } catch (err) {
   if (!(err instanceof DOMException)) {

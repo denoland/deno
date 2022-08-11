@@ -3150,16 +3150,16 @@ assertEquals(1, notify_return_value);
         r#"
         (async function () {
           const results = [];
-          Deno.core.unwrapOpResult(Deno.core.ops.op_set_macrotask_callback(() => {
+          Deno.core.ops.op_set_macrotask_callback(() => {
             results.push("macrotask");
             return true;
-          }));
-          Deno.core.unwrapOpResult(Deno.core.ops.op_set_next_tick_callback(() => {
+          });
+          Deno.core.ops.op_set_next_tick_callback(() => {
             results.push("nextTick");
-            Deno.core.unwrapOpResult(Deno.core.ops.op_set_has_tick_scheduled(false));
-          }));
+            Deno.core.ops.op_set_has_tick_scheduled(false));
+          });
 
-          Deno.core.unwrapOpResult(Deno.core.ops.op_set_has_tick_scheduled(true));
+          Deno.core.ops.op_set_has_tick_scheduled(true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
             throw new Error(`expected nextTick, got: ${results[0]}`);
@@ -3182,10 +3182,10 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "multiple_macrotasks_and_nextticks.js",
         r#"
-        Deno.core.unwrapOpResult(Deno.core.ops.op_set_macrotask_callback(() => { return true; }));
-        Deno.core.unwrapOpResult(Deno.core.ops.op_set_macrotask_callback(() => { return true; }));
-        Deno.core.unwrapOpResult(Deno.core.ops.op_set_next_tick_callback(() => {}));
-        Deno.core.unwrapOpResult(Deno.core.ops.op_set_next_tick_callback(() => {}));
+        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
+        Deno.core.ops.op_set_macrotask_callback(() => { return true; });
+        Deno.core.ops.op_set_next_tick_callback(() => {});
+        Deno.core.ops.op_set_next_tick_callback(() => {});
         "#,
       )
       .unwrap();
@@ -3228,11 +3228,11 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "has_tick_scheduled.js",
         r#"
-          Deno.core.unwrapOpResult(Deno.core.ops.op_set_macrotask_callback(() => {
-            Deno.core.unwrapOpResult(Deno.core.ops.op_macrotask());
+          Deno.core.ops.op_set_macrotask_callback(() => {
+            Deno.core.ops.op_macrotask();
             return true; // We're done.
-          }));
-          Deno.core.unwrapOpResult(Deno.core.ops.op_set_next_tick_callback(() => Deno.core.unwrapOpResult(Deno.core.ops.op_next_tick())));
+          });
+          Deno.core.ops.op_set_next_tick_callback(() => Deno.core.ops.op_next_tick());
           Deno.core.ops.op_set_has_tick_scheduled(true);
           "#,
       )
@@ -3359,7 +3359,7 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         // Note: |promise| is not the promise created below, it's a child.
-        Deno.core.unwrapOpResult(Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
+        Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
           if (type !== /* PromiseRejectWithNoHandler */ 0) {
             throw Error("unexpected type: " + type);
           }
@@ -3367,8 +3367,8 @@ assertEquals(1, notify_return_value);
             throw Error("unexpected reason: " + reason);
           }
           Deno.core.ops.op_store_pending_promise_exception(promise);
-          Deno.core.unwrapOpResult(Deno.core.ops.op_promise_reject());
-        }));
+          Deno.core.ops.op_promise_reject();
+        });
 
         new Promise((_, reject) => reject(Error("reject")));
         "#,
@@ -3383,9 +3383,9 @@ assertEquals(1, notify_return_value);
         "promise_reject_callback.js",
         r#"
         {
-          const prev = Deno.core.unwrapOpResult(Deno.core.ops.op_set_promise_reject_callback((...args) => {
+          const prev = Deno.core.ops.op_set_promise_reject_callback((...args) => {
             prev(...args);
-          }));
+          });
         }
 
         new Promise((_, reject) => reject(Error("reject")));
@@ -3485,7 +3485,7 @@ assertEquals(1, notify_return_value);
     assert!(runtime
       .execute_script(
         "test_op_return_serde_v8_error.js",
-        "Deno.core.unwrapOpResult(Deno.core.ops.op_err())"
+        "Deno.core.ops.op_err()"
       )
       .is_err());
   }
@@ -3508,10 +3508,7 @@ assertEquals(1, notify_return_value);
       ..Default::default()
     });
     let r = runtime
-      .execute_script(
-        "test.js",
-        "Deno.core.unwrapOpResult(Deno.core.ops.op_add_4(1, 2, 3, 4))",
-      )
+      .execute_script("test.js", "Deno.core.ops.op_add_4(1, 2, 3, 4)")
       .unwrap();
     let scope = &mut runtime.handle_scope();
     assert_eq!(r.open(scope).integer_value(scope), Some(10));
@@ -3532,10 +3529,7 @@ assertEquals(1, notify_return_value);
       ..Default::default()
     });
     let r = runtime
-      .execute_script(
-        "test.js",
-        "Deno.core.unwrapOpResult(Deno.core.ops.op_foo())",
-      )
+      .execute_script("test.js", "Deno.core.ops.op_foo()")
       .unwrap();
     let scope = &mut runtime.handle_scope();
     assert!(r.open(scope).is_undefined());
@@ -3579,7 +3573,7 @@ assertEquals(1, notify_return_value);
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
-        let sum = Deno.core.unwrapOpResult(Deno.core.ops.op_sum_take(a1b));
+        let sum = Deno.core.ops.op_sum_take(a1b);
         if (sum !== 6) {
           throw new Error(`Bad sum: ${sum}`);
         }
@@ -3587,7 +3581,7 @@ assertEquals(1, notify_return_value);
           throw new Error("expecting a1 & a1b to be detached");
         }
 
-        const a3 = Deno.core.unwrapOpResult(Deno.core.ops.op_boomerang(a2b));
+        const a3 = Deno.core.ops.op_boomerang(a2b);
         if (a3.byteLength != 3) {
           throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
         }
@@ -3603,7 +3597,7 @@ assertEquals(1, notify_return_value);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;
         const assertWasmThrow = (() => {
           try {
-            let sum = Deno.core.unwrapOpResult(Deno.core.ops.op_sum_take(w32.subarray(0, 2)));
+            let sum = Deno.core.ops.op_sum_take(w32.subarray(0, 2));
             return false;
           } catch(e) {
             return e.message.includes('ExpectedDetachable');
@@ -3641,10 +3635,10 @@ assertEquals(1, notify_return_value);
       .execute_script(
         "test.js",
         r#"
-        if (Deno.core.unwrapOpResult(Deno.core.ops.op_foo()) !== 42) {
+        if (Deno.core.ops.op_foo() !== 42) {
           throw new Error("Exptected op_foo() === 42");
         }
-        if (Deno.core.unwrapOpResult(Deno.core.ops.op_bar()) !== undefined) {
+        if (Deno.core.ops.op_bar() !== undefined) {
           throw new Error("Expected op_bar to be disabled")
         }
       "#,
@@ -3686,11 +3680,7 @@ assertEquals(1, notify_return_value);
     });
     let realm = runtime.create_realm().unwrap();
     let ret = realm
-      .execute_script(
-        runtime.v8_isolate(),
-        "",
-        "Deno.core.unwrapOpResult(Deno.core.ops.op_test())",
-      )
+      .execute_script(runtime.v8_isolate(), "", "Deno.core.ops.op_test()")
       .unwrap();
 
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
@@ -3762,7 +3752,7 @@ assertEquals(1, notify_return_value);
             const buf = Deno.core.ops.op_test(false);
             let err;
             try {
-              Deno.core.unwrapOpResult(Deno.core.ops.op_test(true));
+              Deno.core.ops.op_test(true);
             } catch(e) {
               err = e;
             }

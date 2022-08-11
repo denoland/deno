@@ -8,7 +8,7 @@
   const { abortSignal } = window.__bootstrap;
 
   function readFileSync(path) {
-    return core.unwrapOpResult(ops.op_readfile_sync(pathFromURL(path)));
+    return ops.op_readfile_sync(pathFromURL(path));
   }
 
   async function readFile(path, options) {
@@ -16,7 +16,7 @@
     let abortHandler;
     if (options?.signal) {
       options.signal.throwIfAborted();
-      cancelRid = core.unwrapOpResult(ops.op_cancel_handle());
+      cancelRid = ops.op_cancel_handle();
       abortHandler = () => core.tryClose(cancelRid);
       options.signal[abortSignal.add](abortHandler);
     }
@@ -39,7 +39,7 @@
   }
 
   function readTextFileSync(path) {
-    return core.unwrapOpResult(ops.op_readfile_text_sync(pathFromURL(path)));
+    return ops.op_readfile_text_sync(pathFromURL(path));
   }
 
   async function readTextFile(path, options) {
@@ -47,7 +47,7 @@
     let abortHandler;
     if (options?.signal) {
       options.signal.throwIfAborted();
-      cancelRid = core.unwrapOpResult(ops.op_cancel_handle());
+      cancelRid = ops.op_cancel_handle();
       abortHandler = () => core.tryClose(cancelRid);
       options.signal[abortSignal.add](abortHandler);
     }

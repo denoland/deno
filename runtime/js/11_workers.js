@@ -32,22 +32,22 @@
     name,
     workerType,
   ) {
-    return core.unwrapOpResult(ops.op_create_worker({
+    return ops.op_create_worker({
       hasSourceCode,
       name,
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
       workerType,
-    }));
+    });
   }
 
   function hostTerminateWorker(id) {
-    core.unwrapOpResult(ops.op_host_terminate_worker(id));
+    ops.op_host_terminate_worker(id);
   }
 
   function hostPostMessage(id, data) {
-    core.unwrapOpResult(ops.op_host_post_message(id, data));
+    ops.op_host_post_message(id, data);
   }
 
   function hostRecvCtrl(id) {

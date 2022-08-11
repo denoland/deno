@@ -31,11 +31,9 @@
       prefix,
     });
 
-    const url = core.unwrapOpResult(
-      ops.op_blob_create_object_url(
-        blob.type,
-        getParts(blob),
-      ),
+    const url = ops.op_blob_create_object_url(
+      blob.type,
+      getParts(blob),
     );
 
     return url;
@@ -53,7 +51,7 @@
       prefix,
     });
 
-    core.unwrapOpResult(ops.op_blob_revoke_object_url(url));
+    ops.op_blob_revoke_object_url(url);
   }
 
   URL.createObjectURL = createObjectURL;

@@ -128,7 +128,7 @@
       }
       const data = serializeJsMessageData(message, transfer);
       if (this[_id] === null) return;
-      core.unwrapOpResult(ops.op_message_port_post_message(this[_id], data));
+      ops.op_message_port_post_message(this[_id], data);
     }
 
     start() {
@@ -193,7 +193,7 @@
    * @returns {[number, number]}
    */
   function opCreateEntangledMessagePort() {
-    return core.unwrapOpResult(ops.op_message_port_create_entangled());
+    return ops.op_message_port_create_entangled();
   }
 
   /**

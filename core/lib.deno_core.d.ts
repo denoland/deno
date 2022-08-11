@@ -7,8 +7,6 @@
 
 declare namespace Deno {
   namespace core {
-    function unwrapOpResult(res: unknown): any;
-
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,

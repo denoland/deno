@@ -12,13 +12,13 @@
     options = {},
   ) {
     options.signal?.throwIfAborted();
-    core.unwrapOpResult(ops.op_write_file_sync({
+    ops.op_write_file_sync({
       path: pathFromURL(path),
       data,
       mode: options.mode,
       append: options.append ?? false,
       create: options.create ?? true,
-    }));
+    });
   }
 
   async function writeFile(
@@ -30,7 +30,7 @@
     let abortHandler;
     if (options.signal) {
       options.signal.throwIfAborted();
-      cancelRid = core.unwrapOpResult(ops.op_cancel_handle());
+      cancelRid = ops.op_cancel_handle();
       abortHandler = () => core.tryClose(cancelRid);
       options.signal[abortSignal.add](abortHandler);
     }

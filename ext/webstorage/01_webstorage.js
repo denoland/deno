@@ -29,7 +29,7 @@
 
     get length() {
       webidl.assertBranded(this, StoragePrototype);
-      return core.unwrapOpResult(ops.op_webstorage_length(this[_persistent]));
+      return ops.op_webstorage_length(this[_persistent]);
     }
 
     key(index) {
@@ -41,9 +41,7 @@
         context: "Argument 1",
       });
 
-      return core.unwrapOpResult(
-        ops.op_webstorage_key(index, this[_persistent]),
-      );
+      return ops.op_webstorage_key(index, this[_persistent]);
     }
 
     setItem(key, value) {
@@ -59,7 +57,7 @@
         context: "Argument 2",
       });
 
-      core.unwrapOpResult(ops.op_webstorage_set(key, value, this[_persistent]));
+      ops.op_webstorage_set(key, value, this[_persistent]);
     }
 
     getItem(key) {
@@ -71,7 +69,7 @@
         context: "Argument 1",
       });
 
-      return core.unwrapOpResult(ops.op_webstorage_get(key, this[_persistent]));
+      return ops.op_webstorage_get(key, this[_persistent]);
     }
 
     removeItem(key) {
@@ -83,12 +81,12 @@
         context: "Argument 1",
       });
 
-      core.unwrapOpResult(ops.op_webstorage_remove(key, this[_persistent]));
+      ops.op_webstorage_remove(key, this[_persistent]);
     }
 
     clear() {
       webidl.assertBranded(this, StoragePrototype);
-      core.unwrapOpResult(ops.op_webstorage_clear(this[_persistent]));
+      ops.op_webstorage_clear(this[_persistent]);
     }
   }
 
@@ -139,7 +137,7 @@
           (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        return core.unwrapOpResult(ops.op_webstorage_iterate_keys(persistent));
+        return ops.op_webstorage_iterate_keys(persistent);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {

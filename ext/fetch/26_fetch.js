@@ -69,16 +69,14 @@
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
   function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
-    return core.unwrapOpResult(
-      ops.op_fetch(
-        method,
-        url,
-        headers,
-        clientRid,
-        hasBody,
-        bodyLength,
-        body,
-      ),
+    return ops.op_fetch(
+      method,
+      url,
+      headers,
+      clientRid,
+      hasBody,
+      bodyLength,
+      body,
     );
   }
 
@@ -562,7 +560,7 @@
       }
 
       // Pass the resolved URL to v8.
-      core.unwrapOpResult(ops.op_wasm_streaming_set_url(rid, res.url));
+      ops.op_wasm_streaming_set_url(rid, res.url);
 
       if (res.body !== null) {
         // 2.6.
@@ -573,7 +571,7 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.unwrapOpResult(ops.op_wasm_streaming_feed(rid, chunk));
+            ops.op_wasm_streaming_feed(rid, chunk);
           }
         })().then(
           // 2.7

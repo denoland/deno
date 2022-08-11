@@ -57,7 +57,7 @@ function main() {
   // See https://github.com/denoland/deno/issues/6649
   let thrown = false;
   try {
-    Deno.core.unwrapOpResult(Deno.core.ops.op_decode(new Uint8Array(2 ** 29)));
+    Deno.core.ops.op_decode(new Uint8Array(2 ** 29));
   } catch (e) {
     thrown = true;
     assert(e instanceof RangeError);

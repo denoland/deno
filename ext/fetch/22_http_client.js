@@ -22,10 +22,8 @@
   function createHttpClient(options) {
     options.caCerts ??= [];
     return new HttpClient(
-      core.unwrapOpResult(
-        ops.op_fetch_custom_client(
-          options,
-        ),
+      ops.op_fetch_custom_client(
+        options,
       ),
     );
   }
