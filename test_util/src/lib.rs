@@ -2082,8 +2082,7 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
       summary.insert(
         syscall_name.to_string(),
         StraceOutput {
-          percent_time: str::parse::<f64>(syscall_fields[0])
-            .expect(syscall_fields[0]),
+          percent_time: str::parse::<f64>(syscall_fields[0]).unwrap(),
           seconds: str::parse::<f64>(syscall_fields[1]).unwrap(),
           usecs_per_call: Some(str::parse::<u64>(syscall_fields[2]).unwrap()),
           calls: str::parse::<u64>(syscall_fields[3]).unwrap(),
