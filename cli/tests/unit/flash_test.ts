@@ -315,3 +315,30 @@ Deno.test(
     await server;
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpConnectionClose() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(() => {
+      promise.resolve();
+      return new Response("");
+    }, { port: 2333, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 2333 });
+    // Send GET request with a body + connection: close.
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nConnection: Close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    await promise;
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);

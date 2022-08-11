@@ -140,8 +140,7 @@ struct NextRequest {
   // op_flash_serve resolves or websocket upgrade is performed.
   socket: *mut Stream,
   inner: InnerRequest,
-  #[allow(dead_code)]
-  no_more_requests: bool,
+  keep_alive: bool,
   #[allow(dead_code)]
   upgrade: bool,
   content_read: usize,
@@ -166,9 +165,11 @@ fn op_flash_respond(
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
 
+  let mut close = false;
   let sock = match shutdown {
     true => {
       let tx = ctx.response.remove(&token).unwrap();
+      close = !tx.keep_alive;
       unsafe { &mut *tx.socket }
     }
     // In case of a websocket upgrade or streaming response.
@@ -187,6 +188,11 @@ fn op_flash_respond(
     let _ = sock.write(b"\r\n");
     let _ = sock.write(&response);
     let _ = sock.write(b"\r\n");
+  }
+
+  // server is done writing and request doesn't want to kept alive.
+  if shutdown && close {
+    let _ = sock.inner.shutdown(std::net::Shutdown::Both); // Typically shutdown shouldn't fail.
   }
 }
 
@@ -614,17 +620,16 @@ fn run_server(
                 sockets.remove(&token);
                 continue 'events;
               }
-              Ok(n) => {
-                let r = req.parse(&buffer[..offset + n]);
-                match r {
+              Ok(read) => {
+                match req.parse(&buffer[..offset + read]) {
                   Ok(httparse::Status::Complete(n)) => {
                     body_offset = n;
-                    body_len = offset + n;
+                    body_len = offset + read;
                     socket.parse_done = ParseStatus::None;
                     break;
                   }
                   Ok(httparse::Status::Partial) => {
-                    socket.parse_done = ParseStatus::Ongoing(offset + n);
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
                     continue;
                   }
                   Err(e) => {
@@ -665,7 +670,7 @@ fn run_server(
           // h1
           // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
           // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
-          let mut no_more_requests = inner_req.req.version.unwrap() == 1;
+          let mut keep_alive = inner_req.req.version.unwrap() == 1;
           let mut upgrade = false;
           #[allow(unused_variables)]
           let mut expect_continue = false;
@@ -678,12 +683,12 @@ fn run_server(
                 let value = unsafe {
                   HeaderValue::from_maybe_shared_unchecked(header.value)
                 };
-                if no_more_requests {
+                if keep_alive {
                   // 1.1
-                  no_more_requests = !connection_has(&value, "close");
+                  keep_alive = !connection_has(&value, "close");
                 } else {
                   // 1.0
-                  no_more_requests = connection_has(&value, "keep-alive");
+                  keep_alive = connection_has(&value, "keep-alive");
                 }
               }
               Ok(UPGRADE) => {
@@ -740,7 +745,7 @@ fn run_server(
             socket: sock_ptr,
             // SAFETY: headers backing buffer outlives the mio event loop ('static)
             inner: inner_req,
-            no_more_requests,
+            keep_alive,
             upgrade,
             te_chunked,
             content_read: 0,

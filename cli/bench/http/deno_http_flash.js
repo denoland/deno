@@ -3,7 +3,7 @@ const { serve } = Deno;
 // import { serve } from "http://deno.land/std/http/server.ts"
 
 async function handler(req) {
-  // console.log((await req.text()).length);
+  //console.log((await req.text()).length);
   return new Response("Hello World");
 }
 
