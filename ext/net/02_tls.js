@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { Listener, Conn } = window.__bootstrap.net;
 
   function opConnectTls(
@@ -16,7 +17,7 @@
   }
 
   function opListenTls(args) {
-    return core.opSync("op_tls_listen", args);
+    return ops.op_tls_listen(args);
   }
 
   function opStartTls(args) {

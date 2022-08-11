@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const __bootstrap = window.__bootstrap;
   const {
     BigInt,
@@ -45,108 +46,93 @@
     }
 
     getUint8(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_u8",
+      return ops.op_ffi_read_u8(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt8(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_i8",
+      return ops.op_ffi_read_i8(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getUint16(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_u16",
+      return ops.op_ffi_read_u16(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt16(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_i16",
+      return ops.op_ffi_read_i16(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getUint32(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_u32",
+      return ops.op_ffi_read_u32(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getInt32(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_i32",
+      return ops.op_ffi_read_i32(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getBigUint64(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_u64",
+      return ops.op_ffi_read_u64(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getBigInt64(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_i64",
+      return ops.op_ffi_read_i64(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat32(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_f32",
+      return ops.op_ffi_read_f32(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getFloat64(offset = 0) {
-      return core.opSync(
-        "op_ffi_read_f64",
+      return ops.op_ffi_read_f64(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     getCString(offset = 0) {
-      return core.opSync(
-        "op_ffi_cstr_read",
+      return ops.op_ffi_cstr_read(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
       );
     }
 
     static getCString(pointer, offset = 0) {
-      return core.opSync(
-        "op_ffi_cstr_read",
+      return ops.op_ffi_cstr_read(
         offset ? BigInt(pointer) + BigInt(offset) : pointer,
       );
     }
 
     getArrayBuffer(byteLength, offset = 0) {
-      return core.opSync(
-        "op_ffi_get_buf",
+      return ops.op_ffi_get_buf(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
         byteLength,
       );
     }
 
     static getArrayBuffer(pointer, byteLength, offset = 0) {
-      return core.opSync(
-        "op_ffi_get_buf",
+      return ops.op_ffi_get_buf(
         offset ? BigInt(pointer) + BigInt(offset) : pointer,
         byteLength,
       );
     }
 
     copyInto(destination, offset = 0) {
-      core.opSync(
-        "op_ffi_buf_copy_into",
+      ops.op_ffi_buf_copy_into(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
         destination,
         destination.byteLength,
@@ -154,8 +140,7 @@
     }
 
     static copyInto(pointer, destination, offset = 0) {
-      core.opSync(
-        "op_ffi_buf_copy_into",
+      ops.op_ffi_buf_copy_into(
         offset ? BigInt(pointer) + BigInt(offset) : pointer,
         destination,
         destination.byteLength,
@@ -168,7 +153,7 @@
       if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
         return value.pointer;
       }
-      return core.opSync("op_ffi_ptr_of", value);
+      return ops.op_ffi_ptr_of(value);
     }
   }
 
@@ -221,8 +206,7 @@
 
         return promise;
       } else {
-        return core.opSync(
-          "op_ffi_call_ptr",
+        return ops.op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
@@ -258,8 +242,7 @@
           "Invalid UnsafeCallback, cannot be nonblocking",
         );
       }
-      const [rid, pointer] = core.opSync(
-        "op_ffi_unsafe_callback_create",
+      const [rid, pointer] = ops.op_ffi_unsafe_callback_create(
         definition,
         callback,
       );
@@ -272,7 +255,7 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        core.opSync("op_ffi_unsafe_callback_ref", true);
+        ops.op_ffi_unsafe_callback_ref(true);
       }
     }
 
@@ -280,14 +263,14 @@
       // Only decrement refcount if it is positive, and only
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
-        core.opSync("op_ffi_unsafe_callback_ref", false);
+        ops.op_ffi_unsafe_callback_ref(false);
       }
     }
 
     close() {
       if (this.#refcount) {
         this.#refcount = 0;
-        core.opSync("op_ffi_unsafe_callback_ref", false);
+        ops.op_ffi_unsafe_callback_ref(false);
       }
       core.close(this.#rid);
     }
@@ -300,7 +283,7 @@
     symbols = {};
 
     constructor(path, symbols) {
-      [this.#rid, this.symbols] = core.opSync("op_ffi_load", { path, symbols });
+      [this.#rid, this.symbols] = ops.op_ffi_load({ path, symbols });
       for (const symbol in symbols) {
         if ("type" in symbols[symbol]) {
           const type = symbols[symbol].type;
@@ -311,8 +294,7 @@
           }
 
           const name = symbols[symbol].name || symbol;
-          const value = core.opSync(
-            "op_ffi_get_static",
+          const value = ops.op_ffi_get_static(
             this.#rid,
             name,
             type,

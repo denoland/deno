@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 const { core } = Deno;
+const { ops } = core;
 
 class DOMException {
   constructor(message, code) {
@@ -16,7 +17,7 @@ core.registerErrorBuilder(
 );
 
 try {
-  core.opSync("op_err", undefined, null);
+  ops.op_err();
   throw new Error("op_err didn't throw!");
 } catch (err) {
   if (!(err instanceof DOMException)) {
