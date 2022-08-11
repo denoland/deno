@@ -39,6 +39,7 @@ use std::intrinsics::transmute;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
+use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::os::unix::prelude::AsRawFd;
@@ -98,6 +99,7 @@ struct Stream {
   parse_done: ParseStatus,
   buffer: UnsafeCell<Vec<u8>>,
   read_lock: Arc<Mutex<()>>,
+  _pin: PhantomPinned,
 }
 
 impl Stream {
@@ -356,7 +358,7 @@ fn op_flash_first_packet(
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
 
-  let buffer = &tx.inner.buffer[tx.inner.body_offset..];
+  let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
   // Oh there is nothing here.
   if buffer.is_empty() {
     return ZeroCopyBuf::empty();
@@ -369,7 +371,7 @@ fn op_flash_first_packet(
 
   tx.content_read += buffer.len();
 
-  buffer.to_vec().into()  
+  buffer.to_vec().into()
 }
 
 // fn consume_body(sock: &mut Stream) -> usize {
@@ -531,8 +533,7 @@ fn run_server(
       Ok(()) => (),
     }
     'events: for event in &events {
-      let result = close_rx.try_recv();
-      if let Ok(_) = result {
+      if close_rx.try_recv().is_ok() {
         break 'outer;
       }
       let token = event.token();
@@ -546,7 +547,7 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
-              let stream = UnsafeCell::new(Stream {
+              let stream = Box::pin(Stream {
                 inner: socket,
                 detached: false,
                 read_rx: None,
@@ -554,6 +555,7 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                _pin: PhantomPinned,
               });
 
               trace!("New connection: {}", token.0);
@@ -564,9 +566,12 @@ fn run_server(
           }
         },
         token => {
-          let cell = sockets.get_mut(&token).unwrap();
-          let sock_ptr = cell.get();
-          let socket = cell.get_mut();
+          let socket = sockets.get_mut(&token).unwrap();
+          let socket = unsafe {
+            let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
+            Pin::get_unchecked_mut(mut_ref)
+          };
+          let sock_ptr = socket as *mut _;
 
           if socket.detached {
             poll.registry().deregister(&mut socket.inner).unwrap();
@@ -591,7 +596,7 @@ fn run_server(
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
           let mut req = httparse::Request::new(&mut headers);
           let body_offset;
-          let mut body_len;
+          let body_len;
           loop {
             // SAFETY: It is safe for the read buf to be mutable here.
             let buffer = unsafe { &mut *socket.buffer.get() };
@@ -610,11 +615,11 @@ fn run_server(
                 continue 'events;
               }
               Ok(n) => {
-                body_len = offset + n;
                 let r = req.parse(&buffer[..offset + n]);
                 match r {
                   Ok(httparse::Status::Complete(n)) => {
                     body_offset = n;
+                    body_len = offset + n;
                     socket.parse_done = ParseStatus::None;
                     break;
                   }
