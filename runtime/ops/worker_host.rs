@@ -42,7 +42,7 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
+pub type WorkerEventCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
   + Sync
   + Send;
 
@@ -61,7 +61,7 @@ pub struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 /// because `GothamState` used in `OpState` overrides
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
-pub struct PreloadModuleCbHolder(Arc<PreloadModuleCb>);
+pub struct WorkerEventCbHolder(Arc<WorkerEventCb>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
@@ -92,7 +92,8 @@ pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
 pub fn init(
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
-  preload_module_cb: Arc<PreloadModuleCb>,
+  preload_module_cb: Arc<WorkerEventCb>,
+  pre_execute_module_cb: Arc<WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Extension {
   Extension::builder()
@@ -104,8 +105,11 @@ pub fn init(
         CreateWebWorkerCbHolder(create_web_worker_cb.clone());
       state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
       let preload_module_cb_holder =
-        PreloadModuleCbHolder(preload_module_cb.clone());
-      state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
+        WorkerEventCbHolder(preload_module_cb.clone());
+      state.put::<WorkerEventCbHolder>(preload_module_cb_holder);
+      let pre_execute_module_cb_holder =
+        WorkerEventCbHolder(pre_execute_module_cb.clone());
+      state.put::<WorkerEventCbHolder>(pre_execute_module_cb_holder);
       let format_js_error_fn_holder =
         FormatJsErrorFnHolder(format_js_error_fn.clone());
       state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
@@ -172,8 +176,10 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let preload_module_cb = state.take::<PreloadModuleCbHolder>();
-  state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
+  let preload_module_cb = state.take::<WorkerEventCbHolder>();
+  state.put::<WorkerEventCbHolder>(preload_module_cb.clone());
+  let pre_execute_module_cb = state.take::<WorkerEventCbHolder>();
+  state.put::<WorkerEventCbHolder>(pre_execute_module_cb.clone());
   let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
   state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
@@ -219,6 +225,7 @@ fn op_create_worker(
       module_specifier,
       maybe_source_code,
       preload_module_cb.0,
+      pre_execute_module_cb.0,
       format_js_error_fn.0,
     )
   })?;

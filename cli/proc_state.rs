@@ -22,12 +22,15 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::node;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -495,12 +498,58 @@ impl ProcState {
     Ok(())
   }
 
+  fn handle_node_resolve_result(
+    &self,
+    result: Result<Option<ResolveResponse>, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let response = match result? {
+      Some(response) => response,
+      None => bail!("Not found."),
+    };
+    if let ResolveResponse::CommonJs(specifier) = &response {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.lock().insert(specifier.clone());
+    }
+    response.to_result()
+  }
+
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+      if self.npm_resolver.in_npm_package(&referrer) {
+        // we're in an npm package, so use node resolution
+        return self
+          .handle_node_resolve_result(node::node_resolve_new(
+            specifier,
+            &referrer,
+            &self.npm_resolver,
+            node::ResolutionMode::Execution,
+          ))
+          .with_context(|| {
+            format!(
+              "Could not resolve '{}' from '{}'.",
+              specifier,
+              self
+                .npm_resolver
+                .resolve_package_from_specifier(&referrer)
+                .unwrap()
+                .id
+            )
+          });
+      } else if let Ok(reference) = NpmPackageReference::from_str(&specifier) {
+        // handle npm:<package-name>@<version> specifiers only in deno code
+        return self
+          .handle_node_resolve_result(node::node_resolve_npm_reference_new(
+            &reference,
+            &self.npm_resolver,
+            node::ResolutionMode::Execution,
+          ))
+          .with_context(|| format!("Could not resolve '{}'.", reference));
+      }
+
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {

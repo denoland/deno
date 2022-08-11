@@ -16,7 +16,6 @@
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
     ObjectEntries,
-    ObjectPrototype,
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
     ObjectKeys,
