@@ -204,7 +204,7 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfoops.op_fstat_sync(rid);
+    return parseFileInfo(ops.op_fstat_sync(rid));
   }
 
   async function fstat(rid) {
