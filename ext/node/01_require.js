@@ -26,6 +26,7 @@
     JSONParse,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
+    StringPrototypeMatch,
     StringPrototypeSlice,
     StringPrototypeStartsWith,
     StringPrototypeCharCodeAt,
@@ -266,6 +267,65 @@
 
   const CHAR_FORWARD_SLASH = 47;
   const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
+  const encodedSepRegEx = /%2F|%2C/i;
+
+  function finalizeEsmResolution(
+    resolved,
+    parentPath,
+    pkgPath,
+  ) {
+    if (RegExpPrototypeTest(encodedSepRegEx, resolved)) {
+      throw new ERR_INVALID_MODULE_SPECIFIER(
+        resolved,
+        'must not include encoded "/" or "\\" characters',
+        parentPath,
+      );
+    }
+    // const filename = fileURLToPath(resolved);
+    const filename = resolved;
+    const actual = tryFile(filename, false);
+    if (actual) {
+      return actual;
+    }
+    throw new ERR_MODULE_NOT_FOUND(
+      filename,
+      path.resolve(pkgPath, "package.json"),
+    );
+  }
+
+  
+  // This only applies to requests of a specific form:
+  // 1. name/.*
+  // 2. @scope/name/.*
+  const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
+  function resolveExports(modulesPath, request) {
+    // The implementation's behavior is meant to mirror resolution in ESM.
+    const [, name, expansion = ""] = 
+      StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
+    if (!name) {
+      return;
+    }
+    const pkgPath = pathResolve(modulesPath, name);
+    const pkg = readPackage(pkgPath);
+    if (pkg?.exports != null) {
+      try {
+        const resolvedExports = packageExportsResolve(
+          pathToFileURL(pkgPath + '/package.json'), 
+          '.' + expansion, 
+          pkg, 
+          null,
+          cjsConditions
+        );
+        return finalizeEsmResolution(resolvedExports, null, pkgPath);
+      } catch (e) {
+        if (e.code === 'ERR_MODULE_NOT_FOUND')
+          throw createEsmNotFoundErr(request, pkgPath + '/package.json');
+        throw e;
+      }
+    }
+  }
+
+
   Module._findPath = function (request, paths, isMain) {
     const absoluteRequest = ops.op_require_path_is_absolute(request);
     if (absoluteRequest) {
