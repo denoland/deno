@@ -217,11 +217,7 @@ if (!(status & (1 << 4))) {
 dylib.symbols.print_buffer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
-// Make sure the buffer does not get collected
-globalThis.into = into;
 const into2 = new Uint8Array(3);
-// Make sure the buffer does not get collected
-globalThis.into2 = into2;
 const into2ptr = Deno.UnsafePointer.of(into2);
 const into2ptrView = new Deno.UnsafePointerView(into2ptr);
 const into3 = new Uint8Array(3);
@@ -235,8 +231,6 @@ const string = new Uint8Array([
   ...new TextEncoder().encode("Hello from pointer!"),
   0,
 ]);
-// Make sure the buffer does not get collected
-globalThis.string = string;
 const stringPtr = Deno.UnsafePointer.of(string);
 const stringPtrview = new Deno.UnsafePointerView(stringPtr);
 console.log(stringPtrview.getCString());
