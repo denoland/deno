@@ -107,26 +107,26 @@ pub async fn create_standalone_binary(
     Some(ca_file) => Some(read(ca_file)?),
     None => None,
   };
-  let maybe_import_map: Option<(Url, String)> =
-    match flags.import_map_path.as_ref() {
-      None => None,
-      Some(import_map_url) => {
-        let import_map_specifier = resolve_url_or_path_at_cwd(
-          import_map_url,
-        )
+  let maybe_import_map: Option<(Url, String)> = match flags
+    .import_map_path
+    .as_ref()
+  {
+    None => None,
+    Some(import_map_url) => {
+      let import_map_specifier = resolve_url_or_path_at_cwd(import_map_url)
         .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
-        let file = ps
-          .file_fetcher
-          .fetch(&import_map_specifier, &mut Permissions::allow_all())
-          .await
-          .context(format!(
-            "Unable to load '{}' import map",
-            import_map_specifier
-          ))?;
+      let file = ps
+        .file_fetcher
+        .fetch(&import_map_specifier, &mut Permissions::allow_all())
+        .await
+        .context(format!(
+          "Unable to load '{}' import map",
+          import_map_specifier
+        ))?;
 
-        Some((import_map_specifier, file.source.to_string()))
-      }
-    };
+      Some((import_map_specifier, file.source.to_string()))
+    }
+  };
   let metadata = Metadata {
     argv: flags.argv.clone(),
     unstable: flags.unstable,
