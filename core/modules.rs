@@ -1518,7 +1518,7 @@ import "/a.js";
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
-          Deno.core.opSync("op_test", control);
+          Deno.core.ops.op_test(control);
         "#,
         )
         .unwrap();

@@ -30,7 +30,7 @@ fn setup() -> Vec<Extension> {
 }
 
 fn bench_op_nop(b: &mut Bencher) {
-  bench_js_sync(b, r#"Deno.core.opSync("op_nop", null, null);"#, setup);
+  bench_js_sync(b, r#"Deno.core.ops.op_nop();"#, setup);
 }
 
 benchmark_group!(benches, bench_op_nop);
