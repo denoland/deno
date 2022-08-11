@@ -15,8 +15,12 @@ rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.'cfg(all())']
 rustflags = [
-  "-D", "clippy::all",
-  "-D", "clippy::await_holding_refcell_ref",
-  "-D", "clippy::missing_safety_doc",
-  "-D", "clippy::undocumented_unsafe_blocks",
+  "-D",
+  "clippy::all",
+  "-D",
+  "clippy::await_holding_refcell_ref",
+  "-D",
+  "clippy::missing_safety_doc",
+  "-D",
+  "clippy::undocumented_unsafe_blocks",
 ]
