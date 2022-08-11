@@ -10,6 +10,7 @@ use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_bench_path;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
 use crate::located_script_name;
@@ -651,7 +652,7 @@ pub async fn run_benchmarks_with_watch(
 
         if let Some(changed) = &changed {
           for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
+            resolve_url_or_path_at_cwd(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&&path) {
               modules_to_reload.push((specifier, ModuleKind::Esm));

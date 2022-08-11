@@ -13,6 +13,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
@@ -644,8 +645,7 @@ pub async fn cover_files(
   };
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
+    let module_specifier = resolve_url(&script_coverage.url)?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
       ps.file_fetcher.get_source(&module_specifier)

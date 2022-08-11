@@ -42,6 +42,7 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -362,7 +363,7 @@ fn resolve_import_map_specifier(
         log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
       }
     }
-    let specifier = deno_core::resolve_url_or_path(import_map_path)
+    let specifier = resolve_url_or_path_at_cwd(import_map_path)
       .context(format!("Bad URL (\"{}\") for import map.", import_map_path))?;
     return Ok(Some(specifier));
   } else if let Some(config_file) = &maybe_config_file {

@@ -4,6 +4,7 @@ use crate::args::DocFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::File;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::get_types;
 use crate::proc_state::ProcState;
 use crate::write_json_to_stdout;
@@ -11,7 +12,6 @@ use crate::write_to_stdout_ignore_sigpipe;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
@@ -41,11 +41,11 @@ pub async fn print_docs(
       get_types(ps.options.unstable()).into(),
     )?
   } else {
-    let module_specifier = resolve_url_or_path(&source_file)?;
+    let module_specifier = resolve_url_or_path_at_cwd(&source_file)?;
 
     // If the root module has external types, the module graph won't redirect it,
     // so instead create a dummy file which exports everything from the actual file being documented.
-    let root_specifier = resolve_url_or_path("./$deno$doc.ts").unwrap();
+    let root_specifier = resolve_url_or_path_at_cwd("./$deno$doc.ts").unwrap();
     let root = File {
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,

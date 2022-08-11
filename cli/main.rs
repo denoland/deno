@@ -65,6 +65,7 @@ use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
 use crate::fmt_errors::format_js_error;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::module_loader::CliModuleLoader;
@@ -82,7 +83,6 @@ use deno_core::futures::future::LocalFutureObj;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::parking_lot::RwLock;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
@@ -398,7 +398,8 @@ async fn compile_command(
     compile_flags.args.clone(),
   )?;
 
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path_at_cwd(&compile_flags.source_file)?;
   let ps = ProcState::build(flags).await?;
   let deno_dir = &ps.dir;
 
@@ -449,7 +450,7 @@ async fn info_command(
 ) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
+    let specifier = resolve_url_or_path_at_cwd(&specifier)?;
     let graph = ps
       .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
       .await?;
@@ -476,7 +477,7 @@ async fn install_command(
   let permissions =
     Permissions::from_options(&preload_flags.permissions_options())?;
   let ps = ProcState::build(preload_flags).await?;
-  let main_module = resolve_url_or_path(&install_flags.module_url)?;
+  let main_module = resolve_url_or_path_at_cwd(&install_flags.module_url)?;
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
@@ -541,7 +542,7 @@ async fn load_and_type_check(
   let lib = ps.options.ts_type_lib_window();
 
   for file in files {
-    let specifier = resolve_url_or_path(file)?;
+    let specifier = resolve_url_or_path_at_cwd(file)?;
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -563,7 +564,7 @@ async fn eval_command(
   // deno_graph works off of extensions for local files to determine the media
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
-    resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
+    resolve_url_or_path_at_cwd(&format!("./$deno$eval.{}", eval_flags.ext))?;
   let permissions = Permissions::from_options(&flags.permissions_options())?;
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
@@ -726,7 +727,7 @@ async fn bundle_command(
     let source_file1 = bundle_flags.source_file.clone();
     let source_file2 = bundle_flags.source_file.clone();
     async move {
-      let module_specifier = resolve_url_or_path(&source_file1)?;
+      let module_specifier = resolve_url_or_path_at_cwd(&source_file1)?;
 
       debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
@@ -859,7 +860,7 @@ async fn repl_command(
   flags: Flags,
   repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
-  let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
+  let main_module = resolve_url_or_path_at_cwd("./$deno$repl.ts").unwrap();
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
     &ps,
@@ -881,7 +882,7 @@ async fn repl_command(
 
 async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let ps = ProcState::build(flags).await?;
-  let main_module = resolve_url_or_path("./$deno$stdin.ts").unwrap();
+  let main_module = resolve_url_or_path_at_cwd("./$deno$stdin.ts").unwrap();
   let mut worker = create_main_worker(
     &ps.clone(),
     main_module.clone(),
@@ -988,7 +989,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   }
 
   let flags = Arc::new(flags);
-  let main_module = resolve_url_or_path(&script)?;
+  let main_module = resolve_url_or_path_at_cwd(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
 
   let operation = |(sender, main_module): (
@@ -1052,7 +1053,7 @@ async fn run_command(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let main_module = resolve_url_or_path(&run_flags.script)?;
+  let main_module = resolve_url_or_path_at_cwd(&run_flags.script)?;
   let ps = ProcState::build(flags).await?;
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;

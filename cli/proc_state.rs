@@ -16,6 +16,7 @@ use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::FileFetcher;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
@@ -470,7 +471,7 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+    if let Ok(referrer) = deno_core::resolve_url(referrer) {
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
@@ -492,29 +493,42 @@ impl ProcState {
       }
     }
 
-    // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
-    // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
-    // but sadly that's not the case due to missing APIs in V8.
+    // The referrer is set to the empty string if `import()` is called from a
+    // script that does not have a source URL set. This only happens in the REPL
+    // so we work around it by using the current working directory as the
+    // referrer while in the repl if the referrer is the empty string.
+    //  Ideally we should always have a referrer filled but sadly that's not the
+    // case due to missing APIs in V8.
     let referrer = if referrer.is_empty()
       && matches!(self.options.sub_command(), DenoSubcommand::Repl(_))
     {
-      deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
+      dbg!();
+      resolve_url_or_path_at_cwd("./$deno$repl.ts").unwrap()
+    } else if referrer == "." {
+      // The referrer can also be set to "." if this is a "root" import where
+      // there is no referrer. The referrer would be set to `None` if this
+      // happens, and only absolute specifiers would be allowed, but
+      // unfortunately `deno_graph` does not allow `None` as a referrer for now.
+      // So to prevent relative resolution, we set a fake referrer and that can
+      // not occur through nomal usage, and then error later in the code if we
+      // find the fake referrer in the resolved specifier.
+      Url::parse("deno-root:///").unwrap()
     } else {
-      deno_core::resolve_url_or_path(referrer).unwrap()
+      deno_core::resolve_url(referrer)?
     };
-
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
-    if let Some(resolver) = &maybe_resolver {
+    let url = if let Some(resolver) = self.maybe_resolver.as_deref() {
       resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
         .map_err(|err| err.into())
+    }?;
+    if url.scheme() == "deno-root" {
+      return Err(custom_error(
+        "TypeError",
+        "All imports require a valid referrer.",
+      ));
     }
+    Ok(url)
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {

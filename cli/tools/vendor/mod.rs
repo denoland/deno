@@ -8,7 +8,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -17,6 +16,7 @@ use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
 use crate::fs_util;
 use crate::fs_util::relative_specifier;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::fs_util::specifier_to_file_path;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_json;
@@ -264,7 +264,7 @@ async fn create_graph(
     .specifiers
     .iter()
     .map(|p| {
-      let url = resolve_url_or_path(p)?;
+      let url = resolve_url_or_path_at_cwd(p)?;
       Ok((url, deno_graph::ModuleKind::Esm))
     })
     .collect::<Result<Vec<_>, AnyError>>()?;

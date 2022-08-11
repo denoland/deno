@@ -1,14 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::normalize_path;
-use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
 use std::path::PathBuf;
 use url::ParseError;
 use url::Url;
-
-pub const DUMMY_SPECIFIER: &str = "<unknown>";
 
 /// Error indicating the reason resolving a module specifier failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,7 +30,9 @@ impl Error for ModuleResolutionError {
 impl fmt::Display for ModuleResolutionError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      InvalidUrl(ref err) => write!(f, "invalid URL: {}", err),
+      InvalidUrl(ref err) => {
+        write!(f, "invalid URL: {}", err)
+      }
       InvalidBaseUrl(ref err) => {
         write!(f, "invalid base URL for relative import: {}", err)
       }
@@ -84,18 +84,7 @@ pub fn resolve_import(
     // 3. Return the result of applying the URL parser to specifier with base
     //    URL as the base URL.
     Err(ParseError::RelativeUrlWithoutBase) => {
-      let base = if base == DUMMY_SPECIFIER {
-        // Handle <unknown> case, happening under e.g. repl.
-        // Use CWD for such case.
-
-        // Forcefully join base to current dir.
-        // Otherwise, later joining in Url would be interpreted in
-        // the parent directory (appending trailing slash does not work)
-        let path = current_dir().unwrap().join(base);
-        Url::from_file_path(path).unwrap()
-      } else {
-        Url::parse(base).map_err(InvalidBaseUrl)?
-      };
+      let base = Url::parse(base).map_err(InvalidBaseUrl)?;
       base.join(specifier).map_err(InvalidUrl)?
     }
 
@@ -113,36 +102,39 @@ pub fn resolve_import(
 pub fn resolve_url(
   url_str: &str,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  Url::parse(url_str).map_err(ModuleResolutionError::InvalidUrl)
+  Url::parse(url_str).map_err(InvalidUrl)
 }
 
 /// Takes a string representing either an absolute URL or a file path,
 /// as it may be passed to deno as a command line argument.
 /// The string is interpreted as a URL if it starts with a valid URI scheme,
 /// e.g. 'http:' or 'file:' or 'git+ssh:'. If not, it's interpreted as a
-/// file path; if it is a relative path it's resolved relative to the current
-/// working directory.
+/// file path; if it is a relative path it's resolved relative to the cwd passed
+/// in. If no cwd is passed, relative paths will result in an error.
 pub fn resolve_url_or_path(
   specifier: &str,
+  cwd: Option<&Path>,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
   if specifier_has_uri_scheme(specifier) {
     resolve_url(specifier)
   } else {
-    resolve_path(specifier)
+    resolve_path(specifier, cwd)
   }
 }
 
 /// Converts a string representing a relative or absolute path into a
-/// ModuleSpecifier. A relative path is considered relative to the current
-/// working directory.
+/// ModuleSpecifier. A relative path is considered relative to the cwd passed
+/// in. If no cwd is passed, relative paths will result in an error.
 pub fn resolve_path(
   path_str: &str,
+  cwd: Option<&Path>,
 ) -> Result<ModuleSpecifier, ModuleResolutionError> {
-  let path = current_dir()
-    .map_err(|_| ModuleResolutionError::InvalidPath(path_str.into()))?
-    .join(path_str);
-  let path = normalize_path(&path);
-  Url::from_file_path(path.clone())
+  let path = Path::new(path_str);
+  let path = match cwd {
+    Some(cwd) => normalize_path(cwd.join(path)),
+    None => normalize_path(path),
+  };
+  Url::from_file_path(&path)
     .map_err(|()| ModuleResolutionError::InvalidPath(path))
 }
 
@@ -184,16 +176,7 @@ mod tests {
 
   #[test]
   fn test_resolve_import() {
-    fn get_path(specifier: &str) -> Url {
-      let base_path = current_dir().unwrap().join("<unknown>");
-      let base_url = Url::from_file_path(base_path).unwrap();
-      base_url.join(specifier).unwrap()
-    }
-    let awesome = get_path("/awesome.ts");
-    let awesome_srv = get_path("/service/awesome.ts");
     let tests = vec![
-      ("/awesome.ts", "<unknown>", awesome.as_str()),
-      ("/service/awesome.ts", "<unknown>", awesome_srv.as_str()),
       (
         "./005_more_imports.ts",
         "http://deno.land/core/tests/006_url_imports.ts",
@@ -356,7 +339,7 @@ mod tests {
     ];
 
     // The local path tests assume that the cwd is the deno repo root.
-    let cwd = current_dir().unwrap();
+    let cwd = std::env::current_dir().unwrap();
     let cwd_str = cwd.to_str().unwrap();
 
     if cfg!(target_os = "windows") {
@@ -438,7 +421,9 @@ mod tests {
     }
 
     for (specifier, expected_url) in tests {
-      let url = resolve_url_or_path(specifier).unwrap().to_string();
+      let url = resolve_url_or_path(specifier, Some(&cwd))
+        .unwrap()
+        .to_string();
       assert_eq!(url, expected_url);
     }
   }
@@ -458,9 +443,18 @@ mod tests {
     }
 
     for (specifier, expected_err) in tests {
-      let err = resolve_url_or_path(specifier).unwrap_err();
+      let err = resolve_url_or_path(specifier, None).unwrap_err();
       assert_eq!(err, expected_err);
     }
+  }
+
+  #[test]
+  fn test_resolve_path_no_cwd() {
+    let res = resolve_path("tests/006_url_imports.ts", None);
+    assert_eq!(
+      res.unwrap_err(),
+      ModuleResolutionError::InvalidPath("tests/006_url_imports.ts".into())
+    );
   }
 
   #[test]

@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::proc_state::ProcState;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
@@ -63,7 +64,7 @@ async fn read_eval_file(
   ps: &ProcState,
   eval_file: &str,
 ) -> Result<String, AnyError> {
-  let specifier = deno_core::resolve_url_or_path(eval_file)?;
+  let specifier = resolve_url_or_path_at_cwd(eval_file)?;
 
   let file = ps
     .file_fetcher

@@ -5,9 +5,9 @@ use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
 use crate::fs_util::canonicalize_path;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -256,7 +256,7 @@ fn resolve_shim_data(
   let installation_dir = root.join("bin");
 
   // Check if module_url is remote
-  let module_url = resolve_url_or_path(&install_flags.module_url)?;
+  let module_url = resolve_url_or_path_at_cwd(&install_flags.module_url)?;
 
   let name = install_flags
     .name
@@ -355,7 +355,7 @@ fn resolve_shim_data(
   }
 
   if let Some(import_map_path) = &flags.import_map_path {
-    let import_map_url = resolve_url_or_path(import_map_path)?;
+    let import_map_url = resolve_url_or_path_at_cwd(import_map_path)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }

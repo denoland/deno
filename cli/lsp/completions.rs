@@ -13,7 +13,6 @@ use crate::fs_util::specifier_to_file_path;
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
 use deno_core::normalize_path;
-use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -374,7 +373,8 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier =
+            ModuleSpecifier::from_file_path(de.path()).ok()?;
           if &entry_specifier == base {
             return None;
           }

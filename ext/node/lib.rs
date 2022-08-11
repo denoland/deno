@@ -104,7 +104,8 @@ pub fn op_require_node_module_paths(
 ) -> Vec<String> {
   check_unstable(state);
   // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(&from)
+  let cwd = std::env::current_dir().unwrap();
+  let from = deno_core::resolve_path(&from, Some(&cwd))
     .unwrap()
     .to_file_path()
     .unwrap();

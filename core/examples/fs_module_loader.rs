@@ -24,7 +24,8 @@ fn main() -> Result<(), Error> {
     .enable_all()
     .build()?;
 
-  let main_module = deno_core::resolve_path(&main_url)?;
+  let cwd = std::env::current_dir()?;
+  let main_module = deno_core::resolve_path(&main_url, Some(&cwd))?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;

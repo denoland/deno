@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
+use deno_fetch::reqwest::Url;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
@@ -62,7 +63,7 @@ async fn main() -> Result<(), AnyError> {
 
   let js_path =
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/hello_runtime.js");
-  let main_module = deno_core::resolve_path(&js_path.to_string_lossy())?;
+  let main_module = Url::from_file_path(js_path).unwrap();
   let permissions = Permissions::allow_all();
 
   let mut worker = MainWorker::bootstrap_from_options(

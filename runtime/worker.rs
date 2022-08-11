@@ -396,7 +396,8 @@ mod tests {
   use deno_core::resolve_url_or_path;
 
   fn create_test_worker() -> MainWorker {
-    let main_module = resolve_url_or_path("./hello.js").unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    let main_module = resolve_url_or_path("./hello.js", Some(&cwd)).unwrap();
     let permissions = Permissions::default();
 
     let options = WorkerOptions {
@@ -439,7 +440,8 @@ mod tests {
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
     let p = test_util::testdata_path().join("esm_imports_a.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier =
+      resolve_url_or_path(&p.to_string_lossy(), None).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -456,7 +458,8 @@ mod tests {
       .parent()
       .unwrap()
       .join("tests/circular1.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier =
+      resolve_url_or_path(&p.to_string_lossy(), None).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
     if let Err(err) = result {
@@ -471,7 +474,9 @@ mod tests {
   async fn execute_mod_resolve_error() {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
-    let module_specifier = resolve_url_or_path("does-not-exist").unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    let module_specifier =
+      resolve_url_or_path("does-not-exist", Some(&cwd)).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }
@@ -482,7 +487,8 @@ mod tests {
     // tests).
     let mut worker = create_test_worker();
     let p = test_util::testdata_path().join("001_hello.js");
-    let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
+    let module_specifier =
+      resolve_url_or_path(&p.to_string_lossy(), None).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
   }

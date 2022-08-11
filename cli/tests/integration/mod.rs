@@ -2,6 +2,7 @@
 
 use crate::itest;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
@@ -990,11 +991,11 @@ fn typecheck_core() {
     &test_file,
     format!(
       "import \"{}\";",
-      deno_core::resolve_path(
+      Url::from_file_path(
         util::root_path()
           .join("core/lib.deno_core.d.ts")
           .to_str()
-          .unwrap()
+          .unwrap(),
       )
       .unwrap()
     ),

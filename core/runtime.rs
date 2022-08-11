@@ -3892,4 +3892,18 @@ assertEquals(1, notify_return_value);
       ));
     });
   }
+
+  #[test]
+  fn test_evalcontext_relative_specifier_error() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let specifiers = &["", "./foo", "foo", "../foo"];
+    for specifier in specifiers {
+      runtime
+      .execute_script(
+        "test.js",
+&format!(  r#"try {{ Deno.core.evalContext('', '{specifier}'); throw new Error("error") }} catch {{}}"#)
+)
+      .unwrap();
+    }
+  }
 }

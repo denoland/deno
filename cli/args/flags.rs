@@ -20,6 +20,8 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::fs_util::resolve_url_or_path_at_cwd;
+
 use super::flags_allow_net;
 
 static LONG_VERSION: Lazy<String> = Lazy::new(|| {
@@ -431,7 +433,7 @@ impl Flags {
     } else if let Lint(LintFlags { files, .. }) = &self.subcommand {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
-      if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+      if let Ok(module_specifier) = resolve_url_or_path_at_cwd(script) {
         if module_specifier.scheme() == "file" {
           if let Ok(p) = module_specifier.to_file_path() {
             Some(vec![p])

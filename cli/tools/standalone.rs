@@ -7,6 +7,7 @@ use crate::args::RunFlags;
 use crate::args::TypeCheckMode;
 use crate::deno_dir::DenoDir;
 use crate::fs_util;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::ProcState;
@@ -14,7 +15,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
@@ -107,26 +107,26 @@ pub async fn create_standalone_binary(
     Some(ca_file) => Some(read(ca_file)?),
     None => None,
   };
-  let maybe_import_map: Option<(Url, String)> = match flags
-    .import_map_path
-    .as_ref()
-  {
-    None => None,
-    Some(import_map_url) => {
-      let import_map_specifier = deno_core::resolve_url_or_path(import_map_url)
+  let maybe_import_map: Option<(Url, String)> =
+    match flags.import_map_path.as_ref() {
+      None => None,
+      Some(import_map_url) => {
+        let import_map_specifier = resolve_url_or_path_at_cwd(
+          import_map_url,
+        )
         .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
-      let file = ps
-        .file_fetcher
-        .fetch(&import_map_specifier, &mut Permissions::allow_all())
-        .await
-        .context(format!(
-          "Unable to load '{}' import map",
-          import_map_specifier
-        ))?;
+        let file = ps
+          .file_fetcher
+          .fetch(&import_map_specifier, &mut Permissions::allow_all())
+          .await
+          .context(format!(
+            "Unable to load '{}' import map",
+            import_map_specifier
+          ))?;
 
-      Some((import_map_specifier, file.source.to_string()))
-    }
-  };
+        Some((import_map_specifier, file.source.to_string()))
+      }
+    };
   let metadata = Metadata {
     argv: flags.argv.clone(),
     unstable: flags.unstable,
@@ -294,7 +294,8 @@ pub fn compile_to_runtime_flags(
 pub fn resolve_compile_executable_output_path(
   compile_flags: &CompileFlags,
 ) -> Result<PathBuf, AnyError> {
-  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  let module_specifier =
+    resolve_url_or_path_at_cwd(&compile_flags.source_file)?;
   compile_flags.output.as_ref().and_then(|output| {
     if fs_util::path_has_trailing_slash(output) {
       let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;

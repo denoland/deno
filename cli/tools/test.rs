@@ -15,6 +15,7 @@ use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
@@ -881,7 +882,7 @@ fn extract_files_from_regex_blocks(
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
 
-      let file_specifier = deno_core::resolve_url_or_path(&format!(
+      let file_specifier = resolve_url_or_path_at_cwd(&format!(
         "{}${}-{}{}",
         specifier,
         file_line_index + line_offset + 1,
@@ -1525,7 +1526,7 @@ pub async fn run_tests_with_watch(
 
         if let Some(changed) = &changed {
           for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
+            resolve_url_or_path_at_cwd(&path.to_string_lossy()).ok()
           }) {
             if modules.contains(&&path) {
               modules_to_reload.push((specifier, ModuleKind::Esm));
