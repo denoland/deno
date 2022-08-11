@@ -310,7 +310,7 @@
       request,
       name,
       expansion,
-    );
+    ) ?? false;
   }
 
   Module._findPath = function (request, paths, isMain) {
