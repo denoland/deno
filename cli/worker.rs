@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -501,6 +502,7 @@ pub fn create_main_worker(
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
+    npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
@@ -543,8 +545,6 @@ fn create_web_worker_preload_module_callback(
 fn create_web_worker_pre_execute_module_callback(
   ps: ProcState,
 ) -> Arc<WorkerEventCb> {
-  let ps = ps.clone();
-
   Arc::new(move |mut worker| {
     let ps = ps.clone();
     let fut = async move {
@@ -611,6 +611,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
+      npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

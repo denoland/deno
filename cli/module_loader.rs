@@ -129,9 +129,9 @@ impl CliModuleLoader {
 
       // translate cjs to esm if it's cjs
       let code = if is_cjs {
-        node::translate_cjs_to_esm_new(
+        node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
-          &specifier,
+          specifier,
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,

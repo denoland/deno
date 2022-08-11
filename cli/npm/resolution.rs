@@ -112,6 +112,7 @@ pub struct NpmPackageId {
 }
 
 impl NpmPackageId {
+  #[allow(unused)]
   pub fn scope(&self) -> Option<&str> {
     if self.name.starts_with('@') && self.name.contains('/') {
       self.name.split('/').next()

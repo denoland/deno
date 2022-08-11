@@ -82,7 +82,7 @@ impl Loader for FetchCacher {
   ) -> LoadFuture {
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
-        match npm::NpmPackageReference::from_specifier(&specifier) {
+        match npm::NpmPackageReference::from_specifier(specifier) {
           Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
             specifier: specifier.clone(),
           })),

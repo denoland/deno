@@ -522,11 +522,10 @@ impl ProcState {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
         return self
-          .handle_node_resolve_result(node::node_resolve_new(
+          .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
             &self.npm_resolver,
-            node::ResolutionMode::Execution,
           ))
           .with_context(|| {
             format!(
@@ -539,13 +538,12 @@ impl ProcState {
                 .id
             )
           });
-      } else if let Ok(reference) = NpmPackageReference::from_str(&specifier) {
+      } else if let Ok(reference) = NpmPackageReference::from_str(specifier) {
         // handle npm:<package-name>@<version> specifiers only in deno code
         return self
-          .handle_node_resolve_result(node::node_resolve_npm_reference_new(
+          .handle_node_resolve_result(node::node_resolve_npm_reference(
             &reference,
             &self.npm_resolver,
-            node::ResolutionMode::Execution,
           ))
           .with_context(|| format!("Could not resolve '{}'.", reference));
       }

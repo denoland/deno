@@ -4,13 +4,33 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::normalize_path;
 use deno_core::op;
+use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
+
+pub trait DenoDirNpmResolver {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Path,
+  ) -> Option<PathBuf>;
+  fn in_npm_package(&self, path: &Path) -> bool;
+  fn ensure_read_permission(
+    &self,
+    state: &mut OpState,
+    path: &Path,
+  ) -> Result<(), AnyError>;
+}
 
 pub struct Unstable(pub bool);
 
-pub fn init(unstable: bool) -> Extension {
+pub fn init(
+  unstable: bool,
+  maybe_npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/node",
@@ -20,6 +40,8 @@ pub fn init(unstable: bool) -> Extension {
       op_require_init_paths::decl(),
       op_require_node_module_paths::decl(),
       op_require_proxy_path::decl(),
+      op_require_is_deno_dir_package::decl(),
+      op_require_resolve_deno_dir::decl(),
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
       op_require_try_self_parent_path::decl(),
@@ -31,9 +53,13 @@ pub fn init(unstable: bool) -> Extension {
       op_require_path_resolve::decl(),
       op_require_path_basename::decl(),
       op_require_read_file::decl(),
+      op_require_as_file_path::decl(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
+      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
+        state.put(npm_resolver);
+      }
       Ok(())
     })
     .build()
@@ -48,53 +74,65 @@ fn check_unstable(state: &OpState) {
   }
 }
 
+fn ensure_read_permission(
+  state: &mut OpState,
+  file_path: &Path,
+) -> Result<(), AnyError> {
+  // allow borrowing state mutably twice by taking the resolver
+  // and then putting it back after
+  let resolver = state.take::<Rc<dyn DenoDirNpmResolver>>();
+  let result = resolver.ensure_read_permission(state, file_path);
+  state.put(resolver);
+  result
+}
+
 #[op]
 pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
   check_unstable(state);
 
-  let (home_dir, node_path) = if cfg!(windows) {
-    (
-      std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
-      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-    )
-  } else {
-    (
-      std::env::var("HOME").unwrap_or_else(|_| "".into()),
-      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-    )
-  };
+  // let (home_dir, node_path) = if cfg!(windows) {
+  //   (
+  //     std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
+  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+  //   )
+  // } else {
+  //   (
+  //     std::env::var("HOME").unwrap_or_else(|_| "".into()),
+  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+  //   )
+  // };
 
-  let mut prefix_dir = std::env::current_exe().unwrap();
-  if cfg!(windows) {
-    prefix_dir = prefix_dir.join("..").join("..")
-  } else {
-    prefix_dir = prefix_dir.join("..")
-  }
+  // let mut prefix_dir = std::env::current_exe().unwrap();
+  // if cfg!(windows) {
+  //   prefix_dir = prefix_dir.join("..").join("..")
+  // } else {
+  //   prefix_dir = prefix_dir.join("..")
+  // }
 
-  let mut paths = vec![prefix_dir.join("lib").join("node")];
+  // let mut paths = vec![prefix_dir.join("lib").join("node")];
 
-  if !home_dir.is_empty() {
-    paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
-    paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
-  }
+  // if !home_dir.is_empty() {
+  //   paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
+  //   paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
+  // }
 
-  let mut paths = paths
-    .into_iter()
-    .map(|p| p.to_string_lossy().to_string())
-    .collect();
+  // let mut paths = paths
+  //   .into_iter()
+  //   .map(|p| p.to_string_lossy().to_string())
+  //   .collect();
 
-  if !node_path.is_empty() {
-    let delimiter = if cfg!(windows) { ";" } else { ":" };
-    let mut node_paths: Vec<String> = node_path
-      .split(delimiter)
-      .filter(|e| !e.is_empty())
-      .map(|s| s.to_string())
-      .collect();
-    node_paths.append(&mut paths);
-    paths = node_paths;
-  }
+  // if !node_path.is_empty() {
+  //   let delimiter = if cfg!(windows) { ";" } else { ":" };
+  //   let mut node_paths: Vec<String> = node_path
+  //     .split(delimiter)
+  //     .filter(|e| !e.is_empty())
+  //     .map(|s| s.to_string())
+  //     .collect();
+  //   node_paths.append(&mut paths);
+  //   paths = node_paths;
+  // }
 
-  paths
+  vec![]
 }
 
 #[op]
@@ -193,6 +231,29 @@ fn op_require_is_request_relative(
 }
 
 #[op]
+fn op_require_resolve_deno_dir(
+  state: &mut OpState,
+  request: String,
+  parent_filename: String,
+) -> Option<String> {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  resolver
+    .resolve_package_folder_from_package(
+      &request,
+      &PathBuf::from(parent_filename),
+    )
+    .map(|p| p.to_string_lossy().to_string())
+}
+
+#[op]
+fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  resolver.in_npm_package(&PathBuf::from(path))
+}
+
+#[op]
 fn op_require_resolve_lookup_paths(
   state: &mut OpState,
   request: String,
@@ -242,17 +303,19 @@ fn op_require_path_is_absolute(state: &mut OpState, p: String) -> bool {
 }
 
 #[op]
-fn op_require_stat(state: &mut OpState, filename: String) -> i32 {
+fn op_require_stat(state: &mut OpState, path: String) -> Result<i32, AnyError> {
   check_unstable(state);
-  if let Ok(metadata) = std::fs::metadata(&filename) {
+  let path = PathBuf::from(path);
+  ensure_read_permission(state, &path)?;
+  if let Ok(metadata) = std::fs::metadata(&path) {
     if metadata.is_file() {
-      return 0;
+      return Ok(0);
     } else {
-      return 1;
+      return Ok(1);
     }
   }
 
-  -1
+  Ok(-1)
 }
 
 #[op]
@@ -261,7 +324,9 @@ fn op_require_real_path(
   request: String,
 ) -> Result<String, AnyError> {
   check_unstable(state);
-  let mut canonicalized_path = PathBuf::from(request).canonicalize()?;
+  let path = PathBuf::from(request);
+  ensure_read_permission(state, &path)?;
+  let mut canonicalized_path = path.canonicalize()?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path
@@ -306,24 +371,25 @@ fn op_require_try_self_parent_path(
   has_parent: bool,
   maybe_parent_filename: Option<String>,
   maybe_parent_id: Option<String>,
-) -> Option<String> {
+) -> Result<Option<String>, AnyError> {
   check_unstable(state);
   if !has_parent {
-    return None;
+    return Ok(None);
   }
 
   if let Some(parent_filename) = maybe_parent_filename {
-    return Some(parent_filename);
+    return Ok(Some(parent_filename));
   }
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       if let Ok(cwd) = std::env::current_dir() {
-        return Some(cwd.to_string_lossy().to_string());
+        ensure_read_permission(state, &cwd)?;
+        return Ok(Some(cwd.to_string_lossy().to_string()));
       }
     }
   }
-  None
+  Ok(None)
 }
 
 #[op]
@@ -332,31 +398,46 @@ fn op_require_try_self(
   has_parent: bool,
   maybe_parent_filename: Option<String>,
   maybe_parent_id: Option<String>,
-) -> Option<String> {
+) -> Result<Option<String>, AnyError> {
   check_unstable(state);
   if !has_parent {
-    return None;
+    return Ok(None);
   }
 
   if let Some(parent_filename) = maybe_parent_filename {
-    return Some(parent_filename);
+    return Ok(Some(parent_filename));
   }
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       if let Ok(cwd) = std::env::current_dir() {
-        return Some(cwd.to_string_lossy().to_string());
+        ensure_read_permission(state, &cwd)?;
+        return Ok(Some(cwd.to_string_lossy().to_string()));
       }
     }
   }
-  None
+  Ok(None)
 }
 
 #[op]
 fn op_require_read_file(
   state: &mut OpState,
-  _filename: String,
+  file_path: String,
 ) -> Result<String, AnyError> {
   check_unstable(state);
-  todo!("not implemented");
+  let file_path = PathBuf::from(file_path);
+  ensure_read_permission(state, &file_path)?;
+  Ok(std::fs::read_to_string(file_path)?)
+}
+
+#[op]
+pub fn op_require_as_file_path(
+  state: &mut OpState,
+  file_or_url: String,
+) -> String {
+  check_unstable(state);
+  match Url::parse(&file_or_url) {
+    Ok(url) => url.to_file_path().unwrap().to_string_lossy().to_string(),
+    Err(_) => file_or_url,
+  }
 }

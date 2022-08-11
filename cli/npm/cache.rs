@@ -131,10 +131,6 @@ impl ReadonlyNpmCache {
 pub struct NpmCache(ReadonlyNpmCache);
 
 impl NpmCache {
-  pub fn new(root_dir: PathBuf) -> Self {
-    Self(ReadonlyNpmCache::new(root_dir))
-  }
-
   pub fn from_deno_dir(dir: &DenoDir) -> Self {
     Self(ReadonlyNpmCache::from_deno_dir(dir))
   }

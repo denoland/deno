@@ -9,11 +9,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
 use deno_core::futures;
 use deno_core::url::Url;
+use deno_runtime::deno_node::DenoDirNpmResolver;
+use deno_runtime::permissions::Permissions;
 pub use resolution::NpmPackageId;
 pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
@@ -65,7 +68,7 @@ pub trait NpmPackageResolver {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
   resolution: Arc<NpmResolution>,
@@ -73,10 +76,6 @@ pub struct GlobalNpmPackageResolver {
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn new(root_cache_dir: PathBuf, reload: bool) -> Self {
-    Self::from_cache(NpmCache::new(root_cache_dir), reload)
-  }
-
   pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Self {
     Self::from_cache(NpmCache::from_deno_dir(dir), reload)
   }
@@ -96,11 +95,6 @@ impl GlobalNpmPackageResolver {
   /// If the resolver has resolved any npm packages.
   pub fn has_packages(&self) -> bool {
     self.resolution.has_packages()
-  }
-
-  /// Gets all the packages.
-  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
-    self.resolution.all_packages()
   }
 
   /// Adds a package requirement to the resolver.
@@ -181,6 +175,50 @@ impl NpmPackageResolver for GlobalNpmPackageResolver {
       .cache
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.local_package_info(&pkg_id))
+  }
+}
+
+impl DenoDirNpmResolver for GlobalNpmPackageResolver {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &std::path::Path,
+  ) -> Option<PathBuf> {
+    let referrer = ModuleSpecifier::from_file_path(referrer).ok()?;
+    self
+      .resolve_package_from_package(specifier, &referrer)
+      .ok()
+      .map(|p| p.folder_path)
+  }
+
+  fn in_npm_package(&self, path: &std::path::Path) -> bool {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(_) => return false,
+    };
+    self.resolve_package_from_specifier(&specifier).is_ok()
+  }
+
+  fn ensure_read_permission(
+    &self,
+    state: &mut deno_core::OpState,
+    path: &std::path::Path,
+  ) -> Result<(), AnyError> {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(()) => bail!("Invalid path: {}", path.display()),
+    };
+    // allow reading if it's in the deno_dir node modules
+    if let Ok(pkg) = self.resolve_package_from_specifier(&specifier) {
+      let canonicalized_root_folder = std::fs::canonicalize(pkg.folder_path)?;
+      let canonicalized_file_path = std::fs::canonicalize(path)?;
+      if canonicalized_file_path.starts_with(canonicalized_root_folder) {
+        return Ok(());
+      }
+    }
+    let permissions = state.borrow_mut::<Permissions>();
+    permissions.read.check(path)?;
+    Ok(())
   }
 }
 

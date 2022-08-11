@@ -3,9 +3,9 @@ use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
@@ -17,28 +17,20 @@ use regex::Regex;
 use crate::compat;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::NpmPackageReference;
-use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 use self::package_json::PackageJson;
 
 mod package_json;
 
-#[derive(Clone, PartialEq, Eq)]
-pub enum ResolutionMode {
-  Execution,
-  Types,
-}
-
 static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
-pub fn node_resolve_new(
+pub fn node_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn NpmPackageResolver,
-  mode: ResolutionMode,
 ) -> Result<Option<ResolveResponse>, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
@@ -75,126 +67,48 @@ pub fn node_resolve_new(
   }
 
   let conditions = DEFAULT_CONDITIONS;
-  let url =
-    module_resolve_new(specifier, referrer, conditions, npm_resolver, mode)?;
+  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
   };
 
-  let resolve_response = url_to_resolve_response_new(url, npm_resolver)?;
+  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
 }
 
-pub fn node_resolve_binary_export(
-  pkg_req: &NpmPackageReq,
-  bin_name: Option<&str>,
-  npm_resolver: &dyn NpmPackageResolver,
-) -> Result<ResolveResponse, AnyError> {
-  let pkg = npm_resolver.resolve_package_from_deno_module(&pkg_req)?;
-  let package_folder = pkg.folder_path;
-  let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(package_json_path.clone())?;
-  let bin = match &package_json.bin {
-    Some(bin) => bin,
-    None => bail!(
-      "package {} did not have a 'bin' property in its package.json",
-      pkg.id
-    ),
-  };
-  let bin_name = bin_name.unwrap_or(&pkg_req.name);
-  let bin_entry = match bin {
-    Value::String(_) => {
-      if bin_name != pkg_req.name {
-        None
-      } else {
-        Some(bin)
-      }
-    }
-    Value::Object(o) => o.get(bin_name),
-    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", pkg.id),
-  };
-  let bin_entry = match bin_entry {
-    Some(e) => e,
-    None => bail!(
-      "package {} did not have a 'bin' entry for {} in its package.json",
-      pkg.id,
-      bin_name,
-    ),
-  };
-  let bin_entry = match bin_entry {
-    Value::String(s) => s,
-    _ => bail!("package {} had non-implemented non-string property 'bin' -> '{}' in its package.json", pkg.id, bin_name),
-  };
-
-  let url =
-    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
-
-  let resolve_response = url_to_resolve_response_new(url, npm_resolver)?;
-  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-  // "preserveSymlinksMain"/"preserveSymlinks" options.
-  Ok(resolve_response)
-}
-
-fn package_config_types_resolve(
-  package_folder: &Path,
-  path: Option<&str>,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
-  if path.is_some() {
-    todo!("npm paths are not currently implemented for type checking");
-  }
-
-  let package_json_path = package_folder.join("package.json");
-  let package_json = PackageJson::load(package_json_path.clone())?;
-  let types_entry = match package_json.types {
-    Some(t) => t,
-    // todo: handle typescript resolution when this isn't set
-    None => return Ok(None),
-  };
-  let url =
-    ModuleSpecifier::from_file_path(package_folder.join(&types_entry)).unwrap();
-  Ok(Some(url))
-}
-
-pub fn node_resolve_npm_reference_new(
+pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   npm_resolver: &dyn NpmPackageResolver,
-  mode: ResolutionMode,
 ) -> Result<Option<ResolveResponse>, AnyError> {
   let package_folder = npm_resolver
     .resolve_package_from_deno_module(&reference.req)?
     .folder_path;
-  let maybe_url = match mode {
-    ResolutionMode::Execution => package_config_resolve_new(
-      reference.sub_path.as_deref().unwrap_or("."),
-      &package_folder,
-      npm_resolver,
-    )
-    .map(Some)
-    .with_context(|| {
-      format!("Error resolving package config for '{}'.", reference)
-    })?,
-    ResolutionMode::Types => package_config_types_resolve(
-      &package_folder,
-      reference.sub_path.as_deref(),
-    )?,
-  };
+  let maybe_url = package_config_resolve(
+    reference.sub_path.as_deref().unwrap_or("."),
+    &package_folder,
+    npm_resolver,
+  )
+  .map(Some)
+  .with_context(|| {
+    format!("Error resolving package config for '{}'.", reference)
+  })?;
   let url = match maybe_url {
     Some(url) => url,
     None => return Ok(None),
   };
 
-  let resolve_response = url_to_resolve_response_new(url, npm_resolver)?;
+  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
 }
 
-fn package_config_resolve_new(
+fn package_config_resolve(
   package_subpath: &str,
-  package_dir: &PathBuf,
+  package_dir: &Path,
   npm_resolver: &dyn NpmPackageResolver,
 ) -> Result<ModuleSpecifier, AnyError> {
   let package_json_path = package_dir.join("package.json");
@@ -206,7 +120,7 @@ fn package_config_resolve_new(
   let package_json_url =
     ModuleSpecifier::from_file_path(&package_json_path).unwrap();
   if let Some(exports) = &package_config.exports {
-    return package_exports_resolve_new(
+    return package_exports_resolve(
       package_json_url,
       package_subpath.to_string(),
       exports,
@@ -219,19 +133,19 @@ fn package_config_resolve_new(
     return legacy_main_resolve(&package_json_url, &package_config, &base);
   }
 
-  return package_json_url
-    .join(&package_subpath)
-    .map_err(AnyError::from);
+  package_json_url
+    .join(package_subpath)
+    .map_err(AnyError::from)
 }
 
-fn url_to_resolve_response_new(
+fn url_to_resolve_response(
   url: ModuleSpecifier,
   npm_resolver: &dyn NpmPackageResolver,
 ) -> Result<ResolveResponse, AnyError> {
   Ok(if url.as_str().starts_with("http") {
     ResolveResponse::Esm(url)
   } else if url.as_str().ends_with(".js") {
-    let package_config = get_package_scope_config_new(&url, npm_resolver)?;
+    let package_config = get_package_scope_config(&url, npm_resolver)?;
     if package_config.typ == "module" {
       ResolveResponse::Esm(url)
     } else {
@@ -242,33 +156,6 @@ fn url_to_resolve_response_new(
   } else {
     ResolveResponse::Esm(url)
   })
-}
-
-const KNOWN_EXTENSIONS: [&str; 7] =
-  ["js", "mjs", "cjs", "ts", "d.ts", "cts", "mts"];
-const TYPES_EXTENSIONS: [&str; 2] = ["ts", "d.ts"];
-
-fn types_extension_probe(mut p: PathBuf) -> Result<PathBuf, AnyError> {
-  if p.exists() {
-    Ok(p.clean())
-  } else {
-    if let Some(ext) = p.extension() {
-      if !KNOWN_EXTENSIONS.contains(&ext.to_string_lossy().as_ref()) {
-        // give the file a known extension to replace
-        p.set_file_name(format!(
-          "{}.js",
-          p.file_name().unwrap().to_string_lossy()
-        ));
-      }
-    }
-    for ext in TYPES_EXTENSIONS {
-      let p = p.with_extension(ext);
-      if p.exists() {
-        return Ok(p.clean());
-      }
-    }
-    bail!("Did not find '{}'.", p.display())
-  }
 }
 
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
@@ -371,25 +258,17 @@ fn finalize_resolution(
   Ok(resolved)
 }
 
-fn module_resolve_new(
+fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
   npm_resolver: &dyn NpmPackageResolver,
-  mode: ResolutionMode,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    match mode {
-      ResolutionMode::Execution => Some(resolved_specifier),
-      ResolutionMode::Types => {
-        let path =
-          types_extension_probe(resolved_specifier.to_file_path().unwrap())?;
-        Some(ModuleSpecifier::from_file_path(path).unwrap())
-      }
-    }
+    Some(resolved_specifier)
   } else if specifier.starts_with('#') {
-    Some(package_imports_resolve_new(
+    Some(package_imports_resolve(
       specifier,
       referrer,
       conditions,
@@ -398,21 +277,12 @@ fn module_resolve_new(
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    match mode {
-      ResolutionMode::Execution => Some(package_resolve_new(
-        specifier,
-        referrer,
-        conditions,
-        npm_resolver,
-      )?),
-      ResolutionMode::Types => {
-        // todo(dsherret): handle path here
-        let package_dir_path = npm_resolver
-          .resolve_package_from_package(&specifier, &referrer)?
-          .folder_path;
-        package_config_types_resolve(&package_dir_path, None)?
-      }
-    }
+    Some(package_resolve(
+      specifier,
+      referrer,
+      conditions,
+      npm_resolver,
+    )?)
   };
   Ok(match url {
     Some(url) => Some(finalize_resolution(url, referrer)?),
@@ -422,14 +292,20 @@ fn module_resolve_new(
 
 fn throw_import_not_defined(
   specifier: &str,
-  package_json_url: Option<ModuleSpecifier>,
+  package_json_url: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> AnyError {
-  compat::errors::err_package_import_not_defined(
+  let package_path = to_file_path_string(&package_json_url.join(".").unwrap());
+  let base = to_file_path_string(base);
+  let mut msg = format!(
+    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined in package {}package.json",
     specifier,
-    package_json_url.map(|u| to_file_path_string(&u.join(".").unwrap())),
-    &to_file_path_string(base),
-  )
+    package_path
+  );
+
+  msg = format!("{} imported from {}", msg, base);
+
+  type_error(msg)
 }
 
 fn pattern_key_compare(a: &str, b: &str) -> i32 {
@@ -474,7 +350,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-fn package_imports_resolve_new(
+fn package_imports_resolve(
   name: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
@@ -489,14 +365,12 @@ fn package_imports_resolve_new(
     ));
   }
 
-  let mut package_json_url = None;
-
-  let package_config = get_package_scope_config_new(referrer, npm_resolver)?;
-  package_json_url = Some(Url::from_file_path(package_config.path).unwrap());
+  let package_config = get_package_scope_config(referrer, npm_resolver)?;
+  let package_json_url = Url::from_file_path(package_config.path).unwrap();
   if let Some(imports) = &package_config.imports {
     if imports.contains_key(name) && !name.contains('*') {
-      let maybe_resolved = resolve_package_target_new(
-        package_json_url.clone().unwrap(),
+      let maybe_resolved = resolve_package_target(
+        package_json_url.clone(),
         imports.get(name).unwrap().to_owned(),
         "".to_string(),
         name.to_string(),
@@ -535,8 +409,8 @@ fn package_imports_resolve_new(
 
       if !best_match.is_empty() {
         let target = imports.get(best_match).unwrap().to_owned();
-        let maybe_resolved = resolve_package_target_new(
-          package_json_url.clone().unwrap(),
+        let maybe_resolved = resolve_package_target(
+          package_json_url.clone(),
           target,
           best_match_subpath.unwrap(),
           best_match.to_string(),
@@ -592,7 +466,7 @@ fn throw_invalid_subpath(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target_string_new(
+fn resolve_package_target_string(
   target: String,
   subpath: String,
   match_: String,
@@ -626,7 +500,7 @@ fn resolve_package_target_string_new(
         } else {
           format!("{}{}", target, subpath)
         };
-        return package_resolve_new(
+        return package_resolve(
           &export_target,
           &package_json_url,
           conditions,
@@ -690,7 +564,7 @@ fn resolve_package_target_string_new(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_package_target_new(
+fn resolve_package_target(
   package_json_url: ModuleSpecifier,
   target: Value,
   subpath: String,
@@ -702,7 +576,7 @@ fn resolve_package_target_new(
   npm_resolver: &dyn NpmPackageResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   if let Some(target) = target.as_str() {
-    return Ok(Some(resolve_package_target_string_new(
+    return Ok(Some(resolve_package_target_string(
       target.to_string(),
       subpath,
       package_subpath,
@@ -720,7 +594,7 @@ fn resolve_package_target_new(
 
     let mut last_error = None;
     for target_item in target_arr {
-      let resolved_result = resolve_package_target_new(
+      let resolved_result = resolve_package_target(
         package_json_url.clone(),
         target_item.to_owned(),
         subpath.clone(),
@@ -762,7 +636,7 @@ fn resolve_package_target_new(
 
       if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
-        let resolved = resolve_package_target_new(
+        let resolved = resolve_package_target(
           package_json_url.clone(),
           condition_target,
           subpath.clone(),
@@ -804,7 +678,7 @@ fn throw_exports_not_found(
   )
 }
 
-fn package_exports_resolve_new(
+fn package_exports_resolve(
   package_json_url: ModuleSpecifier,
   package_subpath: String,
   package_exports: &Map<String, Value>,
@@ -817,7 +691,7 @@ fn package_exports_resolve_new(
     && !package_subpath.ends_with('/')
   {
     let target = package_exports.get(&package_subpath).unwrap().to_owned();
-    let resolved = resolve_package_target_new(
+    let resolved = resolve_package_target(
       package_json_url.clone(),
       target,
       "".to_string(),
@@ -874,7 +748,7 @@ fn package_exports_resolve_new(
 
   if !best_match.is_empty() {
     let target = package_exports.get(best_match).unwrap().to_owned();
-    let maybe_resolved = resolve_package_target_new(
+    let maybe_resolved = resolve_package_target(
       package_json_url.clone(),
       target,
       best_match_subpath.unwrap(),
@@ -952,7 +826,7 @@ fn parse_package_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
-fn package_resolve_new(
+fn package_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
@@ -962,11 +836,11 @@ fn package_resolve_new(
     parse_package_name(specifier, referrer)?;
 
   // ResolveSelf
-  let package_config = get_package_scope_config_new(referrer, npm_resolver)?;
+  let package_config = get_package_scope_config(referrer, npm_resolver)?;
   let package_json_url = Url::from_file_path(&package_config.path).unwrap();
   if package_config.name.as_ref() == Some(&package_name) {
     if let Some(exports) = &package_config.exports {
-      return package_exports_resolve_new(
+      return package_exports_resolve(
         package_json_url,
         package_subpath,
         exports,
@@ -978,7 +852,7 @@ fn package_resolve_new(
   }
 
   let package_dir_path = npm_resolver
-    .resolve_package_from_package(&package_name, &referrer)?
+    .resolve_package_from_package(&package_name, referrer)?
     .folder_path;
   let package_json_path = package_dir_path.join("package.json");
   let package_json_url =
@@ -998,9 +872,9 @@ fn package_resolve_new(
   // ))
 
   // Package match.
-  let package_json = PackageJson::load(package_json_path.clone())?;
+  let package_json = PackageJson::load(package_json_path)?;
   if let Some(exports) = &package_json.exports {
-    return package_exports_resolve_new(
+    return package_exports_resolve(
       package_json_url,
       package_subpath,
       exports,
@@ -1013,21 +887,21 @@ fn package_resolve_new(
     return legacy_main_resolve(&package_json_url, &package_json, referrer);
   }
 
-  return package_json_url
+  package_json_url
     .join(&package_subpath)
-    .map_err(AnyError::from);
+    .map_err(AnyError::from)
 }
 
-fn get_package_scope_config_new(
+fn get_package_scope_config(
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn NpmPackageResolver,
 ) -> Result<PackageJson, AnyError> {
   let root_folder = npm_resolver
-    .resolve_package_from_specifier(&referrer)?
+    .resolve_package_from_specifier(referrer)?
     .folder_path;
   let package_json_path = root_folder.join("./package.json");
 
-  PackageJson::load(package_json_path.clone())
+  PackageJson::load(package_json_path)
 }
 
 fn file_exists(path_url: &ModuleSpecifier) -> bool {
@@ -1090,7 +964,7 @@ fn legacy_main_resolve(
 /// For all discovered reexports the analysis will be performed recursively.
 ///
 /// If successful a source code for equivalent ES module is returned.
-pub fn translate_cjs_to_esm_new(
+pub fn translate_cjs_to_esm(
   file_fetcher: &FileFetcher,
   specifier: &ModuleSpecifier,
   code: String,
@@ -1114,10 +988,10 @@ pub fn translate_cjs_to_esm_new(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    // todo(dsherret): call module_resolve_new instead?
-    let resolved_reexport = resolve_new(
+    // todo(dsherret): call module_resolve instead?
+    let resolved_reexport = resolve(
       reexport,
-      &specifier,
+      specifier,
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
@@ -1189,12 +1063,23 @@ pub fn translate_cjs_to_esm_new(
   Ok(translated_source)
 }
 
-fn resolve_new(
+fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
   npm_resolver: &dyn NpmPackageResolver,
 ) -> Result<PathBuf, AnyError> {
+  fn resolve_package_target_string(
+    target: &str,
+    subpath: Option<String>,
+  ) -> String {
+    if let Some(subpath) = subpath {
+      target.replace('*', &subpath)
+    } else {
+      target.to_string()
+    }
+  }
+
   if specifier.starts_with('/') {
     todo!();
   }
@@ -1210,7 +1095,7 @@ fn resolve_new(
 
   // We've got a bare specifier or maybe bare_specifier/blah.js"
 
-  let (package_name, package_subpath) = parse_specifier(specifier).unwrap();
+  let (_, package_subpath) = parse_specifier(specifier).unwrap();
 
   // todo(dsherret): use not_found error on not found here
   let module_dir = npm_resolver
@@ -1250,17 +1135,6 @@ fn resolve_new(
   }
 
   Err(not_found(specifier, &referrer_path))
-}
-
-fn resolve_package_target_string(
-  target: &str,
-  subpath: Option<String>,
-) -> String {
-  if let Some(subpath) = subpath {
-    target.replace('*', &subpath)
-  } else {
-    target.to_string()
-  }
 }
 
 fn conditions_resolve(value: &Value, conditions: &[&str]) -> String {
