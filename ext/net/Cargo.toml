@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.56.0"
+version = "0.57.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,8 +14,8 @@ description = "Networking for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.146.0", path = "../../core" }
-deno_tls = { version = "0.51.0", path = "../tls" }
+deno_core = { version = "0.147.0", path = "../../core" }
+deno_tls = { version = "0.52.0", path = "../tls" }
 log = "0.4.16"
 serde = { version = "1.0.136", features = ["derive"] }
 socket2 = "0.4.4"
