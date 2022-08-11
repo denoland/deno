@@ -1598,8 +1598,8 @@ mod tests {
   async fn test_fetch_local_bypasses_file_cache() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let fixture_path = temp_dir.path().join("mod.ts");
-    let specifier = Url::from_file_path(fixture_path).unwrap();
-    fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
+    let specifier = Url::from_file_path(&fixture_path).unwrap();
+    fs::write(&fixture_path, r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
@@ -1607,7 +1607,7 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(&*file.source, r#"console.log("hello deno");"#);
 
-    fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
+    fs::write(&fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
       .await;
