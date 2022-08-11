@@ -310,7 +310,7 @@ Deno.test(
     
     assertEquals(headers!.get("content-length"), `${reqBody.length}`);
     assertEquals(headers!.get("something-else"), smthElse);
-    // assertEquals(text!, reqBody);
+    assertEquals(text!, reqBody);
     ac.abort();
     await server;
   },
