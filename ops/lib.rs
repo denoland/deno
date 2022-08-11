@@ -399,8 +399,8 @@ fn codegen_sync_ret(
         #ok_block
       },
       Err(err) => {
-        let err = #core::OpError::new(op_state.get_error_class_fn, err);
-        rv.set(#core::serde_v8::to_v8(scope, err).unwrap());
+        let exception = #core::error::to_v8_error(scope, op_state.get_error_class_fn, &err);
+        scope.throw_exception(exception);
       },
     };
   }

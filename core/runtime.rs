@@ -150,6 +150,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 #[derive(Default)]
 pub(crate) struct ContextState {
   js_recv_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   // TODO(andreubotella): Move the rest of Option<Global<Function>> fields from
   // JsRuntimeState to this struct.
   pub(crate) unrefed_ops: HashSet<i32>,
@@ -653,16 +654,25 @@ impl JsRuntime {
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self, realm: &JsRealm) {
-    let recv_cb = {
+    let (recv_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let recv_cb =
         Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
           .expect("Deno.core.opresolve is undefined in the realm");
-      v8::Global::new(scope, recv_cb)
+      let recv_cb = v8::Global::new(scope, recv_cb);
+      let build_custom_error_cb =
+        Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
+      (recv_cb, build_custom_error_cb)
     };
     // Put global handle in callback state
     let state = realm.state(self.v8_isolate());
     state.borrow_mut().js_recv_cb.replace(recv_cb);
+    state
+      .borrow_mut()
+      .js_build_custom_error_cb
+      .replace(build_custom_error_cb);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -737,6 +747,9 @@ impl JsRuntime {
           let realm = JsRealm::new(context.clone());
           let realm_state = realm.state(self.v8_isolate());
           std::mem::take(&mut realm_state.borrow_mut().js_recv_cb);
+          std::mem::take(
+            &mut realm_state.borrow_mut().js_build_custom_error_cb,
+          );
           context
             .open(self.v8_isolate())
             .clear_all_slots(self.v8_isolate());
@@ -3424,7 +3437,7 @@ assertEquals(1, notify_return_value);
         Deno.core.opSync("op_set_promise_reject_callback", (type, promise, reason) => {
           Deno.core.opSync("op_promise_reject");
         });
-        
+
         throw new Error('top level throw');
         "#;
 

@@ -473,7 +473,8 @@ fn op_serialize(
     value_serializer.write_value(scope.get_current_context(), value.v8_value);
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
-    Err(type_error("unreachable"))
+    // Dummy value, this result will be discarded because an error was thrown.
+    Ok(ZeroCopyBuf::empty())
   } else if let Some(true) = ret {
     let vector = value_serializer.release();
     Ok(vector.into())
