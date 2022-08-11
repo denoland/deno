@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod errors;
+pub mod errors;
 mod esm_resolver;
 
 use crate::file_fetcher::FileFetcher;
@@ -98,7 +98,7 @@ pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
   vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
-fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
+pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
     let ext = match specifier {
       "stream/promises" => "mjs",
@@ -112,7 +112,13 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-#[allow(unused)]
+pub fn all_supported_builtin_module_urls() -> Vec<Url> {
+  SUPPORTED_MODULES
+    .iter()
+    .map(|specifier| try_resolve_builtin_module(specifier).unwrap())
+    .collect()
+}
+
 pub async fn load_builtin_node_modules(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
@@ -214,7 +220,7 @@ pub fn setup_builtin_modules(
 /// For all discovered reexports the analysis will be performed recursively.
 ///
 /// If successful a source code for equivalent ES module is returned.
-pub async fn translate_cjs_to_esm(
+pub fn translate_cjs_to_esm(
   file_fetcher: &FileFetcher,
   specifier: &ModuleSpecifier,
   code: String,

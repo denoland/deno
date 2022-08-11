@@ -161,7 +161,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      // deno_node::init() // todo(dsherret): re-enable,
+      deno_node::init(unstable),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),

@@ -23,7 +23,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
-#[allow(unused)]
+mod node;
 mod npm;
 mod ops;
 mod proc_state;
@@ -930,15 +930,13 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   struct FileWatcherModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
-    compat: bool,
   }
 
   impl FileWatcherModuleExecutor {
-    pub fn new(worker: MainWorker, compat: bool) -> FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
       FileWatcherModuleExecutor {
         worker,
         pending_unload: false,
-        compat,
       }
     }
 
@@ -947,11 +945,16 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     pub async fn execute(
       &mut self,
       main_module: &ModuleSpecifier,
+      ps: &ProcState,
     ) -> Result<(), AnyError> {
-      if self.compat {
+      if ps.options.compat() {
         self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
       }
-      self.worker.execute_main_module(main_module).await?;
+      let id = self.worker.preload_main_module(main_module).await?;
+      if ps.npm_resolver.has_packages() {
+        compat::load_builtin_node_modules(&mut self.worker.js_runtime).await?;
+      }
+      self.worker.evaluate_module(id).await?;
       self.worker.dispatch_load_event(&located_script_name!())?;
       self.pending_unload = true;
 
@@ -1003,18 +1006,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
           .await?;
       // We make use an module executor guard to ensure that unload is always fired when an
       // operation is called.
-      let mut executor = FileWatcherModuleExecutor::new(
-        create_main_worker(
-          &ps,
-          main_module.clone(),
-          permissions,
-          vec![],
-          Default::default(),
-        ),
-        flags.compat,
-      );
+      let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
+        &ps,
+        main_module.clone(),
+        permissions,
+        vec![],
+        Default::default(),
+      ));
 
-      executor.execute(&main_module).await?;
+      executor.execute(&main_module, &ps).await?;
 
       Ok(())
     })
@@ -1109,7 +1109,12 @@ async fn run_command(
     }
   } else {
     // Regular ES module execution
-    worker.execute_main_module(&main_module).await?;
+    let id = worker.preload_main_module(&main_module).await?;
+    // we'll only know if there's npm packages after pre-loading
+    if ps.npm_resolver.has_packages() {
+      compat::load_builtin_node_modules(&mut worker.js_runtime).await?;
+    }
+    worker.evaluate_module(id).await?;
   }
 
   worker.dispatch_load_event(&located_script_name!())?;
