@@ -109,18 +109,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: [
-      ...cmd,
-      "--",
-      "-D",
-      "clippy::all",
-      "-D",
-      "clippy::await_holding_refcell_ref",
-      "-D",
-      "clippy::missing_safety_doc",
-      "-D",
-      "clippy::undocumented_unsafe_blocks",
-    ],
+    args: cmd,
     stdout: "inherit",
     stderr: "inherit",
   });
