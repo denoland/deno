@@ -293,38 +293,25 @@
     );
   }
 
-  
   // This only applies to requests of a specific form:
   // 1. name/.*
   // 2. @scope/name/.*
   const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
   function resolveExports(modulesPath, request) {
     // The implementation's behavior is meant to mirror resolution in ESM.
-    const [, name, expansion = ""] = 
+    const [, name, expansion = ""] =
       StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
     if (!name) {
       return;
     }
-    const pkgPath = pathResolve(modulesPath, name);
-    const pkg = readPackage(pkgPath);
-    if (pkg?.exports != null) {
-      try {
-        const resolvedExports = packageExportsResolve(
-          pathToFileURL(pkgPath + '/package.json'), 
-          '.' + expansion, 
-          pkg, 
-          null,
-          cjsConditions
-        );
-        return finalizeEsmResolution(resolvedExports, null, pkgPath);
-      } catch (e) {
-        if (e.code === 'ERR_MODULE_NOT_FOUND')
-          throw createEsmNotFoundErr(request, pkgPath + '/package.json');
-        throw e;
-      }
-    }
-  }
 
+    return core.ops.op_require_resolve_exports(
+      modulesPath,
+      request,
+      name,
+      expansion,
+    );
+  }
 
   Module._findPath = function (request, paths, isMain) {
     const absoluteRequest = ops.op_require_path_is_absolute(request);

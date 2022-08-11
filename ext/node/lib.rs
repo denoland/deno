@@ -8,6 +8,9 @@ use deno_core::Extension;
 use deno_core::OpState;
 use std::path::PathBuf;
 
+mod errors;
+mod esm_resolver;
+
 pub struct Unstable(pub bool);
 
 pub fn init(unstable: bool) -> Extension {
@@ -31,6 +34,8 @@ pub fn init(unstable: bool) -> Extension {
       op_require_path_resolve::decl(),
       op_require_path_basename::decl(),
       op_require_read_file::decl(),
+      op_require_as_file_path::decl(),
+      op_require_resolve_exports::decl(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
@@ -273,9 +278,7 @@ fn op_require_real_path(
   Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
-#[op]
-fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
-  check_unstable(state);
+fn path_resolve(parts: Vec<String>) -> String {
   assert!(!parts.is_empty());
   let mut p = PathBuf::from(&parts[0]);
   if parts.len() > 1 {
@@ -284,6 +287,12 @@ fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
     }
   }
   normalize_path(p).to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
+  check_unstable(state);
+  path_resolve(parts)
 }
 
 #[op]
@@ -359,4 +368,51 @@ fn op_require_read_file(
 ) -> Result<String, AnyError> {
   check_unstable(state);
   todo!("not implemented");
+}
+
+#[op]
+fn op_require_resolve_exports(
+  state: &mut OpState,
+  modules_path: String,
+  request: String,
+  name: String,
+  expansion: String,
+) -> Result<String, AnyError> {
+  check_unstable(state);
+
+  let pkg_path = path_resolve(vec![modules_path, name]);
+  let pkg =
+    esm_resolver::get_package_config(PathBuf::from(&pkg_path), &request, None)?;
+
+  if pkg.exports.is_some() {
+    let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+    return esm_resolver::package_exports_resolve(
+      deno_core::url::Url::from_file_path(pkg_path).unwrap(),
+      format!(".{}", expansion),
+      pkg,
+      &base,
+      esm_resolver::DEFAULT_CONDITIONS,
+    )
+    .map(|r| r.as_str().to_string());
+  }
+
+  todo!()
+  // const pkgPath = pathResolve(modulesPath, name);
+  //   const pkg = readPackage(pkgPath);
+  //   if (pkg?.exports != null) {
+  //     try {
+  //       const resolvedExports = packageExportsResolve(
+  //         pathToFileURL(pkgPath + '/package.json'),
+  //         '.' + expansion,
+  //         pkg,
+  //         null,
+  //         cjsConditions
+  //       );
+  //       return finalizeEsmResolution(resolvedExports, null, pkgPath);
+  //     } catch (e) {
+  //       if (e.code === 'ERR_MODULE_NOT_FOUND')
+  //         throw createEsmNotFoundErr(request, pkgPath + '/package.json');
+  //       throw e;
+  //     }
+  //   }
 }
