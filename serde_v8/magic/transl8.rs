@@ -21,8 +21,8 @@ pub(crate) trait ToV8 {
 
 pub(crate) trait FromV8: Sized {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error>;
 }
 
@@ -58,7 +58,7 @@ where
 
     fn expecting(
       &self,
-      formatter: &mut std::fmt::Formatter,
+      formatter: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
       formatter.write_str("a ")?;
       formatter.write_str(T::NAME)

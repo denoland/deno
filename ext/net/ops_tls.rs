@@ -736,7 +736,7 @@ impl TlsStreamResource {
 }
 
 impl Resource for TlsStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tlsStream".into()
   }
 
@@ -1009,7 +1009,7 @@ pub struct TlsListenerResource {
 }
 
 impl Resource for TlsListenerResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tlsListener".into()
   }
 

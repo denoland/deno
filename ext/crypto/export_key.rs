@@ -106,7 +106,7 @@ pub fn op_crypto_export_key(
   }
 }
 
-fn uint_to_b64(bytes: UIntRef) -> String {
+fn uint_to_b64(bytes: UIntRef<'_>) -> String {
   base64::encode_config(bytes.as_bytes(), base64::URL_SAFE_NO_PAD)
 }
 

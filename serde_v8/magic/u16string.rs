@@ -27,8 +27,8 @@ impl ToV8 for U16String {
 
 impl FromV8 for U16String {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     let v8str = v8::Local::<v8::String>::try_from(value)
       .map_err(|_| Error::ExpectedString)?;

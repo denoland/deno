@@ -334,7 +334,7 @@ struct TextDecoderResource {
 }
 
 impl Resource for TextDecoderResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "textDecoder".into()
   }
 }
@@ -418,12 +418,12 @@ impl DomExceptionInvalidCharacterError {
 }
 
 impl fmt::Display for DomExceptionQuotaExceededError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(&self.msg)
   }
 }
 impl fmt::Display for DomExceptionInvalidCharacterError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(&self.msg)
   }
 }

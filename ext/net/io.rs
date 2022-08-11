@@ -99,7 +99,7 @@ pub type TcpStreamResource =
   FullDuplexResource<tcp::OwnedReadHalf, tcp::OwnedWriteHalf>;
 
 impl Resource for TcpStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tcpStream".into()
   }
 
@@ -138,7 +138,7 @@ impl TcpStreamResource {
 
   fn map_socket(
     self: Rc<Self>,
-    map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
+    map: Box<dyn FnOnce(SockRef<'_>) -> Result<(), AnyError>>,
   ) -> Result<(), AnyError> {
     if let Some(wr) = RcRef::map(self, |r| &r.wr).try_borrow() {
       let stream = wr.as_ref().as_ref();
@@ -181,7 +181,7 @@ impl UnixStreamResource {
 }
 
 impl Resource for UnixStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unixStream".into()
   }
 

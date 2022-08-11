@@ -32,8 +32,8 @@ impl ToV8 for Global {
 
 impl FromV8 for Global {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     let global = v8::Global::new(scope, value);
     Ok(global.into())

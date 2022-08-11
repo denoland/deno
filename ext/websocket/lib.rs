@@ -183,7 +183,7 @@ impl WsStreamResource {
 }
 
 impl Resource for WsStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketStream".into()
   }
 }
@@ -191,7 +191,7 @@ impl Resource for WsStreamResource {
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketCancel".into()
   }
 
@@ -532,7 +532,7 @@ impl DomExceptionNetworkError {
 }
 
 impl fmt::Display for DomExceptionNetworkError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.pad(&self.msg)
   }
 }

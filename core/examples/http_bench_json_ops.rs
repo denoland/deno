@@ -26,11 +26,11 @@ use deno_core::*;
 struct Logger;
 
 impl log::Log for Logger {
-  fn enabled(&self, metadata: &log::Metadata) -> bool {
+  fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
     metadata.level() <= log::max_level()
   }
 
-  fn log(&self, record: &log::Record) {
+  fn log(&self, record: &log::Record<'_>) {
     if self.enabled(record.metadata()) {
       println!("{} - {}", record.level(), record.args());
     }

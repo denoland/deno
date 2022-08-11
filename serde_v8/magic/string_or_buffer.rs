@@ -37,8 +37,8 @@ impl ToV8 for StringOrBuffer {
 
 impl FromV8 for StringOrBuffer {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     if let Ok(buf) = ZeroCopyBuf::from_v8(scope, value) {
       return Ok(Self::Buffer(buf));

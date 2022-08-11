@@ -29,7 +29,7 @@ unsafe impl Send for V8Slice {}
 
 impl V8Slice {
   pub fn from_buffer(
-    buffer: v8::Local<v8::ArrayBuffer>,
+    buffer: v8::Local<'_, v8::ArrayBuffer>,
     range: Range<usize>,
   ) -> Result<Self, v8::DataError> {
     let store = buffer.get_backing_store();
@@ -68,7 +68,7 @@ impl V8Slice {
 
 pub(crate) fn to_ranged_buffer<'s>(
   scope: &mut v8::HandleScope<'s>,
-  value: v8::Local<v8::Value>,
+  value: v8::Local<'_, v8::Value>,
 ) -> Result<(v8::Local<'s, v8::ArrayBuffer>, Range<usize>), v8::DataError> {
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
     let (offset, len) = (view.byte_offset(), view.byte_length());
@@ -78,15 +78,15 @@ pub(crate) fn to_ranged_buffer<'s>(
     let buffer = v8::Local::new(scope, buffer); // recreate handle to avoid lifetime issues
     return Ok((buffer, offset..offset + len));
   }
-  let b: v8::Local<v8::ArrayBuffer> = value.try_into()?;
+  let b: v8::Local<'_, v8::ArrayBuffer> = value.try_into()?;
   let b = v8::Local::new(scope, b); // recreate handle to avoid lifetime issues
   Ok((b, 0..b.byte_length()))
 }
 
 impl FromV8 for V8Slice {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     to_ranged_buffer(scope, value)
       .and_then(|(b, r)| Self::from_buffer(b, r))

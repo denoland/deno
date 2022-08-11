@@ -61,7 +61,7 @@ impl OpsTracker {
   }
 
   #[inline]
-  fn metrics_mut(&self, id: OpId) -> RefMut<OpMetrics> {
+  fn metrics_mut(&self, id: OpId) -> RefMut<'_, OpMetrics> {
     RefMut::map(self.ops.borrow_mut(), |ops| &mut ops[id])
   }
 

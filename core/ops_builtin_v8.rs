@@ -55,8 +55,8 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
 }
 
 fn to_v8_fn(
-  scope: &mut v8::HandleScope,
-  value: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  value: serde_v8::Value<'_>,
 ) -> Result<v8::Global<v8::Function>, Error> {
   v8::Local::<v8::Function>::try_from(value.v8_value)
     .map(|cb| v8::Global::new(scope, cb))
@@ -64,21 +64,21 @@ fn to_v8_fn(
 }
 
 #[op(v8)]
-fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
+fn op_ref_op(scope: &mut v8::HandleScope<'_>, promise_id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
   context_state.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
-fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
+fn op_unref_op(scope: &mut v8::HandleScope<'_>, promise_id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
   context_state.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
 fn op_set_macrotask_callback(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  cb: serde_v8::Value<'_>,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
   let state_rc = JsRuntime::state(scope);
@@ -88,8 +88,8 @@ fn op_set_macrotask_callback(
 
 #[op(v8)]
 fn op_set_next_tick_callback(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  cb: serde_v8::Value<'_>,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
   let state_rc = JsRuntime::state(scope);
@@ -100,7 +100,7 @@ fn op_set_next_tick_callback(
 #[op(v8)]
 fn op_set_promise_reject_callback<'a>(
   scope: &mut v8::HandleScope<'a>,
-  cb: serde_v8::Value,
+  cb: serde_v8::Value<'_>,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
   let state_rc = JsRuntime::state(scope);
@@ -110,19 +110,19 @@ fn op_set_promise_reject_callback<'a>(
 }
 
 #[op(v8)]
-fn op_run_microtasks(scope: &mut v8::HandleScope) {
+fn op_run_microtasks(scope: &mut v8::HandleScope<'_>) {
   scope.perform_microtask_checkpoint();
 }
 
 #[op(v8)]
-fn op_has_tick_scheduled(scope: &mut v8::HandleScope) -> bool {
+fn op_has_tick_scheduled(scope: &mut v8::HandleScope<'_>) -> bool {
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   state.has_tick_scheduled
 }
 
 #[op(v8)]
-fn op_set_has_tick_scheduled(scope: &mut v8::HandleScope, v: bool) {
+fn op_set_has_tick_scheduled(scope: &mut v8::HandleScope<'_>, v: bool) {
   let state_rc = JsRuntime::state(scope);
   state_rc.borrow_mut().has_tick_scheduled = v;
 }
@@ -192,8 +192,8 @@ fn op_eval_context<'a>(
 
 #[op(v8)]
 fn op_queue_microtask(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  cb: serde_v8::Value<'_>,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
   let cb = v8::Local::new(scope, cb);
@@ -301,7 +301,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
   fn get_wasm_module_transfer_id(
     &mut self,
     scope: &mut v8::HandleScope<'_>,
-    module: v8::Local<v8::WasmModuleObject>,
+    module: v8::Local<'_, v8::WasmModuleObject>,
   ) -> Option<u32> {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
@@ -403,10 +403,10 @@ struct SerializeDeserializeOptions<'a> {
 
 #[op(v8)]
 fn op_serialize(
-  scope: &mut v8::HandleScope,
-  value: serde_v8::Value,
-  options: Option<SerializeDeserializeOptions>,
-  error_callback: Option<serde_v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  value: serde_v8::Value<'_>,
+  options: Option<SerializeDeserializeOptions<'_>>,
+  error_callback: Option<serde_v8::Value<'_>>,
 ) -> Result<ZeroCopyBuf, Error> {
   let options = options.unwrap_or_default();
   let error_callback = match error_callback {
@@ -487,7 +487,7 @@ fn op_serialize(
 fn op_deserialize<'a>(
   scope: &mut v8::HandleScope<'a>,
   zero_copy: ZeroCopyBuf,
-  options: Option<SerializeDeserializeOptions>,
+  options: Option<SerializeDeserializeOptions<'_>>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let options = options.unwrap_or_default();
   let host_objects = match options.host_objects {
@@ -624,7 +624,7 @@ struct MemoryUsage {
 }
 
 #[op(v8)]
-fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
+fn op_memory_usage(scope: &mut v8::HandleScope<'_>) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
   MemoryUsage {
@@ -637,8 +637,8 @@ fn op_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
 
 #[op(v8)]
 fn op_set_wasm_streaming_callback(
-  scope: &mut v8::HandleScope,
-  cb: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  cb: serde_v8::Value<'_>,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
   let state_rc = JsRuntime::state(scope);
@@ -675,9 +675,9 @@ fn op_set_wasm_streaming_callback(
 
 #[op(v8)]
 fn op_abort_wasm_streaming(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::HandleScope<'_>,
   rid: u32,
-  error: serde_v8::Value,
+  error: serde_v8::Value<'_>,
 ) -> Result<(), Error> {
   let wasm_streaming = {
     let state_rc = JsRuntime::state(scope);
@@ -705,14 +705,17 @@ fn op_abort_wasm_streaming(
 
 #[op(v8)]
 fn op_destructure_error(
-  scope: &mut v8::HandleScope,
-  error: serde_v8::Value,
+  scope: &mut v8::HandleScope<'_>,
+  error: serde_v8::Value<'_>,
 ) -> JsError {
   JsError::from_v8_exception(scope, error.v8_value)
 }
 
 #[op(v8)]
-fn op_terminate(scope: &mut v8::HandleScope, exception: serde_v8::Value) {
+fn op_terminate(
+  scope: &mut v8::HandleScope<'_>,
+  exception: serde_v8::Value<'_>,
+) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
   state.explicit_terminate_exception =
@@ -721,7 +724,7 @@ fn op_terminate(scope: &mut v8::HandleScope, exception: serde_v8::Value) {
 }
 
 #[op(v8)]
-fn op_op_names(scope: &mut v8::HandleScope) -> Vec<String> {
+fn op_op_names(scope: &mut v8::HandleScope<'_>) -> Vec<String> {
   let state_rc = JsRuntime::state(scope);
   let state = state_rc.borrow();
   state
@@ -741,7 +744,7 @@ struct Location {
 
 #[op(v8)]
 fn op_apply_source_map(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::HandleScope<'_>,
   location: Location,
 ) -> Result<Location, Error> {
   let state_rc = JsRuntime::state(scope);
@@ -781,7 +784,7 @@ fn op_set_format_exception_callback<'a>(
 }
 
 #[op(v8)]
-fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
+fn op_event_loop_has_more_work(scope: &mut v8::HandleScope<'_>) -> bool {
   JsRuntime::event_loop_pending_state(scope).is_pending()
 }
 

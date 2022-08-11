@@ -50,7 +50,7 @@ pub struct PerformanceMeasure {
 }
 
 impl fmt::Display for PerformanceMeasure {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "{} ({}ms)", self.name, self.duration.as_millis())
   }
 }

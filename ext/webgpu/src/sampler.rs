@@ -12,7 +12,7 @@ use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuSampler(pub(crate) wgpu_core::id::SamplerId);
 impl Resource for WebGpuSampler {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUSampler".into()
   }
 }

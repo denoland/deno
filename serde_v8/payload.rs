@@ -17,7 +17,7 @@ pub enum ValueType {
 }
 
 impl ValueType {
-  pub fn from_v8(v: v8::Local<v8::Value>) -> ValueType {
+  pub fn from_v8(v: v8::Local<'_, v8::Value>) -> ValueType {
     if v.is_boolean() {
       return Self::Bool;
     } else if v.is_number() {

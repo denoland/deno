@@ -14,14 +14,14 @@ pub(crate) struct WebGpuBindGroupLayout(
   pub(crate) wgpu_core::id::BindGroupLayoutId,
 );
 impl Resource for WebGpuBindGroupLayout {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUBindGroupLayout".into()
   }
 }
 
 pub(crate) struct WebGpuBindGroup(pub(crate) wgpu_core::id::BindGroupId);
 impl Resource for WebGpuBindGroup {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUBindGroup".into()
   }
 }

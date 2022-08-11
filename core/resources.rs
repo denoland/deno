@@ -31,7 +31,7 @@ pub trait Resource: Any + 'static {
   /// to JavaScript code through `op_resources`. The default implementation
   /// returns the Rust type name, but specific resource types may override this
   /// trait method.
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     type_name::<Self>().into()
   }
 
@@ -214,7 +214,7 @@ impl ResourceTable {
   /// # let resource_table = ResourceTable::default();
   /// let resource_names = resource_table.names().collect::<Vec<_>>();
   /// ```
-  pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<str>)> {
+  pub fn names(&self) -> impl Iterator<Item = (ResourceId, Cow<'_, str>)> {
     self
       .index
       .iter()

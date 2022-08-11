@@ -583,7 +583,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.allow_hrtime = true;
 }
 
-fn clap_root(version: &str) -> Command {
+fn clap_root(version: &str) -> Command<'_> {
   clap::Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
@@ -1707,7 +1707,7 @@ Remote modules and multiple modules may also be specified:
     .arg(ca_file_arg())
 }
 
-fn compile_args(app: Command) -> Command {
+fn compile_args(app: Command<'_>) -> Command<'_> {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
@@ -1721,7 +1721,7 @@ fn compile_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
-fn compile_args_without_check_args(app: Command) -> Command {
+fn compile_args_without_check_args(app: Command<'_>) -> Command<'_> {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
@@ -1733,7 +1733,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
-fn permission_args(app: Command) -> Command {
+fn permission_args(app: Command<'_>) -> Command<'_> {
   app
     .arg(
       Arg::new("allow-read")
@@ -1824,10 +1824,10 @@ fn permission_args(app: Command) -> Command {
 }
 
 fn runtime_args(
-  app: Command,
+  app: Command<'_>,
   include_perms: bool,
   include_inspector: bool,
-) -> Command {
+) -> Command<'_> {
   let app = compile_args(app);
   let app = if include_perms {
     permission_args(app)
@@ -1848,7 +1848,7 @@ fn runtime_args(
     .arg(compat_arg())
 }
 
-fn inspect_args(app: Command) -> Command {
+fn inspect_args(app: Command<'_>) -> Command<'_> {
   app
     .arg(
       Arg::new("inspect")
@@ -2265,7 +2265,7 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn completions_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
-  mut app: clap::Command,
+  mut app: clap::Command<'_>,
 ) {
   use clap_complete::generate;
   use clap_complete::shells::{Bash, Fish, PowerShell, Zsh};

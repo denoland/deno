@@ -1473,7 +1473,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
     impl<'de> de::Visitor<'de> for ChildUnitPermissionArgVisitor {
       type Value = ChildUnitPermissionArg;
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("\"inherit\" or boolean")
       }
 
@@ -1526,7 +1526,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
     impl<'de> de::Visitor<'de> for ChildUnaryPermissionArgVisitor {
       type Value = ChildUnaryPermissionArg;
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("\"inherit\" or boolean or string[]")
       }
 
@@ -1623,7 +1623,7 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
     impl<'de> de::Visitor<'de> for ChildPermissionsArgVisitor {
       type Value = ChildPermissionsArg;
 
-      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+      fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("\"inherit\" or \"none\" or object")
       }
 

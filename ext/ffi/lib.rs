@@ -132,7 +132,7 @@ struct DynamicLibraryResource {
 }
 
 impl Resource for DynamicLibraryResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "dynamicLibrary".into()
   }
 
@@ -391,42 +391,42 @@ impl NativeValue {
   ) -> serde_v8::Value<'scope> {
     match native_type {
       NativeType::Void => {
-        let local_value: v8::Local<v8::Value> = v8::undefined(scope).into();
+        let local_value: v8::Local<'_, v8::Value> = v8::undefined(scope).into();
         local_value.into()
       }
       NativeType::U8 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into();
         local_value.into()
       }
       NativeType::I8 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new(scope, self.i8_value as i32).into();
         local_value.into()
       }
       NativeType::U16 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into();
         local_value.into()
       }
       NativeType::I16 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new(scope, self.i16_value as i32).into();
         local_value.into()
       }
       NativeType::U32 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new_from_unsigned(scope, self.u32_value).into();
         local_value.into()
       }
       NativeType::I32 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Integer::new(scope, self.i32_value).into();
         local_value.into()
       }
       NativeType::U64 => {
         let value = self.u64_value;
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           if value > MAX_SAFE_INTEGER as u64 {
             v8::BigInt::new_from_u64(scope, value).into()
           } else {
@@ -436,7 +436,7 @@ impl NativeValue {
       }
       NativeType::I64 => {
         let value = self.i64_value;
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64
           {
             v8::BigInt::new_from_i64(scope, self.i64_value).into()
@@ -447,7 +447,7 @@ impl NativeValue {
       }
       NativeType::USize => {
         let value = self.usize_value;
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           if value > MAX_SAFE_INTEGER as usize {
             v8::BigInt::new_from_u64(scope, value as u64).into()
           } else {
@@ -457,7 +457,7 @@ impl NativeValue {
       }
       NativeType::ISize => {
         let value = self.isize_value;
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           if value > MAX_SAFE_INTEGER || value < MIN_SAFE_INTEGER {
             v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
           } else {
@@ -466,18 +466,18 @@ impl NativeValue {
         local_value.into()
       }
       NativeType::F32 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Number::new(scope, self.f32_value as f64).into();
         local_value.into()
       }
       NativeType::F64 => {
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           v8::Number::new(scope, self.f64_value).into();
         local_value.into()
       }
       NativeType::Pointer | NativeType::Function => {
         let value = self.pointer as u64;
-        let local_value: v8::Local<v8::Value> =
+        let local_value: v8::Local<'_, v8::Value> =
           if value > MAX_SAFE_INTEGER as u64 {
             v8::BigInt::new_from_u64(scope, value).into()
           } else {
@@ -812,10 +812,10 @@ fn make_sync_fn<'s>(
 
   let sym = Box::leak(sym);
   let builder = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> =
+    |scope: &mut v8::HandleScope<'_>,
+     args: v8::FunctionCallbackArguments<'_>,
+     mut rv: v8::ReturnValue<'_>| {
+      let external: v8::Local<'_, v8::External> =
         args.data().unwrap().try_into().unwrap();
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
@@ -828,7 +828,8 @@ fn make_sync_fn<'s>(
         Ok(result) => {
           match needs_unwrap {
             Some(v) => {
-              let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
+              let view: v8::Local<'_, v8::ArrayBufferView> =
+                v.try_into().unwrap();
               let backing_store =
                 view.buffer(scope).unwrap().get_backing_store();
 
@@ -897,7 +898,7 @@ fn make_sync_fn<'s>(
 
 #[inline]
 fn ffi_parse_u8_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u8_value = v8::Local::<v8::Uint32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI u8 type, expected unsigned integer"))?
@@ -907,7 +908,7 @@ fn ffi_parse_u8_arg(
 
 #[inline]
 fn ffi_parse_i8_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i8_value = v8::Local::<v8::Int32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI i8 type, expected integer"))?
@@ -917,7 +918,7 @@ fn ffi_parse_i8_arg(
 
 #[inline]
 fn ffi_parse_u16_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u16_value = v8::Local::<v8::Uint32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI u16 type, expected unsigned integer"))?
@@ -927,7 +928,7 @@ fn ffi_parse_u16_arg(
 
 #[inline]
 fn ffi_parse_i16_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i16_value = v8::Local::<v8::Int32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI i16 type, expected integer"))?
@@ -937,7 +938,7 @@ fn ffi_parse_i16_arg(
 
 #[inline]
 fn ffi_parse_u32_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let u32_value = v8::Local::<v8::Uint32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI u32 type, expected unsigned integer"))?
@@ -947,7 +948,7 @@ fn ffi_parse_u32_arg(
 
 #[inline]
 fn ffi_parse_i32_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let i32_value = v8::Local::<v8::Int32>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI i32 type, expected integer"))?
@@ -957,8 +958,8 @@ fn ffi_parse_i32_arg(
 
 #[inline]
 fn ffi_parse_u64_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
@@ -978,8 +979,8 @@ fn ffi_parse_u64_arg(
 
 #[inline]
 fn ffi_parse_i64_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
@@ -997,8 +998,8 @@ fn ffi_parse_i64_arg(
 
 #[inline]
 fn ffi_parse_usize_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
@@ -1016,8 +1017,8 @@ fn ffi_parse_usize_arg(
 
 #[inline]
 fn ffi_parse_isize_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, so optimise slow call for this case.
@@ -1035,7 +1036,7 @@ fn ffi_parse_isize_arg(
 
 #[inline]
 fn ffi_parse_f32_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let f32_value = v8::Local::<v8::Number>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI f32 type, expected number"))?
@@ -1045,7 +1046,7 @@ fn ffi_parse_f32_arg(
 
 #[inline]
 fn ffi_parse_f64_arg(
-  arg: v8::Local<v8::Value>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   let f64_value = v8::Local::<v8::Number>::try_from(arg)
     .map_err(|_| type_error("Invalid FFI f64 type, expected number"))?
@@ -1055,8 +1056,8 @@ fn ffi_parse_f64_arg(
 
 #[inline]
 fn ffi_parse_pointer_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. ArrayBufferView: Common and not supported by Fast API, optimise this case.
@@ -1092,8 +1093,8 @@ fn ffi_parse_pointer_arg(
 
 #[inline]
 fn ffi_parse_function_arg(
-  scope: &mut v8::HandleScope,
-  arg: v8::Local<v8::Value>,
+  scope: &mut v8::HandleScope<'_>,
+  arg: v8::Local<'_, v8::Value>,
 ) -> Result<NativeValue, AnyError> {
   // Order of checking:
   // 1. BigInt: Uncommon and not supported by Fast API, optimise this case.
@@ -1187,7 +1188,7 @@ where
 // A one-off synchronous FFI call.
 fn ffi_call_sync<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  args: v8::FunctionCallbackArguments,
+  args: v8::FunctionCallbackArguments<'_>,
   symbol: &Symbol,
 ) -> Result<NativeValue, AnyError>
 where
@@ -1379,7 +1380,7 @@ struct UnsafeCallbackResource {
 }
 
 impl Resource for UnsafeCallbackResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unsafecallback".into()
   }
 
@@ -1457,7 +1458,7 @@ unsafe fn do_ffi_callback(
   let callback = v8::Global::from_raw(isolate, callback);
   let context = std::mem::transmute::<
     NonNull<v8::Context>,
-    v8::Local<v8::Context>,
+    v8::Local<'_, v8::Context>,
   >(context);
   // Call from main thread. If this callback is being triggered due to a
   // function call coming from Deno itself, then this callback will build
@@ -1478,9 +1479,9 @@ unsafe fn do_ffi_callback(
   let vals: &[*const c_void] =
     std::slice::from_raw_parts(args, cif.nargs as usize);
 
-  let mut params: Vec<v8::Local<v8::Value>> = vec![];
+  let mut params: Vec<v8::Local<'_, v8::Value>> = vec![];
   for (repr, val) in repr.iter().zip(vals) {
-    let value: v8::Local<v8::Value> = match (*(*repr)).type_ as _ {
+    let value: v8::Local<'_, v8::Value> = match (*(*repr)).type_ as _ {
       FFI_TYPE_FLOAT => {
         let value = *((*val) as *const f32);
         v8::Number::new(scope, value as f64).into()
@@ -1793,7 +1794,7 @@ where
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
-  let ptr_local: v8::Local<v8::Value> = if ptr > MAX_SAFE_INTEGER as usize {
+  let ptr_local: v8::Local<'_, v8::Value> = if ptr > MAX_SAFE_INTEGER as usize {
     v8::BigInt::new_from_u64(scope, ptr as u64).into()
   } else {
     v8::Number::new(scope, ptr as f64).into()
@@ -1801,7 +1802,7 @@ where
   let array = v8::Array::new(scope, 2);
   array.set_index(scope, 0, rid_local.into());
   array.set_index(scope, 1, ptr_local);
-  let array_value: v8::Local<v8::Value> = array.into();
+  let array_value: v8::Local<'_, v8::Value> = array.into();
 
   Ok(array_value.into())
 }
@@ -1904,81 +1905,83 @@ fn op_ffi_get_static<'scope>(
     NativeType::U8 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u8) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Integer::new_from_unsigned(scope, result as u32).into();
       number.into()
     }
     NativeType::I8 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i8) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Integer::new(scope, result as i32).into();
       number.into()
     }
     NativeType::U16 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u16) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Integer::new_from_unsigned(scope, result as u32).into();
       number.into()
     }
     NativeType::I16 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i16) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Integer::new(scope, result as i32).into();
       number.into()
     }
     NativeType::U32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u32) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Integer::new_from_unsigned(scope, result).into();
       number.into()
     }
     NativeType::I32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i32) };
-      let number: v8::Local<v8::Value> = v8::Integer::new(scope, result).into();
+      let number: v8::Local<'_, v8::Value> =
+        v8::Integer::new(scope, result).into();
       number.into()
     }
     NativeType::U64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u64) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-        v8::BigInt::new_from_u64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<'_, v8::Value> =
+        if result > MAX_SAFE_INTEGER as u64 {
+          v8::BigInt::new_from_u64(scope, result).into()
+        } else {
+          v8::Number::new(scope, result as f64).into()
+        };
       integer.into()
     }
     NativeType::I64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i64) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as i64
-        || result < MIN_SAFE_INTEGER as i64
-      {
-        v8::BigInt::new_from_i64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<'_, v8::Value> =
+        if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
+        {
+          v8::BigInt::new_from_i64(scope, result).into()
+        } else {
+          v8::Number::new(scope, result as f64).into()
+        };
       integer.into()
     }
     NativeType::USize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as usize
-      {
-        v8::BigInt::new_from_u64(scope, result as u64).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<'_, v8::Value> =
+        if result > MAX_SAFE_INTEGER as usize {
+          v8::BigInt::new_from_u64(scope, result as u64).into()
+        } else {
+          v8::Number::new(scope, result as f64).into()
+        };
       integer.into()
     }
     NativeType::ISize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
-      let integer: v8::Local<v8::Value> =
+      let integer: v8::Local<'_, v8::Value> =
         if result > MAX_SAFE_INTEGER || result < MIN_SAFE_INTEGER {
           v8::BigInt::new_from_i64(scope, result as i64).into()
         } else {
@@ -1989,23 +1992,25 @@ fn op_ffi_get_static<'scope>(
     NativeType::F32 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f32) };
-      let number: v8::Local<v8::Value> =
+      let number: v8::Local<'_, v8::Value> =
         v8::Number::new(scope, result as f64).into();
       number.into()
     }
     NativeType::F64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const f64) };
-      let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
+      let number: v8::Local<'_, v8::Value> =
+        v8::Number::new(scope, result).into();
       number.into()
     }
     NativeType::Pointer | NativeType::Function => {
       let result = data_ptr as u64;
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-        v8::BigInt::new_from_u64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<'_, v8::Value> =
+        if result > MAX_SAFE_INTEGER as u64 {
+          v8::BigInt::new_from_u64(scope, result).into()
+        } else {
+          v8::Number::new(scope, result as f64).into()
+        };
       integer.into()
     }
   })
@@ -2087,7 +2092,7 @@ where
     ));
   };
 
-  let integer: v8::Local<v8::Value> =
+  let integer: v8::Local<'_, v8::Value> =
     if pointer as usize > MAX_SAFE_INTEGER as usize {
       v8::BigInt::new_from_u64(scope, pointer as u64).into()
     } else {
@@ -2140,7 +2145,7 @@ where
     )
   }
   .make_shared();
-  let array_buffer: v8::Local<v8::Value> =
+  let array_buffer: v8::Local<'_, v8::Value> =
     v8::ArrayBuffer::with_backing_store(scope, &backing_store).into();
   Ok(array_buffer.into())
 }
@@ -2191,7 +2196,7 @@ where
   let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }
     .to_str()
     .map_err(|_| type_error("Invalid CString pointer, not valid UTF-8"))?;
-  let value: v8::Local<v8::Value> = v8::String::new(scope, cstr)
+  let value: v8::Local<'_, v8::Value> = v8::String::new(scope, cstr)
     .ok_or_else(|| {
       type_error("Invalid CString pointer, string exceeds max length")
     })?
@@ -2319,7 +2324,7 @@ where
   // SAFETY: ptr is user provided.
   let result = unsafe { ptr::read_unaligned(ptr as *const u64) };
 
-  let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
+  let integer: v8::Local<'_, v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
     v8::BigInt::new_from_u64(scope, result).into()
   } else {
     v8::Number::new(scope, result as f64).into()
@@ -2346,7 +2351,7 @@ where
   // SAFETY: ptr is user provided.
   let result = unsafe { ptr::read_unaligned(ptr as *const i64) };
 
-  let integer: v8::Local<v8::Value> =
+  let integer: v8::Local<'_, v8::Value> =
     if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64 {
       v8::BigInt::new_from_i64(scope, result).into()
     } else {

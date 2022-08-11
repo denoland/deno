@@ -119,7 +119,7 @@ struct ChildResource {
 }
 
 impl Resource for ChildResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "child".into()
   }
 }

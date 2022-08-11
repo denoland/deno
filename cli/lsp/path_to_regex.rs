@@ -218,7 +218,7 @@ pub enum StringOrNumber {
 }
 
 impl fmt::Display for StringOrNumber {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self {
       Self::Number(n) => write!(f, "{}", n),
       Self::String(s) => write!(f, "{}", s),
@@ -871,7 +871,7 @@ mod tests {
   fn test_path(
     path: &str,
     maybe_options: Option<PathToRegexOptions>,
-    fixtures: &[Fixture],
+    fixtures: &[Fixture<'_>],
   ) {
     let result = string_to_regex(path, maybe_options);
     assert!(result.is_ok(), "Could not parse path: \"{}\"", path);

@@ -11,14 +11,14 @@ use std::borrow::Cow;
 use super::error::WebGpuResult;
 pub(crate) struct WebGpuTexture(pub(crate) wgpu_core::id::TextureId);
 impl Resource for WebGpuTexture {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUTexture".into()
   }
 }
 
 pub(crate) struct WebGpuTextureView(pub(crate) wgpu_core::id::TextureViewId);
 impl Resource for WebGpuTextureView {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUTextureView".into()
   }
 }

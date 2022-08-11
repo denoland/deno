@@ -47,7 +47,7 @@ struct MacroArgs {
 }
 
 impl syn::parse::Parse for MacroArgs {
-  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+  fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
     let vars =
       syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated(
         input,

@@ -335,7 +335,7 @@ fn get_tag_body_text(
       "example" => {
         if CAPTION_RE.is_match(&text) {
           CAPTION_RE
-            .replace(&text, |c: &Captures| {
+            .replace(&text, |c: &Captures<'_>| {
               format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
             })
             .to_string()
@@ -344,7 +344,7 @@ fn get_tag_body_text(
         }
       }
       "author" => EMAIL_MATCH_RE
-        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+        .replace(&text, |c: &Captures<'_>| format!("{} {}", &c[1], &c[2]))
         .to_string(),
       "default" => make_codeblock(&text),
       _ => replace_links(&text),
@@ -404,7 +404,7 @@ fn make_codeblock(text: &str) -> String {
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
 fn replace_links<S: AsRef<str>>(text: S) -> String {
   JSDOC_LINKS_RE
-    .replace_all(text.as_ref(), |c: &Captures| match &c[1] {
+    .replace_all(text.as_ref(), |c: &Captures<'_>| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
         if c.get(3).is_none() {
@@ -2163,7 +2163,9 @@ impl CompletionEntry {
       if insert_text.starts_with('[') {
         return Some(
           BRACKET_ACCESSOR_RE
-            .replace(insert_text, |caps: &Captures| format!(".{}", &caps[1]))
+            .replace(insert_text, |caps: &Captures<'_>| {
+              format!(".{}", &caps[1])
+            })
             .to_string(),
         );
       }

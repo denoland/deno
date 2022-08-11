@@ -594,7 +594,7 @@ impl WebWorker {
 
   fn poll_event_loop(
     &mut self,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok

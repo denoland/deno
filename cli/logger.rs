@@ -15,11 +15,11 @@ impl CliLogger {
 }
 
 impl log::Log for CliLogger {
-  fn enabled(&self, metadata: &log::Metadata) -> bool {
+  fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
     self.0.enabled(metadata)
   }
 
-  fn log(&self, record: &log::Record) {
+  fn log(&self, record: &log::Record<'_>) {
     if self.enabled(record.metadata()) {
       self.0.log(record);
     }

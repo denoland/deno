@@ -43,7 +43,7 @@ struct FsEventsResource {
 }
 
 impl Resource for FsEventsResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fsEvents".into()
   }
 

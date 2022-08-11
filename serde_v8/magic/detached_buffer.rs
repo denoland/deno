@@ -54,8 +54,8 @@ impl ToV8 for DetachedBuffer {
 
 impl FromV8 for DetachedBuffer {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     let (b, range) =
       to_ranged_buffer(scope, value).or(Err(crate::Error::ExpectedBuffer))?;

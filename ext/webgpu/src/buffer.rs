@@ -19,14 +19,14 @@ use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuBuffer(pub(crate) wgpu_core::id::BufferId);
 impl Resource for WebGpuBuffer {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUBuffer".into()
   }
 }
 
 struct WebGpuBufferMapped(*mut u8, usize);
 impl Resource for WebGpuBufferMapped {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUBufferMapped".into()
   }
 }

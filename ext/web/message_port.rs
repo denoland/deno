@@ -97,7 +97,7 @@ pub struct MessagePortResource {
 }
 
 impl Resource for MessagePortResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "messagePort".into()
   }
 

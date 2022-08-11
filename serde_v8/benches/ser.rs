@@ -13,7 +13,7 @@ struct MathOp {
   operator: Option<String>,
 }
 
-fn serdo(f: impl FnOnce(&mut v8::HandleScope)) {
+fn serdo(f: impl FnOnce(&mut v8::HandleScope<'_>)) {
   v8_do(|| {
     let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
     let handle_scope = &mut v8::HandleScope::new(isolate);

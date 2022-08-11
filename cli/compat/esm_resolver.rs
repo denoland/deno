@@ -501,7 +501,7 @@ fn resolve_package_target_string(
       if !is_url {
         let export_target = if pattern {
           pattern_re
-            .replace(&target, |_caps: &regex::Captures| subpath.clone())
+            .replace(&target, |_caps: &regex::Captures<'_>| subpath.clone())
             .to_string()
         } else {
           format!("{}{}", target, subpath)
@@ -563,7 +563,9 @@ fn resolve_package_target_string(
 
   if pattern {
     let replaced = pattern_re
-      .replace(resolved.as_str(), |_caps: &regex::Captures| subpath.clone());
+      .replace(resolved.as_str(), |_caps: &regex::Captures<'_>| {
+        subpath.clone()
+      });
     let url = Url::parse(&replaced)?;
     return Ok(url);
   }

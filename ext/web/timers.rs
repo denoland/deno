@@ -50,7 +50,7 @@ where
 pub struct TimerHandle(Rc<CancelHandle>);
 
 impl Resource for TimerHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "timer".into()
   }
 

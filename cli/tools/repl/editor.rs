@@ -224,7 +224,7 @@ impl Completer for EditorHelper {
 impl Validator for EditorHelper {
   fn validate(
     &self,
-    ctx: &mut ValidationContext,
+    ctx: &mut ValidationContext<'_>,
   ) -> Result<ValidationResult, ReadlineError> {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
@@ -423,7 +423,7 @@ impl ConditionalEventHandler for TabEventHandler {
     evt: &Event,
     n: RepeatCount,
     _: bool,
-    ctx: &EventContext,
+    ctx: &EventContext<'_>,
   ) -> Option<Cmd> {
     debug_assert_eq!(
       *evt,

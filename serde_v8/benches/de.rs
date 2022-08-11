@@ -15,7 +15,7 @@ struct MathOp {
 
 fn dedo(
   code: &str,
-  f: impl FnOnce(&mut v8::HandleScope, v8::Local<v8::Value>),
+  f: impl FnOnce(&mut v8::HandleScope<'_>, v8::Local<'_, v8::Value>),
 ) {
   v8_do(|| {
     let isolate = &mut v8::Isolate::new(v8::CreateParams::default());

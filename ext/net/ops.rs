@@ -385,7 +385,7 @@ pub struct TcpListenerResource {
 }
 
 impl Resource for TcpListenerResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tcpListener".into()
   }
 
@@ -400,7 +400,7 @@ struct UdpSocketResource {
 }
 
 impl Resource for UdpSocketResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "udpSocket".into()
   }
 
@@ -1028,7 +1028,7 @@ mod tests {
     let set_nodelay = Box::new(|state: &mut OpState, rid| {
       op_set_nodelay::call::<TestPermission>(state, rid, true).unwrap();
     });
-    let test_fn = Box::new(|socket: SockRef| {
+    let test_fn = Box::new(|socket: SockRef<'_>| {
       assert!(socket.nodelay().unwrap());
       assert!(!socket.keepalive().unwrap());
     });
@@ -1040,7 +1040,7 @@ mod tests {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
       op_set_keepalive::call::<TestPermission>(state, rid, true).unwrap();
     });
-    let test_fn = Box::new(|socket: SockRef| {
+    let test_fn = Box::new(|socket: SockRef<'_>| {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
     });
@@ -1050,7 +1050,7 @@ mod tests {
   async fn check_sockopt(
     addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
-    test_fn: Box<dyn FnOnce(SockRef)>,
+    test_fn: Box<dyn FnOnce(SockRef<'_>)>,
   ) {
     let clone_addr = addr.clone();
     tokio::spawn(async move {

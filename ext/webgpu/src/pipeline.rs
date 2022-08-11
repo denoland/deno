@@ -18,7 +18,7 @@ pub(crate) struct WebGpuPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
 impl Resource for WebGpuPipelineLayout {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUPipelineLayout".into()
   }
 }
@@ -27,7 +27,7 @@ pub(crate) struct WebGpuComputePipeline(
   pub(crate) wgpu_core::id::ComputePipelineId,
 );
 impl Resource for WebGpuComputePipeline {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUComputePipeline".into()
   }
 }
@@ -36,7 +36,7 @@ pub(crate) struct WebGpuRenderPipeline(
   pub(crate) wgpu_core::id::RenderPipelineId,
 );
 impl Resource for WebGpuRenderPipeline {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPURenderPipeline".into()
   }
 }

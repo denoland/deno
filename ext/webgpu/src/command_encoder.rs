@@ -16,7 +16,7 @@ pub(crate) struct WebGpuCommandEncoder(
   pub(crate) wgpu_core::id::CommandEncoderId,
 );
 impl Resource for WebGpuCommandEncoder {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUCommandEncoder".into()
   }
 }
@@ -25,7 +25,7 @@ pub(crate) struct WebGpuCommandBuffer(
   pub(crate) wgpu_core::id::CommandBufferId,
 );
 impl Resource for WebGpuCommandBuffer {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUCommandBuffer".into()
   }
 }

@@ -137,7 +137,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 /// function.
 impl Future for JsRuntimeInspector {
   type Output = ();
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
     self.poll_sessions(Some(cx)).unwrap()
   }
 }
@@ -202,7 +202,7 @@ impl JsRuntimeInspector {
 
   fn poll_sessions(
     &self,
-    mut invoker_cx: Option<&mut Context>,
+    mut invoker_cx: Option<&mut Context<'_>>,
   ) -> Result<Poll<()>, BorrowMutError> {
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
@@ -608,7 +608,7 @@ impl Stream for InspectorSession {
 
   fn poll_next(
     self: Pin<&mut Self>,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     if let Poll::Ready(maybe_msg) = inner.proxy.rx.poll_next_unpin(cx) {

@@ -257,7 +257,7 @@ where
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
 impl Resource for ChildStdinResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdin".into()
   }
 
@@ -273,7 +273,7 @@ impl Resource for ChildStdinResource {
 pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 
 impl Resource for ChildStdoutResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdout".into()
   }
 
@@ -292,7 +292,7 @@ impl Resource for ChildStdoutResource {
 pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 
 impl Resource for ChildStderrResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStderr".into()
   }
 
@@ -568,7 +568,7 @@ impl StdFileResource {
 }
 
 impl Resource for StdFileResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     self.name.as_str().into()
   }
 

@@ -66,7 +66,7 @@ pub struct IgnoredCompilerOptions {
 }
 
 impl fmt::Display for IgnoredCompilerOptions {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let mut codes = self.items.clone();
     codes.sort();
     if let Some(specifier) = &self.maybe_specifier {

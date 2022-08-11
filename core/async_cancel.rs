@@ -60,7 +60,10 @@ pub enum Cancelable<F> {
 impl<F: Future> Future for Cancelable<F> {
   type Output = Result<F::Output, Canceled>;
 
-  fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+  fn poll(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Self::Output> {
     let poll_result = match self.as_mut().project() {
       CancelableProjection::Pending {
         future,
@@ -87,7 +90,7 @@ impl<F: Future> FusedFuture for Cancelable<F> {
 }
 
 impl Resource for CancelHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cancellation".into()
   }
 
@@ -110,7 +113,7 @@ where
 {
   type Output = F::Output;
 
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let TryCancelableProjection { inner } = self.project();
     match inner.poll(cx) {
       Poll::Pending => Poll::Pending,
@@ -214,7 +217,7 @@ mod internal {
     pub(super) fn poll_pending(
       future: Pin<&mut F>,
       mut registration: Pin<&mut Registration>,
-      cx: &mut Context,
+      cx: &mut Context<'_>,
     ) -> Poll<Result<F::Output, Canceled>> {
       // Do a cancellation check _before_ polling the inner future. If it has
       // already been canceled the inner future will not be polled.

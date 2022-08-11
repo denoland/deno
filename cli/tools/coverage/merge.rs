@@ -120,7 +120,7 @@ pub fn merge_functions(
   let rta_capacity: usize =
     funcs.iter().fold(0, |acc, func| acc + func.ranges.len());
   let rta = RangeTreeArena::with_capacity(rta_capacity);
-  let mut trees: Vec<&mut RangeTree> = Vec::new();
+  let mut trees: Vec<&mut RangeTree<'_>> = Vec::new();
   for func in funcs {
     if let Some(tree) = RangeTree::from_sorted_ranges(&rta, &func.ranges) {
       trees.push(tree);
@@ -160,7 +160,9 @@ struct StartEvent<'a> {
   trees: Vec<(usize, &'a mut RangeTree<'a>)>,
 }
 
-fn into_start_events<'a>(trees: Vec<&'a mut RangeTree<'a>>) -> Vec<StartEvent> {
+fn into_start_events<'a>(
+  trees: Vec<&'a mut RangeTree<'a>>,
+) -> Vec<StartEvent<'_>> {
   let mut result: BTreeMap<usize, Vec<(usize, &'a mut RangeTree<'a>)>> =
     BTreeMap::new();
   for (parent_index, tree) in trees.into_iter().enumerate() {

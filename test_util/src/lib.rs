@@ -975,7 +975,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 
   fn poll_accept(
     mut self: Pin<&mut Self>,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
     Pin::new(&mut self.acceptor).poll_next(cx)
   }
@@ -1522,7 +1522,7 @@ pub fn http_server() -> HttpServerGuard {
 }
 
 /// Helper function to strip ansi codes.
-pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
+pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<'_, str> {
   STRIP_ANSI_RE.replace_all(s, "")
 }
 

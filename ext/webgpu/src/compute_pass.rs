@@ -15,7 +15,7 @@ pub(crate) struct WebGpuComputePass(
   pub(crate) RefCell<wgpu_core::command::ComputePass>,
 );
 impl Resource for WebGpuComputePass {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUComputePass".into()
   }
 }

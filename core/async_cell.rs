@@ -57,7 +57,7 @@ impl<T: 'static> AsyncRefCell<T> {
 }
 
 impl<T> Debug for AsyncRefCell<T> {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     write!(f, "AsyncRefCell<{}>", type_name::<T>())
   }
 }
@@ -315,7 +315,7 @@ mod internal {
     fn poll_waiter<M: BorrowModeTrait>(
       &self,
       id: usize,
-      cx: &mut Context,
+      cx: &mut Context<'_>,
     ) -> Poll<()> {
       let borrow_count = self.borrow_count.get();
       let turn = self.turn.get();

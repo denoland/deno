@@ -18,7 +18,7 @@ pub struct AuthToken {
 }
 
 impl fmt::Display for AuthToken {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.token {
       AuthTokenData::Bearer(token) => write!(f, "Bearer {}", token),
       AuthTokenData::Basic { username, password } => {

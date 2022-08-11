@@ -117,7 +117,7 @@ pub enum DiagnosticCategory {
 }
 
 impl fmt::Display for DiagnosticCategory {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(
       f,
       "{}",
@@ -218,7 +218,7 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-  fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt_category_and_code(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let category = match self.category {
       DiagnosticCategory::Error => "ERROR",
       DiagnosticCategory::Warning => "WARN",
@@ -238,7 +238,7 @@ impl Diagnostic {
     }
   }
 
-  fn fmt_frame(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
+  fn fmt_frame(&self, f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
     if let (Some(file_name), Some(start)) =
       (self.file_name.as_ref(), self.start.as_ref())
     {
@@ -256,7 +256,11 @@ impl Diagnostic {
     }
   }
 
-  fn fmt_message(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
+  fn fmt_message(
+    &self,
+    f: &mut fmt::Formatter<'_>,
+    level: usize,
+  ) -> fmt::Result {
     if let Some(message_chain) = &self.message_chain {
       write!(f, "{}", message_chain.format_message(level))
     } else {
@@ -272,7 +276,7 @@ impl Diagnostic {
 
   fn fmt_source_line(
     &self,
-    f: &mut fmt::Formatter,
+    f: &mut fmt::Formatter<'_>,
     level: usize,
   ) -> fmt::Result {
     if let (Some(source_line), Some(start), Some(end)) =
@@ -313,7 +317,7 @@ impl Diagnostic {
     Ok(())
   }
 
-  fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt_related_information(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref() {
       write!(f, "\n\n")?;
       for info in related_information {
@@ -324,7 +328,7 @@ impl Diagnostic {
     Ok(())
   }
 
-  fn fmt_stack(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
+  fn fmt_stack(&self, f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
     self.fmt_category_and_code(f)?;
     self.fmt_message(f, level)?;
     self.fmt_source_line(f, level)?;
@@ -337,7 +341,7 @@ impl Diagnostic {
 }
 
 impl fmt::Display for Diagnostic {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.fmt_stack(f, 0)?;
     self.fmt_related_information(f)
   }
@@ -387,7 +391,7 @@ impl Serialize for Diagnostics {
 }
 
 impl fmt::Display for Diagnostics {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let mut i = 0;
     for item in &self.0 {
       if i > 0 {

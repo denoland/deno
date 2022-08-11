@@ -757,17 +757,15 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
     any: rsa::pkcs8::der::asn1::AnyRef<'a>,
   ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm =
-        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
-          decoder,
-          HASH_ALGORITHM_TAG,
-        )?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*SHA1_HASH_ALGORITHM);
+      let hash_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier<'_>,
+      >(decoder, HASH_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
+        rsa::pkcs8::AlgorithmIdentifier<'_>,
       >(decoder, MASK_GEN_ALGORITHM_TAG)?
       .map(TryInto::try_into)
       .transpose()?
@@ -810,24 +808,22 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
     any: rsa::pkcs8::der::asn1::AnyRef<'a>,
   ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm =
-        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
-          decoder,
-          HASH_ALGORITHM_TAG,
-        )?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*SHA1_HASH_ALGORITHM);
+      let hash_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier<'_>,
+      >(decoder, HASH_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*SHA1_HASH_ALGORITHM);
 
       let mask_gen_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
+        rsa::pkcs8::AlgorithmIdentifier<'_>,
       >(decoder, MASK_GEN_ALGORITHM_TAG)?
       .map(TryInto::try_into)
       .transpose()?
       .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
       let p_source_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
+        rsa::pkcs8::AlgorithmIdentifier<'_>,
       >(decoder, P_SOURCE_ALGORITHM_TAG)?
       .map(TryInto::try_into)
       .transpose()?

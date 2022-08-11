@@ -7,7 +7,7 @@ pub type SourcePair = (&'static str, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
 pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
-pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
+pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context<'_>) -> bool;
 
 #[derive(Clone, Copy)]
 pub struct OpDecl {
@@ -91,7 +91,7 @@ impl Extension {
   pub fn run_event_loop_middleware(
     &self,
     op_state_rc: Rc<RefCell<OpState>>,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> bool {
     self
       .event_loop_middleware
@@ -148,7 +148,7 @@ impl ExtensionBuilder {
 
   pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(Rc<RefCell<OpState>>, &mut Context) -> bool + 'static,
+    F: Fn(Rc<RefCell<OpState>>, &mut Context<'_>) -> bool + 'static,
   {
     self.event_loop_middleware = Some(Box::new(middleware_fn));
     self

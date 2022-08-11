@@ -130,7 +130,7 @@ impl<'rt> RangeTree<'rt> {
 
   pub fn to_ranges(&self) -> Vec<CoverageRange> {
     let mut ranges: Vec<CoverageRange> = Vec::new();
-    let mut stack: Vec<(&RangeTree, i64)> = vec![(self, 0)];
+    let mut stack: Vec<(&RangeTree<'_>, i64)> = vec![(self, 0)];
     while let Some((cur, parent_count)) = stack.pop() {
       let count: i64 = parent_count + cur.delta;
       ranges.push(CoverageRange {
@@ -175,7 +175,7 @@ impl<'rt> RangeTree<'rt> {
     let end: usize = range.end_char_offset;
     let count: i64 = range.count;
     let delta: i64 = count - parent_count;
-    let mut children: Vec<&mut RangeTree> = Vec::new();
+    let mut children: Vec<&mut RangeTree<'_>> = Vec::new();
     while let Some(child) =
       Self::from_sorted_ranges_inner(rta, ranges, end, count)
     {
@@ -197,9 +197,9 @@ mod tests {
       end_char_offset: 9,
       count: 1,
     }];
-    let actual: Option<&mut RangeTree> =
+    let actual: Option<&mut RangeTree<'_>> =
       RangeTree::from_sorted_ranges(&rta, &inputs);
-    let expected: Option<&mut RangeTree> =
+    let expected: Option<&mut RangeTree<'_>> =
       Some(rta.alloc(RangeTree::new(0, 9, 1, Vec::new())));
 
     assert_eq!(actual, expected);

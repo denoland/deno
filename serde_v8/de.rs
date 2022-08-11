@@ -326,7 +326,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       visitor.visit_map(map)
     } else {
       let prop_names = obj.get_own_property_names(self.scope);
-      let keys: Vec<magic::Value> = match prop_names {
+      let keys: Vec<magic::Value<'_>> = match prop_names {
         Some(names) => from_v8(self.scope, names.into()).unwrap(),
         None => vec![],
       };
@@ -685,7 +685,7 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
   }
 }
 
-fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
+fn bigint_to_f64(b: v8::Local<'_, v8::BigInt>) -> f64 {
   // log2(f64::MAX) == log2(1.7976931348623157e+308) == 1024
   let mut words: [u64; 16] = [0; 16]; // 1024/64 => 16 64bit words
   let (neg, words) = b.to_words_array(&mut words);
@@ -705,15 +705,15 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
 }
 
 pub fn to_utf8(
-  s: v8::Local<v8::String>,
-  scope: &mut v8::HandleScope,
+  s: v8::Local<'_, v8::String>,
+  scope: &mut v8::HandleScope<'_>,
 ) -> String {
   to_utf8_fast(s, scope).unwrap_or_else(|| to_utf8_slow(s, scope))
 }
 
 fn to_utf8_fast(
-  s: v8::Local<v8::String>,
-  scope: &mut v8::HandleScope,
+  s: v8::Local<'_, v8::String>,
+  scope: &mut v8::HandleScope<'_>,
 ) -> Option<String> {
   // Over-allocate by 20% to avoid checking string twice
   let len = s.length();
@@ -743,8 +743,8 @@ fn to_utf8_fast(
 }
 
 fn to_utf8_slow(
-  s: v8::Local<v8::String>,
-  scope: &mut v8::HandleScope,
+  s: v8::Local<'_, v8::String>,
+  scope: &mut v8::HandleScope<'_>,
 ) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);

@@ -63,7 +63,7 @@ impl Serialize for Stats {
 }
 
 impl fmt::Display for Stats {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     writeln!(f, "Compilation statistics:")?;
     for (key, value) in self.0.clone() {
       writeln!(f, "  {}: {}", key, value)?;

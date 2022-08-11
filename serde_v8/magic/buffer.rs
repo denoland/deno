@@ -138,8 +138,8 @@ impl ToV8 for ZeroCopyBuf {
 
 impl FromV8 for ZeroCopyBuf {
   fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     Ok(Self::FromV8(V8Slice::from_v8(scope, value)?))
   }

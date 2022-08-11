@@ -99,8 +99,8 @@ pub fn initialize_context<'s>(
 }
 
 fn initialize_ops(
-  scope: &mut v8::HandleScope,
-  ops_obj: v8::Local<v8::Object>,
+  scope: &mut v8::HandleScope<'_>,
+  ops_obj: v8::Local<'_, v8::Object>,
   op_ctxs: &[OpCtx],
 ) {
   for ctx in op_ctxs {
@@ -111,7 +111,7 @@ fn initialize_ops(
 
 pub fn set_func(
   scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
+  obj: v8::Local<'_, v8::Object>,
   name: &'static str,
   callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
@@ -125,7 +125,7 @@ pub fn set_func(
 // with some external data.
 pub fn set_func_raw(
   scope: &mut v8::HandleScope<'_>,
-  obj: v8::Local<v8::Object>,
+  obj: v8::Local<'_, v8::Object>,
   name: &'static str,
   callback: v8::FunctionCallback,
   external_data: *const c_void,
@@ -141,11 +141,11 @@ pub fn set_func_raw(
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  _host_defined_options: v8::Local<v8::Data>,
-  resource_name: v8::Local<v8::Value>,
-  specifier: v8::Local<v8::String>,
-  import_assertions: v8::Local<v8::FixedArray>,
+  context: v8::Local<'_, v8::Context>,
+  _host_defined_options: v8::Local<'_, v8::Data>,
+  resource_name: v8::Local<'_, v8::Value>,
+  specifier: v8::Local<'_, v8::String>,
+  import_assertions: v8::Local<'_, v8::FixedArray>,
 ) -> *mut v8::Promise {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -203,9 +203,9 @@ pub extern "C" fn host_import_module_dynamically_callback(
   // ones rethrown from this scope, so they include the call stack of the
   // dynamic import site. Error objects without any stack frames are assumed to
   // be module resolution errors, other exception values are left as they are.
-  let map_err = |scope: &mut v8::HandleScope,
-                 args: v8::FunctionCallbackArguments,
-                 _rv: v8::ReturnValue| {
+  let map_err = |scope: &mut v8::HandleScope<'_>,
+                 args: v8::FunctionCallbackArguments<'_>,
+                 _rv: v8::ReturnValue<'_>| {
     let arg = args.get(0);
     if is_instance_of_error(scope, arg) {
       let e: crate::error::NativeJsError =
@@ -213,7 +213,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       let name = e.name.unwrap_or_else(|| "Error".to_string());
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
-        let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
+        let arg: v8::Local<'_, v8::Object> = arg.try_into().unwrap();
         let message_key = v8::String::new(scope, "message").unwrap();
         let message = arg.get(scope, message_key.into()).unwrap();
         let exception = match name.as_str() {
@@ -250,9 +250,9 @@ pub extern "C" fn host_import_module_dynamically_callback(
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
-  context: v8::Local<v8::Context>,
-  module: v8::Local<v8::Module>,
-  meta: v8::Local<v8::Object>,
+  context: v8::Local<'_, v8::Context>,
+  module: v8::Local<'_, v8::Module>,
+  meta: v8::Local<'_, v8::Object>,
 ) {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -280,9 +280,9 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 }
 
 fn import_meta_resolve(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
+  scope: &mut v8::HandleScope<'_>,
+  args: v8::FunctionCallbackArguments<'_>,
+  mut rv: v8::ReturnValue<'_>,
 ) {
   if args.length() > 1 {
     return throw_type_error(scope, "Invalid arguments");
@@ -314,7 +314,9 @@ fn import_meta_resolve(
   };
 }
 
-pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
+pub extern "C" fn promise_reject_callback(
+  message: v8::PromiseRejectMessage<'_>,
+) {
   use v8::PromiseRejectEvent::*;
 
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
@@ -325,7 +327,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 
   if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
+    let undefined: v8::Local<'_, v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
     drop(state); // Drop borrow, callbacks can call back into runtime.
@@ -406,9 +408,9 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 /// Inspired by:
 /// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/src/inspector_js_api.cc#L194-L222
 fn call_console(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
+  scope: &mut v8::HandleScope<'_>,
+  args: v8::FunctionCallbackArguments<'_>,
+  _rv: v8::ReturnValue<'_>,
 ) {
   if args.length() < 2
     || !args.get(0).is_function()
@@ -481,7 +483,10 @@ pub fn module_resolve_callback<'s>(
   None
 }
 
-pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
+pub fn throw_type_error(
+  scope: &mut v8::HandleScope<'_>,
+  message: impl AsRef<str>,
+) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);

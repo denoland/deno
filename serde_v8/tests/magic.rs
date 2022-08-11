@@ -31,9 +31,9 @@ fn magic_basic() {
 
     // Decode
     let v = js_exec(scope, "({a: 1, b: 3, c: 'abracadabra'})");
-    let mop: MagicOp = serde_v8::from_v8(scope, v).unwrap();
+    let mop: MagicOp<'_> = serde_v8::from_v8(scope, v).unwrap();
     // Check string
-    let v8_value: v8::Local<v8::Value> = mop.c.into();
+    let v8_value: v8::Local<'_, v8::Value> = mop.c.into();
     let vs = v8::Local::<v8::String>::try_from(v8_value).unwrap();
     let s = vs.to_rust_string_lossy(scope);
     assert_eq!(s, "abracadabra");

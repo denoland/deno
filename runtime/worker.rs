@@ -302,7 +302,7 @@ impl MainWorker {
 
   pub fn poll_event_loop(
     &mut self,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
     self.js_runtime.poll_event_loop(cx, wait_for_inspector)

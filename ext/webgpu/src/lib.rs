@@ -84,21 +84,21 @@ type Instance = wgpu_core::hub::Global<wgpu_core::hub::IdentityManagerFactory>;
 
 struct WebGpuAdapter(wgpu_core::id::AdapterId);
 impl Resource for WebGpuAdapter {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUAdapter".into()
   }
 }
 
 struct WebGpuDevice(wgpu_core::id::DeviceId);
 impl Resource for WebGpuDevice {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUDevice".into()
   }
 }
 
 struct WebGpuQuerySet(wgpu_core::id::QuerySetId);
 impl Resource for WebGpuQuerySet {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUQuerySet".into()
   }
 }

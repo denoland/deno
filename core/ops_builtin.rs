@@ -186,6 +186,6 @@ fn op_format_file_name(file_name: String) -> String {
 }
 
 #[op]
-fn op_is_proxy(value: serde_v8::Value) -> bool {
+fn op_is_proxy(value: serde_v8::Value<'_>) -> bool {
   value.v8_value.is_proxy()
 }

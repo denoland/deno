@@ -33,7 +33,7 @@ enum Inner {
 }
 
 impl Resource for CompressionResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "compression".into()
   }
 }

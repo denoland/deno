@@ -80,7 +80,7 @@ struct CustomError {
 }
 
 impl Display for CustomError {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     f.write_str(&self.message)
   }
 }
@@ -183,7 +183,7 @@ impl JsStackFrame {
 
 fn get_property<'a>(
   scope: &mut v8::HandleScope<'a>,
-  object: v8::Local<v8::Object>,
+  object: v8::Local<'_, v8::Object>,
   key: &str,
 ) -> Option<v8::Local<'a, v8::Value>> {
   let key = v8::String::new(scope, key).unwrap();
@@ -200,14 +200,14 @@ pub(crate) struct NativeJsError {
 
 impl JsError {
   pub fn from_v8_exception(
-    scope: &mut v8::HandleScope,
-    exception: v8::Local<v8::Value>,
+    scope: &mut v8::HandleScope<'_>,
+    exception: v8::Local<'_, v8::Value>,
   ) -> Self {
     Self::inner_from_v8_exception(scope, exception, Default::default())
   }
 
   fn inner_from_v8_exception<'a>(
-    scope: &'a mut v8::HandleScope,
+    scope: &'a mut v8::HandleScope<'_>,
     exception: v8::Local<'a, v8::Value>,
     mut seen: HashSet<v8::Local<'a, v8::Value>>,
   ) -> Self {
@@ -235,7 +235,7 @@ impl JsError {
 
     if is_instance_of_error(scope, exception) {
       // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
+      let exception: v8::Local<'_, v8::Object> = exception.try_into().unwrap();
       let cause = get_property(scope, exception, "cause");
       let e: NativeJsError =
         serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
@@ -267,14 +267,14 @@ impl JsError {
       // Access error.stack to ensure that prepareStackTrace() has been called.
       // This should populate error.__callSiteEvals.
       let stack = get_property(scope, exception, "stack");
-      let stack: Option<v8::Local<v8::String>> =
+      let stack: Option<v8::Local<'_, v8::String>> =
         stack.and_then(|s| s.try_into().ok());
       let stack = stack.map(|s| s.to_rust_string_lossy(scope));
 
       // Read an array of structured frames from error.__callSiteEvals.
       let frames_v8 = get_property(scope, exception, "__callSiteEvals");
       // Ignore non-array values
-      let frames_v8: Option<v8::Local<v8::Array>> =
+      let frames_v8: Option<v8::Local<'_, v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
 
       // Convert them into Vec<JsStackFrame>
@@ -355,7 +355,7 @@ impl JsError {
 
       // Read an array of stored errors, this is only defined for `AggregateError`
       let aggregated_errors = get_property(scope, exception, "errors");
-      let aggregated_errors: Option<v8::Local<v8::Array>> =
+      let aggregated_errors: Option<v8::Local<'_, v8::Array>> =
         aggregated_errors.and_then(|a| a.try_into().ok());
 
       let mut aggregated: Option<Vec<JsError>> = None;
@@ -417,7 +417,7 @@ fn format_source_loc(
 }
 
 impl Display for JsError {
-  fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     if let Some(stack) = &self.stack {
       let stack_lines = stack.lines();
       if stack_lines.count() > 1 {
@@ -441,7 +441,7 @@ impl Display for JsError {
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on
 // values of type v8::Global<T>.
 pub(crate) fn to_v8_type_error(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::HandleScope<'_>,
   err: Error,
 ) -> v8::Global<v8::Value> {
   let message = err.to_string();
@@ -457,7 +457,7 @@ pub(crate) fn to_v8_type_error(
 /// work with our WebIDL implementation of `DOMException`.
 pub(crate) fn is_instance_of_error<'s>(
   scope: &mut v8::HandleScope<'s>,
-  value: v8::Local<v8::Value>,
+  value: v8::Local<'_, v8::Value>,
 ) -> bool {
   if !value.is_object() {
     return false;

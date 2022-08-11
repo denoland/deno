@@ -30,7 +30,7 @@ impl Error for ModuleResolutionError {
 }
 
 impl fmt::Display for ModuleResolutionError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       InvalidUrl(ref err) => write!(f, "invalid URL: {}", err),
       InvalidBaseUrl(ref err) => {

@@ -41,7 +41,7 @@ const SUPPORTED_TYPE_ASSERTIONS: &[&str] = &["json"];
 
 /// Throws V8 exception if assertions are invalid
 pub(crate) fn validate_import_assertions(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::HandleScope<'_>,
   assertions: &HashMap<String, String>,
 ) {
   for (key, value) in assertions {
@@ -65,8 +65,8 @@ pub(crate) enum ImportAssertionsKind {
 }
 
 pub(crate) fn parse_import_assertions(
-  scope: &mut v8::HandleScope,
-  import_assertions: v8::Local<v8::FixedArray>,
+  scope: &mut v8::HandleScope<'_>,
+  import_assertions: v8::Local<'_, v8::FixedArray>,
   kind: ImportAssertionsKind,
 ) -> HashMap<String, String> {
   let mut assertions: HashMap<String, String> = HashMap::default();
@@ -120,7 +120,7 @@ pub(crate) fn get_asserted_module_type_from_assertions(
 #[allow(clippy::unnecessary_wraps)]
 fn json_module_evaluation_steps<'a>(
   context: v8::Local<'a, v8::Context>,
-  module: v8::Local<v8::Module>,
+  module: v8::Local<'_, v8::Module>,
 ) -> Option<v8::Local<'a, v8::Value>> {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
@@ -166,7 +166,7 @@ pub enum ModuleType {
 }
 
 impl std::fmt::Display for ModuleType {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::JavaScript => write!(f, "JavaScript"),
       Self::Json => write!(f, "JSON"),
@@ -499,7 +499,7 @@ impl RecursiveModuleLoad {
 
   pub(crate) fn register_and_recurse(
     &mut self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'_>,
     module_request: &ModuleRequest,
     module_source: &ModuleSource,
   ) -> Result<(), ModuleError> {
@@ -617,7 +617,7 @@ impl Stream for RecursiveModuleLoad {
 
   fn poll_next(
     self: Pin<&mut Self>,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     // IMPORTANT: Do not borrow `inner.module_map_rc` here. It may not be
@@ -708,7 +708,7 @@ impl From<ModuleType> for AssertedModuleType {
 }
 
 impl std::fmt::Display for AssertedModuleType {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::JavaScriptOrWasm => write!(f, "JavaScriptOrWasm"),
       Self::Json => write!(f, "JSON"),
@@ -821,7 +821,7 @@ impl ModuleMap {
 
   fn new_json_module(
     &mut self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'_>,
     name: &str,
     source: &[u8],
   ) -> Result<ModuleId, ModuleError> {
@@ -866,7 +866,7 @@ impl ModuleMap {
   // Create and compile an ES module.
   pub(crate) fn new_es_module(
     &mut self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'_>,
     main: bool,
     name: &str,
     source: &[u8],
@@ -1285,7 +1285,7 @@ import "/a.js";
   }
 
   impl fmt::Display for MockError {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
       unimplemented!()
     }
   }
@@ -1304,7 +1304,7 @@ import "/a.js";
   impl Future for DelayedSourceCodeFuture {
     type Output = Result<ModuleSource, Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
       let inner = self.get_mut();
       inner.counter += 1;
       if inner.url == "file:///never_ready.js" {

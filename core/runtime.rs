@@ -503,7 +503,7 @@ impl JsRuntime {
     Ok(realm)
   }
 
-  pub fn handle_scope(&mut self) -> v8::HandleScope {
+  pub fn handle_scope(&mut self) -> v8::HandleScope<'_> {
     self.global_realm().handle_scope(self.v8_isolate())
   }
 
@@ -796,7 +796,7 @@ impl JsRuntime {
       v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
     ));
 
-    let module_namespace: v8::Local<v8::Object> =
+    let module_namespace: v8::Local<'_, v8::Object> =
       v8::Local::try_from(module.get_module_namespace())
         .map_err(|err: v8::DataError| generic_error(err.to_string()))?;
 
@@ -860,7 +860,7 @@ impl JsRuntime {
   pub fn poll_value(
     &mut self,
     global: &v8::Global<v8::Value>,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> Poll<Result<v8::Global<v8::Value>, Error>> {
     let state = self.poll_event_loop(cx, false);
 
@@ -923,7 +923,7 @@ impl JsRuntime {
   /// will return `Poll::Pending` if there are active inspector sessions.
   pub fn poll_event_loop(
     &mut self,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
     // We always poll the inspector first
@@ -1140,7 +1140,7 @@ impl JsRuntimeState {
 
 pub(crate) fn exception_to_err_result<'s, T>(
   scope: &mut v8::HandleScope<'s>,
-  exception: v8::Local<v8::Value>,
+  exception: v8::Local<'_, v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
   let state_rc = JsRuntime::state(scope);
@@ -1272,9 +1272,9 @@ impl JsRuntime {
       );
       let promise = v8::Local::<v8::Promise>::try_from(value)
         .expect("Expected to get promise as module evaluation result");
-      let empty_fn = |_scope: &mut v8::HandleScope,
-                      _args: v8::FunctionCallbackArguments,
-                      _rv: v8::ReturnValue| {};
+      let empty_fn = |_scope: &mut v8::HandleScope<'_>,
+                      _args: v8::FunctionCallbackArguments<'_>,
+                      _rv: v8::ReturnValue<'_>| {};
       let empty_fn = v8::FunctionTemplate::new(tc_scope, empty_fn);
       let empty_fn = empty_fn.get_function(tc_scope).unwrap();
       promise.catch(tc_scope, empty_fn);
@@ -1478,7 +1478,7 @@ impl JsRuntime {
 
   fn prepare_dyn_imports(
     &mut self,
-    cx: &mut Context,
+    cx: &mut Context<'_>,
   ) -> Poll<Result<(), Error>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
@@ -1517,7 +1517,10 @@ impl JsRuntime {
     }
   }
 
-  fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
+  fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Error>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
     if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
@@ -1848,7 +1851,7 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
+  fn resolve_async_ops(&mut self, cx: &mut Context<'_>) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
 
     // We keep a list of promise IDs and OpResults per realm. Since v8::Context
@@ -2056,7 +2059,7 @@ impl JsRealm {
   }
 
   pub(crate) fn state_from_scope(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'_>,
   ) -> Rc<RefCell<ContextState>> {
     let context = scope.get_current_context();
     context
@@ -2165,7 +2168,7 @@ pub mod tests {
 
   pub fn run_in_task<F>(f: F)
   where
-    F: FnOnce(&mut Context) + Send + 'static,
+    F: FnOnce(&mut Context<'_>) + Send + 'static,
   {
     futures::executor::block_on(lazy(move |cx| f(cx)));
   }

@@ -47,7 +47,7 @@ fn main() {
     let hi: Vec<String> = serde_v8::from_v8(scope, v).unwrap();
     println!("hi = {:?}", hi);
 
-    let v: v8::Local<v8::Value> = v8::Number::new(scope, 12345.0).into();
+    let v: v8::Local<'_, v8::Value> = v8::Number::new(scope, 12345.0).into();
     let x: f64 = serde_v8::from_v8(scope, v).unwrap();
     println!("x = {}", x);
   }

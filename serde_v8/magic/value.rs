@@ -39,10 +39,10 @@ impl ToV8 for Value<'_> {
 
 impl FromV8 for Value<'_> {
   fn from_v8(
-    _scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
+    _scope: &mut v8::HandleScope<'_>,
+    value: v8::Local<'_, v8::Value>,
   ) -> Result<Self, crate::Error> {
     // SAFETY: not fully safe, since lifetimes are detached from original scope
-    Ok(unsafe { transmute::<Value, Value>(value.into()) })
+    Ok(unsafe { transmute::<Value<'_>, Value<'_>>(value.into()) })
   }
 }

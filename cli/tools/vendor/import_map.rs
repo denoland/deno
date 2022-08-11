@@ -196,7 +196,7 @@ fn visit_modules(
   graph: &ModuleGraph,
   modules: &[&Module],
   mappings: &Mappings,
-  import_map: &mut ImportMapBuilder,
+  import_map: &mut ImportMapBuilder<'_>,
 ) {
   for module in modules {
     let text_info = match &module.maybe_parsed_source {
@@ -246,7 +246,7 @@ fn visit_modules(
 fn visit_maybe_resolved(
   maybe_resolved: &Resolved,
   graph: &ModuleGraph,
-  import_map: &mut ImportMapBuilder,
+  import_map: &mut ImportMapBuilder<'_>,
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
   text_info: &SourceTextInfo,
@@ -270,7 +270,7 @@ fn handle_dep_specifier(
   text: &str,
   unresolved_specifier: &ModuleSpecifier,
   graph: &ModuleGraph,
-  import_map: &mut ImportMapBuilder,
+  import_map: &mut ImportMapBuilder<'_>,
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
@@ -301,7 +301,7 @@ fn handle_remote_dep_specifier(
   text: &str,
   unresolved_specifier: &ModuleSpecifier,
   specifier: &ModuleSpecifier,
-  import_map: &mut ImportMapBuilder,
+  import_map: &mut ImportMapBuilder<'_>,
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
@@ -385,7 +385,7 @@ fn handle_local_dep_specifier(
   text: &str,
   unresolved_specifier: &ModuleSpecifier,
   specifier: &ModuleSpecifier,
-  import_map: &mut ImportMapBuilder,
+  import_map: &mut ImportMapBuilder<'_>,
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {

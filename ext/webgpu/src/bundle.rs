@@ -17,14 +17,14 @@ struct WebGpuRenderBundleEncoder(
   RefCell<wgpu_core::command::RenderBundleEncoder>,
 );
 impl Resource for WebGpuRenderBundleEncoder {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPURenderBundleEncoder".into()
   }
 }
 
 pub(crate) struct WebGpuRenderBundle(pub(crate) wgpu_core::id::RenderBundleId);
 impl Resource for WebGpuRenderBundle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPURenderBundle".into()
   }
 }

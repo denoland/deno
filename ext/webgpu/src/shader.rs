@@ -11,7 +11,7 @@ use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuShaderModule(pub(crate) wgpu_core::id::ShaderModuleId);
 impl Resource for WebGpuShaderModule {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webGPUShaderModule".into()
   }
 }

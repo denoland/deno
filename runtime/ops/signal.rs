@@ -40,7 +40,7 @@ struct SignalStreamResource {
 
 #[cfg(unix)]
 impl Resource for SignalStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "signal".into()
   }
 

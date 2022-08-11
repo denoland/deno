@@ -212,7 +212,7 @@ impl HttpConnResource {
 }
 
 impl Resource for HttpConnResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpConn".into()
   }
 
@@ -330,7 +330,7 @@ impl HttpStreamResource {
 }
 
 impl Resource for HttpStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpStream".into()
   }
 
@@ -404,7 +404,7 @@ fn req_url(
   scheme: &'static str,
   addr: &HttpSocketAddr,
 ) -> String {
-  let host: Cow<str> = match addr {
+  let host: Cow<'_, str> = match addr {
     HttpSocketAddr::IpSocket(addr) => {
       if let Some(auth) = req.uri().authority() {
         match addr.port() {
