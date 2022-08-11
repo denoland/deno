@@ -177,7 +177,7 @@ Deno.test(
 //     writer.close();
 
 //     const ac = new AbortController();
-//     const server = Deno.serve(async (request) => { 
+//     const server = Deno.serve(async (request) => {
 //       const reqBody = await request.text();
 //       assertEquals("hello world", reqBody);
 //       return new Response("");
@@ -211,7 +211,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
 //     const ac = new AbortController();
 //     const server = Deno.serve(() => new Response(new Blob([])), { port: 4501, signal: ac.signal });
 
-//     const resp = await fetch("http://127.0.0.1:4501/"); 
+//     const resp = await fetch("http://127.0.0.1:4501/");
 //     const respBody = await resp.text();
 
 //     assertEquals("", respBody);
@@ -219,7 +219,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
 //     await server;
 //   },
 // );
-
 
 // Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
 //   const ac = new AbortController();
