@@ -3156,7 +3156,7 @@ assertEquals(1, notify_return_value);
           });
           Deno.core.ops.op_set_next_tick_callback(() => {
             results.push("nextTick");
-            Deno.core.ops.op_set_has_tick_scheduled(false));
+            Deno.core.ops.op_set_has_tick_scheduled(false);
           });
 
           Deno.core.ops.op_set_has_tick_scheduled(true);
