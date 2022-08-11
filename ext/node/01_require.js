@@ -724,7 +724,14 @@
   Module._extensions[".js"] = function (module, filename) {
     const content = ops.op_require_read_file(filename);
 
-    console.log(`TODO: Module._extensions[".js"] is ESM`);
+    if (StringPrototypeEndsWith(filename, ".js")) {
+      const pkg = core.ops.op_require_read_package_scope(filename);
+      if (pkg && pkg.exists && pkg.typ == "module") {
+        throw new Error(
+          `Import ESM module: ${filename} from ${module.parent.filename}`,
+        );
+      }
+    }
 
     module._compile(content, filename);
   };

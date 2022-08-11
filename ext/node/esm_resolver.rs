@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+#![allow(unused)]
+
 use super::errors;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -9,6 +11,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
+use serde::Serialize;
 use std::path::PathBuf;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
@@ -781,7 +784,7 @@ fn parse_package_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct PackageConfig {
   pub exists: bool,
   pub exports: Option<Value>,
@@ -896,7 +899,7 @@ pub fn get_package_config(
   Ok(package_config)
 }
 
-fn get_package_scope_config(
+pub fn get_package_scope_config(
   resolved: &ModuleSpecifier,
 ) -> Result<PackageConfig, AnyError> {
   let mut package_json_url = resolved.join("./package.json")?;
