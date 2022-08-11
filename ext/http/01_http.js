@@ -484,9 +484,8 @@
       req.method;
       req.headers;
 
-      const { streamRid } = req[_flash];
-      // TODO: Store serverId in req[_flash] and use it here.
-      const connRid = core.ops.op_flash_upgrade_http(streamRid, 0);
+      const { serverId, streamRid } = req[_flash];
+      const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
       // TODO(@littledivy): return already read first packet too.
       return [new TcpConn(connRid), new Uint8Array()];
     }

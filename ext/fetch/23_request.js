@@ -374,7 +374,7 @@
         return this[_method];
       }
       if (this[_flash]) {
-        this[_method] = this[_flash].method();
+        this[_method] = this[_flash].methodCb();
         return this[_method];
       } else {
         this[_method] = this[_request].method;
@@ -389,7 +389,7 @@
       }
 
       if (this[_flash]) {
-        this[_url] = this[_flash].url();
+        this[_url] = this[_flash].urlCb();
         return this[_url];
       } else {
         this[_url] = this[_request].url();
@@ -512,21 +512,31 @@
   }
 
   /**
+   * @param {number} serverId
+   * @param {number} streamRid
    * @param {ReadableStream} body
-   * @param {() => void} method
-   * @param {() => void} url
-   * @param {() => void} headers
+   * @param {() => string} methodCb
+   * @param {() => string} urlCb
+   * @param {() => [string, string][]} headersCb
    * @returns {Request}
    */
-  function fromInnerFlashRequest(body, method, url, headers, streamRid) {
+  function fromInnerFlashRequest(
+    serverId,
+    streamRid,
+    body,
+    methodCb,
+    urlCb,
+    headersCb,
+  ) {
     const request = webidl.createBranded(Request);
     request[_flash] = {
       body: body !== null ? new InnerBody(body) : null,
-      method,
-      url,
+      methodCb,
+      urlCb,
       streamRid,
+      serverId,
     };
-    request[_getHeaders] = headers;
+    request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
     return request;
   }
 
