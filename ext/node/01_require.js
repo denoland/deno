@@ -19,6 +19,7 @@
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
     ObjectKeys,
+    ObjectPrototype,
     ObjectCreate,
     SafeMap,
     SafeWeakMap,
