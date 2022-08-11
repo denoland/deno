@@ -373,23 +373,18 @@
 
   function createRequestBodyStream(serverId, token) {
     // The first packet is left over bytes after parsing the request
-    // which is always less than 1024 bytes.
-    const readFirstPacket = new Uint8Array(1024);
     const firstRead = core.ops.op_flash_first_packet(
       serverId,
       token,
-      readFirstPacket,
     );
-    let firstEnqueued = firstRead === 0;
+    let firstEnqueued = firstRead.byteLength == 0;
 
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
         try {
           if (firstEnqueued === false) {
-            controller.enqueue(
-              TypedArrayPrototypeSubarray(readFirstPacket, 0, firstRead),
-            );
+            controller.enqueue(firstRead);
             firstEnqueued = true;
             return;
           }

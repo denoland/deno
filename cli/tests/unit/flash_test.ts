@@ -246,3 +246,72 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
 //   ac.abort();
 //   await server;
 // });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpVeryLargeRequest() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    let headers: Headers;
+    const server = Deno.serve(async (request) => {
+      headers = request.headers;
+      promise.resolve();
+      return new Response("");
+    }, { port: 2333, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 2333 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const smthElse = "x".repeat(16 * 1024 + 256);
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\nSomething-Else: ${smthElse}\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+    assertEquals(headers!.get("content-length"), "5");
+    assertEquals(headers!.get("something-else"), smthElse);
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpVeryLargeRequestAndBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    let headers: Headers;
+    let text: string;
+    const server = Deno.serve(async (request) => {
+      headers = request.headers;
+      text = await request.text();
+      promise.resolve();
+      return new Response("");
+    }, { port: 2333, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 2333 });
+    // Send GET request with a body + content-length.
+    const encoder = new TextEncoder();
+    const smthElse = "x".repeat(16 * 1024 + 256);
+    const reqBody = "hello world".repeat(1024);
+    let body =
+      `PUT / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: ${reqBody.length}\r\nSomething-Else: ${smthElse}\r\n\r\n${reqBody}`;
+    
+    while (body.length > 0) {
+      const writeResult = await conn.write(encoder.encode(body));
+      body = body.slice(writeResult);
+    }
+
+    await promise;
+    conn.close();
+    
+    assertEquals(headers!.get("content-length"), `${reqBody.length}`);
+    assertEquals(headers!.get("something-else"), smthElse);
+    // assertEquals(text!, reqBody);
+    ac.abort();
+    await server;
+  },
+);

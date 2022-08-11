@@ -32,12 +32,14 @@ use mio::Token;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::intrinsics::transmute;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
+use std::mem::replace;
 use std::net::SocketAddr;
 use std::os::unix::prelude::AsRawFd;
 use std::os::unix::prelude::FromRawFd;
@@ -82,12 +84,19 @@ struct InnerRequest {
   buffer: Pin<Box<[u8]>>,
 }
 
+#[derive(Debug, PartialEq)]
+enum ParseStatus {
+  None,
+  Ongoing(usize),
+}
+
 struct Stream {
   inner: TcpStream,
   detached: bool,
   read_rx: Option<mpsc::Receiver<()>>,
   read_tx: Option<mpsc::Sender<()>>,
-
+  parse_done: ParseStatus,
+  buffer: UnsafeCell<Vec<u8>>,
   read_lock: Arc<Mutex<()>>,
 }
 
@@ -340,29 +349,27 @@ fn op_flash_first_packet(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
-  mut buf: ZeroCopyBuf,
-) -> usize {
+) -> ZeroCopyBuf {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let tx = ctx.response.get_mut(&token).unwrap();
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
 
-  let mut buffer = &tx.inner.buffer[tx.inner.body_offset..];
+  let buffer = &tx.inner.buffer[tx.inner.body_offset..];
   // Oh there is nothing here.
   if buffer.is_empty() {
-    return 0;
+    return ZeroCopyBuf::empty();
   }
-  debug_assert!(buf.len() >= buffer.len());
 
   if tx.expect_continue {
     let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
   }
-  let nread = buffer.read(&mut buf).unwrap();
-  tx.content_read += nread;
 
-  nread
+  tx.content_read += buffer.len();
+
+  buffer.to_vec().into()  
 }
 
 // fn consume_body(sock: &mut Stream) -> usize {
@@ -523,7 +530,7 @@ fn run_server(
       Err(e) => panic!("{}", e),
       Ok(()) => (),
     }
-    for event in &events {
+    'events: for event in &events {
       let result = close_rx.try_recv();
       if let Ok(_) = result {
         break 'outer;
@@ -539,12 +546,14 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
-              let stream = std::cell::UnsafeCell::new(Stream {
+              let stream = UnsafeCell::new(Stream {
                 inner: socket,
                 detached: false,
                 read_rx: None,
                 read_tx: None,
                 read_lock: Arc::new(Mutex::new(())),
+                parse_done: ParseStatus::None,
+                buffer: UnsafeCell::new(vec![0_u8; 1024]),
               });
 
               trace!("New connection: {}", token.0);
@@ -579,34 +588,54 @@ fn run_server(
             continue;
           }
 
-          let mut buffer = Pin::new(vec![0_u8; 1024].into_boxed_slice());
-
-          let nread = socket.read(&mut buffer);
           let mut headers = vec![httparse::EMPTY_HEADER; 40];
           let mut req = httparse::Request::new(&mut headers);
           let body_offset;
-          let body_len;
+          let mut body_len;
+          loop {
+            // SAFETY: It is safe for the read buf to be mutable here.
+            let buffer = unsafe { &mut *socket.buffer.get() };
+            let offset = match socket.parse_done {
+              ParseStatus::None => 0,
+              ParseStatus::Ongoing(offset) => offset,
+            };
+            if offset >= buffer.len() {
+              buffer.resize(offset * 2, 0);
+            }
+            let nread = socket.read(&mut buffer[offset..]);
 
-          match nread {
-            Ok(0) => {
-              sockets.remove(&token);
-              continue;
-            }
-            Ok(n) => {
-              body_len = n;
-              let r = req.parse(&buffer[0..n]);
-              // Just testing now, assumtion is we get complete message in a single packet, which is true in wrk benchmark.
-              match r {
-                Ok(httparse::Status::Complete(n)) => body_offset = n,
-                Err(e) => {
-                  panic!("{}", e);
-                }
-                _ => unreachable!(),
+            match nread {
+              Ok(0) => {
+                sockets.remove(&token);
+                continue 'events;
               }
+              Ok(n) => {
+                body_len = offset + n;
+                let r = req.parse(&buffer[..offset + n]);
+                match r {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    socket.parse_done = ParseStatus::None;
+                    break;
+                  }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + n);
+                    continue;
+                  }
+                  Err(e) => {
+                    panic!("{}", e);
+                  }
+                  _ => unreachable!(),
+                }
+              }
+              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                break 'events
+              }
+              Err(_) => break 'events,
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-            Err(_) => break,
           }
+
+          debug_assert_eq!(socket.parse_done, ParseStatus::None);
           if let Some(method) = &req.method {
             if method == &"POST" || method == &"PUT" {
               let (tx, rx) = mpsc::channel(100);
@@ -614,12 +643,17 @@ fn run_server(
               socket.read_rx = Some(rx);
             }
           }
+
+          // SAFETY: It is safe for the read buf to be mutable here.
+          let buffer = unsafe { &mut *socket.buffer.get() };
           let inner_req = InnerRequest {
             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
             _headers: unsafe {
               transmute::<Vec<httparse::Header<'_>>, _>(headers)
             },
-            buffer,
+            buffer: Pin::new(
+              replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
+            ),
             body_offset,
             body_len,
           };
