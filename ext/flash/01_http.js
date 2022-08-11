@@ -30,7 +30,6 @@
     Uint8Array,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
-  const { headersFromHeaderList } = window.__bootstrap.headers;
 
   const statusCodes = {
     100: "Continue",
@@ -191,18 +190,19 @@
             }
 
             const req = fromInnerFlashRequest(
+              serverId,
+              /* streamRid */
+              i,
               body,
+              /* methodCb */
               () => core.ops.op_flash_method(serverId, i),
+              /* urlCb */
               () => {
                 const path = core.ops.op_flash_path(serverId, i);
                 return `${server.transport}://${server.hostname}:${server.port}${path}`;
               },
-              () =>
-                headersFromHeaderList(
-                  core.opSync("op_flash_headers", serverId, i),
-                  "request",
-                ),
-              i,
+              /* headersCb */
+              () => core.opSync("op_flash_headers", serverId, i),
             );
 
             const resp = await handler(req);
@@ -306,16 +306,16 @@
               }
             } else {
               core.ops.op_flash_respond(
-                  serverId,
-                  i,
-                  http1Response(
-                    innerResp.status ?? 200,
-                    innerResp.headerList,
-                    respBody,
-                  ),
-                  null,
-                  !ws, // Don't close socket if there is a deferred websocket upgrade.
-                );
+                serverId,
+                i,
+                http1Response(
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  respBody,
+                ),
+                null,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
+              );
             }
 
             if (ws) {
