@@ -19,6 +19,7 @@
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
     ObjectKeys,
+    ObjectPrototype,
     ObjectCreate,
     SafeMap,
     SafeWeakMap,
@@ -48,11 +49,6 @@
     if (!cond) {
       throw Error("assert");
     }
-  }
-
-  // TODO:
-  function isProxy() {
-    return false;
   }
 
   // TODO(bartlomieju): verify in other parts of this file that
@@ -200,7 +196,6 @@
   function getExportsForCircularRequire(module) {
     if (
       module.exports &&
-      !isProxy(module.exports) &&
       ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
       // Exclude transpiled ES6 modules / TypeScript code because those may
       // employ unusual patterns for accessing 'module.exports'. That should
@@ -218,6 +213,13 @@
     return module.exports;
   }
 
+  function emitCircularRequireWarning(prop) {
+    processGlobal.emitWarning(
+      `Accessing non-existent property '${String(prop)}' of module exports ` +
+        "inside circular dependency",
+    );
+  }
+
   // A Proxy that can be used as the prototype of a module.exports object and
   // warns when non-existent properties are accessed.
   const CircularRequirePrototypeWarningProxy = new Proxy({}, {
@@ -226,9 +228,7 @@
       // of transpiled code to determine whether something comes from an
       // ES module, and is not used as a regular key of `module.exports`.
       if (prop in target || prop === "__esModule") return target[prop];
-      // TODO:
-      // emitCircularRequireWarning(prop);
-      console.log("TODO: emitCircularRequireWarning");
+      emitCircularRequireWarning(prop);
       return undefined;
     },
 
@@ -238,9 +238,7 @@
       ) {
         return ObjectGetOwnPropertyDescriptor(target, prop);
       }
-      // TODO:
-      // emitCircularRequireWarning(prop);
-      console.log("TODO: emitCircularRequireWarning");
+      emitCircularRequireWarning(prop);
       return undefined;
     },
   });
@@ -258,7 +256,6 @@
   }
 
   const builtinModules = [];
-  // TODO(bartlomieju): handle adding native modules
   Module.builtinModules = builtinModules;
 
   Module._extensions = Object.create(null);
@@ -298,10 +295,7 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = false;
-        // TODO:
-        console.log("TODO: Module._findPath resolveExports");
-        // const exportsResolved = resolveExports(curPath, request);
+        const exportsResolved = resolveExports(curPath, request);
         if (exportsResolved) {
           return exportsResolved;
         }
@@ -447,7 +441,6 @@
         }
       } else if (
         module.exports &&
-        !isProxy(module.exports) &&
         ObjectGetPrototypeOf(module.exports) ===
           CircularRequirePrototypeWarningProxy
       ) {
@@ -624,15 +617,33 @@
     return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
   };
 
+  function enrichCJSError(error) {
+    if (error instanceof SyntaxError) {
+      if (
+        error.message.includes(
+          "Cannot use import statement outside a module",
+        ) ||
+        error.message.includes("Unexpected token 'export'")
+      ) {
+        console.error(
+          'To load an ES module, set "type": "module" in the package.json or use ' +
+            "the .mjs extension.",
+        );
+      }
+    }
+  }
+
   function wrapSafe(
     filename,
     content,
-    _cjsModuleInstance,
+    cjsModuleInstance,
   ) {
     const wrapper = Module.wrap(content);
     const [f, err] = core.evalContext(wrapper, filename);
     if (err) {
-      console.log("TODO: wrapSafe check if main module");
+      if (processGlobal.mainModule === cjsModuleInstance) {
+        enrichCJSError(err.thrown);
+      }
       throw err.thrown;
     }
     return f;
