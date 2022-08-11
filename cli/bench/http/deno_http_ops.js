@@ -19,7 +19,7 @@ class Http {
 }
 
 for await (const conn of tcp) {
-  const id = Deno.core.opSync("op_http_start", conn.rid);
+  const id = Deno.core.ops.op_http_start(conn.rid);
   const http = new Http(id);
   (async () => {
     for await (const req of http) {

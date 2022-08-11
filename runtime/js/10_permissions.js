@@ -5,7 +5,7 @@
   const {
     Event,
     EventTarget,
-    Deno: { core },
+    Deno: { core: { ops } },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
   const { pathFromURL } = window.__bootstrap.util;
@@ -48,7 +48,7 @@
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
-    return core.opSync("op_query_permission", desc);
+    return ops.op_query_permission(desc);
   }
 
   /**
@@ -56,7 +56,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
-    return core.opSync("op_revoke_permission", desc);
+    return ops.op_revoke_permission(desc);
   }
 
   /**
@@ -64,7 +64,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
-    return core.opSync("op_request_permission", desc);
+    return ops.op_request_permission(desc);
   }
 
   class PermissionStatus extends EventTarget {

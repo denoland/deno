@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.72.0"
+version = "0.73.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -22,21 +22,22 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.58.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.64.0", path = "../ext/console" }
-deno_core = { version = "0.146.0", path = "../core" }
-deno_crypto = { version = "0.78.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.87.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.51.0", path = "../ext/ffi" }
-deno_http = { version = "0.58.0", path = "../ext/http" }
-deno_net = { version = "0.56.0", path = "../ext/net" }
-deno_tls = { version = "0.51.0", path = "../ext/tls" }
-deno_url = { version = "0.64.0", path = "../ext/url" }
-deno_web = { version = "0.95.0", path = "../ext/web" }
-deno_webgpu = { version = "0.65.0", path = "../ext/webgpu" }
-deno_webidl = { version = "0.64.0", path = "../ext/webidl" }
-deno_websocket = { version = "0.69.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.59.0", path = "../ext/webstorage" }
+deno_broadcast_channel = { version = "0.59.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.65.0", path = "../ext/console" }
+deno_core = { version = "0.147.0", path = "../core" }
+deno_crypto = { version = "0.79.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.88.0", path = "../ext/fetch" }
+deno_ffi = { version = "0.52.0", path = "../ext/ffi" }
+deno_http = { version = "0.59.0", path = "../ext/http" }
+deno_net = { version = "0.57.0", path = "../ext/net" }
+deno_node = { version = "0.2.0", path = "../ext/node" }
+deno_tls = { version = "0.52.0", path = "../ext/tls" }
+deno_url = { version = "0.65.0", path = "../ext/url" }
+deno_web = { version = "0.96.0", path = "../ext/web" }
+deno_webgpu = { version = "0.66.0", path = "../ext/webgpu" }
+deno_webidl = { version = "0.65.0", path = "../ext/webidl" }
+deno_websocket = { version = "0.70.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.60.0", path = "../ext/webstorage" }
 
 lzzzz = '1.0'
 
@@ -45,21 +46,22 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_broadcast_channel = { version = "0.58.0", path = "../ext/broadcast_channel" }
-deno_console = { version = "0.64.0", path = "../ext/console" }
-deno_core = { version = "0.146.0", path = "../core" }
-deno_crypto = { version = "0.78.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.87.0", path = "../ext/fetch" }
-deno_ffi = { version = "0.51.0", path = "../ext/ffi" }
-deno_http = { version = "0.58.0", path = "../ext/http" }
-deno_net = { version = "0.56.0", path = "../ext/net" }
-deno_tls = { version = "0.51.0", path = "../ext/tls" }
-deno_url = { version = "0.64.0", path = "../ext/url" }
-deno_web = { version = "0.95.0", path = "../ext/web" }
-deno_webgpu = { version = "0.65.0", path = "../ext/webgpu" }
-deno_webidl = { version = "0.64.0", path = "../ext/webidl" }
-deno_websocket = { version = "0.69.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.59.0", path = "../ext/webstorage" }
+deno_broadcast_channel = { version = "0.59.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.65.0", path = "../ext/console" }
+deno_core = { version = "0.147.0", path = "../core" }
+deno_crypto = { version = "0.79.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.88.0", path = "../ext/fetch" }
+deno_ffi = { version = "0.52.0", path = "../ext/ffi" }
+deno_http = { version = "0.59.0", path = "../ext/http" }
+deno_net = { version = "0.57.0", path = "../ext/net" }
+deno_node = { version = "0.2.0", path = "../ext/node" }
+deno_tls = { version = "0.52.0", path = "../ext/tls" }
+deno_url = { version = "0.65.0", path = "../ext/url" }
+deno_web = { version = "0.96.0", path = "../ext/web" }
+deno_webgpu = { version = "0.66.0", path = "../ext/webgpu" }
+deno_webidl = { version = "0.65.0", path = "../ext/webidl" }
+deno_websocket = { version = "0.70.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.60.0", path = "../ext/webstorage" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"
@@ -74,7 +76,7 @@ lzzzz = '1.0'
 netif = "0.1.3"
 notify = "=5.0.0-pre.15"
 once_cell = "1.10.0"
-regex = "1.5.5"
+regex = "1.6.0"
 ring = "0.16.20"
 serde = { version = "1.0.136", features = ["derive"] }
 signal-hook-registry = "1.4.0"

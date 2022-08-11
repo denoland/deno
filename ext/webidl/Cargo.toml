@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webidl"
-version = "0.64.0"
+version = "0.65.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,4 +14,4 @@ description = "WebIDL implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.146.0", path = "../../core" }
+deno_core = { version = "0.147.0", path = "../../core" }
