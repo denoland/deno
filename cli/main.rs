@@ -23,6 +23,8 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+#[allow(unused)]
+mod npm;
 mod ops;
 mod proc_state;
 mod resolver;
@@ -472,7 +474,7 @@ async fn install_command(
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
   let permissions =
-    Permissions::from_options(&preload_flags.permissions_options());
+    Permissions::from_options(&preload_flags.permissions_options())?;
   let ps = ProcState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker = create_main_worker(
@@ -483,7 +485,7 @@ async fn install_command(
     Default::default(),
   );
   // First, fetch and compile the module; this step ensures that the module exists.
-  worker.preload_module(&main_module, true).await?;
+  worker.preload_main_module(&main_module).await?;
   tools::installer::install(flags, install_flags)?;
   Ok(0)
 }
@@ -562,7 +564,7 @@ async fn eval_command(
   // type, and so our "fake" specifier needs to have the proper extension.
   let main_module =
     resolve_url_or_path(&format!("./$deno$eval.{}", eval_flags.ext))?;
-  let permissions = Permissions::from_options(&flags.permissions_options());
+  let permissions = Permissions::from_options(&flags.permissions_options())?;
   let ps = ProcState::build(flags).await?;
   let mut worker = create_main_worker(
     &ps,
@@ -862,7 +864,7 @@ async fn repl_command(
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options()),
+    Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
   );
@@ -883,7 +885,7 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let mut worker = create_main_worker(
     &ps.clone(),
     main_module.clone(),
-    Permissions::from_options(&ps.options.permissions_options()),
+    Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
   );
@@ -994,8 +996,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
     ModuleSpecifier,
   )| {
     let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.permissions_options());
-    async move {
+    let permissions = Permissions::from_options(&flags.permissions_options())?;
+    Ok(async move {
       let ps =
         ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
           .await?;
@@ -1015,7 +1017,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
       executor.execute(&main_module).await?;
 
       Ok(())
-    }
+    })
   };
 
   file_watcher::watch_func2(
@@ -1053,7 +1055,7 @@ async fn run_command(
   let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags).await?;
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options());
+    Permissions::from_options(&ps.options.permissions_options())?;
   let mut worker = create_main_worker(
     &ps,
     main_module.clone(),

@@ -1385,7 +1385,7 @@ pub async fn run_tests(
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options());
+    Permissions::from_options(&ps.options.permissions_options())?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     &ps,
     test_flags.include,
@@ -1430,7 +1430,7 @@ pub async fn run_tests_with_watch(
 ) -> Result<(), AnyError> {
   let ps = ProcState::build(flags).await?;
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options());
+    Permissions::from_options(&ps.options.permissions_options())?;
 
   let include = test_flags.include;
   let ignore = test_flags.ignore.clone();
