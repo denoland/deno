@@ -31,16 +31,17 @@
     RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
+  const ops = core.ops;
 
   // Map used to store CJS parsing data.
   const cjsParseCache = new SafeWeakMap();
 
   function pathDirname(filepath) {
-    return core.opSync("op_require_path_dirname", filepath);
+    return ops.op_require_path_dirname(filepath);
   }
 
   function pathResolve(...args) {
-    return core.opSync("op_require_path_resolve", args);
+    return ops.op_require_path_resolve(args);
   }
 
   function assert(cond) {
@@ -76,7 +77,7 @@
         return result;
       }
     }
-    const result = core.opSync("op_require_stat", filename);
+    const result = ops.op_require_stat(filename);
     if (statCache !== null && result >= 0) {
       statCache.set(filename, result);
     }
@@ -162,7 +163,7 @@
     if (maybeCached) {
       return maybeCached;
     }
-    const rp = core.opSync("op_require_real_path", requestPath);
+    const rp = ops.op_require_real_path(requestPath);
     realpathCache.set(requestPath, rp);
     return rp;
   }
@@ -181,7 +182,7 @@
   // Find the longest (possibly multi-dot) extension registered in
   // Module._extensions
   function findLongestRegisteredExtension(filename) {
-    const name = core.opSync("op_require_path_basename", filename);
+    const name = ops.op_require_path_basename(filename);
     let currentExtension;
     let index;
     let startIndex = 0;
@@ -269,7 +270,7 @@
   const CHAR_FORWARD_SLASH = 47;
   const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
   Module._findPath = function (request, paths, isMain) {
-    const absoluteRequest = core.opSync("op_require_path_is_absolute", request);
+    const absoluteRequest = ops.op_require_path_is_absolute(request);
     if (absoluteRequest) {
       paths = [""];
     } else if (!paths || paths.length === 0) {
@@ -346,12 +347,11 @@
   };
 
   Module._nodeModulePaths = function (from) {
-    return core.opSync("op_require_node_module_paths", from);
+    return ops.op_require_node_module_paths(from);
   };
 
   Module._resolveLookupPaths = function (request, parent) {
-    return core.opSync(
-      "op_require_resolve_lookup_paths",
+    return ops.op_require_resolve_lookup_paths(
       request,
       parent?.paths,
       parent?.filename ?? "",
@@ -475,8 +475,7 @@
 
     if (typeof options === "object" && options !== null) {
       if (ArrayIsArray(options.paths)) {
-        const isRelative = core.opSync(
-          "op_require_is_request_relative",
+        const isRelative = ops.op_require_is_request_relative(
           request,
         );
 
@@ -537,13 +536,12 @@
 
     // Try module self resolution first
     // TODO(bartlomieju): make into a single op
-    const parentPath = core.opSync(
-      "op_require_try_self_parent_path",
+    const parentPath = ops.op_require_try_self_parent_path(
       !!parent,
       parent?.filename,
       parent?.id,
     );
-    // const selfResolved = core.opSync("op_require_try_self", parentPath, request);
+    // const selfResolved = ops.op_require_try_self(parentPath, request);
     const selfResolved = false;
     if (selfResolved) {
       const cacheKey = request + "\x00" +
@@ -666,7 +664,7 @@
   };
 
   Module._extensions[".js"] = function (module, filename) {
-    const content = core.opSync("op_require_read_file", filename);
+    const content = ops.op_require_read_file(filename);
 
     console.log(`TODO: Module._extensions[".js"] is ESM`);
 
@@ -682,7 +680,7 @@
 
   // Native extension for .json
   Module._extensions[".json"] = function (module, filename) {
-    const content = core.opSync("op_require_read_file", filename);
+    const content = ops.op_require_read_file(filename);
 
     try {
       module.exports = JSONParse(stripBOM(content));
@@ -698,7 +696,7 @@
   };
 
   function createRequireFromPath(filename) {
-    const proxyPath = core.opSync("op_require_proxy_path", filename);
+    const proxyPath = ops.op_require_proxy_path(filename);
     const mod = new Module(proxyPath);
     mod.filename = proxyPath;
     mod.paths = Module._nodeModulePaths(mod.path);
@@ -737,7 +735,7 @@
   Module.createRequire = createRequire;
 
   Module._initPaths = function () {
-    const paths = core.opSync("op_require_init_paths");
+    const paths = ops.op_require_init_paths();
     modulePaths = paths;
     Module.globalPaths = ArrayPrototypeSlice(modulePaths);
   };

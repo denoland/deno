@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferPrototype,
@@ -505,7 +506,7 @@
   // A finalization registry to deallocate a blob part when its JS reference is
   // garbage collected.
   const registry = new FinalizationRegistry((uuid) => {
-    core.opSync("op_blob_remove_part", uuid);
+    ops.op_blob_remove_part(uuid);
   });
 
   // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
@@ -533,7 +534,7 @@
      * @returns {BlobReference}
      */
     static fromUint8Array(data) {
-      const id = core.opSync("op_blob_create_part", data);
+      const id = ops.op_blob_create_part(data);
       return new BlobReference(id, data.byteLength);
     }
 
@@ -548,7 +549,7 @@
      */
     slice(start, end) {
       const size = end - start;
-      const id = core.opSync("op_blob_slice_part", this._id, {
+      const id = ops.op_blob_slice_part(this._id, {
         start,
         len: size,
       });
@@ -588,7 +589,7 @@
    * @returns {Blob | null}
    */
   function blobFromObjectUrl(url) {
-    const blobData = core.opSync("op_blob_from_object_url", url);
+    const blobData = ops.op_blob_from_object_url(url);
     if (blobData === null) {
       return null;
     }
