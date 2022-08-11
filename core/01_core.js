@@ -127,11 +127,14 @@
     errorMap[className] = errorBuilder;
   }
 
-  function buildCustomError(className, message) {
+  function buildCustomError(className, message, code) {
     const error = errorMap[className]?.(message);
     // Strip buildCustomError() calls from stack trace
     if (typeof error == "object") {
       ErrorCaptureStackTrace(error, buildCustomError);
+      if (code) {
+        error.code = code;
+      }
     }
     return error;
   }
