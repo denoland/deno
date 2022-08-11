@@ -127,6 +127,18 @@
     errorMap[className] = errorBuilder;
   }
 
+  function buildCustomError(className, message, code) {
+    const error = errorMap[className]?.(message);
+    // Strip buildCustomError() calls from stack trace
+    if (typeof error == "object") {
+      ErrorCaptureStackTrace(error, buildCustomError);
+      if (code) {
+        error.code = code;
+      }
+    }
+    return error;
+  }
+
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
@@ -168,7 +180,7 @@
   }
 
   function opSync(opName, ...args) {
-    return unwrapOpResult(ops[opName](...args));
+    return ops[opName](...args);
   }
 
   function refOp(promiseId) {
@@ -229,6 +241,7 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
+    buildCustomError,
     opresolve,
     BadResource,
     BadResourcePrototype,
