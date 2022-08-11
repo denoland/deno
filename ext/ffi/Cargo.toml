@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.51.0"
+version = "0.52.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,7 +14,7 @@ description = "Dynamic library ffi for deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.146.0", path = "../../core" }
+deno_core = { version = "0.147.0", path = "../../core" }
 dlopen = "0.1.8"
 libffi = "3.0.0"
 serde = { version = "1.0.129", features = ["derive"] }

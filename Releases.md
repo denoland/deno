@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.24.3 / 2022.08.11
+
+- feat(core): Add support for async ops in realms (#14734)
+- feat(ext/fetch): Add socks proxy support (#15372)
+- feat(ext/ffi): Add static method variants to Deno.UnsafePointerView (#15146)
+- feat: add ext/node for require support (#15362)
+- feat: add initial internal npm client and dependency resolver (#15446)
+- fix(cli): allow configurations files to also be json modules (#15444)
+- fix(ext/ffi): Check CStr for UTF-8 validity on read (#15318)
+- fix(ext/ffi): unstable op_ffi_unsafe_callback_ref (#15439)
+- fix(permissions): ignore empty values (#15447)
+- fix(task): subcommand parser skips global args (#15297)
+- fix: allow setting `globalThis.location` when no `--location` is provided
+  (#15448)
+- fix: update deno_graph to fix importing config as JSON module (#15388)
+- fix: various formatting fixes (#15412)
+- perf(ops): Monomorphic sync op calls (#15337)
+
 ### 1.24.2 / 2022.08.04
 
 - feat(ext/ffi): Add support to get ArrayBuffers from UnsafePointerView (#15143)
