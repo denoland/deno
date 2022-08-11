@@ -477,6 +477,13 @@
 
   function upgradeHttp(req) {
     if (req[_flash]) {
+      // NOTE(bartlomieju):
+      // Access these fields so they are cached on `req` object, otherwise
+      // they wouldn't be available after the connection gets upgraded.
+      req.url;
+      req.method;
+      req.headers;
+      
       const { streamRid } = req[_flash];
       // TODO: Store serverId in req[_flash] and use it here.
       const connRid = core.ops.op_flash_upgrade_http(streamRid, 0);
