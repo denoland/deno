@@ -6,7 +6,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
