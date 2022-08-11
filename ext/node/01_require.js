@@ -575,14 +575,12 @@
     }
 
     // Try module self resolution first
-    // TODO(bartlomieju): make into a single op
     const parentPath = ops.op_require_try_self_parent_path(
       !!parent,
       parent?.filename,
       parent?.id,
     );
-    // const selfResolved = ops.op_require_try_self(parentPath, request);
-    const selfResolved = false;
+    const selfResolved = ops.op_require_try_self(parentPath, request);
     if (selfResolved) {
       const cacheKey = request + "\x00" +
         (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));

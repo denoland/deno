@@ -341,27 +341,51 @@ fn op_require_try_self_parent_path(
 #[op]
 fn op_require_try_self(
   state: &mut OpState,
-  has_parent: bool,
-  maybe_parent_filename: Option<String>,
-  maybe_parent_id: Option<String>,
-) -> Option<String> {
+  parent_path: Option<String>,
+  request: String,
+) -> Result<Option<String>, AnyError> {
   check_unstable(state);
-  if !has_parent {
-    return None;
+  if parent_path.is_none() {
+    return Ok(None);
   }
 
-  if let Some(parent_filename) = maybe_parent_filename {
-    return Some(parent_filename);
+  let pkg = esm_resolver::get_package_scope_config(
+    &Url::from_file_path(parent_path.unwrap()).unwrap(),
+  )
+  .ok();
+
+  if pkg.is_none() {
+    return Ok(None);
   }
 
-  if let Some(parent_id) = maybe_parent_id {
-    if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = std::env::current_dir() {
-        return Some(cwd.to_string_lossy().to_string());
-      }
-    }
+  let pkg = pkg.unwrap();
+  if pkg.exports.is_none() {
+    return Ok(None);
   }
-  None
+  if pkg.name.is_none() {
+    return Ok(None);
+  }
+
+  let pkg_name = pkg.name.as_ref().unwrap().to_string();
+  let mut expansion = ".".to_string();
+
+  if request == pkg_name {
+    // pass
+  } else if request.starts_with(&format!("{}/", pkg_name)) {
+    expansion += &request[pkg_name.len()..];
+  } else {
+    return Ok(None);
+  }
+
+  let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+  esm_resolver::package_exports_resolve(
+    deno_core::url::Url::from_file_path(&pkg.pjsonpath).unwrap(),
+    expansion,
+    pkg,
+    &base,
+    esm_resolver::DEFAULT_CONDITIONS,
+  )
+  .map(|r| Some(r.as_str().to_string()))
 }
 
 #[op]
