@@ -3870,7 +3870,7 @@ assertEquals(1, notify_return_value);
           "",
           r#"
         let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        Deno.core.opSync("op_unref_op", promise[promiseIdSymbol]);
+        Deno.core.ops.op_unref_op(promise[promiseIdSymbol]);
       "#,
         )
         .unwrap();
@@ -3882,7 +3882,7 @@ assertEquals(1, notify_return_value);
           "",
           r#"
         let promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        Deno.core.opSync("op_unref_op", promise[promiseIdSymbol]);
+        Deno.core.ops.op_unref_op(promise[promiseIdSymbol]);
       "#,
         )
         .unwrap();
