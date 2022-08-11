@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webstorage"
-version = "0.59.0"
+version = "0.60.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,7 +14,7 @@ description = "Implementation of WebStorage API for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.146.0", path = "../../core" }
-deno_web = { version = "0.95.0", path = "../web" }
+deno_core = { version = "0.147.0", path = "../../core" }
+deno_web = { version = "0.96.0", path = "../web" }
 rusqlite = { version = "0.27.0", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.136", features = ["derive"] }
