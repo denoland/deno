@@ -37,7 +37,6 @@ mod version;
 mod windows_util;
 mod worker;
 
-use crate::args::flags_from_vec;
 use crate::args::BenchFlags;
 use crate::args::BundleFlags;
 use crate::args::CacheFlags;
@@ -61,6 +60,7 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
+use crate::args::{flags_from_vec, InitFlags};
 use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
@@ -72,6 +72,7 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use crate::compat::STD_URL_STR;
 use args::CliOptions;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -269,6 +270,58 @@ async fn compile_command(
   info!("{} {}", colors::green("Emit"), output_path.display());
 
   tools::standalone::write_standalone_binary(output_path, final_bin).await?;
+
+  Ok(0)
+}
+
+async fn init_command(
+  _flags: Flags,
+  init_flags: InitFlags,
+) -> Result<i32, AnyError> {
+  let dir = if let Some(dir) = &init_flags.dir {
+    let dir = std::env::current_dir()?.join(dir);
+    std::fs::create_dir_all(&dir)?;
+    dir
+  } else {
+    std::env::current_dir()?
+  };
+
+  let mod_ts = r#"export function add(a: number, b: number): number {
+  return a + b;
+}
+
+if (import.meta.main) {
+  console.log("Add 2 + 3", add(2, 3));
+}
+"#;
+  let mut file = std::fs::OpenOptions::new()
+    .write(true)
+    .create_new(true)
+    .open(dir.join("mod.ts"))?;
+  file.write_all(mod_ts.as_bytes())?;
+
+  let mod_test_ts = format!(
+    r#"import {{ assertEquals }} from "{STD_URL_STR}testing/asserts.ts";
+import {{ add }} from "./mod.ts";
+
+Deno.test(function addTest() {{
+    assertEquals(add(2, 3), 5);
+}});
+"#
+  );
+  let mut file = std::fs::OpenOptions::new()
+    .write(true)
+    .create_new(true)
+    .open(dir.join("mod_test.ts"))?;
+  file.write_all(mod_test_ts.as_bytes())?;
+
+  println!("Project initalized");
+  println!("Run these commands to get started");
+  if let Some(dir) = init_flags.dir {
+    println!("  cd {}", dir);
+  }
+  println!("  deno run mod.ts");
+  println!("  deno test mod_test.ts");
 
   Ok(0)
 }
@@ -940,6 +993,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Fmt(fmt_flags) => {
       format_command(flags, fmt_flags).boxed_local()
+    }
+    DenoSubcommand::Init(init_flags) => {
+      init_command(flags, init_flags).boxed_local()
     }
     DenoSubcommand::Info(info_flags) => {
       info_command(flags, info_flags).boxed_local()
