@@ -726,7 +726,7 @@
 
     if (StringPrototypeEndsWith(filename, ".js")) {
       const pkg = core.ops.op_require_read_package_scope(filename);
-      if (pkg && pkg.typ == "module") {
+      if (pkg && pkg.exists && pkg.typ == "module") {
         throw new Error(
           `Import ESM module: ${filename} from ${module.parent.filename}`,
         );

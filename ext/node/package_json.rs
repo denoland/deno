@@ -1,14 +1,16 @@
 use deno_core::anyhow;
-use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use serde::Serialize;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PackageJson {
+  pub exists: bool,
   pub exports: Option<Map<String, Value>>,
   pub imports: Option<Map<String, Value>>,
   pub bin: Option<Value>,
@@ -20,10 +22,36 @@ pub struct PackageJson {
 }
 
 impl PackageJson {
+  pub fn empty(path: PathBuf) -> PackageJson {
+    PackageJson {
+      exists: false,
+      exports: None,
+      imports: None,
+      bin: None,
+      main: None,
+      name: None,
+      path,
+      typ: "none".to_string(),
+      types: None,
+    }
+  }
+
   pub fn load(path: PathBuf) -> Result<PackageJson, AnyError> {
-    let source = std::fs::read_to_string(&path).with_context(|| {
-      format!("could not find package.json at {}", path.display())
-    })?;
+    let source = match std::fs::read_to_string(&path) {
+      Ok(source) => source,
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        return Ok(PackageJson::empty(path));
+      }
+      Err(err) => bail!(
+        "Error loading package.json at {}. {:#}",
+        path.display(),
+        err
+      ),
+    };
+
+    if source.trim().is_empty() {
+      return Ok(PackageJson::empty(path));
+    }
 
     let package_json: Value = serde_json::from_str(&source)
       .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
@@ -81,6 +109,7 @@ impl PackageJson {
       .and_then(|t| t.as_str().map(|s| s.to_string()));
 
     let package_json = PackageJson {
+      exists: true,
       path,
       main,
       name,

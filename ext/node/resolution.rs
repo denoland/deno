@@ -27,20 +27,14 @@ fn to_file_path_string(url: &ModuleSpecifier) -> String {
 
 fn throw_import_not_defined(
   specifier: &str,
-  package_json_url: ModuleSpecifier,
+  package_json_url: Option<ModuleSpecifier>,
   base: &ModuleSpecifier,
 ) -> AnyError {
-  let package_path = to_file_path_string(&package_json_url.join(".").unwrap());
-  let base = to_file_path_string(base);
-  let mut msg = format!(
-    "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined in package {}package.json",
+  errors::err_package_import_not_defined(
     specifier,
-    package_path
-  );
-
-  msg = format!("{} imported from {}", msg, base);
-
-  type_error(msg)
+    package_json_url.map(|u| to_file_path_string(&u.join(".").unwrap())),
+    &to_file_path_string(base),
+  )
 }
 
 fn pattern_key_compare(a: &str, b: &str) -> i32 {
@@ -101,62 +95,65 @@ pub fn package_imports_resolve(
   }
 
   let package_config = get_package_scope_config(referrer, npm_resolver)?;
-  let package_json_url = Url::from_file_path(package_config.path).unwrap();
-  if let Some(imports) = &package_config.imports {
-    if imports.contains_key(name) && !name.contains('*') {
-      let maybe_resolved = resolve_package_target(
-        package_json_url.clone(),
-        imports.get(name).unwrap().to_owned(),
-        "".to_string(),
-        name.to_string(),
-        referrer,
-        false,
-        true,
-        conditions,
-        npm_resolver,
-      )?;
-      if let Some(resolved) = maybe_resolved {
-        return Ok(resolved);
-      }
-    } else {
-      let mut best_match = "";
-      let mut best_match_subpath = None;
-      for key in imports.keys() {
-        let pattern_index = key.find('*');
-        if let Some(pattern_index) = pattern_index {
-          let key_sub = &key[0..=pattern_index];
-          if name.starts_with(key_sub) {
-            let pattern_trailer = &key[pattern_index + 1..];
-            if name.len() > key.len()
-              && name.ends_with(&pattern_trailer)
-              && pattern_key_compare(best_match, key) == 1
-              && key.rfind('*') == Some(pattern_index)
-            {
-              best_match = key;
-              best_match_subpath = Some(
-                name[pattern_index..=(name.len() - pattern_trailer.len())]
-                  .to_string(),
-              );
-            }
-          }
-        }
-      }
-
-      if !best_match.is_empty() {
-        let target = imports.get(best_match).unwrap().to_owned();
+  let mut package_json_url = None;
+  if package_config.exists {
+    package_json_url = Some(Url::from_file_path(package_config.path).unwrap());
+    if let Some(imports) = &package_config.imports {
+      if imports.contains_key(name) && !name.contains('*') {
         let maybe_resolved = resolve_package_target(
-          package_json_url.clone(),
-          target,
-          best_match_subpath.unwrap(),
-          best_match.to_string(),
+          package_json_url.clone().unwrap(),
+          imports.get(name).unwrap().to_owned(),
+          "".to_string(),
+          name.to_string(),
           referrer,
-          true,
+          false,
           true,
           conditions,
           npm_resolver,
         )?;
         if let Some(resolved) = maybe_resolved {
           return Ok(resolved);
+        }
+      } else {
+        let mut best_match = "";
+        let mut best_match_subpath = None;
+        for key in imports.keys() {
+          let pattern_index = key.find('*');
+          if let Some(pattern_index) = pattern_index {
+            let key_sub = &key[0..=pattern_index];
+            if name.starts_with(key_sub) {
+              let pattern_trailer = &key[pattern_index + 1..];
+              if name.len() > key.len()
+                && name.ends_with(&pattern_trailer)
+                && pattern_key_compare(best_match, key) == 1
+                && key.rfind('*') == Some(pattern_index)
+              {
+                best_match = key;
+                best_match_subpath = Some(
+                  name[pattern_index..=(name.len() - pattern_trailer.len())]
+                    .to_string(),
+                );
+              }
+            }
+          }
+        }
+
+        if !best_match.is_empty() {
+          let target = imports.get(best_match).unwrap().to_owned();
+          let maybe_resolved = resolve_package_target(
+            package_json_url.clone().unwrap(),
+            target,
+            best_match_subpath.unwrap(),
+            best_match.to_string(),
+            referrer,
+            true,
+            true,
+            conditions,
+            npm_resolver,
+          )?;
+          if let Some(resolved) = maybe_resolved {
+            return Ok(resolved);
+          }
         }
       }
     }
@@ -572,17 +569,19 @@ fn package_resolve(
 
   // ResolveSelf
   let package_config = get_package_scope_config(referrer, npm_resolver)?;
-  let package_json_url = Url::from_file_path(&package_config.path).unwrap();
-  if package_config.name.as_ref() == Some(&package_name) {
-    if let Some(exports) = &package_config.exports {
-      return package_exports_resolve(
-        package_json_url,
-        package_subpath,
-        exports,
-        referrer,
-        conditions,
-        npm_resolver,
-      );
+  if package_config.exists {
+    let package_json_url = Url::from_file_path(&package_config.path).unwrap();
+    if package_config.name.as_ref() == Some(&package_name) {
+      if let Some(exports) = &package_config.exports {
+        return package_exports_resolve(
+          package_json_url,
+          package_subpath,
+          exports,
+          referrer,
+          conditions,
+          npm_resolver,
+        );
+      }
     }
   }
 
