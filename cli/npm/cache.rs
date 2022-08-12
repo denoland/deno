@@ -64,14 +64,18 @@ impl ReadonlyNpmCache {
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
-    let mut dir = self
-      .root_dir
-      .join(fs_util::root_url_to_safe_local_dirname(registry_url));
+    let mut dir = self.registry_folder(registry_url);
     // ensure backslashes are used on windows
     for part in name.split('/') {
       dir = dir.join(part);
     }
     dir
+  }
+
+  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+    self
+      .root_dir
+      .join(fs_util::root_url_to_safe_local_dirname(registry_url))
   }
 
   pub fn resolve_package_id_from_specifier(
@@ -206,6 +210,10 @@ impl NpmCache {
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
     self.0.package_name_folder(name, registry_url)
+  }
+
+  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+    self.0.registry_folder(registry_url)
   }
 
   pub fn resolve_package_id_from_specifier(

@@ -5,11 +5,11 @@ mod registry;
 mod resolution;
 mod tarball;
 
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
@@ -204,16 +204,24 @@ impl DenoDirNpmResolver for GlobalNpmPackageResolver {
     state: &mut deno_core::OpState,
     path: &std::path::Path,
   ) -> Result<(), AnyError> {
-    let specifier = match ModuleSpecifier::from_file_path(path) {
-      Ok(p) => p,
-      Err(()) => bail!("Invalid path: {}", path.display()),
-    };
     // allow reading if it's in the deno_dir node modules
-    if let Ok(pkg) = self.resolve_package_from_specifier(&specifier) {
-      let canonicalized_root_folder = std::fs::canonicalize(pkg.folder_path)?;
-      let canonicalized_file_path = std::fs::canonicalize(path)?;
-      if canonicalized_file_path.starts_with(canonicalized_root_folder) {
-        return Ok(());
+    let registry_path = self.cache.registry_folder(&self.registry_url);
+    if path.starts_with(&registry_path)
+      && path
+        .components()
+        .all(|c| !matches!(c, std::path::Component::ParentDir))
+    {
+      // todo: cache this?
+      if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
+        match std::fs::canonicalize(path) {
+          Ok(path) if path.starts_with(registry_path) => {
+            return Ok(());
+          }
+          Err(e) if e.kind() == ErrorKind::NotFound => {
+            return Ok(());
+          }
+          _ => {} // ignore
+        }
       }
     }
     let permissions = state.borrow_mut::<Permissions>();
