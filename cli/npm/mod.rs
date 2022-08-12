@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
@@ -183,11 +184,26 @@ impl DenoDirNpmResolver for GlobalNpmPackageResolver {
     &self,
     specifier: &str,
     referrer: &std::path::Path,
-  ) -> Option<PathBuf> {
-    let referrer = ModuleSpecifier::from_file_path(referrer).ok()?;
+  ) -> Result<PathBuf, AnyError> {
+    let referrer = match ModuleSpecifier::from_file_path(&referrer) {
+      Ok(referrer) => referrer,
+      Err(()) => bail!("Could not convert '{}' to url.", referrer.display()),
+    };
     self
       .resolve_package_from_package(specifier, &referrer)
-      .ok()
+      .map(|p| p.folder_path)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<PathBuf, AnyError> {
+    let specifier = match ModuleSpecifier::from_file_path(&path) {
+      Ok(specifier) => specifier,
+      Err(()) => bail!("Could not convert '{}' to url.", path.display()),
+    };
+    self
+      .resolve_package_from_specifier(&specifier)
       .map(|p| p.folder_path)
   }
 

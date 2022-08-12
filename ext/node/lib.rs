@@ -7,7 +7,7 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
-use esm_resolver::PackageConfig;
+use package_json::PackageJson;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -17,8 +17,15 @@ pub trait DenoDirNpmResolver {
     &self,
     specifier: &str,
     referrer: &Path,
-  ) -> Option<PathBuf>;
+  ) -> Result<PathBuf, AnyError>;
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError>;
+
   fn in_npm_package(&self, path: &Path) -> bool;
+
   fn ensure_read_permission(
     &self,
     state: &mut OpState,
@@ -27,7 +34,8 @@ pub trait DenoDirNpmResolver {
 }
 
 mod errors;
-mod esm_resolver;
+mod package_json;
+mod resolution;
 
 pub struct Unstable(pub bool);
 
@@ -249,6 +257,7 @@ fn op_require_resolve_deno_dir(
       &request,
       &PathBuf::from(parent_filename),
     )
+    .ok()
     .map(|p| p.to_string_lossy().to_string())
 }
 
@@ -413,8 +422,10 @@ fn op_require_try_self(
     return Ok(None);
   }
 
-  let pkg = esm_resolver::get_package_scope_config(
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
+    &**resolver,
   )
   .ok();
 
@@ -442,14 +453,19 @@ fn op_require_try_self(
   }
 
   let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
-  esm_resolver::package_exports_resolve(
-    deno_core::url::Url::from_file_path(&pkg.pjsonpath).unwrap(),
-    expansion,
-    pkg,
-    &base,
-    esm_resolver::DEFAULT_CONDITIONS,
-  )
-  .map(|r| Some(r.as_str().to_string()))
+  if let Some(exports) = &pkg.exports {
+    resolution::package_exports_resolve(
+      deno_core::url::Url::from_file_path(&pkg.path).unwrap(),
+      expansion,
+      exports,
+      &base,
+      resolution::DEFAULT_CONDITIONS,
+      &**resolver,
+    )
+    .map(|r| Some(r.as_str().to_string()))
+  } else {
+    Ok(None)
+  }
 }
 
 #[op]
@@ -484,34 +500,41 @@ fn op_require_resolve_exports(
   expansion: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
 
-  let pkg_path = path_resolve(vec![modules_path, name]);
-  let pkg =
-    esm_resolver::get_package_config(PathBuf::from(&pkg_path), &request, None)?;
+  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
+    modules_path
+  } else {
+    path_resolve(vec![modules_path, name])
+  };
+  let pkg = PackageJson::load(PathBuf::from(&pkg_path).join("package.json"))?;
 
-  if pkg.exports.is_some() {
+  if let Some(exports) = &pkg.exports {
     let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
-    return esm_resolver::package_exports_resolve(
+    resolution::package_exports_resolve(
       deno_core::url::Url::from_file_path(pkg_path).unwrap(),
       format!(".{}", expansion),
-      pkg,
+      exports,
       &base,
-      esm_resolver::DEFAULT_CONDITIONS,
+      resolution::DEFAULT_CONDITIONS,
+      &**resolver,
     )
-    .map(|r| Some(r.as_str().to_string()));
+    .map(|r| Some(r.as_str().to_string()))
+  } else {
+    Ok(None)
   }
-
-  Ok(None)
 }
 
 #[op]
 fn op_require_read_package_scope(
   state: &mut OpState,
   filename: String,
-) -> Option<PackageConfig> {
+) -> Option<PackageJson> {
   check_unstable(state);
-  esm_resolver::get_package_scope_config(
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  resolution::get_package_scope_config(
     &Url::from_file_path(filename).unwrap(),
+    &**resolver,
   )
   .ok()
 }

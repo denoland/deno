@@ -141,7 +141,7 @@
           requestPath,
           "package.json",
         );
-        process.emitWarning(
+        processGlobal.emitWarning(
           `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
             "Please either fix that or report it to the module author",
           "DeprecationWarning",
@@ -739,7 +739,7 @@
 
     if (StringPrototypeEndsWith(filename, ".js")) {
       const pkg = core.ops.op_require_read_package_scope(filename);
-      if (pkg && pkg.exists && pkg.typ == "module") {
+      if (pkg && pkg.typ == "module") {
         throw new Error(
           `Import ESM module: ${filename} from ${module.parent.filename}`,
         );
