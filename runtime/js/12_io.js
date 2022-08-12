@@ -7,6 +7,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Uint8Array,
     ArrayPrototypePush,
@@ -91,7 +92,7 @@
       return 0;
     }
 
-    const nread = core.opSync("op_read_sync", rid, buffer);
+    const nread = ops.op_read_sync(rid, buffer);
 
     return nread === 0 ? null : nread;
   }
@@ -107,7 +108,7 @@
   }
 
   function writeSync(rid, data) {
-    return core.opSync("op_write_sync", rid, data);
+    return ops.op_write_sync(rid, data);
   }
 
   function write(rid, data) {

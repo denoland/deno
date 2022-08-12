@@ -11,6 +11,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayPrototypeMap,
@@ -68,7 +69,7 @@
         });
       }
 
-      const components = core.opSync("op_urlpattern_parse", input, baseURL);
+      const components = ops.op_urlpattern_parse(input, baseURL);
 
       for (const key of ObjectKeys(components)) {
         try {
@@ -144,8 +145,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );
@@ -184,8 +184,7 @@
         });
       }
 
-      const res = core.opSync(
-        "op_urlpattern_process_match_input",
+      const res = ops.op_urlpattern_process_match_input(
         input,
         baseURL,
       );

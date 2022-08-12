@@ -18,10 +18,6 @@ const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
 
-function ptr(v) {
-  return Deno.UnsafePointer.of(v);
-}
-
 // dlopen shouldn't panic
 assertThrows(() => {
   Deno.dlopen("cli/src/main.rs", {});
@@ -420,7 +416,7 @@ const throwCallback = new Deno.UnsafeCallback({
 
 assertThrows(
   () => {
-    dylib.symbols.call_fn_ptr(ptr(throwCallback));
+    dylib.symbols.call_fn_ptr(throwCallback.pointer);
   },
   TypeError,
   "hi",
@@ -428,13 +424,13 @@ assertThrows(
 
 const { call_stored_function } = dylib.symbols;
 
-dylib.symbols.call_fn_ptr(ptr(logCallback));
-dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
-dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
-dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
-dylib.symbols.store_function(ptr(logCallback));
+dylib.symbols.call_fn_ptr(logCallback.pointer);
+dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback.pointer);
+dylib.symbols.call_fn_ptr_return_u8(returnU8Callback.pointer);
+dylib.symbols.call_fn_ptr_return_buffer(returnBufferCallback.pointer);
+dylib.symbols.store_function(logCallback.pointer);
 call_stored_function();
-dylib.symbols.store_function_2(ptr(add10Callback));
+dylib.symbols.store_function_2(add10Callback.pointer);
 dylib.symbols.call_stored_function_2(20);
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -443,7 +439,7 @@ const nestedCallback = new Deno.UnsafeCallback(
     dylib.symbols.call_stored_function_2(10);
   },
 );
-dylib.symbols.store_function(ptr(nestedCallback));
+dylib.symbols.store_function(nestedCallback.pointer);
 
 dylib.symbols.store_function(null);
 dylib.symbols.store_function_2(null);
@@ -457,14 +453,14 @@ const addToFooCallback = new Deno.UnsafeCallback({
 // Test thread safe callbacks
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
 addToFooCallback.unref();
 logCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
 logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
-await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);

@@ -19,6 +19,7 @@ members = [
   "ext/ffi",
   "ext/http",
   "ext/net",
+  "ext/node",
   "ext/url",
   "ext/web",
   "ext/webgpu",

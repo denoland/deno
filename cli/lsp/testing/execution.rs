@@ -8,7 +8,6 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::create_main_worker;
-use crate::located_script_name;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
@@ -166,39 +165,7 @@ async fn test_specifier(
         stderr: StdioPipe::File(sender.stderr()),
       },
     );
-
-    worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
-
-    worker
-      .execute_script(
-        &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
-      )
-      .unwrap();
-
-    if mode != test::TestMode::Documentation {
-      worker.execute_side_module(&specifier).await?;
-    }
-
-    worker.dispatch_load_event(&located_script_name!())?;
-
-    let test_result = worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runTests()"#,
-    )?;
-
-    worker.js_runtime.resolve_value(test_result).await?;
-
-    loop {
-      if !worker.dispatch_beforeunload_event(&located_script_name!())? {
-        break;
-      }
-      worker.run_event_loop(false).await?;
-    }
-    worker.dispatch_unload_event(&located_script_name!())?;
+    worker.run_lsp_test_specifier(mode).await?;
   }
 
   Ok(())
@@ -282,7 +249,7 @@ impl TestRun {
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
     let ps = proc_state::ProcState::build(flags).await?;
     let permissions =
-      Permissions::from_options(&ps.options.permissions_options());
+      Permissions::from_options(&ps.options.permissions_options())?;
     test::check_specifiers(
       &ps,
       permissions.clone(),

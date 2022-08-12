@@ -16,7 +16,7 @@
     _flash,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { BadResourcePrototype, InterruptedPrototype, ops } = core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
@@ -127,7 +127,7 @@
       const innerRequest = newInnerRequest(
         method,
         url,
-        () => core.opSync("op_http_headers", streamRid),
+        () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -439,7 +439,7 @@
       );
     }
 
-    const accept = core.opSync("op_http_websocket_accept_header", websocketKey);
+    const accept = ops.op_http_websocket_accept_header(websocketKey);
 
     const r = newInnerResponse(101);
     r.headerList = [
