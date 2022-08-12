@@ -342,7 +342,7 @@ declare namespace Deno {
     | "f32"
     | "f64";
 
-  /** All BigInt number type sfor interfacing with foreign functions */
+  /** All BigInt number types for interfacing with foreign functions */
   type NativeBigIntType =
     | "u64"
     | "i64"
