@@ -151,7 +151,7 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    const fastOp = prepareFastCalls();
+
     const server = {
       id: serverId,
       transport: opts.cert && opts.key ? "https" : "http",
@@ -175,7 +175,7 @@
             break;
           }
 
-          let token = fastOp.nextRequest();
+          let token = nextRequestSync();
           if (token === 0) {
             token = await core.opAsync("op_flash_next_async", serverId);
             if (server.closed) {
@@ -188,7 +188,7 @@
             // There might be a body, but we don't expose it for GET/HEAD requests.
             // It will be closed automatically once the request has been handled and
             // the response has been sent.
-            const hasBody = fastOp.hasBody(i);
+            const hasBody = hasBodySync(i);
             if (hasBody) {
               body = createRequestBodyStream(serverId, i);
             }
@@ -361,8 +361,9 @@
       await server.finished;
     });
 
-    let nextRequestSync = core.ops.op_flash_next;
-    let hasBodySync = (token) => core.ops.op_flash_has_body_stream_0(token);
+    const fastOp = prepareFastCalls();
+    let nextRequestSync = () => fastOp.nextRequest();
+    let hasBodySync = (token) => fastOp.hasBody(token);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       hasBodySync = (token) => core.ops.op_flash_has_body_stream(token, serverId);
