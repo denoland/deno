@@ -299,12 +299,15 @@
                     false,
                   );
                 } else {
-                  core.ops.op_flash_respond_chuncked(
-                    serverId,
-                    i,
-                    value,
-                    done,
-                  );
+                  if (value === undefined) {
+                    core.ops.op_flash_respond_chuncked(serverId, i, undefined, done); 
+                  } else {
+                    respondChunked(
+                      i,
+                      value,
+                      done,
+                    );
+                  }
                 }
                 if (done) break a;
               }
@@ -364,9 +367,11 @@
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let hasBodySync = (token) => fastOp.hasBody(token);
+    let respondChunked = (token, chunk, shutdown) => fastOp.respondChunked(token, chunk, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       hasBodySync = (token) => core.ops.op_flash_has_body_stream(token, serverId);
+      respondChunked = (token, chunk, shutdown) => core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
     }
 
     if (!dateInterval) {

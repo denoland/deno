@@ -211,7 +211,47 @@ fn op_flash_respond_chuncked(
 ) {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  match response {
+    Some(response) => {
+      respond_chunked(ctx, token, shutdown, Some(&response));
+    }
+    None => {
+      respond_chunked(ctx, token, shutdown, None);
+    }
+  }
+}
 
+
+pub struct RespondChunkedFast;
+
+impl fast_api::FastFunction for RespondChunkedFast {
+  fn function(&self) -> *const c_void {
+    op_flash_respond_chunked_fast as *const c_void
+  }
+
+  fn args(&self) -> &'static [fast_api::Type] {
+    &[fast_api::Type::V8Value, fast_api::Type::Uint32, fast_api::Type::TypedArray(fast_api::CType::Uint8), fast_api::Type::Bool]
+  }
+
+  fn return_type(&self) -> fast_api::CType {
+    fast_api::CType::Void
+  }
+}
+
+
+fn op_flash_respond_chunked_fast(recv: v8::Local<v8::Object>, token: u32, response: *const fast_api::FastApiTypedArray<u8>, shutdown: bool) {
+  let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX) };
+  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
+  
+  let response = unsafe { &*response };
+  if let Some(response) = response.get_storage_if_aligned() {
+    respond_chunked(ctx, token, shutdown, Some(response));
+  } else {
+    todo!();
+  }
+}
+
+fn respond_chunked(ctx: &mut ServerContext, token: u32, shutdown: bool, response: Option<&[u8]>) {
   let sock = match shutdown {
     true => {
       let tx = ctx.response.remove(&token).unwrap();
@@ -227,9 +267,10 @@ fn op_flash_respond_chuncked(
   if let Some(response) = response {
     let _ = sock.write(format!("{:x}", response.len()).as_bytes());
     let _ = sock.write(b"\r\n");
-    let _ = sock.write(&response);
+    let _ = sock.write(response);
     let _ = sock.write(b"\r\n");
   }
+
   // The last chunk
   if shutdown {
     let _ = sock.write(b"0\r\n\r\n");
@@ -431,6 +472,37 @@ fn op_flash_make_request<'scope>(
   
     let key = v8::String::new(scope, "hasBody").unwrap();
     obj.set(scope, key.into(), func).unwrap();
+  }
+
+  // respondChunked
+  {
+    let builder = v8::FunctionTemplate::builder(
+      |scope: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       _: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
+
+        let token = args.get(0).uint32_value(scope).unwrap();
+
+        let response: v8::Local<v8::ArrayBufferView> = args.get(1).try_into().unwrap();
+        let ab = response.buffer(scope).unwrap();
+        let store = ab.get_backing_store();
+        let (offset, len) = (response.byte_offset(), response.byte_length());
+        let response =  unsafe { &*(&store[offset..offset + len] as *const _ as *const [u8]) };
+
+        let shutdown = args.get(2).boolean_value(scope);
+
+        respond_chunked(ctx, token, shutdown, Some(response));
+       }).data(v8::External::new(scope, ctx as *mut _).into());
+  
+    let func = builder.build_fast(scope, &RespondChunkedFast, None);
+    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
+  
+    let key = v8::String::new(scope, "respondChunked").unwrap();
+    obj.set(scope, key.into(), func).unwrap();
+    
   }
 
   let value: v8::Local<v8::Value> = obj.into();
