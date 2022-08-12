@@ -866,7 +866,7 @@
   }
 
   function bindExport(value, mod) {
-    // ensure exported functions are bound to their export object
+    // ensure exported functions are bound to their module object
     if (typeof value === "function") {
       return value.bind(mod);
     } else {
