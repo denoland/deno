@@ -67,7 +67,7 @@ pub struct GraphData {
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph) {
     for graph_import in &graph.imports {
       for dep in graph_import.dependencies.values() {
         for resolved in [&dep.maybe_code, &dep.maybe_type] {
@@ -88,7 +88,7 @@ impl GraphData {
     }
 
     for (specifier, result) in graph.specifiers() {
-      if !reload && self.modules.contains_key(&specifier) {
+      if self.modules.contains_key(&specifier) {
         continue;
       }
       if let Some(found) = graph.redirects.get(&specifier) {
@@ -477,7 +477,7 @@ impl GraphData {
 impl From<&ModuleGraph> for GraphData {
   fn from(graph: &ModuleGraph) -> Self {
     let mut graph_data = GraphData::default();
-    graph_data.add_graph(graph, false);
+    graph_data.add_graph(graph);
     graph_data
   }
 }

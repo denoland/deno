@@ -431,7 +431,7 @@ impl ProcState {
 
     {
       let mut graph_data = self.graph_data.write();
-      graph_data.add_graph(&graph, false);
+      graph_data.add_graph(&graph);
       let check_js = self.options.check_js();
       graph_data
         .check(
