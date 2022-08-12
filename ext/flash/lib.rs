@@ -4,6 +4,7 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::missing_safety_doc)]
 
+use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -15,6 +16,9 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
+use deno_core::serde_v8;
+use deno_core::v8;
+use deno_core::v8::fast_api;
 use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
@@ -34,6 +38,7 @@ use serde::Serialize;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::future::Future;
 use std::intrinsics::transmute;
 use std::io::Cursor;
@@ -308,13 +313,145 @@ fn op_flash_path(
     .to_string()
 }
 
+#[inline]
+fn next_request_sync(ctx: &mut ServerContext) -> u32 {
+  let mut tokens = 0;
+  while let Ok(token) = ctx.rx.try_recv() {
+    ctx.response.insert(tokens, token);
+    tokens += 1;
+  }
+  tokens
+}
+
+pub struct NextRequestFast;
+
+impl fast_api::FastFunction for NextRequestFast {
+  fn function(&self) -> *const c_void {
+    op_flash_next_fast as *const c_void
+  }
+
+  fn args(&self) -> &'static [fast_api::Type] {
+    &[fast_api::Type::V8Value]
+  }
+
+  fn return_type(&self) -> fast_api::CType {
+    fast_api::CType::Uint32
+  }
+}
+
+fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
+  let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX) };
+  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
+  
+  next_request_sync(ctx)
+}
+
+pub struct HasBodyFast;
+
+impl fast_api::FastFunction for HasBodyFast {
+  fn function(&self) -> *const c_void {
+    op_flash_has_body_fast as *const c_void
+  }
+
+  fn args(&self) -> &'static [fast_api::Type] {
+    &[fast_api::Type::V8Value, fast_api::Type::Uint32]
+  }
+
+  fn return_type(&self) -> fast_api::CType {
+    fast_api::CType::Bool
+  }
+}
+
+fn op_flash_has_body_fast(recv: v8::Local<v8::Object>, token: u32) -> bool {
+  let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX) };
+  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
+  let resp = ctx.response.get(&token).unwrap();
+  let sock = unsafe { &*resp.socket };
+
+  sock.read_rx.is_some()
+}
+
+// Fast calls
+#[op(v8)]
+fn op_flash_make_request<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  state: &mut OpState,
+) -> serde_v8::Value<'scope> {
+  let object_template = v8::ObjectTemplate::new(scope);
+  assert!(object_template
+    .set_internal_field_count((V8_WRAPPER_OBJECT_INDEX + 1) as usize));
+  let obj = object_template.new_instance(scope).unwrap();
+  let ctx = {
+    let flash_ctx = state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&0).unwrap();
+    ctx as *mut ServerContext
+  };
+  obj.set_aligned_pointer_in_internal_field(
+    V8_WRAPPER_OBJECT_INDEX,
+    ctx as _,
+  );
+
+  // nextRequest
+  {
+    let builder = v8::FunctionTemplate::builder(
+      |_: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       mut rv: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
+        rv.set_uint32(next_request_sync(ctx));
+       }).data(v8::External::new(scope, ctx as *mut _).into());
+  
+    let func = builder.build_fast(scope, &NextRequestFast, None);
+    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
+  
+    let key = v8::String::new(scope, "nextRequest").unwrap();
+    obj.set(scope, key.into(), func).unwrap();
+  }
+
+  // hasBody
+  {
+    let builder = v8::FunctionTemplate::builder(
+      |scope: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       mut rv: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
+        let token = args.get(0).uint32_value(scope).unwrap();
+        let resp = ctx.response.get(&token).unwrap();
+        let sock = unsafe { &*resp.socket };
+
+        rv.set_bool(sock.read_rx.is_some());
+       }).data(v8::External::new(scope, ctx as *mut _).into());
+  
+    let func = builder.build_fast(scope, &HasBodyFast, None);
+    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
+  
+    let key = v8::String::new(scope, "hasBody").unwrap();
+    obj.set(scope, key.into(), func).unwrap();
+  }
+
+  let value: v8::Local<v8::Value> = obj.into();
+  value.into()
+}
+
+#[op]
+fn op_flash_has_body_stream_0(op_state: &mut OpState, token: u32) -> bool {
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&0).unwrap();
+  let resp = ctx.response.get(&token).unwrap();
+  let sock = unsafe { &*resp.socket };
+  sock.read_rx.is_some()
+}
+
 #[op]
 fn op_flash_has_body_stream(
-  state: Rc<RefCell<OpState>>,
+  op_state: &mut OpState,
   server_id: u32,
   token: u32,
 ) -> bool {
-  let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
 
@@ -843,12 +980,7 @@ async fn op_flash_next_async(
 fn op_flash_next(op_state: &mut OpState) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&0).unwrap();
-  let mut tokens = 0;
-  while let Ok(token) = ctx.rx.try_recv() {
-    ctx.response.insert(tokens, token);
-    tokens += 1;
-  }
-  tokens
+  next_request_sync(ctx)
 }
 
 // Syncrhonous version of op_flash_next_async. Under heavy load,
@@ -857,12 +989,7 @@ fn op_flash_next(op_state: &mut OpState) -> u32 {
 fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let mut tokens = 0;
-  while let Ok(token) = ctx.rx.try_recv() {
-    ctx.response.insert(tokens, token);
-    tokens += 1;
-  }
-  tokens
+  next_request_sync(ctx)
 }
 
 // Wrapper type for tokio::net::TcpStream that implements
@@ -969,7 +1096,9 @@ pub fn init() -> Extension {
       op_flash_drive_server::decl(),
       op_flash_first_packet::decl(),
       op_flash_has_body_stream::decl(),
+      op_flash_has_body_stream_0::decl(),
       op_flash_close_server::decl(),
+      op_flash_make_request::decl(),
     ])
     .state(|op_state| {
       op_state.put(FlashContext {

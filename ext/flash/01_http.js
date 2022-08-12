@@ -140,6 +140,10 @@
     return str + (body ?? "");
   }
 
+  function prepareFastCalls() {
+    return core.opSync("op_flash_make_request");
+  }
+
   async function serve(handler, opts = {}) {
     opts = { hostname: "127.0.0.1", port: 9000, ...opts };
     const signal = opts.signal;
@@ -147,6 +151,7 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
+    const fastOp = prepareFastCalls();
     const server = {
       id: serverId,
       transport: opts.cert && opts.key ? "https" : "http",
@@ -170,7 +175,7 @@
             break;
           }
 
-          let token = nextRequestSync();
+          let token = fastOp.nextRequest();
           if (token === 0) {
             token = await core.opAsync("op_flash_next_async", serverId);
             if (server.closed) {
@@ -183,8 +188,7 @@
             // There might be a body, but we don't expose it for GET/HEAD requests.
             // It will be closed automatically once the request has been handled and
             // the response has been sent.
-            // TODO: mask into the token maybe?
-            const hasBody = core.ops.op_flash_has_body_stream(serverId, i);
+            const hasBody = fastOp.hasBody(i);
             if (hasBody) {
               body = createRequestBodyStream(serverId, i);
             }
@@ -358,8 +362,10 @@
     });
 
     let nextRequestSync = core.ops.op_flash_next;
+    let hasBodySync = (token) => core.ops.op_flash_has_body_stream_0(token);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
+      hasBodySync = (token) => core.ops.op_flash_has_body_stream(token, serverId);
     }
 
     if (!dateInterval) {
