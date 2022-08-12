@@ -1023,7 +1023,7 @@ pub fn translate_cjs_to_esm(
         // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
         // but it might not be necessary here since our analysis is more detailed?
         source.push(format!(
-          "export const {} = reexport{}.{};",
+          "export const {0} = Deno[Deno.internal].require.bindExport(reexport{1}.{2}, reexport{1});",
           export, idx, export
         ));
       }
@@ -1046,12 +1046,15 @@ pub fn translate_cjs_to_esm(
   for export in analysis.exports.iter() {
     if export.as_str() == "default" {
       // todo(dsherret): we should only do this if there was a `_esModule: true` instead
-      source.push(format!("export default mod.{};", export,));
+      source.push(format!(
+        "export default Deno[Deno.internal].require.bindExport(mod.{}, mod);",
+        export,
+      ));
       had_default = true;
     } else {
       // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
       // but it might not be necessary here since our analysis is more detailed?
-      source.push(format!("export const {0} = mod.{0};", export));
+      source.push(format!("export const {0} = Deno[Deno.internal].require.bindExport(mod.{0}, mod);", export));
     }
   }
 

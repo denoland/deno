@@ -865,6 +865,15 @@
     throw new Error("not implemented");
   }
 
+  function bindExport(value, mod) {
+    // ensure exported functions are bound to their export object
+    if (typeof value === "function") {
+      return value.bind(mod);
+    } else {
+      return value;
+    }
+  }
+
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     require: {
@@ -874,6 +883,7 @@
       cjsParseCache,
       readPackageScope,
       initializeCommonJs,
+      bindExport,
     },
   };
 })(globalThis);

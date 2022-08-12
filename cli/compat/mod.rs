@@ -277,7 +277,7 @@ pub fn translate_cjs_to_esm(
         // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
         // but it might not be necessary here since our analysis is more detailed?
         source.push(format!(
-          "export const {} = reexport{}.{};",
+          "export const {0} = Deno[Deno.internal].require.bindExport(reexport{1}.{2}, reexport{1});",
           export, idx, export
         ));
       }
@@ -300,7 +300,10 @@ pub fn translate_cjs_to_esm(
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
     // but it might not be necessary here since our analysis is more detailed?
-    source.push(format!("export const {} = mod.{};", export, export));
+    source.push(format!(
+      "export const {} = Deno[Deno.internal].require.bindExport(mod.{}, mod);",
+      export, export
+    ));
   }
 
   let translated_source = source.join("\n");
