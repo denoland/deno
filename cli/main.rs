@@ -378,7 +378,6 @@ async fn load_and_type_check(
       lib,
       Permissions::allow_all(),
       Permissions::allow_all(),
-      false,
     )
     .await?;
   }
@@ -731,17 +730,14 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   let flags = Arc::new(flags);
   let main_module = resolve_url_or_path(&script)?;
   let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+  let ps =
+    ProcState::build_for_file_watcher((*flags).clone(), sender.clone()).await?;
 
-  let operation = |(sender, main_module): (
-    tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-    ModuleSpecifier,
-  )| {
+  let operation = |main_module: ModuleSpecifier| {
     let flags = flags.clone();
     let permissions = Permissions::from_options(&flags.permissions_options())?;
+    let ps = ps.reset_for_file_watcher();
     Ok(async move {
-      let ps =
-        ProcState::build_for_file_watcher((*flags).clone(), sender.clone())
-          .await?;
       let worker = create_main_worker(
         &ps,
         main_module.clone(),
@@ -758,7 +754,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   file_watcher::watch_func2(
     receiver,
     operation,
-    (sender, main_module),
+    main_module,
     file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen: !flags.no_clear_screen,

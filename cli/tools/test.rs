@@ -949,7 +949,6 @@ pub async fn check_specifiers(
       lib,
       Permissions::allow_all(),
       permissions.clone(),
-      false,
     )
     .await?;
   }
@@ -971,7 +970,6 @@ pub async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
-    true,
   )
   .await?;
 
@@ -1471,7 +1469,7 @@ pub async fn run_tests_with_watch(
     let include = include.clone();
     let ignore = ignore.clone();
     let permissions = permissions.clone();
-    let ps = ps.clone();
+    let ps = ps.reset_for_file_watcher();
 
     async move {
       let specifiers_with_mode = fetch_specifiers_with_test_mode(

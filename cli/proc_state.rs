@@ -65,7 +65,7 @@ pub struct ProcState(Arc<Inner>);
 pub struct Inner {
   pub dir: deno_dir::DenoDir,
   pub coverage_dir: Option<String>,
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: Arc<FileFetcher>,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
   pub emit_options: deno_ast::EmitOptions,
@@ -125,6 +125,29 @@ impl ProcState {
     }
 
     Ok(ps)
+  }
+
+  pub fn reset_for_file_watcher(&self) -> Self {
+    ProcState(Arc::new(Inner {
+      dir: self.dir.clone(),
+      coverage_dir: self.coverage_dir.clone(),
+      options: self.options.clone(),
+      emit_cache: self.emit_cache.clone(),
+      emit_options_hash: self.emit_options_hash,
+      emit_options: self.emit_options.clone(),
+      file_fetcher: self.file_fetcher.clone(),
+      graph_data: Default::default(),
+      lockfile: self.lockfile.clone(),
+      maybe_import_map: self.maybe_import_map.clone(),
+      maybe_inspector_server: self.maybe_inspector_server.clone(),
+      root_cert_store: self.root_cert_store.clone(),
+      blob_store: Default::default(),
+      broadcast_channel: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      maybe_resolver: self.maybe_resolver.clone(),
+      maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
+    }))
   }
 
   async fn build_with_sender(
@@ -228,7 +251,7 @@ impl ProcState {
         .write(&ts_config_result.ts_config.as_bytes())
         .finish(),
       emit_options: ts_config_result.ts_config.into(),
-      file_fetcher,
+      file_fetcher: Arc::new(file_fetcher),
       graph_data: Default::default(),
       lockfile,
       maybe_import_map,
@@ -254,7 +277,6 @@ impl ProcState {
     lib: TsTypeLib,
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
-    reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
       if let Some(resolver) = &self.maybe_resolver {
@@ -298,7 +320,7 @@ impl ProcState {
     } else {
       roots
     };
-    if !reload_on_watch {
+    {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -324,7 +346,6 @@ impl ProcState {
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
       graph_data: Arc<RwLock<GraphData>>,
-      reload: bool,
     }
     impl Loader for ProcStateLoader<'_> {
       fn get_cache_info(
@@ -341,9 +362,7 @@ impl ProcState {
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
-          Some(_) if !self.reload => {
-            Box::pin(futures::future::ready(Err(anyhow!(""))))
-          }
+          Some(_) => Box::pin(futures::future::ready(Err(anyhow!("")))),
           _ => self.inner.load(specifier, is_dynamic),
         }
       }
@@ -351,7 +370,6 @@ impl ProcState {
     let mut loader = ProcStateLoader {
       inner: &mut cache,
       graph_data: self.graph_data.clone(),
-      reload: reload_on_watch,
     };
 
     let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
@@ -413,7 +431,7 @@ impl ProcState {
 
     {
       let mut graph_data = self.graph_data.write();
-      graph_data.add_graph(&graph, reload_on_watch);
+      graph_data.add_graph(&graph, false);
       let check_js = self.options.check_js();
       graph_data
         .check(
@@ -603,7 +621,7 @@ pub fn import_map_from_text(
   Ok(result.import_map)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct FileWatcherReporter {
   sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,

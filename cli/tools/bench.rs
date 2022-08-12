@@ -336,7 +336,6 @@ async fn check_specifiers(
     lib,
     Permissions::allow_all(),
     permissions,
-    true,
   )
   .await?;
 
@@ -642,7 +641,7 @@ pub async fn run_benchmarks_with_watch(
     let include = include.clone();
     let ignore = ignore.clone();
     let permissions = permissions.clone();
-    let ps = ps.clone();
+    let ps = ps.reset_for_file_watcher();
 
     async move {
       let specifiers =
