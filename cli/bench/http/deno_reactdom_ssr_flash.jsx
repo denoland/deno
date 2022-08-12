@@ -15,7 +15,7 @@ const headers = {
   headers: {
     "Content-Type": "text/html",
   },
-}; 
+};
 
 serve(
   async (_) => {

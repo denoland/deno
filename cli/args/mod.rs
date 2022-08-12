@@ -335,6 +335,20 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
+  pub fn trace_ops(&self) -> bool {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.trace_ops,
+      _ => false,
+    }
+  }
+
+  pub fn shuffle_tests(&self) -> Option<u64> {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.shuffle,
+      _ => None,
+    }
+  }
+
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
   }

@@ -151,7 +151,6 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-
     const server = {
       id: serverId,
       transport: opts.cert && opts.key ? "https" : "http",
@@ -300,7 +299,12 @@
                   );
                 } else {
                   if (value === undefined) {
-                    core.ops.op_flash_respond_chuncked(serverId, i, undefined, done); 
+                    core.ops.op_flash_respond_chuncked(
+                      serverId,
+                      i,
+                      undefined,
+                      done,
+                    );
                   } else {
                     respondChunked(
                       i,
@@ -367,11 +371,14 @@
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let hasBodySync = (token) => fastOp.hasBody(token);
-    let respondChunked = (token, chunk, shutdown) => fastOp.respondChunked(token, chunk, shutdown);
+    let respondChunked = (token, chunk, shutdown) =>
+      fastOp.respondChunked(token, chunk, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      hasBodySync = (token) => core.ops.op_flash_has_body_stream(token, serverId);
-      respondChunked = (token, chunk, shutdown) => core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
+      hasBodySync = (token) =>
+        core.ops.op_flash_has_body_stream(token, serverId);
+      respondChunked = (token, chunk, shutdown) =>
+        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
     }
 
     if (!dateInterval) {

@@ -127,6 +127,18 @@
     errorMap[className] = errorBuilder;
   }
 
+  function buildCustomError(className, message, code) {
+    const error = errorMap[className]?.(message);
+    // Strip buildCustomError() calls from stack trace
+    if (typeof error == "object") {
+      ErrorCaptureStackTrace(error, buildCustomError);
+      if (code) {
+        error.code = code;
+      }
+    }
+    return error;
+  }
+
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
@@ -168,38 +180,38 @@
   }
 
   function opSync(opName, ...args) {
-    return unwrapOpResult(ops[opName](...args));
+    return ops[opName](...args);
   }
 
   function refOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    opSync("op_ref_op", promiseId);
+    ops.op_ref_op(promiseId);
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    opSync("op_unref_op", promiseId);
+    ops.op_unref_op(promiseId);
   }
 
   function resources() {
-    return ObjectFromEntries(opSync("op_resources"));
+    return ObjectFromEntries(ops.op_resources());
   }
 
   function metrics() {
-    const [aggregate, perOps] = opSync("op_metrics");
+    const [aggregate, perOps] = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      core.opSync("op_op_names"),
+      ops.op_op_names(),
       (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
   }
 
-  function queueMicrotask(...args) {
-    return opSync("op_queue_microtask", ...args);
+  function queueMicrotask(cb) {
+    return ops.op_queue_microtask(cb);
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -229,6 +241,7 @@
     metrics,
     registerErrorBuilder,
     registerErrorClass,
+    buildCustomError,
     opresolve,
     BadResource,
     BadResourcePrototype,
@@ -239,40 +252,44 @@
     opCallTraces,
     refOp,
     unrefOp,
-    close: opSync.bind(null, "op_close"),
-    tryClose: opSync.bind(null, "op_try_close"),
+    close: (rid) => ops.op_close(rid),
+    tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),
     write: opAsync.bind(null, "op_write"),
     shutdown: opAsync.bind(null, "op_shutdown"),
-    print: opSync.bind(null, "op_print"),
-    setMacrotaskCallback: opSync.bind(null, "op_set_macrotask_callback"),
-    setNextTickCallback: opSync.bind(null, "op_set_next_tick_callback"),
-    runMicrotasks: opSync.bind(null, "op_run_microtasks"),
-    hasTickScheduled: opSync.bind(null, "op_has_tick_scheduled"),
-    setHasTickScheduled: opSync.bind(null, "op_set_has_tick_scheduled"),
-    evalContext: opSync.bind(null, "op_eval_context"),
-    createHostObject: opSync.bind(null, "op_create_host_object"),
-    encode: opSync.bind(null, "op_encode"),
-    decode: opSync.bind(null, "op_decode"),
-    serialize: opSync.bind(null, "op_serialize"),
-    deserialize: opSync.bind(null, "op_deserialize"),
-    getPromiseDetails: opSync.bind(null, "op_get_promise_details"),
-    getProxyDetails: opSync.bind(null, "op_get_proxy_details"),
-    isProxy: opSync.bind(null, "op_is_proxy"),
-    memoryUsage: opSync.bind(null, "op_memory_usage"),
-    setWasmStreamingCallback: opSync.bind(
-      null,
-      "op_set_wasm_streaming_callback",
-    ),
-    abortWasmStreaming: opSync.bind(null, "op_abort_wasm_streaming"),
-    destructureError: opSync.bind(null, "op_destructure_error"),
-    terminate: opSync.bind(null, "op_terminate"),
-    opNames: opSync.bind(null, "op_op_names"),
-    eventLoopHasMoreWork: opSync.bind(null, "op_event_loop_has_more_work"),
-    setPromiseRejectCallback: opSync.bind(
-      null,
-      "op_set_promise_reject_callback",
-    ),
+    print: (msg, isErr) => ops.op_print(msg, isErr),
+    setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
+    setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),
+    runMicrotasks: () => ops.op_run_microtasks(),
+    hasTickScheduled: () => ops.op_has_tick_scheduled(),
+    setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
+    evalContext: (
+      source,
+      specifier,
+    ) => ops.op_eval_context(source, specifier),
+    createHostObject: () => ops.op_create_host_object(),
+    encode: (text) => ops.op_encode(text),
+    decode: (buffer) => ops.op_decode(buffer),
+    serialize: (
+      value,
+      options,
+      errorCallback,
+    ) => ops.op_serialize(value, options, errorCallback),
+    deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
+    getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
+    getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
+    isProxy: (value) => ops.op_is_proxy(value),
+    memoryUsage: () => ops.op_memory_usage(),
+    setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
+    abortWasmStreaming: (
+      rid,
+      error,
+    ) => ops.op_abort_wasm_streaming(rid, error),
+    destructureError: (error) => ops.op_destructure_error(error),
+    terminate: (exception) => ops.op_terminate(exception),
+    opNames: () => ops.op_op_names(),
+    eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
+    setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

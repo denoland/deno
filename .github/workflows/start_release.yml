@@ -31,12 +31,7 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.DENOBOT_PAT }}
-          submodules: recursive
-
-      - uses: dtolnay/rust-toolchain@stable
+        uses: actions/checkout@v3
 
       - name: Install deno
         uses: denoland/setup-deno@v1
@@ -45,8 +40,8 @@ jobs:
           # the latest version ever has issues that breaks publishing
           deno-version: v1.23.2
 
-      - name: Run start release
+      - name: Create Gist URL
         env:
-          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_GIST_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
         run: ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}
