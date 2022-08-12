@@ -774,7 +774,7 @@ async fn run_command(
   run_flags: RunFlags,
 ) -> Result<i32, AnyError> {
   // Read script content from stdin
-  if run_flags.script == "-" {
+  if run_flags.is_stdin() {
     return run_from_stdin(flags).await;
   }
 
