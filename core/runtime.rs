@@ -354,10 +354,12 @@ impl JsRuntime {
       let mut params = options
         .create_params
         .take()
-        .unwrap_or_else(||  v8::CreateParams::default().embedder_wrapper_type_info_offsets(
-          V8_WRAPPER_TYPE_INDEX,
-          V8_WRAPPER_OBJECT_INDEX,
-        ))
+        .unwrap_or_else(|| {
+          v8::CreateParams::default().embedder_wrapper_type_info_offsets(
+            V8_WRAPPER_TYPE_INDEX,
+            V8_WRAPPER_OBJECT_INDEX,
+          )
+        })
         .external_references(&**bindings::EXTERNAL_REFERENCES);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {

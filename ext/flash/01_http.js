@@ -151,7 +151,6 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-
     const server = {
       id: serverId,
       transport: opts.cert && opts.key ? "https" : "http",
@@ -366,7 +365,8 @@
     let hasBodySync = (token) => fastOp.hasBody(token);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      hasBodySync = (token) => core.ops.op_flash_has_body_stream(token, serverId);
+      hasBodySync = (token) =>
+        core.ops.op_flash_has_body_stream(token, serverId);
     }
 
     if (!dateInterval) {

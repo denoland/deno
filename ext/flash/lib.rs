@@ -4,10 +4,12 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::missing_safety_doc)]
 
-use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::v8;
+use deno_core::v8::fast_api;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -16,9 +18,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
-use deno_core::serde_v8;
-use deno_core::v8;
-use deno_core::v8::fast_api;
+use deno_core::V8_WRAPPER_OBJECT_INDEX;
 use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
@@ -340,9 +340,11 @@ impl fast_api::FastFunction for NextRequestFast {
 }
 
 fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
-  let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX) };
+  let ptr = unsafe {
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
+  };
   let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
-  
+
   next_request_sync(ctx)
 }
 
@@ -363,7 +365,9 @@ impl fast_api::FastFunction for HasBodyFast {
 }
 
 fn op_flash_has_body_fast(recv: v8::Local<v8::Object>, token: u32) -> bool {
-  let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX) };
+  let ptr = unsafe {
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
+  };
   let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
   let resp = ctx.response.get(&token).unwrap();
   let sock = unsafe { &*resp.socket };
@@ -386,10 +390,7 @@ fn op_flash_make_request<'scope>(
     let ctx = flash_ctx.servers.get_mut(&0).unwrap();
     ctx as *mut ServerContext
   };
-  obj.set_aligned_pointer_in_internal_field(
-    V8_WRAPPER_OBJECT_INDEX,
-    ctx as _,
-  );
+  obj.set_aligned_pointer_in_internal_field(V8_WRAPPER_OBJECT_INDEX, ctx as _);
 
   // nextRequest
   {
@@ -401,11 +402,13 @@ fn op_flash_make_request<'scope>(
           args.data().unwrap().try_into().unwrap();
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         rv.set_uint32(next_request_sync(ctx));
-       }).data(v8::External::new(scope, ctx as *mut _).into());
-  
+      },
+    )
+    .data(v8::External::new(scope, ctx as *mut _).into());
+
     let func = builder.build_fast(scope, &NextRequestFast, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
-  
+
     let key = v8::String::new(scope, "nextRequest").unwrap();
     obj.set(scope, key.into(), func).unwrap();
   }
@@ -424,11 +427,13 @@ fn op_flash_make_request<'scope>(
         let sock = unsafe { &*resp.socket };
 
         rv.set_bool(sock.read_rx.is_some());
-       }).data(v8::External::new(scope, ctx as *mut _).into());
-  
+      },
+    )
+    .data(v8::External::new(scope, ctx as *mut _).into());
+
     let func = builder.build_fast(scope, &HasBodyFast, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
-  
+
     let key = v8::String::new(scope, "hasBody").unwrap();
     obj.set(scope, key.into(), func).unwrap();
   }
@@ -757,24 +762,22 @@ fn run_server(
                 sockets.remove(&token);
                 continue 'events;
               }
-              Ok(read) => {
-                match req.parse(&buffer[..offset + read]) {
-                  Ok(httparse::Status::Complete(n)) => {
-                    body_offset = n;
-                    body_len = offset + read;
-                    socket.parse_done = ParseStatus::None;
-                    break;
-                  }
-                  Ok(httparse::Status::Partial) => {
-                    socket.parse_done = ParseStatus::Ongoing(offset + read);
-                    continue;
-                  }
-                  Err(e) => {
-                    panic!("{}", e);
-                  }
-                  _ => unreachable!(),
+              Ok(read) => match req.parse(&buffer[..offset + read]) {
+                Ok(httparse::Status::Complete(n)) => {
+                  body_offset = n;
+                  body_len = offset + read;
+                  socket.parse_done = ParseStatus::None;
+                  break;
                 }
-              }
+                Ok(httparse::Status::Partial) => {
+                  socket.parse_done = ParseStatus::Ongoing(offset + read);
+                  continue;
+                }
+                Err(e) => {
+                  panic!("{}", e);
+                }
+                _ => unreachable!(),
+              },
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
               }
