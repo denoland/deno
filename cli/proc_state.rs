@@ -56,7 +56,6 @@ use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
-use std::env;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -69,7 +68,6 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: deno_dir::DenoDir,
-  pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -183,11 +181,6 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let coverage_dir = cli_options
-      .coverage_dir()
-      .map(ToOwned::to_owned)
-      .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
-
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
     // created below
     let node_resolver = NodeEsmResolver::new(
@@ -229,7 +222,6 @@ impl ProcState {
 
     Ok(ProcState(Arc::new(Inner {
       dir,
-      coverage_dir,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()

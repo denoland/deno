@@ -162,6 +162,12 @@ pub struct RunFlags {
   pub script: String,
 }
 
+impl RunFlags {
+  pub fn is_stdin(&self) -> bool {
+    self.script == "-"
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
