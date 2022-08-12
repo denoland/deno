@@ -565,26 +565,13 @@
 
     if (parent?.filename) {
       if (request[0] === "#") {
-        console.log("TODO: Module._resolveFilename with #specifier");
-        // const pkg = readPackageScope(parent.filename) || {};
-        // if (pkg.data?.imports != null) {
-        //   try {
-        //     return finalizeEsmResolution(
-        //       packageImportsResolve(
-        //         request,
-        //         pathToFileURL(parent.filename),
-        //         cjsConditions,
-        //       ),
-        //       parent.filename,
-        //       pkg.path,
-        //     );
-        //   } catch (e) {
-        //     if (e.code === "ERR_MODULE_NOT_FOUND") {
-        //       throw createEsmNotFoundErr(request);
-        //     }
-        //     throw e;
-        //   }
-        // }
+        const maybeResolved = core.ops.op_require_package_imports_resolve(
+          parent.filename,
+          request,
+        );
+        if (maybeResolved) {
+          return maybeResolved;
+        }
       }
     }
 
