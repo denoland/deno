@@ -24,95 +24,6 @@ fn to_file_path_string(url: &ModuleSpecifier) -> String {
   to_file_path(url).display().to_string()
 }
 
-fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
-  if specifier.is_empty() {
-    return false;
-  }
-
-  if specifier.starts_with('/') {
-    return true;
-  }
-
-  is_relative_specifier(specifier)
-}
-
-// TODO(ry) We very likely have this utility function elsewhere in Deno.
-fn is_relative_specifier(specifier: &str) -> bool {
-  let specifier_len = specifier.len();
-  let specifier_chars: Vec<_> = specifier.chars().collect();
-
-  if !specifier_chars.is_empty() && specifier_chars[0] == '.' {
-    if specifier_len == 1 || specifier_chars[1] == '/' {
-      return true;
-    }
-    if specifier_chars[1] == '.'
-      && (specifier_len == 2 || specifier_chars[2] == '/')
-    {
-      return true;
-    }
-  }
-  false
-}
-
-fn finalize_resolution(
-  resolved: ModuleSpecifier,
-  base: &ModuleSpecifier,
-) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution algorithm
-  // (as it doesn't support http/https); but I had to short circuit here
-  // for remote modules because they are mainly used to polyfill `node` built
-  // in modules. Another option would be to leave the resolved URLs
-  // as `node:<module_name>` and do the actual remapping to std's polyfill
-  // in module loader. I'm not sure which approach is better.
-  if resolved.scheme().starts_with("http") {
-    return Ok(resolved);
-  }
-
-  let encoded_sep_re = Regex::new(r"%2F|%2C").expect("bad regex");
-
-  if encoded_sep_re.is_match(resolved.path()) {
-    return Err(errors::err_invalid_module_specifier(
-      resolved.path(),
-      "must not include encoded \"/\" or \"\\\\\" characters",
-      Some(to_file_path_string(base)),
-    ));
-  }
-
-  let path = to_file_path(&resolved);
-
-  // TODO(bartlomieju): currently not supported
-  // if (getOptionValue('--experimental-specifier-resolution') === 'node') {
-  //   ...
-  // }
-
-  let p_str = path.to_str().unwrap();
-  let p = if p_str.ends_with('/') {
-    p_str[p_str.len() - 1..].to_string()
-  } else {
-    p_str.to_string()
-  };
-
-  let (is_dir, is_file) = if let Ok(stats) = std::fs::metadata(&p) {
-    (stats.is_dir(), stats.is_file())
-  } else {
-    (false, false)
-  };
-  if is_dir {
-    return Err(errors::err_unsupported_dir_import(
-      resolved.as_str(),
-      base.as_str(),
-    ));
-  } else if !is_file {
-    return Err(errors::err_module_not_found(
-      resolved.as_str(),
-      base.as_str(),
-      "module",
-    ));
-  }
-
-  Ok(resolved)
-}
-
 fn throw_import_not_defined(
   specifier: &str,
   package_json_url: Option<ModuleSpecifier>,
@@ -167,6 +78,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
+#[allow(unused)]
 fn package_imports_resolve(
   name: &str,
   base: &ModuleSpecifier,
@@ -531,7 +443,7 @@ fn throw_exports_not_found(
   )
 }
 
-pub fn package_exports_resolve(
+pub(crate) fn package_exports_resolve(
   package_json_url: ModuleSpecifier,
   package_subpath: String,
   package_config: PackageConfig,
@@ -793,21 +705,7 @@ pub struct PackageConfig {
   pub typ: String,
 }
 
-pub fn check_if_should_use_esm_loader(
-  main_module: &ModuleSpecifier,
-) -> Result<bool, AnyError> {
-  let s = main_module.as_str();
-  if s.ends_with(".mjs") {
-    return Ok(true);
-  }
-  if s.ends_with(".cjs") {
-    return Ok(false);
-  }
-  let package_config = get_package_scope_config(main_module)?;
-  Ok(package_config.typ == "module")
-}
-
-pub fn get_package_config(
+pub(crate) fn get_package_config(
   path: PathBuf,
   specifier: &str,
   maybe_base: Option<&ModuleSpecifier>,
@@ -897,7 +795,7 @@ pub fn get_package_config(
   Ok(package_config)
 }
 
-pub fn get_package_scope_config(
+pub(crate) fn get_package_scope_config(
   resolved: &ModuleSpecifier,
 ) -> Result<PackageConfig, AnyError> {
   let mut package_json_url = resolved.join("./package.json")?;
