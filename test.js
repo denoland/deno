@@ -1,3 +1,3 @@
-import chalk from "npm:chalk@4.0.0";
+import chalk from "npm:chalk@4";
 
 console.log(chalk);

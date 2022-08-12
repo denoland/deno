@@ -56,6 +56,19 @@ fn check_unstable(state: &OpState) {
   }
 }
 
+fn ensure_read_permission(
+  state: &mut OpState,
+  file_path: &Path,
+) -> Result<(), AnyError> {
+  Ok(())
+  // allow borrowing state mutably twice by taking the resolver
+  // and then putting it back after
+  // let resolver = state.take::<Rc<dyn DenoDirNpmResolver>>();
+  // let result = resolver.ensure_read_permission(state, file_path);
+  // state.put(resolver);
+  // result
+}
+
 #[op]
 pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
   check_unstable(state);

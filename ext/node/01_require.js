@@ -654,8 +654,8 @@
     // TODO:
     // We provide non standard timer APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname) {",
-    "\n}).call(this, exports, require, module, __filename, __dirname); })",
+    "(function (exports, require, module, __filename, __dirname, process, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname, process) {",
+    "\n}).call(this, exports, require, module, __filename, __dirname, process); })",
   ];
   Module.wrap = function (script) {
     script = script.replace(/^#!.*?\n/, "");
@@ -712,6 +712,7 @@
       this,
       filename,
       dirname,
+      processGlobal,
     );
     if (requireDepth === 0) {
       statCache = null;
