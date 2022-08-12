@@ -169,17 +169,34 @@ impl NpmResolutionSnapshot {
     name: &str,
     referrer: &NpmPackageId,
   ) -> Result<&NpmResolutionPackage, AnyError> {
-    match self.packages.get(referrer) {
-      Some(referrer_package) => match referrer_package.dependencies.get(name) {
-        Some(id) => Ok(self.packages.get(id).unwrap()),
-        None => {
-          bail!(
-            "could not find package '{}' referenced by '{}'",
-            name,
-            referrer
-          )
+    fn name_without_path(name: &str) -> &str {
+      let mut search_start_index = 0;
+      if name.starts_with('@') {
+        if let Some(slash_index) = name.find('/') {
+          search_start_index = slash_index + 1;
         }
-      },
+      }
+      if let Some(slash_index) = &name[search_start_index..].find('/') {
+        // get the name up until the path slash
+        &name[0..search_start_index + slash_index]
+      } else {
+        name
+      }
+    }
+
+    match self.packages.get(referrer) {
+      Some(referrer_package) => {
+        match referrer_package.dependencies.get(name_without_path(name)) {
+          Some(id) => Ok(self.packages.get(id).unwrap()),
+          None => {
+            bail!(
+              "could not find package '{}' referenced by '{}'",
+              name,
+              referrer
+            )
+          }
+        }
+      }
       None => bail!("could not find referrer package '{}'", referrer),
     }
   }
