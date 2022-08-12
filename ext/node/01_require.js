@@ -26,6 +26,7 @@
     JSONParse,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
+    StringPrototypeMatch,
     StringPrototypeSlice,
     StringPrototypeStartsWith,
     StringPrototypeCharCodeAt,
@@ -99,9 +100,7 @@
   }
 
   function tryPackage(requestPath, exts, isMain, originalPath) {
-    // const pkg = readPackage(requestPath)?.main;
-    let pkg = false;
-
+    const pkg = core.ops.op_require_read_package_scope(requestPath).main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -110,7 +109,7 @@
       );
     }
 
-    const filename = path.resolve(requestPath, pkg);
+    const filename = pathResolve(requestPath, pkg);
     let actual = tryFile(filename, isMain) ||
       tryExtensions(filename, exts, isMain) ||
       tryExtensions(
@@ -266,6 +265,52 @@
 
   const CHAR_FORWARD_SLASH = 47;
   const TRAILING_SLASH_REGEX = /(?:^|\/)\.?\.$/;
+  const encodedSepRegEx = /%2F|%2C/i;
+
+  function finalizeEsmResolution(
+    resolved,
+    parentPath,
+    pkgPath,
+  ) {
+    if (RegExpPrototypeTest(encodedSepRegEx, resolved)) {
+      throw new ERR_INVALID_MODULE_SPECIFIER(
+        resolved,
+        'must not include encoded "/" or "\\" characters',
+        parentPath,
+      );
+    }
+    // const filename = fileURLToPath(resolved);
+    const filename = resolved;
+    const actual = tryFile(filename, false);
+    if (actual) {
+      return actual;
+    }
+    throw new ERR_MODULE_NOT_FOUND(
+      filename,
+      path.resolve(pkgPath, "package.json"),
+    );
+  }
+
+  // This only applies to requests of a specific form:
+  // 1. name/.*
+  // 2. @scope/name/.*
+  const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
+  function resolveExports(modulesPath, request) {
+    // The implementation's behavior is meant to mirror resolution in ESM.
+    const [, name, expansion = ""] =
+      StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
+    if (!name) {
+      return;
+    }
+
+    return core.ops.op_require_resolve_exports(
+      modulesPath,
+      request,
+      name,
+      expansion,
+    ) ?? false;
+  }
+
   Module._findPath = function (request, paths, isMain) {
     const absoluteRequest = ops.op_require_path_is_absolute(request);
     if (absoluteRequest) {
@@ -305,7 +350,11 @@
         "op_require_is_deno_dir_package",
         curPath,
       );
-      const basePath = isDenoDirPackage
+      const isRelative = ops.op_require_is_request_relative(
+        request,
+      );
+      // TODO(bartlomieju): could be a single op
+      const basePath = (isDenoDirPackage && !isRelative)
         ? curPath
         : pathResolve(curPath, request);
       let filename;
@@ -410,14 +459,9 @@
     if (cachedModule !== undefined) {
       updateChildren(parent, cachedModule, true);
       if (!cachedModule.loaded) {
-        const parseCachedModule = cjsParseCache.get(cachedModule);
-        if (!parseCachedModule || parseCachedModule.loaded) {
-          return getExportsForCircularRequire(cachedModule);
-        }
-        parseCachedModule.loaded = true;
-      } else {
-        return cachedModule.exports;
+        return getExportsForCircularRequire(cachedModule);
       }
+      return cachedModule.exports;
     }
 
     const mod = loadNativeModule(filename, request);
@@ -426,7 +470,6 @@
     ) {
       return mod.exports;
     }
-
     // Don't call updateChildren(), Module constructor already does.
     const module = cachedModule || new Module(filename, parent);
 
@@ -546,14 +589,12 @@
     }
 
     // Try module self resolution first
-    // TODO(bartlomieju): make into a single op
     const parentPath = ops.op_require_try_self_parent_path(
       !!parent,
       parent?.filename,
       parent?.id,
     );
-    // const selfResolved = ops.op_require_try_self(parentPath, request);
-    const selfResolved = false;
+    const selfResolved = ops.op_require_try_self(parentPath, request);
     if (selfResolved) {
       const cacheKey = request + "\x00" +
         (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
@@ -627,8 +668,8 @@
     // TODO:
     // We provide non standard timer APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname) {",
-    "\n}).call(this, exports, require, module, __filename, __dirname); })",
+    "(function (exports, require, module, __filename, __dirname, process, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname, process) {",
+    "\n}).call(this, exports, require, module, __filename, __dirname, process); })",
   ];
   Module.wrap = function (script) {
     script = script.replace(/^#!.*?\n/, "");
@@ -685,6 +726,7 @@
       this,
       filename,
       dirname,
+      processGlobal,
     );
     if (requireDepth === 0) {
       statCache = null;
@@ -695,7 +737,14 @@
   Module._extensions[".js"] = function (module, filename) {
     const content = ops.op_require_read_file(filename);
 
-    console.log(`TODO: Module._extensions[".js"] is ESM`);
+    if (StringPrototypeEndsWith(filename, ".js")) {
+      const pkg = core.ops.op_require_read_package_scope(filename);
+      if (pkg && pkg.exists && pkg.typ == "module") {
+        throw new Error(
+          `Import ESM module: ${filename} from ${module.parent.filename}`,
+        );
+      }
+    }
 
     module._compile(content, filename);
   };

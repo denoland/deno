@@ -7,6 +7,7 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use esm_resolver::PackageConfig;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -24,6 +25,9 @@ pub trait DenoDirNpmResolver {
     path: &Path,
   ) -> Result<(), AnyError>;
 }
+
+mod errors;
+mod esm_resolver;
 
 pub struct Unstable(pub bool);
 
@@ -54,6 +58,8 @@ pub fn init(
       op_require_path_basename::decl(),
       op_require_read_file::decl(),
       op_require_as_file_path::decl(),
+      op_require_resolve_exports::decl(),
+      op_require_read_package_scope::decl(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
@@ -338,9 +344,7 @@ fn op_require_real_path(
   Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
-#[op]
-fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
-  check_unstable(state);
+fn path_resolve(parts: Vec<String>) -> String {
   assert!(!parts.is_empty());
   let mut p = PathBuf::from(&parts[0]);
   if parts.len() > 1 {
@@ -349,6 +353,12 @@ fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
     }
   }
   normalize_path(p).to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
+  check_unstable(state);
+  path_resolve(parts)
 }
 
 #[op]
@@ -395,28 +405,51 @@ fn op_require_try_self_parent_path(
 #[op]
 fn op_require_try_self(
   state: &mut OpState,
-  has_parent: bool,
-  maybe_parent_filename: Option<String>,
-  maybe_parent_id: Option<String>,
+  parent_path: Option<String>,
+  request: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
-  if !has_parent {
+  if parent_path.is_none() {
     return Ok(None);
   }
 
-  if let Some(parent_filename) = maybe_parent_filename {
-    return Ok(Some(parent_filename));
+  let pkg = esm_resolver::get_package_scope_config(
+    &Url::from_file_path(parent_path.unwrap()).unwrap(),
+  )
+  .ok();
+
+  if pkg.is_none() {
+    return Ok(None);
   }
 
-  if let Some(parent_id) = maybe_parent_id {
-    if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = std::env::current_dir() {
-        ensure_read_permission(state, &cwd)?;
-        return Ok(Some(cwd.to_string_lossy().to_string()));
-      }
-    }
+  let pkg = pkg.unwrap();
+  if pkg.exports.is_none() {
+    return Ok(None);
   }
-  Ok(None)
+  if pkg.name.is_none() {
+    return Ok(None);
+  }
+
+  let pkg_name = pkg.name.as_ref().unwrap().to_string();
+  let mut expansion = ".".to_string();
+
+  if request == pkg_name {
+    // pass
+  } else if request.starts_with(&format!("{}/", pkg_name)) {
+    expansion += &request[pkg_name.len()..];
+  } else {
+    return Ok(None);
+  }
+
+  let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+  esm_resolver::package_exports_resolve(
+    deno_core::url::Url::from_file_path(&pkg.pjsonpath).unwrap(),
+    expansion,
+    pkg,
+    &base,
+    esm_resolver::DEFAULT_CONDITIONS,
+  )
+  .map(|r| Some(r.as_str().to_string()))
 }
 
 #[op]
@@ -440,4 +473,45 @@ pub fn op_require_as_file_path(
     Ok(url) => url.to_file_path().unwrap().to_string_lossy().to_string(),
     Err(_) => file_or_url,
   }
+}
+
+#[op]
+fn op_require_resolve_exports(
+  state: &mut OpState,
+  modules_path: String,
+  request: String,
+  name: String,
+  expansion: String,
+) -> Result<Option<String>, AnyError> {
+  check_unstable(state);
+
+  let pkg_path = path_resolve(vec![modules_path, name]);
+  let pkg =
+    esm_resolver::get_package_config(PathBuf::from(&pkg_path), &request, None)?;
+
+  if pkg.exports.is_some() {
+    let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+    return esm_resolver::package_exports_resolve(
+      deno_core::url::Url::from_file_path(pkg_path).unwrap(),
+      format!(".{}", expansion),
+      pkg,
+      &base,
+      esm_resolver::DEFAULT_CONDITIONS,
+    )
+    .map(|r| Some(r.as_str().to_string()));
+  }
+
+  Ok(None)
+}
+
+#[op]
+fn op_require_read_package_scope(
+  state: &mut OpState,
+  filename: String,
+) -> Option<PackageConfig> {
+  check_unstable(state);
+  esm_resolver::get_package_scope_config(
+    &Url::from_file_path(filename).unwrap(),
+  )
+  .ok()
 }
