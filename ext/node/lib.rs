@@ -68,6 +68,7 @@ pub fn init(
       op_require_as_file_path::decl(),
       op_require_resolve_exports::decl(),
       op_require_read_package_scope::decl(),
+      op_require_package_imports_resolve::decl(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
@@ -537,4 +538,31 @@ fn op_require_read_package_scope(
     &**resolver,
   )
   .ok()
+}
+
+#[op]
+fn op_require_package_imports_resolve(
+  state: &mut OpState,
+  parent_filename: String,
+  request: String,
+) -> Result<Option<String>, AnyError> {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+
+  let pkg =
+    PackageJson::load(PathBuf::from(&parent_filename).join("package.json"))?;
+
+  if pkg.imports.is_some() {
+    let referrer =
+      deno_core::url::Url::from_file_path(&parent_filename).unwrap();
+    resolution::package_imports_resolve(
+      &request,
+      &referrer,
+      resolution::DEFAULT_CONDITIONS,
+      &**resolver,
+    )
+    .map(|r| Some(r.as_str().to_string()))
+  } else {
+    Ok(None)
+  }
 }

@@ -85,8 +85,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
-#[allow(unused)]
-fn package_imports_resolve(
+pub fn package_imports_resolve(
   name: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
