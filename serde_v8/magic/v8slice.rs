@@ -25,6 +25,7 @@ pub struct V8Slice {
   pub(crate) range: Range<usize>,
 }
 
+// SAFETY: TODO
 unsafe impl Send for V8Slice {}
 
 impl V8Slice {
