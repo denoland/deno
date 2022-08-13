@@ -505,6 +505,7 @@ fn op_require_resolve_exports(
   request: String,
   name: String,
   expansion: String,
+  parent_path: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
   let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
@@ -517,16 +518,16 @@ fn op_require_resolve_exports(
   let pkg = PackageJson::load(PathBuf::from(&pkg_path).join("package.json"))?;
 
   if let Some(exports) = &pkg.exports {
-    let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+    let base = Url::from_file_path(parent_path).unwrap();
     resolution::package_exports_resolve(
-      deno_core::url::Url::from_file_path(pkg_path).unwrap(),
+      deno_core::url::Url::from_directory_path(pkg_path).unwrap(),
       format!(".{}", expansion),
       exports,
       &base,
       resolution::DEFAULT_CONDITIONS,
       &**resolver,
     )
-    .map(|r| Some(r.as_str().to_string()))
+    .map(|r| Some(r.to_file_path().unwrap().to_string_lossy().to_string()))
   } else {
     Ok(None)
   }

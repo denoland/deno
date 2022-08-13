@@ -295,7 +295,7 @@
   // 1. name/.*
   // 2. @scope/name/.*
   const EXPORTS_PATTERN = /^((?:@[^/\\%]+\/)?[^./\\%][^/\\%]*)(\/.*)?$/;
-  function resolveExports(modulesPath, request) {
+  function resolveExports(modulesPath, request, parentPath) {
     // The implementation's behavior is meant to mirror resolution in ESM.
     const [, name, expansion = ""] =
       StringPrototypeMatch(request, EXPORTS_PATTERN) || [];
@@ -308,10 +308,11 @@
       request,
       name,
       expansion,
+      parentPath,
     ) ?? false;
   }
 
-  Module._findPath = function (request, paths, isMain) {
+  Module._findPath = function (request, paths, isMain, parentPath) {
     const absoluteRequest = ops.op_require_path_is_absolute(request);
     if (absoluteRequest) {
       paths = [""];
@@ -340,7 +341,7 @@
       if (curPath && stat(curPath) < 1) continue;
 
       if (!absoluteRequest) {
-        const exportsResolved = resolveExports(curPath, request);
+        const exportsResolved = resolveExports(curPath, request, parentPath);
         if (exportsResolved) {
           return exportsResolved;
         }
@@ -590,7 +591,12 @@
     }
 
     // Look up the filename first, since that's the cache key.
-    const filename = Module._findPath(request, paths, isMain, false);
+    const filename = Module._findPath(
+      request,
+      paths,
+      isMain,
+      parentPath,
+    );
     if (filename) return filename;
     const requireStack = [];
     for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
