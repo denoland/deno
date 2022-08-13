@@ -203,7 +203,9 @@ fn update_config_text(
 ) -> Option<String> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
-  let ast = jsonc_parser::parse_to_ast(text, &Default::default()).ok()?;
+  let ast =
+    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())
+      .ok()?;
   let obj = match ast.value {
     Some(Value::Object(obj)) => obj,
     _ => return None, // shouldn't happen, so ignore

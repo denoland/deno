@@ -315,7 +315,7 @@ fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
 }
 
 #[op]
-fn op_cwd(s: &mut OpState, _args: Value) -> Result<String, AnyError> {
+fn op_cwd(s: &mut OpState) -> Result<String, AnyError> {
   let state = s.borrow_mut::<State>();
   if let Some(config_specifier) = &state.maybe_config_specifier {
     let cwd = config_specifier.join("./")?;
@@ -490,21 +490,15 @@ fn op_resolve(
       ));
     } else {
       let graph_data = state.graph_data.read();
-      let referrer = graph_data.follow_redirect(&referrer);
-      let resolved_dep = match graph_data.get(&referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).map(|d| {
-            if matches!(d.maybe_type, Resolved::Ok { .. }) {
-              &d.maybe_type
-            } else {
-              &d.maybe_code
-            }
-          })
-        }
-        Some(ModuleEntry::Configuration { dependencies }) => {
-          dependencies.get(specifier)
-        }
-        _ => None,
+      let resolved_dep = match graph_data.get_dependencies(&referrer) {
+        Some(dependencies) => dependencies.get(specifier).map(|d| {
+          if matches!(d.maybe_type, Resolved::Ok { .. }) {
+            &d.maybe_type
+          } else {
+            &d.maybe_code
+          }
+        }),
+        None => None,
       };
       let maybe_result = match resolved_dep {
         Some(Resolved::Ok { specifier, .. }) => {

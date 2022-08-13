@@ -42,6 +42,22 @@ impl TestLoader {
     path_or_specifier: impl AsRef<str>,
     text: impl AsRef<str>,
   ) -> &mut Self {
+    self.add_result(path_or_specifier, Ok((text.as_ref().to_string(), None)))
+  }
+
+  pub fn add_failure(
+    &mut self,
+    path_or_specifier: impl AsRef<str>,
+    message: impl AsRef<str>,
+  ) -> &mut Self {
+    self.add_result(path_or_specifier, Err(message.as_ref().to_string()))
+  }
+
+  fn add_result(
+    &mut self,
+    path_or_specifier: impl AsRef<str>,
+    result: RemoteFileResult,
+  ) -> &mut Self {
     if path_or_specifier
       .as_ref()
       .to_lowercase()
@@ -49,14 +65,12 @@ impl TestLoader {
     {
       self.files.insert(
         ModuleSpecifier::parse(path_or_specifier.as_ref()).unwrap(),
-        Ok((text.as_ref().to_string(), None)),
+        result,
       );
     } else {
       let path = make_path(path_or_specifier.as_ref());
       let specifier = ModuleSpecifier::from_file_path(path).unwrap();
-      self
-        .files
-        .insert(specifier, Ok((text.as_ref().to_string(), None)));
+      self.files.insert(specifier, result);
     }
     self
   }
