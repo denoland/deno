@@ -503,15 +503,14 @@ Deno.test(
     let written = 0;
     while (written < requestBytes.byteLength) {
       written += await clientConn.write(requestBytes.slice(written));
-    }    
+    }
 
     const buf = new Uint8Array(1024);
     assertEquals(await clientConn.read(buf), 79);
     await promise;
-    let responseText = new TextDecoder().decode(buf);  
+    let responseText = new TextDecoder().decode(buf);
     clientConn.close();
 
-    
     assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
 
     ac.abort();
@@ -605,7 +604,7 @@ Deno.test(
     const file = await Deno.open(tmpFile, { write: true, read: true });
     await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
     file.close();
-    
+
     const server = Deno.serve(async (request) => {
       const f = await Deno.open(tmpFile, { read: true });
       promise.resolve();
@@ -615,7 +614,7 @@ Deno.test(
     const resp = await fetch("http://127.0.0.1:4503/");
     await promise;
     const body = await resp.arrayBuffer();
-    
+
     assertEquals(body.byteLength, 70 * 1024);
     ac.abort();
     await server;
@@ -636,7 +635,7 @@ Deno.test(
 
     const server = Deno.serve(() => {
       promise.resolve();
-      return new Response("ok");      
+      return new Response("ok");
     }, { port: port, signal: ac.signal });
 
     const url = `http://${hostname}:${port}/`;
@@ -653,6 +652,83 @@ Deno.test(
     await server;
   },
 );
+
+// FIXME:
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerRespondNonAsciiUint8Array() {
+//     const promise = deferred();
+//     const ac = new AbortController();
+
+//     const server = Deno.serve(async (request) => {
+//       assertEquals(request.body, null);
+//       promise.resolve();
+//       return new Response(new Uint8Array([128]));
+//     }, { port: 4501, signal: ac.signal });
+
+//     const resp = await fetch("http://localhost:4501/");
+//     await promise;
+
+//     assertEquals(resp.status, 200);
+//     const body = await resp.text();
+//     console.log(new Uint8Array(body), new Uint8Array([128]));
+
+//     ac.abort();
+//     await server;
+//   },
+// );
+
+// Deno.test("upgradeHttp tcp", async () => {
+//   const promise = deferred();
+//   const promise2 = deferred();
+//   const abortController = new AbortController();
+//   const signal = abortController.signal;
+
+//   const server = Deno.serve(async (req) => {
+//     const [conn, firstPacket] = await Deno.upgradeHttp(req);
+    
+//     await conn.write(
+//       new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
+//     );
+
+//     promise.resolve();
+
+//     const buf = new Uint8Array(1024);
+      
+//     // const firstPacketText = new TextDecoder().decode(firstPacket);
+//     // assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
+//     const n = await conn.read(buf);
+//     console.log(n)
+
+//     // assert(n != null);
+//     // const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+//     // assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+
+//     promise2.resolve();
+//     conn.close();
+//   }, { port: 4501, signal });
+
+//   const tcpConn = await Deno.connect({ port: 4501 });
+//   await tcpConn.write(
+//     new TextEncoder().encode(
+//       "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
+//     ),
+//   );
+
+//   await promise;
+
+//   await tcpConn.write(
+//     new TextEncoder().encode(
+//       "bla bla bla\nbla bla\nbla\n",
+//     ),
+//   );
+
+//   await promise2;
+//   tcpConn.close();
+ 
+//   abortController.abort();
+//   await server;
+// });
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
