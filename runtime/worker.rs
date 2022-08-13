@@ -161,6 +161,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      // deno_node::init() // todo(dsherret): re-enable,
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
@@ -216,24 +217,26 @@ impl MainWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
+  }
+
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
   }
 
   /// Executes specified JavaScript module.
@@ -241,6 +244,7 @@ impl MainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
+    self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -265,8 +269,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -277,8 +280,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 

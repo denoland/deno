@@ -490,21 +490,15 @@ fn op_resolve(
       ));
     } else {
       let graph_data = state.graph_data.read();
-      let referrer = graph_data.follow_redirect(&referrer);
-      let resolved_dep = match graph_data.get(&referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).map(|d| {
-            if matches!(d.maybe_type, Resolved::Ok { .. }) {
-              &d.maybe_type
-            } else {
-              &d.maybe_code
-            }
-          })
-        }
-        Some(ModuleEntry::Configuration { dependencies }) => {
-          dependencies.get(specifier)
-        }
-        _ => None,
+      let resolved_dep = match graph_data.get_dependencies(&referrer) {
+        Some(dependencies) => dependencies.get(specifier).map(|d| {
+          if matches!(d.maybe_type, Resolved::Ok { .. }) {
+            &d.maybe_type
+          } else {
+            &d.maybe_code
+          }
+        }),
+        None => None,
       };
       let maybe_result = match resolved_dep {
         Some(Resolved::Ok { specifier, .. }) => {

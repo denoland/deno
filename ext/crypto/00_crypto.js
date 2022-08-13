@@ -10,6 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
 
@@ -1374,7 +1375,7 @@
 
         switch (normalizedAlgorithm.name) {
           case "AES-KW": {
-            const cipherText = await core.opSync("op_crypto_wrap_key", {
+            const cipherText = await ops.op_crypto_wrap_key({
               key: keyData,
               algorithm: normalizedAlgorithm.name,
             }, bytes);
@@ -1510,7 +1511,7 @@
 
         switch (normalizedAlgorithm.name) {
           case "AES-KW": {
-            const plainText = await core.opSync("op_crypto_unwrap_key", {
+            const plainText = await ops.op_crypto_unwrap_key({
               key: keyData,
               algorithm: normalizedAlgorithm.name,
             }, wrappedKey);
@@ -1986,7 +1987,7 @@
         };
 
         // 3.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           format: "jwksecret",
           algorithm: "AES",
         }, innerKey);
@@ -2080,8 +2081,7 @@
         }
 
         // 4.
-        const { rawData } = core.opSync(
-          "op_crypto_import_key",
+        const { rawData } = ops.op_crypto_import_key(
           { algorithm: "AES" },
           { jwkSecret: jwk },
         );
@@ -2241,8 +2241,7 @@
         }
 
         // 4.
-        const { rawData } = core.opSync(
-          "op_crypto_import_key",
+        const { rawData } = ops.op_crypto_import_key(
           { algorithm: "HMAC" },
           { jwkSecret: jwk },
         );
@@ -2427,7 +2426,7 @@
         }
 
         // 3.
-        const { rawData } = core.opSync("op_crypto_import_key", {
+        const { rawData } = ops.op_crypto_import_key({
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { raw: keyData });
@@ -2468,7 +2467,7 @@
         }
 
         // 2-9.
-        const { rawData } = core.opSync("op_crypto_import_key", {
+        const { rawData } = ops.op_crypto_import_key({
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { pkcs8: keyData });
@@ -2511,7 +2510,7 @@
         }
 
         // 2-12
-        const { rawData } = core.opSync("op_crypto_import_key", {
+        const { rawData } = ops.op_crypto_import_key({
           algorithm: normalizedAlgorithm.name,
           namedCurve: normalizedAlgorithm.namedCurve,
         }, { spki: keyData });
@@ -2655,7 +2654,7 @@
 
         if (jwk.d !== undefined) {
           // it's also a Private key
-          const { rawData } = core.opSync("op_crypto_import_key", {
+          const { rawData } = ops.op_crypto_import_key({
             algorithm: normalizedAlgorithm.name,
             namedCurve: normalizedAlgorithm.namedCurve,
           }, { jwkPrivateEc: jwk });
@@ -2678,7 +2677,7 @@
 
           return key;
         } else {
-          const { rawData } = core.opSync("op_crypto_import_key", {
+          const { rawData } = ops.op_crypto_import_key({
             algorithm: normalizedAlgorithm.name,
             namedCurve: normalizedAlgorithm.namedCurve,
           }, { jwkPublicEc: jwk });
@@ -2759,15 +2758,15 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, rawData } = core.opSync(
-          "op_crypto_import_key",
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { pkcs8: keyData },
-        );
+        const { modulusLength, publicExponent, rawData } = ops
+          .op_crypto_import_key(
+            {
+              algorithm: normalizedAlgorithm.name,
+              // Needed to perform step 7 without normalization.
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { pkcs8: keyData },
+          );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -2805,15 +2804,15 @@
         }
 
         // 2-9.
-        const { modulusLength, publicExponent, rawData } = core.opSync(
-          "op_crypto_import_key",
-          {
-            algorithm: normalizedAlgorithm.name,
-            // Needed to perform step 7 without normalization.
-            hash: normalizedAlgorithm.hash.name,
-          },
-          { spki: keyData },
-        );
+        const { modulusLength, publicExponent, rawData } = ops
+          .op_crypto_import_key(
+            {
+              algorithm: normalizedAlgorithm.name,
+              // Needed to perform step 7 without normalization.
+              hash: normalizedAlgorithm.hash.name,
+            },
+            { spki: keyData },
+          );
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3055,14 +3054,14 @@
             );
           }
 
-          const { modulusLength, publicExponent, rawData } = core.opSync(
-            "op_crypto_import_key",
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPrivateRsa: jwk },
-          );
+          const { modulusLength, publicExponent, rawData } = ops
+            .op_crypto_import_key(
+              {
+                algorithm: normalizedAlgorithm.name,
+                hash: normalizedAlgorithm.hash.name,
+              },
+              { jwkPrivateRsa: jwk },
+            );
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3098,14 +3097,14 @@
             );
           }
 
-          const { modulusLength, publicExponent, rawData } = core.opSync(
-            "op_crypto_import_key",
-            {
-              algorithm: normalizedAlgorithm.name,
-              hash: normalizedAlgorithm.hash.name,
-            },
-            { jwkPublicRsa: jwk },
-          );
+          const { modulusLength, publicExponent, rawData } = ops
+            .op_crypto_import_key(
+              {
+                algorithm: normalizedAlgorithm.name,
+                hash: normalizedAlgorithm.hash.name,
+              },
+              { jwkPublicRsa: jwk },
+            );
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, rawData);
@@ -3259,7 +3258,7 @@
         };
 
         // 3.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           format: "jwksecret",
           algorithm: key[_algorithm].name,
         }, innerKey);
@@ -3313,7 +3312,7 @@
         }
 
         // 2.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           algorithm: key[_algorithm].name,
           format: "pkcs8",
         }, innerKey);
@@ -3331,7 +3330,7 @@
         }
 
         // 2.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           algorithm: key[_algorithm].name,
           format: "spki",
         }, innerKey);
@@ -3412,7 +3411,7 @@
         }
 
         // 5-6.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
           algorithm: key[_algorithm].name,
         }, innerKey);
@@ -3443,7 +3442,7 @@
         }
 
         // 2.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           algorithm: key[_algorithm].name,
           namedCurve: key[_algorithm].namedCurve,
           format: "raw",
@@ -3461,7 +3460,7 @@
         }
 
         // 2.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           algorithm: key[_algorithm].name,
           namedCurve: key[_algorithm].namedCurve,
           format: "pkcs8",
@@ -3479,7 +3478,7 @@
         }
 
         // 2.
-        const data = core.opSync("op_crypto_export_key", {
+        const data = ops.op_crypto_export_key({
           algorithm: key[_algorithm].name,
           namedCurve: key[_algorithm].namedCurve,
           format: "spki",
@@ -3523,7 +3522,7 @@
           jwk.alg = algNamedCurve;
 
           // 3.2 - 3.4.
-          const data = core.opSync("op_crypto_export_key", {
+          const data = ops.op_crypto_export_key({
             format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
             algorithm: key[_algorithm].name,
             namedCurve: key[_algorithm].namedCurve,
@@ -3550,7 +3549,7 @@
           jwk.crv = key[_algorithm].namedCurve;
 
           // 3.2 - 3.4
-          const data = core.opSync("op_crypto_export_key", {
+          const data = ops.op_crypto_export_key({
             format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
             algorithm: key[_algorithm].name,
             namedCurve: key[_algorithm].namedCurve,
@@ -3925,13 +3924,13 @@
         arrayBufferView.byteOffset,
         arrayBufferView.byteLength,
       );
-      core.opSync("op_crypto_get_random_values", ui8);
+      ops.op_crypto_get_random_values(ui8);
       return arrayBufferView;
     }
 
     randomUUID() {
       webidl.assertBranded(this, CryptoPrototype);
-      return core.opSync("op_crypto_random_uuid");
+      return ops.op_crypto_random_uuid();
     }
 
     get subtle() {

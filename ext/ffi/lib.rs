@@ -1841,6 +1841,7 @@ where
 
 #[op]
 fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
+  check_unstable(state, "Deno.dlopen");
   let ffi_state = state.borrow_mut::<FfiState>();
   if inc_dec {
     ffi_state.active_refed_functions += 1;
@@ -2187,13 +2188,14 @@ where
   permissions.check(None)?;
 
   // SAFETY: Pointer is user provided.
-  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
-  let value: v8::Local<v8::Value> =
-    v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
-      .ok_or_else(|| {
-        type_error("Invalid CString pointer, string exceeds max length")
-      })?
-      .into();
+  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }
+    .to_str()
+    .map_err(|_| type_error("Invalid CString pointer, not valid UTF-8"))?;
+  let value: v8::Local<v8::Value> = v8::String::new(scope, cstr)
+    .ok_or_else(|| {
+      type_error("Invalid CString pointer, string exceeds max length")
+    })?
+    .into();
   Ok(value.into())
 }
 

@@ -2754,6 +2754,12 @@ itest!(custom_inspect_url {
   output: "custom_inspect_url.js.out",
 });
 
+itest!(config_json_import {
+  args: "run --quiet -c jsx/deno-jsx.json config_json_import.ts",
+  output: "config_json_import.ts.out",
+  http_server: true,
+});
+
 #[test]
 fn running_declaration_files() {
   let temp_dir = TempDir::new();
