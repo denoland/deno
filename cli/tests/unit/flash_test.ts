@@ -340,3 +340,271 @@ Deno.test(
     await server;
   },
 );
+
+// FIXME: auto request body reading is intefering with passing it as response.
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerStreamDuplex() {
+//     const promise = deferred();
+//     const ac = new AbortController();
+
+//     const server = Deno.serve(request => {
+//       assert(request.body);
+
+//       promise.resolve();
+//       return new Response(request.body);
+//     }, { port: 2333, signal: ac.signal });
+
+//     const ts = new TransformStream();
+//     const writable = ts.writable.getWriter();
+
+//     const resp = await fetch("http://127.0.0.1:2333/", {
+//       method: "POST",
+//       body: ts.readable,
+//     });
+
+//     await promise;
+//     assert(resp.body);
+//     const reader = resp.body.getReader();
+//     await writable.write(new Uint8Array([1]));
+//     const chunk1 = await reader.read();
+//     assert(!chunk1.done);
+//     assertEquals(chunk1.value, new Uint8Array([1]));
+//     await writable.write(new Uint8Array([2]));
+//     const chunk2 = await reader.read();
+//     assert(!chunk2.done);
+//     assertEquals(chunk2.value, new Uint8Array([2]));
+//     await writable.close();
+//     const chunk3 = await reader.read();
+//     assert(chunk3.done);
+
+//     ac.abort();
+//     await server;
+//   },
+// );
+
+Deno.test(
+  { permissions: { net: true } },
+  // Issue: https://github.com/denoland/deno/issues/10930
+  async function httpServerStreamingResponse() {
+    // This test enqueues a single chunk for readable
+    // stream and waits for client to read that chunk and signal
+    // it before enqueueing subsequent chunk. Issue linked above
+    // presented a situation where enqueued chunks were not
+    // written to the HTTP connection until the next chunk was enqueued.
+
+    const promise = deferred();
+    const ac = new AbortController();
+
+    let counter = 0;
+
+    const deferreds = [
+      deferred(),
+      deferred(),
+      deferred(),
+    ];
+
+    async function writeRequest(conn: Deno.Conn) {
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+      const writeResult = await w.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await w.flush();
+      const tpr = new TextProtoReader(r);
+      const statusLine = await tpr.readLine();
+      assert(statusLine !== null);
+      const headers = await tpr.readMIMEHeader();
+      assert(headers !== null);
+
+      const chunkedReader = chunkedBodyReader(headers, r);
+
+      const buf = new Uint8Array(5);
+      const dest = new Buffer();
+
+      let result: number | null;
+
+      try {
+        while ((result = await chunkedReader.read(buf)) !== null) {
+          const len = Math.min(buf.byteLength, result);
+
+          await dest.write(buf.subarray(0, len));
+
+          // Resolve a deferred - this will make response stream to
+          // enqueue next chunk.
+          deferreds[counter - 1].resolve();
+        }
+        return decoder.decode(dest.bytes());
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function periodicStream() {
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(`${counter}\n`);
+          counter++;
+        },
+
+        async pull(controller) {
+          if (counter >= 3) {
+            return controller.close();
+          }
+
+          await deferreds[counter - 1];
+
+          controller.enqueue(`${counter}\n`);
+          counter++;
+        },
+      }).pipeThrough(new TextEncoderStream());
+    }
+
+    const finished = Deno.serve(() => {
+      promise.resolve();
+      return new Response(periodicStream());
+    }, { port: 4501, signal: ac.signal });
+
+    // start a client
+    const clientConn = await Deno.connect({ port: 4501 });
+
+    const r1 = await writeRequest(clientConn);
+
+    assertEquals(r1, "0\n1\n2\n");
+
+    ac.abort();
+    await promise;
+    await finished;
+    clientConn.close();
+  },
+);
+
+function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
+  // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
+  const tp = new TextProtoReader(r);
+  let finished = false;
+  const chunks: Array<{
+    offset: number;
+    data: Uint8Array;
+  }> = [];
+  async function read(buf: Uint8Array): Promise<number | null> {
+    if (finished) return null;
+    const [chunk] = chunks;
+    if (chunk) {
+      const chunkRemaining = chunk.data.byteLength - chunk.offset;
+      const readLength = Math.min(chunkRemaining, buf.byteLength);
+      for (let i = 0; i < readLength; i++) {
+        buf[i] = chunk.data[chunk.offset + i];
+      }
+      chunk.offset += readLength;
+      if (chunk.offset === chunk.data.byteLength) {
+        chunks.shift();
+        // Consume \r\n;
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+      }
+      return readLength;
+    }
+    const line = await tp.readLine();
+    if (line === null) throw new Deno.errors.UnexpectedEof();
+    // TODO(bartlomieju): handle chunk extension
+    const [chunkSizeString] = line.split(";");
+    const chunkSize = parseInt(chunkSizeString, 16);
+    if (Number.isNaN(chunkSize) || chunkSize < 0) {
+      throw new Deno.errors.InvalidData("Invalid chunk size");
+    }
+    if (chunkSize > 0) {
+      if (chunkSize > buf.byteLength) {
+        let eof = await r.readFull(buf);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        const restChunk = new Uint8Array(chunkSize - buf.byteLength);
+        eof = await r.readFull(restChunk);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        } else {
+          chunks.push({
+            offset: 0,
+            data: restChunk,
+          });
+        }
+        return buf.byteLength;
+      } else {
+        const bufToFill = buf.subarray(0, chunkSize);
+        const eof = await r.readFull(bufToFill);
+        if (eof === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        // Consume \r\n
+        if ((await tp.readLine()) === null) {
+          throw new Deno.errors.UnexpectedEof();
+        }
+        return chunkSize;
+      }
+    } else {
+      assert(chunkSize === 0);
+      // Consume \r\n
+      if ((await r.readLine()) === null) {
+        throw new Deno.errors.UnexpectedEof();
+      }
+      await readTrailers(h, r);
+      finished = true;
+      return null;
+    }
+  }
+  return { read };
+}
+
+async function readTrailers(
+  headers: Headers,
+  r: BufReader,
+) {
+  const trailers = parseTrailer(headers.get("trailer"));
+  if (trailers == null) return;
+  const trailerNames = [...trailers.keys()];
+  const tp = new TextProtoReader(r);
+  const result = await tp.readMIMEHeader();
+  if (result == null) {
+    throw new Deno.errors.InvalidData("Missing trailer header.");
+  }
+  const undeclared = [...result.keys()].filter(
+    (k) => !trailerNames.includes(k),
+  );
+  if (undeclared.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
+    );
+  }
+  for (const [k, v] of result) {
+    headers.append(k, v);
+  }
+  const missingTrailers = trailerNames.filter((k) => !result.has(k));
+  if (missingTrailers.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
+    );
+  }
+  headers.delete("trailer");
+}
+
+function parseTrailer(field: string | null): Headers | undefined {
+  if (field == null) {
+    return undefined;
+  }
+  const trailerNames = field.split(",").map((v) => v.trim().toLowerCase());
+  if (trailerNames.length === 0) {
+    throw new Deno.errors.InvalidData("Empty trailer header.");
+  }
+  const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
+  if (prohibited.length > 0) {
+    throw new Deno.errors.InvalidData(
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
+    );
+  }
+  return new Headers(trailerNames.map((key) => [key, ""]));
+}

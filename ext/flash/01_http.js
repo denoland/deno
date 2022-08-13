@@ -213,10 +213,7 @@
             if (resp === undefined) {
               continue;
             }
-            if (hasBody && body[_state] !== "closed") {
-              // TODO(@littledivy): Optimize by draining in a single op.
-              await req.arrayBuffer();
-            }
+
             const innerResp = toInnerResponse(resp);
 
             // If response body length is known, it will be sent synchronously in a
@@ -286,6 +283,12 @@
                 const { value, done } = await reader.read();
                 if (first) {
                   first = false;
+                  if (hasBody && body[_state] !== "closed") {
+                    // TODO(@littledivy): Optimize by draining in a single op.
+                    try {
+                      await req.arrayBuffer();
+                    } catch { /* pass */ }
+                  }
                   core.ops.op_flash_respond(
                     serverId,
                     i,
@@ -316,6 +319,13 @@
                 if (done) break a;
               }
             } else {
+              if (hasBody && body[_state] !== "closed") {
+                // TODO(@littledivy): Optimize by draining in a single op.
+                try {
+                  await req.arrayBuffer();
+                } catch { /* pass */ }
+              }
+
               core.ops.op_flash_respond(
                 serverId,
                 i,
