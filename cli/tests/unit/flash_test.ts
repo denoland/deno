@@ -686,7 +686,7 @@ Deno.test(
 
 //   const server = Deno.serve(async (req) => {
 //     const [conn, firstPacket] = await Deno.upgradeHttp(req);
-    
+
 //     await conn.write(
 //       new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
 //     );
@@ -694,7 +694,7 @@ Deno.test(
 //     promise.resolve();
 
 //     const buf = new Uint8Array(1024);
-      
+
 //     // const firstPacketText = new TextDecoder().decode(firstPacket);
 //     // assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
 //     const n = await conn.read(buf);
@@ -725,10 +725,251 @@ Deno.test(
 
 //   await promise2;
 //   tcpConn.close();
- 
+
 //   abortController.abort();
 //   await server;
 // });
+
+// Some of these tests are ported from Hyper
+// https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/src/proto/h1/role.rs
+// https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/tests/server.rs
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerParseRequest() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "GET");
+      assertEquals(request.headers.get("host"), "deno.land");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const body = `GET /echo HTTP/1.1\r\nHost: deno.land\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerParseHeaderHtabs() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "GET");
+      assertEquals(request.headers.get("server"), "hello\tworld");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const body = `GET / HTTP/1.1\r\nserver: hello\tworld\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerGetShouldIgnoreBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "GET");
+      assertEquals(await request.text(), "");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    // Connection: close = don't try to parse the body as a new request
+    const body =
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\nI shouldn't be read.\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerPostWithBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "POST");
+      assertEquals(await request.text(), "I'm a good request.");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const body =
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 19\r\n\r\nI'm a good request.`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+type TestCase = {
+  headers?: Record<string, string>;
+  body: any;
+  expects_chunked?: boolean;
+  expects_con_len?: boolean;
+};
+
+function hasHeader(msg: string, name: string): boolean {
+  let n = msg.indexOf("\r\n\r\n") || msg.length;
+  return msg.slice(0, n).includes(name);
+}
+
+function createServerLengthTest(name: string, testCase: TestCase) {
+  Deno.test(name, async function () {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "GET");
+      promise.resolve();
+      return new Response(testCase.body, testCase.headers ?? {});
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const body =
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+
+    const decoder = new TextDecoder();
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    try {
+      assert(testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:"));
+      assert(testCase.expects_chunked == hasHeader(msg, "chunked"));
+      assert(testCase.expects_con_len == hasHeader(msg, "Content-Length:"));
+
+      const n = msg.indexOf("\r\n\r\n") + 4;
+
+      if (testCase.expects_chunked) {
+        assertEquals(msg.slice(n + 1, n + 3), "\r\n");
+        assertEquals(msg.slice(msg.length - 7), "\r\n0\r\n\r\n");
+      }
+
+      if (testCase.expects_con_len && typeof testCase.body === "string") {
+        assertEquals(msg.slice(n), testCase.body);
+      }
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  });
+}
+
+// Quick and dirty way to make a readable stream from a string. Alternatively,
+// `readableStreamFromReader(file)` could be used.
+function stream(s: string): ReadableStream<Uint8Array> {
+  return new Response(s).body!;
+}
+
+createServerLengthTest("fixedResponseKnown", {
+  headers: { "content-length": "11" },
+  body: "foo bar baz",
+  expects_chunked: false,
+  expects_con_len: true,
+});
+
+createServerLengthTest("fixedResponseUnknown", {
+  headers: { "content-length": "11" },
+  body: stream("foo bar baz"),
+  expects_chunked: true,
+  expects_con_len: false,
+});
+
+// FIXME:
+// createServerLengthTest("fixedResponseKnownEmpty", {
+//   headers: { "content-length": "0" },
+//   body: "",
+//   expects_chunked: false,
+//   expects_con_len: true,
+// });
+
+createServerLengthTest("chunkedRespondKnown", {
+  headers: { "transfer-encoding": "chunked" },
+  body: "foo bar baz",
+  expects_chunked: false,
+  expects_con_len: true,
+});
+
+createServerLengthTest("chunkedRespondUnknown", {
+  headers: { "transfer-encoding": "chunked" },
+  body: stream("foo bar baz"),
+  expects_chunked: true,
+  expects_con_len: false,
+});
+
+createServerLengthTest("autoResponseWithKnownLength", {
+  body: "foo bar baz",
+  expects_chunked: false,
+  expects_con_len: true,
+});
+
+createServerLengthTest("autoResponseWithUnknownLength", {
+  body: stream("foo bar baz"),
+  expects_chunked: true,
+  expects_con_len: false,
+});
+
+// FIXME:
+// createServerLengthTest("autoResponseWithKnownLengthEmpty", {
+//   body: "",
+//   expects_chunked: false,
+//   expects_con_len: true,
+// });
+
+createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
+  body: stream(""),
+  expects_chunked: true,
+  expects_con_len: false,
+});
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
