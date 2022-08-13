@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use deno_core::error::generic_error;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
@@ -558,7 +557,7 @@ fn parse_package_name(
   Ok((package_name, package_subpath, is_scoped))
 }
 
-fn package_resolve(
+pub fn package_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
@@ -648,7 +647,7 @@ fn file_exists(path_url: &ModuleSpecifier) -> bool {
   }
 }
 
-fn legacy_main_resolve(
+pub fn legacy_main_resolve(
   package_json_url: &ModuleSpecifier,
   package_json: &PackageJson,
   _base: &ModuleSpecifier,

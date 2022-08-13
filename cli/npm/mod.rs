@@ -6,6 +6,7 @@ mod resolution;
 mod tarball;
 
 use std::io::ErrorKind;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -179,73 +180,6 @@ impl NpmPackageResolver for GlobalNpmPackageResolver {
   }
 }
 
-impl DenoDirNpmResolver for GlobalNpmPackageResolver {
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &std::path::Path,
-  ) -> Result<PathBuf, AnyError> {
-    let referrer = match ModuleSpecifier::from_file_path(&referrer) {
-      Ok(referrer) => referrer,
-      Err(()) => bail!("Could not convert '{}' to url.", referrer.display()),
-    };
-    self
-      .resolve_package_from_package(specifier, &referrer)
-      .map(|p| p.folder_path)
-  }
-
-  fn resolve_package_folder_from_path(
-    &self,
-    path: &std::path::Path,
-  ) -> Result<PathBuf, AnyError> {
-    let specifier = match ModuleSpecifier::from_file_path(&path) {
-      Ok(specifier) => specifier,
-      Err(()) => bail!("Could not convert '{}' to url.", path.display()),
-    };
-    self
-      .resolve_package_from_specifier(&specifier)
-      .map(|p| p.folder_path)
-  }
-
-  fn in_npm_package(&self, path: &std::path::Path) -> bool {
-    let specifier = match ModuleSpecifier::from_file_path(path) {
-      Ok(p) => p,
-      Err(_) => return false,
-    };
-    self.resolve_package_from_specifier(&specifier).is_ok()
-  }
-
-  fn ensure_read_permission(
-    &self,
-    state: &mut deno_core::OpState,
-    path: &std::path::Path,
-  ) -> Result<(), AnyError> {
-    // allow reading if it's in the deno_dir node modules
-    let registry_path = self.cache.registry_folder(&self.registry_url);
-    if path.starts_with(&registry_path)
-      && path
-        .components()
-        .all(|c| !matches!(c, std::path::Component::ParentDir))
-    {
-      // todo: cache this?
-      if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
-        match std::fs::canonicalize(path) {
-          Ok(path) if path.starts_with(registry_path) => {
-            return Ok(());
-          }
-          Err(e) if e.kind() == ErrorKind::NotFound => {
-            return Ok(());
-          }
-          _ => {} // ignore
-        }
-      }
-    }
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.read.check(path)?;
-    Ok(())
-  }
-}
-
 #[derive(Clone, Debug)]
 pub struct NpmPackageResolverSnapshot {
   cache: ReadonlyNpmCache,
@@ -307,4 +241,120 @@ impl NpmPackageResolver for NpmPackageResolverSnapshot {
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.local_package_info(&pkg_id))
   }
+}
+
+impl DenoDirNpmResolver for GlobalNpmPackageResolver {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &std::path::Path,
+  ) -> Result<PathBuf, AnyError> {
+    let referrer = specifier_to_path(referrer)?;
+    self
+      .resolve_package_from_package(specifier, &referrer)
+      .map(|p| p.folder_path)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    let specifier = specifier_to_path(path)?;
+    self
+      .resolve_package_from_specifier(&specifier)
+      .map(|p| p.folder_path)
+  }
+
+  fn in_npm_package(&self, path: &Path) -> bool {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(_) => return false,
+    };
+    self.resolve_package_from_specifier(&specifier).is_ok()
+  }
+
+  fn ensure_read_permission(
+    &self,
+    state: &mut deno_core::OpState,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    let registry_path = self.cache.registry_folder(&self.registry_url);
+    ensure_read_permission(&registry_path, state, path)
+  }
+}
+
+impl DenoDirNpmResolver for NpmPackageResolverSnapshot {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &std::path::Path,
+  ) -> Result<PathBuf, AnyError> {
+    let referrer = specifier_to_path(referrer)?;
+    self
+      .resolve_package_from_package(specifier, &referrer)
+      .map(|p| p.folder_path)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    let specifier = specifier_to_path(path)?;
+    self
+      .resolve_package_from_specifier(&specifier)
+      .map(|p| p.folder_path)
+  }
+
+  fn in_npm_package(&self, path: &Path) -> bool {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(_) => return false,
+    };
+    self.resolve_package_from_specifier(&specifier).is_ok()
+  }
+
+  fn ensure_read_permission(
+    &self,
+    state: &mut deno_core::OpState,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    let registry_path = self.cache.registry_folder(&self.registry_url);
+    ensure_read_permission(&registry_path, state, path)
+  }
+}
+
+fn specifier_to_path(path: &Path) -> Result<ModuleSpecifier, AnyError> {
+  match ModuleSpecifier::from_file_path(&path) {
+    Ok(specifier) => Ok(specifier),
+    Err(()) => bail!("Could not convert '{}' to url.", path.display()),
+  }
+}
+
+fn ensure_read_permission(
+  registry_path: &Path,
+  state: &mut deno_core::OpState,
+  path: &Path,
+) -> Result<(), AnyError> {
+  // allow reading if it's in the deno_dir node modules
+  if path.starts_with(&registry_path)
+    && path
+      .components()
+      .all(|c| !matches!(c, std::path::Component::ParentDir))
+  {
+    // todo(dsherret): cache this?
+    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
+      match std::fs::canonicalize(path) {
+        Ok(path) if path.starts_with(registry_path) => {
+          return Ok(());
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+          return Ok(());
+        }
+        _ => {} // ignore
+      }
+    }
+  }
+  let permissions = state.borrow_mut::<Permissions>();
+  permissions.read.check(path)?;
+  Ok(())
 }

@@ -7,10 +7,16 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
-use package_json::PackageJson;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+pub use package_json::PackageJson;
+pub use resolution::get_package_scope_config;
+pub use resolution::legacy_main_resolve;
+pub use resolution::package_exports_resolve;
+pub use resolution::package_imports_resolve;
+pub use resolution::package_resolve;
 
 pub trait DenoDirNpmResolver {
   fn resolve_package_folder_from_package(
@@ -37,7 +43,7 @@ mod errors;
 mod package_json;
 mod resolution;
 
-pub struct Unstable(pub bool);
+struct Unstable(pub bool);
 
 pub fn init(
   unstable: bool,
