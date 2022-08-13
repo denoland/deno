@@ -622,6 +622,38 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/12741
+// https://github.com/denoland/deno/pull/12746
+// https://github.com/denoland/deno/pull/12798
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function httpServerDeleteRequestHasBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const hostname = "localhost";
+    const port = 4501;
+
+    const server = Deno.serve(() => {
+      promise.resolve();
+      return new Response("ok");      
+    }, { port: port, signal: ac.signal });
+
+    const url = `http://${hostname}:${port}/`;
+    const args = ["-X", "DELETE", url];
+    const { success } = await Deno.spawn("curl", {
+      args,
+      stdout: "null",
+      stderr: "null",
+    });
+    assert(success);
+    await promise;
+    ac.abort();
+
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
