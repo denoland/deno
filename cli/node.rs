@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -16,6 +17,7 @@ use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::DenoDirNpmResolver;
+use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
 
@@ -28,6 +30,55 @@ use crate::npm::NpmPackageResolver;
 use deno_runtime::deno_node::PackageJson;
 
 static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
+static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
+  HashSet::from([
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    "let",
+    "enum",
+    "implements",
+    "interface",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "static",
+  ])
+});
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
@@ -307,6 +358,25 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &GlobalNpmPackageResolver,
 ) -> Result<String, AnyError> {
+  fn add_export(source: &mut Vec<String>, name: &str, initializer: &str) {
+    // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+    // but it might not be necessary here since our analysis is more detailed?
+    if RESERVED_WORDS.contains(name) {
+      // we can't create an identifier with a reserved word, so assign it to a temporary
+      // variable that won't have a conflict, then re-export it as a string
+      source.push(format!(
+        "const __deno_reexport_temp__{} = {};",
+        name, initializer
+      ));
+      source.push(format!(
+        "export {{ __deno_reexport_temp__{0} as \"{0}\" }};",
+        name
+      ));
+    } else {
+      source.push(format!("export const {} = {};", name, initializer));
+    }
+  }
+
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(code.into()),
@@ -356,12 +426,7 @@ pub fn translate_cjs_to_esm(
 
       for export in analysis.exports.iter().filter(|e| e.as_str() != "default")
       {
-        // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-        // but it might not be necessary here since our analysis is more detailed?
-        source.push(format!(
-          "export const {0} = Deno[Deno.internal].require.bindExport(reexport{1}.{2}, reexport{1});",
-          export, idx, export
-        ));
+        add_export(&mut source, export, &format!("Deno[Deno.internal].require.bindExport(reexport{0}.{1}, reexport{0})", idx, export));
       }
     }
   }
@@ -388,9 +453,14 @@ pub fn translate_cjs_to_esm(
       ));
       had_default = true;
     } else {
-      // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-      // but it might not be necessary here since our analysis is more detailed?
-      source.push(format!("export const {0} = Deno[Deno.internal].require.bindExport(mod.{0}, mod);", export));
+      add_export(
+        &mut source,
+        export,
+        &format!(
+          "Deno[Deno.internal].require.bindExport(mod.{}, mod)",
+          export
+        ),
+      );
     }
   }
 
