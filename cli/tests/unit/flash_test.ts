@@ -595,6 +595,32 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerCorrectSizeResponse() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
+    file.close();
+    
+    const server = Deno.serve(async (request) => {
+      const f = await Deno.open(tmpFile, { read: true });
+      promise.resolve();
+      return new Response(f.readable);
+    }, { port: 4503, signal: ac.signal });
+
+    const resp = await fetch("http://127.0.0.1:4503/");
+    await promise;
+    const body = await resp.arrayBuffer();
+    
+    assertEquals(body.byteLength, 70 * 1024);
+    ac.abort();
+    await server;
+  },
+);
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
