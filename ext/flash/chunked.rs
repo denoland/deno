@@ -27,17 +27,17 @@ pub struct Decoder<R> {
 
   // remaining size of the chunk being read
   // none if we are not in a chunk
-  remaining_chunks_size: Option<usize>,
+  pub remaining_chunks_size: Option<usize>,
 }
 
 impl<R> Decoder<R>
 where
   R: Read,
 {
-  pub fn new(source: R) -> Decoder<R> {
+  pub fn new(source: R, remaining_chunks_size: Option<usize>) -> Decoder<R> {
     Decoder {
       source,
-      remaining_chunks_size: None,
+      remaining_chunks_size,
     }
   }
 

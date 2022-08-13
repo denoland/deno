@@ -376,7 +376,7 @@
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       hasBodySync = (token) =>
-        core.ops.op_flash_has_body_stream(token, serverId);
+        core.ops.op_flash_has_body_stream(serverId, token);
       respondChunked = (token, chunk, shutdown) =>
         core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
     }

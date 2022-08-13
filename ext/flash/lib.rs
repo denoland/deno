@@ -150,6 +150,7 @@ struct NextRequest {
   upgrade: bool,
   content_read: usize,
   content_length: Option<u64>,
+  remaining_chunk_size: Option<usize>,
   te_chunked: bool,
   expect_continue: bool,
 }
@@ -608,33 +609,27 @@ fn op_flash_first_packet(
     tx.expect_continue = false;
   }
 
+  // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
+  //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+  //   let cursor = Cursor::new(buffer);
+  //   let mut decoder = chunked::Decoder::new(cursor);
+
+  //   let nread = decoder.read(&mut buf).expect("read error");
+  //   let cursor = decoder.into_inner();
+  //   let pos = cursor.position() as usize;
+
+  //   if pos == tx.inner.body_len {
+  //     tx.inner.body_offset = 0;
+  //   } else {
+  //     tx.inner.body_offset += pos;
+  //   }
+  //   return nread;
+  // }
+
   tx.content_read += buffer.len();
 
   buffer.to_vec().into()
 }
-
-// fn consume_body(sock: &mut Stream) -> usize {
-//   let mut buf = [0; 1024];
-//   // if te_chunked {
-//   //   let mut decoder = chunked::Decoder::new(sock);
-//   //   return decoder.read(&mut buf).expect("read error");
-//   // }
-
-//   if sock.cursor >= sock.content_length {
-//     return 0;
-//   }
-
-//   loop {
-//     match sock.inner.read(&mut buf) {
-//       Ok(n) => {
-//         sock.cursor += n;
-//         return n;
-//       }
-//       Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-//       Err(_) => return 0,
-//     }
-//   }
-// }
 
 #[op]
 async fn op_flash_read_body(
@@ -653,31 +648,32 @@ async fn op_flash_read_body(
     .unwrap()
   };
   let tx = ctx.response.get_mut(&token).unwrap();
-  // SAFETY: The socket lives on the mio thread.
-  let sock = unsafe { &mut *tx.socket };
 
   if tx.te_chunked {
-    // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
-    //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-    //   let cursor = Cursor::new(buffer);
-    //   let mut decoder = chunked::Decoder::new(cursor);
+    let mut first = true;
+    loop {
+      // SAFETY: The socket lives on the mio thread.
+      let sock = unsafe { &mut *tx.socket };
+      if !first {
+        sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+      }
 
-    //   let nread = decoder.read(&mut buf).expect("read error");
-    //   let cursor = decoder.into_inner();
-    //   let pos = cursor.position() as usize;
-
-    //   if pos == tx.inner.body_len {
-    //     tx.inner.body_offset = 0;
-    //   } else {
-    //     tx.inner.body_offset += pos;
-    //   }
-    //   return nread;
-    // }
-    let mut decoder = chunked::Decoder::new(sock);
-    return decoder.read(&mut buf).expect("read error");
+      first = false;
+      let l = sock.read_lock.clone();
+      let _lock = l.lock().unwrap();
+      let mut decoder = chunked::Decoder::new(sock, tx.remaining_chunk_size);
+      if let Ok(n) = decoder.read(&mut buf) {
+        tx.content_read += n;
+        return n;
+      }
+      tx.remaining_chunk_size = decoder.remaining_chunks_size;
+    }
   }
 
+  // SAFETY: The socket lives on the mio thread.
+  let sock = unsafe { &mut *tx.socket };
   let l = sock.read_lock.clone();
+
   loop {
     let _lock = l.lock().unwrap();
     if tx.content_read >= tx.content_length.unwrap() as usize {
@@ -979,6 +975,7 @@ fn run_server(
             keep_alive,
             upgrade,
             te_chunked,
+            remaining_chunk_size: None,
             content_read: 0,
             content_length,
             expect_continue,
