@@ -482,6 +482,89 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpRequestLatin1Headers() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve((request) => {
+      assertEquals(request.headers.get("X-Header-Test"), "á");
+      promise.resolve();
+      return new Response("hello", { headers: { "X-Header-Test": "Æ" } });
+    }, { port: 4501, signal: ac.signal });
+
+    const clientConn = await Deno.connect({ port: 4501 });
+    const requestText =
+      "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
+    const requestBytes = new Uint8Array(requestText.length);
+    for (let i = 0; i < requestText.length; i++) {
+      requestBytes[i] = requestText.charCodeAt(i);
+    }
+    let written = 0;
+    while (written < requestBytes.byteLength) {
+      written += await clientConn.write(requestBytes.slice(written));
+    }    
+
+    const buf = new Uint8Array(1024);
+    assertEquals(await clientConn.read(buf), 79);
+    await promise;
+    let responseText = new TextDecoder().decode(buf);  
+    clientConn.close();
+
+    
+    assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestWithoutPath() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      // FIXME:
+      // assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+      assertEquals(await request.text(), "");
+      promise.resolve();
+      return new Response("11");
+    }, { port: 4501, signal: ac.signal });
+
+    const clientConn = await Deno.connect({ port: 4501 });
+
+    async function writeRequest(conn: Deno.Conn) {
+      const encoder = new TextEncoder();
+
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const body =
+        `CONNECT 127.0.0.1:4501 HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+      const writeResult = await w.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await w.flush();
+      const tpr = new TextProtoReader(r);
+      const statusLine = await tpr.readLine();
+      assert(statusLine !== null);
+      const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+      assert(m !== null, "must be matched");
+      const [_, _proto, status, _ok] = m;
+      assertEquals(status, "200");
+      const headers = await tpr.readMIMEHeader();
+      assert(headers !== null);
+    }
+
+    await writeRequest(clientConn);
+    clientConn.close();
+    await promise;
+
+    ac.abort();
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
