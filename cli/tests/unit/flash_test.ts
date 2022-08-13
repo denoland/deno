@@ -166,34 +166,33 @@ Deno.test(
   },
 );
 
-// TODO: rennable when te chunked works
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerStreamRequest() {
-//     const stream = new TransformStream();
-//     const writer = stream.writable.getWriter();
-//     writer.write(new TextEncoder().encode("hello "));
-//     writer.write(new TextEncoder().encode("world"));
-//     writer.close();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerStreamRequest() {
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
 
-//     const ac = new AbortController();
-//     const server = Deno.serve(async (request) => {
-//       const reqBody = await request.text();
-//       assertEquals("hello world", reqBody);
-//       return new Response("");
-//     }, { port: 4501, signal: ac.signal });
+    const ac = new AbortController();
+    const server = Deno.serve(async (request) => {
+      const reqBody = await request.text();
+      assertEquals("hello world", reqBody);
+      return new Response("yo");
+    }, { port: 4501, signal: ac.signal });
 
-//     const resp = await fetch("http://127.0.0.1:4501/", {
-//       body: stream.readable,
-//       method: "POST",
-//       headers: { "connection": "close" },
-//     });
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      body: stream.readable,
+      method: "POST",
+      headers: { "connection": "close" },
+    });
 
-//     await resp.arrayBuffer();
-//     ac.abort();
-//     await server;
-//   },
-// );
+    assertEquals(await resp.text(), "yo");
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   const ac = new AbortController();

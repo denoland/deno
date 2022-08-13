@@ -609,6 +609,18 @@ fn op_flash_first_packet(
     tx.expect_continue = false;
   }
 
+  if tx.te_chunked {
+    let mut buf = vec![0; 1024];
+    let mut decoder = chunked::Decoder::new(buffer, tx.remaining_chunk_size);
+    if let Ok(n) = decoder.read(&mut buf) {
+      tx.remaining_chunk_size = decoder.remaining_chunks_size;
+      buf.truncate(n);
+      return buf.into();
+    } else {
+      panic!("chunked read error");
+    }
+  }
+
   // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
   //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
   //   let cursor = Cursor::new(buffer);
@@ -663,7 +675,7 @@ async fn op_flash_read_body(
       let _lock = l.lock().unwrap();
       let mut decoder = chunked::Decoder::new(sock, tx.remaining_chunk_size);
       if let Ok(n) = decoder.read(&mut buf) {
-        tx.content_read += n;
+        tx.remaining_chunk_size = decoder.remaining_chunks_size;
         return n;
       }
       tx.remaining_chunk_size = decoder.remaining_chunks_size;
