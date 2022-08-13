@@ -565,6 +565,37 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpCookieConcatenation() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(await request.text(), "");
+      assertEquals(request.headers.get("cookie"), "foo=bar, bar=foo");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4501, signal: ac.signal });
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      headers: [
+        ["connection", "close"],
+        ["cookie", "foo=bar"],
+        ["cookie", "bar=foo"],
+      ],
+    });
+    await promise;
+
+    const text = await resp.text();
+    assertEquals(text, "ok");
+
+    ac.abort();
+    await server;
+  },
+);
+
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
