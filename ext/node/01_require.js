@@ -13,6 +13,7 @@
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
+    FunctionPrototypeBind,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
     ObjectEntries,
@@ -874,7 +875,7 @@
   function bindExport(value, mod) {
     // ensure exported functions are bound to their module object
     if (typeof value === "function") {
-      return value.bind(mod);
+      return FunctionPrototypeBind(value, mod);
     } else {
       return value;
     }
