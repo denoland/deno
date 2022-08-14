@@ -278,8 +278,25 @@ impl CliOptions {
     self.flags.compat
   }
 
-  pub fn coverage_dir(&self) -> Option<&String> {
-    self.flags.coverage_dir.as_ref()
+  pub fn coverage_dir(&self) -> Option<String> {
+    fn allow_coverage(sub_command: &DenoSubcommand) -> bool {
+      match sub_command {
+        DenoSubcommand::Test(_) => true,
+        DenoSubcommand::Run(flags) => !flags.is_stdin(),
+        _ => false,
+      }
+    }
+
+    if allow_coverage(self.sub_command()) {
+      self
+        .flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok())
+    } else {
+      None
+    }
   }
 
   pub fn enable_testing_features(&self) -> bool {
