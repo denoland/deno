@@ -147,10 +147,10 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   compilation_result: v8::Local<v8::Value>,
   success: v8::WasmAsyncSuccess,
 ) {
-  // SAFETY: TODO
-  let isolate = unsafe { &mut *isolate as &mut v8::Isolate };
+  // SAFETY: This pointer is definitely valid for the lifetime of this function.
+  let isolate = unsafe { &mut *isolate };
   isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-  // SAFETY: TODO
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   if success == v8::WasmAsyncSuccess::Success {
     resolver.resolve(scope, compilation_result).unwrap();
