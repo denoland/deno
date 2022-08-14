@@ -1,0 +1,6 @@
+{
+    {MAYBE_IMPORT_MAP}
+    "tasks": {
+        "start": "deno run {MOD_FILE}"
+    }
+}
