@@ -74,14 +74,23 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
 
   // Config file
   if selections.contains(&1) {
-    let deno_json = include_str!("./templates/deno.json").replace(
-      "{MAYBE_IMPORT_MAP}",
-      if selections.contains(&2) {
-        "\"importMap\": \"./import_map.json\",\n"
-      } else {
-        ""
-      },
-    );
+    let deno_json = include_str!("./templates/deno.json")
+      .replace(
+        "{MAYBE_IMPORT_MAP}",
+        if selections.contains(&2) {
+          "\"importMap\": \"./import_map.json\",\n"
+        } else {
+          ""
+        },
+      )
+      .replace(
+        "{MOD_FILE}",
+        if selections.contains(&0) {
+          "./mod.ts"
+        } else {
+          "./mod.js"
+        },
+      );
     create_file(&dir, "deno.json", &deno_json)?;
   }
 
