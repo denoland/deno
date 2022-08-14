@@ -502,7 +502,7 @@ pub fn op_require_as_file_path(
 fn op_require_resolve_exports(
   state: &mut OpState,
   modules_path: String,
-  request: String,
+  _request: String,
   name: String,
   expansion: String,
   parent_path: String,
