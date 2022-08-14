@@ -37,6 +37,7 @@ mod version;
 mod windows_util;
 mod worker;
 
+use crate::args::flags_from_vec;
 use crate::args::BenchFlags;
 use crate::args::BundleFlags;
 use crate::args::CacheFlags;
@@ -50,6 +51,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::InfoFlags;
+use crate::args::InitFlags;
 use crate::args::InstallFlags;
 use crate::args::LintFlags;
 use crate::args::ReplFlags;
@@ -60,7 +62,6 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UpgradeFlags;
 use crate::args::VendorFlags;
-use crate::args::{flags_from_vec, InitFlags};
 use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
@@ -72,7 +73,6 @@ use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
-use crate::compat::STD_URL_STR;
 use args::CliOptions;
 use deno_ast::MediaType;
 use deno_core::error::generic_error;
@@ -301,13 +301,14 @@ if (import.meta.main) {
   file.write_all(mod_ts.as_bytes())?;
 
   let mod_test_ts = format!(
-    r#"import {{ assertEquals }} from "{STD_URL_STR}testing/asserts.ts";
+    r#"import {{ assertEquals }} from "{}testing/asserts.ts";
 import {{ add }} from "./mod.ts";
 
 Deno.test(function addTest() {{
     assertEquals(add(2, 3), 5);
 }});
-"#
+"#,
+    compat::STD_URL_STR,
   );
   let mut file = std::fs::OpenOptions::new()
     .write(true)
