@@ -133,6 +133,7 @@ Deno.test(
 
     const resp = new Uint8Array(200);
     const readResult = await conn.read(resp);
+    assert(readResult);
     assert(readResult > 0);
 
     conn.close();
@@ -196,7 +197,10 @@ Deno.test(
 
 Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   const ac = new AbortController();
-  const server = Deno.serve(() => {}, { port: 4501, signal: ac.signal });
+  const server = Deno.serve(() => new Response("ok"), {
+    port: 4501,
+    signal: ac.signal,
+  });
   const client = await Deno.connect({ port: 4501 });
   client.close();
   ac.abort();
@@ -875,6 +879,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     const decoder = new TextDecoder();
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
+    assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
     try {
@@ -999,6 +1004,7 @@ Deno.test(
     {
       const buf = new Uint8Array(1024);
       const readResult = await conn.read(buf);
+      assert(readResult);
       const msg = decoder.decode(buf.subarray(0, readResult));
       assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
     }
@@ -1014,6 +1020,7 @@ Deno.test(
     {
       const buf = new Uint8Array(1024);
       const readResult = await conn.read(buf);
+      assert(readResult);
       const msg = decoder.decode(buf.subarray(0, readResult));
       assert(msg.endsWith("zar quux"));
     }
@@ -1239,4 +1246,9 @@ function parseTrailer(field: string | null): Headers | undefined {
     );
   }
   return new Headers(trailerNames.map((key) => [key, ""]));
+}
+
+function isProhibitedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
 }
