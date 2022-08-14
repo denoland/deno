@@ -412,9 +412,7 @@ impl CliMainWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
-      self.worker
-        .execute_side_module(&compat::GLOBAL_URL)
-        .await?;
+      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
       compat::load_builtin_node_modules(&mut self.worker.js_runtime).await?;
     }
     self.worker.evaluate_module(id).await
