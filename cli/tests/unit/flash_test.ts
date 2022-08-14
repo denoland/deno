@@ -924,13 +924,12 @@ createServerLengthTest("fixedResponseUnknown", {
   expects_con_len: false,
 });
 
-// FIXME:
-// createServerLengthTest("fixedResponseKnownEmpty", {
-//   headers: { "content-length": "0" },
-//   body: "",
-//   expects_chunked: false,
-//   expects_con_len: true,
-// });
+createServerLengthTest("fixedResponseKnownEmpty", {
+  headers: { "content-length": "0" },
+  body: "",
+  expects_chunked: false,
+  expects_con_len: true,
+});
 
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
@@ -958,12 +957,11 @@ createServerLengthTest("autoResponseWithUnknownLength", {
   expects_con_len: false,
 });
 
-// FIXME:
-// createServerLengthTest("autoResponseWithKnownLengthEmpty", {
-//   body: "",
-//   expects_chunked: false,
-//   expects_con_len: true,
-// });
+createServerLengthTest("autoResponseWithKnownLengthEmpty", {
+  body: "",
+  expects_chunked: false,
+  expects_con_len: true,
+});
 
 createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   body: stream(""),
@@ -1056,36 +1054,34 @@ Deno.test(
   },
 );
 
-// TODO: 400 Bad Request
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerPostWithInvalidPrefixContentLength() {
-//     const promise = deferred();
-//     const ac = new AbortController();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerPostWithInvalidPrefixContentLength() {
+    const ac = new AbortController();
 
-//     const server = Deno.serve(async (request) => {
-//       assertEquals(request.method, "POST");
-//       assertEquals(await request.text(), "hello");
-//       promise.resolve();
-//       return new Response("ok");
-//     }, { port: 4503, signal: ac.signal });
+    const server = Deno.serve(() => {
+      throw new Error("unreachable");
+    }, { port: 4503, signal: ac.signal });
 
-//     const conn = await Deno.connect({ port: 4503 });
-//     const encoder = new TextEncoder();
-    
-//     const body =
-//     `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
-//     const writeResult = await conn.write(encoder.encode(body));
-//     assertEquals(body.length, writeResult);
-//     await promise;
-    
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
-//     conn.close();
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: +5\r\n\r\nhello`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+  
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+    assert(msg.endsWith("HTTP/1.1 400 Bad Request\r\n\r\n"));
 
-//     ac.abort();
-//     await server;
-//   },
-// );
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
 
 // FIXME:
 // Deno.test(

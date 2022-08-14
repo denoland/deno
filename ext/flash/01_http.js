@@ -126,7 +126,7 @@
     // * MUST NOT generate a payload in a 205 response https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
     // * MUST NOT send Content-Length if status code is 1xx or 204.
     // * MUST NOT send Content-Length if status code is 2xx to a CONNECT request
-    if (body) {
+    if (typeof body === "string") {
       str += `Content-Length: ${body?.length}\r\n\r\n`;
     } else {
       // TODO(littledivy): support compression.
@@ -136,7 +136,6 @@
       //   * request indicates HTTP/1.1
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
-
     return str + (body ?? "");
   }
 

@@ -960,13 +960,15 @@ fn run_server(
                 if let Some(len) = from_digits(header.value) {
                   if let Some(prev) = content_length {
                     if prev != len {
-                      // TODO: invalid content length
+                      let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                      continue 'events;   
                     }
                     continue;
                   }
                   content_length = Some(len);
                 } else {
-                  // TODO: invalid content length
+                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                  continue 'events;
                 }
               }
               Ok(EXPECT) => {
