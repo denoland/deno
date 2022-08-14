@@ -971,6 +971,151 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   expects_con_len: false,
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerGetChunkedResponseWithKa() {
+    const promises = [deferred(), deferred()];
+    let reqCount = 0;
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "GET");
+      promises[reqCount].resolve();
+      reqCount++;
+      return new Response(reqCount <= 1 ? stream("foo bar baz"): "zar quux");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    {
+      const body =
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await promises[0];
+    }
+ 
+    const decoder = new TextDecoder();
+    {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      const msg = decoder.decode(buf.subarray(0, readResult));
+      assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
+    }
+    
+    // once more!
+    {
+      const body =
+      `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await promises[1];
+    }
+    {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      const msg = decoder.decode(buf.subarray(0, readResult));
+      assert(msg.endsWith("zar quux"));
+    }
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerPostWithContentLengthBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "POST");
+      assertEquals(request.headers.get("content-length"), "5");
+      assertEquals(await request.text(), "hello");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    
+    const body =
+    `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+    
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+// TODO: 400 Bad Request
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerPostWithInvalidPrefixContentLength() {
+//     const promise = deferred();
+//     const ac = new AbortController();
+
+//     const server = Deno.serve(async (request) => {
+//       assertEquals(request.method, "POST");
+//       assertEquals(await request.text(), "hello");
+//       promise.resolve();
+//       return new Response("ok");
+//     }, { port: 4503, signal: ac.signal });
+
+//     const conn = await Deno.connect({ port: 4503 });
+//     const encoder = new TextEncoder();
+    
+//     const body =
+//     `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
+//     const writeResult = await conn.write(encoder.encode(body));
+//     assertEquals(body.length, writeResult);
+//     await promise;
+    
+
+//     conn.close();
+
+//     ac.abort();
+//     await server;
+//   },
+// );
+
+// FIXME:
+// Deno.test(
+//   { permissions: { net: true } },
+//   async function httpServerPostWithChunkedBody() {
+//     const promise = deferred();
+//     const ac = new AbortController();
+
+//     const server = Deno.serve(async (request) => {
+//       assertEquals(request.method, "POST");
+//       // assertEquals(await request.text(), "qwert");
+//       promise.resolve();
+//       return new Response("ok");
+//     }, { port: 4503, signal: ac.signal });
+
+//     const conn = await Deno.connect({ port: 4503 });
+//     const encoder = new TextEncoder();
+    
+//     const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
+//     const writeResult = await conn.write(encoder.encode(body));
+//     assertEquals(body.length, writeResult);
+//     await promise;
+
+//     conn.close();
+
+//     ac.abort();
+//     await server;
+//   },
+// );
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
