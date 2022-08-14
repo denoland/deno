@@ -8,7 +8,6 @@
     toInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { TcpConn } = window.__bootstrap.net;
   const { ReadableStream, ReadableStreamPrototype, _state } =
     window.__bootstrap.streams;
   const {
@@ -381,11 +380,6 @@
       server.close().then(() => {}, () => {});
     }, {
       once: true,
-    });
-
-    // NOTE(bartlomieju): this drives the server
-    (async () => {
-      await server.finished;
     });
 
     const fastOp = prepareFastCalls();
