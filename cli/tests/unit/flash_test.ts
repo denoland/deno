@@ -982,19 +982,19 @@ Deno.test(
       assertEquals(request.method, "GET");
       promises[reqCount].resolve();
       reqCount++;
-      return new Response(reqCount <= 1 ? stream("foo bar baz"): "zar quux");
+      return new Response(reqCount <= 1 ? stream("foo bar baz") : "zar quux");
     }, { port: 4503, signal: ac.signal });
 
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
     {
       const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
+        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[0];
     }
- 
+
     const decoder = new TextDecoder();
     {
       const buf = new Uint8Array(1024);
@@ -1002,11 +1002,11 @@ Deno.test(
       const msg = decoder.decode(buf.subarray(0, readResult));
       assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
     }
-    
+
     // once more!
     {
       const body =
-      `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+        `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[1];
@@ -1041,13 +1041,12 @@ Deno.test(
 
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
-    
+
     const body =
-    `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
-    
 
     conn.close();
 
@@ -1072,13 +1071,12 @@ Deno.test(
 
 //     const conn = await Deno.connect({ port: 4503 });
 //     const encoder = new TextEncoder();
-    
+
 //     const body =
 //     `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
 //     const writeResult = await conn.write(encoder.encode(body));
 //     assertEquals(body.length, writeResult);
 //     await promise;
-    
 
 //     conn.close();
 
@@ -1103,7 +1101,7 @@ Deno.test(
 
 //     const conn = await Deno.connect({ port: 4503 });
 //     const encoder = new TextEncoder();
-    
+
 //     const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
 //     const writeResult = await conn.write(encoder.encode(body));
 //     assertEquals(body.length, writeResult);
