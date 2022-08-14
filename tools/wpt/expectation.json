@@ -1479,14 +1479,8 @@
         ],
         "is.tentative.any.html": true,
         "is.tentative.any.worker.html": true,
-        "toString.tentative.any.html": [
-          "Object.prototype.toString on an Exception",
-          "@@toStringTag exists on the prototype with the appropriate descriptor"
-        ],
-        "toString.tentative.any.worker.html": [
-          "Object.prototype.toString on an Exception",
-          "@@toStringTag exists on the prototype with the appropriate descriptor"
-        ],
+        "toString.tentative.any.html": true,
+        "toString.tentative.any.worker.html": true,
         "type.tentative.any.html": false,
         "type.tentative.any.worker.html": false
       },
