@@ -947,9 +947,18 @@ async fn main_server(
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
-      if let Ok(file) = tokio::fs::read(file_path).await {
+      if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
+      }
+
+      // serve npm registry files
+      if req.uri().path().starts_with("/npm/registry/") {
+        file_path.push("registry.json");
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
       }
 
       Response::builder()

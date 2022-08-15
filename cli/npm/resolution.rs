@@ -105,7 +105,7 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct NpmPackageId {
   pub name: String,
   pub version: semver::Version,

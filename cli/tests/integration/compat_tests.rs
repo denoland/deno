@@ -192,19 +192,3 @@ fn ext_node_cjs_execution() {
   );
   assert!(out.contains("{ hello: \"world\" }"));
 }
-
-mod small_mammal {
-  use super::*;
-
-  #[test]
-  fn chalk() {
-    let (out, _err) = util::run_and_collect_output_with_args(
-      true,
-      vec!["run", "--allow-read", "small_mammal/chalk.js"],
-      None,
-      Some(vec![("DENO_NODE_COMPAT_URL".to_string(), std_file_url())]),
-      false,
-    );
-    assert!(out.contains("chalk"));
-  }
-}

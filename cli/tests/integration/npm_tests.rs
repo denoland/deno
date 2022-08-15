@@ -1,0 +1,57 @@
+use deno_core::url::Url;
+use test_util as util;
+
+fn std_file_url() -> String {
+  let u = Url::from_directory_path(util::std_path()).unwrap();
+  u.to_string()
+}
+
+fn env_vars() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    (
+      "DENO_NPM_REGISTRY".to_string(),
+      "http://localhost:4545/npm/registry/".to_string(),
+    ),
+    (
+      // make downloads determinstic
+      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+      "1".to_string(),
+    ),
+  ]
+}
+
+itest!(esm_module {
+  args: "run --allow-read npm/esm/main.js",
+  output: "npm/esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_with_deps {
+  args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+#[test]
+fn ensure_registry_files_local() {
+  // ensures the registry files all point at local tarballs
+  let registry_dir_path = util::testdata_path().join("npm").join("registry");
+  for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
+    let entry = entry.unwrap();
+    if entry.metadata().unwrap().is_dir() {
+      let registry_json_path = registry_dir_path
+        .join(entry.file_name())
+        .join("registry.json");
+      let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
+      if file_text.contains("https://registry.npmjs.org/") {
+        panic!(
+          "file {} contained a reference to the npm registry",
+          registry_json_path.display(),
+        );
+      }
+    }
+  }
+}

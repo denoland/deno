@@ -109,22 +109,38 @@ impl GlobalNpmPackageResolver {
 
   /// Caches all the packages in parallel.
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    let handles = self.resolution.all_packages().into_iter().map(|package| {
-      let cache = self.cache.clone();
-      let registry_url = self.registry_url.clone();
-      tokio::task::spawn(async move {
-        cache
-          .ensure_package(&package.id, &package.dist, &registry_url)
+    if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string()) {
+      // for some of the tests, we want downloading of packages
+      // to be deterministic so that the output is always the same
+      let mut packages = self.resolution.all_packages();
+      packages.sort_by(|a, b| a.id.cmp(&b.id));
+      for package in packages {
+        self
+          .cache
+          .ensure_package(&package.id, &package.dist, &self.registry_url)
           .await
           .with_context(|| {
             format!("Failed caching npm package '{}'.", package.id)
-          })
-      })
-    });
-    let results = futures::future::join_all(handles).await;
-    for result in results {
-      // surface the first error
-      result??;
+          })?;
+      }
+    } else {
+      let handles = self.resolution.all_packages().into_iter().map(|package| {
+        let cache = self.cache.clone();
+        let registry_url = self.registry_url.clone();
+        tokio::task::spawn(async move {
+          cache
+            .ensure_package(&package.id, &package.dist, &registry_url)
+            .await
+            .with_context(|| {
+              format!("Failed caching npm package '{}'.", package.id)
+            })
+        })
+      });
+      let results = futures::future::join_all(handles).await;
+      for result in results {
+        // surface the first error
+        result??;
+      }
     }
     Ok(())
   }

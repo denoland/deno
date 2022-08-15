@@ -12,6 +12,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
@@ -98,7 +99,22 @@ pub struct NpmRegistryApi {
 
 impl NpmRegistryApi {
   pub fn default_url() -> Url {
-    Url::parse("https://registry.npmjs.org").unwrap()
+    let env_var_name = "DENO_NPM_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => url,
+        Err(err) => {
+          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
+          colors::red_bold("error"),
+          env_var_name, err);
+          std::process::exit(1);
+        }
+      }
+    } else {
+      Url::parse("https://registry.npmjs.org").unwrap()
+    }
   }
 
   pub fn new(cache: NpmCache, reload: bool) -> Self {
