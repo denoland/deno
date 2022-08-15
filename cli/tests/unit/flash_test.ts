@@ -207,46 +207,50 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
 });
 
 // FIXME:
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerEmptyBlobResponse() {
-//     const ac = new AbortController();
-//     const server = Deno.serve(() => new Response(new Blob([])), { port: 4501, signal: ac.signal });
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerEmptyBlobResponse() {
+    const ac = new AbortController();
+    const server = Deno.serve(() => new Response(new Blob([])), {
+      port: 4501,
+      signal: ac.signal,
+    });
 
-//     const resp = await fetch("http://127.0.0.1:4501/");
-//     const respBody = await resp.text();
+    const resp = await fetch("http://127.0.0.1:4501/");
+    const respBody = await resp.text();
 
-//     assertEquals("", respBody);
-//     ac.abort();
-//     await server;
-//   },
-// );
+    assertEquals("", respBody);
+    ac.abort();
+    await server;
+  },
+);
 
-// Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
-//   const ac = new AbortController();
-//   const server = Deno.serve(async (request) => {
-//     const {
-//       response,
-//       socket,
-//     } = Deno.upgradeWebSocket(request);
-//     socket.onerror = () => fail();
-//     socket.onmessage = (m) => {
-//       socket.send(m.data);
-//       socket.close(1001);
-//     };
-//     return response;
-//   }, { port: 4501, signal: ac.signal });
+Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
+  const ac = new AbortController();
+  const server = Deno.serve(async (request) => {
+    const {
+      response,
+      socket,
+    } = Deno.upgradeWebSocket(request);
+    socket.onerror = () => fail();
+    socket.onmessage = (m) => {
+      socket.send(m.data);
+      socket.close(1001);
+    };
+    return response;
+  }, { port: 4501, signal: ac.signal });
 
-//   const def = deferred();
-//   const ws = new WebSocket("ws://localhost:4501");
-//   ws.onmessage = (m) => assertEquals(m.data, "foo");
-//   ws.onerror = () => fail();
-//   ws.onclose = () => def.resolve();
-//   ws.onopen = () => ws.send("foo");
-//   await def;
-//   ac.abort();
-//   await server;
-// });
+  const def = deferred();
+  const ws = new WebSocket("ws://localhost:4501");
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = () => fail();
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def;
+  ac.abort();
+  await server;
+});
 
 Deno.test(
   { permissions: { net: true } },
@@ -475,7 +479,6 @@ Deno.test(
     const clientConn = await Deno.connect({ port: 4501 });
 
     const r1 = await writeRequest(clientConn);
-
     assertEquals(r1, "0\n1\n2\n");
 
     ac.abort();
@@ -657,81 +660,77 @@ Deno.test(
 );
 
 // FIXME:
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerRespondNonAsciiUint8Array() {
-//     const promise = deferred();
-//     const ac = new AbortController();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRespondNonAsciiUint8Array() {
+    const promise = deferred();
+    const ac = new AbortController();
 
-//     const server = Deno.serve(async (request) => {
-//       assertEquals(request.body, null);
-//       promise.resolve();
-//       return new Response(new Uint8Array([128]));
-//     }, { port: 4501, signal: ac.signal });
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.body, null);
+      promise.resolve();
+      return new Response(new Uint8Array([128]));
+    }, { port: 4501, signal: ac.signal });
+    const resp = await fetch("http://localhost:4501/");
 
-//     const resp = await fetch("http://localhost:4501/");
-//     await promise;
+    await promise;
+    
+    assertEquals(resp.status, 200);
+    const body = await resp.arrayBuffer();
+    assertEquals(new Uint8Array(body), new Uint8Array([128]));
 
-//     assertEquals(resp.status, 200);
-//     const body = await resp.text();
-//     console.log(new Uint8Array(body), new Uint8Array([128]));
+    ac.abort();
+    await server;
+  },
+);
 
-//     ac.abort();
-//     await server;
-//   },
-// );
+Deno.test("upgradeHttp tcp", async () => {
+  const promise = deferred();
+  const promise2 = deferred();
+  const abortController = new AbortController();
+  const signal = abortController.signal;
 
-// Deno.test("upgradeHttp tcp", async () => {
-//   const promise = deferred();
-//   const promise2 = deferred();
-//   const abortController = new AbortController();
-//   const signal = abortController.signal;
+  const server = Deno.serve(async (req) => {
+    const [conn, _] = await Deno.upgradeHttp(req);
 
-//   const server = Deno.serve(async (req) => {
-//     const [conn, firstPacket] = await Deno.upgradeHttp(req);
+    await conn.write(
+      new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
+    );
 
-//     await conn.write(
-//       new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
-//     );
+    promise.resolve();
 
-//     promise.resolve();
+    const buf = new Uint8Array(1024);
+    const n = await conn.read(buf);
 
-//     const buf = new Uint8Array(1024);
+    assert(n != null);
+    const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+    assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
 
-//     // const firstPacketText = new TextDecoder().decode(firstPacket);
-//     // assertEquals(firstPacketText, "bla bla bla\nbla bla\nbla\n");
-//     const n = await conn.read(buf);
-//     console.log(n)
+    promise2.resolve();
+    conn.close();
+  }, { port: 4501, signal });
 
-//     // assert(n != null);
-//     // const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-//     // assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+  const tcpConn = await Deno.connect({ port: 4501 });
+  await tcpConn.write(
+    new TextEncoder().encode(
+      "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
+    ),
+  );
 
-//     promise2.resolve();
-//     conn.close();
-//   }, { port: 4501, signal });
+  await promise;
 
-//   const tcpConn = await Deno.connect({ port: 4501 });
-//   await tcpConn.write(
-//     new TextEncoder().encode(
-//       "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
-//     ),
-//   );
+  await tcpConn.write(
+    new TextEncoder().encode(
+      "bla bla bla\nbla bla\nbla\n",
+    ),
+  );
 
-//   await promise;
+  await promise2;
+  tcpConn.close();
 
-//   await tcpConn.write(
-//     new TextEncoder().encode(
-//       "bla bla bla\nbla bla\nbla\n",
-//     ),
-//   );
-
-//   await promise2;
-//   tcpConn.close();
-
-//   abortController.abort();
-//   await server;
-// });
+  abortController.abort();
+  await server;
+});
 
 // Some of these tests are ported from Hyper
 // https://github.com/hyperium/hyper/blob/889fa2d87252108eb7668b8bf034ffcc30985117/src/proto/h1/role.rs

@@ -823,8 +823,9 @@ fn run_server(
 
           if socket.detached {
             poll.registry().deregister(&mut socket.inner).unwrap();
-            sockets.remove(&token).unwrap();
-            println!("Socket detached: {}", token.0);
+            let boxed = sockets.remove(&token).unwrap();
+            std::mem::forget(boxed);
+            trace!("Socket detached: {}", token.0);
             continue;
           }
 

@@ -144,16 +144,27 @@
     }
 
     // null body status is validated by inititalizeAResponse in ext/fetch
-    if (typeof body === "string") {
-      str += `Content-Length: ${body?.length}\r\n\r\n`;
+    if (body !== null && body !== undefined) {
+      str += `Content-Length: ${body.length}\r\n\r\n`;
     } else {
       str += "Transfer-Encoding: chunked\r\n\r\n";
+      return str;
     }
 
     // A HEAD request.
     if (method === 1) return str;
 
-    return str + (body ?? "");
+    if (typeof body === "string") {
+      str += body ?? "";
+    } else {
+      const head = core.encode(str);
+      const response = new Uint8Array(head.byteLength + body.byteLength);
+      response.set(head, 0);
+      response.set(body, head.byteLength);
+      return response;
+    }
+    
+    return str;
   }
 
   function prepareFastCalls() {
@@ -328,7 +339,7 @@
                       innerResp.headerList,
                       null,
                     ),
-                    value,
+                    value ?? new Uint8Array(),
                     false,
                   );
                 } else {
@@ -374,6 +385,7 @@
             if (ws) {
               const wsRid = await core.opAsync(
                 "op_flash_upgrade_websocket",
+                serverId,
                 i,
               );
               ws[_rid] = wsRid;
