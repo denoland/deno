@@ -75,14 +75,14 @@ static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
 static GLOBAL_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
 
-static PROCESS_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/process.ts", NODE_COMPAT_URL.as_str()));
-
 pub static GLOBAL_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
 
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
+
+pub static MODULE_ALL_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
 
 static MODULE_ALL_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
@@ -116,15 +116,11 @@ pub async fn load_builtin_node_modules(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl, processUrl) {{
-      const [moduleAll, processModule] = await Promise.all([
-        import(moduleAllUrl),
-        import(processUrl)
-      ]);
-      Deno[Deno.internal].require.initializeCommonJs(moduleAll.default, processModule.default);
-    }})('{}', '{}');"#,
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
+      const moduleAll = await import(moduleAllUrl);
+      Deno[Deno.internal].node.initialize(moduleAll.default);
+    }})('{}');"#,
     MODULE_ALL_URL_STR.as_str(),
-    PROCESS_URL_STR.as_str(),
   );
 
   let value =

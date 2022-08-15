@@ -650,11 +650,11 @@ fn file_extension_probe(
   mut p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
-  if p.exists() {
+  if p.exists() && !p.is_dir() {
     Ok(p.clean())
   } else {
     p.set_extension("js");
-    if p.exists() {
+    if p.exists() && !p.is_dir() {
       Ok(p)
     } else {
       Err(not_found(&p.clean().to_string_lossy(), referrer))

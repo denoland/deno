@@ -16,7 +16,6 @@
     FunctionPrototypeBind,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
-    ObjectEntries,
     ObjectPrototypeHasOwnProperty,
     ObjectSetPrototypeOf,
     ObjectKeys,
@@ -35,6 +34,7 @@
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
+  const { node } = window.__bootstrap.internals;
 
   // Map used to store CJS parsing data.
   const cjsParseCache = new SafeWeakMap();
@@ -53,12 +53,7 @@
     }
   }
 
-  // TODO(bartlomieju): verify in other parts of this file that
-  // we have initialized the system before making APIs work
-  let cjsInitialized = false;
-  let processGlobal = null;
   const nativeModulePolyfill = new SafeMap();
-  const nativeModuleExports = ObjectCreate(null);
 
   const relativeResolveCache = ObjectCreate(null);
   let requireDepth = 0;
@@ -142,7 +137,7 @@
           requestPath,
           "package.json",
         );
-        processGlobal.emitWarning(
+        node.globalThis.process.emitWarning(
           `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
             "Please either fix that or report it to the module author",
           "DeprecationWarning",
@@ -214,7 +209,7 @@
   }
 
   function emitCircularRequireWarning(prop) {
-    processGlobal.emitWarning(
+    node.globalThis.process.emitWarning(
       `Accessing non-existent property '${String(prop)}' of module exports ` +
         "inside circular dependency",
     );
@@ -255,8 +250,7 @@
     this.children = [];
   }
 
-  const builtinModules = [];
-  Module.builtinModules = builtinModules;
+  Module.builtinModules = node.builtinModules;
 
   Module._extensions = Object.create(null);
   Module._cache = Object.create(null);
@@ -476,7 +470,7 @@
     const module = cachedModule || new Module(filename, parent);
 
     if (isMain) {
-      processGlobal.mainModule = module;
+      node.globalThis.process.mainModule = module;
       module.id = ".";
     }
 
@@ -662,8 +656,8 @@
     // TODO:
     // We provide non standard timer APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, process, setTimeout, clearTimeout, setInterval, clearInterval) { (function (exports, require, module, __filename, __dirname, process) {",
-    "\n}).call(this, exports, require, module, __filename, __dirname, process); })",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { (function (exports, require, module, __filename, __dirname, globalThis, Buffer, clearImmediate, clearInterval, clearTimeout, process, setImmediate, setInterval, setTimeout) {",
+    "\n}).call(this, exports, require, module, __filename, __dirname, globalThis, globalThis.Buffer, globalThis.clearImmediate, globalThis.clearInterval, globalThis.clearTimeout, globalThis.process, globalThis.setImmediate, globalThis.setInterval, globalThis.setTimeout); })",
   ];
   Module.wrap = function (script) {
     script = script.replace(/^#!.*?\n/, "");
@@ -694,7 +688,7 @@
     const wrapper = Module.wrap(content);
     const [f, err] = core.evalContext(wrapper, filename);
     if (err) {
-      if (processGlobal.mainModule === cjsModuleInstance) {
+      if (node.globalThis.process.mainModule === cjsModuleInstance) {
         enrichCJSError(err.thrown);
       }
       throw err.thrown;
@@ -720,7 +714,7 @@
       this,
       filename,
       dirname,
-      processGlobal,
+      node.globalThis,
     );
     if (requireDepth === 0) {
       statCache = null;
@@ -837,13 +831,13 @@
     wrap: Module.wrap,
   };
 
-  nativeModuleExports.module = m;
+  node.nativeModuleExports.module = m;
 
   function loadNativeModule(_id, request) {
     if (nativeModulePolyfill.has(request)) {
       return nativeModulePolyfill.get(request);
     }
-    const modExports = nativeModuleExports[request];
+    const modExports = node.nativeModuleExports[request];
     if (modExports) {
       const nodeMod = new Module(request);
       nodeMod.exports = modExports;
@@ -855,17 +849,7 @@
   }
 
   function nativeModuleCanBeRequiredByUsers(request) {
-    return !!nativeModuleExports[request];
-  }
-
-  function initializeCommonJs(nodeModules, process) {
-    assert(!cjsInitialized);
-    cjsInitialized = true;
-    for (const [name, exports] of ObjectEntries(nodeModules)) {
-      nativeModuleExports[name] = exports;
-      ArrayPrototypePush(Module.builtinModules, name);
-    }
-    processGlobal = process;
+    return !!node.nativeModuleExports[request];
   }
 
   function readPackageScope() {
@@ -889,7 +873,6 @@
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      initializeCommonJs,
       bindExport,
     },
   };

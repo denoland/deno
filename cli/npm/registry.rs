@@ -141,7 +141,7 @@ impl NpmRegistryApi {
     let maybe_package_info = self.maybe_package_info(name).await?;
     match maybe_package_info {
       Some(package_info) => Ok(package_info),
-      None => bail!("package '{}' does not exist", name),
+      None => bail!("npm package '{}' does not exist", name),
     }
   }
 

@@ -190,14 +190,14 @@ impl NpmResolutionSnapshot {
           Some(id) => Ok(self.packages.get(id).unwrap()),
           None => {
             bail!(
-              "could not find package '{}' referenced by '{}'",
+              "could not find npm package '{}' referenced by '{}'",
               name,
               referrer
             )
           }
         }
       }
-      None => bail!("could not find referrer package '{}'", referrer),
+      None => bail!("could not find referrer npm package '{}'", referrer),
     }
   }
 
@@ -470,7 +470,7 @@ fn get_resolved_package_version_and_info(
     // version, but next time to a different version because it has new information.
     None => bail!(
       concat!(
-        "Could not find package '{}' matching {}{}. ",
+        "Could not find npm package '{}' matching {}{}. ",
         "Try retreiving the latest npm package information by running with --reload",
       ),
       pkg_name,

@@ -52,7 +52,8 @@ pub fn init(
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/node",
-      "01_require.js",
+      "01_node.js",
+      "02_require.js",
     ))
     .ops(vec![
       op_require_init_paths::decl(),
