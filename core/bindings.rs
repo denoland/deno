@@ -141,15 +141,12 @@ pub fn set_func_raw(
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
-  isolate: *mut v8::Isolate,
+  _isolate: *mut v8::Isolate,
   context: v8::Local<v8::Context>,
   resolver: v8::Local<v8::PromiseResolver>,
   compilation_result: v8::Local<v8::Value>,
   success: v8::WasmAsyncSuccess,
 ) {
-  // SAFETY: This pointer is definitely valid for the lifetime of this function.
-  let isolate = unsafe { &mut *isolate };
-  isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   if success == v8::WasmAsyncSuccess::Success {
@@ -157,7 +154,6 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   } else {
     resolver.reject(scope, compilation_result).unwrap();
   }
-  isolate.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
