@@ -690,6 +690,9 @@ Deno.test("upgradeHttp tcp", async () => {
   const abortController = new AbortController();
   const signal = abortController.signal;
 
+  // FIXME(bartlomieju): type system should allow to call `upgradeHttp` and
+  // not complain about wrong return type
+  // @ts-ignore
   const server = Deno.serve(async (req) => {
     const [conn, _] = await Deno.upgradeHttp(req);
 
@@ -1078,6 +1081,7 @@ Deno.test(
 
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
+    assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
     assert(msg.endsWith("HTTP/1.1 400 Bad Request\r\n\r\n"));
 
@@ -1169,6 +1173,7 @@ Deno.test(
 
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
+    assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
     assert(msg.endsWith("Content-Length: 11\r\n\r\n"));
