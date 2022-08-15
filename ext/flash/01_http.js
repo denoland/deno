@@ -118,22 +118,27 @@
       str += `${name}: ${value}\r\n`;
     }
 
-    // TODO(@littledivy): MUST generate an Upgrade header field in a 426 response. https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.15
-    // TODO(@littledivy): MUST generate an Allow header field in a 405 response containing a list of the target
-    //      resource's currently supported methods.
-    // TODD: Don't send body for HEAD requests.
+    // TODO: A HEAD request.
+    // if (isHeadRequest === true) { return str; };
+
+    // https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
+    if (status === 205) {
+      // MUST NOT generate a payload in a 205 response.
+      // indicate a zero-length body for the response by
+      // including a Content-Length header field with a value of 0.
+      str += "Content-Length: 0\r\n";
+      return str;
+    }
+
+    // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
+    if (status == 204 && status <= 100) {
+      return str;
+    }
+
     // null body status is validated by inititalizeAResponse in ext/fetch
-    // * MUST NOT generate a payload in a 205 response https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
-    // * MUST NOT send Content-Length if status code is 1xx or 204.
-    // * MUST NOT send Content-Length if status code is 2xx to a CONNECT request
     if (typeof body === "string") {
       str += `Content-Length: ${body?.length}\r\n\r\n`;
     } else {
-      // TODO(littledivy): support compression.
-      // TODO(littledivy): MUST NOT send transfer-encoding if:
-      //   * status code is 1xx or 204
-      //   * status code is 2xx to a CONNECT request
-      //   * request indicates HTTP/1.1
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
     return str + (body ?? "");
@@ -391,6 +396,7 @@
     }
 
     if (!dateInterval) {
+      date = new Date().toUTCString();
       dateInterval = setInterval(() => {
         date = new Date().toUTCString();
       }, 1000);

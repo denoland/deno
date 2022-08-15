@@ -69,7 +69,7 @@ enum Encoding {
 
 pub struct FlashContext {
   next_server_id: u32,
-  join_handles: HashMap<u32, JoinHandle<()>>,
+  join_handles: HashMap<u32, JoinHandle<Result<(), AnyError>>>,
   pub servers: HashMap<u32, ServerContext>,
 }
 
@@ -755,9 +755,9 @@ fn run_server(
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
-) {
-  let mut listener = TcpListener::bind(addr).unwrap();
-  let mut poll = Poll::new().unwrap();
+) -> Result<(), AnyError> {
+  let mut listener = TcpListener::bind(addr)?;
+  let mut poll = Poll::new()?;
   let token = Token(0);
   poll
     .registry()
@@ -872,10 +872,10 @@ fn run_server(
                   socket.parse_done = ParseStatus::Ongoing(offset + read);
                   continue;
                 }
-                Err(e) => {
-                  panic!("{}", e);
+                Err(_) => {
+                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                  continue 'events;
                 }
-                _ => unreachable!(),
               },
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
@@ -911,7 +911,6 @@ fn run_server(
           // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
           let mut keep_alive = inner_req.req.version.unwrap() == 1;
           let mut upgrade = false;
-          #[allow(unused_variables)]
           let mut expect_continue = false;
           let mut te = false;
           let mut te_chunked = false;
@@ -950,13 +949,8 @@ fn run_server(
                   }
                 }
               }
-              Ok(CONTENT_LENGTH) => {
-                // Transfer-Encoding overrides the Content-Length.
-                if te {
-                  // request smuggling detected ;)
-                  continue;
-                }
-                // TODO: Must respond with 400 and close conneciton if no TE and invalid / multiple Content-Length headers.
+              // Transfer-Encoding overrides the Content-Length.
+              Ok(CONTENT_LENGTH) if !te => {  
                 if let Some(len) = from_digits(header.value) {
                   if let Some(prev) = content_length {
                     if prev != len {
@@ -971,13 +965,8 @@ fn run_server(
                   continue 'events;
                 }
               }
-              Ok(EXPECT) => {
-                // TODO: Must ignore if HTTP/1.0
-                #[allow(unused_assignments)]
-                {
-                  expect_continue =
-                    header.value.eq_ignore_ascii_case(b"100-continue");
-                }
+              Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
+                expect_continue = header.value.eq_ignore_ascii_case(b"100-continue");
               }
               _ => {}
             }
@@ -999,6 +988,8 @@ fn run_server(
       }
     }
   }
+
+  Ok(())
 }
 
 #[op]
@@ -1035,14 +1026,15 @@ fn op_flash_serve(
 fn op_flash_drive_server(
   state: &mut OpState,
   server_id: u32,
-) -> impl Future<Output = ()> + 'static {
+) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
   let join_handle = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
-    flash_ctx.join_handles.remove(&server_id).unwrap()
+    flash_ctx.join_handles.remove(&server_id).ok_or_else(|| type_error("server not found"))?
   };
-  async move {
-    join_handle.await.unwrap();
-  }
+  Ok(async move {
+    join_handle.await.map_err(|_| type_error("server join error"))??;
+    Ok(())
+  })
 }
 
 // Asychronous version of op_flash_next. This can be a bottleneck under
