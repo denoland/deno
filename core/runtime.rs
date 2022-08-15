@@ -227,11 +227,6 @@ fn v8_init(
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
   v8::icu::set_common_data_71(&ICU_DATA.0).unwrap();
 
-  let v8_platform = v8_platform
-    .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
-  v8::V8::initialize_platform(v8_platform);
-  v8::V8::initialize();
-
   let flags = concat!(
     " --experimental-wasm-threads",
     " --wasm-test-streaming",
@@ -248,6 +243,11 @@ fn v8_init(
   } else {
     v8::V8::set_flags_from_string(flags);
   }
+
+  let v8_platform = v8_platform
+    .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
+  v8::V8::initialize_platform(v8_platform);
+  v8::V8::initialize();
 }
 
 #[derive(Default)]
@@ -515,6 +515,9 @@ impl JsRuntime {
     );
     isolate.set_host_import_module_dynamically_callback(
       bindings::host_import_module_dynamically_callback,
+    );
+    isolate.set_wasm_async_resolve_promise_callback(
+      bindings::wasm_async_resolve_promise_callback,
     );
     isolate
   }

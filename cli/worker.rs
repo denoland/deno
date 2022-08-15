@@ -390,7 +390,7 @@ impl CliMainWorker {
   async fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<CoverageCollector>, AnyError> {
-    if let Some(ref coverage_dir) = self.ps.coverage_dir {
+    if let Some(ref coverage_dir) = self.ps.options.coverage_dir() {
       let session = self.worker.create_inspector_session().await;
 
       let coverage_dir = PathBuf::from(coverage_dir);

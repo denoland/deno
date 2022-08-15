@@ -162,6 +162,12 @@ pub struct RunFlags {
   pub script: String,
 }
 
+impl RunFlags {
+  pub fn is_stdin(&self) -> bool {
+    self.script == "-"
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
@@ -677,7 +683,7 @@ and report results to standard output:
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
 Directory arguments are expanded to all contained files matching the \
-glob {*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
+glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
     )
@@ -1593,7 +1599,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}test.{js,mjs,ts,jsx,tsx}:
+{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}:
 
   deno test src/",
     )
