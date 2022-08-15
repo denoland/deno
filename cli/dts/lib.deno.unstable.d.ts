@@ -1104,11 +1104,39 @@ declare namespace Deno {
    */
   export function unrefTimer(id: number): void;
 
+  /**
+   * A handler for HTTP requests. Consumes a request and returns a response.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and close the underlying connection.
+   */
+  export type Handler = (
+    request: Request,
+  ) => Response | Promise<Response>;
+
+  export interface ServeInit extends Partial<Deno.ListenOptions> {
+    /** An AbortSignal to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+  }
+
+  export function serve(
+    handler: Handler,
+    options?: ServeInit,
+  ): Promise<void>;
+
   /** **UNSTABLE**: new API, yet to be vetter.
    *
    * Allows to "hijack" a connection that the request is associated with.
    * Can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
+   *
+   * The return type depends if `request` is coming from `Deno.serve()` API
+   * or `Deno.serveHttp()`; for former it returns the connection and first
+   * packet, for latter it returns a promise.
    *
    * The returned promise returns underlying connection and first packet
    * received. The promise shouldn't be awaited before responding to the
@@ -1116,7 +1144,7 @@ declare namespace Deno {
    */
   export function upgradeHttp(
     request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
+  ): [Deno.Conn, Uint8Array] | Promise<[Deno.Conn, Uint8Array]>;
 
   export interface SpawnOptions {
     /** Arguments to pass to the process. */

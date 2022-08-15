@@ -132,6 +132,7 @@ Deno.test(
 
     const resp = new Uint8Array(200);
     const readResult = await conn.read(resp);
+    assert(readResult);
     assert(readResult > 0);
 
     conn.close();
@@ -195,7 +196,10 @@ Deno.test(
 
 Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   const ac = new AbortController();
-  const server = Deno.serve(() => {}, { port: 4501, signal: ac.signal });
+  const server = Deno.serve(() => new Response("ok"), {
+    port: 4501,
+    signal: ac.signal,
+  });
   const client = await Deno.connect({ port: 4501 });
   client.close();
   ac.abort();
@@ -874,6 +878,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     const decoder = new TextDecoder();
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
+    assert(readResult);
     const msg = decoder.decode(buf.subarray(0, readResult));
 
     try {
@@ -979,31 +984,32 @@ Deno.test(
       assertEquals(request.method, "GET");
       promises[reqCount].resolve();
       reqCount++;
-      return new Response(reqCount <= 1 ? stream("foo bar baz"): "zar quux");
+      return new Response(reqCount <= 1 ? stream("foo bar baz") : "zar quux");
     }, { port: 4503, signal: ac.signal });
 
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
     {
       const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
+        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[0];
     }
- 
+
     const decoder = new TextDecoder();
     {
       const buf = new Uint8Array(1024);
       const readResult = await conn.read(buf);
+      assert(readResult);
       const msg = decoder.decode(buf.subarray(0, readResult));
       assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
     }
-    
+
     // once more!
     {
       const body =
-      `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+        `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[1];
@@ -1011,6 +1017,7 @@ Deno.test(
     {
       const buf = new Uint8Array(1024);
       const readResult = await conn.read(buf);
+      assert(readResult);
       const msg = decoder.decode(buf.subarray(0, readResult));
       assert(msg.endsWith("zar quux"));
     }
@@ -1038,9 +1045,9 @@ Deno.test(
 
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
-    
+
     const body =
-    `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1098,7 +1105,7 @@ Deno.test(
 
 //     const conn = await Deno.connect({ port: 4503 });
 //     const encoder = new TextEncoder();
-    
+
 //     const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
 //     const writeResult = await conn.write(encoder.encode(body));
 //     assertEquals(body.length, writeResult);
@@ -1296,4 +1303,9 @@ function parseTrailer(field: string | null): Headers | undefined {
     );
   }
   return new Headers(trailerNames.map((key) => [key, ""]));
+}
+
+function isProhibitedForTrailer(key: string): boolean {
+  const s = new Set(["transfer-encoding", "content-length", "trailer"]);
+  return s.has(key.toLowerCase());
 }

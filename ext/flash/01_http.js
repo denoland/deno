@@ -8,7 +8,6 @@
     toInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { TcpConn } = window.__bootstrap.net;
   const { ReadableStream, ReadableStreamPrototype, _state } =
     window.__bootstrap.streams;
   const {
@@ -152,6 +151,11 @@
     opts = { hostname: "127.0.0.1", port: 9000, ...opts };
     const signal = opts.signal;
     delete opts.signal;
+    const onError = opts.onError ?? function (error) {
+      console.error(error);
+      return new Response("Internal Server Error", { status: 500 });
+    };
+    delete opts.onError;
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
@@ -212,7 +216,12 @@
               () => core.opSync("op_flash_headers", serverId, i),
             );
 
-            const resp = await handler(req);
+            let resp;
+            try {
+              resp = await handler(req);
+            } catch (e) {
+              resp = await onError(e);
+            }
             // there might've been an HTTP upgrade.
             if (resp === undefined) {
               continue;
@@ -375,11 +384,6 @@
       server.close().then(() => {}, () => {});
     }, {
       once: true,
-    });
-
-    // NOTE(bartlomieju): this drives the server
-    (async () => {
-      await server.finished;
     });
 
     const fastOp = prepareFastCalls();
