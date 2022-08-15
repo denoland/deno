@@ -72,7 +72,7 @@ impl ReadonlyNpmCache {
     // on a case insensitive file system to not have conflicts. We do this by
     // first putting it in a "_" folder then hashing the package name.
     if name.to_lowercase() != name {
-      let mut last_part = parts.last_mut().unwrap();
+      let last_part = parts.last_mut().unwrap();
       *last_part = Cow::Owned(crate::checksum::gen(&[last_part.as_bytes()]));
       // We can't just use the hash as part of the directory because it may
       // have a collision with an actual package name in case someone wanted
@@ -246,7 +246,6 @@ impl NpmCache {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
-  use std::path::PathBuf;
 
   use super::ReadonlyNpmCache;
   use crate::npm::NpmPackageId;

@@ -437,15 +437,12 @@ impl ProcState {
       // add the builtin node modules to the graph data
       let node_std_graph = self
         .create_graph({
-          let mut roots = compat::all_supported_builtin_module_urls();
-          // todo(dsherret): injecting these globals is a temporary solution
-          // that we shouldn't have to do
+          let mut roots = Vec::new();
           roots.push(compat::GLOBAL_URL.clone());
           roots.push(compat::MODULE_URL.clone());
           roots.into_iter().map(|s| (s, ModuleKind::Esm)).collect()
         })
         .await?;
-      node_std_graph.valid()?;
       self.graph_data.write().add_graph(&node_std_graph, false);
     }
 

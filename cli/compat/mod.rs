@@ -112,13 +112,6 @@ pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub fn all_supported_builtin_module_urls() -> Vec<Url> {
-  SUPPORTED_MODULES
-    .iter()
-    .map(|specifier| try_resolve_builtin_module(specifier).unwrap())
-    .collect()
-}
-
 pub async fn load_builtin_node_modules(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
