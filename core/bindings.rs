@@ -140,6 +140,22 @@ pub fn set_func_raw(
   obj.set(scope, key.into(), val.into());
 }
 
+pub extern "C" fn wasm_async_resolve_promise_callback(
+  _isolate: *mut v8::Isolate,
+  context: v8::Local<v8::Context>,
+  resolver: v8::Local<v8::PromiseResolver>,
+  compilation_result: v8::Local<v8::Value>,
+  success: v8::WasmAsyncSuccess,
+) {
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  if success == v8::WasmAsyncSuccess::Success {
+    resolver.resolve(scope, compilation_result).unwrap();
+  } else {
+    resolver.reject(scope, compilation_result).unwrap();
+  }
+}
+
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   _host_defined_options: v8::Local<v8::Data>,
