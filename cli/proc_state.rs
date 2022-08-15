@@ -125,6 +125,8 @@ impl ProcState {
     Ok(ps)
   }
 
+  /// Return a cloned `self` with all runtime state reset to its default. This
+  /// should be used on file watcher restarts.
   pub fn reset_for_file_watcher(&self) -> Self {
     ProcState(Arc::new(Inner {
       dir: self.dir.clone(),
