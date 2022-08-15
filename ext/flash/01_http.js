@@ -92,6 +92,18 @@
     511: "Network Authentication Required",
   };
 
+  const methods = {
+    0: "GET",
+    1: "HEAD",
+    2: "CONNECT",
+    3: "PUT",
+    4: "DELETE",
+    5: "OPTIONS",
+    6: "TRACE",
+    7: "POST",
+    8: "PATCH",
+  };
+
   let dateInterval;
   let date;
 
@@ -104,7 +116,7 @@
   //    CRLF
   //    [ message-body ]
   //
-  function http1Response(status, headerList, body) {
+  function http1Response(method, status, headerList, body) {
     // HTTP uses a "<major>.<minor>" numbering scheme
     //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
@@ -116,9 +128,6 @@
       // header-field   = field-name ":" OWS field-value OWS
       str += `${name}: ${value}\r\n`;
     }
-
-    // TODO: A HEAD request.
-    // if (isHeadRequest === true) { return str; };
 
     // https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
     if (status === 205) {
@@ -140,6 +149,10 @@
     } else {
       str += "Transfer-Encoding: chunked\r\n\r\n";
     }
+
+    // A HEAD request.
+    if (method === 1) return str;
+
     return str + (body ?? "");
   }
 
@@ -195,9 +208,13 @@
             // There might be a body, but we don't expose it for GET/HEAD requests.
             // It will be closed automatically once the request has been handled and
             // the response has been sent.
-            const hasBody = hasBodySync(i);
+            const method = getMethodSync(i);
+            let hasBody = method > 2; // Not GET/HEAD/CONNECT
             if (hasBody) {
               body = createRequestBodyStream(serverId, i);
+              if (body === null) {
+                hasBody = false;
+              }
             }
 
             const req = fromInnerFlashRequest(
@@ -206,14 +223,14 @@
               i,
               body,
               /* methodCb */
-              () => core.ops.op_flash_method(serverId, i),
+              () => methods[method],
               /* urlCb */
               () => {
                 const path = core.ops.op_flash_path(serverId, i);
                 return `${server.transport}://${server.hostname}:${server.port}${path}`;
               },
               /* headersCb */
-              () => core.opSync("op_flash_headers", serverId, i),
+              () => core.ops.op_flash_headers(serverId, i),
             );
 
             let resp;
@@ -306,6 +323,7 @@
                     serverId,
                     i,
                     http1Response(
+                      method,
                       innerResp.status ?? 200,
                       innerResp.headerList,
                       null,
@@ -343,6 +361,7 @@
                 serverId,
                 i,
                 http1Response(
+                  method,
                   innerResp.status ?? 200,
                   innerResp.headerList,
                   respBody,
@@ -388,13 +407,13 @@
 
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
-    let hasBodySync = (token) => fastOp.hasBody(token);
+    let getMethodSync = (token) => fastOp.getMethod(token);
     let respondChunked = (token, chunk, shutdown) =>
       fastOp.respondChunked(token, chunk, shutdown);
+
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
-      hasBodySync = (token) =>
-        core.ops.op_flash_has_body_stream(serverId, token);
+      getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
       respondChunked = (token, chunk, shutdown) =>
         core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
     }
@@ -406,7 +425,7 @@
       }, 1000);
     }
 
-    return await server.serve();
+    return server.serve().catch(console.error);
   }
 
   function createRequestBodyStream(serverId, token) {
@@ -415,6 +434,7 @@
       serverId,
       token,
     );
+    if (!firstRead) return null;
     let firstEnqueued = firstRead.byteLength == 0;
 
     return new ReadableStream({

@@ -509,7 +509,7 @@ Deno.test(
     }
 
     const buf = new Uint8Array(1024);
-    assertEquals(await clientConn.read(buf), 79);
+    assertEquals(await clientConn.read(buf), 99);
     await promise;
     let responseText = new TextDecoder().decode(buf);
     clientConn.close();
@@ -1051,7 +1051,6 @@ Deno.test(
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
-    
 
     conn.close();
 
@@ -1073,10 +1072,11 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: +5\r\n\r\nhello`;
+    const body =
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: +5\r\n\r\nhello`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
-  
+
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
     const msg = decoder.decode(buf.subarray(0, readResult));
@@ -1124,7 +1124,7 @@ Deno.test(
     const promise = deferred();
     const ac = new AbortController();
 
-    const server = Deno.serve(async (r) => { 
+    const server = Deno.serve(async (r) => {
       promise.resolve();
       assertEquals(await r.text(), "12345");
       return new Response("ok");
@@ -1133,10 +1133,11 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
 
-    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 10\r\n\r\n12345`;
+    const body =
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 10\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
-  
+
     await promise;
     conn.close();
 
@@ -1151,7 +1152,7 @@ Deno.test(
     const promise = deferred();
     const ac = new AbortController();
 
-    const server = Deno.serve(() => { 
+    const server = Deno.serve(() => {
       promise.resolve();
       return new Response("foo bar baz");
     }, { port: 4503, signal: ac.signal });
@@ -1160,15 +1161,17 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body = `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body =
+      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
-  
+
     await promise;
-    
+
     const buf = new Uint8Array(1024);
     const readResult = await conn.read(buf);
     const msg = decoder.decode(buf.subarray(0, readResult));
+
     assert(msg.endsWith("Content-Length: 11\r\n\r\n"));
 
     conn.close();

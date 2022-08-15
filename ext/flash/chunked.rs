@@ -5,24 +5,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Result as IoResult;
 
-/// Reads HTTP chunks and sends back real data.
-///
-/// # Example
-///
-/// ```
-/// use chunked_transfer::Decoder;
-/// use std::io::Read;
-///
-/// let encoded = b"3\r\nhel\r\nb\r\nlo world!!!\r\n0\r\n\r\n";
-/// let mut decoded = String::new();
-///
-/// let mut decoder = Decoder::new(encoded as &[u8]);
-/// decoder.read_to_string(&mut decoded);
-///
-/// assert_eq!(decoded, "hello world!!!");
-/// ```
 pub struct Decoder<R> {
-  // where the chunks come from
   source: R,
 
   // remaining size of the chunk being read
@@ -39,11 +22,6 @@ where
       source,
       remaining_chunks_size,
     }
-  }
-
-  /// Unwraps the Decoder into its inner `Read` source.
-  pub fn into_inner(self) -> R {
-    self.source
   }
 
   fn read_chunk_size(&mut self) -> IoResult<usize> {
@@ -186,13 +164,13 @@ mod test {
   #[test]
   fn test_read_chunk_size() {
     fn read(s: &str, expected: usize) {
-      let mut decoded = Decoder::new(s.as_bytes());
+      let mut decoded = Decoder::new(s.as_bytes(), None);
       let actual = decoded.read_chunk_size().unwrap();
       assert_eq!(expected, actual);
     }
 
     fn read_err(s: &str) {
-      let mut decoded = Decoder::new(s.as_bytes());
+      let mut decoded = Decoder::new(s.as_bytes(), None);
       let err_kind = decoded.read_chunk_size().unwrap_err().kind();
       assert_eq!(err_kind, io::ErrorKind::InvalidInput);
     }
@@ -235,7 +213,7 @@ mod test {
         .to_string()
         .into_bytes(),
     );
-    let mut decoded = Decoder::new(source);
+    let mut decoded = Decoder::new(source, None);
 
     let mut string = String::new();
     decoded.read_to_string(&mut string).unwrap();
@@ -245,7 +223,7 @@ mod test {
 
   #[test]
   fn test_decode_zero_length() {
-    let mut decoder = Decoder::new(b"0\r\n\r\n" as &[u8]);
+    let mut decoder = Decoder::new(b"0\r\n\r\n" as &[u8], None);
 
     let mut decoded = String::new();
     decoder.read_to_string(&mut decoded).unwrap();
@@ -255,7 +233,7 @@ mod test {
 
   #[test]
   fn test_decode_invalid_chunk_length() {
-    let mut decoder = Decoder::new(b"m\r\n\r\n" as &[u8]);
+    let mut decoder = Decoder::new(b"m\r\n\r\n" as &[u8], None);
 
     let mut decoded = String::new();
     assert!(decoder.read_to_string(&mut decoded).is_err());
@@ -268,7 +246,7 @@ mod test {
         .to_string()
         .into_bytes(),
     );
-    let mut decoded = Decoder::new(source);
+    let mut decoded = Decoder::new(source, None);
 
     let mut string = String::new();
     assert!(decoded.read_to_string(&mut string).is_err());
@@ -281,7 +259,7 @@ mod test {
         .to_string()
         .into_bytes(),
     );
-    let mut decoded = Decoder::new(source);
+    let mut decoded = Decoder::new(source, None);
 
     let mut string = String::new();
     assert!(decoded.read_to_string(&mut string).is_err());

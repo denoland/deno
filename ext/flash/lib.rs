@@ -321,24 +321,51 @@ async fn op_flash_respond_stream(
   Ok(())
 }
 
+macro_rules! get_request {
+  ($op_state: ident, $token: ident) => {
+    get_request!($op_state, 0, $token)
+  };
+  ($op_state: ident, $server_id: expr, $token: ident) => {{
+    let flash_ctx = $op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&$server_id).unwrap();
+    ctx.response.get_mut(&$token).unwrap()
+  }};
+}
+
+#[repr(u32)]
+pub enum Method {
+  GET = 0,
+  HEAD,
+  CONNECT,
+  PUT,
+  DELETE,
+  OPTIONS,
+  TRACE,
+  POST,
+  PATCH,
+}
+
+#[inline]
+fn get_method(req: &mut NextRequest) -> u32 {
+  let method = match req.inner.req.method.unwrap() {
+    "GET" => Method::GET,
+    "POST" => Method::POST,
+    "PUT" => Method::PUT,
+    "DELETE" => Method::DELETE,
+    "OPTIONS" => Method::OPTIONS,
+    "HEAD" => Method::HEAD,
+    "PATCH" => Method::PATCH,
+    "TRACE" => Method::TRACE,
+    "CONNECT" => Method::CONNECT,
+    _ => Method::GET,
+  };
+  method as u32
+}
+
 #[op]
-fn op_flash_method(
-  state: Rc<RefCell<OpState>>,
-  server_id: u32,
-  token: u32,
-) -> String {
-  let mut op_state = state.borrow_mut();
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  ctx
-    .response
-    .get(&token)
-    .unwrap()
-    .inner
-    .req
-    .method
-    .unwrap()
-    .to_string()
+fn op_flash_method(state: &mut OpState, server_id: u32, token: u32) -> u32 {
+  let req = get_request!(state, server_id, token);
+  get_method(req)
 }
 
 #[op]
@@ -405,11 +432,11 @@ fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
   next_request_sync(ctx)
 }
 
-pub struct HasBodyFast;
+pub struct GetMethodFast;
 
-impl fast_api::FastFunction for HasBodyFast {
+impl fast_api::FastFunction for GetMethodFast {
   fn function(&self) -> *const c_void {
-    op_flash_has_body_fast as *const c_void
+    op_flash_get_method_fast as *const c_void
   }
 
   fn args(&self) -> &'static [fast_api::Type] {
@@ -417,19 +444,17 @@ impl fast_api::FastFunction for HasBodyFast {
   }
 
   fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Bool
+    fast_api::CType::Uint32
   }
 }
 
-fn op_flash_has_body_fast(recv: v8::Local<v8::Object>, token: u32) -> bool {
+fn op_flash_get_method_fast(recv: v8::Local<v8::Object>, token: u32) -> u32 {
   let ptr = unsafe {
     recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
   };
   let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
-  let resp = ctx.response.get(&token).unwrap();
-  let sock = unsafe { &*resp.socket };
-
-  sock.read_rx.is_some()
+  let req = ctx.response.get_mut(&token).unwrap();
+  get_method(req)
 }
 
 // Fast calls
@@ -470,7 +495,7 @@ fn op_flash_make_request<'scope>(
     obj.set(scope, key.into(), func).unwrap();
   }
 
-  // hasBody
+  // getMethod
   {
     let builder = v8::FunctionTemplate::builder(
       |scope: &mut v8::HandleScope,
@@ -480,18 +505,16 @@ fn op_flash_make_request<'scope>(
           args.data().unwrap().try_into().unwrap();
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         let token = args.get(0).uint32_value(scope).unwrap();
-        let resp = ctx.response.get(&token).unwrap();
-        let sock = unsafe { &*resp.socket };
-
-        rv.set_bool(sock.read_rx.is_some());
+        let req = ctx.response.get_mut(&token).unwrap();
+        rv.set_uint32(get_method(req));
       },
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
 
-    let func = builder.build_fast(scope, &HasBodyFast, None);
+    let func = builder.build_fast(scope, &GetMethodFast, None);
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
-    let key = v8::String::new(scope, "hasBody").unwrap();
+    let key = v8::String::new(scope, "getMethod").unwrap();
     obj.set(scope, key.into(), func).unwrap();
   }
 
@@ -534,12 +557,9 @@ fn op_flash_make_request<'scope>(
   value.into()
 }
 
-#[op]
-fn op_flash_has_body_stream_0(op_state: &mut OpState, token: u32) -> bool {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&0).unwrap();
-  let resp = ctx.response.get(&token).unwrap();
-  let sock = unsafe { &*resp.socket };
+#[inline]
+fn has_body_stream(req: &NextRequest) -> bool {
+  let sock = unsafe { &*req.socket };
   sock.read_rx.is_some()
 }
 
@@ -549,12 +569,8 @@ fn op_flash_has_body_stream(
   server_id: u32,
   token: u32,
 ) -> bool {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-
-  let resp = ctx.response.get(&token).unwrap();
-  let sock = unsafe { &*resp.socket };
-  sock.read_rx.is_some()
+  let req = get_request!(op_state, server_id, token);
+  has_body_stream(req)
 }
 
 #[op]
@@ -591,17 +607,18 @@ fn op_flash_first_packet(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
-) -> ZeroCopyBuf {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let tx = ctx.response.get_mut(&token).unwrap();
+) -> Option<ZeroCopyBuf> {
+  let tx = get_request!(op_state, server_id, token);
   // SAFETY: The socket lives on the mio thread.
   let sock = unsafe { &mut *tx.socket };
 
   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
   // Oh there is nothing here.
   if buffer.is_empty() {
-    return ZeroCopyBuf::empty();
+    if !tx.te_chunked && tx.content_length.is_none() {
+      return None;
+    }
+    return Some(ZeroCopyBuf::empty());
   }
 
   if tx.expect_continue {
@@ -615,32 +632,16 @@ fn op_flash_first_packet(
     if let Ok(n) = decoder.read(&mut buf) {
       tx.remaining_chunk_size = decoder.remaining_chunks_size;
       buf.truncate(n);
-      return buf.into();
+      return Some(buf.into());
     } else {
       panic!("chunked read error");
     }
   }
 
-  // if tx.inner.body_offset != 0 && tx.inner.body_offset != tx.inner.body_len {
-  //   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-  //   let cursor = Cursor::new(buffer);
-  //   let mut decoder = chunked::Decoder::new(cursor);
-
-  //   let nread = decoder.read(&mut buf).expect("read error");
-  //   let cursor = decoder.into_inner();
-  //   let pos = cursor.position() as usize;
-
-  //   if pos == tx.inner.body_len {
-  //     tx.inner.body_offset = 0;
-  //   } else {
-  //     tx.inner.body_offset += pos;
-  //   }
-  //   return nread;
-  // }
-
+  tx.content_length?;
   tx.content_read += buffer.len();
 
-  buffer.to_vec().into()
+  Some(buffer.to_vec().into())
 }
 
 #[op]
@@ -950,12 +951,12 @@ fn run_server(
                 }
               }
               // Transfer-Encoding overrides the Content-Length.
-              Ok(CONTENT_LENGTH) if !te => {  
+              Ok(CONTENT_LENGTH) if !te => {
                 if let Some(len) = from_digits(header.value) {
                   if let Some(prev) = content_length {
                     if prev != len {
                       let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                      continue 'events;   
+                      continue 'events;
                     }
                     continue;
                   }
@@ -966,7 +967,8 @@ fn run_server(
                 }
               }
               Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
-                expect_continue = header.value.eq_ignore_ascii_case(b"100-continue");
+                expect_continue =
+                  header.value.eq_ignore_ascii_case(b"100-continue");
               }
               _ => {}
             }
@@ -1029,10 +1031,15 @@ fn op_flash_drive_server(
 ) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
   let join_handle = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
-    flash_ctx.join_handles.remove(&server_id).ok_or_else(|| type_error("server not found"))?
+    flash_ctx
+      .join_handles
+      .remove(&server_id)
+      .ok_or_else(|| type_error("server not found"))?
   };
   Ok(async move {
-    join_handle.await.map_err(|_| type_error("server join error"))??;
+    join_handle
+      .await
+      .map_err(|_| type_error("server join error"))??;
     Ok(())
   })
 }
@@ -1193,7 +1200,6 @@ pub fn init() -> Extension {
       op_flash_drive_server::decl(),
       op_flash_first_packet::decl(),
       op_flash_has_body_stream::decl(),
-      op_flash_has_body_stream_0::decl(),
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
     ])
