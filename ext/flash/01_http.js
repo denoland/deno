@@ -163,7 +163,7 @@
       response.set(body, head.byteLength);
       return response;
     }
-    
+
     return str;
   }
 
@@ -171,7 +171,7 @@
     return core.opSync("op_flash_make_request");
   }
 
-  async function serve(handler, opts = {}) {
+  function serve(handler, opts = {}) {
     opts = { hostname: "127.0.0.1", port: 9000, ...opts };
     const signal = opts.signal;
     delete opts.signal;

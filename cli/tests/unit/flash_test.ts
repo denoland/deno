@@ -674,7 +674,7 @@ Deno.test(
     const resp = await fetch("http://localhost:4501/");
 
     await promise;
-    
+
     assertEquals(resp.status, 200);
     const body = await resp.arrayBuffer();
     assertEquals(new Uint8Array(body), new Uint8Array([128]));

@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+// False positive lint for explicit drops.
+// https://github.com/rust-lang/rust-clippy/issues/6446
+#![allow(clippy::await_holding_lock)]
 // TODO(bartlomieju): remove me
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::missing_safety_doc)]
@@ -13,7 +16,6 @@ use deno_core::v8::fast_api;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
@@ -41,7 +43,6 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::future::Future;
 use std::intrinsics::transmute;
-use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::marker::PhantomPinned;
@@ -55,17 +56,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
 use std::time::Duration;
-use tokio::io::AsyncRead;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 mod chunked;
-enum Encoding {
-  Identity,
-  Gzip,
-  Brotli,
-}
 
 pub struct FlashContext {
   next_server_id: u32,
@@ -74,7 +68,7 @@ pub struct FlashContext {
 }
 
 pub struct ServerContext {
-  addr: SocketAddr,
+  _addr: SocketAddr,
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
   response: HashMap<u32, NextRequest>,
@@ -294,33 +288,6 @@ fn respond_chunked(
   sock.reattach_ownership();
 }
 
-#[op]
-async fn op_flash_respond_stream(
-  state: Rc<RefCell<OpState>>,
-  server_id: u32,
-  token: u32,
-  data: String,
-  rid: u32,
-) -> Result<(), AnyError> {
-  let mut op_state = state.borrow_mut();
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let tx = ctx.response.remove(&token).unwrap();
-  let sock = unsafe { &mut *tx.socket };
-  let _n = sock.write(data.as_bytes()).unwrap();
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  loop {
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
-    if nread == 0 {
-      break;
-    }
-    let _n = sock.write(&buf[..nread])?;
-  }
-  Ok(())
-}
-
 macro_rules! get_request {
   ($op_state: ident, $token: ident) => {
     get_request!($op_state, 0, $token)
@@ -370,11 +337,14 @@ fn op_flash_method(state: &mut OpState, server_id: u32, token: u32) -> u32 {
 
 #[op]
 async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
-  let mut op_state = state.borrow_mut();
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  ctx.cancel_handle.cancel();
-  let _ = ctx.close_tx.send(()).await;
+  let close_tx = {
+    let mut op_state = state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+    ctx.cancel_handle.cancel();
+    ctx.close_tx.clone()
+  };
+  let _ = close_tx.send(()).await;
 }
 
 #[op]
@@ -754,8 +724,9 @@ fn run_server(
   tx: mpsc::Sender<NextRequest>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
-  maybe_cert: Option<String>,
-  maybe_key: Option<String>,
+  // TODO: TLS
+  _maybe_cert: Option<String>,
+  _maybe_key: Option<String>,
 ) -> Result<(), AnyError> {
   let mut listener = TcpListener::bind(addr)?;
   let mut poll = Poll::new()?;
@@ -1004,7 +975,7 @@ fn op_flash_serve(
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let ctx = ServerContext {
-    addr,
+    _addr: addr,
     tx,
     rx,
     response: HashMap::with_capacity(1000),
@@ -1192,7 +1163,6 @@ pub fn init() -> Extension {
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),
-      op_flash_respond_stream::decl(),
       op_flash_next::decl(),
       op_flash_next_server::decl(),
       op_flash_next_async::decl(),
