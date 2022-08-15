@@ -140,6 +140,22 @@ pub fn set_func_raw(
   obj.set(scope, key.into(), val.into());
 }
 
+pub extern "C" fn wasm_async_resolve_promise_callback(
+  _isolate: *mut v8::Isolate,
+  context: v8::Local<v8::Context>,
+  resolver: v8::Local<v8::PromiseResolver>,
+  compilation_result: v8::Local<v8::Value>,
+  success: v8::WasmAsyncSuccess,
+) {
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  if success == v8::WasmAsyncSuccess::Success {
+    resolver.resolve(scope, compilation_result).unwrap();
+  } else {
+    resolver.reject(scope, compilation_result).unwrap();
+  }
+}
+
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   _host_defined_options: v8::Local<v8::Data>,
@@ -323,29 +339,11 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
 
-  // Node compat: perform synchronous process.emit("unhandledRejection").
-  //
-  // Note the callback follows the (type, promise, reason) signature of Node's
-  // internal promiseRejectHandler from lib/internal/process/promises.js, not
-  // the (promise, reason) signature of the "unhandledRejection" event listener.
-  //
-  // Short-circuits Deno's regular unhandled rejection logic because that's
-  // a) asynchronous, and b) always terminates.
   if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
-    let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
-
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
-    if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
-      if !pending_mod_evaluate.has_evaluated {
-        let promise_global = v8::Global::new(tc_scope, promise);
-        pending_mod_evaluate
-          .handled_promise_rejections
-          .push(promise_global);
-      }
-    }
     drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
@@ -355,41 +353,32 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       PromiseHandlerAddedAfterReject => undefined,
     };
 
+    let promise_global = v8::Global::new(tc_scope, promise);
     let args = &[type_.into(), promise.into(), reason];
-    js_promise_reject_cb
+    let maybe_has_unhandled_rejection_handler = js_promise_reject_cb
       .open(tc_scope)
       .call(tc_scope, undefined, args);
 
-    if let Some(exception) = tc_scope.exception() {
-      if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
-        tc_scope.reset(); // Cancel pending exception.
-        js_uncaught_exception_cb.open(tc_scope).call(
-          tc_scope,
-          undefined,
-          &[exception],
-        );
-      }
-    }
+    let has_unhandled_rejection_handler =
+      if let Some(value) = maybe_has_unhandled_rejection_handler {
+        value.is_true()
+      } else {
+        false
+      };
 
-    if tc_scope.has_caught() {
-      // If we get here, an exception was thrown by the unhandledRejection
-      // handler and there is ether no uncaughtException handler or the
-      // handler threw an exception of its own.
-      //
-      // TODO(bnoordhuis) Node terminates the process or worker thread
-      // but we don't really have that option. The exception won't bubble
-      // up either because V8 cancels it when this function returns.
-      let exception = tc_scope
-        .stack_trace()
-        .or_else(|| tc_scope.exception())
-        .map(|value| value.to_rust_string_lossy(tc_scope))
-        .unwrap_or_else(|| "no exception".into());
-      eprintln!("Unhandled exception: {}", exception);
+    if has_unhandled_rejection_handler {
+      let mut state = state_rc.borrow_mut();
+      if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
+        if !pending_mod_evaluate.has_evaluated {
+          pending_mod_evaluate
+            .handled_promise_rejections
+            .push(promise_global);
+        }
+      }
     }
   } else {
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
-
     match message.get_event() {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();

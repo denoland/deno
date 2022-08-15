@@ -659,7 +659,6 @@ itest!(async_error {
 
 itest!(config {
   args: "run --reload --config config.tsconfig.json --check config.ts",
-  exit_code: 1,
   output: "config.ts.out",
 });
 
@@ -1042,7 +1041,7 @@ itest!(ts_type_imports {
 });
 
 itest!(ts_decorators {
-  args: "run --reload -c tsconfig.decorators.json --check ts_decorators.ts",
+  args: "run --reload --check ts_decorators.ts",
   output: "ts_decorators.ts.out",
 });
 
@@ -2755,6 +2754,12 @@ itest!(custom_inspect_url {
   output: "custom_inspect_url.js.out",
 });
 
+itest!(config_json_import {
+  args: "run --quiet -c jsx/deno-jsx.json config_json_import.ts",
+  output: "config_json_import.ts.out",
+  http_server: true,
+});
+
 #[test]
 fn running_declaration_files() {
   let temp_dir = TempDir::new();
@@ -2782,4 +2787,20 @@ itest!(test_and_bench_are_noops_in_run {
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(unhandled_rejection {
+  args: "run --check unhandled_rejection.ts",
+  output: "unhandled_rejection.ts.out",
+});
+
+itest!(unhandled_rejection_sync_error {
+  args: "run --check unhandled_rejection_sync_error.ts",
+  output: "unhandled_rejection_sync_error.ts.out",
+});
+
+itest!(nested_error {
+  args: "run nested_error.ts",
+  output: "nested_error.ts.out",
+  exit_code: 1,
 });

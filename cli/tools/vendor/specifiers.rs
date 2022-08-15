@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 
+use crate::fs_util;
 use crate::fs_util::path_with_stem_suffix;
 
 /// Partitions the provided specifiers by the non-path and non-query parts of a specifier.
@@ -29,24 +30,7 @@ pub fn partition_by_root_specifiers<'a>(
 
 /// Gets the directory name to use for the provided root.
 pub fn dir_name_for_root(root: &ModuleSpecifier) -> PathBuf {
-  let mut result = String::new();
-  if let Some(domain) = root.domain() {
-    result.push_str(&sanitize_segment(domain));
-  }
-  if let Some(port) = root.port() {
-    if !result.is_empty() {
-      result.push('_');
-    }
-    result.push_str(&port.to_string());
-  }
-  let mut result = PathBuf::from(result);
-  if let Some(segments) = root.path_segments() {
-    for segment in segments.filter(|s| !s.is_empty()) {
-      result = result.join(sanitize_segment(segment));
-    }
-  }
-
-  result
+  fs_util::root_url_to_safe_local_dirname(root)
 }
 
 /// Gets a unique file path given the provided file path
@@ -90,23 +74,14 @@ pub fn is_remote_specifier_text(text: &str) -> bool {
 pub fn sanitize_filepath(text: &str) -> String {
   text
     .chars()
-    .map(|c| if is_banned_path_char(c) { '_' } else { c })
+    .map(|c| {
+      if fs_util::is_banned_path_char(c) {
+        '_'
+      } else {
+        c
+      }
+    })
     .collect()
-}
-
-fn is_banned_path_char(c: char) -> bool {
-  matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*')
-}
-
-fn sanitize_segment(text: &str) -> String {
-  text
-    .chars()
-    .map(|c| if is_banned_segment_char(c) { '_' } else { c })
-    .collect()
-}
-
-fn is_banned_segment_char(c: char) -> bool {
-  matches!(c, '/' | '\\') || is_banned_path_char(c)
 }
 
 #[cfg(test)]
@@ -200,20 +175,6 @@ mod test {
       })
       .collect::<Vec<_>>();
     assert_eq!(output, expected);
-  }
-
-  #[test]
-  fn should_get_dir_name_root() {
-    run_test("http://deno.land/x/test", "deno.land/x/test");
-    run_test("http://localhost", "localhost");
-    run_test("http://localhost/test%20:test", "localhost/test%20_test");
-
-    fn run_test(specifier: &str, expected: &str) {
-      assert_eq!(
-        dir_name_for_root(&ModuleSpecifier::parse(specifier).unwrap()),
-        PathBuf::from(expected)
-      );
-    }
   }
 
   #[test]

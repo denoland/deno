@@ -3,7 +3,10 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
-import { assertThrows } from "../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
+import {
+  assertThrows,
+} from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
@@ -14,10 +17,6 @@ const [libPrefix, libSuffix] = {
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
-
-function ptr(v) {
-  return Deno.UnsafePointer.of(v);
-}
 
 // dlopen shouldn't panic
 assertThrows(() => {
@@ -184,6 +183,12 @@ const dylib = Deno.dlopen(libPath, {
   "static_ptr": {
     type: "pointer",
   },
+  /**
+   * Invalid UTF-8 characters, buffer of length 14
+   */
+  "static_char": {
+    type: "pointer",
+  },
 });
 const { symbols } = dylib;
 
@@ -195,7 +200,20 @@ dylib.symbols.print_buffer(buffer, buffer.length);
 const subarray = buffer.subarray(3);
 dylib.symbols.print_buffer(subarray, subarray.length - 2);
 dylib.symbols.print_buffer2(buffer, buffer.length, buffer2, buffer2.length);
-const ptr0 = dylib.symbols.return_buffer();
+
+const { return_buffer } = symbols;
+function returnBuffer() { return return_buffer(); };
+
+%PrepareFunctionForOptimization(returnBuffer);
+returnBuffer();
+%OptimizeFunctionOnNextCall(returnBuffer);
+const ptr0 = returnBuffer();
+
+const status = %GetOptimizationStatus(returnBuffer);
+if (!(status & (1 << 4))) {
+  throw new Error("returnBuffer is not optimized");
+}
+
 dylib.symbols.print_buffer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
@@ -263,6 +281,12 @@ console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_i64(-0xffffffffn, -0xffffffffn));
 console.log(dylib.symbols.add_usize(0xffffffffn, 0xffffffffn));
 console.log(dylib.symbols.add_isize(-0xffffffffn, -0xffffffffn));
+console.log(dylib.symbols.add_u64(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_i64(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_i64(Number.MIN_SAFE_INTEGER, -1));
+console.log(dylib.symbols.add_usize(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_isize(Number.MAX_SAFE_INTEGER, 1));
+console.log(dylib.symbols.add_isize(Number.MIN_SAFE_INTEGER, -1));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
 
@@ -278,6 +302,12 @@ console.log(
 console.log(
   await dylib.symbols.add_isize_nonblocking(-0xffffffffn, -0xffffffffn),
 );
+console.log(await dylib.symbols.add_u64_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_i64_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_i64_nonblocking(Number.MIN_SAFE_INTEGER, -1));
+console.log(await dylib.symbols.add_usize_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_isize_nonblocking(Number.MAX_SAFE_INTEGER, 1));
+console.log(await dylib.symbols.add_isize_nonblocking(Number.MIN_SAFE_INTEGER, -1));
 console.log(await dylib.symbols.add_f32_nonblocking(123.123, 456.789));
 console.log(await dylib.symbols.add_f64_nonblocking(123.123, 456.789));
 
@@ -386,7 +416,7 @@ const throwCallback = new Deno.UnsafeCallback({
 
 assertThrows(
   () => {
-    dylib.symbols.call_fn_ptr(ptr(throwCallback));
+    dylib.symbols.call_fn_ptr(throwCallback.pointer);
   },
   TypeError,
   "hi",
@@ -394,13 +424,13 @@ assertThrows(
 
 const { call_stored_function } = dylib.symbols;
 
-dylib.symbols.call_fn_ptr(ptr(logCallback));
-dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
-dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
-dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
-dylib.symbols.store_function(ptr(logCallback));
+dylib.symbols.call_fn_ptr(logCallback.pointer);
+dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback.pointer);
+dylib.symbols.call_fn_ptr_return_u8(returnU8Callback.pointer);
+dylib.symbols.call_fn_ptr_return_buffer(returnBufferCallback.pointer);
+dylib.symbols.store_function(logCallback.pointer);
 call_stored_function();
-dylib.symbols.store_function_2(ptr(add10Callback));
+dylib.symbols.store_function_2(add10Callback.pointer);
 dylib.symbols.call_stored_function_2(20);
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -409,7 +439,7 @@ const nestedCallback = new Deno.UnsafeCallback(
     dylib.symbols.call_stored_function_2(10);
   },
 );
-dylib.symbols.store_function(ptr(nestedCallback));
+dylib.symbols.store_function(nestedCallback.pointer);
 
 dylib.symbols.store_function(null);
 dylib.symbols.store_function_2(null);
@@ -423,24 +453,50 @@ const addToFooCallback = new Deno.UnsafeCallback({
 // Test thread safe callbacks
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
 addToFooCallback.unref();
 logCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
 logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
-await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
 console.log("Static i64:", dylib.symbols.static_i64);
 console.log(
   "Static ptr:",
-  typeof dylib.symbols.static_ptr === "bigint",
+  typeof dylib.symbols.static_ptr === "number",
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
 console.log("Static ptr value:", view.getUint32());
+
+const arrayBuffer = view.getArrayBuffer(4);
+const uint32Array = new Uint32Array(arrayBuffer);
+console.log("arrayBuffer.byteLength:", arrayBuffer.byteLength);
+console.log("uint32Array.length:", uint32Array.length);
+console.log("uint32Array[0]:", uint32Array[0]);
+uint32Array[0] = 55; // MUTATES!
+console.log("uint32Array[0] after mutation:", uint32Array[0]);
+console.log("Static ptr value after mutation:", view.getUint32());
+
+// Test non-UTF-8 characters
+
+const charView = new Deno.UnsafePointerView(dylib.symbols.static_char);
+
+const charArrayBuffer = charView.getArrayBuffer(14);
+const uint8Array = new Uint8Array(charArrayBuffer);
+assertEquals([...uint8Array], [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00
+]);
+
+try {
+  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
+} catch (_err) {
+  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+}
 
 (function cleanup() {
   dylib.close();

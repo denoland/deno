@@ -1479,8 +1479,8 @@
         ],
         "is.tentative.any.html": true,
         "is.tentative.any.worker.html": true,
-        "toString.tentative.any.html": false,
-        "toString.tentative.any.worker.html": false,
+        "toString.tentative.any.html": true,
+        "toString.tentative.any.worker.html": true,
         "type.tentative.any.html": false,
         "type.tentative.any.worker.html": false
       },
@@ -4360,7 +4360,6 @@
           "The CanvasPath interface object should be exposed.",
           "The TextMetrics interface object should be exposed.",
           "The Path2D interface object should be exposed.",
-          "The PromiseRejectionEvent interface object should be exposed.",
           "The EventSource interface object should be exposed.",
           "The XMLHttpRequestEventTarget interface object should be exposed.",
           "The XMLHttpRequestUpload interface object should be exposed.",

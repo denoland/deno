@@ -5,6 +5,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
@@ -189,8 +190,7 @@
 
       this[_url] = wsURL.href;
 
-      core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
+      ops.op_ws_check_permission_and_cancel_handle(
         this[_url],
         false,
       );

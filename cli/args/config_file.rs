@@ -2,6 +2,8 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
+use crate::args::TaskFlags;
+use crate::fs_util;
 use crate::fs_util::canonicalize_path;
 use crate::fs_util::specifier_parent;
 use crate::fs_util::specifier_to_file_path;
@@ -103,6 +105,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "emitBOM",
   "emitDeclarationOnly",
   "esModuleInterop",
+  "experimentalDecorators",
   "extendedDiagnostics",
   "forceConsistentCasingInFileNames",
   "generateCpuProfile",
@@ -118,6 +121,7 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "mapRoot",
   "maxNodeModuleJsDepth",
   "module",
+  "moduleDetection",
   "moduleResolution",
   "newLine",
   "noEmit",
@@ -449,6 +453,18 @@ impl ConfigFile {
               return Ok(Some(cf));
             }
           }
+          // attempt to resolve the config file from the task subcommand's
+          // `--cwd` when specified
+          if let crate::args::DenoSubcommand::Task(TaskFlags {
+            cwd: Some(path),
+            ..
+          }) = &flags.subcommand
+          {
+            let task_cwd = fs_util::canonicalize_path(&PathBuf::from(path))?;
+            if let Some(path) = Self::discover_from(&task_cwd, &mut checked)? {
+              return Ok(Some(path));
+            }
+          };
           // From CWD walk up to root looking for deno.json or deno.jsonc
           let cwd = std::env::current_dir()?;
           Self::discover_from(&cwd, &mut checked)
@@ -541,23 +557,24 @@ impl ConfigFile {
     text: &str,
     specifier: &ModuleSpecifier,
   ) -> Result<Self, AnyError> {
-    let jsonc = match jsonc_parser::parse_to_serde_value(text) {
-      Ok(None) => json!({}),
-      Ok(Some(value)) if value.is_object() => value,
-      Ok(Some(_)) => {
-        return Err(anyhow!(
-          "config file JSON {:?} should be an object",
-          specifier,
-        ))
-      }
-      Err(e) => {
-        return Err(anyhow!(
-          "Unable to parse config file JSON {:?} because of {}",
-          specifier,
-          e.to_string()
-        ))
-      }
-    };
+    let jsonc =
+      match jsonc_parser::parse_to_serde_value(text, &Default::default()) {
+        Ok(None) => json!({}),
+        Ok(Some(value)) if value.is_object() => value,
+        Ok(Some(_)) => {
+          return Err(anyhow!(
+            "config file JSON {:?} should be an object",
+            specifier,
+          ))
+        }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to parse config file JSON {:?} because of {}",
+            specifier,
+            e.to_string()
+          ))
+        }
+      };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
     Ok(Self {

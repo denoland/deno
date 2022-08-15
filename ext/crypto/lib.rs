@@ -556,9 +556,45 @@ pub async fn op_crypto_derive_bits(
           // raw serialized x-coordinate of the computed point
           Ok(shared_secret.raw_secret_bytes().to_vec().into())
         }
-        // TODO(@littledivy): support for P384
-        // https://github.com/RustCrypto/elliptic-curves/issues/240
-        _ => Err(type_error("Unsupported namedCurve".to_string())),
+        CryptoNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| type_error("Unexpected error decoding private key"))?;
+
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p384::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p384::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?;
+
+              let pk = p384::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
+              } else {
+                return Err(type_error(
+                  "Unexpected error decoding private key",
+                ));
+              }
+            }
+            _ => unreachable!(),
+          };
+
+          let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_nonzero_scalar(),
+            public_key.as_affine(),
+          );
+
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec().into())
+        }
       }
     }
     Algorithm::Hkdf => {

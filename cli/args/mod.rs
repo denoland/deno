@@ -278,12 +278,34 @@ impl CliOptions {
     self.flags.compat
   }
 
-  pub fn coverage_dir(&self) -> Option<&String> {
-    self.flags.coverage_dir.as_ref()
+  pub fn coverage_dir(&self) -> Option<String> {
+    fn allow_coverage(sub_command: &DenoSubcommand) -> bool {
+      match sub_command {
+        DenoSubcommand::Test(_) => true,
+        DenoSubcommand::Run(flags) => !flags.is_stdin(),
+        _ => false,
+      }
+    }
+
+    if allow_coverage(self.sub_command()) {
+      self
+        .flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok())
+    } else {
+      None
+    }
   }
 
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
+  }
+
+  /// If the --inspect or --inspect-brk flags are used.
+  pub fn is_inspecting(&self) -> bool {
+    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
   }
 
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
@@ -328,6 +350,20 @@ impl CliOptions {
 
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
+  }
+
+  pub fn trace_ops(&self) -> bool {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.trace_ops,
+      _ => false,
+    }
+  }
+
+  pub fn shuffle_tests(&self) -> Option<u64> {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.shuffle,
+      _ => None,
+    }
   }
 
   pub fn type_check_mode(&self) -> TypeCheckMode {
