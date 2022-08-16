@@ -58,14 +58,15 @@
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
-   * @property {string[]} urlList
+   * @property {(() => string)[]} urlList
+   * @property {string[]} urlListInner
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    * @property {Blob | null} blobUrlEntry
    */
 
   /**
    * @param {() => string} method
-   * @param {string} url
+   * @param {string | () => string} url
    * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
@@ -73,7 +74,7 @@
    */
   function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
-    if (maybeBlob && url.startsWith("blob:")) {
+    if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
@@ -105,14 +106,30 @@
       body,
       redirectMode: "follow",
       redirectCount: 0,
-      urlList: [url],
+      urlList: [typeof url === "string" ? () => url : url],
+      urlListInner: [],
       clientRid: null,
       blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListInner[0] === undefined) {
+          try {
+            this.headerListInner[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListInner[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListInner[currentIndex] === undefined) {
+          try {
+            this.headerListInner[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListInner[currentIndex];
       },
     };
   }
@@ -140,13 +157,29 @@
       redirectMode: request.redirectMode,
       redirectCount: request.redirectCount,
       urlList: request.urlList,
+      urlListInner: request.urlListInner,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListInner[0] === undefined) {
+          try {
+            this.headerListInner[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListInner[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListInner[currentIndex] === undefined) {
+          try {
+            this.headerListInner[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListInner[currentIndex];
       },
     };
   }
@@ -249,7 +282,13 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest(() => "GET", parsedURL.href, () => [], null, true);
+        request = newInnerRequest(
+          () => "GET",
+          parsedURL.href,
+          () => [],
+          null,
+          true,
+        );
       } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
