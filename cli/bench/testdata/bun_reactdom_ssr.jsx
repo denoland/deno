@@ -1,5 +1,6 @@
 // Bun uses a custom non-portable react-dom fork.
-import { renderToReadableStream } from "../testdata/react-dom.js";
+// TODO(@littledivy): Reenable this when it stops segfaulting.
+import { renderToReadableStream } from "./react-dom.js";
 const headers = {
   headers: {
     "Content-Type": "text/html",

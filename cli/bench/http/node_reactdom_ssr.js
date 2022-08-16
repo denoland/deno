@@ -16120,6 +16120,9 @@ var Nd = Dc(zd()),
       ),
     ),
   $d = !1;
+
+const port = process.argv[2] || "4544";
+console.log("port", port);
 Cv.createServer(function (e, n) {
   let i = (0, Nd.renderToPipeableStream)($i.default.createElement(Ev, null), {
     onShellReady() {
@@ -16139,7 +16142,7 @@ Cv.createServer(function (e, n) {
       ($d = !0), console.error(s);
     },
   });
-}).listen(9000);
+}).listen(port);
 /**
  * @license React
  * react-dom-server-legacy.node.development.js

@@ -2,14 +2,15 @@
 
 // deno-lint-ignore-file no-unused-vars require-await
 
+const addr = Deno.args[0] || "127.0.0.1:4500";
+const [hostname, port] = addr.split(":");
 const { serve } = Deno;
-// import { serve } from "http://deno.land/std/http/server.ts"
 
-async function handler(req) {
+async function handler() {
   return new Response("Hello World");
 }
 
 serve(handler, {
-  hostname: "127.0.0.1",
-  port: 9000,
+  hostname,
+  port,
 });

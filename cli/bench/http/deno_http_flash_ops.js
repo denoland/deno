@@ -8,7 +8,9 @@ const {
     ops: { op_flash_make_request, op_flash_respond, op_flash_serve },
   },
 } = Deno;
-const serverId = op_flash_serve({ hostname: "127.0.0.1", port: 9000 });
+const addr = Deno.args[0] || "127.0.0.1:4500";
+const [hostname, port] = addr.split(":");
+const serverId = op_flash_serve({ hostname, port });
 const serverPromise = opAsync("op_flash_drive_server", serverId);
 
 const fastOps = op_flash_make_request();
