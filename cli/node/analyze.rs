@@ -9,6 +9,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
+use std::fmt::Write;
 
 static NODE_GLOBALS: &[&str] = &[
   "Buffer",
@@ -65,11 +66,11 @@ pub fn esm_code_with_node_globals(
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
-    result.push_str(&format!("var globalThis = {};", global_this_expr));
+    write!(result, "var globalThis = {};", global_this_expr).unwrap();
     "globalThis"
   };
   for global in globals {
-    result.push_str(&format!("var {0} = {1}.{0};", global, global_this_expr));
+    write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
   }
 
   result.push_str(parsed_source.text_info().text_str());
