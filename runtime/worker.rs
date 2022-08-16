@@ -168,7 +168,7 @@ impl MainWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
-      deno_flash::init(unstable),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,

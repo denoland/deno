@@ -1089,11 +1089,17 @@ fn run_server(
 }
 
 #[op]
-fn op_flash_serve(
+fn op_flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
-) -> Result<u32, AnyError> {
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
   check_unstable(state, "Deno.serve");
+  state
+    .borrow_mut::<P>()
+    .check_net(&(&opts.hostname, Some(opts.port)))?;
   let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
@@ -1307,14 +1313,21 @@ fn check_unstable(state: &OpState, api_name: &str) {
   }
 }
 
-pub fn init(unstable: bool) -> Extension {
+pub trait FlashPermissions {
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    _host: &(T, Option<u16>),
+  ) -> Result<(), AnyError>;
+}
+
+pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(deno_core::include_js_files!(
       prefix "deno:ext/flash",
       "01_http.js",
     ))
     .ops(vec![
-      op_flash_serve::decl(),
+      op_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_chuncked::decl(),
       op_flash_method::decl(),
