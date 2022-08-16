@@ -112,6 +112,9 @@ fn ensure_read_permission(
 pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
   check_unstable(state);
 
+  // todo(dsherret): this code is node compat mode specific and
+  // we probably don't want it for small mammal, so ignore it for now
+
   // let (home_dir, node_path) = if cfg!(windows) {
   //   (
   //     std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
@@ -161,13 +164,15 @@ pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
 pub fn op_require_node_module_paths(
   state: &mut OpState,
   from: String,
-) -> Vec<String> {
+) -> Result<Vec<String>, AnyError> {
   check_unstable(state);
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(&from)
     .unwrap()
     .to_file_path()
     .unwrap();
+
+  ensure_read_permission(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -177,14 +182,14 @@ pub fn op_require_node_module_paths(
       if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
       {
         let p = from_str.to_owned() + "node_modules";
-        return vec![p];
+        return Ok(vec![p]);
       }
     }
   } else {
     // Return early not only to avoid unnecessary work, but to *avoid* returning
     // an array of two items for a root: [ '//node_modules', '/node_modules' ]
     if from.to_string_lossy() == "/" {
-      return vec!["/node_modules".to_string()];
+      return Ok(vec!["/node_modules".to_string()]);
     }
   }
 
@@ -204,7 +209,7 @@ pub fn op_require_node_module_paths(
     paths.push("/node_modules".to_string());
   }
 
-  paths
+  Ok(paths)
 }
 
 #[op]
