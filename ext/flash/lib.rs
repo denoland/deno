@@ -605,13 +605,39 @@ fn op_flash_first_packet(
 
   if tx.te_chunked {
     let mut buf = vec![0; 1024];
-    let mut decoder = chunked::Decoder::new(buffer, tx.remaining_chunk_size);
-    if let Ok(n) = decoder.read(&mut buf) {
-      tx.remaining_chunk_size = decoder.remaining_chunks_size;
-      buf.truncate(n);
-      return Some(buf.into());
-    } else {
-      panic!("chunked read error");
+    let mut offset = 0;
+    let mut decoder = chunked::Decoder::new(
+      std::io::Cursor::new(buffer),
+      tx.remaining_chunk_size,
+    );
+
+    loop {
+      match decoder.read(&mut buf[offset..]) {
+        Ok(n) => {
+          tx.remaining_chunk_size = decoder.remaining_chunks_size;
+          offset += n;
+
+          if n == 0 {
+            if decoder.end {
+              tx.te_chunked = false;
+            }
+            buf.truncate(offset);
+            return Some(buf.into());
+          }
+
+          if offset < buf.len()
+            && decoder.source.position() < buffer.len() as u64
+          {
+            continue;
+          }
+
+          buf.truncate(offset);
+          return Some(buf.into());
+        }
+        Err(e) => {
+          panic!("chunked read error: {:?}", e);
+        }
+      }
     }
   }
 
@@ -642,44 +668,51 @@ async fn op_flash_read_body(
   let tx = ctx.response.get_mut(&token).unwrap();
 
   if tx.te_chunked {
-    let mut first = true;
+    let mut decoder =
+      chunked::Decoder::new(tx.socket(), tx.remaining_chunk_size);
     loop {
       let sock = tx.socket();
-      if !first {
-        sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+
+      let _lock = sock.read_lock.lock().unwrap();
+      match decoder.read(&mut buf) {
+        Ok(n) => {
+          tx.remaining_chunk_size = decoder.remaining_chunks_size;
+          return n;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
+          panic!("chunked read error: {}", e);
+        }
+        Err(_) => {
+          drop(_lock);
+          sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+        }
       }
-      first = false;
-      let l = sock.read_lock.clone();
+    }
+  }
+
+  if let Some(content_length) = tx.content_length {
+    let sock = tx.socket();
+    let l = sock.read_lock.clone();
+
+    loop {
       let _lock = l.lock().unwrap();
-      let mut decoder = chunked::Decoder::new(sock, tx.remaining_chunk_size);
-      if let Ok(n) = decoder.read(&mut buf) {
-        tx.remaining_chunk_size = decoder.remaining_chunks_size;
-        return n;
+      if tx.content_read >= content_length as usize {
+        return 0;
       }
-      tx.remaining_chunk_size = decoder.remaining_chunks_size;
-    }
-  }
-
-  // SAFETY: The socket lives on the mio thread.
-  let sock = unsafe { &mut *tx.socket };
-  let l = sock.read_lock.clone();
-
-  loop {
-    let _lock = l.lock().unwrap();
-    if tx.content_read >= tx.content_length.unwrap() as usize {
-      return 0;
-    }
-    match sock.read(&mut buf) {
-      Ok(n) => {
-        tx.content_read += n;
-        return n;
-      }
-      _ => {
-        drop(_lock);
-        sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+      match sock.read(&mut buf) {
+        Ok(n) => {
+          tx.content_read += n;
+          return n;
+        }
+        _ => {
+          drop(_lock);
+          sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+        }
       }
     }
   }
+
+  0
 }
 
 // https://github.com/hyperium/hyper/blob/0c8ee93d7f557afc63ca2a5686d19071813ab2b7/src/headers.rs#L67
@@ -839,6 +872,7 @@ fn run_server(
 
             match nread {
               Ok(0) => {
+                trace!("Socket closed: {}", token.0);
                 sockets.remove(&token);
                 continue 'events;
               }

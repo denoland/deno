@@ -11,11 +11,12 @@ use std::io::Read;
 use std::io::Result as IoResult;
 
 pub struct Decoder<R> {
-  source: R,
+  pub source: R,
 
   // remaining size of the chunk being read
   // none if we are not in a chunk
   pub remaining_chunks_size: Option<usize>,
+  pub end: bool,
 }
 
 impl<R> Decoder<R>
@@ -26,6 +27,7 @@ where
     Decoder {
       source,
       remaining_chunks_size,
+      end: false,
     }
   }
 
@@ -109,6 +111,7 @@ where
         if chunk_size == 0 {
           self.read_carriage_return()?;
           self.read_line_feed()?;
+          self.end = true;
           return Ok(0);
         }
 
@@ -125,11 +128,8 @@ where
 
     // third possibility: the read request goes further than the current chunk
     // we simply read until the end of the chunk and return
-    assert!(buf.len() >= remaining_chunks_size);
-
     let buf = &mut buf[..remaining_chunks_size];
     let read = self.source.read(buf)?;
-
     self.remaining_chunks_size = if read == remaining_chunks_size {
       self.read_carriage_return()?;
       self.read_line_feed()?;

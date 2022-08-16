@@ -1093,35 +1093,34 @@ Deno.test(
   },
 );
 
-// FIXME:
-// Deno.test(
-//   { permissions: { net: true } },
-//   async function httpServerPostWithChunkedBody() {
-//     const promise = deferred();
-//     const ac = new AbortController();
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerPostWithChunkedBody() {
+    const promise = deferred();
+    const ac = new AbortController();
 
-//     const server = Deno.serve(async (request) => {
-//       assertEquals(request.method, "POST");
-//       assertEquals(await request.text(), "qwert");
-//       promise.resolve();
-//       return new Response("ok");
-//     }, { port: 4503, signal: ac.signal });
+    const server = Deno.serve(async (request) => {
+      assertEquals(request.method, "POST");
+      assertEquals(await request.text(), "qwert");
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
 
-//     const conn = await Deno.connect({ port: 4503 });
-//     const encoder = new TextEncoder();
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
 
-//     const body =
-//       `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
-//     const writeResult = await conn.write(encoder.encode(body));
-//     assertEquals(body.length, writeResult);
-//     await promise;
+    const body =
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
 
-//     conn.close();
+    conn.close();
 
-//     ac.abort();
-//     await server;
-//   },
-// );
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true } },
@@ -1208,6 +1207,40 @@ Deno.test(
     assertEquals(response.headers.get("transfer-encoding"), "chunked");
     await promise;
     assertEquals(new Uint8Array(await response.arrayBuffer()), data);
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerPostFile() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    const data = new Uint8Array(70 * 1024).fill(1);
+    await file.write(data);
+    file.close();
+
+    const server = Deno.serve(async (request) => {
+      assertEquals(new Uint8Array(await request.arrayBuffer()), data);
+      promise.resolve();
+      return new Response("ok");
+    }, { port: 4503, signal: ac.signal });
+
+    const f = await Deno.open(tmpFile, { write: true, read: true });
+    const response = await fetch(`http://localhost:4503/`, {
+      method: "POST",
+      body: f.readable,
+    });
+
+    await promise;
+
+    assertEquals(response.status, 200);
+    assertEquals(await response.text(), "ok");
+
     ac.abort();
     await server;
   },
