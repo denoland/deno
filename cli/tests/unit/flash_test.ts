@@ -512,7 +512,8 @@ Deno.test(
     }
 
     const buf = new Uint8Array(1024);
-    assertEquals(await clientConn.read(buf), 99);
+    await clientConn.read(buf);
+
     await promise;
     let responseText = new TextDecoder().decode(buf);
     clientConn.close();
@@ -1180,6 +1181,32 @@ Deno.test(
 
     conn.close();
 
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerSendFile() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const tmpFile = await Deno.makeTempFile();
+    const file = await Deno.open(tmpFile, { write: true, read: true });
+    const data = new Uint8Array(70 * 1024).fill(1);
+    await file.write(data);
+    file.close();
+    const server = Deno.serve(async () => {  
+      const f = await Deno.open(tmpFile, { read: true });
+      promise.resolve();
+      return new Response(f.readable, { status: 200 });
+    }, { port: 4503, signal: ac.signal });
+
+    const response = await fetch(`http://localhost:4503/`);
+    assertEquals(response.status, 200);
+    assertEquals(response.headers.get("transfer-encoding"), "chunked");
+    await promise;
+    assertEquals(new Uint8Array(await response.arrayBuffer()), data);
     ac.abort();
     await server;
   },
