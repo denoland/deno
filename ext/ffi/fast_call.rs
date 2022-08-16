@@ -399,13 +399,14 @@ impl SysVAmd64 {
       + sse_params.saturating_sub(Self::FLOAT_REGISTERS))
       * 8;
 
+    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address)
     // Section 3.2.2 of the SysV AMD64 ABI:
     // > The end of the input argument area shall be aligned on a 16 (32 or 64, if
     // > __m256 or __m512 is passed on stack) byte boundary. In other words, the value
     // > (%rsp + 8) is always a multiple of 16 (32 or 64) when control is transferred to
     // > the function entry point. The stack pointer, %rsp, always points to the end of the
     // > latest allocated stack frame.
-    stack_size += (16 - stack_size % 16) % 16;
+    stack_size += (16 - (stack_size + 8) % 16) % 16;
 
     dynasm!(self.assmblr
       ; .arch x64
@@ -660,12 +661,14 @@ impl Aarch64Apple {
             dynasm!(self.assmblr; .arch aarch64; ldrsb w7, [sp, self.offset_trampoline])
           }
           U(B) => {
+            // ldrb zero-extends the byte to fill the 32bits of the register
             dynasm!(self.assmblr; .arch aarch64; ldrb w7, [sp, self.offset_trampoline])
           }
           I(W) => {
             dynasm!(self.assmblr; .arch aarch64; ldrsh w7, [sp, self.offset_trampoline])
           }
           U(W) => {
+            // ldrh zero-extends the half-word to fill the 32bits of the register
             dynasm!(self.assmblr; .arch aarch64; ldrh w7, [sp, self.offset_trampoline])
           }
           I(DW) | U(DW) => {
@@ -972,7 +975,7 @@ impl Win64 {
     // > and may be used by the called function for other purposes besides saving parameter register values
     stack_size += max(params.len() as u32, 4) * 8;
 
-    // Align stack (including the 8 bytes of the trampoline caller's return address)
+    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address)
     // Section "Stack Allocation" of stack-usage docs:
     // > The stack will always be maintained 16-byte aligned, except within the prolog (for example, after the return address is pushed)
     stack_size += (16 - (stack_size + 8) % 16) % 16;
@@ -1240,11 +1243,51 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
+
+    #[test]
+    fn integer_casting() {
+      let trampoline = SysVAmd64::compile(&symbol(
+        vec![U8, U16, I8, I16, U8, U16, I8, I16, U8, U16, I8, I16],
+        I8,
+      ));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/qo59bPsfv
+      dynasm!(assembler
+        ; .arch x64
+        ; sub rsp, DWORD 56                 // stack allocation
+        ; movzx edi, sil                    // u8
+        ; movzx esi, dx                     // u16
+        ; movsx edx, cl                     // i8
+        ; movsx ecx, r8w                    // i16
+        ; movzx r8d, r9b                    // u8
+        ; movzx r9d, WORD [DWORD rsp + 64]  // u16
+        ; movsx eax, BYTE [DWORD rsp + 72]  // i8
+        ; mov [DWORD rsp + 0], eax          // ..
+        ; movsx eax, WORD [DWORD rsp + 80]  // i16
+        ; mov [DWORD rsp + 8], eax          // ..
+        ; movzx eax, BYTE [DWORD rsp + 88]  // u8
+        ; mov [DWORD rsp + 16], eax         // ..
+        ; movzx eax, WORD [DWORD rsp + 96]  // u16
+        ; mov [DWORD rsp + 24], eax         // ..
+        ; movsx eax, BYTE [DWORD rsp + 104] // i8
+        ; mov [DWORD rsp + 32], eax         // ..
+        ; movsx eax, WORD [DWORD rsp + 112] // i16
+        ; mov [DWORD rsp + 40], eax         // ..
+        ; mov rax, QWORD 0
+        ; call rax
+        ; movsx eax, al      // return value cast
+        ; add rsp, DWORD 56  // stack deallocation
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
   }
   mod aarch64_apple {
     use std::ops::Deref;
 
-    use dynasmrt::dynasm;
+    use dynasmrt::{dynasm, DynasmApi};
 
     use super::super::Aarch64Apple;
     use super::symbol;
@@ -1277,13 +1320,48 @@ mod tests {
         ; ldr w8, [sp, 16]   // i32
         ; str w8, [sp, 8]    // ..
         ; ldr w8, [sp, 20]   // i16
-        ; strh w8, [sp, 12]   // ..
+        ; strh w8, [sp, 12]  // ..
         ; ldr w8, [sp, 24]   // i8
-        ; strb w8, [sp, 14]   // ..
+        ; strb w8, [sp, 14]  // ..
         ; ldr s16, [sp, 28]  // f32
         ; str s16, [sp, 16]  // ..
         ; ldr d16, [sp, 32]  // f64
         ; str d16, [sp, 24]  // ..
+        ; movz x8, 0
+        ; br x8
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn integer_casting() {
+      let trampoline = Aarch64Apple::compile(&symbol(
+        vec![U8, U16, I8, I16, U8, U16, I8, I16, U8, U16, I8, I16],
+        I8,
+      ));
+
+      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/7qfzbzobM
+      dynasm!(assembler
+        ; .arch aarch64
+        ; and w0, w1, 0xFF   // u8
+        ; and w1, w2, 0xFFFF // u16
+        ; sxtb w2, w3        // i8
+        ; sxth w3, w4        // i16
+        ; and w4, w5, 0xFF   // u8
+        ; and w5, w6, 0xFFFF // u16
+        ; sxtb w6, w7        // i8
+        ; ldrsh w7, [sp]      // i16
+
+        ; ldr w8, [sp, 4]  // u8
+        ; strb w8, [sp]      // ..
+        ; ldr w8, [sp, 8]   // u16
+        ; strh w8, [sp, 2]  // ..
+        ; ldr w8, [sp, 12]   // i8
+        ; strb w8, [sp, 4]  // ..
+        ; ldr w8, [sp, 16]   // i16
+        ; strh w8, [sp, 6]  // ..
         ; movz x8, 0
         ; br x8
       );
