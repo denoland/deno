@@ -1127,6 +1127,9 @@ declare namespace Deno {
 
     /** The handler to invoke when route handlers throw an error. */
     onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server started listening */
+    onListen?: (params: { hostname: string; port: number }) => void;
   }
 
   export interface ServeTlsInit extends ServeInit {

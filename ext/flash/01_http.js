@@ -171,6 +171,13 @@
     return core.opSync("op_flash_make_request");
   }
 
+  function hostnameForDisplay(hostname) {
+    // If the hostname is "0.0.0.0", we display "localhost" in console
+    // because browsers in Windows don't resolve "0.0.0.0".
+    // See the discussion in https://github.com/denoland/deno_std/issues/1165
+    return hostname === "0.0.0.0" ? "localhost" : hostname;
+  }
+
   function serve(handler, opts = {}) {
     delete opts.key;
     delete opts.cert;
@@ -190,8 +197,20 @@
       return new Response("Internal Server Error", { status: 500 });
     };
     delete opts.onError;
+    const onListen = opts.onListen ?? function () {
+      console.log(
+        `Listening on http://${
+          hostnameForDisplay(opts.hostname)
+        }:${opts.port}/`,
+      );
+    };
+    delete opts.onListen;
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
+
+    // FIXME(bartlomieju): I think this is racy, it's not guaranteed that
+    // server has already started listening
+    onListen({ hostname: opts.hostname, port: opts.port });
 
     const server = {
       id: serverId,
