@@ -229,21 +229,15 @@ impl ModuleLoader for CliModuleLoader {
 
 impl SourceMapGetter for CliModuleLoader {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = resolve_url(file_name) {
-      match specifier.scheme() {
-        // we should only be looking for emits for schemes that denote external
-        // modules, which the disk_cache supports
-        "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
-        _ => return None,
-      }
-      if let Ok(source) = self.load_prepared_module(&specifier) {
-        source_map_from_code(&source.code)
-      } else {
-        None
-      }
-    } else {
-      None
+    let specifier = resolve_url(file_name).ok()?;
+    match specifier.scheme() {
+      // we should only be looking for emits for schemes that denote external
+      // modules, which the disk_cache supports
+      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
+      _ => return None,
     }
+    let source = self.load_prepared_module(&specifier).ok()?;
+    source_map_from_code(&source.code)
   }
 
   fn get_source_line(

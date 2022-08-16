@@ -52,6 +52,13 @@ itest!(cjs_with_deps {
   http_server: true,
 });
 
+itest!(import_map {
+  args: "run --allow-read --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs

@@ -214,6 +214,10 @@ impl GraphData {
       }
     }
     while let Some(specifier) = visiting.pop_front() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        continue; // skip analyzing npm specifiers
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => return None,

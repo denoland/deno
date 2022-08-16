@@ -522,14 +522,6 @@ impl ProcState {
                 .id
             )
           });
-      } else if let Ok(reference) = NpmPackageReference::from_str(specifier) {
-        // handle npm:<package-name>@<version> specifiers only in deno code
-        return self
-          .handle_node_resolve_result(node::node_resolve_npm_reference(
-            &reference,
-            &self.npm_resolver,
-          ))
-          .with_context(|| format!("Could not resolve '{}'.", reference));
       }
 
       let graph_data = self.graph_data.read();
@@ -542,7 +534,19 @@ impl ProcState {
       };
 
       match maybe_resolved {
-        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Ok { specifier, .. }) => {
+          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          {
+            return self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &reference,
+                &self.npm_resolver,
+              ))
+              .with_context(|| format!("Could not resolve '{}'.", reference));
+          } else {
+            return Ok(specifier.clone());
+          }
+        }
         Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
