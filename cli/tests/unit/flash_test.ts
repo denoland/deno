@@ -1102,7 +1102,7 @@ Deno.test(
 
 //     const server = Deno.serve(async (request) => {
 //       assertEquals(request.method, "POST");
-//       // assertEquals(await request.text(), "qwert");
+//       assertEquals(await request.text(), "qwert");
 //       promise.resolve();
 //       return new Response("ok");
 //     }, { port: 4503, signal: ac.signal });
@@ -1110,7 +1110,8 @@ Deno.test(
 //     const conn = await Deno.connect({ port: 4503 });
 //     const encoder = new TextEncoder();
 
-//     const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
+//     const body =
+//       `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
 //     const writeResult = await conn.write(encoder.encode(body));
 //     assertEquals(body.length, writeResult);
 //     await promise;
@@ -1196,7 +1197,7 @@ Deno.test(
     const data = new Uint8Array(70 * 1024).fill(1);
     await file.write(data);
     file.close();
-    const server = Deno.serve(async () => {  
+    const server = Deno.serve(async () => {
       const f = await Deno.open(tmpFile, { read: true });
       promise.resolve();
       return new Response(f.readable, { status: 200 });
