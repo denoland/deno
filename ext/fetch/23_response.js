@@ -199,12 +199,12 @@
           "Response with null body status cannot have body",
         );
       }
-      // deno-lint-ignore no-unused-vars
+
       const { body, contentType } = bodyWithType;
       response[_response].body = body;
-      // if (contentType !== null && !headers.has("content-type")) {
-      //   headers.append("Content-Type", contentType);
-      // }
+      if (contentType !== null && !headers.has("content-type")) {
+        headers.append("Content-Type", contentType);
+      }
     }
   }
 
@@ -445,7 +445,7 @@
   );
   webidl.converters["ResponseInit_fast"] = function (init, opts) {
     if (init === undefined || init === null) {
-      return { status: 200, statusText: undefined, headers: undefined };
+      return { status: 200, statusText: "", headers: undefined };
     }
     // Fast path, if not a proxy
     if (typeof init === "object" && !isProxy(init)) {
