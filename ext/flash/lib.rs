@@ -3,9 +3,6 @@
 // False positive lint for explicit drops.
 // https://github.com/rust-lang/rust-clippy/issues/6446
 #![allow(clippy::await_holding_lock)]
-// TODO(bartlomieju): remove me
-#![allow(clippy::undocumented_unsafe_blocks)]
-#![allow(clippy::missing_safety_doc)]
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -153,6 +150,14 @@ struct NextRequest {
 // See comment above for `socket`.
 unsafe impl Send for NextRequest {}
 
+impl NextRequest {
+  #[inline(always)]
+  pub fn socket<'a>(&self) -> &'a mut Stream {
+    // SAFETY: Dereferencing is safe until server thread detaches socket or finishes.
+    unsafe { &mut *self.socket }
+  }
+}
+
 #[op]
 fn op_flash_respond(
   op_state: &mut OpState,
@@ -170,12 +175,12 @@ fn op_flash_respond(
     true => {
       let tx = ctx.response.remove(&token).unwrap();
       close = !tx.keep_alive;
-      unsafe { &mut *tx.socket }
+      tx.socket()
     }
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.response.get(&token).unwrap();
-      unsafe { &mut *tx.socket }
+      tx.socket()
     }
   };
 
@@ -237,18 +242,17 @@ impl fast_api::FastFunction for RespondChunkedFast {
   }
 }
 
-fn op_flash_respond_chunked_fast(
+unsafe fn op_flash_respond_chunked_fast(
   recv: v8::Local<v8::Object>,
   token: u32,
   response: *const fast_api::FastApiTypedArray<u8>,
   shutdown: bool,
 ) {
-  let ptr = unsafe {
-    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
-  };
-  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
+  let ptr =
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
+  let ctx = &mut *(ptr as *mut ServerContext);
 
-  let response = unsafe { &*response };
+  let response = &*response;
   if let Some(response) = response.get_storage_if_aligned() {
     respond_chunked(ctx, token, shutdown, Some(response));
   } else {
@@ -265,12 +269,12 @@ fn respond_chunked(
   let sock = match shutdown {
     true => {
       let tx = ctx.response.remove(&token).unwrap();
-      unsafe { &mut *tx.socket }
+      tx.socket()
     }
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.response.get(&token).unwrap();
-      unsafe { &mut *tx.socket }
+      tx.socket()
     }
   };
 
@@ -393,12 +397,10 @@ impl fast_api::FastFunction for NextRequestFast {
   }
 }
 
-fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
-  let ptr = unsafe {
-    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
-  };
-  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
-
+unsafe fn op_flash_next_fast(recv: v8::Local<v8::Object>) -> u32 {
+  let ptr =
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
+  let ctx = &mut *(ptr as *mut ServerContext);
   next_request_sync(ctx)
 }
 
@@ -418,11 +420,13 @@ impl fast_api::FastFunction for GetMethodFast {
   }
 }
 
-fn op_flash_get_method_fast(recv: v8::Local<v8::Object>, token: u32) -> u32 {
-  let ptr = unsafe {
-    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX)
-  };
-  let ctx = unsafe { &mut *(ptr as *mut ServerContext) };
+unsafe fn op_flash_get_method_fast(
+  recv: v8::Local<v8::Object>,
+  token: u32,
+) -> u32 {
+  let ptr =
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
+  let ctx = &mut *(ptr as *mut ServerContext);
   let req = ctx.response.get_mut(&token).unwrap();
   get_method(req)
 }
@@ -452,6 +456,7 @@ fn op_flash_make_request<'scope>(
        mut rv: v8::ReturnValue| {
         let external: v8::Local<v8::External> =
           args.data().unwrap().try_into().unwrap();
+        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         rv.set_uint32(next_request_sync(ctx));
       },
@@ -473,6 +478,7 @@ fn op_flash_make_request<'scope>(
        mut rv: v8::ReturnValue| {
         let external: v8::Local<v8::External> =
           args.data().unwrap().try_into().unwrap();
+        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         let token = args.get(0).uint32_value(scope).unwrap();
         let req = ctx.response.get_mut(&token).unwrap();
@@ -496,6 +502,7 @@ fn op_flash_make_request<'scope>(
        _: v8::ReturnValue| {
         let external: v8::Local<v8::External> =
           args.data().unwrap().try_into().unwrap();
+        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
 
         let token = args.get(0).uint32_value(scope).unwrap();
@@ -505,6 +512,9 @@ fn op_flash_make_request<'scope>(
         let ab = response.buffer(scope).unwrap();
         let store = ab.get_backing_store();
         let (offset, len) = (response.byte_offset(), response.byte_length());
+        // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+        // it points to a fixed continuous slice of bytes on the heap.
+        // We assume it's initialized and thus safe to read (though may not contain meaningful data)
         let response = unsafe {
           &*(&store[offset..offset + len] as *const _ as *const [u8])
         };
@@ -529,7 +539,7 @@ fn op_flash_make_request<'scope>(
 
 #[inline]
 fn has_body_stream(req: &NextRequest) -> bool {
-  let sock = unsafe { &*req.socket };
+  let sock = req.socket();
   sock.read_rx.is_some()
 }
 
@@ -579,8 +589,7 @@ fn op_flash_first_packet(
   token: u32,
 ) -> Option<ZeroCopyBuf> {
   let tx = get_request!(op_state, server_id, token);
-  // SAFETY: The socket lives on the mio thread.
-  let sock = unsafe { &mut *tx.socket };
+  let sock = tx.socket();
 
   let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
   // Oh there is nothing here.
@@ -621,6 +630,8 @@ async fn op_flash_read_body(
   token: u32,
   mut buf: ZeroCopyBuf,
 ) -> usize {
+  // SAFETY: we cannot hold op_state borrow across the await point. The JS caller
+  // is responsible for ensuring this is not called concurrently.
   let ctx = unsafe {
     {
       let op_state = &mut state.borrow_mut();
@@ -635,12 +646,10 @@ async fn op_flash_read_body(
   if tx.te_chunked {
     let mut first = true;
     loop {
-      // SAFETY: The socket lives on the mio thread.
-      let sock = unsafe { &mut *tx.socket };
+      let sock = tx.socket();
       if !first {
         sock.read_rx.as_mut().unwrap().recv().await.unwrap();
       }
-
       first = false;
       let l = sock.read_lock.clone();
       let _lock = l.lock().unwrap();
@@ -786,6 +795,7 @@ fn run_server(
         },
         token => {
           let socket = sockets.get_mut(&token).unwrap();
+          // SAFETY: guarantee that we will never move the data out of the mutable reference.
           let socket = unsafe {
             let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
             Pin::get_unchecked_mut(mut_ref)
@@ -869,7 +879,9 @@ fn run_server(
           // SAFETY: It is safe for the read buf to be mutable here.
           let buffer = unsafe { &mut *socket.buffer.get() };
           let inner_req = InnerRequest {
+            // SAFETY: backing buffer is pinned and lives as long as the request.
             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
+            // SAFETY: backing buffer is pinned and lives as long as the request.
             _headers: unsafe {
               transmute::<Vec<httparse::Header<'_>>, _>(headers)
             },
@@ -891,6 +903,7 @@ fn run_server(
           for header in inner_req.req.headers.iter() {
             match HeaderName::from_bytes(header.name.as_bytes()) {
               Ok(CONNECTION) => {
+                // SAFETY: illegal bytes are validated by httparse.
                 let value = unsafe {
                   HeaderValue::from_maybe_shared_unchecked(header.value)
                 };
@@ -910,6 +923,7 @@ fn run_server(
                 debug_assert!(inner_req.req.version.unwrap() == 1);
                 // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
                 te = true;
+                // SAFETY: illegal bytes are validated by httparse.
                 let value = unsafe {
                   HeaderValue::from_maybe_shared_unchecked(header.value)
                 };
@@ -1030,6 +1044,8 @@ async fn op_flash_next_async(
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
     ctx as *mut ServerContext
   };
+  // SAFETY: we cannot hold op_state borrow across the await point. The JS caller
+  // is responsible for ensuring this is not called concurrently.
   let ctx = unsafe { &mut *ctx };
   let cancel_handle = &ctx.cancel_handle;
   let mut tokens = 0;
