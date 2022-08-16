@@ -45,8 +45,6 @@ use std::io::Write;
 use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
-use std::os::unix::prelude::AsRawFd;
-use std::os::unix::prelude::FromRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -1141,9 +1139,22 @@ pub fn detach_socket(
   // TODO(@littledivy): Box-ify, since there is no overhead.
   stream.detach_ownership();
 
-  let fd = stream.inner.as_raw_fd();
-  // SAFETY: `fd` is a valid file descriptor.
-  let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+  #[cfg(unix)]
+  let std_stream = {
+    use std::os::unix::prelude::AsRawFd;
+    use std::os::unix::prelude::FromRawFd;
+    let fd = stream.inner.as_raw_fd();
+    // SAFETY: `fd` is a valid file descriptor.
+    unsafe { std::net::TcpStream::from_raw_fd(fd) }
+  };
+  #[cfg(windows)]
+  let std_stream = {
+    use std::os::windows::prelude::AsRawSocket;
+    use std::os::windows::prelude::FromRawSocket;
+    let fd = stream.inner.as_raw_socket();
+    // SAFETY: `fd` is a valid file descriptor.
+    unsafe { std::net::TcpStream::from_raw_socket(fd) }
+  };
   let stream = tokio::net::TcpStream::from_std(std_stream)?;
   Ok(stream)
 }
