@@ -34,7 +34,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
     await Deno.serve(async (request) => {
       // FIXME(bartlomieju):
       // make sure that request can be inspected
-      console.log(request);
+      // console.log(request);
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
       return new Response("Hello World", { headers: { "foo": "bar" } });
@@ -1257,7 +1257,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { ignore: true, permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
     const hostname = "127.0.0.1";
