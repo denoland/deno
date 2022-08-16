@@ -244,8 +244,8 @@ impl GraphData {
             }
           }
           for (dep_specifier, dep) in dependencies.iter().rev() {
-            // todo(dsherret): ideally this would just skip external
-            // dependencies in the graph
+            // todo(dsherret): ideally there would be a way to skip external dependencies
+            // in the graph here rather than specifically npm package references
             if NpmPackageReference::from_str(dep_specifier).is_ok() {
               continue;
             }
