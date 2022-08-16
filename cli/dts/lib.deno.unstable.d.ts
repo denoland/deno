@@ -1199,13 +1199,15 @@ declare namespace Deno {
    *
    * Make the timer of the given id blocking the event loop from finishing.
    *
-   * @category
+   * @category Timers
    */
   export function refTimer(id: number): void;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Make the timer of the given id not blocking the event loop from finishing
+   * Make the timer of the given id not blocking the event loop from finishing.
+   *
+   * @category Timers
    */
   export function unrefTimer(id: number): void;
 
