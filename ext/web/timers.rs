@@ -33,8 +33,9 @@ where
   TP: TimersPermission + 'static,
 {
   let start_time = state.borrow::<StartTime>();
-  let seconds = start_time.elapsed().as_secs();
-  let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
+  let elapsed = start_time.elapsed();
+  let seconds = elapsed.as_secs();
+  let mut subsec_nanos = elapsed.subsec_nanos() as f64;
   let reduced_time_precision = 2_000_000.0; // 2ms in nanoseconds
 
   // If the permission is not enabled
