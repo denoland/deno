@@ -28,6 +28,23 @@ itest!(esm_module {
   http_server: true,
 });
 
+itest!(esm_module_eval {
+  args_vec: vec![
+    "eval",
+    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
+  ],
+  output: "npm/esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(esm_module_deno_test {
+  args: "test --allow-read npm/esm/test.js",
+  output: "npm/esm/test.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(cjs_with_deps {
   args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
