@@ -137,7 +137,7 @@ impl CliModuleLoader {
           &self.ps.npm_resolver,
         )?
       } else {
-        code
+        node::esm_code_with_node_globals(specifier, code)?
       };
 
       ModuleCodeSource {

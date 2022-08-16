@@ -1,0 +1,136 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use std::collections::HashSet;
+
+use deno_ast::swc::common::SyntaxContext;
+use deno_ast::view::Node;
+use deno_ast::view::NodeTrait;
+use deno_ast::ModuleSpecifier;
+use deno_ast::ParsedSource;
+use deno_ast::SourceRanged;
+use deno_core::error::AnyError;
+
+static NODE_GLOBALS: &[&str] = &[
+  "globalThis",
+  "Buffer",
+  "clearImmediate",
+  "clearInterval",
+  "clearTimeout",
+  "process",
+  "setImmediate",
+  "setInterval",
+  "setTimeout",
+];
+
+// todo(dsherret): this code is way more innefficient than it needs to be.
+//
+// In the future, we should disable capturing tokens & scope analysis
+// and instead only use swc's APIs to go through the portions of the tree
+// that we know will affect the global scope while still ensuring that
+// `var` decls are taken into consideration.
+
+pub fn esm_code_with_node_globals(
+  specifier: &ModuleSpecifier,
+  code: String,
+) -> Result<String, AnyError> {
+  let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
+    specifier: specifier.to_string(),
+    text_info: deno_ast::SourceTextInfo::from_string(code),
+    media_type: deno_ast::MediaType::from(specifier),
+    capture_tokens: true,
+    scope_analysis: true,
+    maybe_syntax: None,
+  })?;
+  let top_level_decls = analyze_top_level_decls(&parsed_source)?;
+  let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
+  let mut has_global_this = false;
+  for global in NODE_GLOBALS.iter() {
+    if !top_level_decls.contains(&global.to_string()) {
+      if *global == "globalThis" {
+        has_global_this = true;
+      } else {
+        globals.push(*global);
+      }
+    }
+  }
+
+  // todo(dsherret): what to do if there is a local `Deno` declaration?
+  let mut result = String::new();
+  let global_this_expr = if has_global_this {
+    "Deno[Deno.internal].node.globalThis"
+  } else {
+    result.push_str("var globalThis = Deno[Deno.internal].node.globalThis;");
+    "globalThis"
+  };
+  for global in globals {
+    result.push_str(&format!("var {0} = {1}.{0};", global, global_this_expr));
+  }
+
+  result.push_str(parsed_source.text_info().text_str());
+
+  Ok(result)
+}
+
+fn analyze_top_level_decls(
+  parsed_source: &ParsedSource,
+) -> Result<HashSet<String>, AnyError> {
+  let top_level_context = parsed_source.top_level_context();
+
+  parsed_source.with_view(|program| {
+    let mut results = HashSet::new();
+    visit_children(program.into(), top_level_context, &mut results);
+    Ok(results)
+  })
+}
+
+fn visit_children(
+  node: Node,
+  top_level_context: SyntaxContext,
+  results: &mut HashSet<String>,
+) {
+  if let Node::Ident(ident) = node {
+    if ident.ctxt() == top_level_context && is_local_declaration_ident(node) {
+      results.insert(ident.sym().to_string());
+    }
+  }
+
+  for child in node.children() {
+    visit_children(child, top_level_context, results);
+  }
+}
+
+fn is_local_declaration_ident(node: Node) -> bool {
+  if let Some(parent) = node.parent() {
+    match parent {
+      Node::BindingIdent(decl) => decl.id.range().contains(&node.range()),
+      Node::ClassDecl(decl) => decl.ident.range().contains(&node.range()),
+      Node::ClassExpr(decl) => decl
+        .ident
+        .as_ref()
+        .map(|i| i.range().contains(&node.range()))
+        .unwrap_or(false),
+      Node::TsInterfaceDecl(decl) => decl.id.range().contains(&node.range()),
+      Node::FnDecl(decl) => decl.ident.range().contains(&node.range()),
+      Node::FnExpr(decl) => decl
+        .ident
+        .as_ref()
+        .map(|i| i.range().contains(&node.range()))
+        .unwrap_or(false),
+      Node::TsModuleDecl(decl) => decl.id.range().contains(&node.range()),
+      Node::TsNamespaceDecl(decl) => decl.id.range().contains(&node.range()),
+      Node::VarDeclarator(decl) => decl.name.range().contains(&node.range()),
+      Node::ImportNamedSpecifier(decl) => {
+        decl.local.range().contains(&node.range())
+      }
+      Node::ImportDefaultSpecifier(decl) => {
+        decl.local.range().contains(&node.range())
+      }
+      Node::ImportStarAsSpecifier(decl) => decl.range().contains(&node.range()),
+      Node::KeyValuePatProp(decl) => decl.key.range().contains(&node.range()),
+      Node::AssignPatProp(decl) => decl.key.range().contains(&node.range()),
+      _ => false,
+    }
+  } else {
+    false
+  }
+}

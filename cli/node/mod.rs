@@ -17,6 +17,7 @@ use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::DenoDirNpmResolver;
+use deno_runtime::deno_node::PackageJson;
 use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
@@ -27,7 +28,9 @@ use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 
-use deno_runtime::deno_node::PackageJson;
+mod analyze;
+
+pub use analyze::esm_code_with_node_globals;
 
 static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
@@ -211,46 +214,6 @@ fn url_to_resolve_response(
   } else {
     ResolveResponse::Esm(url)
   })
-}
-
-fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
-  url
-    .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
-}
-
-fn to_file_path_string(url: &ModuleSpecifier) -> String {
-  to_file_path(url).display().to_string()
-}
-
-fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
-  if specifier.is_empty() {
-    return false;
-  }
-
-  if specifier.starts_with('/') {
-    return true;
-  }
-
-  is_relative_specifier(specifier)
-}
-
-// TODO(ry) We very likely have this utility function elsewhere in Deno.
-fn is_relative_specifier(specifier: &str) -> bool {
-  let specifier_len = specifier.len();
-  let specifier_chars: Vec<_> = specifier.chars().collect();
-
-  if !specifier_chars.is_empty() && specifier_chars[0] == '.' {
-    if specifier_len == 1 || specifier_chars[1] == '/' {
-      return true;
-    }
-    if specifier_chars[1] == '.'
-      && (specifier_len == 2 || specifier_chars[2] == '/')
-    {
-      return true;
-    }
-  }
-  false
 }
 
 fn finalize_resolution(
@@ -644,6 +607,46 @@ fn exports_resolve(
   }
 
   None
+}
+
+fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
+  url
+    .to_file_path()
+    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+}
+
+fn to_file_path_string(url: &ModuleSpecifier) -> String {
+  to_file_path(url).display().to_string()
+}
+
+fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
+  if specifier.is_empty() {
+    return false;
+  }
+
+  if specifier.starts_with('/') {
+    return true;
+  }
+
+  is_relative_specifier(specifier)
+}
+
+// TODO(ry) We very likely have this utility function elsewhere in Deno.
+fn is_relative_specifier(specifier: &str) -> bool {
+  let specifier_len = specifier.len();
+  let specifier_chars: Vec<_> = specifier.chars().collect();
+
+  if !specifier_chars.is_empty() && specifier_chars[0] == '.' {
+    if specifier_len == 1 || specifier_chars[1] == '/' {
+      return true;
+    }
+    if specifier_chars[1] == '.'
+      && (specifier_len == 2 || specifier_chars[2] == '/')
+    {
+      return true;
+    }
+  }
+  false
 }
 
 fn file_extension_probe(
