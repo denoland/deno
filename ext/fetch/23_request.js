@@ -89,6 +89,9 @@
         }
         return this.methodInner;
       },
+      set method(value) {
+        this.methodInner = value;
+      },
       headerListInner: null,
       get headerList() {
         if (this.headerListInner === null) {
@@ -113,7 +116,7 @@
       url() {
         if (this.urlListInner[0] === undefined) {
           try {
-            this.headerListInner[0] = this.urlList[0]();
+            this.urlListInner[0] = this.urlList[0]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
@@ -124,7 +127,7 @@
         const currentIndex = this.urlList.length - 1;
         if (this.urlListInner[currentIndex] === undefined) {
           try {
-            this.headerListInner[currentIndex] = this.urlList[currentIndex]();
+            this.urlListInner[currentIndex] = this.urlList[currentIndex]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
