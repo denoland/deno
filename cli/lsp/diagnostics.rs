@@ -847,7 +847,7 @@ fn diagnose_resolved(
               .push(DenoDiagnostic::NoAssertType.to_lsp_diagnostic(&range)),
           }
         }
-      } else if let Ok(_) = NpmPackageReference::from_specifier(specifier) {
+      } else if NpmPackageReference::from_specifier(specifier).is_ok() {
         // ignore npm specifiers for now
       } else {
         // When the document is not available, it means that it cannot be found

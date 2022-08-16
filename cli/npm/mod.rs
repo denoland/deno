@@ -78,8 +78,8 @@ pub struct GlobalNpmPackageResolver {
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Self {
-    Self::from_cache(NpmCache::from_deno_dir(dir), reload)
+  pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Result<Self, AnyError> {
+    Ok(Self::from_cache(NpmCache::from_deno_dir(dir)?, reload))
   }
 
   fn from_cache(cache: NpmCache, reload: bool) -> Self {
