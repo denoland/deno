@@ -158,8 +158,8 @@ impl SysVAmd64 {
     for param in &sym.parameter_types {
       compiler.move_left(param)
     }
-    if !compiler.is_recv_overriden() {
-      // the receiver object should never be expected. Avoid its unexpected or deliverated leak
+    if !compiler.is_recv_overridden() {
+      // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
 
@@ -205,13 +205,13 @@ impl SysVAmd64 {
 
     let param_i = self.float_params + 1;
     self.float_params = param_i;
-    // floats are only moved to accomodate integer movement in the stack
+    // floats are only moved to accommodate integer movement in the stack
     let is_in_stack = param_i > Self::FLOAT_REGISTERS;
     let stack_has_moved = self.allocated_stack > 0
       || self.integer_params >= Self::INTEGER_REGISTERS;
 
     if is_in_stack && stack_has_moved {
-      // SSE registers remain untouch. Only when the stack is modified, the floats in the stack need to be accomodated
+      // SSE registers remain untouched. Only when the stack is modified, the floats in the stack need to be accommodated
       match param {
         Single => dynasm!(self.assembler
           ; .arch x64
@@ -460,7 +460,7 @@ impl SysVAmd64 {
     );
   }
 
-  fn is_recv_overriden(&self) -> bool {
+  fn is_recv_overridden(&self) -> bool {
     self.integer_params > 0
   }
 
@@ -514,9 +514,9 @@ impl Aarch64Apple {
       assembler: dynasmrt::aarch64::Assembler::new().unwrap(),
       integer_params: 0,
       float_params: 0,
-      stack_allocated: 0,
       offset_trampoline: 0,
       offset_original: 0,
+      stack_allocated: 0,
     }
   }
 
@@ -526,8 +526,8 @@ impl Aarch64Apple {
     for argument in &sym.parameter_types {
       compiler.move_left(argument)
     }
-    if !compiler.is_recv_overriden() {
-      // the receiver object should never be expected. Avoid its unexpected or deliverated leak
+    if !compiler.is_recv_overridden() {
+      // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
     // We can always tail-call. return values follow the same rules as register arguments.
@@ -565,7 +565,7 @@ impl Aarch64Apple {
       let padding_trampl = (size - self.offset_trampoline % size) % size;
       let padding_orig = (size - self.offset_original % size) % size;
 
-      // floats are only moved to accomodate integer movement in the stack
+      // floats are only moved to accommodate integer movement in the stack
       let stack_has_moved = self.stack_allocated > 0
         || self.integer_params >= Self::INTEGER_REGISTERS;
       if stack_has_moved {
@@ -585,7 +585,7 @@ impl Aarch64Apple {
           ),
         }
       }
-      // The trampoline and the orignal function always have the same amount of floats in the stack
+      // The trampoline and the original function always have the same amount of floats in the stack
       self.offset_trampoline += padding_trampl + size;
       self.offset_original += padding_orig + size;
     }
@@ -791,6 +791,8 @@ impl Aarch64Apple {
     // stack pointer is never modified and remains aligned
     // frame pointer remains the one provided by the trampoline's caller (V8)
 
+    // Like all ARM instructions, move instructions are 32bit long and can fit at most 16bit immediates.
+    // bigger immediates are loaded in multiple steps applying a left-shift modifier
     let mut address = ptr as u64;
     let mut imm16 = address & 0xFFFF;
     dynasm!(self.assembler
@@ -814,7 +816,7 @@ impl Aarch64Apple {
     );
   }
 
-  fn is_recv_overriden(&self) -> bool {
+  fn is_recv_overridden(&self) -> bool {
     self.integer_params > 0
   }
 
@@ -863,8 +865,8 @@ impl Win64 {
     for argument in &sym.parameter_types {
       compiler.move_left(argument)
     }
-    if !compiler.is_recv_overriden() {
-      // the receiver object should never be expected. Avoid its unexpected or deliverated leak
+    if !compiler.is_recv_overridden() {
+      // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
 
@@ -910,7 +912,7 @@ impl Win64 {
       (1, I(B | W | DW)) => dynasm!(self.assembler; .arch x64; mov ecx, edx),
       (1, I(QW)) => dynasm!(self.assembler; .arch x64; mov rcx, rdx),
       (1, F) => {
-        // Use movaps for doubles as well, benefits of smaller encoding outweight those of using the correct instruction for the type (movapd)
+        // Use movaps for doubles as well, benefits of smaller encoding outweigh those of using the correct instruction for the type (movapd)
         dynasm!(self.assembler; .arch x64; xor ecx, ecx; movaps xmm0, xmm1)
       }
 
@@ -1049,7 +1051,7 @@ impl Win64 {
     );
   }
 
-  fn is_recv_overriden(&self) -> bool {
+  fn is_recv_overridden(&self) -> bool {
     self.params > 0
   }
 
@@ -1123,8 +1125,8 @@ use Param::*;
 //     for argument in &sym.parameter_types {
 //       compiler.move_left(argument)
 //     }
-//     if !compiler.is_recv_overriden() {
-//       // the receiver object should never be expected. Avoid its unexpected or deliverated leak
+//     if !compiler.is_recv_overridden() {
+//       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
 //       compiler.zero_first_arg();
 //     }
 
@@ -1182,7 +1184,7 @@ use Param::*;
 
 //   fn can_tailcall(&self) -> bool;
 
-//   fn is_recv_overriden(&self) -> bool;
+//   fn is_recv_overridden(&self) -> bool;
 
 //   fn must_cast_return_value(&self, rv: NativeType) -> bool;
 
