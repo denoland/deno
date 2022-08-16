@@ -1479,8 +1479,8 @@
         ],
         "is.tentative.any.html": true,
         "is.tentative.any.worker.html": true,
-        "toString.tentative.any.html": false,
-        "toString.tentative.any.worker.html": false,
+        "toString.tentative.any.html": true,
+        "toString.tentative.any.worker.html": true,
         "type.tentative.any.html": false,
         "type.tentative.any.worker.html": false
       },
