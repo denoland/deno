@@ -127,8 +127,8 @@ impl CliModuleLoader {
       let code = std::fs::read_to_string(file_path)?;
       let is_cjs = self.ps.cjs_resolutions.lock().contains(specifier);
 
-      // translate cjs to esm if it's cjs
       let code = if is_cjs {
+        // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
           specifier,
@@ -137,6 +137,7 @@ impl CliModuleLoader {
           &self.ps.npm_resolver,
         )?
       } else {
+        // only inject node globals for esm
         node::esm_code_with_node_globals(specifier, code)?
       };
 

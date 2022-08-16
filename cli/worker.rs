@@ -25,6 +25,7 @@ use crate::compat;
 use crate::errors;
 use crate::fmt_errors::format_js_error;
 use crate::module_loader::CliModuleLoader;
+use crate::node;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
@@ -412,7 +413,7 @@ impl CliMainWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
-      compat::load_builtin_node_modules(&mut self.worker.js_runtime).await?;
+      node::initialize_runtime(&mut self.worker.js_runtime).await?;
     }
     self.worker.evaluate_module(id).await
   }
@@ -550,7 +551,7 @@ fn create_web_worker_pre_execute_module_callback(
     let fut = async move {
       // this will be up to date after pre-load
       if ps.npm_resolver.has_packages() {
-        compat::load_builtin_node_modules(&mut worker.js_runtime).await?;
+        node::initialize_runtime(&mut worker.js_runtime).await?;
       }
 
       Ok(worker)

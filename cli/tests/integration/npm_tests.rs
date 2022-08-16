@@ -6,19 +6,24 @@ fn std_file_url() -> String {
   u.to_string()
 }
 
-fn env_vars() -> Vec<(String, String)> {
+fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
     (
       "DENO_NPM_REGISTRY".to_string(),
       "http://localhost:4545/npm/registry/".to_string(),
     ),
-    (
-      // make downloads determinstic
-      "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-      "1".to_string(),
-    ),
   ]
+}
+
+fn env_vars() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
 }
 
 itest!(esm_module {
@@ -65,6 +70,24 @@ itest!(import_map {
   envs: env_vars(),
   http_server: true,
 });
+
+#[test]
+fn parallel_downloading() {
+  let (out, _err) = util::run_and_collect_output_with_args(
+    true,
+    vec![
+      "run",
+      "--allow-read",
+      "--unstable",
+      "npm/cjs_with_deps/main.js",
+    ],
+    None,
+    // don't use the sync env var
+    Some(env_vars_no_sync_download()),
+    true,
+  );
+  assert!(out.contains("chalk cjs loads"));
+}
 
 #[test]
 fn ensure_registry_files_local() {

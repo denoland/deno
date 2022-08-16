@@ -112,23 +112,6 @@ pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-pub async fn load_builtin_node_modules(
-  js_runtime: &mut JsRuntime,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
-      const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default);
-    }})('{}');"#,
-    MODULE_ALL_URL_STR.as_str(),
-  );
-
-  let value =
-    js_runtime.execute_script(&located_script_name!(), source_code)?;
-  js_runtime.resolve_value(value).await?;
-  Ok(())
-}
-
 #[allow(unused)]
 pub fn load_cjs_module_from_ext_node(
   js_runtime: &mut JsRuntime,

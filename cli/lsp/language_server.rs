@@ -2811,7 +2811,6 @@ impl Inner {
       cli_options: CliOptions,
       roots: Vec<(ModuleSpecifier, ModuleKind)>,
     ) -> Result<(), AnyError> {
-      // todo(dsherret): reload npm modules when caching
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
       let graph = ps.create_graph(roots).await?;
       graph_valid(&graph, true, false)?;

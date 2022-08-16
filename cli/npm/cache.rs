@@ -44,9 +44,8 @@ impl Default for ReadonlyNpmCache {
 
 impl ReadonlyNpmCache {
   pub fn new(root_dir: PathBuf) -> Result<Self, AnyError> {
-    std::fs::create_dir_all(&root_dir).with_context(|| {
-      format!("Error creating directory {}", root_dir.display())
-    })?;
+    std::fs::create_dir_all(&root_dir)
+      .with_context(|| format!("Error creating {}", root_dir.display()))?;
     let root_dir = crate::fs_util::canonicalize_path(&root_dir)?;
     let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
     Ok(Self {

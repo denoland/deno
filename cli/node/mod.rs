@@ -7,9 +7,11 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::located_script_name;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::JsRuntime;
 use deno_graph::source::ResolveResponse;
 use deno_runtime::deno_node::get_package_scope_config;
 use deno_runtime::deno_node::legacy_main_resolve;
@@ -83,6 +85,23 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
+pub async fn initialize_runtime(
+  js_runtime: &mut JsRuntime,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
+      const moduleAll = await import(moduleAllUrl);
+      Deno[Deno.internal].node.initialize(moduleAll.default);
+    }})('{}');"#,
+    compat::MODULE_ALL_URL.as_str(),
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
+}
+
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 pub fn node_resolve(
@@ -92,7 +111,7 @@ pub fn node_resolve(
 ) -> Result<Option<ResolveResponse>, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
+  if let Some(resolved) = compat::try_resolve_builtin_module(specifier) {
     return Ok(Some(ResolveResponse::Esm(resolved)));
   }
 
