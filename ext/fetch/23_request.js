@@ -404,6 +404,9 @@
 
     get redirect() {
       webidl.assertBranded(this, RequestPrototype);
+      if (this[_flash]) {
+        return this[_flash].redirectMode;
+      }
       return this[_request].redirectMode;
     }
 
@@ -417,7 +420,12 @@
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
-      const newReq = cloneInnerRequest(this[_request]);
+      let newReq;
+      if (this[_flash]) {
+        newReq = cloneInnerRequest(this[_flash]);
+      } else {
+        newReq = cloneInnerRequest(this[_request]);
+      }
       const newSignal = abortSignal.newSignal();
       abortSignal.follow(newSignal, this[_signal]);
       return fromInnerRequest(
@@ -535,6 +543,8 @@
       urlCb,
       streamRid,
       serverId,
+      redirectMode: "follow",
+      redirectCount: 0,
     };
     request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
     return request;
