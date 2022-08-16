@@ -108,6 +108,7 @@
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
     serve: __bootstrap.flash.serve,
+    serveTls: __bootstrap.flash.serveTls,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     upgradeHttp: __bootstrap.http.upgradeHttp,

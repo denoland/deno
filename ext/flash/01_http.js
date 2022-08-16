@@ -172,7 +172,17 @@
   }
 
   function serve(handler, opts = {}) {
-    opts = { hostname: "127.0.0.1", port: 9000, ...opts };
+    delete opts.key;
+    delete opts.cert;
+    return serveInner(handler, opts, false);
+  }
+
+  function serveTls(handler, opts = {}) {
+    return serveInner(handler, opts, true);
+  }
+
+  function serveInner(handler, opts, useTls) {
+    opts = { hostname: "127.0.0.1", port: 9000, useTls, ...opts };
     const signal = opts.signal;
     delete opts.signal;
     const onError = opts.onError ?? function (error) {
@@ -482,5 +492,6 @@
 
   window.__bootstrap.flash = {
     serve,
+    serveTls,
   };
 })(this);

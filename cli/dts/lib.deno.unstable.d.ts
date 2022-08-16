@@ -1125,16 +1125,23 @@ declare namespace Deno {
     /** An AbortSignal to close the server and all connections. */
     signal?: AbortSignal;
 
-    cert?: string;
-    key?: string;
-
     /** The handler to invoke when route handlers throw an error. */
     onError?: (error: unknown) => Response | Promise<Response>;
+  }
+
+  export interface ServeTlsInit extends ServeInit {
+    cert: string;
+    key: string;
   }
 
   export function serve(
     handler: Handler,
     options?: ServeInit,
+  ): Promise<void>;
+
+  export function serveTls(
+    handler: Handler,
+    options?: ServeTlsInit,
   ): Promise<void>;
 
   /** **UNSTABLE**: new API, yet to be vetter.

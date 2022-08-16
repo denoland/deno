@@ -777,11 +777,13 @@ fn connection_has(value: &HeaderValue, needle: &str) -> bool {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListenOpts {
   cert: Option<String>,
   key: Option<String>,
   hostname: String,
   port: u16,
+  use_tls: bool,
 }
 
 fn run_server(
@@ -1096,7 +1098,11 @@ fn op_flash_serve<P>(
 where
   P: FlashPermissions + 'static,
 {
-  check_unstable(state, "Deno.serve");
+  if opts.use_tls {
+    check_unstable(state, "Deno.serveTls");
+  } else {
+    check_unstable(state, "Deno.serve");
+  }
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;

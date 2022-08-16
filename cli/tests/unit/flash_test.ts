@@ -1266,7 +1266,7 @@ Deno.test(
       return new Response("Hello World");
     }
 
-    const server = Deno.serve(handler, {
+    const server = Deno.serveTls(handler, {
       hostname,
       port,
       signal: ac.signal,
