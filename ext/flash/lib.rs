@@ -868,7 +868,7 @@ fn run_server(
                 Some(ref tls_conf) => {
                   let connection =
                     rustls::ServerConnection::new(tls_conf.clone()).unwrap();
-                    InnerStream::Tls(Box::new(rustls::StreamOwned::new(
+                  InnerStream::Tls(Box::new(rustls::StreamOwned::new(
                     connection, socket,
                   )))
                 }

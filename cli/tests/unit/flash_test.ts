@@ -1252,8 +1252,10 @@ Deno.test(
     const ac = new AbortController();
     const hostname = "127.0.0.1";
     const port = 4501;
-    function handler() { return new Response("Hello World") };
-  
+    function handler() {
+      return new Response("Hello World");
+    }
+
     const server = Deno.serve(handler, {
       hostname,
       port,
