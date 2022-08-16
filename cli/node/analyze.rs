@@ -11,7 +11,6 @@ use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
 
 static NODE_GLOBALS: &[&str] = &[
-  "globalThis",
   "Buffer",
   "clearImmediate",
   "clearInterval",
@@ -43,14 +42,10 @@ pub fn esm_code_with_node_globals(
   })?;
   let top_level_decls = analyze_top_level_decls(&parsed_source)?;
   let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
-  let mut has_global_this = false;
+  let has_global_this = top_level_decls.contains("globalThis");
   for global in NODE_GLOBALS.iter() {
     if !top_level_decls.contains(&global.to_string()) {
-      if *global == "globalThis" {
-        has_global_this = true;
-      } else {
-        globals.push(*global);
-      }
+      globals.push(*global);
     }
   }
 
