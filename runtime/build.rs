@@ -165,7 +165,7 @@ mod not_docs {
         None,
       ),
       deno_http::init(),
-      deno_flash::init(),
+      deno_flash::init(false), // No --unstable
     ];
 
     let js_runtime = JsRuntime::new(RuntimeOptions {

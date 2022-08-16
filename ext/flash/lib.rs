@@ -1093,6 +1093,7 @@ fn op_flash_serve(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError> {
+  check_unstable(state, "Deno.serve");
   let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
@@ -1292,7 +1293,21 @@ async fn op_flash_upgrade_websocket(
   .await
 }
 
-pub fn init() -> Extension {
+pub struct Unstable(pub bool);
+
+fn check_unstable(state: &OpState, api_name: &str) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!(
+      "Unstable API '{}'. The --unstable flag must be provided.",
+      api_name
+    );
+    std::process::exit(70);
+  }
+}
+
+pub fn init(unstable: bool) -> Extension {
   Extension::builder()
     .js(deno_core::include_js_files!(
       prefix "deno:ext/flash",
@@ -1316,7 +1331,8 @@ pub fn init() -> Extension {
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
     ])
-    .state(|op_state| {
+    .state(move |op_state| {
+      op_state.put(Unstable(unstable));
       op_state.put(FlashContext {
         next_server_id: 0,
         join_handles: HashMap::default(),
