@@ -255,6 +255,16 @@
               continue;
             }
 
+            const ws = resp[_ws];
+            if (!ws) {
+              if (hasBody && body[_state] !== "closed") {
+                // TODO(@littledivy): Optimize by draining in a single op.
+                try {
+                  await req.arrayBuffer();
+                } catch { /* pass */ }
+              }
+            }
+
             const innerResp = toInnerResponse(resp);
 
             // If response body length is known, it will be sent synchronously in a
@@ -314,7 +324,6 @@
               respBody = new Uint8Array(0);
             }
 
-            const ws = resp[_ws];
             if (isStreamingResponseBody === true) {
               // const resourceRid = getReadableStreamRid(respBody);
               const reader = respBody.getReader();
@@ -324,12 +333,6 @@
                 const { value, done } = await reader.read();
                 if (first) {
                   first = false;
-                  if (hasBody && body[_state] !== "closed") {
-                    // TODO(@littledivy): Optimize by draining in a single op.
-                    try {
-                      await req.arrayBuffer();
-                    } catch { /* pass */ }
-                  }
                   core.ops.op_flash_respond(
                     serverId,
                     i,
@@ -361,13 +364,6 @@
                 if (done) break a;
               }
             } else {
-              if (hasBody && body[_state] !== "closed") {
-                // TODO(@littledivy): Optimize by draining in a single op.
-                try {
-                  await req.arrayBuffer();
-                } catch { /* pass */ }
-              }
-
               core.ops.op_flash_respond(
                 serverId,
                 i,
