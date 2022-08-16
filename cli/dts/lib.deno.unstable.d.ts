@@ -1107,13 +1107,19 @@ declare namespace Deno {
   /**
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
+   * Handler allows `void` or `Promise<void>` return type to enable
+   * request upgrades using `Deno.upgradeHttp()` API. It is callers responsibility
+   * to write response manually to the returned connection. Failing to do so
+   * (or not returning a response without an upgrade) will cause the connection
+   * to hang.
+   *
    * If a handler throws, the server calling the handler will assume the impact
    * of the error is isolated to the individual request. It will catch the error
    * and close the underlying connection.
    */
   export type Handler = (
     request: Request,
-  ) => Response | Promise<Response>;
+  ) => Response | Promise<Response> | void | Promise<void>;
 
   export interface ServeInit extends Partial<Deno.ListenOptions> {
     /** An AbortSignal to close the server and all connections. */
