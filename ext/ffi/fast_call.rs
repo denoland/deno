@@ -1212,31 +1212,31 @@ mod tests {
       ));
 
       let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/Gr1Mcbch5
+      // See https://godbolt.org/z/P36jvPxda
       dynasm!(assembler
         ; .arch x64
-        ; movzx edi, sil     // u8
-        ; movzx esi, dx      // u16
-        ; movsx edx, cx      // i16
-        ; movsx ecx, r8b     // i8
-        ; mov r8d, r9d       // u32
-        ; mov r9, [DWORD rsp + 8]   // u64
-        ; mov rax, [DWORD rsp + 16] // Pointer
-        ; mov [DWORD rsp + 8], rax // ..
-        ; mov rax, [DWORD rsp + 24] // Function
-        ; mov [DWORD rsp + 16], rax // ..
-        ; mov rax, [DWORD rsp + 32]    // i64
-        ; mov [DWORD rsp + 24], rax // ..
-        ; mov eax, [DWORD rsp + 40]   // i32
-        ; mov [DWORD rsp + 32], eax    // ..
-        ; movsx eax, WORD [DWORD rsp + 48]   // i16
-        ; mov [DWORD rsp + 40], eax   // ..
-        ; movsx eax, BYTE [DWORD rsp + 56]   // i8
-        ; mov [DWORD rsp + 48], eax   // ..
-        ; movss xmm8, [DWORD rsp + 64]  // f32
-        ; movss [DWORD rsp + 56], xmm8  // ..
-        ; movsd xmm8, [DWORD rsp + 72]  // f64
-        ; movsd [DWORD rsp + 64], xmm8  // ..
+        ; movzx edi, sil                   // u8
+        ; movzx esi, dx                    // u16
+        ; movsx edx, cx                    // i16
+        ; movsx ecx, r8b                   // i8
+        ; mov r8d, r9d                     // u32
+        ; mov r9, [DWORD rsp + 8]          // u64
+        ; mov rax, [DWORD rsp + 16]        // Pointer
+        ; mov [DWORD rsp + 8], rax         // ..
+        ; mov rax, [DWORD rsp + 24]        // Function
+        ; mov [DWORD rsp + 16], rax        // ..
+        ; mov rax, [DWORD rsp + 32]        // i64
+        ; mov [DWORD rsp + 24], rax        // ..
+        ; mov eax, [DWORD rsp + 40]        // i32
+        ; mov [DWORD rsp + 32], eax        // ..
+        ; movsx eax, WORD [DWORD rsp + 48] // i16
+        ; mov [DWORD rsp + 40], eax        // ..
+        ; movsx eax, BYTE [DWORD rsp + 56] // i8
+        ; mov [DWORD rsp + 48], eax        // ..
+        ; movss xmm8, [DWORD rsp + 64]     // f32
+        ; movss [DWORD rsp + 56], xmm8     // ..
+        ; movsd xmm8, [DWORD rsp + 72]     // f64
+        ; movsd [DWORD rsp + 64], xmm8     // ..
         ; mov rax, QWORD 0
         ; jmp rax
       );
@@ -1352,16 +1352,15 @@ mod tests {
         ; and w4, w5, 0xFF   // u8
         ; and w5, w6, 0xFFFF // u16
         ; sxtb w6, w7        // i8
-        ; ldrsh w7, [sp]      // i16
-
-        ; ldr w8, [sp, 4]  // u8
+        ; ldrsh w7, [sp]     // i16
+        ; ldr w8, [sp, 4]    // u8
         ; strb w8, [sp]      // ..
-        ; ldr w8, [sp, 8]   // u16
-        ; strh w8, [sp, 2]  // ..
+        ; ldr w8, [sp, 8]    // u16
+        ; strh w8, [sp, 2]   // ..
         ; ldr w8, [sp, 12]   // i8
-        ; strb w8, [sp, 4]  // ..
+        ; strb w8, [sp, 4]   // ..
         ; ldr w8, [sp, 16]   // i16
-        ; strh w8, [sp, 6]  // ..
+        ; strh w8, [sp, 6]   // ..
         ; movz x8, 0
         ; br x8
       );
@@ -1387,20 +1386,63 @@ mod tests {
       ));
 
       let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/87n5serd9
       dynasm!(assembler
         ; .arch x64
-        ; mov ecx, edx          // u8
-        ; mov edx, r8d         // i16
-        ; movaps xmm2, xmm3      // f64
+        ; mov ecx, edx                  // u8
+        ; mov edx, r8d                  // i16
+        ; movaps xmm2, xmm3             // f64
         ; movaps xmm3, [DWORD rsp + 40] // f32
-        ; mov eax, [DWORD rsp + 48]    // u32
-        ; mov [DWORD rsp + 40], eax    // ..
-        ; mov eax, [DWORD rsp + 56]    // i8
+        ; mov eax, [DWORD rsp + 48]     // u32
+        ; mov [DWORD rsp + 40], eax     // ..
+        ; mov eax, [DWORD rsp + 56]     // i8
         ; mov [DWORD rsp + 48], eax     // ..
-        ; mov rax, [DWORD rsp + 64]    // Pointer
-        ; mov [DWORD rsp + 56], rax    // ..
+        ; mov rax, [DWORD rsp + 64]     // Pointer
+        ; mov [DWORD rsp + 56], rax     // ..
         ; mov rax, QWORD 0
         ; jmp rax
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn integer_casting() {
+      let trampoline = Win64::compile(&symbol(
+        vec![U8, U16, I8, I16, U8, U16, I8, I16, U8, U16, I8, I16],
+        I8,
+      ));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/KMx56KGTq
+      dynasm!(assembler
+        ; .arch x64
+        ; sub rsp, DWORD 104          // stack allocation
+        ; mov ecx, edx                // u8
+        ; mov edx, r8d                // u16
+        ; mov r8d, r9d                // i8
+        ; mov r9d, [DWORD rsp + 144]  // i16
+        ; mov eax, [DWORD rsp + 152]  // u8
+        ; mov [DWORD rsp + 32], eax   // ..
+        ; mov eax, [DWORD rsp + 160]  // u16
+        ; mov [DWORD rsp + 40], eax   // u16
+        ; mov eax, [DWORD rsp + 168]  // i8
+        ; mov [DWORD rsp + 48], eax   // ..
+        ; mov eax, [DWORD rsp + 176]  // i16
+        ; mov [DWORD rsp + 56], eax   // ..
+        ; mov eax, [DWORD rsp + 184]  // u8
+        ; mov [DWORD rsp + 64], eax   // ..
+        ; mov eax, [DWORD rsp + 192]  // u16
+        ; mov [DWORD rsp + 72], eax   // ..
+        ; mov eax, [DWORD rsp + 200]  // i8
+        ; mov [DWORD rsp + 80], eax   // ..
+        ; mov eax, [DWORD rsp + 208]  // i16
+        ; mov [DWORD rsp + 88], eax   // ..
+        ; mov rax, QWORD 0
+        ; call rax
+        ; movsx eax, al      // return value cast
+        ; add rsp, DWORD 104  // stack deallocation
+        ; ret
       );
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
