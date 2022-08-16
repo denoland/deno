@@ -54,12 +54,23 @@ pub fn esm_code_with_node_globals(
     }
   }
 
-  // todo(dsherret): what to do if there is a local `Deno` declaration?
   let mut result = String::new();
-  let global_this_expr = if has_global_this {
-    "Deno[Deno.internal].node.globalThis"
+  let has_deno_decl = top_level_decls.contains("Deno");
+  let global_this_expr = if has_deno_decl {
+    if top_level_decls.contains("window") {
+      // Will probably never happen, but if it does then we should consider
+      // creating an obscure global name to get this from.
+      panic!("The node esm module had a local `Deno` declaration and `window` declaration.");
+    }
+    // fallback to using `window.Deno`
+    "window.Deno[Deno.internal].node.globalThis"
   } else {
-    result.push_str("var globalThis = Deno[Deno.internal].node.globalThis;");
+    "Deno[Deno.internal].node.globalThis"
+  };
+  let global_this_expr = if has_global_this {
+    global_this_expr
+  } else {
+    result.push_str(&format!("var globalThis = {};", global_this_expr));
     "globalThis"
   };
   for global in globals {
