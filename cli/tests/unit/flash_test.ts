@@ -1246,6 +1246,37 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function httpServerWithTls() {
+    const ac = new AbortController();
+    const hostname = "127.0.0.1";
+    const port = 4501;
+    function handler() { return new Response("Hello World") };
+  
+    const server = Deno.serve(handler, {
+      hostname,
+      port,
+      signal: ac.signal,
+      cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+      key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+    });
+
+    const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const resp = await fetch(`https://${hostname}:${port}/`, {
+      client,
+      headers: { "connection": "close" },
+    });
+    const respBody = await resp.text();
+    assertEquals("Hello World", respBody);
+
+    client.close();
+    ac.abort();
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);

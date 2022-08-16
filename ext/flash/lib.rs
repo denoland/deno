@@ -85,8 +85,15 @@ enum ParseStatus {
   Ongoing(usize),
 }
 
+type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
+
+enum InnerStream {
+  Tcp(TcpStream),
+  Tls(Box<TlsTcpStream>),
+}
+
 struct Stream {
-  inner: TcpStream,
+  inner: InnerStream,
   detached: bool,
   read_rx: Option<mpsc::Receiver<()>>,
   read_tx: Option<mpsc::Sender<()>>,
@@ -109,18 +116,27 @@ impl Stream {
 impl Write for Stream {
   #[inline]
   fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    self.inner.write(buf)
+    match self.inner {
+      InnerStream::Tcp(ref mut stream) => stream.write(buf),
+      InnerStream::Tls(ref mut stream) => stream.write(buf),
+    }
   }
   #[inline]
   fn flush(&mut self) -> std::io::Result<()> {
-    self.inner.flush()
+    match self.inner {
+      InnerStream::Tcp(ref mut stream) => stream.flush(),
+      InnerStream::Tls(ref mut stream) => stream.flush(),
+    }
   }
 }
 
 impl Read for Stream {
   #[inline]
   fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-    self.inner.read(buf)
+    match self.inner {
+      InnerStream::Tcp(ref mut stream) => stream.read(buf),
+      InnerStream::Tls(ref mut stream) => stream.read(buf),
+    }
   }
 }
 
@@ -195,7 +211,15 @@ fn op_flash_respond(
 
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
-    let _ = sock.inner.shutdown(std::net::Shutdown::Both); // Typically shutdown shouldn't fail.
+    match &mut sock.inner {
+      InnerStream::Tcp(stream) => {
+        // Typically shutdown shouldn't fail.
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+      }
+      InnerStream::Tls(stream) => {
+        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
+      }
+    }
   }
 }
 
@@ -764,9 +788,8 @@ fn run_server(
   tx: mpsc::Sender<NextRequest>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
-  // TODO: TLS
-  _maybe_cert: Option<String>,
-  _maybe_key: Option<String>,
+  maybe_cert: Option<String>,
+  maybe_key: Option<String>,
 ) -> Result<(), AnyError> {
   let mut listener = TcpListener::bind(addr)?;
   let mut poll = Poll::new()?;
@@ -775,6 +798,41 @@ fn run_server(
     .registry()
     .register(&mut listener, token, Interest::READABLE)
     .unwrap();
+
+  let tls_context: Option<Arc<rustls::ServerConfig>> = {
+    if let Some(cert) = maybe_cert {
+      let key = maybe_key.unwrap();
+      let certificate_chain: Vec<rustls::Certificate> =
+        rustls_pemfile::certs(&mut cert.as_bytes())
+          .unwrap()
+          .into_iter()
+          .map(rustls::Certificate)
+          .collect();
+      let private_key = rustls::PrivateKey({
+        let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(
+            &mut key.as_bytes(),
+        )
+        .expect("file contains invalid pkcs8 private key (encrypted keys are not supported)");
+
+        if let Some(pkcs8_key) = pkcs8_keys.first() {
+          pkcs8_key.clone()
+        } else {
+          let rsa_keys = rustls_pemfile::rsa_private_keys(&mut key.as_bytes())
+            .expect("file contains invalid rsa private key");
+          rsa_keys[0].clone()
+        }
+      });
+
+      let config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certificate_chain, private_key)
+        .unwrap();
+      Some(Arc::new(config))
+    } else {
+      None
+    }
+  };
 
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
@@ -806,6 +864,16 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
+              let socket = match tls_context {
+                Some(ref tls_conf) => {
+                  let connection =
+                    rustls::ServerConnection::new(tls_conf.clone()).unwrap();
+                    InnerStream::Tls(Box::new(rustls::StreamOwned::new(
+                    connection, socket,
+                  )))
+                }
+                None => InnerStream::Tcp(socket),
+              };
               let stream = Box::pin(Stream {
                 inner: socket,
                 detached: false,
@@ -834,7 +902,15 @@ fn run_server(
           let sock_ptr = socket as *mut _;
 
           if socket.detached {
-            poll.registry().deregister(&mut socket.inner).unwrap();
+            match &mut socket.inner {
+              InnerStream::Tcp(ref mut socket) => {
+                poll.registry().deregister(socket).unwrap();
+              }
+              InnerStream::Tls(_) => {
+                todo!("upgrade tls not implemented");
+              }
+            }
+
             let boxed = sockets.remove(&token).unwrap();
             std::mem::forget(boxed);
             trace!("Socket detached: {}", token.0);
@@ -1167,8 +1243,7 @@ pub fn detach_socket(
     .response
     .remove(&token)
     .ok_or_else(|| type_error("request closed"))?;
-  // SAFETY: Stream is owned by server thread.
-  let stream = unsafe { &mut *tx.socket };
+  let stream = tx.socket();
   // prevent socket from being dropped on server thread.
   // TODO(@littledivy): Box-ify, since there is no overhead.
   stream.detach_ownership();
@@ -1177,7 +1252,10 @@ pub fn detach_socket(
   let std_stream = {
     use std::os::unix::prelude::AsRawFd;
     use std::os::unix::prelude::FromRawFd;
-    let fd = stream.inner.as_raw_fd();
+    let fd = match stream.inner {
+      InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
+      _ => todo!(),
+    };
     // SAFETY: `fd` is a valid file descriptor.
     unsafe { std::net::TcpStream::from_raw_fd(fd) }
   };
@@ -1185,7 +1263,10 @@ pub fn detach_socket(
   let std_stream = {
     use std::os::windows::prelude::AsRawSocket;
     use std::os::windows::prelude::FromRawSocket;
-    let fd = stream.inner.as_raw_socket();
+    let fd = match stream.inner {
+      InnerStream::Tcp(ref tcp) => tcp.as_raw_socket(),
+      _ => todo!(),
+    };
     // SAFETY: `fd` is a valid file descriptor.
     unsafe { std::net::TcpStream::from_raw_socket(fd) }
   };
