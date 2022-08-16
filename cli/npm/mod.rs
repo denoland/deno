@@ -153,6 +153,7 @@ impl GlobalNpmPackageResolver {
   }
 
   /// Creates an inner clone.
+  #[allow(unused)]
   pub fn snapshot(&self) -> NpmPackageResolverSnapshot {
     NpmPackageResolverSnapshot {
       cache: self.cache.as_readonly(),
