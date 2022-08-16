@@ -51,7 +51,7 @@
 
   /**
    * @typedef InnerRequest
-   * @property {string} method
+   * @property {() => string} method
    * @property {() => string} url
    * @property {() => string} currentUrl
    * @property {() => [string, string][]} headerList
@@ -64,12 +64,12 @@
    */
 
   /**
-   * @param {string} method
+   * @param {() => string} method
    * @param {string} url
    * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
-   * @returns
+   * @returns {InnerRequest}
    */
   function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
@@ -77,7 +77,17 @@
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
-      method,
+      methodInner: null,
+      get method() {
+        if (this.methodInner === null) {
+          try {
+            this.methodInner = method();
+          } catch {
+            throw new TypeError("cannot read method: request closed");
+          }
+        }
+        return this.methodInner;
+      },
       headerListInner: null,
       get headerList() {
         if (this.headerListInner === null) {
@@ -239,7 +249,7 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, () => [], null, true);
+        request = newInnerRequest(() => "GET", parsedURL.href, () => [], null, true);
       } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
