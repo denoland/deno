@@ -24,6 +24,9 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
 
   const promise = (async () => {
     await Deno.serve(async (request) => {
+      // FIXME(bartlomieju):
+      // make sure that request can be inspected
+      // console.log(request);
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
       return new Response("Hello World", { headers: { "foo": "bar" } });
