@@ -988,7 +988,7 @@ async fn main_server(
 fn should_download_npm_packages() -> bool {
   // when this env var is set, it will download and save npm packages
   // to the testdata/npm/registry directory
-  std::env::var("DENO_TEST_UTIL_UPDATE_NPM_PACKAGES") == Ok("1".to_string())
+  std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
 }
 
 async fn download_npm_registry_file(

@@ -2,7 +2,7 @@ use deno_core::url::Url;
 use test_util as util;
 
 // NOTE: It's possible to automatically update the npm registry data in the test server
-// by setting the DENO_TEST_UTIL_UPDATE_NPM_PACKAGES=1 environment variable.
+// by setting the DENO_TEST_UTIL_UPDATE_NPM=1 environment variable.
 
 itest!(esm_module {
   args: "run --allow-read npm/esm/main.js",
