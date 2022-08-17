@@ -612,7 +612,7 @@ fn op_flash_first_packet(
   op_state: &mut OpState,
   server_id: u32,
   token: u32,
-) -> Option<ZeroCopyBuf> {
+) -> Result<Option<ZeroCopyBuf>, AnyError> {
   let tx = get_request!(op_state, server_id, token);
   let sock = tx.socket();
 
@@ -620,9 +620,9 @@ fn op_flash_first_packet(
   // Oh there is nothing here.
   if buffer.is_empty() {
     if !tx.te_chunked && tx.content_length.is_none() {
-      return None;
+      return Ok(None);
     }
-    return Some(ZeroCopyBuf::empty());
+    return Ok(Some(ZeroCopyBuf::empty()));
   }
 
   if tx.expect_continue {
@@ -645,11 +645,9 @@ fn op_flash_first_packet(
           offset += n;
 
           if n == 0 {
-            if decoder.end {
-              tx.te_chunked = false;
-            }
+            tx.te_chunked = false;
             buf.truncate(offset);
-            return Some(buf.into());
+            return Ok(Some(buf.into()));
           }
 
           if offset < buf.len()
@@ -659,19 +657,19 @@ fn op_flash_first_packet(
           }
 
           buf.truncate(offset);
-          return Some(buf.into());
+          return Ok(Some(buf.into()));
         }
         Err(e) => {
-          panic!("chunked read error: {:?}", e);
+          return Err(type_error(format!("{}", e)));
         }
       }
     }
   }
 
-  tx.content_length?;
+  tx.content_length.ok_or(type_error("no content-length"))?;
   tx.content_read += buffer.len();
 
-  Some(buffer.to_vec().into())
+  Ok(Some(buffer.to_vec().into()))
 }
 
 #[op]
@@ -1019,6 +1017,7 @@ fn run_server(
                 debug_assert!(inner_req.req.version.unwrap() == 1);
                 // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
                 te = true;
+                content_length = None;
                 // SAFETY: illegal bytes are validated by httparse.
                 let value = unsafe {
                   HeaderValue::from_maybe_shared_unchecked(header.value)
@@ -1055,6 +1054,13 @@ fn run_server(
               _ => {}
             }
           }
+
+          // There is Transfer-Encoding but its not chunked.
+          if te && !te_chunked {
+            let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+            continue 'events;
+          }
+
           tx.blocking_send(NextRequest {
             socket: sock_ptr,
             // SAFETY: headers backing buffer outlives the mio event loop ('static)

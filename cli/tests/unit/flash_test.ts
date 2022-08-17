@@ -1442,6 +1442,84 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerRequestCLTE() {
+    const ac = new AbortController();
+    const promise = deferred();
+
+    const server = Deno.serve(async (req) => {
+      assertEquals(await req.text(), "");
+      promise.resolve();
+      return new Response("ok");
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+
+    const body =
+      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nEXTRA`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await promise;
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerRequestTETE() {
+    const ac = new AbortController();
+
+    const server = Deno.serve(() => {
+      throw new Error("oops");
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const variations = [
+      "Transfer-Encoding : chunked",
+      "Transfer-Encoding: xchunked",
+      "Transfer-Encoding: chunkedx",
+      "Transfer-Encoding\n: chunked",
+    ];
+
+    for (const teHeader of variations) {
+      const conn = await Deno.connect({ port: 4503 });
+      const body =
+        `POST / HTTP/1.1\r\nHost: example.domain\r\n${teHeader}\r\n\r\n0\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      assert(readResult);
+      const msg = decoder.decode(buf.subarray(0, readResult));
+      assert(msg.endsWith("HTTP/1.1 400 Bad Request\r\n\r\n"));
+
+      conn.close();
+    }
+
+    ac.abort();
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
