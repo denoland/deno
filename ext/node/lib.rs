@@ -558,10 +558,10 @@ fn op_require_package_imports_resolve(
   request: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
+  let parent_path = PathBuf::from(&parent_filename);
+  ensure_read_permission(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
-
-  let pkg =
-    PackageJson::load(PathBuf::from(&parent_filename).join("package.json"))?;
+  let pkg = PackageJson::load(parent_path.join("package.json"))?;
 
   if pkg.imports.is_some() {
     let referrer =
