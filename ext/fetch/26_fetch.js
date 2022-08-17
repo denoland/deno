@@ -28,6 +28,7 @@
     nullBodyStatus,
     networkError,
     abortedNetworkError,
+    processUrlList,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
@@ -295,6 +296,8 @@
     }
     if (terminator.aborted) return abortedNetworkError();
 
+    processUrlList(req.urlList, req.urlListProcessed);
+
     /** @type {InnerResponse} */
     const response = {
       headerList: resp.headers,
@@ -306,7 +309,7 @@
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
-      urlList: req.urlList.map((url) => url()),
+      urlList: req.urlListProcessed,
     };
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
@@ -339,9 +342,8 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [
-        ...new SafeArrayIterator(req.urlList.map((url) => url())),
-      ];
+      processUrlList(req.urlList, req.urlListProcessed);
+      response.urlList = [...new SafeArrayIterator(req.urlListProcessed)];
     }
 
     return response;

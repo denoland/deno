@@ -50,6 +50,19 @@
   const _body = Symbol("body");
 
   /**
+   * @param {(() => string)[]} urlList
+   * @param {string[]} urlListProcessed
+   */
+  function processUrlList(urlList, urlListProcessed) {
+    for (let i = 0; i < urlList.length; i++) {
+      if (urlListProcessed[i] === undefined) {
+        urlListProcessed[i] = urlList[i]();
+      }
+    }
+    return urlListProcessed;
+  }
+
+  /**
    * @typedef InnerRequest
    * @property {() => string} method
    * @property {() => string} url
@@ -541,4 +554,5 @@
   window.__bootstrap.fetch.toInnerRequest = toInnerRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
+  window.__bootstrap.fetch.processUrlList = processUrlList;
 })(globalThis);
