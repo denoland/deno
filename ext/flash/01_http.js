@@ -130,7 +130,7 @@
     }
 
     // https://datatracker.ietf.org/doc/html/rfc7231#section-6.3.6
-    if (status === 205) {
+    if (status === 205 || status === 304) {
       // MUST NOT generate a payload in a 205 response.
       // indicate a zero-length body for the response by
       // including a Content-Length header field with a value of 0.

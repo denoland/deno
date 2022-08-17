@@ -616,18 +616,19 @@ fn op_flash_first_packet(
   let tx = get_request!(op_state, server_id, token);
   let sock = tx.socket();
 
-  let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
-  // Oh there is nothing here.
-  if buffer.is_empty() {
-    if !tx.te_chunked && tx.content_length.is_none() {
-      return Ok(None);
-    }
-    return Ok(Some(ZeroCopyBuf::empty()));
+  if !tx.te_chunked && tx.content_length.is_none() {
+    return Ok(None);
   }
 
   if tx.expect_continue {
     let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
+  }
+
+  let buffer = &tx.inner.buffer[tx.inner.body_offset..tx.inner.body_len];
+  // Oh there is nothing here.
+  if buffer.is_empty() {
+    return Ok(Some(ZeroCopyBuf::empty()));
   }
 
   if tx.te_chunked {

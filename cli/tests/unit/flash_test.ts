@@ -1520,6 +1520,234 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServer304ResponseDoesntSendBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(() => {
+      promise.resolve();
+      return new Response(null, { status: 304 });
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const body =
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    await promise;
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    assert(msg.startsWith("HTTP/1.1 304 Not Modified"));
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerExpectContinue() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (req) => {
+      promise.resolve();
+      assertEquals(await req.text(), "hello");
+      return new Response(null, { status: 304 });
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    {
+      const body =
+        `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nContent-Length: 5\r\nConnection: close\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+    }
+
+    await promise;
+
+    {
+      const msgExpected = "HTTP/1.1 100 Continue\r\n\r\n";
+      const buf = new Uint8Array(encoder.encode(msgExpected).byteLength);
+      const readResult = await conn.read(buf);
+      assert(readResult);
+      const msg = decoder.decode(buf.subarray(0, readResult));
+      assert(msg.startsWith(msgExpected));
+    }
+
+    {
+      const body = "hello";
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+    }
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    assert(msg.startsWith("HTTP/1.1 304 Not Modified"));
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerExpectContinueButNoBodyLOL() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(async (req) => {
+      promise.resolve();
+      assertEquals(await req.text(), "");
+      return new Response(null, { status: 304 });
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    {
+      // // no content-length or transfer-encoding means no body!
+      const body =
+        `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+    }
+
+    await promise;
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    assert(msg.startsWith("HTTP/1.1 304 Not Modified"));
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
+const badRequests = [
+  ["weirdMethodName", "GE T / HTTP/1.1\r\n\r\n"],
+  ["illegalRequestLength", "POST / HTTP/1.1\r\nContent-Length: foo\r\n\r\n"],
+  ["illegalRequestLength2", "POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n"],
+  ["illegalRequestLength3", "POST / HTTP/1.1\r\nContent-Length: 1.1\r\n\r\n"],
+  ["illegalRequestLength4", "POST / HTTP/1.1\r\nContent-Length: 1.\r\n\r\n"],
+];
+
+for (const [name, req] of badRequests) {
+  const testFn = {
+    [name]: async () => {
+      const ac = new AbortController();
+
+      const server = Deno.serve(() => {
+        throw new Error("oops");
+      }, {
+        port: 4503,
+        signal: ac.signal,
+        onListen,
+        onError: createOnErrorCb(ac),
+      });
+
+      const conn = await Deno.connect({ port: 4503 });
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+
+      {
+        const writeResult = await conn.write(encoder.encode(req));
+        assertEquals(req.length, writeResult);
+      }
+
+      const buf = new Uint8Array(100);
+      const readResult = await conn.read(buf);
+      assert(readResult);
+      const msg = decoder.decode(buf.subarray(0, readResult));
+
+      assert(msg.startsWith("HTTP/1.1 400 "));
+      conn.close();
+
+      ac.abort();
+      await server;
+    },
+  }[name];
+
+  Deno.test(
+    { permissions: { net: true } },
+    testFn,
+  );
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerImplicitZeroContentLengthForHead() {
+    const ac = new AbortController();
+
+    const server = Deno.serve(() => new Response(null), {
+      port: 4503,
+      signal: ac.signal,
+      onListen,
+      onError: createOnErrorCb(ac),
+    });
+
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const body =
+      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    assert(msg.includes("Content-Length: 0"));
+
+    conn.close();
+
+    ac.abort();
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
