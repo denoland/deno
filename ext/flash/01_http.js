@@ -3,10 +3,7 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const {
-    fromInnerFlashRequest,
-    toInnerResponse,
-  } = window.__bootstrap.fetch;
+  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { ReadableStream, ReadableStreamPrototype, _state } =
     window.__bootstrap.streams;
@@ -257,7 +254,7 @@
               }
             }
 
-            const req = fromInnerFlashRequest(
+            const req = fromFlashRequest(
               serverId,
               /* streamRid */
               i,
