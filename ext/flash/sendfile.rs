@@ -28,7 +28,7 @@ impl SendFile {
         Err(io::Error::last_os_error())
       } else {
         self.written = offset as usize;
-        Ok(length as usize)
+        Ok(res as usize)
       }
     }
     #[cfg(target_os = "macos")]
