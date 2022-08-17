@@ -238,10 +238,10 @@ pub async fn run(
     ),
   });
   let create_web_worker_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+    todo!("Workers are currently not supported in standalone binaries");
   });
-  let web_worker_preload_module_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+  let web_worker_cb = Arc::new(|_| {
+    todo!("Workers are currently not supported in standalone binaries");
   });
 
   // Keep in sync with `main.rs`.
@@ -292,7 +292,8 @@ pub async fn run(
     source_map_getter: None,
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
-    web_worker_preload_module_cb,
+    web_worker_preload_module_cb: web_worker_cb.clone(),
+    web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
