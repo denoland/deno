@@ -70,6 +70,7 @@ pub struct ServerContext {
   tx: mpsc::Sender<NextRequest>,
   rx: mpsc::Receiver<NextRequest>,
   response: HashMap<u32, NextRequest>,
+  listening_rx: Option<mpsc::Receiver<()>>,
   close_tx: mpsc::Sender<()>,
   cancel_handle: Rc<CancelHandle>,
 }
@@ -791,6 +792,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<NextRequest>,
+  listening_tx: mpsc::Sender<()>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
@@ -822,6 +824,7 @@ fn run_server(
     }
   };
 
+  listening_tx.blocking_send(()).unwrap();
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
@@ -1103,19 +1106,21 @@ where
   let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
+  let (listening_tx, listening_rx) = mpsc::channel(1);
   let ctx = ServerContext {
     _addr: addr,
     tx,
     rx,
     response: HashMap::with_capacity(1000),
     close_tx,
+    listening_rx: Some(listening_rx),
     cancel_handle: CancelHandle::new_rc(),
   };
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, close_rx, addr, maybe_cert, maybe_key)
+    run_server(tx, listening_tx, close_rx, addr, maybe_cert, maybe_key)
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
@@ -1123,6 +1128,25 @@ where
   flash_ctx.join_handles.insert(server_id, join_handle);
   flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
+}
+
+#[op]
+fn op_flash_wait_for_listening(
+  state: &mut OpState,
+  server_id: u32,
+) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
+  let mut listening_rx = {
+    let flash_ctx = state.borrow_mut::<FlashContext>();
+    let server_ctx = flash_ctx
+      .servers
+      .get_mut(&server_id)
+      .ok_or_else(|| type_error("server not found"))?;
+    server_ctx.listening_rx.take().unwrap()
+  };
+  Ok(async move {
+    listening_rx.recv().await;
+    Ok(())
+  })
 }
 
 #[op]
@@ -1339,6 +1363,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_read_body::decl(),
       op_flash_upgrade_websocket::decl(),
       op_flash_drive_server::decl(),
+      op_flash_wait_for_listening::decl(),
       op_flash_first_packet::decl(),
       op_flash_has_body_stream::decl(),
       op_flash_close_server::decl(),
