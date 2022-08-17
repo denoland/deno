@@ -18,7 +18,7 @@ derive_more = "0.99.17"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_bytes = "0.11"
 smallvec = { version = "1.8", features = ["union"] }
-v8 = { version = "0.47.1", default-features = false }
+v8 = { version = "0.48.1", default-features = false }
 
 [dev-dependencies]
 bencher = "0.1"

@@ -11,7 +11,7 @@ use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::ops::worker_host::PreloadModuleCb;
+use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -466,6 +466,11 @@ pub fn create_main_worker(
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
+    web_worker_pre_execute_module_cb: Arc::new(|worker| {
+      LocalFutureObj::new(Box::new(deno_core::futures::future::ready(Ok(
+        worker,
+      ))))
+    }),
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -492,7 +497,7 @@ pub fn create_main_worker(
 
 fn create_web_worker_preload_module_callback(
   ps: ProcState,
-) -> Arc<PreloadModuleCb> {
+) -> Arc<WorkerEventCb> {
   let compat = ps.options.compat();
 
   Arc::new(move |mut worker| {
@@ -554,6 +559,11 @@ fn create_web_worker_callback(
       seed: ps.options.seed(),
       create_web_worker_cb,
       preload_module_cb,
+      pre_execute_module_cb: Arc::new(|worker| {
+        LocalFutureObj::new(Box::new(deno_core::futures::future::ready(Ok(
+          worker,
+        ))))
+      }),
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,

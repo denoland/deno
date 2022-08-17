@@ -69,7 +69,8 @@ pub struct WorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -148,6 +149,7 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
@@ -420,6 +422,7 @@ mod tests {
       format_js_error_fn: None,
       source_map_getter: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
