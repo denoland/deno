@@ -339,7 +339,9 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...new SafeArrayIterator(req.urlList.map(url => url()))];
+      response.urlList = [
+        ...new SafeArrayIterator(req.urlList.map((url) => url())),
+      ];
     }
 
     return response;
