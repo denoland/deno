@@ -18,6 +18,8 @@ use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_core::V8_WRAPPER_OBJECT_INDEX;
+use deno_tls::load_certs;
+use deno_tls::load_private_keys;
 use http::header::HeaderName;
 use http::header::CONNECTION;
 use http::header::CONTENT_LENGTH;
@@ -40,6 +42,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::future::Future;
 use std::intrinsics::transmute;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::marker::PhantomPinned;
@@ -805,31 +808,14 @@ fn run_server(
     if let Some(cert) = maybe_cert {
       let key = maybe_key.unwrap();
       let certificate_chain: Vec<rustls::Certificate> =
-        rustls_pemfile::certs(&mut cert.as_bytes())
-          .unwrap()
-          .into_iter()
-          .map(rustls::Certificate)
-          .collect();
-      let private_key = rustls::PrivateKey({
-        let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(
-            &mut key.as_bytes(),
-        )
-        .expect("file contains invalid pkcs8 private key (encrypted keys are not supported)");
-
-        if let Some(pkcs8_key) = pkcs8_keys.first() {
-          pkcs8_key.clone()
-        } else {
-          let rsa_keys = rustls_pemfile::rsa_private_keys(&mut key.as_bytes())
-            .expect("file contains invalid rsa private key");
-          rsa_keys[0].clone()
-        }
-      });
+        load_certs(&mut BufReader::new(cert.as_bytes()))?;
+      let private_key = load_private_keys(key.as_bytes())?.remove(0);
 
       let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certificate_chain, private_key)
-        .unwrap();
+        .expect("invalid key or certificate");
       Some(Arc::new(config))
     } else {
       None

@@ -1045,6 +1045,7 @@ name = "deno_flash"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "deno_tls",
  "deno_websocket",
  "http",
  "httparse",

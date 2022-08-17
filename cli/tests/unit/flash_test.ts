@@ -31,26 +31,27 @@ function onListen() {}
 
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const ac = new AbortController();
+  const promise = deferred();
 
-  const promise = (async () => {
-    await Deno.serve(async (request) => {
-      // FIXME(bartlomieju):
-      // make sure that request can be inspected
-      console.log(request);
-      assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
-      assertEquals(await request.text(), "");
-      return new Response("Hello World", { headers: { "foo": "bar" } });
-    }, {
-      port: 4501,
-      signal: ac.signal,
-      onListen,
-      onError: createOnErrorCb(ac),
-    });
-  })();
+  const server = Deno.serve(async (request) => {
+    // FIXME(bartlomieju):
+    // make sure that request can be inspected
+    console.log(request);
+    assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+    assertEquals(await request.text(), "");
+    promise.resolve();
+    return new Response("Hello World", { headers: { "foo": "bar" } });
+  }, {
+    port: 4501,
+    signal: ac.signal,
+    onListen,
+    onError: createOnErrorCb(ac),
+  });
 
   const resp = await fetch("http://127.0.0.1:4501/", {
     headers: { "connection": "close" },
   });
+  await promise;
   const clone = resp.clone();
   const text = await resp.text();
   assertEquals(text, "Hello World");
@@ -58,7 +59,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const cloneText = await clone.text();
   assertEquals(cloneText, "Hello World");
   ac.abort();
-  await promise;
+  await server;
 });
 
 // https://github.com/denoland/deno/issues/15107
@@ -1406,7 +1407,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: true, permissions: { read: true, net: true } },
+  { permissions: { read: true, net: true } },
   async function httpServerWithTls() {
     const ac = new AbortController();
     const hostname = "127.0.0.1";
@@ -1427,10 +1428,11 @@ Deno.test(
 
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
-    const resp = await fetch(`https://${hostname}:${port}/`, {
+    const resp = await fetch(`https://localhost:${port}/`, {
       client,
       headers: { "connection": "close" },
     });
+
     const respBody = await resp.text();
     assertEquals("Hello World", respBody);
 
