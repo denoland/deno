@@ -17,6 +17,7 @@ pub use resolution::legacy_main_resolve;
 pub use resolution::package_exports_resolve;
 pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
+pub use resolution::DEFAULT_CONDITIONS;
 
 pub trait DenoDirNpmResolver {
   fn resolve_package_folder_from_package(
@@ -472,7 +473,7 @@ fn op_require_try_self(
       expansion,
       exports,
       &base,
-      resolution::DEFAULT_CONDITIONS,
+      resolution::REQUIRE_CONDITIONS,
       &**resolver,
     )
     .map(|r| Some(r.as_str().to_string()))
@@ -530,7 +531,7 @@ fn op_require_resolve_exports(
       format!(".{}", expansion),
       exports,
       &base,
-      resolution::DEFAULT_CONDITIONS,
+      resolution::REQUIRE_CONDITIONS,
       &**resolver,
     )
     .map(|r| Some(r.to_file_path().unwrap().to_string_lossy().to_string()))
@@ -571,7 +572,7 @@ fn op_require_package_imports_resolve(
     resolution::package_imports_resolve(
       &request,
       &referrer,
-      resolution::DEFAULT_CONDITIONS,
+      resolution::REQUIRE_CONDITIONS,
       &**resolver,
     )
     .map(|r| Some(r.as_str().to_string()))

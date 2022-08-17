@@ -13,6 +13,7 @@ use crate::package_json::PackageJson;
 use crate::DenoDirNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
+pub static REQUIRE_CONDITIONS: &[&str] = &["require"];
 
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url

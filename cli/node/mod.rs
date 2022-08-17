@@ -20,6 +20,7 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::DenoDirNpmResolver;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
@@ -34,7 +35,6 @@ mod analyze;
 
 pub use analyze::esm_code_with_node_globals;
 
-static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
     "break",
