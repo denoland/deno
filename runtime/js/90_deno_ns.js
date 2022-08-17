@@ -107,8 +107,6 @@
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
     serveHttp: __bootstrap.http.serveHttp,
-    serve: __bootstrap.flash.serve,
-    serveTls: __bootstrap.flash.serveTls,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     upgradeHttp: __bootstrap.http.upgradeHttp,
@@ -155,5 +153,7 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    serve: __bootstrap.flash.serve,
+    serveTls: __bootstrap.flash.serveTls,
   };
 })(this);
