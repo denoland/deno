@@ -666,7 +666,8 @@ fn op_flash_first_packet(
     }
   }
 
-  tx.content_length.ok_or(type_error("no content-length"))?;
+  tx.content_length
+    .ok_or_else(|| type_error("no content-length"))?;
   tx.content_read += buffer.len();
 
   Ok(Some(buffer.to_vec().into()))
