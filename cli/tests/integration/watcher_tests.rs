@@ -1129,3 +1129,41 @@ fn run_watch_dynamic_imports() {
 
   check_alive_then_kill(child);
 }
+
+// Regression test for https://github.com/denoland/deno/issues/15465.
+#[test]
+fn run_watch_reload_once() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+    import { time } from "http://localhost:4545/dynamic_module.ts";
+    console.log(time);
+  "#;
+  write(&file_to_watch, file_content).unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--reload")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("finished", &mut stderr_lines);
+  let first_output = stdout_lines.next().unwrap();
+
+  write(&file_to_watch, file_content).unwrap();
+  // The remote dynamic module should not have been reloaded again.
+
+  wait_contains("finished", &mut stderr_lines);
+  let second_output = stdout_lines.next().unwrap();
+  assert_eq!(second_output, first_output);
+
+  check_alive_then_kill(child);
+}
