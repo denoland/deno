@@ -59,7 +59,7 @@
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
    * @property {(() => string)[]} urlList
-   * @property {string[]} urlListInner
+   * @property {string[]} urlListProcessed
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    * @property {Blob | null} blobUrlEntry
    */
@@ -110,29 +110,29 @@
       redirectMode: "follow",
       redirectCount: 0,
       urlList: [typeof url === "string" ? () => url : url],
-      urlListInner: [],
+      urlListProcessed: [],
       clientRid: null,
       blobUrlEntry,
       url() {
-        if (this.urlListInner[0] === undefined) {
+        if (this.urlListProcessed[0] === undefined) {
           try {
-            this.urlListInner[0] = this.urlList[0]();
+            this.urlListProcessed[0] = this.urlList[0]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
         }
-        return this.urlListInner[0];
+        return this.urlListProcessed[0];
       },
       currentUrl() {
         const currentIndex = this.urlList.length - 1;
-        if (this.urlListInner[currentIndex] === undefined) {
+        if (this.urlListProcessed[currentIndex] === undefined) {
           try {
-            this.urlListInner[currentIndex] = this.urlList[currentIndex]();
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
         }
-        return this.urlListInner[currentIndex];
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
@@ -160,29 +160,29 @@
       redirectMode: request.redirectMode,
       redirectCount: request.redirectCount,
       urlList: request.urlList,
-      urlListInner: request.urlListInner,
+      urlListProcessed: request.urlListProcessed,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
       url() {
-        if (this.urlListInner[0] === undefined) {
+        if (this.urlListProcessed[0] === undefined) {
           try {
-            this.headerListInner[0] = this.urlList[0]();
+            this.urlListProcessed[0] = this.urlList[0]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
         }
-        return this.urlListInner[0];
+        return this.urlListProcessed[0];
       },
       currentUrl() {
         const currentIndex = this.urlList.length - 1;
-        if (this.urlListInner[currentIndex] === undefined) {
+        if (this.urlListProcessed[currentIndex] === undefined) {
           try {
-            this.headerListInner[currentIndex] = this.urlList[currentIndex]();
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
           } catch {
             throw new TypeError("cannot read url: request closed");
           }
         }
-        return this.urlListInner[currentIndex];
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
