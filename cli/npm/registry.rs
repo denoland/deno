@@ -64,8 +64,13 @@ impl NpmPackageVersionInfo {
         } else {
           (entry.0.clone(), entry.1.clone())
         };
-      let version_req = NpmVersionReq::parse(&version_req)
-        .with_context(|| format!("Dependency: {}", bare_specifier))?;
+      let version_req =
+        NpmVersionReq::parse(&version_req).with_context(|| {
+          format!(
+            "error parsing version requirement for dependency: {}@{}",
+            bare_specifier, version_req
+          )
+        })?;
       Ok(NpmDependencyEntry {
         bare_specifier,
         name,
@@ -287,6 +292,7 @@ fn npm_version_req_parse_part(
   text: &str,
 ) -> Result<semver::VersionReq, AnyError> {
   let text = text.trim();
+  let text = text.strip_prefix('v').unwrap_or(text);
   let mut chars = text.chars().enumerate().peekable();
   let mut final_text = String::new();
   while chars.peek().is_some() {
@@ -321,6 +327,11 @@ mod test {
     fn matches(&self, version: &str) -> bool {
       self.0.matches(&semver::Version::parse(version).unwrap())
     }
+  }
+
+  #[test]
+  pub fn npm_version_req_with_v() {
+    assert!(NpmVersionReq::parse("v1.0.0").is_ok());
   }
 
   #[test]

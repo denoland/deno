@@ -294,7 +294,7 @@ impl NpmResolution {
       let dependencies = version_and_info
         .info
         .dependencies_as_entries()
-        .with_context(|| format!("Package: {}", id))?;
+        .with_context(|| format!("npm package: {}", id))?;
 
       pending_dependencies.push_back((id.clone(), dependencies));
       snapshot.packages.insert(
@@ -352,7 +352,7 @@ impl NpmResolution {
             .info
             .dependencies_as_entries()
             .with_context(|| {
-              format!("Package: {}@{}", dep.name, version_and_info.version)
+              format!("npm package: {}@{}", dep.name, version_and_info.version)
             })?;
 
           let id = NpmPackageId {
