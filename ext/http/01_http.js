@@ -125,7 +125,7 @@
       }
 
       const innerRequest = newInnerRequest(
-        method,
+        () => method,
         url,
         () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,

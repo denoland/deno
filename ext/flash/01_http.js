@@ -3,10 +3,7 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const {
-    fromInnerFlashRequest,
-    toInnerResponse,
-  } = window.__bootstrap.fetch;
+  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const {
     ReadableStream,
@@ -217,9 +214,9 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    // FIXME(bartlomieju): I think this is racy, it's not guaranteed that
-    // server has already started listening
-    onListen({ hostname: opts.hostname, port: opts.port });
+    core.opAsync("op_flash_wait_for_listening", serverId).then(() => {
+      onListen({ hostname: opts.hostname, port: opts.port });
+    });
 
     const server = {
       id: serverId,
@@ -266,7 +263,7 @@
               }
             }
 
-            const req = fromInnerFlashRequest(
+            const req = fromFlashRequest(
               serverId,
               /* streamRid */
               i,
