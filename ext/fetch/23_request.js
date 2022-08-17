@@ -50,34 +50,61 @@
   const _body = Symbol("body");
 
   /**
+   * @param {(() => string)[]} urlList
+   * @param {string[]} urlListProcessed
+   */
+  function processUrlList(urlList, urlListProcessed) {
+    for (let i = 0; i < urlList.length; i++) {
+      if (urlListProcessed[i] === undefined) {
+        urlListProcessed[i] = urlList[i]();
+      }
+    }
+    return urlListProcessed;
+  }
+
+  /**
    * @typedef InnerRequest
-   * @property {string} method
+   * @property {() => string} method
    * @property {() => string} url
    * @property {() => string} currentUrl
    * @property {() => [string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
-   * @property {string[]} urlList
+   * @property {(() => string)[]} urlList
+   * @property {string[]} urlListProcessed
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
    * @property {Blob | null} blobUrlEntry
    */
 
   /**
-   * @param {string} method
-   * @param {string} url
+   * @param {() => string} method
+   * @param {string | () => string} url
    * @param {() => [string, string][]} headerList
    * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @param {boolean} maybeBlob
-   * @returns
+   * @returns {InnerRequest}
    */
   function newInnerRequest(method, url, headerList, body, maybeBlob) {
     let blobUrlEntry = null;
-    if (maybeBlob && url.startsWith("blob:")) {
+    if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
       blobUrlEntry = blobFromObjectUrl(url);
     }
     return {
-      method,
+      methodInner: null,
+      get method() {
+        if (this.methodInner === null) {
+          try {
+            this.methodInner = method();
+          } catch {
+            throw new TypeError("cannot read method: request closed");
+          }
+        }
+        return this.methodInner;
+      },
+      set method(value) {
+        this.methodInner = value;
+      },
       headerListInner: null,
       get headerList() {
         if (this.headerListInner === null) {
@@ -95,14 +122,30 @@
       body,
       redirectMode: "follow",
       redirectCount: 0,
-      urlList: [url],
+      urlList: [typeof url === "string" ? () => url : url],
+      urlListProcessed: [],
       clientRid: null,
       blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListProcessed[0] === undefined) {
+          try {
+            this.urlListProcessed[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListProcessed[currentIndex] === undefined) {
+          try {
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
@@ -130,13 +173,29 @@
       redirectMode: request.redirectMode,
       redirectCount: request.redirectCount,
       urlList: request.urlList,
+      urlListProcessed: request.urlListProcessed,
       clientRid: request.clientRid,
       blobUrlEntry: request.blobUrlEntry,
       url() {
-        return this.urlList[0];
+        if (this.urlListProcessed[0] === undefined) {
+          try {
+            this.urlListProcessed[0] = this.urlList[0]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[0];
       },
       currentUrl() {
-        return this.urlList[this.urlList.length - 1];
+        const currentIndex = this.urlList.length - 1;
+        if (this.urlListProcessed[currentIndex] === undefined) {
+          try {
+            this.urlListProcessed[currentIndex] = this.urlList[currentIndex]();
+          } catch {
+            throw new TypeError("cannot read url: request closed");
+          }
+        }
+        return this.urlListProcessed[currentIndex];
       },
     };
   }
@@ -239,7 +298,13 @@
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
-        request = newInnerRequest("GET", parsedURL.href, () => [], null, true);
+        request = newInnerRequest(
+          () => "GET",
+          parsedURL.href,
+          () => [],
+          null,
+          true,
+        );
       } else { // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
@@ -489,4 +554,5 @@
   window.__bootstrap.fetch.toInnerRequest = toInnerRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
+  window.__bootstrap.fetch.processUrlList = processUrlList;
 })(globalThis);
