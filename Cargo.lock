@@ -4576,6 +4576,7 @@ dependencies = [
  "pretty_assertions",
  "pty",
  "regex",
+ "reqwest",
  "rustls-pemfile 1.0.0",
  "serde",
  "serde_json",

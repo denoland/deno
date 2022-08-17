@@ -1,30 +1,8 @@
 use deno_core::url::Url;
 use test_util as util;
 
-fn std_file_url() -> String {
-  let u = Url::from_directory_path(util::std_path()).unwrap();
-  u.to_string()
-}
-
-fn env_vars_no_sync_download() -> Vec<(String, String)> {
-  vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
-    (
-      "DENO_NPM_REGISTRY".to_string(),
-      "http://localhost:4545/npm/registry/".to_string(),
-    ),
-  ]
-}
-
-fn env_vars() -> Vec<(String, String)> {
-  let mut env_vars = env_vars_no_sync_download();
-  env_vars.push((
-    // make downloads determinstic
-    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
-    "1".to_string(),
-  ));
-  env_vars
-}
+// NOTE: It's possible to automatically update the npm registry data in the test server
+// by setting the DENO_TEST_UTIL_UPDATE_NPM_PACKAGES=1 environment variable.
 
 itest!(esm_module {
   args: "run --allow-read npm/esm/main.js",
@@ -53,6 +31,13 @@ itest!(esm_module_deno_test {
 itest!(cjs_with_deps {
   args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_sub_path {
+  args: "run --allow-read --unstable npm/cjs_sub_path/main.js",
+  output: "npm/cjs_sub_path/main.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -108,4 +93,29 @@ fn ensure_registry_files_local() {
       }
     }
   }
+}
+
+fn std_file_url() -> String {
+  let u = Url::from_directory_path(util::std_path()).unwrap();
+  u.to_string()
+}
+
+fn env_vars_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
+    (
+      "DENO_NPM_REGISTRY".to_string(),
+      "http://localhost:4545/npm/registry/".to_string(),
+    ),
+  ]
+}
+
+fn env_vars() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_no_sync_download();
+  env_vars.push((
+    // make downloads determinstic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
 }

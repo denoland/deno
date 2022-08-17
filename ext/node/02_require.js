@@ -351,18 +351,14 @@
       );
       // TODO(bartlomieju): could be a single op
       const basePath = (isDenoDirPackage && !isRelative)
-        ? curPath
+        ? pathResolve(curPath, packageSpecifierSubPath(request))
         : pathResolve(curPath, request);
       let filename;
 
       const rc = stat(basePath);
       if (!trailingSlash) {
         if (rc === 0) { // File.
-          if (!isMain) {
-            filename = toRealPath(basePath);
-          } else {
-            filename = toRealPath(basePath);
-          }
+          filename = toRealPath(basePath);
         }
 
         if (!filename) {
@@ -863,6 +859,17 @@
     } else {
       return value;
     }
+  }
+
+  /** @param specifier {string} */
+  function packageSpecifierSubPath(specifier) {
+    let parts = specifier.split("/");
+    if (parts[0].startsWith("@")) {
+      parts = parts.slice(2);
+    } else {
+      parts = parts.slice(1);
+    }
+    return parts.join("/");
   }
 
   window.__bootstrap.internals = {

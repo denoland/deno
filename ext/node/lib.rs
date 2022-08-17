@@ -237,11 +237,8 @@ fn op_require_is_request_relative(
   request: String,
 ) -> bool {
   check_unstable(state);
-  if request.starts_with("./") {
-    return true;
-  }
-
-  if request.starts_with("../") {
+  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  {
     return true;
   }
 
