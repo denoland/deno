@@ -6,35 +6,10 @@
 
 ((window) => {
   const {
-    ArrayIsArray,
-    ArrayPrototypeIncludes,
-    ArrayPrototypeIndexOf,
-    ArrayPrototypeJoin,
     ArrayPrototypePush,
-    ArrayPrototypeSlice,
-    ArrayPrototypeSplice,
-    FunctionPrototypeBind,
-    ObjectGetOwnPropertyDescriptor,
-    ObjectGetPrototypeOf,
     ObjectEntries,
-    ObjectPrototypeHasOwnProperty,
-    ObjectSetPrototypeOf,
-    ObjectKeys,
-    ObjectPrototype,
     ObjectCreate,
-    SafeMap,
-    SafeWeakMap,
-    JSONParse,
-    StringPrototypeEndsWith,
-    StringPrototypeIndexOf,
-    StringPrototypeMatch,
-    StringPrototypeSlice,
-    StringPrototypeStartsWith,
-    StringPrototypeCharCodeAt,
-    RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
-  const core = window.Deno.core;
-  const ops = core.ops;
 
   function assert(cond) {
     if (!cond) {
@@ -117,6 +92,7 @@
     nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
     nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
     nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+    nodeGlobals.global = nodeGlobals;
     nodeGlobals.process = nativeModuleExports["process"];
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
     nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;

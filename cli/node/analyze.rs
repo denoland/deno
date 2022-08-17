@@ -16,6 +16,7 @@ static NODE_GLOBALS: &[&str] = &[
   "clearImmediate",
   "clearInterval",
   "clearTimeout",
+  "global",
   "process",
   "setImmediate",
   "setInterval",
