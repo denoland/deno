@@ -15,29 +15,31 @@ pub struct SendFile {
 impl SendFile {
   #[inline]
   pub fn try_send(&mut self) -> Result<usize, std::io::Error> {
-    // Send all bytes.
-    let mut length = 0;
+    #[cfg(target_os = "linux")]
+    {
+      // This is the maximum the Linux kernel will write in a single call.
+      let count = 0x7ffff000;
+      let mut offset = self.written as libc::off_t;
 
-    // SAFETY: call to libc::sendfile()
-    let res = unsafe {
-      #[cfg(target_os = "linux")]
-      {
-        // This is the maximum the Linux kernel will write in a single call.
-        let count = 0x7ffff000;
-        let mut offset = self.written as libc::off_t;
-        libc::sendfile(self.io.1, self.io.0, &mut offset, count);
-        if res == -1 {
-          Err(io::Error::last_os_error())
-        } else {
-          self.written = offset as usize;
-          Ok(length as usize)
-        }
+      // SAFETY: call to libc::sendfile()
+      let res =
+        unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
+      if res == -1 {
+        Err(io::Error::last_os_error())
+      } else {
+        self.written = offset as usize;
+        Ok(length as usize)
       }
-      #[cfg(target_os = "macos")]
-      {
-        // On macOS `length` is value-result parameter. It determines the number
-        // of bytes to write and returns the number of bytes written also in
-        // case of `EAGAIN` errors.
+    }
+    #[cfg(target_os = "macos")]
+    {
+      // Send all bytes.
+      let mut length = 0;
+      // On macOS `length` is value-result parameter. It determines the number
+      // of bytes to write and returns the number of bytes written also in
+      // case of `EAGAIN` errors.
+      // SAFETY: call to libc::sendfile()
+      let res = unsafe {
         libc::sendfile(
           self.io.0,
           self.io.1,
@@ -45,15 +47,15 @@ impl SendFile {
           &mut length,
           std::ptr::null_mut(),
           0,
-        );
-        self.written += length as usize;
-        if res == -1 {
-          Err(io::Error::last_os_error())
-        } else {
-          Ok(length as usize)
-        }
+        )
+      };
+      self.written += length as usize;
+      if res == -1 {
+        Err(io::Error::last_os_error())
+      } else {
+        Ok(length as usize)
       }
-    };
+    }
   }
 }
 
