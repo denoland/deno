@@ -18,12 +18,10 @@ description ...
 4
 ----- output end -----
     inner 2 ... ok ([WILDCARD]ms)
-
 ------- output -------
 5
 ----- output end -----
   step 1 ... ok ([WILDCARD]ms)
-
 ------- output -------
 6
 ----- output end -----

@@ -9,6 +9,7 @@ use dynasmrt::dynasm;
 use dynasmrt::DynasmApi;
 use dynasmrt::ExecutableBuffer;
 
+use crate::needs_unwrap;
 use crate::NativeType;
 use crate::Symbol;
 
@@ -18,7 +19,6 @@ pub(crate) fn is_compatible(sym: &Symbol) -> bool {
     all(target_arch = "x86_64", target_family = "windows"),
     all(target_arch = "aarch64", target_vendor = "apple")
   )) && !sym.can_callback
-    && is_fast_api_rv(sym.result_type)
 }
 
 pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
@@ -35,13 +35,20 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
-  let args = once(fast_api::Type::V8Value)
+  let mut params = once(fast_api::Type::V8Value)
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
+  let ret = if needs_unwrap(sym.result_type) {
+    params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
+    fast_api::Type::Void
+  } else {
+    fast_api::Type::from(&sym.result_type)
+  };
+
   Template {
-    args: args.into_boxed_slice(),
-    ret: (&fast_api::Type::from(&sym.result_type)).into(),
+    args: params.into_boxed_slice(),
+    ret: (&ret).into(),
     symbol_ptr: trampoline.ptr(),
   }
 }
@@ -92,23 +99,10 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Function | NativeType::Pointer => {
-        fast_api::Type::Uint64
-      }
+      NativeType::USize | NativeType::Function => fast_api::Type::Uint64,
+      NativeType::Pointer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
     }
   }
-}
-
-fn is_fast_api_rv(rv: NativeType) -> bool {
-  !matches!(
-    rv,
-    NativeType::Function
-      | NativeType::Pointer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize
-  )
 }
 
 struct SysVAmd64 {
@@ -121,6 +115,7 @@ struct SysVAmd64 {
   offset_trampoline: u32,
   offset_callee: u32,
   allocated_stack: u32,
+  stack_pointer: u32,
 }
 
 #[cfg_attr(
@@ -140,16 +135,27 @@ impl SysVAmd64 {
       float_params: 0,
       // Start at 8 to account for trampoline caller's return address
       offset_trampoline: 8,
+      // default to tail-call mode. If a new stack frame is allocated this becomes 0
       offset_callee: 8,
       allocated_stack: 0,
+      stack_pointer: 0,
     }
   }
 
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
-    let can_tailcall = !compiler.must_cast_return_value(sym.result_type);
-    if !can_tailcall {
+    let must_cast_return_value =
+      compiler.must_cast_return_value(sym.result_type);
+    let must_wrap_return_value =
+      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+    let must_save_preserved_register = must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+
+    if cannot_tailcall {
+      if must_save_preserved_register {
+        compiler.save_preserved_register_to_stack();
+      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
@@ -160,17 +166,29 @@ impl SysVAmd64 {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
+    if must_wrap_return_value {
+      compiler.save_out_array_to_preserved_register();
+    }
 
-    if !can_tailcall {
+    if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
-      if compiler.must_cast_return_value(sym.result_type) {
+      if must_cast_return_value {
         compiler.cast_return_value(sym.result_type);
       }
+      if must_wrap_return_value {
+        compiler.wrap_return_value_in_out_array();
+      }
       compiler.deallocate_stack();
+      if must_save_preserved_register {
+        compiler.recover_preserved_register();
+      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
     }
+
+    debug_assert_eq!(compiler.allocated_stack, 0);
+    debug_assert_eq!(compiler.stack_pointer, 0);
 
     Trampoline(compiler.finalize())
   }
@@ -190,10 +208,10 @@ impl SysVAmd64 {
       NativeType::U8 => self.move_integer(U(B)),
       NativeType::U16 => self.move_integer(U(W)),
       NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64
-      | NativeType::USize
-      | NativeType::Function
-      | NativeType::Pointer => self.move_integer(U(QW)),
+      NativeType::U64 | NativeType::USize | NativeType::Function => {
+        self.move_integer(U(QW))
+      }
+      NativeType::Pointer => self.move_integer(TypedArray),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -201,17 +219,16 @@ impl SysVAmd64 {
     }
   }
 
-  fn move_float(&mut self, param: Floating) {
+  fn move_float(&mut self, param: Float) {
     // Section 3.2.3 of the SysV AMD64 ABI:
     // > If the class is SSE, the next available vector register is used, the registers
     // > are taken in the order from %xmm0 to %xmm7.
     // [...]
     // > Once registers are assigned, the arguments passed in memory are pushed on
     // > the stack in reversed (right-to-left) order
+    let param_i = self.float_params;
 
-    let param_i = self.float_params + 1;
-    self.float_params = param_i;
-    let is_in_stack = param_i > Self::FLOAT_REGISTERS;
+    let is_in_stack = param_i >= Self::FLOAT_REGISTERS;
     // floats are only moved to accommodate integer movement in the stack
     let stack_has_moved = self.allocated_stack > 0
       || self.integer_params >= Self::INTEGER_REGISTERS;
@@ -239,6 +256,7 @@ impl SysVAmd64 {
         self.allocated_stack == 0 || self.offset_callee <= self.allocated_stack
       );
     }
+    self.float_params += 1;
   }
 
   fn move_integer(&mut self, arg: Integer) {
@@ -248,52 +266,59 @@ impl SysVAmd64 {
     // [...]
     // > Once registers are assigned, the arguments passed in memory are pushed on
     // > the stack in reversed (right-to-left) order
-    let arg_i = self.integer_params + 1;
-    self.integer_params = arg_i;
+    let param_i = self.integer_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (r9).
     // If the FFI function is called with a new stack frame, the arguments remaining in the stack are copied to the new stack frame.
     // Otherwise, they are copied 8 bytes lower in the same frame
-    match (arg_i, arg) {
+    match (param_i, arg) {
       // u8 and u16 parameters are defined as u32 parameters in the V8's fast API function. The trampoline takes care of the cast.
       // Conventionally, many compilers expect 8 and 16 bit arguments to be sign/zero extended by the caller
       // See https://stackoverflow.com/a/36760539/2623340
-      (1, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edi, sil),
-      (1, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edi, sil),
-      (1, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edi, si),
-      (1, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edi, si),
-      (1, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edi, esi),
-      (1, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdi, rsi),
+      (0, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edi, sil),
+      (0, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edi, sil),
+      (0, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edi, si),
+      (0, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edi, si),
+      (0, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edi, esi),
+      (0, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdi, rsi),
+      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
+      // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
+      (0, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rdi, [rsi + 8]),
 
-      (2, U(B)) => dynasm!(self.assmblr; .arch x64; movzx esi, dl),
-      (2, I(B)) => dynasm!(self.assmblr; .arch x64; movsx esi, dl),
-      (2, U(W)) => dynasm!(self.assmblr; .arch x64; movzx esi, dx),
-      (2, I(W)) => dynasm!(self.assmblr; .arch x64; movsx esi, dx),
-      (2, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov esi, edx),
-      (2, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rsi, rdx),
+      (1, U(B)) => dynasm!(self.assmblr; .arch x64; movzx esi, dl),
+      (1, I(B)) => dynasm!(self.assmblr; .arch x64; movsx esi, dl),
+      (1, U(W)) => dynasm!(self.assmblr; .arch x64; movzx esi, dx),
+      (1, I(W)) => dynasm!(self.assmblr; .arch x64; movsx esi, dx),
+      (1, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov esi, edx),
+      (1, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rsi, rdx),
+      (1, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rsi, [rdx + 8]),
 
-      (3, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edx, cl),
-      (3, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edx, cl),
-      (3, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edx, cx),
-      (3, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edx, cx),
-      (3, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edx, ecx),
-      (3, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, rcx),
+      (2, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edx, cl),
+      (2, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edx, cl),
+      (2, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edx, cx),
+      (2, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edx, cx),
+      (2, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edx, ecx),
+      (2, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, rcx),
+      (2, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rdx, [rcx + 8]),
 
-      (4, U(B)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8b),
-      (4, I(B)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8b),
-      (4, U(W)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8w),
-      (4, I(W)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8w),
-      (4, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, r8d),
-      (4, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, r8),
+      (3, U(B)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8b),
+      (3, I(B)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8b),
+      (3, U(W)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8w),
+      (3, I(W)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8w),
+      (3, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, r8d),
+      (3, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, r8),
+      (3, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rcx, [r8 + 8]),
 
-      (5, U(B)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9b),
-      (5, I(B)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9b),
-      (5, U(W)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9w),
-      (5, I(W)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9w),
-      (5, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
-      (5, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
+      (4, U(B)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9b),
+      (4, I(B)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9b),
+      (4, U(W)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9w),
+      (4, I(W)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9w),
+      (4, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
+      (4, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
+      (4, TypedArray) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
 
-      (6, param) => {
+      (5, param) => {
         // First argument in stack goes to last register (r9)
         match param {
           U(B) => {
@@ -314,17 +339,21 @@ impl SysVAmd64 {
           U(QW) | I(QW) => {
             dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32])
           }
+          TypedArray => {
+            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32]; mov r9, [r9 + 8])
+          }
         }
         // Section 3.2.3 of the SysV AMD64 ABI:
         // > The size of each argument gets rounded up to eightbytes. [...] Therefore the stack will always be eightbyte aligned.
         self.offset_trampoline += 8;
       }
 
-      (_, param) => {
+      (6.., param) => {
         match param {
           U(B) => dynasm!(self.assmblr
             ; .arch x64
             ; movzx eax, BYTE [rsp + self.offset_trampoline as i32]
+            // TODO: optimize to [rsp] (without immediate) when offset is 0
             ; mov [rsp + self.offset_callee as i32], eax
           ),
           I(B) => dynasm!(self.assmblr
@@ -352,6 +381,12 @@ impl SysVAmd64 {
             ; mov rax, [rsp + self.offset_trampoline as i32]
             ; mov [rsp + self.offset_callee as i32], rax
           ),
+          TypedArray => dynasm!(self.assmblr
+            ; .arch x64
+            ; mov rax, [rsp + self.offset_trampoline as i32]
+            ; mov rax, [rax + 8]
+            ; mov [rsp + self.offset_callee as i32], rax
+          ),
         }
         // Section 3.2.3 of the SysV AMD64 ABI:
         // > The size of each argument gets rounded up to eightbytes. [...] Therefore the stack will always be eightbyte aligned.
@@ -364,6 +399,7 @@ impl SysVAmd64 {
         );
       }
     }
+    self.integer_params += 1;
   }
 
   fn zero_first_arg(&mut self) {
@@ -386,44 +422,94 @@ impl SysVAmd64 {
     }
   }
 
+  fn save_preserved_register_to_stack(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; push rbx
+    );
+    self.offset_trampoline += 8;
+    // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
+    self.offset_callee = 0;
+    self.stack_pointer += 8;
+  }
+
+  fn recover_preserved_register(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; pop rbx
+    );
+    self.stack_pointer -= 8;
+    // parameter offsets are invalid once this method is called
+  }
+
   fn allocate_stack(&mut self, params: &[NativeType]) {
     let mut int_params = 0u32;
-    let mut sse_params = 0u32;
+    let mut float_params = 0u32;
     for param in params {
       match param {
-        NativeType::F32 | NativeType::F64 => sse_params += 1,
+        NativeType::F32 | NativeType::F64 => float_params += 1,
         _ => int_params += 1,
       }
     }
     let mut stack_size = (int_params.saturating_sub(Self::INTEGER_REGISTERS)
-      + sse_params.saturating_sub(Self::FLOAT_REGISTERS))
+      + float_params.saturating_sub(Self::FLOAT_REGISTERS))
       * 8;
 
-    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address)
+    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address
+    // and any other potential addition to the stack prior to this allocation)
     // Section 3.2.2 of the SysV AMD64 ABI:
     // > The end of the input argument area shall be aligned on a 16 (32 or 64, if
     // > __m256 or __m512 is passed on stack) byte boundary. In other words, the value
     // > (%rsp + 8) is always a multiple of 16 (32 or 64) when control is transferred to
     // > the function entry point. The stack pointer, %rsp, always points to the end of the
     // > latest allocated stack frame.
-    stack_size += (16 - (stack_size + 8) % 16) % 16;
+    stack_size += (16 - (self.stack_pointer + stack_size + 8) % 16) % 16;
 
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; sub rsp, stack_size as i32
-    );
-    self.allocated_stack = stack_size;
-    // new frame + trampoline caller's return address
-    self.offset_trampoline = stack_size + 8;
-    // offset is 0 because new frame does not have return address yet
-    self.offset_callee = 0;
+    if stack_size > 0 {
+      dynasm!(self.assmblr
+        ; .arch x64
+        ; sub rsp, stack_size as i32
+      );
+      self.offset_trampoline += stack_size;
+      // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
+      self.offset_callee = 0;
+      self.allocated_stack += stack_size;
+      self.stack_pointer += stack_size;
+    }
   }
 
   fn deallocate_stack(&mut self) {
+    if self.allocated_stack > 0 {
+      dynasm!(self.assmblr
+        ; .arch x64
+        ; add rsp, self.allocated_stack as i32
+      );
+
+      self.stack_pointer -= self.allocated_stack;
+      self.allocated_stack = 0;
+    }
+  }
+
+  fn save_out_array_to_preserved_register(&mut self) {
+    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
+    match self.integer_params {
+      // rdi is always V8 receiver
+      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rsi + 8]),
+      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
+      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [rcx + 8]),
+      3 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
+      4 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
+      5.. => {
+        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
+      }
+    }
+  }
+
+  fn wrap_return_value_in_out_array(&mut self) {
     dynasm!(self.assmblr
       ; .arch x64
-      ; add rsp, self.allocated_stack as i32
-    );
+      ; mov [rbx], rax
+    )
   }
 
   fn call(&mut self, ptr: *const c_void) {
@@ -467,6 +553,12 @@ impl SysVAmd64 {
     )
   }
 
+  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+    // V8 only supports i32 and u32 return types for integers
+    // We support 64 bit integers by wrapping them in a TypedArray out parameter
+    crate::needs_unwrap(rv)
+  }
+
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -481,6 +573,7 @@ struct Aarch64Apple {
   // Stack offset accumulators
   offset_trampoline: u32,
   offset_callee: u32,
+  allocated_stack: u32,
 }
 
 #[cfg_attr(
@@ -491,7 +584,7 @@ impl Aarch64Apple {
   // Integer arguments go to the first 8 GPR: x0-x7
   const INTEGER_REGISTERS: u32 = 8;
   // Floating-point arguments go to the first 8 SIMD & Floating-Point registers: v0-v1
-  const FLOAT_REG: u32 = 8;
+  const FLOAT_REGISTERS: u32 = 8;
 
   fn new() -> Self {
     Self {
@@ -500,22 +593,69 @@ impl Aarch64Apple {
       float_params: 0,
       offset_trampoline: 0,
       offset_callee: 0,
+      allocated_stack: 0,
     }
   }
 
+  // fn compile(sym: &Symbol) -> Trampoline {
+  //   let mut compiler = Self::new();
+
+  //   for argument in &sym.parameter_types {
+  //     compiler.move_left(argument)
+  //   }
+  //   if !compiler.is_recv_arg_overridden() {
+  //     // the receiver object should never be expected. Avoid its unexpected or deliberate leak
+  //     compiler.zero_first_arg();
+  //   }
+  //   // In Apple the return value is sign/zero extended to 32 bit by the callee. Therefore, casting
+  //   // is implicit and the trampoline can always tail-call.
+  //   compiler.tailcall(sym.ptr.as_ptr());
+
+  //   Trampoline(compiler.finalize())
+  // }
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
-    for argument in &sym.parameter_types {
-      compiler.move_left(argument)
+    let must_wrap_return_value =
+      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+    let must_save_preserved_register = must_wrap_return_value;
+    let cannot_tailcall = must_wrap_return_value;
+
+    if cannot_tailcall {
+      compiler.allocate_stack(sym);
+      compiler.store_frame_record();
+      if compiler.must_save_preserved_register_to_stack(sym) {
+        compiler.save_preserved_register_to_stack();
+      }
+    }
+
+    for param in &sym.parameter_types {
+      compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    // In Apple the return value is sign/zero extended to 32 bit by the callee. Therefore, casting
-    // is implicit and the trampoline can always tail-call.
-    compiler.tailcall(sym.ptr.as_ptr());
+    if compiler.must_wrap_return_value_in_typed_array(sym.result_type) {
+      compiler.save_out_array_to_preserved_register();
+    }
+
+    if cannot_tailcall {
+      compiler.call(sym.ptr.as_ptr());
+      if must_wrap_return_value {
+        compiler.wrap_return_value_in_out_array();
+      }
+      if must_save_preserved_register {
+        compiler.recover_preserved_register();
+      }
+      compiler.load_frame_record();
+      compiler.deallocate_stack();
+      compiler.ret();
+    } else {
+      compiler.tailcall(sym.ptr.as_ptr());
+    }
+
+    debug_assert_eq!(compiler.allocated_stack, 0);
 
     Trampoline(compiler.finalize())
   }
@@ -535,10 +675,10 @@ impl Aarch64Apple {
       NativeType::U8 => self.move_integer(U(B)),
       NativeType::U16 => self.move_integer(U(W)),
       NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64
-      | NativeType::USize
-      | NativeType::Function
-      | NativeType::Pointer => self.move_integer(U(QW)),
+      NativeType::U64 | NativeType::USize | NativeType::Function => {
+        self.move_integer(U(QW))
+      }
+      NativeType::Pointer => self.move_integer(TypedArray),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -546,17 +686,15 @@ impl Aarch64Apple {
     }
   }
 
-  fn move_float(&mut self, param: Floating) {
+  fn move_float(&mut self, param: Float) {
     // Section 6.4.2 of the Aarch64 PCS:
     // > If the argument is a Half-, Single-, Double- or Quad- precision Floating-point or short vector type and the NSRN is less than 8, then the
     // > argument is allocated to the least significant bits of register v[NSRN]. The NSRN is incremented by one. The argument has now been allocated.
     // > [if NSRN is equal or more than 8]
     // > The argument is copied to memory at the adjusted NSAA. The NSAA is incremented by the size of the argument. The argument has now been allocated.
+    let param_i = self.float_params;
 
-    let param_i = self.float_params + 1;
-    self.float_params = param_i;
-
-    let is_in_stack = param_i > Self::FLOAT_REG;
+    let is_in_stack = param_i >= Self::FLOAT_REGISTERS;
     if is_in_stack {
       // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms:
       // > Function arguments may consume slots on the stack that are not multiples of 8 bytes.
@@ -588,6 +726,7 @@ impl Aarch64Apple {
       self.offset_trampoline += padding_trampl + param.size();
       self.offset_callee += padding_callee + param.size();
     }
+    self.float_params += 1;
   }
 
   fn move_integer(&mut self, param: Integer) {
@@ -596,9 +735,7 @@ impl Aarch64Apple {
     // > the argument is copied to the least significant bits in x[NGRN]. The NGRN is incremented by one. The argument has now been allocated.
     // > [if NGRN is equal or more than 8]
     // > The argument is copied to memory at the adjusted NSAA. The NSAA is incremented by the size of the argument. The argument has now been allocated.
-
-    let param_i = self.integer_params + 1;
-    self.integer_params = param_i;
+    let param_i = self.integer_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (x7).
     match (param_i, param) {
@@ -606,56 +743,66 @@ impl Aarch64Apple {
       // > The caller of a function is responsible for signing or zero-extending any argument with fewer than 32 bits.
       // > The standard ABI expects the callee to sign or zero-extend those arguments.
       // (this applies to register parameters, as stack parameters are not eightbyte aligned in Apple)
-      (1, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w0, w1),
-      (1, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFF),
-      (1, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w0, w1),
-      (1, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFFFF),
-      (1, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w0, w1),
-      (1, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x0, x1),
+      (0, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w0, w1),
+      (0, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFF),
+      (0, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w0, w1),
+      (0, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFFFF),
+      (0, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w0, w1),
+      (0, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x0, x1),
+      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
+      // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
+      (0, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x0, [x1, 8]),
 
-      (2, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w1, w2),
-      (2, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFF),
-      (2, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w1, w2),
-      (2, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFFFF),
-      (2, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w1, w2),
-      (2, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x1, x2),
+      (1, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w1, w2),
+      (1, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFF),
+      (1, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w1, w2),
+      (1, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFFFF),
+      (1, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w1, w2),
+      (1, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x1, x2),
+      (1, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x1, [x2, 8]),
 
-      (3, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w2, w3),
-      (3, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFF),
-      (3, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w2, w3),
-      (3, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFFFF),
-      (3, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w2, w3),
-      (3, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x2, x3),
+      (2, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w2, w3),
+      (2, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFF),
+      (2, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w2, w3),
+      (2, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFFFF),
+      (2, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w2, w3),
+      (2, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x2, x3),
+      (2, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x2, [x3, 8]),
 
-      (4, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w3, w4),
-      (4, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFF),
-      (4, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w3, w4),
-      (4, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFFFF),
-      (4, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w3, w4),
-      (4, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x3, x4),
+      (3, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w3, w4),
+      (3, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFF),
+      (3, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w3, w4),
+      (3, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFFFF),
+      (3, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w3, w4),
+      (3, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x3, x4),
+      (3, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x3, [x4, 8]),
 
-      (5, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w4, w5),
-      (5, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFF),
-      (5, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w4, w5),
-      (5, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFFFF),
-      (5, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w4, w5),
-      (5, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x4, x5),
+      (4, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w4, w5),
+      (4, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFF),
+      (4, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w4, w5),
+      (4, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFFFF),
+      (4, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w4, w5),
+      (4, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x4, x5),
+      (4, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x4, [x5, 8]),
 
-      (6, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w5, w6),
-      (6, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFF),
-      (6, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w5, w6),
-      (6, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFFFF),
-      (6, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w5, w6),
-      (6, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x5, x6),
+      (5, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w5, w6),
+      (5, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFF),
+      (5, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w5, w6),
+      (5, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFFFF),
+      (5, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w5, w6),
+      (5, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x5, x6),
+      (5, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x5, [x6, 8]),
 
-      (7, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w6, w7),
-      (7, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFF),
-      (7, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w6, w7),
-      (7, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFFFF),
-      (7, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w6, w7),
-      (7, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x6, x7),
+      (6, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w6, w7),
+      (6, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFF),
+      (6, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w6, w7),
+      (6, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFFFF),
+      (6, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w6, w7),
+      (6, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x6, x7),
+      (6, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x6, [x7, 8]),
 
-      (8, param) => {
+      (7, param) => {
         match param {
           I(B) => {
             dynasm!(self.assmblr; .arch aarch64; ldrsb w7, [sp, self.offset_trampoline])
@@ -677,12 +824,15 @@ impl Aarch64Apple {
           I(QW) | U(QW) => {
             dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline])
           }
+          TypedArray => {
+            dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline]; ldr x7, [x7, 8])
+          }
         }
         // 16 and 8 bit integers are 32 bit integers in v8
         self.offset_trampoline += max(param.size(), 4);
       }
 
-      (_, param) => {
+      (8.., param) => {
         let size_original = param.size();
         // 16 and 8 bit integers are 32 bit integers in v8
         let size_trampl = max(size_original, 4);
@@ -719,11 +869,18 @@ impl Aarch64Apple {
             ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
             ; str x8, [sp, self.offset_callee + padding_callee]
           ),
+          TypedArray => dynasm!(self.assmblr
+            ; .arch aarch64
+            ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
+            ; ldr x8, [x8, 8]
+            ; str x8, [sp, self.offset_callee + padding_callee]
+          ),
         }
         self.offset_trampoline += padding_trampl + size_trampl;
         self.offset_callee += padding_callee + size_original;
       }
     };
+    self.integer_params += 1;
   }
 
   fn zero_first_arg(&mut self) {
@@ -733,10 +890,154 @@ impl Aarch64Apple {
     );
   }
 
+  fn save_out_array_to_preserved_register(&mut self) {
+    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
+    match self.integer_params {
+      // x0 is always V8's receiver
+      0 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x1, 8]),
+      1 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x2, 8]),
+      2 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x3, 8]),
+      3 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x4, 8]),
+      4 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x5, 8]),
+      5 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x6, 8]),
+      6 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x7, 8]),
+      7.. => {
+        dynasm!(self.assmblr; .arch aarch64; ldr x19, [sp, self.offset_trampoline]; ldr x19, [x19, 8])
+      }
+    }
+  }
+
+  fn wrap_return_value_in_out_array(&mut self) {
+    dynasm!(self.assmblr; .arch aarch64; str x0, [x19]);
+  }
+
+  fn store_frame_record(&mut self) {
+    debug_assert!(self.allocated_stack >= 16);
+    dynasm!(self.assmblr
+      ; .arch aarch64
+      // Frame record is stored at the bottom of the stack frame
+      ; stp x29, x30, [sp, self.allocated_stack - 16]
+      ; add x29, sp, self.allocated_stack - 16
+    )
+  }
+
+  fn load_frame_record(&mut self) {
+    // The stack cannot have been deallocated before the frame record is restored
+    debug_assert!(self.allocated_stack >= 16);
+    dynasm!(self.assmblr
+      ; .arch aarch64
+      // Frame record is stored at the bottom of the stack frame
+      ; ldp x29, x30, [sp, self.allocated_stack - 16]
+    )
+  }
+
+  fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
+    self.must_wrap_return_value_in_typed_array(symbol.result_type)
+  }
+
+  fn save_preserved_register_to_stack(&mut self) {
+    // If a preserved register needs to be used, we must have allocated at least 32 bytes in the stack
+    // 16 for the frame record, 8 for the preserved register, and 8 for 16-byte alignment.
+    debug_assert!(self.allocated_stack >= 32);
+    dynasm!(self.assmblr
+      ; .arch aarch64
+        // preserved register is stored after frame record
+      ; str x19, [sp, self.allocated_stack - 24]
+    );
+  }
+
+  fn recover_preserved_register(&mut self) {
+    // The stack cannot have been deallocated before the preserved register is restored
+    // 16 for the frame record, 8 for the preserved register, and 8 for 16-byte alignment.
+    debug_assert!(self.allocated_stack >= 32);
+    dynasm!(self.assmblr
+      ; .arch aarch64
+        // preserved register is stored after frame record
+      ; ldr x19, [sp, self.allocated_stack - 24]
+    );
+  }
+
+  fn allocate_stack(&mut self, symbol: &Symbol) {
+    let mut int_params = 0u32;
+    let mut float_params = 0u32;
+    for param in &symbol.parameter_types {
+      match param {
+        NativeType::F32 | NativeType::F64 => float_params += 1,
+        _ => int_params += 1,
+      }
+    }
+    let mut stack_size = (int_params.saturating_sub(Self::INTEGER_REGISTERS)
+      + float_params.saturating_sub(Self::FLOAT_REGISTERS))
+      * 8;
+
+    // Section 6.2.3 of the Aarch64 PCS:
+    // > Each frame shall link to the frame of its caller by means of a frame record of two 64-bit values on the stack
+    stack_size += 16;
+
+    if self.must_save_preserved_register_to_stack(symbol) {
+      stack_size += 8;
+    }
+
+    // Section 6.2.2 of Aarch64 PCS:
+    // > At any point at which memory is accessed via SP, the hardware requires that
+    // > - SP mod 16 = 0. The stack must be quad-word aligned.
+    // > The stack must also conform to the following constraint at a public interface:
+    // > - SP mod 16 = 0. The stack must be quad-word aligned.
+    stack_size += (16 - stack_size % 16) % 16;
+
+    if stack_size > 0 {
+      dynasm!(self.assmblr
+        ; .arch aarch64
+        ; sub sp, sp, stack_size
+      );
+      self.offset_trampoline += stack_size;
+      // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
+      self.offset_callee = 0;
+      self.allocated_stack += stack_size;
+    }
+  }
+
+  fn deallocate_stack(&mut self) {
+    if self.allocated_stack > 0 {
+      dynasm!(self.assmblr
+        ; .arch aarch64
+        ; add sp, sp, self.allocated_stack
+      );
+      self.allocated_stack = 0;
+    }
+  }
+
   fn tailcall(&mut self, ptr: *const c_void) {
     // stack pointer is never modified and remains aligned
     // frame pointer remains the one provided by the trampoline's caller (V8)
 
+    // Like all ARM instructions, move instructions are 32bit long and can fit at most 16bit immediates.
+    // bigger immediates are loaded in multiple steps applying a left-shift modifier
+    self.load_callee_address(ptr);
+    dynasm!(self.assmblr
+        ; .arch aarch64
+        ; br x8
+    );
+  }
+
+  fn call(&mut self, ptr: *const c_void) {
+    // the stack has been aligned during stack allocation
+    // Frame record has been stored in stack and frame pointer points to it
+    self.load_callee_address(ptr);
+    dynasm!(self.assmblr
+        ; .arch aarch64
+        ; blr x8
+    );
+  }
+
+  fn ret(&mut self) {
+    dynasm!(self.assmblr
+        ; .arch aarch64
+        ; ret
+    );
+  }
+
+  fn load_callee_address(&mut self, ptr: *const c_void) {
     // Like all ARM instructions, move instructions are 32bit long and can fit at most 16bit immediates.
     // bigger immediates are loaded in multiple steps applying a left-shift modifier
     let mut address = ptr as u64;
@@ -756,15 +1057,17 @@ impl Aarch64Apple {
       address >>= 16;
       shift += 16;
     }
-    dynasm!(self.assmblr
-        ; .arch aarch64
-        ; br x8
-    );
   }
 
   fn is_recv_arg_overridden(&self) -> bool {
     // V8 receiver is the first parameter of the trampoline function and is a pointer
     self.integer_params > 0
+  }
+
+  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+    // V8 only supports i32 and u32 return types for integers
+    // We support 64 bit integers by wrapping them in a TypedArray out parameter
+    crate::needs_unwrap(rv)
   }
 
   fn finalize(self) -> ExecutableBuffer {
@@ -781,6 +1084,7 @@ struct Win64 {
   offset_trampoline: u32,
   offset_callee: u32,
   allocated_stack: u32,
+  stack_pointer: u32,
 }
 
 #[cfg_attr(
@@ -800,57 +1104,79 @@ impl Win64 {
       offset_trampoline: 8 + 32,
       offset_callee: 8 + 32,
       allocated_stack: 0,
+      stack_pointer: 0,
     }
   }
 
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
-    let can_tailcall = !compiler.must_cast_return_value(sym.result_type);
-    if !can_tailcall {
+    let must_cast_return_value =
+      compiler.must_cast_return_value(sym.result_type);
+    let must_wrap_return_value =
+      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+    let must_save_preserved_register = must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+
+    if cannot_tailcall {
+      if must_save_preserved_register {
+        compiler.save_preserved_register_to_stack();
+      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
-    for argument in &sym.parameter_types {
-      compiler.move_left(argument)
+    for param in &sym.parameter_types {
+      compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
+    if must_wrap_return_value {
+      compiler.save_out_array_to_preserved_register();
+    }
 
-    if !can_tailcall {
+    if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
-      if compiler.must_cast_return_value(sym.result_type) {
+      if must_cast_return_value {
         compiler.cast_return_value(sym.result_type);
       }
+      if must_wrap_return_value {
+        compiler.wrap_return_value_in_out_array();
+      }
       compiler.deallocate_stack();
+      if must_save_preserved_register {
+        compiler.recover_preserved_register();
+      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
     }
+
+    debug_assert_eq!(compiler.allocated_stack, 0);
+    debug_assert_eq!(compiler.stack_pointer, 0);
 
     Trampoline(compiler.finalize())
   }
 
   fn move_left(&mut self, arg: &NativeType) {
     match arg {
-      NativeType::F32 | NativeType::F64 => self.move_arg(Float),
-      NativeType::U8 | NativeType::I8 => self.move_arg(Int(B)),
-      NativeType::U16 | NativeType::I16 => self.move_arg(Int(W)),
+      NativeType::F32 | NativeType::F64 => self.move_arg(WFloat),
+      NativeType::U8 | NativeType::I8 => self.move_arg(WInt(B)),
+      NativeType::U16 | NativeType::I16 => self.move_arg(WInt(W)),
       NativeType::U32 | NativeType::I32 | NativeType::Void => {
-        self.move_arg(Int(DW))
+        self.move_arg(WInt(DW))
       }
       NativeType::U64
       | NativeType::USize
       | NativeType::Function
-      | NativeType::Pointer
       | NativeType::I64
-      | NativeType::ISize => self.move_arg(Int(QW)),
+      | NativeType::ISize => self.move_arg(WInt(QW)),
+      NativeType::Pointer => self.move_arg(WPointer),
     }
   }
 
-  fn move_arg(&mut self, param: Param) {
+  fn move_arg(&mut self, param: WinParam) {
     // Section "Parameter Passing" of the Windows x64 calling convention:
     // > By default, the x64 calling convention passes the first four arguments to a function in registers.
     // > The registers used for these arguments depend on the position and type of the argument.
@@ -859,8 +1185,7 @@ impl Win64 {
     // > Integer valued arguments in the leftmost four positions are passed in left-to-right order in RCX, RDX, R8, and R9
     // > [...]
     // > Any floating-point and double-precision arguments in the first four parameters are passed in XMM0 - XMM3, depending on position
-    let param_i = self.params + 1;
-    self.params = param_i;
+    let param_i = self.params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last register (r9 or xmm3).
     // If the FFI function is called with a new stack frame, the arguments remaining in the stack are copied to the new stack frame.
@@ -870,32 +1195,41 @@ impl Win64 {
       // > All integer arguments in registers are right-justified, so the callee can ignore the upper bits of the register
       // > and access only the portion of the register necessary.
       // (i.e. unlike in SysV or Aarch64-Apple, 8/16 bit integers are not expected to be zero/sign extended)
-      (1, Int(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, edx),
-      (1, Int(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, rdx),
+      (0, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, edx),
+      (0, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, rdx),
+      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
+      // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
+      (0, WPointer) => dynasm!(self.assmblr; .arch x64; mov rcx, [rdx + 8]),
       // Use movaps for singles and doubles, benefits of smaller encoding outweigh those of using the correct instruction for the type,
       // which for doubles should technically be movapd
-      (1, Float) => {
+      (0, WFloat) => {
         dynasm!(self.assmblr; .arch x64; movaps xmm0, xmm1);
         self.zero_first_arg();
       }
 
-      (2, Int(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov edx, r8d),
-      (2, Int(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, r8),
-      (2, Float) => dynasm!(self.assmblr; .arch x64; movaps xmm1, xmm2),
+      (1, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov edx, r8d),
+      (1, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, r8),
+      (1, WPointer) => dynasm!(self.assmblr; .arch x64; mov rdx, [r8 + 8]),
+      (1, WFloat) => dynasm!(self.assmblr; .arch x64; movaps xmm1, xmm2),
 
-      (3, Int(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
-      (3, Int(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
-      (3, Float) => dynasm!(self.assmblr; .arch x64; movaps xmm2, xmm3),
+      (2, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
+      (2, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
+      (2, WPointer) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
+      (2, WFloat) => dynasm!(self.assmblr; .arch x64; movaps xmm2, xmm3),
 
-      (4, param) => {
+      (3, param) => {
         match param {
-          Int(B | W | DW) => {
+          WInt(B | W | DW) => {
             dynasm!(self.assmblr; .arch x64; mov r9d, [rsp + self.offset_trampoline as i32])
           }
-          Int(QW) => {
+          WInt(QW) => {
             dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32])
           }
-          Float => {
+          WPointer => {
+            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32]; mov r9, [r9 + 8])
+          }
+          WFloat => {
             // parameter 4 is always 16-byte aligned, so we can use movaps instead of movups
             dynasm!(self.assmblr; .arch x64; movaps xmm3, [rsp + self.offset_trampoline as i32])
           }
@@ -905,23 +1239,31 @@ impl Win64 {
         // Ref: https://github.com/MicrosoftDocs/cpp-docs/blob/main/docs/build/x64-software-conventions.md#x64-aggregate-and-union-layout
         self.offset_trampoline += 8;
       }
-      (_, param) => {
+      (4.., param) => {
         match param {
-          Int(B | W | DW) => {
+          WInt(B | W | DW) => {
             dynasm!(self.assmblr
               ; .arch x64
               ; mov eax, [rsp + self.offset_trampoline as i32]
               ; mov [rsp + self.offset_callee as i32], eax
             )
           }
-          Int(QW) => {
+          WInt(QW) => {
             dynasm!(self.assmblr
               ; .arch x64
               ; mov rax, [rsp + self.offset_trampoline as i32]
               ; mov [rsp + self.offset_callee as i32], rax
             )
           }
-          Float => {
+          WPointer => {
+            dynasm!(self.assmblr
+              ; .arch x64
+              ; mov rax, [rsp + self.offset_trampoline as i32]
+              ; mov rax, [rax + 8]
+              ; mov [rsp + self.offset_callee as i32], rax
+            )
+          }
+          WFloat => {
             dynasm!(self.assmblr
               ; .arch x64
               ; movups xmm4, [rsp + self.offset_trampoline as i32]
@@ -941,6 +1283,7 @@ impl Win64 {
         );
       }
     }
+    self.params += 1;
   }
 
   fn zero_first_arg(&mut self) {
@@ -963,9 +1306,49 @@ impl Win64 {
     }
   }
 
+  fn save_out_array_to_preserved_register(&mut self) {
+    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
+    match self.params {
+      // rcx is always V8 receiver
+      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
+      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
+      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
+      3.. => {
+        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
+      }
+    }
+  }
+
+  fn wrap_return_value_in_out_array(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; mov [rbx], rax
+    )
+  }
+
+  fn save_preserved_register_to_stack(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; push rbx
+    );
+    self.offset_trampoline += 8;
+    // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
+    self.offset_callee = 0;
+    self.stack_pointer += 8;
+  }
+
+  fn recover_preserved_register(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; pop rbx
+    );
+    self.stack_pointer -= 8;
+    // parameter offsets are invalid once this method is called
+  }
+
   fn allocate_stack(&mut self, params: &[NativeType]) {
     let mut stack_size = 0;
-    // Section "Calling Convetion Defaults" of the x64-calling-convention and Section "Stack Allocation" of the stack-usage docs:
+    // Section "Calling Convention Defaults" of the x64-calling-convention and Section "Stack Allocation" of the stack-usage docs:
     // > The x64 Application Binary Interface (ABI) uses a four-register fast-call calling convention by default.
     // > Space is allocated on the call stack as a shadow store for callees to save those registers.
     // > [...]
@@ -978,17 +1361,17 @@ impl Win64 {
     // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address)
     // Section "Stack Allocation" of stack-usage docs:
     // > The stack will always be maintained 16-byte aligned, except within the prolog (for example, after the return address is pushed)
-    stack_size += (16 - (stack_size + 8) % 16) % 16;
+    stack_size += (16 - (self.stack_pointer + stack_size + 8) % 16) % 16;
 
     dynasm!(self.assmblr
       ; .arch x64
       ; sub rsp, stack_size as i32
     );
-    self.allocated_stack = stack_size;
-    // New stack frame + trampoline caller's return address + trampoline's shadow space
-    self.offset_trampoline = stack_size + 8 + 32;
-    // callee's shadow space
+    self.offset_trampoline += stack_size;
+    // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack right after the shadow space
     self.offset_callee = 32;
+    self.allocated_stack += stack_size;
+    self.stack_pointer += stack_size;
   }
 
   fn deallocate_stack(&mut self) {
@@ -996,6 +1379,8 @@ impl Win64 {
       ; .arch x64
       ; add rsp, self.allocated_stack as i32
     );
+    self.stack_pointer -= self.allocated_stack;
+    self.allocated_stack = 0;
   }
 
   fn call(&mut self, ptr: *const c_void) {
@@ -1038,35 +1423,43 @@ impl Win64 {
     )
   }
 
+  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+    // V8 only supports i32 and u32 return types for integers
+    // We support 64 bit integers by wrapping them in a TypedArray out parameter
+    crate::needs_unwrap(rv)
+  }
+
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Floating {
+enum Float {
   Single = 4,
   Double = 8,
 }
 
-impl Floating {
+impl Float {
   fn size(self) -> u32 {
     self as u32
   }
 }
 
-use Floating::*;
+use Float::*;
 
 #[derive(Clone, Copy, Debug)]
 enum Integer {
   I(Size),
   U(Size),
+  TypedArray,
 }
 
 impl Integer {
   fn size(self) -> u32 {
     match self {
       I(size) | U(size) => size as u32,
+      TypedArray => 8,
     }
   }
 }
@@ -1082,13 +1475,15 @@ enum Size {
 }
 use Size::*;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug)]
-enum Param {
-  Int(Size),
-  Float,
+enum WinParam {
+  WInt(Size),
+  WFloat,
+  WPointer,
 }
 
-use Param::*;
+use WinParam::*;
 
 // TODO: on ice. Decide what todo with this
 // trait Abi {
@@ -1212,7 +1607,7 @@ mod tests {
       ));
 
       let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/P36jvPxda
+      // See https://godbolt.org/z/KE9x1h9xq
       dynasm!(assembler
         ; .arch x64
         ; movzx edi, sil                   // u8
@@ -1222,6 +1617,7 @@ mod tests {
         ; mov r8d, r9d                     // u32
         ; mov r9, [DWORD rsp + 8]          // u64
         ; mov rax, [DWORD rsp + 16]        // Pointer
+        ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 8], rax         // ..
         ; mov rax, [DWORD rsp + 24]        // Function
         ; mov [DWORD rsp + 16], rax        // ..
@@ -1283,11 +1679,101 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
+
+    #[test]
+    fn typed_array_pointer() {
+      let trampoline = SysVAmd64::compile(&symbol(
+        vec![
+          Pointer, Pointer, Pointer, Pointer, Pointer, Pointer, Pointer,
+          Pointer,
+        ],
+        Void,
+      ));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/hqv63M3Ko
+      dynasm!(assembler
+        ; .arch x64
+        ; mov rdi, [rsi + 8]               // Pointer
+        ; mov rsi, [rdx + 8]               // Pointer
+        ; mov rdx, [rcx + 8]               // Pointer
+        ; mov rcx, [r8 + 8]                // Pointer
+        ; mov r8, [r9 + 8]                 // Pointer
+        ; mov r9, [DWORD rsp + 8]          // Pointer
+        ; mov r9, [r9 + 8]                 // ..
+        ; mov rax, [DWORD rsp + 16]        // Pointer
+        ; mov rax, [rax + 8]               // ..
+        ; mov [DWORD rsp + 8], rax         // ..
+        ; mov rax, [DWORD rsp + 24]        // Pointer
+        ; mov rax, [rax + 8]               // ..
+        ; mov [DWORD rsp + 16], rax        // ..
+        ; mov rax, QWORD 0
+        ; jmp rax
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_register_typed_array() {
+      let trampoline = SysVAmd64::compile(&symbol(vec![], U64));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/8G7a488o7
+      dynasm!(assembler
+        ; .arch x64
+        ; push rbx
+        ; xor edi, edi       // recv
+        ; mov rbx, [rsi + 8] // save data array pointer to non-volatile register
+        ; mov rax, QWORD 0
+        ; call rax
+        ; mov [rbx], rax     // copy return value to data pointer address
+        ; pop rbx
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_stack_typed_array() {
+      let trampoline = SysVAmd64::compile(&symbol(
+        vec![U64, U64, U64, U64, U64, U64, U64],
+        U64,
+      ));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/cPnPYWdWq
+      dynasm!(assembler
+        ; .arch x64
+        ; push rbx
+        ; sub rsp, DWORD 16
+        ; mov rdi, rsi              // u64
+        ; mov rsi, rdx              // u64
+        ; mov rdx, rcx              // u64
+        ; mov rcx, r8               // u64
+        ; mov r8, r9                // u64
+        ; mov r9, [DWORD rsp + 32]  // u64
+        ; mov rax, [DWORD rsp + 40] // u64
+        ; mov [DWORD rsp + 0], rax  // ..
+        ; mov rax, [DWORD rsp + 48] // save data array pointer to non-volatile register
+        ; mov rbx, [rax + 8]        // ..
+        ; mov rax, QWORD 0
+        ; call rax
+        ; mov [rbx], rax     // copy return value to data pointer address
+        ; add rsp, DWORD 16
+        ; pop rbx
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
   }
+
   mod aarch64_apple {
     use std::ops::Deref;
 
-    use dynasmrt::{dynasm, DynasmApi};
+    use dynasmrt::dynasm;
 
     use super::super::Aarch64Apple;
     use super::symbol;
@@ -1304,7 +1790,7 @@ mod tests {
       ));
 
       let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/Gr1Mcbch5
+      // See https://godbolt.org/z/oefqYWT13
       dynasm!(assembler
         ; .arch aarch64
         ; and w0, w1, 0xFF   // u8
@@ -1313,7 +1799,7 @@ mod tests {
         ; sxtb w3, w4        // i8
         ; mov w4, w5         // u32
         ; mov x5, x6         // u64
-        ; mov x6, x7         // Pointer
+        ; ldr x6, [x7, 8]    // Pointer
         ; ldr x7, [sp]       // Function
         ; ldr x8, [sp, 8]    // i64
         ; str x8, [sp]       // ..
@@ -1367,6 +1853,107 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
+
+    #[test]
+    fn typed_array_pointer() {
+      let trampoline = Aarch64Apple::compile(&symbol(
+        vec![
+          Pointer, Pointer, Pointer, Pointer, Pointer, Pointer, Pointer,
+          Pointer, Pointer, Pointer,
+        ],
+        Void,
+      ));
+
+      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/obd6z6vsf
+      dynasm!(assembler
+        ; .arch aarch64
+        ; ldr x0, [x1, 8]               // Pointer
+        ; ldr x1, [x2, 8]               // Pointer
+        ; ldr x2, [x3, 8]               // Pointer
+        ; ldr x3, [x4, 8]               // Pointer
+        ; ldr x4, [x5, 8]               // Pointer
+        ; ldr x5, [x6, 8]               // Pointer
+        ; ldr x6, [x7, 8]               // Pointer
+        ; ldr x7, [sp]                  // Pointer
+        ; ldr x7, [x7, 8]               // ..
+        ; ldr x8, [sp, 8]               // Pointer
+        ; ldr x8, [x8, 8]               // ..
+        ; str x8, [sp]                  // ..
+        ; ldr x8, [sp, 16]              // Pointer
+        ; ldr x8, [x8, 8]               // ..
+        ; str x8, [sp, 8]               // ..
+        ; movz x8, 0
+        ; br x8
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_register_typed_array() {
+      let trampoline = Aarch64Apple::compile(&symbol(vec![], U64));
+
+      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/47EvvYb83
+      dynasm!(assembler
+        ; .arch aarch64
+        ; sub sp, sp, 32
+        ; stp x29, x30, [sp, 16]
+        ; add x29, sp, 16
+        ; str x19, [sp, 8]
+        ; mov x0, xzr       // recv
+        ; ldr x19, [x1, 8]  // save data array pointer to non-volatile register
+        ; movz x8, 0
+        ; blr x8
+        ; str x0, [x19]     // copy return value to data pointer address
+        ; ldr x19, [sp, 8]
+        ; ldp x29, x30, [sp, 16]
+        ; add sp, sp, 32
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_stack_typed_array() {
+      let trampoline = Aarch64Apple::compile(&symbol(
+        vec![U64, U64, U64, U64, U64, U64, U64, U64, U64],
+        U64,
+      ));
+
+      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/PvYPbsE1b
+      dynasm!(assembler
+        ; .arch aarch64
+        ; sub sp, sp, 32
+        ; stp x29, x30, [sp, 16]
+        ; add x29, sp, 16
+        ; str x19, [sp, 8]
+        ; mov x0, x1          // u64
+        ; mov x1, x2          // u64
+        ; mov x2, x3          // u64
+        ; mov x3, x4          // u64
+        ; mov x4, x5          // u64
+        ; mov x5, x6          // u64
+        ; mov x6, x7          // u64
+        ; ldr x7, [sp, 32]    // u64
+        ; ldr x8, [sp, 40]    // u64
+        ; str x8, [sp]        // ..
+        ; ldr x19, [sp, 48]   // save data array pointer to non-volatile register
+        ; ldr x19, [x19, 8]   // ..
+        ; movz x8, 0
+        ; blr x8
+        ; str x0, [x19]       // copy return value to data pointer address
+        ; ldr x19, [sp, 8]
+        ; ldp x29, x30, [sp, 16]
+        ; add sp, sp, 32
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
   }
 
   mod x64_windows {
@@ -1386,7 +1973,7 @@ mod tests {
       ));
 
       let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/87n5serd9
+      // See https://godbolt.org/z/TYzqrf9aj
       dynasm!(assembler
         ; .arch x64
         ; mov ecx, edx                  // u8
@@ -1398,6 +1985,7 @@ mod tests {
         ; mov eax, [DWORD rsp + 56]     // i8
         ; mov [DWORD rsp + 48], eax     // ..
         ; mov rax, [DWORD rsp + 64]     // Pointer
+        ; mov rax, [rax + 8]            // ..
         ; mov [DWORD rsp + 56], rax     // ..
         ; mov rax, QWORD 0
         ; jmp rax
@@ -1440,8 +2028,90 @@ mod tests {
         ; mov [DWORD rsp + 88], eax   // ..
         ; mov rax, QWORD 0
         ; call rax
-        ; movsx eax, al      // return value cast
+        ; movsx eax, al       // return value cast
         ; add rsp, DWORD 104  // stack deallocation
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn typed_array_pointer() {
+      let trampoline = Win64::compile(&symbol(
+        vec![Pointer, Pointer, Pointer, Pointer, Pointer, Pointer],
+        Void,
+      ));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/TYzqrf9aj
+      dynasm!(assembler
+        ; .arch x64
+        ; mov rcx, [rdx + 8]               // Pointer
+        ; mov rdx, [r8 + 8]                // Pointer
+        ; mov r8, [r9 + 8]                 // Pointer
+        ; mov r9, [DWORD rsp + 40]         // Pointer
+        ; mov r9, [r9 + 8]                 // ..
+        ; mov rax, [DWORD rsp + 48]        // Pointer
+        ; mov rax, [rax + 8]               // ..
+        ; mov [DWORD rsp + 40], rax        // ..
+        ; mov rax, [DWORD rsp + 56]        // Pointer
+        ; mov rax, [rax + 8]               // ..
+        ; mov [DWORD rsp + 48], rax        // ..
+        ; mov rax, QWORD 0
+        ; jmp rax
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_register_typed_array() {
+      let trampoline = Win64::compile(&symbol(vec![], U64));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/7EnPE7o3T
+      dynasm!(assembler
+        ; .arch x64
+        ; push rbx
+        ; sub rsp, DWORD 32
+        ; xor ecx, ecx       // recv
+        ; mov rbx, [rdx + 8] // save data array pointer to non-volatile register
+        ; mov rax, QWORD 0
+        ; call rax
+        ; mov [rbx], rax     // copy return value to data pointer address
+        ; add rsp, DWORD 32
+        ; pop rbx
+        ; ret
+      );
+      let expected = assembler.finalize().unwrap();
+      assert_eq!(trampoline.0.deref(), expected.deref());
+    }
+
+    #[test]
+    fn return_u64_in_stack_typed_array() {
+      let trampoline =
+        Win64::compile(&symbol(vec![U64, U64, U64, U64, U64], U64));
+
+      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
+      // See https://godbolt.org/z/3966sfEex
+      dynasm!(assembler
+        ; .arch x64
+        ; push rbx
+        ; sub rsp, DWORD 48
+        ; mov rcx, rdx               // u64
+        ; mov rdx, r8                // u64
+        ; mov r8, r9                 // u64
+        ; mov r9, [DWORD rsp + 96]   // u64
+        ; mov rax, [DWORD rsp + 104] // u64
+        ; mov [DWORD rsp + 32], rax  // ..
+        ; mov rax, [DWORD rsp + 112] // save data array pointer to non-volatile register
+        ; mov rbx, [rax + 8]         // ..
+        ; mov rax, QWORD 0
+        ; call rax
+        ; mov [rbx], rax             // copy return value to data pointer address
+        ; add rsp, DWORD 48
+        ; pop rbx
         ; ret
       );
       let expected = assembler.finalize().unwrap();

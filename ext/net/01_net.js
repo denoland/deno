@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { BadResourcePrototype, InterruptedPrototype, ops } = core;
   const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
   const {
     Error,
@@ -42,7 +42,7 @@
   }
 
   function opListen(args) {
-    return core.opSync("op_net_listen", args);
+    return ops.op_net_listen(args);
   }
 
   function opConnect(args) {
@@ -157,11 +157,11 @@
 
   class TcpConn extends Conn {
     setNoDelay(nodelay = true) {
-      return core.opSync("op_set_nodelay", this.rid, nodelay);
+      return ops.op_set_nodelay(this.rid, nodelay);
     }
 
     setKeepAlive(keepalive = true) {
-      return core.opSync("op_set_keepalive", this.rid, keepalive);
+      return ops.op_set_keepalive(this.rid, keepalive);
     }
   }
 

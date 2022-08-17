@@ -87,8 +87,6 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
-  // This is dead code only on Windows
-  #[allow(dead_code)]
   can_callback: bool,
 }
 
@@ -707,6 +705,22 @@ where
   ))
 }
 
+fn needs_unwrap(rv: NativeType) -> bool {
+  matches!(
+    rv,
+    NativeType::Function
+      | NativeType::Pointer
+      | NativeType::I64
+      | NativeType::ISize
+      | NativeType::U64
+      | NativeType::USize
+  )
+}
+
+fn is_i64(rv: NativeType) -> bool {
+  matches!(rv, NativeType::I64 | NativeType::ISize)
+}
+
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
@@ -723,11 +737,46 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
+      let needs_unwrap = match needs_unwrap(symbol.result_type) {
+        true => Some(args.get(symbol.parameter_types.len() as i32)),
+        false => None,
+      };
       match ffi_call_sync(scope, args, symbol) {
         Ok(result) => {
-          // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-          let result = unsafe { result.to_v8(scope, symbol.result_type) };
-          rv.set(result.v8_value);
+          match needs_unwrap {
+            Some(v) => {
+              let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
+              let backing_store =
+                view.buffer(scope).unwrap().get_backing_store();
+
+              if is_i64(symbol.result_type) {
+                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+                // it points to a fixed continuous slice of bytes on the heap.
+                let bs = unsafe {
+                  &mut *(&backing_store[..] as *const _ as *mut [u8]
+                    as *mut i64)
+                };
+                // SAFETY: We already checked that type == I64
+                let value = unsafe { result.i64_value };
+                *bs = value;
+              } else {
+                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+                // it points to a fixed continuous slice of bytes on the heap.
+                let bs = unsafe {
+                  &mut *(&backing_store[..] as *const _ as *mut [u8]
+                    as *mut u64)
+                };
+                // SAFETY: We checked that type == U64
+                let value = unsafe { result.u64_value };
+                *bs = value;
+              }
+            }
+            None => {
+              // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+              let result = unsafe { result.to_v8(scope, symbol.result_type) };
+              rv.set(result.v8_value);
+            }
+          }
         }
         Err(err) => {
           deno_core::_ops::throw_type_error(scope, err.to_string());
@@ -955,11 +1004,7 @@ fn ffi_parse_pointer_arg(
         type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
       })?
       .get_backing_store();
-    if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
-    } else {
-      &backing_store[..] as *const _ as *const u8
-    }
+    &backing_store[byte_offset..] as *const _ as *const u8
   } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(arg) {
     value.u64_value().0 as usize as *const u8
   } else if let Ok(value) = v8::Local::<v8::Number>::try_from(arg) {
@@ -1517,11 +1562,7 @@ unsafe fn do_ffi_callback(
           .buffer(scope)
           .expect("Unable to deserialize result parameter.")
           .get_backing_store();
-        if byte_offset > 0 {
-          &backing_store[byte_offset..] as *const _ as *const u8
-        } else {
-          &backing_store[..] as *const _ as *const u8
-        }
+        &backing_store[byte_offset..] as *const _ as *const u8
       } else if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         value.u64_value().0 as usize as *const u8
       } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
@@ -1730,6 +1771,7 @@ where
 
 #[op]
 fn op_ffi_unsafe_callback_ref(state: &mut deno_core::OpState, inc_dec: bool) {
+  check_unstable(state, "Deno.dlopen");
   let ffi_state = state.borrow_mut::<FfiState>();
   if inc_dec {
     ffi_state.active_refed_functions += 1;
@@ -1964,11 +2006,7 @@ where
       })?
       .get_backing_store();
     let byte_offset = value.byte_offset();
-    if byte_offset > 0 {
-      &backing_store[byte_offset..] as *const _ as *const u8
-    } else {
-      &backing_store[..] as *const _ as *const u8
-    }
+    &backing_store[byte_offset..] as *const _ as *const u8
   } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
   {
     let backing_store = value.get_backing_store();
@@ -2080,13 +2118,14 @@ where
   permissions.check(None)?;
 
   // SAFETY: Pointer is user provided.
-  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }.to_bytes();
-  let value: v8::Local<v8::Value> =
-    v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
-      .ok_or_else(|| {
-        type_error("Invalid CString pointer, string exceeds max length")
-      })?
-      .into();
+  let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) }
+    .to_str()
+    .map_err(|_| type_error("Invalid CString pointer, not valid UTF-8"))?;
+  let value: v8::Local<v8::Value> = v8::String::new(scope, cstr)
+    .ok_or_else(|| {
+      type_error("Invalid CString pointer, string exceeds max length")
+    })?
+    .into();
   Ok(value.into())
 }
 

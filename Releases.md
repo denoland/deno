@@ -6,6 +6,54 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.24.3 / 2022.08.11
+
+- fix(ext/fetch): add socks proxy support (#15372)
+- feat(unstable/ext/ffi): add static method variants to Deno.UnsafePointerView
+  (#15146)
+- fix(cli): allow configurations files to also be json modules (#15444)
+- fix(ext/ffi): check CStr for UTF-8 validity on read (#15318)
+- fix(ext/ffi): unstable op_ffi_unsafe_callback_ref (#15439)
+- fix(permissions): ignore empty values (#15447)
+- fix(task): subcommand parser skips global args (#15297)
+- fix: allow setting `globalThis.location` when no `--location` is provided
+  (#15448)
+- fix: update deno_graph to fix importing config as JSON module (#15388)
+- fix: various formatting fixes (#15412)
+- perf(ops): monomorphic sync op calls (#15337)
+
+### 1.24.2 / 2022.08.04
+
+- feat(ext/ffi): Add support to get ArrayBuffers from UnsafePointerView (#15143)
+- feat(ext/ffi): Safe number pointers (#15173)
+- fix(compat): use mjs extension for stream/promises (#15341)
+- fix(core): BorrowMutError in nested error (#15352)
+- fix(ext/webgpu): use correct IDL key name (#15278)
+- fix(lsp): remove excessive line breaks in status page (#15364)
+- fix(lsp): use correct commit chars for completions (#15366)
+- fix(test): output parallel test results independently (#15399)
+- fix(test): race condition for cancelled tests (#15233)
+- fix(vendor): error on dynamic imports that fail to load instead of panicking
+  (#15391)
+- fix(vendor): existing import map with bare specifier in remote (#15390)
+- fix: increase websocket message size (#15406)
+- perf(ext/ffi): support Uint8Array in fast calls (#15319)
+- perf(ext/ffi): use fast api calls for 64bit return types (#15313)
+
+### 1.24.1 / 2022.07.28
+
+- Revert "feat(ops): V8 Fast Calls (#15122)" (#15276)
+- feat(ops): V8 Fast Calls (#15122)
+- fix(cli): unset jsxFragmentFactory & jsxFactory options (#15264)
+- fix(ext/fetch): resolve TODOs about WebIDL conversions in body init (#15312)
+- fix(lsp): remove CompletionInfo.flags (#15288)
+- fix(tools): upgrade to new `Deno.spawn` api (#15265)
+- fix: Child.unref() unrefs stdio streams properly (#15275)
+- fix: proper typings for unhandledrejection event (#15271)
+- fix: unhandledrejection handling for sync throw in top level (#15279)
+- perf(ext/ffi): Optimise common pointer related APIs (#15144)
+- serde_v8: improvements to avoid hitting unimplemented codepaths (#13915)
+
 ### 1.24.0 / 2022.07.20
 
 - BREAKING(unstable): Improve Deno.spawn() stdio API (#14919)

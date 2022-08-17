@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { pathFromURL } = window.__bootstrap.util;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const { add, remove } = window.__bootstrap.abortSignal;
@@ -32,7 +33,7 @@
     stderr = "piped",
     signal = undefined,
   } = {}) {
-    const child = core.opSync("op_spawn_child", {
+    const child = ops.op_spawn_child({
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),
@@ -203,7 +204,7 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      core.opSync("op_kill", this.#pid, signo);
+      ops.op_kill(this.#pid, signo);
     }
 
     ref() {
@@ -246,7 +247,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    const result = core.opSync("op_spawn_sync", {
+    const result = ops.op_spawn_sync({
       cmd: pathFromURL(command),
       args: ArrayPrototypeMap(args, String),
       cwd: pathFromURL(cwd),

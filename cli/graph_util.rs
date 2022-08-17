@@ -9,6 +9,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_graph::GraphImport;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -49,9 +50,6 @@ pub enum ModuleEntry {
     checked_libs: HashSet<TsTypeLib>,
     maybe_types: Option<Resolved>,
   },
-  Configuration {
-    dependencies: BTreeMap<String, Resolved>,
-  },
   Error(ModuleGraphError),
   Redirect(ModuleSpecifier),
 }
@@ -63,13 +61,32 @@ pub struct GraphData {
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
-  configurations: HashSet<ModuleSpecifier>,
+  graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
   /// Store data from `graph` into `self`.
   pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+    for graph_import in &graph.imports {
+      for dep in graph_import.dependencies.values() {
+        for resolved in [&dep.maybe_code, &dep.maybe_type] {
+          if let Resolved::Ok {
+            specifier, range, ..
+          } = resolved
+          {
+            let entry = self.referrer_map.entry(specifier.clone());
+            entry.or_insert_with(|| range.clone());
+          }
+        }
+      }
+      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
+      self.graph_imports.push(GraphImport {
+        referrer: graph_import.referrer.clone(),
+        dependencies: graph_import.dependencies.clone(),
+      });
+    }
+
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
         continue;
@@ -82,27 +99,6 @@ impl GraphData {
       match result {
         Ok((_, _, media_type)) => {
           let module = graph.get(&specifier).unwrap();
-          if module.kind == ModuleKind::Synthetic {
-            let mut dependencies = BTreeMap::new();
-            for (specifier, dependency) in &module.dependencies {
-              if !matches!(dependency.maybe_type, Resolved::None) {
-                dependencies
-                  .insert(specifier.clone(), dependency.maybe_type.clone());
-                if let Resolved::Ok {
-                  specifier, range, ..
-                } = &dependency.maybe_type
-                {
-                  let entry = self.referrer_map.entry(specifier.clone());
-                  entry.or_insert_with(|| range.clone());
-                }
-              }
-            }
-            self.modules.insert(
-              module.specifier.clone(),
-              ModuleEntry::Configuration { dependencies },
-            );
-            self.configurations.insert(module.specifier.clone());
-          }
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
@@ -187,9 +183,20 @@ impl GraphData {
       seen.insert(root);
       visiting.push_back(root);
     }
-    for root in &self.configurations {
-      seen.insert(root);
-      visiting.push_back(root);
+    for (_, dep) in self.graph_imports.iter().flat_map(|i| &i.dependencies) {
+      let mut resolutions = vec![&dep.maybe_code];
+      if follow_type_only {
+        resolutions.push(&dep.maybe_type);
+      }
+      #[allow(clippy::manual_flatten)]
+      for resolved in resolutions {
+        if let Resolved::Ok { specifier, .. } = resolved {
+          if !seen.contains(specifier) {
+            seen.insert(specifier);
+            visiting.push_front(specifier);
+          }
+        }
+      }
     }
     while let Some(specifier) = visiting.pop_front() {
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
@@ -239,16 +246,6 @@ impl GraphData {
             }
           }
         }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved in dependencies.values() {
-            if let Resolved::Ok { specifier, .. } = resolved {
-              if !seen.contains(specifier) {
-                seen.insert(specifier);
-                visiting.push_front(specifier);
-              }
-            }
-          }
-        }
         ModuleEntry::Error(_) => {}
         ModuleEntry::Redirect(specifier) => {
           if !seen.contains(specifier) {
@@ -282,7 +279,15 @@ impl GraphData {
     Some(Self {
       modules,
       referrer_map,
-      configurations: self.configurations.clone(),
+      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
+      graph_imports: self
+        .graph_imports
+        .iter()
+        .map(|i| GraphImport {
+          referrer: i.referrer.clone(),
+          dependencies: i.dependencies.clone(),
+        })
+        .collect(),
       cjs_esm_translations: Default::default(),
     })
   }
@@ -349,20 +354,6 @@ impl GraphData {
                   return Some(Err(error.clone().into()));
                 }
               }
-            }
-          }
-        }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved_result in dependencies.values() {
-            if let Resolved::Err(error) = resolved_result {
-              let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
             }
           }
         }
@@ -441,6 +432,24 @@ impl GraphData {
     specifier: &ModuleSpecifier,
   ) -> Option<&'a ModuleEntry> {
     self.modules.get(specifier)
+  }
+
+  /// Get the dependencies of a module or graph import.
+  pub fn get_dependencies<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&'a BTreeMap<String, Dependency>> {
+    let specifier = self.follow_redirect(specifier);
+    if let Some(ModuleEntry::Module { dependencies, .. }) = self.get(&specifier)
+    {
+      return Some(dependencies);
+    }
+    if let Some(graph_import) =
+      self.graph_imports.iter().find(|i| i.referrer == specifier)
+    {
+      return Some(&graph_import.dependencies);
+    }
+    None
   }
 
   // TODO(bartlomieju): after saving translated source

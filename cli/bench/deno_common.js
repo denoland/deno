@@ -6,7 +6,11 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 });
 
 // Void ops measure op-overhead
-Deno.bench("op_void_sync", { n: 1e7 }, () => Deno.core.opSync("op_void_sync"));
+Deno.bench(
+  "op_void_sync",
+  { n: 1e7 },
+  () => Deno.core.ops.op_void_sync(),
+);
 
 Deno.bench(
   "op_void_async",

@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
@@ -63,6 +64,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'&')
   .add(b'+')
   .add(b',');
+
+const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
 static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
@@ -493,6 +496,12 @@ impl ModuleRegistry {
         filter_text,
         sort_text: Some("1".to_string()),
         text_edit,
+        commit_characters: Some(
+          REGISTRY_IMPORT_COMMIT_CHARS
+            .iter()
+            .map(|&c| c.into())
+            .collect(),
+        ),
         ..Default::default()
       },
     );
@@ -784,6 +793,21 @@ impl ModuleRegistry {
                             &key,
                             &item,
                           );
+                          let commit_characters = if is_incomplete {
+                            Some(
+                              REGISTRY_IMPORT_COMMIT_CHARS
+                                .iter()
+                                .map(|&c| c.into())
+                                .collect(),
+                            )
+                          } else {
+                            Some(
+                              IMPORT_COMMIT_CHARS
+                                .iter()
+                                .map(|&c| c.into())
+                                .collect(),
+                            )
+                          };
                           completions.insert(
                             item,
                             lsp::CompletionItem {
@@ -796,6 +820,7 @@ impl ModuleRegistry {
                               command,
                               preselect,
                               data,
+                              commit_characters,
                               ..Default::default()
                             },
                           );
@@ -836,6 +861,12 @@ impl ModuleRegistry {
                           sort_text: Some("1".to_string()),
                           text_edit,
                           preselect: Some(true),
+                          commit_characters: Some(
+                            REGISTRY_IMPORT_COMMIT_CHARS
+                              .iter()
+                              .map(|&c| c.into())
+                              .collect(),
+                          ),
                           ..Default::default()
                         },
                       );
@@ -889,6 +920,21 @@ impl ModuleRegistry {
                             let preselect =
                               get_preselect(item.clone(), preselect.clone());
                             let data = get_data(registry, &specifier, k, &path);
+                            let commit_characters = if is_incomplete {
+                              Some(
+                                REGISTRY_IMPORT_COMMIT_CHARS
+                                  .iter()
+                                  .map(|&c| c.into())
+                                  .collect(),
+                              )
+                            } else {
+                              Some(
+                                IMPORT_COMMIT_CHARS
+                                  .iter()
+                                  .map(|&c| c.into())
+                                  .collect(),
+                              )
+                            };
                             completions.insert(
                               item.clone(),
                               lsp::CompletionItem {
@@ -901,6 +947,7 @@ impl ModuleRegistry {
                                 command,
                                 preselect,
                                 data,
+                                commit_characters,
                                 ..Default::default()
                               },
                             );
@@ -969,6 +1016,12 @@ impl ModuleRegistry {
             detail: Some("(registry)".to_string()),
             sort_text: Some("2".to_string()),
             text_edit,
+            commit_characters: Some(
+              REGISTRY_IMPORT_COMMIT_CHARS
+                .iter()
+                .map(|&c| c.into())
+                .collect(),
+            ),
             ..Default::default()
           })
         } else {

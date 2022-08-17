@@ -131,6 +131,8 @@ fn basic() {
     uint32Array[0]: 42\n\
     uint32Array[0] after mutation: 55\n\
     Static ptr value after mutation: 55\n\
+    2264956937\n\
+    2264956937\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
