@@ -1359,7 +1359,6 @@ Deno.test(
 
     const response = await fetch(`http://localhost:4503/`);
     assertEquals(response.status, 200);
-    assertEquals(response.headers.get("transfer-encoding"), "chunked");
     await promise;
     assertEquals(new Uint8Array(await response.arrayBuffer()), data);
     ac.abort();

@@ -8,8 +8,13 @@
     toInnerResponse,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { ReadableStream, ReadableStreamPrototype, _state } =
-    window.__bootstrap.streams;
+  const {
+    ReadableStream,
+    ReadableStreamPrototype,
+    getReadableStreamRid,
+    readableStreamClose,
+    _state,
+  } = window.__bootstrap.streams;
   const {
     WebSocket,
     _rid,
@@ -116,7 +121,7 @@
   //    CRLF
   //    [ message-body ]
   //
-  function http1Response(method, status, headerList, body) {
+  function http1Response(method, status, headerList, body, earlyEnd = false) {
     // HTTP uses a "<major>.<minor>" numbering scheme
     //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
@@ -140,6 +145,10 @@
 
     // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
     if (status == 204 && status <= 100) {
+      return str;
+    }
+
+    if (earlyEnd === true) {
       return str;
     }
 
@@ -354,43 +363,71 @@
             }
 
             if (isStreamingResponseBody === true) {
-              // const resourceRid = getReadableStreamRid(respBody);
-              const reader = respBody.getReader();
-              let first = true;
-              a:
-              while (true) {
-                const { value, done } = await reader.read();
-                if (first) {
-                  first = false;
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
+              const resourceRid = getReadableStreamRid(respBody);
+              if (resourceRid) {
+                if (respBody.locked) {
+                  throw new TypeError("ReadableStream is locked.");
+                }
+                const reader = respBody.getReader(); // Aquire JS lock.
+                try {
+                  core.opAsync(
+                    "op_flash_write_resource",
                     http1Response(
                       method,
                       innerResp.status ?? 200,
                       innerResp.headerList,
                       null,
+                      true,
                     ),
-                    value ?? new Uint8Array(),
-                    false,
-                  );
-                } else {
-                  if (value === undefined) {
-                    core.ops.op_flash_respond_chuncked(
+                    serverId,
+                    i,
+                    resourceRid,
+                  ).then(() => {
+                    // Release JS lock.
+                    readableStreamClose(respBody);
+                  });
+                } catch (error) {
+                  await reader.cancel(error);
+                  throw error;
+                }
+              } else {
+                const reader = respBody.getReader();
+                let first = true;
+                a:
+                while (true) {
+                  const { value, done } = await reader.read();
+                  if (first) {
+                    first = false;
+                    core.ops.op_flash_respond(
                       serverId,
                       i,
-                      undefined,
-                      done,
+                      http1Response(
+                        method,
+                        innerResp.status ?? 200,
+                        innerResp.headerList,
+                        null,
+                      ),
+                      value ?? new Uint8Array(),
+                      false,
                     );
                   } else {
-                    respondChunked(
-                      i,
-                      value,
-                      done,
-                    );
+                    if (value === undefined) {
+                      core.ops.op_flash_respond_chuncked(
+                        serverId,
+                        i,
+                        undefined,
+                        done,
+                      );
+                    } else {
+                      respondChunked(
+                        i,
+                        value,
+                        done,
+                      );
+                    }
                   }
+                  if (done) break a;
                 }
-                if (done) break a;
               }
             } else {
               core.ops.op_flash_respond(

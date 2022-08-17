@@ -1049,6 +1049,7 @@ dependencies = [
  "deno_websocket",
  "http",
  "httparse",
+ "libc",
  "log 0.4.17",
  "mio",
  "rustls",

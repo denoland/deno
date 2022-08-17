@@ -59,6 +59,9 @@ use tokio::task::JoinHandle;
 
 mod chunked;
 
+#[cfg(unix)]
+mod sendfile;
+
 pub struct FlashContext {
   next_server_id: u32,
   join_handles: HashMap<u32, JoinHandle<Result<(), AnyError>>>,
@@ -244,6 +247,70 @@ fn op_flash_respond_chuncked(
       respond_chunked(ctx, token, shutdown, None);
     }
   }
+}
+
+#[op]
+async fn op_flash_write_resource(
+  op_state: Rc<RefCell<OpState>>,
+  response: StringOrBuffer,
+  server_id: u32,
+  token: u32,
+  resource_id: deno_core::ResourceId,
+) -> Result<(), AnyError> {
+  let resource = op_state.borrow_mut().resource_table.take_any(resource_id)?;
+  let sock = {
+    let op_state = &mut op_state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+    ctx.response.remove(&token).unwrap().socket()
+  };
+
+  drop(op_state);
+  let _ = sock.write(&response);
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::io::AsRawFd;
+    if let InnerStream::Tcp(stream_handle) = &sock.inner {
+      let stream_handle = stream_handle.as_raw_fd();
+      if let Some(fd) = resource.clone().backing_fd() {
+        // SAFETY: all-zero byte-pattern is a valid value for libc::stat.
+        let mut stat: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: call to libc::fstat.
+        if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
+          let _ = sock.write(
+            format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
+          );
+          let tx = sendfile::SendFile {
+            io: (fd, stream_handle),
+            written: 0,
+          };
+          tx.await?;
+          return Ok(());
+        }
+      }
+    }
+  }
+
+  let _ = sock.write(b"Transfer-Encoding: chunked\r\n\r\n");
+  loop {
+    let vec = vec![0u8; 64 * 1024]; // 64KB
+    let buf = ZeroCopyBuf::new_temp(vec);
+    let (nread, buf) = resource.clone().read_return(buf).await?;
+    if nread == 0 {
+      let _ = sock.write(b"0\r\n\r\n");
+      break;
+    }
+    let response = &buf[..nread];
+
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(response);
+    let _ = sock.write(b"\r\n");
+  }
+
+  resource.close();
+  Ok(())
 }
 
 pub struct RespondChunkedFast;
@@ -937,7 +1004,8 @@ fn run_server(
             match nread {
               Ok(0) => {
                 trace!("Socket closed: {}", token.0);
-                sockets.remove(&token);
+                // FIXME: don't remove while JS is writing!
+                // sockets.remove(&token);
                 continue 'events;
               }
               Ok(read) => match req.parse(&buffer[..offset + read]) {
@@ -1343,6 +1411,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_has_body_stream::decl(),
       op_flash_close_server::decl(),
       op_flash_make_request::decl(),
+      op_flash_write_resource::decl(),
     ])
     .state(move |op_state| {
       op_state.put(Unstable(unstable));
