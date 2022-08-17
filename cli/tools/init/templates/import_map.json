@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "std/": "{CURRENT_STD_URL}"
-  }
-}

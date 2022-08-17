@@ -3,7 +3,6 @@
 use crate::args::InitFlags;
 use crate::compat;
 use deno_core::{anyhow::Context, error::AnyError};
-use dialoguer::{theme::ColorfulTheme, MultiSelect};
 use std::io::Write;
 use std::path::Path;
 
@@ -22,104 +21,29 @@ fn create_file(
 }
 
 pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+  let cwd =
+    std::env::current_dir().context("Can't read current working directory.")?;
   let dir = if let Some(dir) = &init_flags.dir {
-    let dir = std::env::current_dir()?.join(dir);
+    let dir = cwd.join(dir);
     std::fs::create_dir_all(&dir)?;
     dir
   } else {
-    std::env::current_dir()?
+    cwd
   };
 
-  let multiselected = &[
-    "Use TypeScript",
-    "Add a config file",
-    "Add an import map",
-    "Setup VSCode extension",
-  ];
-  let defaults = &[true, false, false, false];
-  let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-    .with_prompt("Initialize your project (use space to select)")
-    .items(&multiselected[..])
-    .defaults(&defaults[..])
-    .interact()?;
+  let main_ts = include_str!("./templates/main.ts");
+  create_file(&dir, "main.ts", main_ts)?;
 
-  // TS or JS
-  if selections.contains(&0) {
-    let mod_ts = include_str!("./templates/mod.ts");
-    create_file(&dir, "mod.ts", mod_ts)?;
+  let main_test_ts = include_str!("./templates/main_test.ts")
+    .replace("{CURRENT_STD_URL}", compat::STD_URL_STR);
+  create_file(&dir, "main_test.ts", &main_test_ts)?;
 
-    let mod_test_ts = include_str!("./templates/mod_test.ts").replace(
-      "{CURRENT_STD_URL}",
-      if selections.contains(&2) {
-        "std/"
-      } else {
-        compat::STD_URL_STR
-      },
-    );
-    create_file(&dir, "mod_test.ts", &mod_test_ts)?;
-  } else {
-    let mod_js = include_str!("./templates/mod.js");
-    create_file(&dir, "mod.js", mod_js)?;
-
-    let mod_test_js = include_str!("./templates/mod_test.js").replace(
-      "{CURRENT_STD_URL}",
-      if selections.contains(&2) {
-        "std/"
-      } else {
-        compat::STD_URL_STR
-      },
-    );
-    create_file(&dir, "mod_test.js", &mod_test_js)?;
-  }
-
-  // Config file
-  if selections.contains(&1) {
-    let deno_json = include_str!("./templates/deno.json")
-      .replace(
-        "{MAYBE_IMPORT_MAP}",
-        if selections.contains(&2) {
-          "\"importMap\": \"./import_map.json\",\n"
-        } else {
-          ""
-        },
-      )
-      .replace(
-        "{MOD_FILE}",
-        if selections.contains(&0) {
-          "./mod.ts"
-        } else {
-          "./mod.js"
-        },
-      );
-    create_file(&dir, "deno.json", &deno_json)?;
-  }
-
-  // Import map
-  if selections.contains(&2) {
-    let import_map_json = include_str!("./templates/import_map.json")
-      .replace("{CURRENT_STD_URL}", compat::STD_URL_STR);
-    create_file(&dir, "import_map.json", &import_map_json)?;
-  }
-
-  // VSCode settings
-  if selections.contains(&3) {
-    let vscode_settings = include_str!("./templates/vscode.json");
-    std::fs::create_dir_all(&dir.join(".vscode"))
-      .context("Failed to create .vscode directory")?;
-    create_file(&dir, ".vscode/settings.json", vscode_settings)?;
-  }
-
-  println!("Project initalized");
+  println!("✅ Project initialized");
   println!("Run these commands to get started");
   if let Some(dir) = init_flags.dir {
     println!("  cd {}", dir);
   }
-  if selections.contains(&0) {
-    println!("  deno run mod.ts");
-    println!("  deno test mod_test.ts");
-  } else {
-    println!("  deno run mod.js");
-    println!("  deno test mod_test.js");
-  }
+  println!("  deno run main.ts");
+  println!("  deno test main_test.ts");
   Ok(())
 }
