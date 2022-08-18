@@ -1166,4 +1166,8 @@ fn run_watch_reload_once() {
   assert_eq!(second_output, first_output);
 
   check_alive_then_kill(child);
+  drop(child);
+  drop(t);
+  drop(_g);
+  panic!();
 }
