@@ -5,7 +5,6 @@ const [hostname, port] = addr.split(":");
 const { serve } = Deno;
 
 function handler(r) {
-  console.log(r.headers);
   return new Response("Hello World");
 }
 
