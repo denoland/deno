@@ -1161,13 +1161,13 @@ fn run_watch_reload_once() {
 
   wait_contains("finished", &mut stderr_lines);
   #[cfg(target_os = "linux")]
-  panic!();
   let first_output = stdout_lines.next().unwrap();
 
   write(&file_to_watch, format!("{}\n", file_content)).unwrap();
   // The remote dynamic module should not have been reloaded again.
 
   wait_contains("finished", &mut stderr_lines);
+  panic!();
   let second_output = stdout_lines.next().unwrap();
   assert_eq!(second_output, first_output);
 
