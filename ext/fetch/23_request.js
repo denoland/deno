@@ -16,7 +16,7 @@
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
-  const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
+  const { mixinBody, extractBody, InnerBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const { extractMimeType } = window.__bootstrap.mimesniff;
   const { blobFromObjectUrl } = window.__bootstrap.file;
@@ -48,6 +48,9 @@
   const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
+  const _flash = Symbol("flash");
+  const _url = Symbol("url");
+  const _method = Symbol("method");
 
   /**
    * @param {(() => string)[]} urlList
@@ -266,7 +269,11 @@
       return extractMimeType(values);
     }
     get [_body]() {
-      return this[_request].body;
+      if (this[_flash]) {
+        return this[_flash].body;
+      } else {
+        return this[_request].body;
+      }
     }
 
     /**
@@ -427,12 +434,31 @@
 
     get method() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].method;
+      if (this[_method]) {
+        return this[_method];
+      }
+      if (this[_flash]) {
+        this[_method] = this[_flash].methodCb();
+        return this[_method];
+      } else {
+        this[_method] = this[_request].method;
+        return this[_method];
+      }
     }
 
     get url() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].url();
+      if (this[_url]) {
+        return this[_url];
+      }
+
+      if (this[_flash]) {
+        this[_url] = this[_flash].urlCb();
+        return this[_url];
+      } else {
+        this[_url] = this[_request].url();
+        return this[_url];
+      }
     }
 
     get headers() {
@@ -442,6 +468,9 @@
 
     get redirect() {
       webidl.assertBranded(this, RequestPrototype);
+      if (this[_flash]) {
+        return this[_flash].redirectMode;
+      }
       return this[_request].redirectMode;
     }
 
@@ -455,7 +484,12 @@
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
-      const newReq = cloneInnerRequest(this[_request]);
+      let newReq;
+      if (this[_flash]) {
+        newReq = cloneInnerRequest(this[_flash]);
+      } else {
+        newReq = cloneInnerRequest(this[_request]);
+      }
       const newSignal = abortSignal.newSignal();
       abortSignal.follow(newSignal, this[_signal]);
       return fromInnerRequest(
@@ -549,10 +583,43 @@
     return request;
   }
 
+  /**
+   * @param {number} serverId
+   * @param {number} streamRid
+   * @param {ReadableStream} body
+   * @param {() => string} methodCb
+   * @param {() => string} urlCb
+   * @param {() => [string, string][]} headersCb
+   * @returns {Request}
+   */
+  function fromFlashRequest(
+    serverId,
+    streamRid,
+    body,
+    methodCb,
+    urlCb,
+    headersCb,
+  ) {
+    const request = webidl.createBranded(Request);
+    request[_flash] = {
+      body: body !== null ? new InnerBody(body) : null,
+      methodCb,
+      urlCb,
+      streamRid,
+      serverId,
+      redirectMode: "follow",
+      redirectCount: 0,
+    };
+    request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
+    return request;
+  }
+
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Request = Request;
   window.__bootstrap.fetch.toInnerRequest = toInnerRequest;
+  window.__bootstrap.fetch.fromFlashRequest = fromFlashRequest;
   window.__bootstrap.fetch.fromInnerRequest = fromInnerRequest;
   window.__bootstrap.fetch.newInnerRequest = newInnerRequest;
   window.__bootstrap.fetch.processUrlList = processUrlList;
+  window.__bootstrap.fetch._flash = _flash;
 })(globalThis);

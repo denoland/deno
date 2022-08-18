@@ -1211,11 +1211,143 @@ declare namespace Deno {
    */
   export function unrefTimer(id: number): void;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /**
+   * A handler for HTTP requests. Consumes a request and returns a response.
+   *
+   * Handler allows `void` or `Promise<void>` return type to enable
+   * request upgrades using `Deno.upgradeHttp()` API. It is callers responsibility
+   * to write response manually to the returned connection. Failing to do so
+   * (or not returning a response without an upgrade) will cause the connection
+   * to hang.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and close the underlying connection.
+   *
+   * @category HTTP Server
+   */
+  export type ServeHandler = (
+    request: Request,
+  ) => Response | Promise<Response> | void | Promise<void>;
+
+  /**
+   * @category HTTP Server
+   */
+  export interface ServeInit extends Partial<Deno.ListenOptions> {
+    /** An AbortSignal to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server started listening */
+    onListen?: (params: { hostname: string; port: number }) => void;
+  }
+
+  /**
+   * @category HTTP Server
+   */
+  export interface ServeTlsInit extends ServeInit {
+    /** Server private key in PEM format */
+    cert: string;
+
+    /** Cert chain in PEM format */
+    key: string;
+  }
+
+  /** Serves HTTP requests with the given handler.
+   *
+   * You can specify an object with a port and hostname option, which is the
+   * address to listen on. The default is port 9000 on hostname "127.0.0.1".
+   *
+   * The below example serves with the port 9000.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can change the listening address by the `hostname` and `port` options.
+   * The below example serves with the port 3000.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"), { port: 3000 });
+   * ```
+   *
+   * `Deno.serve` function prints the message `Listening on http://<hostname>:<port>/`
+   * on start-up by default. If you like to change this message, you can specify
+   * `onListen` option to override it.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"), {
+   *   onListen({ port, hostname }) {
+   *     console.log(`Server started at http://${hostname}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   * });
+   * ```
+   *
+   * @param handler The handler for individual HTTP requests.
+   * @param options The options. See `ServeInit` documentation for details.
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    handler: ServeHandler,
+    options?: ServeInit,
+  ): Promise<void>;
+
+  /** Serves HTTPS requests with the given handler.
+   *
+   * You must specify `key` and `cert` options.
+   *
+   * You can specify an object with a port and hostname option, which is the
+   * address to listen on. The default is port 9000 on hostname "127.0.0.1".
+   *
+   * The below example serves with the default port 8443.
+   *
+   * ```ts
+   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
+   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
+   * Deno.serveTls((_req) => new Response("Hello, world"), { cert, key });
+   *
+   * ```
+   *
+   * `Deno.serveTls` function prints the message `Listening on https://<hostname>:<port>/`
+   * on start-up by default. If you like to change this message, you can specify
+   * `onListen` option to override it.
+   *
+   * ```ts
+   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
+   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
+   * Deno.serveTls((_req) => new Response("Hello, world"), {
+   *   cert,
+   *   key,
+   *   onListen({ port, hostname }) {
+   *     console.log(`Server started at https://${hostname}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   * });
+   * ```
+   *
+   * @param handler The handler for individual HTTPS requests.
+   * @param options The options. See `ServeTlsInit` documentation for details.
+   *
+   * @category HTTP Server
+   */
+  export function serveTls(
+    handler: ServeHandler,
+    options?: ServeTlsInit,
+  ): Promise<void>;
+
+  /** **UNSTABLE**: new API, yet to be vetter.
    *
    * Allows to "hijack" a connection that the request is associated with.
    * Can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
+   *
+   * The return type depends if `request` is coming from `Deno.serve()` API
+   * or `Deno.serveHttp()`; for former it returns the connection and first
+   * packet, for latter it returns a promise.
    *
    * The returned promise returns underlying connection and first packet
    * received. The promise shouldn't be awaited before responding to the
@@ -1225,7 +1357,7 @@ declare namespace Deno {
    */
   export function upgradeHttp(
     request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
+  ): [Deno.Conn, Uint8Array] | Promise<[Deno.Conn, Uint8Array]>;
 
   /** @category Sub Process */
   export interface SpawnOptions {
