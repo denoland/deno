@@ -108,7 +108,7 @@
 
   let dateInterval;
   let date;
-  const stringResources = {};
+  let stringResources = {};
 
   // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
@@ -434,27 +434,25 @@
                 innerResp.headerList,
                 respBody,
               );
-              if (!responseStr) {
-                core.ops.op_flash_respond(
-                  serverId,
-                  i,
-                  responseStr,
-                  null,
-                  !ws, // Don't close socket if there is a deferred websocket upgrade.
-                );
-              }
-              const maybeResponse = stringResources[responseStr];
-              if (maybeResponse === undefined) {
-                stringResources[responseStr] = core.encode(responseStr);
-                core.ops.op_flash_respond(
-                  serverId,
-                  i,
-                  stringResources[responseStr],
-                  null,
-                  !ws, // Don't close socket if there is a deferred websocket upgrade.
-                );
+
+              // TypedArray
+              if (typeof responseStr !== "string") {
+                respondFast(i, responseStr, !ws);
               } else {
-                respondFast(i, maybeResponse, !ws);
+                // string
+                const maybeResponse = stringResources[responseStr];
+                if (maybeResponse === undefined) {
+                  stringResources[responseStr] = core.encode(responseStr);
+                  core.ops.op_flash_respond(
+                    serverId,
+                    i,
+                    stringResources[responseStr],
+                    null,
+                    !ws, // Don't close socket if there is a deferred websocket upgrade.
+                  );
+                } else {
+                  respondFast(i, maybeResponse, !ws);
+                }
               }
             }
 
@@ -513,6 +511,7 @@
       date = new Date().toUTCString();
       dateInterval = setInterval(() => {
         date = new Date().toUTCString();
+        stringResources = {};
       }, 1000);
     }
 
