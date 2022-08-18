@@ -1167,9 +1167,9 @@ fn run_watch_reload_once() {
 
   wait_contains("finished", &mut stderr_lines);
   let second_output = stdout_lines.next().unwrap();
-  #[cfg(target_os = "linux")]
-  panic!();
   assert_eq!(second_output, first_output);
 
   check_alive_then_kill(child);
+  #[cfg(target_os = "linux")]
+  panic!();
 }
