@@ -152,14 +152,15 @@ Deno.test(
     const kStringMaxLengthPlusOne = 536870888 + 1;
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file.txt";
-    
+
     Deno.writeFileSync(filePath, bytes);
 
-    assertThrows(() => {
-      Deno.readTextFileSync(filePath);
-    },
-    TypeError,
-    "buffer exceeds maximum length",
+    assertThrows(
+      () => {
+        Deno.readTextFileSync(filePath);
+      },
+      TypeError,
+      "buffer exceeds maximum length",
     );
 
     Deno.removeSync(filePath);
