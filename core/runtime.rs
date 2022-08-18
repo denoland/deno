@@ -2693,7 +2693,6 @@ pub mod tests {
           "a.js",
           r#"
           Deno.core.ops.op_set_macrotask_callback(() => {
-            results.push("macrotask");
             return true;
           });
           Deno.core.ops.op_set_format_exception_callback(()=> {
