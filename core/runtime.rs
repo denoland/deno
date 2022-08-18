@@ -766,7 +766,14 @@ impl JsRuntime {
             .clear_all_slots(self.v8_isolate());
         }
       }
-      state.borrow_mut().known_realms.clear();
+      let mut state = state.borrow_mut();
+      state.known_realms.clear();
+      // Free up additional global handles before creating the snapshot
+      state.js_macrotask_cbs.clear();
+      state.js_nexttick_cbs.clear();
+      state.js_wasm_streaming_cb = None;
+      state.js_format_exception_cb = None;
+      state.js_promise_reject_cb = None;
     }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
