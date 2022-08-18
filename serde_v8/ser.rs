@@ -424,11 +424,15 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    Ok(
-      v8::String::new(&mut self.scope.borrow_mut(), v)
-        .unwrap()
-        .into(),
-    )
+    let maybe_v = v8::String::new(&mut self.scope.borrow_mut(), v);
+
+    if let Some(v) = maybe_v {
+      Ok(v.into())
+    } else {
+      Err(Error::Message(
+        String::from("Cannot allocate String: buffer exceeds maximum length.",)
+      ))
+    }
   }
 
   fn serialize_bytes(self, v: &[u8]) -> JsResult<'a> {
