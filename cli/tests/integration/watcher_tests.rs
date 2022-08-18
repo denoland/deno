@@ -1158,7 +1158,7 @@ fn run_watch_reload_once() {
   wait_contains("finished", &mut stderr_lines);
   let first_output = stdout_lines.next().unwrap();
 
-  write(&file_to_watch, file_content).unwrap();
+  write(&file_to_watch, format!("{}\n", file_content)).unwrap();
   // The remote dynamic module should not have been reloaded again.
 
   wait_contains("finished", &mut stderr_lines);
