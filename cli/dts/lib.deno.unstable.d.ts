@@ -1278,8 +1278,7 @@ declare namespace Deno {
    * `onListen` option to override it.
    *
    * ```ts
-   * import { serve } from "https://deno.land/std@$STD_VERSION/http/server.ts";
-   * serve((_req) => new Response("Hello, world"), {
+   * Deno.serve((_req) => new Response("Hello, world"), {
    *   onListen({ port, hostname }) {
    *     console.log(`Server started at http://${hostname}:${port}`);
    *     // ... more info specific to your server ..
