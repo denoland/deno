@@ -1134,6 +1134,9 @@ fn run_watch_dynamic_imports() {
 // Regression test for https://github.com/denoland/deno/issues/15465.
 #[test]
 fn run_watch_reload_once() {
+  #![allow(unreachable_code)]
+  #![allow(unused_variables)]
+  #![allow(unused_mut)]
   let _g = util::http_server();
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
