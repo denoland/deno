@@ -1170,7 +1170,7 @@ fn run_watch_reload_once() {
   assert_eq!(second_output, first_output);
 
   check_alive_then_kill(child);
-  _g.drop();
+  drop(_g);
   #[cfg(target_os = "linux")]
   panic!();
 }
