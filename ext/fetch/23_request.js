@@ -49,6 +49,8 @@
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
   const _flash = Symbol("flash");
+  const _url = Symbol("url");
+  const _method = Symbol("method");
 
   /**
    * @param {(() => string)[]} urlList
@@ -267,7 +269,11 @@
       return extractMimeType(values);
     }
     get [_body]() {
-      return this[_request].body;
+      if (this[_flash]) {
+        return this[_flash].body;
+      } else {
+        return this[_request].body;
+      }
     }
 
     /**
@@ -428,12 +434,31 @@
 
     get method() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].method;
+      if (this[_method]) {
+        return this[_method];
+      }
+      if (this[_flash]) {
+        this[_method] = this[_flash].methodCb();
+        return this[_method];
+      } else {
+        this[_method] = this[_request].method;
+        return this[_method];
+      }
     }
 
     get url() {
       webidl.assertBranded(this, RequestPrototype);
-      return this[_request].url();
+      if (this[_url]) {
+        return this[_url];
+      }
+
+      if (this[_flash]) {
+        this[_url] = this[_flash].urlCb();
+        return this[_url];
+      } else {
+        this[_url] = this[_request].url();
+        return this[_url];
+      }
     }
 
     get headers() {
@@ -443,6 +468,9 @@
 
     get redirect() {
       webidl.assertBranded(this, RequestPrototype);
+      if (this[_flash]) {
+        return this[_flash].redirectMode;
+      }
       return this[_request].redirectMode;
     }
 
@@ -456,7 +484,12 @@
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
-      const newReq = cloneInnerRequest(this[_request]);
+      let newReq;
+      if (this[_flash]) {
+        newReq = cloneInnerRequest(this[_flash]);
+      } else {
+        newReq = cloneInnerRequest(this[_request]);
+      }
       const newSignal = abortSignal.newSignal();
       abortSignal.follow(newSignal, this[_signal]);
       return fromInnerRequest(
@@ -567,18 +600,17 @@
     urlCb,
     headersCb,
   ) {
-    const inner = newInnerRequest(
+    const request = webidl.createBranded(Request);
+    request[_flash] = {
+      body: body !== null ? new InnerBody(body) : null,
       methodCb,
       urlCb,
-      headersCb,
-      body !== null ? new InnerBody(body) : null,
-      false,
-    );
-    const request = fromInnerRequest(inner, undefined, "request");
-    request[_flash] = {
       streamRid,
       serverId,
+      redirectMode: "follow",
+      redirectCount: 0,
     };
+    request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
     return request;
   }
 
