@@ -116,6 +116,15 @@ mod not_docs {
     }
   }
 
+  impl deno_flash::FlashPermissions for Permissions {
+    fn check_net<T: AsRef<str>>(
+      &mut self,
+      _host: &(T, Option<u16>),
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   impl deno_net::NetPermissions for Permissions {
     fn check_net<T: AsRef<str>>(
       &mut self,
@@ -165,6 +174,7 @@ mod not_docs {
         None,
       ),
       deno_http::init(),
+      deno_flash::init::<Permissions>(false), // No --unstable
     ];
 
     let js_runtime = JsRuntime::new(RuntimeOptions {
