@@ -46,6 +46,7 @@ fn wait_for(
 ) {
   loop {
     let msg = lines.next().unwrap();
+    dbg!(&msg);
     if condition(&msg) {
       break;
     }
@@ -1156,6 +1157,8 @@ fn run_watch_reload_once() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   wait_contains("finished", &mut stderr_lines);
+  #[cfg(target_os = "linux")]
+  panic!();
   let first_output = stdout_lines.next().unwrap();
 
   write(&file_to_watch, format!("{}\n", file_content)).unwrap();
