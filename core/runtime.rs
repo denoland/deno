@@ -2681,6 +2681,43 @@ pub mod tests {
       .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
+  #[test]
+  fn test_snapshot_callbacks() {
+    let snapshot = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime
+        .execute_script(
+          "a.js",
+          r#"
+          Deno.core.ops.op_set_macrotask_callback(() => {
+            results.push("macrotask");
+            return true;
+          });
+          Deno.core.ops.op_set_format_exception_callback(()=> {
+            return null;
+          })
+          Deno.core.setPromiseRejectCallback(() => {
+            return false;
+          });
+          a = 1 + 2; 
+      "#,
+        )
+        .unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+    runtime2
+      .execute_script("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
+  }
 
   #[test]
   fn test_from_boxed_snapshot() {
