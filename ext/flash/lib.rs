@@ -314,6 +314,83 @@ async fn op_flash_write_resource(
   Ok(())
 }
 
+pub struct RespondFast;
+
+impl fast_api::FastFunction for RespondFast {
+  fn function(&self) -> *const c_void {
+    op_flash_respond_fast as *const c_void
+  }
+
+  fn args(&self) -> &'static [fast_api::Type] {
+    &[
+      fast_api::Type::V8Value,
+      fast_api::Type::Uint32,
+      fast_api::Type::TypedArray(fast_api::CType::Uint8),
+      fast_api::Type::Bool,
+    ]
+  }
+
+  fn return_type(&self) -> fast_api::CType {
+    fast_api::CType::Void
+  }
+}
+
+fn flash_respond(
+  ctx: &mut ServerContext,
+  token: u32,
+  shutdown: bool,
+  response: &[u8],
+) {
+  let mut close = false;
+  let sock = match shutdown {
+    true => {
+      let tx = ctx.response.remove(&token).unwrap();
+      close = !tx.keep_alive;
+      tx.socket()
+    }
+    // In case of a websocket upgrade or streaming response.
+    false => {
+      let tx = ctx.response.get(&token).unwrap();
+      tx.socket()
+    }
+  };
+
+  sock.read_tx.take();
+  sock.read_rx.take();
+
+  let _ = sock.write(response);
+  // server is done writing and request doesn't want to kept alive.
+  if shutdown && close {
+    match &mut sock.inner {
+      InnerStream::Tcp(stream) => {
+        // Typically shutdown shouldn't fail.
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+      }
+      InnerStream::Tls(stream) => {
+        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
+      }
+    }
+  }
+}
+
+unsafe fn op_flash_respond_fast(
+  recv: v8::Local<v8::Object>,
+  token: u32,
+  response: *const fast_api::FastApiTypedArray<u8>,
+  shutdown: bool,
+) {
+  let ptr =
+    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
+  let ctx = &mut *(ptr as *mut ServerContext);
+
+  let response = &*response;
+  if let Some(response) = response.get_storage_if_aligned() {
+    flash_respond(ctx, token, shutdown, response);
+  } else {
+    todo!();
+  }
+}
+
 pub struct RespondChunkedFast;
 
 impl fast_api::FastFunction for RespondChunkedFast {
@@ -623,6 +700,45 @@ fn op_flash_make_request<'scope>(
     let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
 
     let key = v8::String::new(scope, "respondChunked").unwrap();
+    obj.set(scope, key.into(), func).unwrap();
+  }
+
+  // respond
+  {
+    let builder = v8::FunctionTemplate::builder(
+      |scope: &mut v8::HandleScope,
+       args: v8::FunctionCallbackArguments,
+       _: v8::ReturnValue| {
+        let external: v8::Local<v8::External> =
+          args.data().unwrap().try_into().unwrap();
+        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
+        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
+
+        let token = args.get(0).uint32_value(scope).unwrap();
+
+        let response: v8::Local<v8::ArrayBufferView> =
+          args.get(1).try_into().unwrap();
+        let ab = response.buffer(scope).unwrap();
+        let store = ab.get_backing_store();
+        let (offset, len) = (response.byte_offset(), response.byte_length());
+        // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
+        // it points to a fixed continuous slice of bytes on the heap.
+        // We assume it's initialized and thus safe to read (though may not contain meaningful data)
+        let response = unsafe {
+          &*(&store[offset..offset + len] as *const _ as *const [u8])
+        };
+
+        let shutdown = args.get(2).boolean_value(scope);
+
+        flash_respond(ctx, token, shutdown, response);
+      },
+    )
+    .data(v8::External::new(scope, ctx as *mut _).into());
+
+    let func = builder.build_fast(scope, &RespondFast, None);
+    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
+
+    let key = v8::String::new(scope, "respond").unwrap();
     obj.set(scope, key.into(), func).unwrap();
   }
 

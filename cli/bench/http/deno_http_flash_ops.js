@@ -5,7 +5,8 @@
 const {
   core: {
     opAsync,
-    ops: { op_flash_make_request, op_flash_respond, op_flash_serve },
+    ops: { op_flash_make_request, op_flash_serve },
+    encode,
   },
 } = Deno;
 const addr = Deno.args[0] || "127.0.0.1:4500";
@@ -17,17 +18,20 @@ const fastOps = op_flash_make_request();
 function nextRequest() {
   return fastOps.nextRequest();
 }
+function respond(token, response) {
+  return fastOps.respond(token, response, true);
+}
 
+const response = encode(
+  "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nHello World",
+);
 while (true) {
   let token = nextRequest();
   if (token === 0) token = await opAsync("op_flash_next_async", serverId);
   for (let i = 0; i < token; i++) {
-    op_flash_respond(
-      serverId,
+    respond(
       i,
-      "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nHello World",
-      null,
-      true,
+      response,
     );
   }
 }

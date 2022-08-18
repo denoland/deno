@@ -108,6 +108,7 @@
 
   let dateInterval;
   let date;
+  const stringResources = {};
 
   // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
@@ -427,18 +428,34 @@
                 }
               }
             } else {
-              core.ops.op_flash_respond(
-                serverId,
-                i,
-                http1Response(
-                  method,
-                  innerResp.status ?? 200,
-                  innerResp.headerList,
-                  respBody,
-                ),
-                null,
-                !ws, // Don't close socket if there is a deferred websocket upgrade.
+              const responseStr = http1Response(
+                method,
+                innerResp.status ?? 200,
+                innerResp.headerList,
+                respBody,
               );
+              if (!responseStr) {
+                core.ops.op_flash_respond(
+                  serverId,
+                  i,
+                  responseStr,
+                  null,
+                  !ws, // Don't close socket if there is a deferred websocket upgrade.
+                );
+              }
+              const maybeResponse = stringResources[responseStr];
+              if (maybeResponse === undefined) {
+                stringResources[responseStr] = core.encode(responseStr);
+                core.ops.op_flash_respond(
+                  serverId,
+                  i,
+                  stringResources[responseStr],
+                  null,
+                  !ws, // Don't close socket if there is a deferred websocket upgrade.
+                );
+              } else {
+                respondFast(i, maybeResponse, !ws);
+              }
             }
 
             if (ws) {
@@ -481,12 +498,15 @@
     let getMethodSync = (token) => fastOp.getMethod(token);
     let respondChunked = (token, chunk, shutdown) =>
       fastOp.respondChunked(token, chunk, shutdown);
-
+    let respondFast = (token, response, shutdown) =>
+      fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
       respondChunked = (token, chunk, shutdown) =>
         core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
+      respondFast = (token, response, shutdown) =>
+        core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
 
     if (!dateInterval) {
