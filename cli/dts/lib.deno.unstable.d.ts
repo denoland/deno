@@ -1310,9 +1310,6 @@ declare namespace Deno {
    * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
    * Deno.serveTls((_req) => new Response("Hello, world"), { cert, key });
    *
-   * // Or
-   *
-   * Deno.serveTls((_req) => new Response("Hello, world"), { certFile, keyFile });
    * ```
    *
    * `Deno.serveTls` function prints the message `Listening on https://<hostname>:<port>/`
@@ -1323,8 +1320,8 @@ declare namespace Deno {
    * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
    * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
    * Deno.serveTls((_req) => new Response("Hello, world"), {
-   *   certFile,
-   *   keyFile,
+   *   cert,
+   *   key,
    *   onListen({ port, hostname }) {
    *     console.log(`Server started at https://${hostname}:${port}`);
    *     // ... more info specific to your server ..
