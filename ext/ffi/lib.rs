@@ -97,9 +97,9 @@ struct Symbol {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
-// SAFETY: TODO
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for Symbol {}
-// SAFETY: TODO
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for Symbol {}
 
 #[derive(Clone)]
@@ -125,9 +125,9 @@ impl PtrSymbol {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
-// SAFETY: TODO
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for PtrSymbol {}
-// SAFETY: TODO
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for PtrSymbol {}
 
 struct DynamicLibraryResource {
@@ -493,7 +493,7 @@ impl NativeValue {
   }
 }
 
-// SAFETY: TODO
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for NativeValue {}
 
 #[derive(Serialize, Debug, Clone, Copy)]
