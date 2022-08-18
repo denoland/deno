@@ -33,11 +33,7 @@ pub trait DenoDirNpmResolver {
 
   fn in_npm_package(&self, path: &Path) -> bool;
 
-  fn ensure_read_permission(
-    &self,
-    state: &mut OpState,
-    path: &Path,
-  ) -> Result<(), AnyError>;
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 mod errors;
@@ -101,12 +97,11 @@ fn ensure_read_permission(
   state: &mut OpState,
   file_path: &Path,
 ) -> Result<(), AnyError> {
-  // allow borrowing state mutably twice by taking the resolver
-  // and then putting it back after
-  let resolver = state.take::<Rc<dyn DenoDirNpmResolver>>();
-  let result = resolver.ensure_read_permission(state, file_path);
-  state.put(resolver);
-  result
+  let resolver = {
+    let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+    resolver.clone()
+  };
+  resolver.ensure_read_permission(file_path)
 }
 
 #[op]
@@ -433,13 +428,12 @@ fn op_require_try_self(
     return Ok(None);
   }
 
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
-    &**resolver,
+    &*resolver,
   )
   .ok();
-
   if pkg.is_none() {
     return Ok(None);
   }
@@ -471,7 +465,7 @@ fn op_require_try_self(
       exports,
       &base,
       resolution::REQUIRE_CONDITIONS,
-      &**resolver,
+      &*resolver,
     )
     .map(|r| Some(r.as_str().to_string()))
   } else {
@@ -512,14 +506,17 @@ fn op_require_resolve_exports(
   parent_path: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
     modules_path
   } else {
     path_resolve(vec![modules_path, name])
   };
-  let pkg = PackageJson::load(PathBuf::from(&pkg_path).join("package.json"))?;
+  let pkg = PackageJson::load(
+    &*resolver,
+    PathBuf::from(&pkg_path).join("package.json"),
+  )?;
 
   if let Some(exports) = &pkg.exports {
     let base = Url::from_file_path(parent_path).unwrap();
@@ -529,7 +526,7 @@ fn op_require_resolve_exports(
       exports,
       &base,
       resolution::REQUIRE_CONDITIONS,
-      &**resolver,
+      &*resolver,
     )
     .map(|r| Some(r.to_file_path().unwrap().to_string_lossy().to_string()))
   } else {
@@ -543,10 +540,10 @@ fn op_require_read_package_scope(
   filename: String,
 ) -> Option<PackageJson> {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
   resolution::get_package_scope_config(
     &Url::from_file_path(filename).unwrap(),
-    &**resolver,
+    &*resolver,
   )
   .ok()
 }
@@ -560,19 +557,21 @@ fn op_require_package_imports_resolve(
   check_unstable(state);
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission(state, &parent_path)?;
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
-  let pkg = PackageJson::load(parent_path.join("package.json"))?;
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
 
   if pkg.imports.is_some() {
     let referrer =
       deno_core::url::Url::from_file_path(&parent_filename).unwrap();
-    resolution::package_imports_resolve(
+    let r = resolution::package_imports_resolve(
       &request,
       &referrer,
       resolution::REQUIRE_CONDITIONS,
-      &**resolver,
+      &*resolver,
     )
-    .map(|r| Some(r.as_str().to_string()))
+    .map(|r| Some(r.as_str().to_string()));
+    state.put(resolver);
+    r
   } else {
     Ok(None)
   }

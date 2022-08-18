@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use std::path::PathBuf;
 
 use deno_core::error::generic_error;
@@ -609,7 +611,7 @@ pub fn package_resolve(
   // ))
 
   // Package match.
-  let package_json = PackageJson::load(package_json_path)?;
+  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
   if let Some(exports) = &package_json.exports {
     return package_exports_resolve(
       package_json_url,
@@ -636,8 +638,7 @@ pub fn get_package_scope_config(
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
   let package_json_path = root_folder.join("./package.json");
-
-  PackageJson::load(package_json_path)
+  PackageJson::load(npm_resolver, package_json_path)
 }
 
 fn file_exists(path_url: &ModuleSpecifier) -> bool {

@@ -193,7 +193,8 @@ fn package_config_resolve(
   let base =
     ModuleSpecifier::from_directory_path(package_json_path.parent().unwrap())
       .unwrap();
-  let package_config = PackageJson::load(package_json_path.clone())?;
+  let package_config =
+    PackageJson::load(npm_resolver, package_json_path.clone())?;
   let package_json_url =
     ModuleSpecifier::from_file_path(&package_json_path).unwrap();
   if let Some(exports) = &package_config.exports {
@@ -494,7 +495,7 @@ fn resolve(
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json = PackageJson::load(package_json_path)?;
+    let package_json = PackageJson::load(npm_resolver, package_json_path)?;
 
     if let Some(map) = package_json.exports {
       if let Some((key, subpath)) = exports_resolve(&map, &package_subpath) {

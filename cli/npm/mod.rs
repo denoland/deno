@@ -18,7 +18,6 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::url::Url;
 use deno_runtime::deno_node::DenoDirNpmResolver;
-use deno_runtime::permissions::Permissions;
 pub use resolution::NpmPackageId;
 pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
@@ -290,13 +289,9 @@ impl DenoDirNpmResolver for GlobalNpmPackageResolver {
     self.resolve_package_from_specifier(&specifier).is_ok()
   }
 
-  fn ensure_read_permission(
-    &self,
-    state: &mut deno_core::OpState,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_read_permission(&registry_path, state, path)
+    ensure_read_permission(&registry_path, path)
   }
 }
 
@@ -330,13 +325,9 @@ impl DenoDirNpmResolver for NpmPackageResolverSnapshot {
     self.resolve_package_from_specifier(&specifier).is_ok()
   }
 
-  fn ensure_read_permission(
-    &self,
-    state: &mut deno_core::OpState,
-    path: &Path,
-  ) -> Result<(), AnyError> {
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_read_permission(&registry_path, state, path)
+    ensure_read_permission(&registry_path, path)
   }
 }
 
@@ -349,7 +340,6 @@ fn specifier_to_path(path: &Path) -> Result<ModuleSpecifier, AnyError> {
 
 fn ensure_read_permission(
   registry_path: &Path,
-  state: &mut deno_core::OpState,
   path: &Path,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the deno_dir node modules
@@ -371,7 +361,9 @@ fn ensure_read_permission(
       }
     }
   }
-  let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(path)?;
-  Ok(())
+
+  Err(deno_core::error::custom_error(
+    "PermissionDenied",
+    format!("Reading {} is not allowed", path.display()),
+  ))
 }

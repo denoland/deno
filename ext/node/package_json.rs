@@ -1,3 +1,6 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use super::DenoDirNpmResolver;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -36,7 +39,11 @@ impl PackageJson {
     }
   }
 
-  pub fn load(path: PathBuf) -> Result<PackageJson, AnyError> {
+  pub fn load(
+    resolver: &dyn DenoDirNpmResolver,
+    path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
+    resolver.ensure_read_permission(&path)?;
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
