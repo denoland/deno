@@ -111,7 +111,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: cmd,
+    args: [...cmd, "--", "-D", "warnings"],
     stdout: "inherit",
     stderr: "inherit",
   });
