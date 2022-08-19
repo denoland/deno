@@ -1848,6 +1848,73 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerConcurrentRequests() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    let reqCount = -1;
+    let timerId: number | undefined;
+    const server = Deno.serve(async (req) => {
+      reqCount++;
+      if (reqCount === 0) {
+        const msg = new TextEncoder().encode("data: hello\r\n\r\n");
+        // SSE
+        const body = new ReadableStream({
+          start(controller) {
+            timerId = setInterval(() => {
+              controller.enqueue(msg);
+            }, 1000);
+          },
+          cancel() {
+            if (typeof timerId === "number") {
+              clearInterval(timerId);
+            }
+          },
+        });
+        return new Response(body, {
+          headers: {
+            "Content-Type": "text/event-stream",
+          },
+        });
+      }
+
+      return new Response(`hello ${reqCount}`);
+    }, {
+      port: 4503,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    const sseRequest = await fetch(`http://localhost:4503/`);
+
+    const decoder = new TextDecoder();
+    const stream = sseRequest.body!.getReader();
+    {
+      const { done, value } = await stream.read();
+      assert(!done);
+      assertEquals(decoder.decode(value), "data: hello\r\n\r\n");
+    }
+
+    const helloRequest = await fetch(`http://localhost:4503/`);
+    assertEquals(helloRequest.status, 200);
+    assertEquals(await helloRequest.text(), "hello 1");
+
+    {
+      const { done, value } = await stream.read();
+      assert(!done);
+      assertEquals(decoder.decode(value), "data: hello\r\n\r\n");
+    }
+
+    await stream.cancel();
+    clearInterval(timerId);
+    ac.abort();
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
