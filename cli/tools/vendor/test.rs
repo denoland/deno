@@ -21,7 +21,6 @@ use deno_graph::ModuleKind;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::deno_dir::DenoDir;
 use crate::resolver::ImportMapResolver;
 
 use super::build::VendorEnvironment;
@@ -221,14 +220,13 @@ impl VendorTestBuilder {
       .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
       .collect();
     let loader = self.loader.clone();
-    let temp_dir = test_util::new_deno_dir();
-    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf())).unwrap();
-    let parsed_source_cache = ParsedSourceCache::new(deno_dir.gen_cache);
+    let parsed_source_cache = ParsedSourceCache::new(None);
+    let analyzer = parsed_source_cache.as_analyzer();
     let graph = build_test_graph(
       roots,
       self.original_import_map.clone(),
       loader.clone(),
-      &parsed_source_cache,
+      &*analyzer,
     )
     .await;
     super::build::build(

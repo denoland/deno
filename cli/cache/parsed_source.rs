@@ -167,7 +167,7 @@ impl ParsedSourceCacheModuleAnalyzer {
       FROM
         moduleinfocache
       WHERE
-        file_path=?1
+        specifier=?1
         AND media_type=?2
         AND source_hash=?3
       LIMIT 1";
@@ -190,20 +190,20 @@ impl ParsedSourceCacheModuleAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    module_info: &ModuleInfo,
     source_hash: &str,
+    module_info: &ModuleInfo,
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO
         moduleinfocache (specifier, media_type, source_hash, module_info)
       VALUES
-        (?1, ?2, ?3)";
+        (?1, ?2, ?3, ?4)";
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier.as_str(),
       &media_type.to_string(),
-      &serde_json::to_string(&module_info)?,
       &source_hash.to_string(),
+      &serde_json::to_string(&module_info)?,
     ])?;
     Ok(())
   }
@@ -239,7 +239,7 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
 
     // then attempt to cache it
     if let Err(err) =
-      self.set_module_info(specifier, media_type, &module_info, &source_hash)
+      self.set_module_info(specifier, media_type, &source_hash, &module_info)
     {
       log::debug!(
         "Error saving module cache info for {}. {:#}",
@@ -260,9 +260,9 @@ fn create_tables(
   conn.execute(
     "CREATE TABLE IF NOT EXISTS moduleinfocache (
         specifier TEXT PRIMARY KEY,
-        media_type TEXT NOT NULL
-        source_hash TEXT NOT NULL
-        module_info TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        module_info TEXT NOT NULL
       )",
     [],
   )?;
@@ -294,4 +294,111 @@ fn create_tables(
 
 fn compute_source_hash(bytes: &[u8]) -> String {
   FastInsecureHasher::new().write(bytes).finish().to_string()
+}
+
+#[cfg(test)]
+mod test {
+  use deno_graph::PositionRange;
+  use deno_graph::SpecifierWithRange;
+
+  use super::*;
+
+  #[test]
+  pub fn parsed_source_cache_module_analyzer_general_use() {
+    let conn = Connection::open_in_memory().unwrap();
+    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
+      conn,
+      "1.0.0".to_string(),
+      Default::default(),
+    )
+    .unwrap();
+    let specifier1 =
+      ModuleSpecifier::parse("https://localhost/mod.ts").unwrap();
+    let specifier2 =
+      ModuleSpecifier::parse("https://localhost/mod2.ts").unwrap();
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .unwrap(),
+      None
+    );
+
+    let mut module_info = ModuleInfo::default();
+    module_info.jsdoc_imports.push(SpecifierWithRange {
+      range: PositionRange {
+        start: deno_graph::Position {
+          line: 0,
+          character: 3,
+        },
+        end: deno_graph::Position {
+          line: 1,
+          character: 2,
+        },
+      },
+      text: "test".to_string(),
+    });
+    cache
+      .set_module_info(&specifier1, MediaType::JavaScript, "1", &module_info)
+      .unwrap();
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .unwrap(),
+      Some(module_info.clone())
+    );
+    assert_eq!(
+      cache
+        .get_module_info(&specifier2, MediaType::JavaScript, "1")
+        .unwrap(),
+      None,
+    );
+    // different media type
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::TypeScript, "1")
+        .unwrap(),
+      None,
+    );
+    // different source hash
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::JavaScript, "2")
+        .unwrap(),
+      None,
+    );
+
+    // try recreating with the same version
+    let conn = cache.conn;
+    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
+      conn,
+      "1.0.0".to_string(),
+      Default::default(),
+    )
+    .unwrap();
+
+    // should get it
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .unwrap(),
+      Some(module_info)
+    );
+
+    // try recreating with a different version
+    let conn = cache.conn;
+    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
+      conn,
+      "1.0.1".to_string(),
+      Default::default(),
+    )
+    .unwrap();
+
+    // should no longer exist
+    assert_eq!(
+      cache
+        .get_module_info(&specifier1, MediaType::JavaScript, "1")
+        .unwrap(),
+      None,
+    );
+  }
 }

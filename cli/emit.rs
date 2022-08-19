@@ -666,6 +666,18 @@ mod test {
     assert!(has_ts_check(
       MediaType::JavaScript,
       "// @ts-check\nconsole.log(5);"
-    ))
+    ));
+    assert!(has_ts_check(
+      MediaType::JavaScript,
+      "// deno-lint-ignore\n// @ts-check\n"
+    ));
+    assert!(!has_ts_check(
+      MediaType::JavaScript,
+      "test;\n// @ts-check\n"
+    ));
+    assert!(!has_ts_check(
+      MediaType::JavaScript,
+      "// ts-check\nconsole.log(5);"
+    ));
   }
 }
