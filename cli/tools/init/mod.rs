@@ -44,6 +44,6 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     println!("  cd {}", dir);
   }
   println!("  deno run main.ts");
-  println!("  deno test main_test.ts");
+  println!("  deno test");
   Ok(())
 }

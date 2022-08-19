@@ -25,7 +25,7 @@ fn init_subcommand_without_dir() {
   assert_contains!(stdout, "Project initialized");
   assert!(!stdout.contains("cd"));
   assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test main_test.ts");
+  assert_contains!(stdout, "deno test");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
@@ -39,7 +39,7 @@ fn init_subcommand_without_dir() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"Add 2 + 3 5\n");
+  assert_eq!(output.stdout, b"Add 2 + 3 = 5\n");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
@@ -77,7 +77,7 @@ fn init_subcommand_with_dir_arg() {
   assert_contains!(stdout, "Project initialized");
   assert_contains!(stdout, "cd my_dir");
   assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test main_test.ts");
+  assert_contains!(stdout, "deno test");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
@@ -91,7 +91,7 @@ fn init_subcommand_with_dir_arg() {
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  assert_eq!(output.stdout, b"Add 2 + 3 5\n");
+  assert_eq!(output.stdout, b"Add 2 + 3 = 5\n");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
