@@ -190,8 +190,8 @@ fn open_helper(
 fn op_open_sync(
   state: &mut OpState,
   path: String,
-  mode: Option<u32>,
   options: Option<OpenOptions>,
+  mode: Option<u32>,
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) = open_helper(state, &path, mode, options.as_ref())?;
   let std_file = open_options.open(&path).map_err(|err| {
@@ -206,8 +206,8 @@ fn op_open_sync(
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
   path: String,
-  mode: Option<u32>,
   options: Option<OpenOptions>,
+  mode: Option<u32>,
 ) -> Result<ResourceId, AnyError> {
   let (path, open_options) =
     open_helper(&mut state.borrow_mut(), &path, mode, options.as_ref())?;
