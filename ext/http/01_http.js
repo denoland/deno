@@ -13,6 +13,7 @@
     newInnerRequest,
     newInnerResponse,
     fromInnerResponse,
+    _flash,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
@@ -124,7 +125,7 @@
       }
 
       const innerRequest = newInnerRequest(
-        method,
+        () => method,
         url,
         () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
@@ -475,6 +476,20 @@
   }
 
   function upgradeHttp(req) {
+    if (req[_flash]) {
+      // NOTE(bartlomieju):
+      // Access these fields so they are cached on `req` object, otherwise
+      // they wouldn't be available after the connection gets upgraded.
+      req.url;
+      req.method;
+      req.headers;
+
+      const { serverId, streamRid } = req[_flash];
+      const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+      // TODO(@littledivy): return already read first packet too.
+      return [new TcpConn(connRid), new Uint8Array()];
+    }
+
     req[_deferred] = new Deferred();
     return req[_deferred].promise;
   }
@@ -483,5 +498,6 @@
     HttpConn,
     upgradeWebSocket,
     upgradeHttp,
+    _ws,
   };
 })(this);

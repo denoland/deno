@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 
@@ -67,9 +68,24 @@ impl ReadonlyNpmCache {
     let mut dir = self
       .root_dir
       .join(fs_util::root_url_to_safe_local_dirname(registry_url));
+    let mut parts = name.split('/').map(Cow::Borrowed).collect::<Vec<_>>();
+    // package names were not always enforced to be lowercase and so we need
+    // to ensure package names, which are therefore case sensitive, are stored
+    // on a case insensitive file system to not have conflicts. We do this by
+    // first putting it in a "_" folder then hashing the package name.
+    if name.to_lowercase() != name {
+      let mut last_part = parts.last_mut().unwrap();
+      *last_part = Cow::Owned(crate::checksum::gen(&[last_part.as_bytes()]));
+      // We can't just use the hash as part of the directory because it may
+      // have a collision with an actual package name in case someone wanted
+      // to name an actual package that. To get around this, put all these
+      // in a folder called "_" since npm packages can't start with an underscore
+      // and there is no package currently called just "_".
+      dir = dir.join("_");
+    }
     // ensure backslashes are used on windows
-    for part in name.split('/') {
-      dir = dir.join(part);
+    for part in parts {
+      dir = dir.join(&*part);
     }
     dir
   }
@@ -220,5 +236,75 @@ impl NpmCache {
     self
       .0
       .resolve_package_id_from_specifier(specifier, registry_url)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use deno_core::url::Url;
+  use std::path::PathBuf;
+
+  use super::ReadonlyNpmCache;
+  use crate::npm::NpmPackageId;
+
+  #[test]
+  fn should_get_lowercase_package_folder() {
+    let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
+    let cache = ReadonlyNpmCache::new(root_dir.clone());
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+
+    // all lowercase should be as-is
+    assert_eq!(
+      cache.package_folder(
+        &NpmPackageId {
+          name: "json".to_string(),
+          version: semver::Version::parse("1.2.5").unwrap(),
+        },
+        &registry_url,
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("json")
+        .join("1.2.5"),
+    );
+  }
+
+  #[test]
+  fn should_handle_non_all_lowercase_package_names() {
+    // it was possible at one point for npm packages to not just be lowercase
+    let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
+    let cache = ReadonlyNpmCache::new(root_dir.clone());
+    let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let json_uppercase_hash =
+      "db1a21a0bc2ef8fbe13ac4cf044e8c9116d29137d5ed8b916ab63dcb2d4290df";
+    assert_eq!(
+      cache.package_folder(
+        &NpmPackageId {
+          name: "JSON".to_string(),
+          version: semver::Version::parse("1.2.5").unwrap(),
+        },
+        &registry_url,
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("_")
+        .join(json_uppercase_hash)
+        .join("1.2.5"),
+    );
+    assert_eq!(
+      cache.package_folder(
+        &NpmPackageId {
+          name: "@types/JSON".to_string(),
+          version: semver::Version::parse("1.2.5").unwrap(),
+        },
+        &registry_url,
+      ),
+      root_dir
+        .join("registry.npmjs.org")
+        .join("_")
+        .join("@types")
+        .join(json_uppercase_hash)
+        .join("1.2.5"),
+    );
   }
 }

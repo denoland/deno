@@ -324,7 +324,8 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
@@ -406,6 +407,7 @@ impl WebWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
+        options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
@@ -427,6 +429,7 @@ impl WebWorker {
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -669,7 +672,8 @@ pub fn run_web_worker(
   worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
-  preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
@@ -704,6 +708,18 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
+          worker = match (pre_execute_module_cb)(worker).await {
+            Ok(worker) => worker,
+            Err(e) => {
+              print_worker_error(&e, &name, format_js_error_fn.as_deref());
+              internal_handle
+                .post_event(WorkerControlEvent::TerminalError(e))
+                .expect("Failed to post message to host");
+
+              // Failure to execute script is a terminal error, bye, bye.
+              return Ok(());
+            }
+          };
           worker.start_polling_for_messages();
           worker.execute_main_module(id).await
         }

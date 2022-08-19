@@ -15,6 +15,9 @@
   const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
+  const {
+    byteLowerCase,
+  } = window.__bootstrap.infra;
   const { HTTP_TAB_OR_SPACE, regexMatcher, serializeJSValueToJSONString } =
     window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
@@ -185,7 +188,6 @@
 
     // 4.
     response[_response].statusMessage = init.statusText;
-
     // 5.
     /** @type {__bootstrap.headers.Headers} */
     const headers = response[_headers];
@@ -200,10 +202,22 @@
           "Response with null body status cannot have body",
         );
       }
+
       const { body, contentType } = bodyWithType;
       response[_response].body = body;
-      if (contentType !== null && !headers.has("content-type")) {
-        headers.append("Content-Type", contentType);
+
+      if (contentType !== null) {
+        let hasContentType = false;
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          if (byteLowerCase(list[i][0]) === "content-type") {
+            hasContentType = true;
+            break;
+          }
+        }
+        if (!hasContentType) {
+          ArrayPrototypePush(list, ["Content-Type", contentType]);
+        }
       }
     }
   }

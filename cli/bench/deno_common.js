@@ -23,6 +23,11 @@ Deno.bench("perf_now", { n: 5e5 }, () => {
   performance.now();
 });
 
+Deno.bench("open_file_sync", () => {
+  const file = Deno.openSync("./cli/bench/testdata/128k.bin");
+  file.close();
+});
+
 // A common "language feature", that should be fast
 // also a decent representation of a non-trivial JSON-op
 {

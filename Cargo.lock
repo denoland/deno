@@ -1041,6 +1041,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_flash"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_tls",
+ "deno_websocket",
+ "http",
+ "httparse",
+ "libc",
+ "log 0.4.17",
+ "mio",
+ "rustls",
+ "rustls-pemfile 0.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "deno_graph"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1147,6 +1165,7 @@ dependencies = [
  "deno_crypto",
  "deno_fetch",
  "deno_ffi",
+ "deno_flash",
  "deno_http",
  "deno_net",
  "deno_node",
@@ -3608,6 +3627,15 @@ dependencies = [
 
 [[package]]
 name = "rustls-pemfile"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
+dependencies = [
+ "base64 0.13.0",
+]
+
+[[package]]
+name = "rustls-pemfile"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ee86d63972a7c661d1536fefe8c3c8407321c3df668891286de28abcd087360"
@@ -5189,9 +5217,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.47.1"
+version = "0.48.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be156dece7a023d5959a72dc0d398d6c95100ec601a2cea10d868da143e85166"
+checksum = "3734ddf37e06e5020a1d5c969301be0cdf023cde0ef4257248ff19eb3a7223e3"
 dependencies = [
  "bitflags",
  "fslock",

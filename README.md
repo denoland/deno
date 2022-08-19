@@ -29,7 +29,7 @@ curl -fsSL https://deno.land/install.sh | sh
 PowerShell (Windows):
 
 ```powershell
-iwr https://deno.land/install.ps1 -useb | iex
+irm https://deno.land/install.ps1 | iex
 ```
 
 [Homebrew](https://formulae.brew.sh/formula/deno) (Mac):
