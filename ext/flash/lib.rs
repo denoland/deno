@@ -935,7 +935,6 @@ pub struct ListenOpts {
   key: Option<String>,
   hostname: String,
   port: u16,
-  use_tls: bool,
 }
 
 fn run_server(
@@ -1239,11 +1238,7 @@ fn op_flash_serve<P>(
 where
   P: FlashPermissions + 'static,
 {
-  if opts.use_tls {
-    check_unstable(state, "Deno.serveTls");
-  } else {
-    check_unstable(state, "Deno.serve");
-  }
+  check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
