@@ -185,18 +185,19 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
-  function serve(handler, opts = {}) {
-    delete opts.key;
-    delete opts.cert;
-    return serveInner(handler, opts, false);
-  }
-
-  function serveTls(handler, opts = {}) {
-    return serveInner(handler, opts, true);
-  }
-
-  function serveInner(handler, opts, useTls) {
-    opts = { hostname: "127.0.0.1", port: 9000, useTls, ...opts };
+  function serve(opts = {}) {
+    if (!("fetch" in opts)) {
+      throw new TypeError("Options is missing 'fetch' handler");
+    }
+    if ("cert" in opts && !("key" in opts)) {
+      throw new TypeError("Options is missing 'key' field");
+    }
+    if ("key" in opts && !("cert" in opts)) {
+      throw new TypeError("Options is missing 'cert' field");
+    }
+    opts = { hostname: "127.0.0.1", port: 9000, ...opts };
+    const handler = opts.fetch;
+    delete opts.fetch;
     const signal = opts.signal;
     delete opts.signal;
     const onError = opts.onError ?? function (error) {
@@ -570,6 +571,5 @@
 
   window.__bootstrap.flash = {
     serve,
-    serveTls,
   };
 })(this);

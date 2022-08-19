@@ -4,11 +4,12 @@ const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
 const { serve } = Deno;
 
-function handler() {
+function fetch() {
   return new Response("Hello World");
 }
 
-serve(handler, {
+serve({
+  fetch,
   hostname,
   port,
 });
