@@ -1276,6 +1276,23 @@ declare namespace Deno {
    * });
    * ```
    *
+   * You can close the server by passing a `signal` option. To wait for the server
+   * to close, await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * Deno.serve({
+   *   fetch: (_req) => new Response("Hello, world"),
+   *   signal: ac.signal
+   * }).then(() => {
+   *   console.log("Server closed");
+   * });
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
    * `Deno.serve` function prints the message `Listening on http://<hostname>:<port>/`
    * on start-up by default. If you like to change this message, you can specify
    * `onListen` option to override it.
