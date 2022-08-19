@@ -226,11 +226,7 @@ function returnBuffer() { return return_buffer(); };
 returnBuffer();
 %OptimizeFunctionOnNextCall(returnBuffer);
 const ptr0 = returnBuffer();
-
-const status = %GetOptimizationStatus(returnBuffer);
-if (!(status & (1 << 4))) {
-  throw new Error("returnBuffer is not optimized");
-}
+assertIsOptimized(returnBuffer);
 
 dylib.symbols.print_buffer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
@@ -282,19 +278,10 @@ const { add_u32, add_usize_fast } = symbols;
 function addU32Fast(a, b) {
   return add_u32(a, b);
 };
-
-%PrepareFunctionForOptimization(addU32Fast);
-console.log(addU32Fast(123, 456));
-%OptimizeFunctionOnNextCall(addU32Fast);
-console.log(addU32Fast(123, 456));
-assertOptimized(addU32Fast);
+testOptimized(addU32Fast, () => addU32Fast(123, 456));
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
-%PrepareFunctionForOptimization(addU64Fast);
-console.log(addU64Fast(2, 3));
-%OptimizeFunctionOnNextCall(addU64Fast);
-console.log(addU64Fast(2, 3));
-assertOptimized(addU64Fast);
+testOptimized(addU64Fast, () => addU64Fast(2, 3));
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -313,22 +300,12 @@ console.log(dylib.symbols.add_f64(123.123, 456.789));
 function addF32Fast(a, b) {
   return dylib.symbols.add_f32(a, b);
 };
-
-%PrepareFunctionForOptimization(addF32Fast);
-console.log(addF32Fast(123.123, 456.789));
-%OptimizeFunctionOnNextCall(addF32Fast);
-console.log(addF32Fast(123.123, 456.789));
-assertOptimized(addF32Fast);
+testOptimized(addF32Fast, () => addF32Fast(123.123, 456.789));
 
 function addF64Fast(a, b) {
   return dylib.symbols.add_f64(a, b);
 };
-
-%PrepareFunctionForOptimization(addF64Fast);
-console.log(addF64Fast(123.123, 456.789));
-%OptimizeFunctionOnNextCall(addF64Fast);
-console.log(addF64Fast(123.123, 456.789));
-assertOptimized(addF64Fast);
+testOptimized(addF64Fast, () => addF64Fast(123.123, 456.789));
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
@@ -476,47 +453,35 @@ dylib.symbols.call_stored_function_2(20);
 function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s) {
   return symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
 };
+testOptimized(
+  logManyParametersFast,
+  () => logManyParametersFast(
+    255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000,
+    12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
+  )
+);
 
-%PrepareFunctionForOptimization(logManyParametersFast);
-logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
-%OptimizeFunctionOnNextCall(logManyParametersFast);
-logManyParametersFast(255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910);
-assertOptimized(logManyParametersFast);
-
-function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
-
-%PrepareFunctionForOptimization(castU8U32Fast);
-console.log(castU8U32Fast(256));
-%OptimizeFunctionOnNextCall(castU8U32Fast);
 // Some ABIs rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
 // If the trampoline did not zero/sign-extend arguments, this would return 256 instead of the expected 0 (in optimized builds)
-console.log(castU8U32Fast(256));
-assertOptimized(castU8U32Fast);
+function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
+testOptimized(castU8U32Fast, () => castU8U32Fast(256));
 
-function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
-
-%PrepareFunctionForOptimization(castU32U8Fast);
-console.log(castU32U8Fast(256));
-%OptimizeFunctionOnNextCall(castU32U8Fast);
 // Some ABIs rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
 // If the trampoline did not zero/sign-extend the return value, this would return 256 instead of the expected 0 (in optimized builds)
-console.log(castU32U8Fast(256));
-assertOptimized(castU32U8Fast);
+function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
+testOptimized(castU32U8Fast, () => castU32U8Fast(256));
 
+// Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
+// the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
+function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { 
+  return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
+};
 // TODO: this test currently fails in aarch64-apple-darwin (also in branch main!). The reason is v8 does not follow Apple's custom
 // ABI properly (aligns arguments to 8 byte boundaries instead of the natural alignment of the parameter type).
 // A decision needs to be taken:
 // 1. leave it broken and wait for v8 to fix the bug
 // 2. Adapt to v8 bug and follow its ABI instead of Apple's. When V8 fixes the implementation, we'll have to fix it here as well
-function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m); };
-
-%PrepareFunctionForOptimization(addManyU16Fast);
-console.log(addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
-%OptimizeFunctionOnNextCall(addManyU16Fast);
-// Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
-// the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
-console.log(addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
-assertOptimized(addManyU16Fast);
+testOptimized(addManyU16Fast, () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
 
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -588,10 +553,7 @@ try {
 const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 function hash() { return dylib.symbols.hash(bytes, bytes.byteLength); };
 
-%PrepareFunctionForOptimization(hash);
-console.log(hash());
-%OptimizeFunctionOnNextCall(hash);
-console.log(hash());
+testOptimized(hash, () => hash());
 
 (function cleanup() {
   dylib.close();
@@ -619,7 +581,21 @@ After: ${postStr}`,
   console.log("Correct number of resources");
 })();
 
-function assertOptimized(fn) {
+function assertIsOptimized(fn) {
   const status = % GetOptimizationStatus(fn);
   assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
+}
+
+function testOptimized(fn, callback) {
+  %PrepareFunctionForOptimization(fn);
+  const r1 = callback();
+  if (r1 !== undefined) {
+    console.log(r1);
+  }
+  %OptimizeFunctionOnNextCall(fn);
+  const r2 = callback();
+  if (r2 !== undefined) {
+    console.log(r2);
+  }
+  assertIsOptimized(fn);
 }
