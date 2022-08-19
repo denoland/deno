@@ -142,3 +142,20 @@ fn is_local_declaration_ident(node: Node) -> bool {
     false
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_esm_code_with_node_globals() {
+    let r = esm_code_with_node_globals(
+      &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
+      "export const x = 1;".to_string(),
+    )
+    .unwrap();
+    assert!(r.contains("var globalThis = Deno[Deno.internal].node.globalThis;"));
+    assert!(r.contains("var process = globalThis.process;"));
+    assert!(r.contains("export const x = 1;"));
+  }
+}
