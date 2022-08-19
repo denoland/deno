@@ -4,7 +4,6 @@ use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
 
-use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -16,17 +15,11 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-
-/// Matches the `@ts-check` pragma.
-static TS_CHECK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
@@ -40,11 +33,8 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
-    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
-    /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
-    ts_check: bool,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
     checked_libs: HashSet<TsTypeLib>,
@@ -129,24 +119,9 @@ impl GraphData {
               }
             }
           }
-          let ts_check = match &media_type {
-            MediaType::JavaScript
-            | MediaType::Mjs
-            | MediaType::Cjs
-            | MediaType::Jsx => {
-              let parsed_source = module.maybe_parsed_source.as_ref().unwrap();
-              parsed_source
-                .get_leading_comments()
-                .iter()
-                .any(|c| TS_CHECK_RE.is_match(&c.text))
-            }
-            _ => false,
-          };
           let module_entry = ModuleEntry::Module {
             code,
-            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
-            ts_check,
             media_type,
             checked_libs: Default::default(),
             maybe_types,

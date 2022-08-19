@@ -7,6 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
@@ -77,6 +78,7 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
 }
@@ -210,6 +212,8 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
+    let parsed_source_cache =
+      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -230,6 +234,7 @@ impl ProcState {
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
+      parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
     })))
@@ -513,14 +518,15 @@ impl ProcState {
     let graph_data = self.graph_data.read();
     for (specifier, entry) in graph_data.entries() {
       if let ModuleEntry::Module {
-        maybe_parsed_source: Some(parsed_source),
-        ..
+        code, media_type, ..
       } = entry
       {
         emit_parsed_source(
           &self.emit_cache,
+          &self.parsed_source_cache,
           specifier,
-          parsed_source,
+          *media_type,
+          code,
           &self.emit_options,
           self.emit_options_hash,
         )?;
@@ -554,6 +560,7 @@ impl ProcState {
         .as_ref()
         .map(|im| im.as_resolver())
     };
+    let analyzer = self.parsed_source_cache.as_analyzer();
 
     Ok(
       create_graph(
@@ -563,7 +570,7 @@ impl ProcState {
         &mut cache,
         maybe_resolver,
         maybe_locker,
-        None,
+        Some(&*analyzer),
         None,
       )
       .await,

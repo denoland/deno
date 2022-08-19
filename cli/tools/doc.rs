@@ -11,11 +11,13 @@ use crate::write_to_stdout_ignore_sigpipe;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub async fn print_docs(
   flags: Flags,
@@ -25,21 +27,51 @@ pub async fn print_docs(
   let source_file = doc_flags
     .source_file
     .unwrap_or_else(|| "--builtin".to_string());
-  let source_parser = deno_graph::DefaultSourceParser::new();
 
   let mut doc_nodes = if source_file == "--builtin" {
+    struct LibDenoDtsLoader {
+      specifier: ModuleSpecifier,
+      content: Arc<str>,
+    }
+
+    impl deno_graph::source::Loader for LibDenoDtsLoader {
+      fn load(
+        &mut self,
+        specifier: &deno_ast::ModuleSpecifier,
+        _is_dynamic: bool,
+      ) -> deno_graph::source::LoadFuture {
+        assert_eq!(&self.specifier, specifier);
+        Box::pin(futures::future::ready(Ok(Some(
+          deno_graph::source::LoadResponse::Module {
+            content: self.content.clone(),
+            specifier: self.specifier.clone(),
+            maybe_headers: None,
+          },
+        ))))
+      }
+    }
+
     let source_file_specifier =
       ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let graph = ps
-      .create_graph(vec![(source_file_specifier.clone(), ModuleKind::Esm)])
-      .await?;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
-    doc_parser.parse_source(
-      &source_file_specifier,
-      MediaType::Dts,
-      get_types(ps.options.unstable()).into(),
-    )?
+    let content: Arc<str> = get_types(ps.options.unstable()).into();
+    let mut loader = LibDenoDtsLoader {
+      specifier: source_file_specifier.clone(),
+      content: content.clone(),
+    };
+    let analyzer = deno_graph::CapturingModuleAnalyzer::default();
+    let graph = deno_graph::create_graph(
+      vec![(source_file_specifier.clone(), ModuleKind::Esm)],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      Some(&analyzer),
+      None,
+    )
+    .await;
+    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &analyzer);
+    doc_parser.parse_module(&source_file_specifier)?.definitions
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
 
@@ -61,8 +93,8 @@ pub async fn print_docs(
     let graph = ps
       .create_graph(vec![(root_specifier.clone(), ModuleKind::Esm)])
       .await?;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
+    let store = ps.parsed_source_cache.as_store();
+    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &*store);
     doc_parser.parse_with_reexports(&root_specifier)?
   };
 

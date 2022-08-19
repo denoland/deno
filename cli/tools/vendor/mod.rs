@@ -45,6 +45,7 @@ pub async fn vendor(
   let graph = create_graph(&ps, &vendor_flags).await?;
   let vendored_count = build::build(
     graph,
+    &ps.parsed_source_cache,
     &output_dir,
     ps.maybe_import_map.as_deref(),
     &build::RealVendorEnvironment,
