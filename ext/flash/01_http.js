@@ -481,7 +481,7 @@
                 }
                 ws[_serverHandleIdleTimeout]();
               }
-            })();
+            })().catch(onError);
           }
 
           offset += tokens;
