@@ -25,8 +25,13 @@
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
+  const buf = new ArrayBuffer(8)
+  const u32 = new Uint32Array(buf)
+
   function opNow() {
-    return ops.op_now();
+    ops.op_now_new(buf);
+    console.log("buf1", buf, u32, (u32[1] & 0xff));
+    return u32[0] + ((u32[1] & 0xff) * 0x100000000)
   }
 
   // ---------------------------------------------------------------------------

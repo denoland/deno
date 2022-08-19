@@ -2,6 +2,7 @@
 
 //! This module helps deno implement timers and performance APIs.
 
+use deno_core::ZeroCopyBuf;
 use deno_core::error::AnyError;
 use deno_core::op;
 
@@ -23,6 +24,8 @@ pub trait TimersPermission {
 
 pub type StartTime = Instant;
 
+const REDUCED_TIME_PRECISION: f64 = 2_000_000.0; // 2ms in nanoseconds;
+
 // Returns a milliseconds and nanoseconds subsec
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
@@ -36,16 +39,37 @@ where
   let elapsed = start_time.elapsed();
   let seconds = elapsed.as_secs();
   let mut subsec_nanos = elapsed.subsec_nanos() as f64;
-  let reduced_time_precision = 2_000_000.0; // 2ms in nanoseconds
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !state.borrow_mut::<TP>().allow_hrtime() {
-    subsec_nanos -= subsec_nanos % reduced_time_precision;
+    subsec_nanos -= subsec_nanos % REDUCED_TIME_PRECISION;
   }
 
   (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0)
+}
+
+#[op]
+pub fn op_now_new<TP>(state: &mut OpState, mut buf: ZeroCopyBuf)
+where
+  TP: TimersPermission + 'static,
+{
+  let start_time = state.borrow::<StartTime>();
+  let elapsed = start_time.elapsed();
+  let seconds = elapsed.as_secs() * 1e9 as u64;
+  let mut subsec_nanos = elapsed.subsec_nanos() as u64;
+
+  // If the permission is not enabled
+  // Round the nano result on 2 milliseconds
+  // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
+  if !state.borrow_mut::<TP>().allow_hrtime() {
+    subsec_nanos -= subsec_nanos % 2_000_000;
+  }
+
+  (&mut *buf).copy_from_slice(&(seconds + subsec_nanos).to_be_bytes());
+  // (&mut *buf)[4..].copy_from_slice(&subsec_nanos.to_be_bytes());
+  // (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0)
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);

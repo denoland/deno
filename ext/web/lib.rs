@@ -25,6 +25,7 @@ use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
 use serde::Deserialize;
 use serde::Serialize;
+use timers::op_now_new;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
@@ -107,6 +108,7 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_write::decl(),
       compression::op_compression_finish::decl(),
       op_now::decl::<P>(),
+      op_now_new::decl::<P>(),
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
