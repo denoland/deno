@@ -330,6 +330,25 @@ fn module_resolve(
   })
 }
 
+fn add_export(source: &mut Vec<String>, name: &str, initializer: &str) {
+  // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
+  // but it might not be necessary here since our analysis is more detailed?
+  if RESERVED_WORDS.contains(name) {
+    // we can't create an identifier with a reserved word, so assign it to a temporary
+    // variable that won't have a conflict, then re-export it as a string
+    source.push(format!(
+      "const __deno_reexport_temp__{} = {};",
+      name, initializer
+    ));
+    source.push(format!(
+      "export {{ __deno_reexport_temp__{0} as \"{0}\" }};",
+      name
+    ));
+  } else {
+    source.push(format!("export const {} = {};", name, initializer));
+  }
+}
+
 /// Translates given CJS module into ESM. This function will perform static
 /// analysis on the file to find defined exports and reexports.
 ///
@@ -343,25 +362,6 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &GlobalNpmPackageResolver,
 ) -> Result<String, AnyError> {
-  fn add_export(source: &mut Vec<String>, name: &str, initializer: &str) {
-    // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
-    // but it might not be necessary here since our analysis is more detailed?
-    if RESERVED_WORDS.contains(name) {
-      // we can't create an identifier with a reserved word, so assign it to a temporary
-      // variable that won't have a conflict, then re-export it as a string
-      source.push(format!(
-        "const __deno_reexport_temp__{} = {};",
-        name, initializer
-      ));
-      source.push(format!(
-        "export {{ __deno_reexport_temp__{0} as \"{0}\" }};",
-        name
-      ));
-    } else {
-      source.push(format!("export const {} = {};", name, initializer));
-    }
-  }
-
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(code.into()),
@@ -457,23 +457,23 @@ pub fn translate_cjs_to_esm(
   Ok(translated_source)
 }
 
+fn resolve_package_target_string(
+  target: &str,
+  subpath: Option<String>,
+) -> String {
+  if let Some(subpath) = subpath {
+    target.replace('*', &subpath)
+  } else {
+    target.to_string()
+  }
+}
+
 fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<PathBuf, AnyError> {
-  fn resolve_package_target_string(
-    target: &str,
-    subpath: Option<String>,
-  ) -> String {
-    if let Some(subpath) = subpath {
-      target.replace('*', &subpath)
-    } else {
-      target.to_string()
-    }
-  }
-
   if specifier.starts_with('/') {
     todo!();
   }
@@ -694,4 +694,37 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
     referrer.to_string_lossy()
   );
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_add_export() {
+    let mut source = vec![];
+
+    let exports = vec!["static", "server", "app"];
+    for export in exports {
+      add_export(&mut source, export, "init");
+    }
+    assert_eq!(
+      source,
+      vec![
+        "const __deno_reexport_temp__static = init;".to_string(),
+        "export { __deno_reexport_temp__static as \"static\" };".to_string(),
+        "export const server = init;".to_string(),
+        "export const app = init;".to_string(),
+      ]
+    )
+  }
+
+  #[test]
+  fn test_resolve_package_target_string() {
+    assert_eq!(resolve_package_target_string("foo", None), "foo");
+    assert_eq!(
+      resolve_package_target_string("*foo", Some("bar".to_string())),
+      "barfoo"
+    );
+  }
 }

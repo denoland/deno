@@ -23,7 +23,7 @@ static NODE_GLOBALS: &[&str] = &[
   "setTimeout",
 ];
 
-// todo(dsherret): this code is way more innefficient than it needs to be.
+// TODO(dsherret): this code is way more inefficient than it needs to be.
 //
 // In the future, we should disable capturing tokens & scope analysis
 // and instead only use swc's APIs to go through the portions of the tree
