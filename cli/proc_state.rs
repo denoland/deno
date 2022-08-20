@@ -22,10 +22,15 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::node;
+use crate::npm::GlobalNpmPackageResolver;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -79,6 +84,8 @@ pub struct Inner {
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  pub npm_resolver: GlobalNpmPackageResolver,
+  pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
 }
 
 impl Deref for ProcState {
@@ -210,6 +217,8 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
+    let npm_resolver =
+      GlobalNpmPackageResolver::from_deno_dir(&dir, cli_options.reload_flag())?;
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -232,6 +241,8 @@ impl ProcState {
       compiled_wasm_module_store,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      npm_resolver,
+      cjs_resolutions: Default::default(),
     })))
   }
 
@@ -383,8 +394,7 @@ impl ProcState {
             &module.specifier,
             module.maybe_source.as_ref().unwrap().to_string(),
             module.media_type,
-          )
-          .await?;
+          )?;
           let mut graph_data = self.graph_data.write();
           graph_data
             .add_cjs_esm_translation(&module.specifier, translated_source);
@@ -403,7 +413,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    {
+    let npm_package_references = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
       let check_js = self.options.check_js();
@@ -414,6 +424,21 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
+      graph_data.npm_package_reqs()
+    };
+
+    if !npm_package_references.is_empty() {
+      self
+        .npm_resolver
+        .add_package_reqs(npm_package_references)
+        .await?;
+      self.npm_resolver.cache_packages().await?;
+
+      // add the builtin node modules to the graph data
+      let node_std_graph = self
+        .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+        .await?;
+      self.graph_data.write().add_graph(&node_std_graph, false);
     }
 
     // type check if necessary
@@ -457,12 +482,48 @@ impl ProcState {
     Ok(())
   }
 
+  fn handle_node_resolve_result(
+    &self,
+    result: Result<Option<ResolveResponse>, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let response = match result? {
+      Some(response) => response,
+      None => bail!("Not found."),
+    };
+    if let ResolveResponse::CommonJs(specifier) = &response {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.lock().insert(specifier.clone());
+    }
+    response.to_result()
+  }
+
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+      if self.npm_resolver.in_npm_package(&referrer) {
+        // we're in an npm package, so use node resolution
+        return self
+          .handle_node_resolve_result(node::node_resolve(
+            specifier,
+            &referrer,
+            &self.npm_resolver,
+          ))
+          .with_context(|| {
+            format!(
+              "Could not resolve '{}' from '{}'.",
+              specifier,
+              self
+                .npm_resolver
+                .resolve_package_from_specifier(&referrer)
+                .unwrap()
+                .id
+            )
+          });
+      }
+
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
@@ -473,7 +534,19 @@ impl ProcState {
       };
 
       match maybe_resolved {
-        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Ok { specifier, .. }) => {
+          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          {
+            return self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &reference,
+                &self.npm_resolver,
+              ))
+              .with_context(|| format!("Could not resolve '{}'.", reference));
+          } else {
+            return Ok(specifier.clone());
+          }
+        }
         Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
@@ -555,19 +628,31 @@ impl ProcState {
         .map(|im| im.as_resolver())
     };
 
-    Ok(
-      create_graph(
-        roots,
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await,
+    let graph = create_graph(
+      roots,
+      false,
+      maybe_imports,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      None,
+      None,
     )
+    .await;
+
+    // add the found npm package references to the npm resolver and cache them
+    let mut package_reqs = Vec::new();
+    for (specifier, _) in graph.specifiers() {
+      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        package_reqs.push(reference.req);
+      }
+    }
+    if !package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(package_reqs).await?;
+      self.npm_resolver.cache_packages().await?;
+    }
+
+    Ok(graph)
   }
 }
 

@@ -11,6 +11,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
+use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use regex::Regex;
 use std::path::PathBuf;
 
@@ -73,8 +74,6 @@ impl Resolver for NodeEsmResolver {
     }
   }
 }
-
-static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.

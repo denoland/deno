@@ -2,7 +2,9 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::npm;
 
+use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
@@ -53,6 +55,10 @@ impl FetchCacher {
 
 impl Loader for FetchCacher {
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
+    if specifier.scheme() == "npm" {
+      return None;
+    }
+
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let emit = self
@@ -74,6 +80,17 @@ impl Loader for FetchCacher {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> LoadFuture {
+    if specifier.scheme() == "npm" {
+      return Box::pin(futures::future::ready(
+        match npm::NpmPackageReference::from_specifier(specifier) {
+          Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
+            specifier: specifier.clone(),
+          })),
+          Err(err) => Err(err),
+        },
+      ));
+    }
+
     let specifier = specifier.clone();
     let mut permissions = if is_dynamic {
       self.dynamic_permissions.clone()

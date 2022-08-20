@@ -3,6 +3,8 @@
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 
 use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
@@ -58,6 +60,7 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
@@ -89,6 +92,13 @@ impl GraphData {
 
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
+        continue;
+      }
+      if specifier.scheme() == "npm" {
+        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
+        let reference =
+          NpmPackageReference::from_specifier(&specifier).unwrap();
+        self.npm_packages.insert(reference.req);
         continue;
       }
       if let Some(found) = graph.redirects.get(&specifier) {
@@ -167,6 +177,11 @@ impl GraphData {
     self.modules.iter()
   }
 
+  /// Gets the unique npm package requirements from all the encountered graphs.
+  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
+    self.npm_packages.iter().cloned().collect()
+  }
+
   /// Walk dependencies from `roots` and return every encountered specifier.
   /// Return `None` if any modules are not known.
   pub fn walk<'a>(
@@ -199,6 +214,10 @@ impl GraphData {
       }
     }
     while let Some(specifier) = visiting.pop_front() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        continue; // skip analyzing npm specifiers
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => return None,
@@ -228,7 +247,13 @@ impl GraphData {
               }
             }
           }
-          for (_, dep) in dependencies.iter().rev() {
+          for (dep_specifier, dep) in dependencies.iter().rev() {
+            // todo(dsherret): ideally there would be a way to skip external dependencies
+            // in the graph here rather than specifically npm package references
+            if NpmPackageReference::from_str(dep_specifier).is_ok() {
+              continue;
+            }
+
             if !dep.is_dynamic || follow_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
               if check_types {
@@ -278,6 +303,7 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      npm_packages: self.npm_packages.clone(),
       referrer_map,
       // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
       graph_imports: self

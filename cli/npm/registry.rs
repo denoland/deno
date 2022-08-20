@@ -12,6 +12,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
@@ -63,8 +64,13 @@ impl NpmPackageVersionInfo {
         } else {
           (entry.0.clone(), entry.1.clone())
         };
-      let version_req = NpmVersionReq::parse(&version_req)
-        .with_context(|| format!("Dependency: {}", bare_specifier))?;
+      let version_req =
+        NpmVersionReq::parse(&version_req).with_context(|| {
+          format!(
+            "error parsing version requirement for dependency: {}@{}",
+            bare_specifier, version_req
+          )
+        })?;
       Ok(NpmDependencyEntry {
         bare_specifier,
         name,
@@ -98,7 +104,22 @@ pub struct NpmRegistryApi {
 
 impl NpmRegistryApi {
   pub fn default_url() -> Url {
-    Url::parse("https://registry.npmjs.org").unwrap()
+    let env_var_name = "DENO_NPM_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => url,
+        Err(err) => {
+          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
+          colors::red_bold("error"),
+          env_var_name, err);
+          std::process::exit(1);
+        }
+      }
+    } else {
+      Url::parse("https://registry.npmjs.org").unwrap()
+    }
   }
 
   pub fn new(cache: NpmCache, reload: bool) -> Self {
@@ -125,7 +146,7 @@ impl NpmRegistryApi {
     let maybe_package_info = self.maybe_package_info(name).await?;
     match maybe_package_info {
       Some(package_info) => Ok(package_info),
-      None => bail!("package '{}' does not exist", name),
+      None => bail!("npm package '{}' does not exist", name),
     }
   }
 
@@ -271,6 +292,7 @@ fn npm_version_req_parse_part(
   text: &str,
 ) -> Result<semver::VersionReq, AnyError> {
   let text = text.trim();
+  let text = text.strip_prefix('v').unwrap_or(text);
   let mut chars = text.chars().enumerate().peekable();
   let mut final_text = String::new();
   while chars.peek().is_some() {
@@ -305,6 +327,11 @@ mod test {
     fn matches(&self, version: &str) -> bool {
       self.0.matches(&semver::Version::parse(version).unwrap())
     }
+  }
+
+  #[test]
+  pub fn npm_version_req_with_v() {
+    assert!(NpmVersionReq::parse("v1.0.0").is_ok());
   }
 
   #[test]

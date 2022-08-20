@@ -947,9 +947,35 @@ async fn main_server(
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
-      if let Ok(file) = tokio::fs::read(file_path).await {
+      if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
+      }
+
+      // serve npm registry files
+      if req.uri().path().starts_with("/npm/registry/") {
+        let is_tarball = req.uri().path().ends_with(".tgz");
+        if !is_tarball {
+          file_path.push("registry.json");
+        }
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        } else if should_download_npm_packages() {
+          if let Err(err) =
+            download_npm_registry_file(&file_path, is_tarball).await
+          {
+            return Response::builder()
+              .status(StatusCode::INTERNAL_SERVER_ERROR)
+              .body(format!("{:#}", err).into());
+          };
+
+          // serve the file
+          if let Ok(file) = tokio::fs::read(&file_path).await {
+            let file_resp = custom_headers(req.uri().path(), file);
+            return Ok(file_resp);
+          }
+        }
       }
 
       Response::builder()
@@ -957,6 +983,50 @@ async fn main_server(
         .body(Body::empty())
     }
   };
+}
+
+fn should_download_npm_packages() -> bool {
+  // when this env var is set, it will download and save npm packages
+  // to the testdata/npm/registry directory
+  std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
+}
+
+async fn download_npm_registry_file(
+  file_path: &PathBuf,
+  is_tarball: bool,
+) -> Result<(), anyhow::Error> {
+  let package_name = file_path
+    .parent()
+    .unwrap()
+    .file_name()
+    .unwrap()
+    .to_string_lossy();
+  let url = if is_tarball {
+    let file_name = file_path.file_name().unwrap().to_string_lossy();
+    format!(
+      "https://registry.npmjs.org/{}/-/{}",
+      package_name, file_name
+    )
+  } else {
+    format!("https://registry.npmjs.org/{}", package_name)
+  };
+  let client = reqwest::Client::new();
+  let response = client.get(url).send().await?;
+  let bytes = response.bytes().await?;
+  let bytes = if is_tarball {
+    bytes.to_vec()
+  } else {
+    String::from_utf8(bytes.to_vec())
+      .unwrap()
+      .replace(
+        &format!("https://registry.npmjs.org/{}/-/", package_name),
+        &format!("http://localhost:4545/npm/registry/{}/", package_name),
+      )
+      .into_bytes()
+  };
+  std::fs::create_dir_all(file_path.parent().unwrap())?;
+  std::fs::write(&file_path, bytes)?;
+  Ok(())
 }
 
 /// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs

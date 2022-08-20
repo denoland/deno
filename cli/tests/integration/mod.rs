@@ -84,6 +84,8 @@ mod install;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "npm_tests.rs"]
+mod npm;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
