@@ -6,9 +6,9 @@ const { serve } = Deno;
 
 const path = new URL("../testdata/128k.bin", import.meta.url).pathname;
 
-function handler() {
-  const file = Deno.openSync(path, { read: true });
+function fetch() {
+  const file = Deno.openSync(path);
   return new Response(file.readable);
 }
 
-serve(handler, { hostname, port: Number(port) });
+serve({ fetch, hostname, port: Number(port) });
