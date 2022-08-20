@@ -83,6 +83,7 @@ node_resolver = "=0.1.1"
 notify = "=5.0.0-pre.15"
 once_cell = "=1.12.0"
 os_pipe = "=1.0.1"
+path-clean = "=0.1.0"
 percent-encoding = "=2.1.0"
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 rand = { version = "=0.8.5", features = ["small_rng"] }
