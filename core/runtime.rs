@@ -1935,7 +1935,7 @@ impl JsRuntime {
 
       for (promise_id, resp) in results.into_iter() {
         args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(resp.to_v8(scope).unwrap());
+        args.push(resp.to_v8(scope)?);
       }
 
       let tc_scope = &mut v8::TryCatch::new(scope);

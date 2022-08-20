@@ -148,7 +148,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
-  function throwErrorOnReadBigTextFileSync() {
+  function readTextFileSyncV8LimitError() {
     const kStringMaxLengthPlusOne = 536870888 + 1;
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file.txt";
@@ -164,5 +164,22 @@ Deno.test(
     );
 
     Deno.removeSync(filePath);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readTextFileV8LimitError() {
+    const kStringMaxLengthPlusOne = 536870888 + 1;
+    const bytes = new Uint8Array(kStringMaxLengthPlusOne);
+    const filePath = "cli/tests/testdata/too_big_a_file_2.txt";
+
+    await Deno.writeFile(filePath, bytes);
+
+    assertThrows(async () => {
+      await Deno.readTextFile(filePath);
+    });
+
+    await Deno.remove(filePath);
   },
 );
