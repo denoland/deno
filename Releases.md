@@ -3092,7 +3092,7 @@ Read more about this release at https://deno.land/v1
 - fix(std/ws): provide default close code for ws.close() (#4172)
 - fix(std/ws): sock shouldn't throw eof error when failed to read frame (#4083)
 - fix: Bundles can be sync or async based on top level await (#4124)
-- fix: Move WebAsssembly namespace to shared_globals (#4084)
+- fix: Move WebAssembly namespace to shared_globals (#4084)
 - fix: Resolve makeTemp paths from CWD (#4104)
 - fix: Return non-zero exit code on malformed stdin fmt (#4163)
 - fix: add window.self read-only property (#4131)
