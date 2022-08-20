@@ -321,6 +321,10 @@ fn resolve_shim_data(
     executable_args.push("--no-remote".to_string());
   }
 
+  if flags.no_npm {
+    executable_args.push("--no-npm".to_string());
+  }
+
   if flags.lock_write {
     executable_args.push("--lock-write".to_string());
   }
