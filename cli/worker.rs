@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -24,6 +25,7 @@ use crate::compat;
 use crate::errors;
 use crate::fmt_errors::format_js_error;
 use crate::module_loader::CliModuleLoader;
+use crate::node;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
@@ -99,7 +101,7 @@ impl CliMainWorker {
       }
     } else {
       // Regular ES module execution
-      self.worker.execute_main_module(&self.main_module).await?;
+      self.execute_main_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
@@ -134,39 +136,39 @@ impl CliMainWorker {
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
     struct FileWatcherModuleExecutor {
-      worker: MainWorker,
+      inner: CliMainWorker,
       pending_unload: bool,
-      ps: ProcState,
     }
 
     impl FileWatcherModuleExecutor {
-      pub fn new(
-        worker: MainWorker,
-        ps: ProcState,
-      ) -> FileWatcherModuleExecutor {
+      pub fn new(worker: CliMainWorker) -> FileWatcherModuleExecutor {
         FileWatcherModuleExecutor {
-          worker,
+          inner: worker,
           pending_unload: false,
-          ps,
         }
       }
 
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
-      pub async fn execute(
-        &mut self,
-        main_module: &ModuleSpecifier,
-      ) -> Result<(), AnyError> {
-        if self.ps.options.compat() {
-          self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
+      pub async fn execute(&mut self) -> Result<(), AnyError> {
+        if self.inner.ps.options.compat() {
+          self
+            .inner
+            .worker
+            .execute_side_module(&compat::GLOBAL_URL)
+            .await?;
         }
-        self.worker.execute_main_module(main_module).await?;
-        self.worker.dispatch_load_event(&located_script_name!())?;
+        self.inner.execute_main_module_possibly_with_npm().await?;
+        self
+          .inner
+          .worker
+          .dispatch_load_event(&located_script_name!())?;
         self.pending_unload = true;
 
         let result = loop {
-          let result = self.worker.run_event_loop(false).await;
+          let result = self.inner.worker.run_event_loop(false).await;
           if !self
+            .inner
             .worker
             .dispatch_beforeunload_event(&located_script_name!())?
           {
@@ -179,7 +181,10 @@ impl CliMainWorker {
           return Err(err);
         }
 
-        self.worker.dispatch_unload_event(&located_script_name!())?;
+        self
+          .inner
+          .worker
+          .dispatch_unload_event(&located_script_name!())?;
 
         Ok(())
       }
@@ -189,6 +194,7 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           self
+            .inner
             .worker
             .dispatch_unload_event(&located_script_name!())
             .unwrap();
@@ -196,8 +202,8 @@ impl CliMainWorker {
       }
     }
 
-    let mut executor = FileWatcherModuleExecutor::new(self.worker, self.ps);
-    executor.execute(&self.main_module).await
+    let mut executor = FileWatcherModuleExecutor::new(self);
+    executor.execute().await
   }
 
   pub async fn run_test_specifier(
@@ -252,7 +258,7 @@ impl CliMainWorker {
         }
       } else {
         // We execute the module module as a side module so that import.meta.main is not set.
-        self.worker.execute_side_module(&self.main_module).await?;
+        self.execute_side_module_possibly_with_npm().await?;
       }
     }
 
@@ -307,7 +313,8 @@ impl CliMainWorker {
       .unwrap();
 
     if mode != TestMode::Documentation {
-      self.worker.execute_side_module(&self.main_module).await?;
+      // We execute the module module as a side module so that import.meta.main is not set.
+      self.execute_side_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
@@ -362,7 +369,7 @@ impl CliMainWorker {
       }
     } else {
       // We execute the module module as a side module so that import.meta.main is not set.
-      self.worker.execute_side_module(&self.main_module).await?;
+      self.execute_side_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
@@ -385,6 +392,30 @@ impl CliMainWorker {
     }
     self.worker.dispatch_unload_event(&located_script_name!())?;
     Ok(())
+  }
+
+  async fn execute_main_module_possibly_with_npm(
+    &mut self,
+  ) -> Result<(), AnyError> {
+    let id = self.worker.preload_main_module(&self.main_module).await?;
+    self.evaluate_module_possibly_with_npm(id).await
+  }
+
+  async fn execute_side_module_possibly_with_npm(
+    &mut self,
+  ) -> Result<(), AnyError> {
+    let id = self.worker.preload_side_module(&self.main_module).await?;
+    self.evaluate_module_possibly_with_npm(id).await
+  }
+
+  async fn evaluate_module_possibly_with_npm(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
+    if self.ps.npm_resolver.has_packages() {
+      node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    }
+    self.worker.evaluate_module(id).await
   }
 
   async fn maybe_setup_coverage_collector(
@@ -423,6 +454,8 @@ pub fn create_main_worker(
     create_web_worker_callback(ps.clone(), stdio.clone());
   let web_worker_preload_module_cb =
     create_web_worker_preload_module_callback(ps.clone());
+  let web_worker_pre_execute_module_cb =
+    create_web_worker_pre_execute_module_callback(ps.clone());
 
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
   let origin_storage_dir = maybe_storage_key.map(|key| {
@@ -466,14 +499,11 @@ pub fn create_main_worker(
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
     web_worker_preload_module_cb,
-    web_worker_pre_execute_module_cb: Arc::new(|worker| {
-      LocalFutureObj::new(Box::new(deno_core::futures::future::ready(Ok(
-        worker,
-      ))))
-    }),
+    web_worker_pre_execute_module_cb,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
+    npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
@@ -513,6 +543,23 @@ fn create_web_worker_preload_module_callback(
   })
 }
 
+fn create_web_worker_pre_execute_module_callback(
+  ps: ProcState,
+) -> Arc<WorkerEventCb> {
+  Arc::new(move |mut worker| {
+    let ps = ps.clone();
+    let fut = async move {
+      // this will be up to date after pre-load
+      if ps.npm_resolver.has_packages() {
+        node::initialize_runtime(&mut worker.js_runtime).await?;
+      }
+
+      Ok(worker)
+    };
+    LocalFutureObj::new(Box::new(fut))
+  })
+}
+
 fn create_web_worker_callback(
   ps: ProcState,
   stdio: deno_runtime::ops::io::Stdio,
@@ -528,6 +575,8 @@ fn create_web_worker_callback(
       create_web_worker_callback(ps.clone(), stdio.clone());
     let preload_module_cb =
       create_web_worker_preload_module_callback(ps.clone());
+    let pre_execute_module_cb =
+      create_web_worker_pre_execute_module_callback(ps.clone());
 
     let extensions = ops::cli_exts(ps.clone());
 
@@ -559,14 +608,11 @@ fn create_web_worker_callback(
       seed: ps.options.seed(),
       create_web_worker_cb,
       preload_module_cb,
-      pre_execute_module_cb: Arc::new(|worker| {
-        LocalFutureObj::new(Box::new(deno_core::futures::future::ready(Ok(
-          worker,
-        ))))
-      }),
+      pre_execute_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: Some(Box::new(module_loader.clone())),
       module_loader,
+      npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

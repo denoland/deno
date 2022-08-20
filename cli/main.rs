@@ -23,7 +23,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
-#[allow(unused)]
+mod node;
 mod npm;
 mod ops;
 mod proc_state;
@@ -51,6 +51,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::InfoFlags;
+use crate::args::InitFlags;
 use crate::args::InstallFlags;
 use crate::args::LintFlags;
 use crate::args::ReplFlags;
@@ -270,6 +271,14 @@ async fn compile_command(
 
   tools::standalone::write_standalone_binary(output_path, final_bin).await?;
 
+  Ok(0)
+}
+
+async fn init_command(
+  _flags: Flags,
+  init_flags: InitFlags,
+) -> Result<i32, AnyError> {
+  tools::init::init_project(init_flags).await?;
   Ok(0)
 }
 
@@ -940,6 +949,9 @@ fn get_subcommand(
     }
     DenoSubcommand::Fmt(fmt_flags) => {
       format_command(flags, fmt_flags).boxed_local()
+    }
+    DenoSubcommand::Init(init_flags) => {
+      init_command(flags, init_flags).boxed_local()
     }
     DenoSubcommand::Info(info_flags) => {
       info_command(flags, info_flags).boxed_local()
