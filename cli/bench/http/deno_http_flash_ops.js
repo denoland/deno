@@ -25,13 +25,15 @@ function respond(token, response) {
 const response = encode(
   "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nHello World",
 );
+let offset = 0;
 while (true) {
   let token = nextRequest();
   if (token === 0) token = await opAsync("op_flash_next_async", serverId);
-  for (let i = 0; i < token; i++) {
+  for (let i = offset; i < offset + token; i++) {
     respond(
       i,
       response,
     );
   }
+  offset += token;
 }

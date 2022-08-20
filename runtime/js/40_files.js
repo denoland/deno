@@ -33,12 +33,14 @@
 
   function openSync(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
     const rid = ops.op_open_sync(
-      { path: pathFromURL(path), options, mode },
+      pathFromURL(path),
+      options,
+      mode,
     );
 
     return new FsFile(rid);
@@ -46,13 +48,15 @@
 
   async function open(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
     const rid = await core.opAsync(
       "op_open_async",
-      { path: pathFromURL(path), options, mode },
+      pathFromURL(path),
+      options,
+      mode,
     );
 
     return new FsFile(rid);
