@@ -75,11 +75,17 @@ static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
 static GLOBAL_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
 
+static PROCESS_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/process.ts", NODE_COMPAT_URL.as_str()));
+
 pub static GLOBAL_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
 
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
+
+static MODULE_ALL_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
 
 pub static MODULE_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
@@ -104,6 +110,46 @@ fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   } else {
     None
   }
+}
+
+#[allow(unused)]
+pub async fn load_builtin_node_modules(
+  js_runtime: &mut JsRuntime,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, processUrl) {{
+      const [moduleAll, processModule] = await Promise.all([
+        import(moduleAllUrl),
+        import(processUrl)
+      ]);
+      Deno[Deno.internal].require.initializeCommonJs(moduleAll.default, processModule.default);
+    }})('{}', '{}');"#,
+    MODULE_ALL_URL_STR.as_str(),
+    PROCESS_URL_STR.as_str(),
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
+}
+
+#[allow(unused)]
+pub fn load_cjs_module_from_ext_node(
+  js_runtime: &mut JsRuntime,
+  module: &str,
+  main: bool,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(function loadCjsModule(module) {{
+      Deno[Deno.internal].require.Module._load(module, null, {main});
+    }})('{module}');"#,
+    main = main,
+    module = escape_for_single_quote_string(module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
 }
 
 pub fn load_cjs_module(

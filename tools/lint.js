@@ -21,7 +21,9 @@ async function dlint() {
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/http/node*.js",
+    ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
+    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
     ":!:cli/tests/testdata/encoding/**",
@@ -109,18 +111,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: [
-      ...cmd,
-      "--",
-      "-D",
-      "clippy::all",
-      "-D",
-      "clippy::await_holding_refcell_ref",
-      "-D",
-      "clippy::missing_safety_doc",
-      "-D",
-      "clippy::undocumented_unsafe_blocks",
-    ],
+    args: [...cmd, "--", "-D", "warnings"],
     stdout: "inherit",
     stderr: "inherit",
   });

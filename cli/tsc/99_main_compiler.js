@@ -15,6 +15,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
+  const ops = core.ops;
 
   let logDebug = false;
   let logSource = "JS";
@@ -250,7 +251,7 @@ delete Object.prototype.__proto__;
       }
 
       this.#lastCheckTimeMs = timeMs;
-      return core.opSync("op_is_cancelled", {});
+      return ops.op_is_cancelled();
     }
 
     throwIfCancellationRequested() {
@@ -274,11 +275,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.opSync("op_exists", { specifier });
+      return ops.op_exists({ specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.opSync("op_load", { specifier }).data;
+      return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -309,8 +310,7 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = core.opSync(
-        "op_load",
+      const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
       assert(
@@ -338,14 +338,13 @@ delete Object.prototype.__proto__;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      return core.opSync(
-        "op_emit",
+      return ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
-      return cwd ?? core.opSync("op_cwd", null);
+      return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -361,7 +360,7 @@ delete Object.prototype.__proto__;
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.opSync("op_resolve", {
+      const resolved = ops.op_resolve({
         specifiers,
         base,
       });
@@ -384,7 +383,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.opSync("op_create_hash", { data }).hash;
+      return ops.op_create_hash({ data }).hash;
     },
 
     // LanguageServiceHost
@@ -399,7 +398,7 @@ delete Object.prototype.__proto__;
       if (scriptFileNamesCache) {
         return scriptFileNamesCache;
       }
-      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
+      return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -412,7 +411,7 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = core.opSync("op_script_version", { specifier });
+      const scriptVersion = ops.op_script_version({ specifier });
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -433,8 +432,7 @@ delete Object.prototype.__proto__;
         };
       }
 
-      const fileInfo = core.opSync(
-        "op_load",
+      const fileInfo = ops.op_load(
         { specifier },
       );
       if (fileInfo) {
@@ -567,7 +565,7 @@ delete Object.prototype.__proto__;
 
     performanceProgram({ program });
 
-    core.opSync("op_respond", {
+    ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -579,7 +577,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.opSync("op_respond", { id, data });
+    ops.op_respond({ id, data });
   }
 
   /**
@@ -942,7 +940,7 @@ delete Object.prototype.__proto__;
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
 
-  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
+  const { buildSpecifier, libs } = ops.op_build_info();
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into

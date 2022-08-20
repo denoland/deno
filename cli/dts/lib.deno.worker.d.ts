@@ -6,11 +6,13 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 
+/** @category Web Workers */
 interface WorkerGlobalScopeEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
 }
 
+/** @category Web Workers */
 declare class WorkerGlobalScope extends EventTarget {
   readonly location: WorkerLocation;
   readonly navigator: WorkerNavigator;
@@ -51,6 +53,7 @@ declare class WorkerGlobalScope extends EventTarget {
   Deno: typeof Deno;
 }
 
+/** @category Web APIs */
 declare class WorkerNavigator {
   constructor();
   readonly gpu: GPU;
@@ -58,13 +61,16 @@ declare class WorkerNavigator {
   readonly userAgent: string;
 }
 
+/** @category Web APIs */
 declare var navigator: WorkerNavigator;
 
+/** @category Web Workers */
 interface DedicatedWorkerGlobalScopeEventMap extends WorkerGlobalScopeEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
+/** @category Web APIs */
 declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   readonly name: string;
   onmessage:
@@ -104,27 +110,38 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   ): void;
 }
 
+/** @category Web Workers */
 declare var name: string;
+/** @category Web Workers */
 declare var onmessage:
   | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
+/** @category Web Workers */
 declare var onmessageerror:
   | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
+/** @category Web Workers */
 declare function close(): void;
+/** @category Web Workers */
 declare function postMessage(message: any, transfer: Transferable[]): void;
+/** @category Web Workers */
 declare function postMessage(
   message: any,
   options?: StructuredSerializeOptions,
 ): void;
+/** @category Web APIs */
 declare var navigator: WorkerNavigator;
+/** @category Web APIs */
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)
   | null;
+/** @category Observability */
 declare var onunhandledrejection:
   | ((this: DedicatedWorkerGlobalScope, ev: PromiseRejectionEvent) => any)
   | null;
+/** @category Web Workers */
 declare var self: WorkerGlobalScope & typeof globalThis;
+/** @category DOM Events */
 declare function addEventListener<
   K extends keyof DedicatedWorkerGlobalScopeEventMap,
 >(
@@ -135,11 +152,13 @@ declare function addEventListener<
   ) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
   options?: boolean | AddEventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function removeEventListener<
   K extends keyof DedicatedWorkerGlobalScopeEventMap,
 >(
@@ -150,6 +169,7 @@ declare function removeEventListener<
   ) => any,
   options?: boolean | EventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -160,7 +180,10 @@ declare function removeEventListener(
 // The types there must first be split into window, worker and global types.
 /** The absolute location of the script executed by the Worker. Such an object
  * is initialized for each worker and is available via the
- * WorkerGlobalScope.location property obtained by calling self.location. */
+ * WorkerGlobalScope.location property obtained by calling self.location.
+ *
+ * @category Web APIs
+ */
 declare class WorkerLocation {
   constructor();
   readonly hash: string;
@@ -177,4 +200,5 @@ declare class WorkerLocation {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
+/** @category Web APIs */
 declare var location: WorkerLocation;

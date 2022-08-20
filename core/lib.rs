@@ -101,6 +101,8 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
+pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
+pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
 pub use deno_ops::op;
 
