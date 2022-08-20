@@ -289,6 +289,9 @@ fn codegen_fast_impl(
   is_async: bool,
   must_be_fast: bool,
 ) -> (TokenStream2, TokenStream2) {
+  if !must_be_fast {
+    return (quote! {}, quote! { None });
+  }
   let fast_info = can_be_fast_api(core, f);
   if must_be_fast && fast_info.is_none() {
     panic!("op cannot be a fast api. enforced by #[op(fast)]")

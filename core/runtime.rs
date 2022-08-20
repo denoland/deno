@@ -370,7 +370,7 @@ impl JsRuntime {
             V8_WRAPPER_OBJECT_INDEX,
           )
         })
-        .external_references(&**bindings::EXTERNAL_REFERENCES);
+        .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -1909,19 +1909,7 @@ impl JsRuntime {
           .unrefed_ops
           .remove(&promise_id);
       }
-        }
-        JsRealm::new(context)
-          .state(self.v8_isolate())
-          .borrow_mut()
-          .unrefed_ops
-          .remove(&promise_id);
-      }
     }
-
-    for (context, results) in results_per_realm {
-      if results.is_empty() {
-        continue;
-      }
 
     for (context, results) in results_per_realm {
       if results.is_empty() {

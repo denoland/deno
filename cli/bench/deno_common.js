@@ -27,7 +27,7 @@ function sync() {
   return op_void_sync.call();
 }
 sync(); // Warmup
-console.log(sync());
+
 // Void ops measure op-overhead
 Deno.bench("op_void_sync", { n: 1e7 }, () => sync());
 
