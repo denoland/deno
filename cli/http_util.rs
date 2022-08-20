@@ -55,7 +55,7 @@ pub type HeadersMap = HashMap<String, String>;
 /// A structure used to determine if a entity in the http cache can be used.
 ///
 /// This is heavily influenced by
-/// https://github.com/kornelski/rusty-http-cache-semantics which is BSD
+/// <https://github.com/kornelski/rusty-http-cache-semantics> which is BSD
 /// 2-Clause Licensed and copyright Kornel Lesiński
 pub struct CacheSemantics {
   cache_control: CacheControl,

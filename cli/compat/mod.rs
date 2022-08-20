@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod errors;
+pub mod errors;
 mod esm_resolver;
 
 use crate::file_fetcher::FileFetcher;
@@ -17,7 +17,7 @@ pub use esm_resolver::NodeEsmResolver;
 
 // WARNING: Ensure this is the only deno_std version reference as this
 // is automatically updated by the version bump workflow.
-pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.150.0/";
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.151.0/";
 
 static SUPPORTED_MODULES: &[&str] = &[
   "assert",
@@ -61,6 +61,7 @@ static SUPPORTED_MODULES: &[&str] = &[
   "util/types",
   "v8",
   "vm",
+  "worker_threads",
   "zlib",
 ];
 
@@ -80,6 +81,12 @@ pub static GLOBAL_URL: Lazy<Url> =
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
 
+pub static MODULE_ALL_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
+
+static MODULE_ALL_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
+
 pub static MODULE_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
 
@@ -91,14 +98,36 @@ pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
   vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
 }
 
-fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
+pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
+    let ext = match specifier {
+      "stream/promises" => "mjs",
+      _ => "ts",
+    };
     let module_url =
-      format!("{}node/{}.ts", NODE_COMPAT_URL.as_str(), specifier);
+      format!("{}node/{}.{}", NODE_COMPAT_URL.as_str(), specifier, ext);
     Some(Url::parse(&module_url).unwrap())
   } else {
     None
   }
+}
+
+#[allow(unused)]
+pub fn load_cjs_module_from_ext_node(
+  js_runtime: &mut JsRuntime,
+  module: &str,
+  main: bool,
+) -> Result<(), AnyError> {
+  let source_code = &format!(
+    r#"(function loadCjsModule(module) {{
+      Deno[Deno.internal].require.Module._load(module, null, {main});
+    }})('{module}');"#,
+    main = main,
+    module = escape_for_single_quote_string(module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
 }
 
 pub fn load_cjs_module(
@@ -163,7 +192,7 @@ pub fn setup_builtin_modules(
 /// For all discovered reexports the analysis will be performed recursively.
 ///
 /// If successful a source code for equivalent ES module is returned.
-pub async fn translate_cjs_to_esm(
+pub fn translate_cjs_to_esm(
   file_fetcher: &FileFetcher,
   specifier: &ModuleSpecifier,
   code: String,
@@ -220,7 +249,7 @@ pub async fn translate_cjs_to_esm(
         // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
         // but it might not be necessary here since our analysis is more detailed?
         source.push(format!(
-          "export const {} = reexport{}.{};",
+          "export const {0} = Deno[Deno.internal].require.bindExport(reexport{1}.{2}, reexport{1});",
           export, idx, export
         ));
       }
@@ -243,7 +272,10 @@ pub async fn translate_cjs_to_esm(
   for export in analysis.exports.iter().filter(|e| e.as_str() != "default") {
     // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
     // but it might not be necessary here since our analysis is more detailed?
-    source.push(format!("export const {} = mod.{};", export, export));
+    source.push(format!(
+      "export const {} = Deno[Deno.internal].require.bindExport(mod.{}, mod);",
+      export, export
+    ));
   }
 
   let translated_source = source.join("\n");

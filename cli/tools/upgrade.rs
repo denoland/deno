@@ -9,7 +9,6 @@ use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
-use semver_parser::version::parse as semver_parse;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -48,7 +47,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
         bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary && semver_parse(&passed_version).is_err()
+      } else if !upgrade_flags.canary
+        && semver::Version::parse(&passed_version).is_err()
       {
         bail!("Invalid semver passed");
       }
@@ -83,8 +83,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         latest_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver_parse(&crate::version::deno()).unwrap();
-        let latest = semver_parse(&latest_version).unwrap();
+        let current = semver::Version::parse(&crate::version::deno()).unwrap();
+        let latest = semver::Version::parse(&latest_version).unwrap();
         current >= latest
       } else {
         false

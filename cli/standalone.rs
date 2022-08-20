@@ -224,7 +224,7 @@ pub async fn run(
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
   let ps = ProcState::build(flags).await?;
-  let permissions = Permissions::from_options(&metadata.permissions);
+  let permissions = Permissions::from_options(&metadata.permissions)?;
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
@@ -238,10 +238,10 @@ pub async fn run(
     ),
   });
   let create_web_worker_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+    todo!("Workers are currently not supported in standalone binaries");
   });
-  let web_worker_preload_module_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+  let web_worker_cb = Arc::new(|_| {
+    todo!("Workers are currently not supported in standalone binaries");
   });
 
   // Keep in sync with `main.rs`.
@@ -292,10 +292,12 @@ pub async fn run(
     source_map_getter: None,
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
-    web_worker_preload_module_cb,
+    web_worker_preload_module_cb: web_worker_cb.clone(),
+    web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
+    npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
     origin_storage_dir: None,
     blob_store,

@@ -13,9 +13,10 @@
     newInnerRequest,
     newInnerResponse,
     fromInnerResponse,
+    _flash,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { BadResourcePrototype, InterruptedPrototype, ops } = core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
@@ -124,9 +125,9 @@
       }
 
       const innerRequest = newInnerRequest(
-        method,
+        () => method,
         url,
-        () => core.opSync("op_http_headers", streamRid),
+        () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -438,7 +439,7 @@
       );
     }
 
-    const accept = core.opSync("op_http_websocket_accept_header", websocketKey);
+    const accept = ops.op_http_websocket_accept_header(websocketKey);
 
     const r = newInnerResponse(101);
     r.headerList = [
@@ -475,6 +476,20 @@
   }
 
   function upgradeHttp(req) {
+    if (req[_flash]) {
+      // NOTE(bartlomieju):
+      // Access these fields so they are cached on `req` object, otherwise
+      // they wouldn't be available after the connection gets upgraded.
+      req.url;
+      req.method;
+      req.headers;
+
+      const { serverId, streamRid } = req[_flash];
+      const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+      // TODO(@littledivy): return already read first packet too.
+      return [new TcpConn(connRid), new Uint8Array()];
+    }
+
     req[_deferred] = new Deferred();
     return req[_deferred].promise;
   }
@@ -483,5 +498,6 @@
     HttpConn,
     upgradeWebSocket,
     upgradeHttp,
+    _ws,
   };
 })(this);

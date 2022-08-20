@@ -23,7 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
-use deno_graph::Module;
+use deno_graph::GraphImport;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
@@ -719,7 +719,7 @@ pub struct Documents {
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
-  imports: Arc<HashMap<ModuleSpecifier, Module>>,
+  imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
   /// The optional import map that should be used when resolving dependencies.
   maybe_import_map: Option<ImportMapResolver>,
   /// The optional JSX resolver, which is used when JSX imports are configured.
@@ -1035,12 +1035,12 @@ impl Documents {
         imports
           .into_iter()
           .map(|(referrer, dependencies)| {
-            let module = Module::new_from_type_imports(
+            let graph_import = GraphImport::new(
               referrer.clone(),
               dependencies,
               self.get_maybe_resolver(),
             );
-            (referrer, module)
+            (referrer, graph_import)
           })
           .collect()
       } else {
@@ -1128,8 +1128,8 @@ impl Documents {
     &self,
     specifier: &str,
   ) -> Option<&deno_graph::Resolved> {
-    for module in self.imports.values() {
-      let maybe_dep = module.dependencies.get(specifier);
+    for graph_imports in self.imports.values() {
+      let maybe_dep = graph_imports.dependencies.get(specifier);
       if maybe_dep.is_some() {
         return maybe_dep.map(|d| &d.maybe_type);
       }
