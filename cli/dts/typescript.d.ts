@@ -1953,7 +1953,7 @@ declare namespace ts {
         readonly parent: JSDoc;
         readonly name: EntityName;
         readonly typeExpression?: JSDocTypeExpression;
-        /** Whether the property name came before the type -- non-standard for JSDoc, but Typescript-like */
+        /** Whether the property name came before the type -- non-standard for JSDoc, but TypeScript-like */
         readonly isNameFirst: boolean;
         readonly isBracketed: boolean;
     }
