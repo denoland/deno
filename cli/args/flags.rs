@@ -4935,7 +4935,13 @@ mod tests {
 
   #[test]
   fn no_remote_no_npm() {
-    let r = flags_from_vec(svec!["deno", "run", "--no-remote", "--no-npm", "script.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--no-remote",
+      "--no-npm",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
