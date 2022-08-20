@@ -369,6 +369,7 @@ impl ProcState {
         None
       };
 
+    let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -376,7 +377,7 @@ impl ProcState {
       &mut loader,
       maybe_resolver,
       maybe_locker,
-      None,
+      Some(&*analyzer),
       maybe_file_watcher_reporter,
     )
     .await;
