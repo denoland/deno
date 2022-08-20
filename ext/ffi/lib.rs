@@ -44,7 +44,6 @@ mod fast_call;
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
 
-// Assert assumptions made in `prelude.h`
 const _: () = {
   assert!(size_of::<c_char>() == 1);
   assert!(size_of::<c_short>() == 2);

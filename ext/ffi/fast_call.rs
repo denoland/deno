@@ -463,7 +463,7 @@ impl SysVAmd64 {
     // > (%rsp + 8) is always a multiple of 16 (32 or 64) when control is transferred to
     // > the function entry point. The stack pointer, %rsp, always points to the end of the
     // > latest allocated stack frame.
-    stack_size += (16 - (self.stack_pointer + stack_size + 8) % 16) % 16;
+    stack_size += padding_to_align(16, self.stack_pointer + stack_size + 8);
 
     if stack_size > 0 {
       dynasm!(self.assmblr
@@ -983,7 +983,7 @@ impl Aarch64Apple {
     // > - SP mod 16 = 0. The stack must be quad-word aligned.
     // > The stack must also conform to the following constraint at a public interface:
     // > - SP mod 16 = 0. The stack must be quad-word aligned.
-    stack_size += (16 - stack_size % 16) % 16;
+    stack_size += padding_to_align(16, stack_size);
 
     if stack_size > 0 {
       dynasm!(self.assmblr
@@ -1358,10 +1358,11 @@ impl Win64 {
     // > and may be used by the called function for other purposes besides saving parameter register values
     stack_size += max(params.len() as u32, 4) * 8;
 
-    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address)
+    // Align new stack frame (accounting for the 8 byte of the trampoline caller's return address
+    // and any other potential addition to the stack prior to this allocation)
     // Section "Stack Allocation" of stack-usage docs:
     // > The stack will always be maintained 16-byte aligned, except within the prolog (for example, after the return address is pushed)
-    stack_size += (16 - (self.stack_pointer + stack_size + 8) % 16) % 16;
+    stack_size += padding_to_align(16, self.stack_pointer + stack_size + 8);
 
     dynasm!(self.assmblr
       ; .arch x64
@@ -2118,4 +2119,8 @@ mod tests {
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
   }
+}
+
+fn padding_to_align(alignment: u32, size: u32) -> u32 {
+  (alignment - size % alignment) % alignment
 }
