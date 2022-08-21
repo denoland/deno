@@ -767,7 +767,14 @@ impl JsRuntime {
             .clear_all_slots(self.v8_isolate());
         }
       }
-      state.borrow_mut().known_realms.clear();
+      let mut state = state.borrow_mut();
+      state.known_realms.clear();
+      // Free up additional global handles before creating the snapshot
+      state.js_macrotask_cbs.clear();
+      state.js_nexttick_cbs.clear();
+      state.js_wasm_streaming_cb = None;
+      state.js_format_exception_cb = None;
+      state.js_promise_reject_cb = None;
     }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -2663,6 +2670,42 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+    runtime2
+      .execute_script("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
+  }
+  #[test]
+  fn test_snapshot_callbacks() {
+    let snapshot = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime
+        .execute_script(
+          "a.js",
+          r#"
+          Deno.core.ops.op_set_macrotask_callback(() => {
+            return true;
+          });
+          Deno.core.ops.op_set_format_exception_callback(()=> {
+            return null;
+          })
+          Deno.core.setPromiseRejectCallback(() => {
+            return false;
+          });
+          a = 1 + 2; 
+      "#,
+        )
+        .unwrap();
       runtime.snapshot()
     };
 
