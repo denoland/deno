@@ -1156,14 +1156,14 @@ pub(crate) fn exception_to_err_result<'s, T>(
 ) -> Result<T, Error> {
   let state_rc = JsRuntime::state(scope);
 
-  let is_terminating_exception = scope.is_execution_terminating();
+  let was_terminating_execution = scope.is_execution_terminating();
+  // If TerminateExecution was called, cancel isolate termination so that the
+  // exception can be created. Note that `scope.is_execution_terminating()` may
+  // have returned false if TerminateExecution was indeed called but there was
+  // no JS to execute after the call.
+  scope.cancel_terminate_execution();
   let mut exception = exception;
-
-  if is_terminating_exception {
-    // TerminateExecution was called. Cancel isolate termination so that the
-    // exception can be created..
-    scope.cancel_terminate_execution();
-
+  {
     // If the termination is the result of a `Deno.core.terminate` call, we want
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
@@ -1191,8 +1191,8 @@ pub(crate) fn exception_to_err_result<'s, T>(
     );
   }
 
-  if is_terminating_exception {
-    // Re-enable exception termination.
+  if was_terminating_execution {
+    // Resume exception termination.
     scope.terminate_execution();
   }
 
@@ -3448,7 +3448,7 @@ assertEquals(1, notify_return_value);
         Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
           Deno.core.ops.op_promise_reject();
         });
-        
+
         throw new Error('top level throw');
         "#;
 
