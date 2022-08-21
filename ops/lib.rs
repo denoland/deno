@@ -294,7 +294,7 @@ fn codegen_fast_impl(
   is_async: bool,
   must_be_fast: bool,
 ) -> (TokenStream2, TokenStream2) {
-  if !must_be_fast {
+  if is_async {
     return (quote! {}, quote! { None });
   }
   let fast_info = can_be_fast_api(core, f);
@@ -389,9 +389,9 @@ fn codegen_fast_impl(
         // TODO(@littledivy): Fast async calls.
         (
           quote! {
-            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),* , opts: *mut #core::v8::fast_api::FastApiCallbackOptions) {
+            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
               // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-              let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { options.as_ref() };
+              let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*opts };
               // SAFETY: data union is always created as the `v8::Value` version
               let data = unsafe { opts.data.data };
               // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
@@ -415,7 +415,7 @@ fn codegen_fast_impl(
         let recv_decl = if use_fast_cb_opts {
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-            let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { options.as_ref() };
+            let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*opts };
             // SAFETY: data union is always created as the `v8::Value` version
             let data = unsafe { opts.data.data };
             // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
