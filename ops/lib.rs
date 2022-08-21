@@ -1,10 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use core::panic;
 use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::crate_name;
 use proc_macro_crate::FoundCrate;
+use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
 use regex::Regex;
@@ -13,6 +16,9 @@ use syn::token::Comma;
 use syn::FnArg;
 use syn::GenericParam;
 use syn::Ident;
+
+#[cfg(test)]
+mod tests;
 
 // Identifier to the `deno_core` crate.
 //
@@ -44,6 +50,7 @@ fn core_import() -> TokenStream2 {
 struct MacroArgs {
   is_unstable: bool,
   is_v8: bool,
+  must_be_fast: bool,
 }
 
 impl syn::parse::Parse for MacroArgs {
@@ -55,7 +62,7 @@ impl syn::parse::Parse for MacroArgs {
     let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
     let vars: Vec<_> = vars.iter().map(String::as_str).collect();
     for var in vars.iter() {
-      if !["unstable", "v8"].contains(var) {
+      if !["unstable", "v8", "fast"].contains(var) {
         return Err(syn::Error::new(
           input.span(),
           "Ops expect #[op] or #[op(unstable)]",
@@ -65,6 +72,7 @@ impl syn::parse::Parse for MacroArgs {
     Ok(Self {
       is_unstable: vars.contains(&"unstable"),
       is_v8: vars.contains(&"v8"),
+      must_be_fast: vars.contains(&"fast"),
     })
   }
 }
@@ -72,7 +80,11 @@ impl syn::parse::Parse for MacroArgs {
 #[proc_macro_attribute]
 pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let margs = syn::parse_macro_input!(attr as MacroArgs);
-  let MacroArgs { is_unstable, is_v8 } = margs;
+  let MacroArgs {
+    is_unstable,
+    is_v8,
+    must_be_fast,
+  } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
   let mut generics = func.sig.generics.clone();
@@ -102,6 +114,8 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
+  let (fast_impl, fast_field) =
+    codegen_fast_impl(&core, &func, name, is_async, must_be_fast);
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
   // Generate wrapper
@@ -129,6 +143,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           name: Self::name(),
           v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
           enabled: true,
+          fast_fn: #fast_field,
           is_async: #is_async,
           is_unstable: #is_unstable,
           is_v8: #is_v8,
@@ -147,6 +162,8 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
         #v8_body
       }
     }
+
+    #fast_impl
   }.into()
 }
 
@@ -265,6 +282,117 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
   }
 }
 
+fn codegen_fast_impl(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  name: &syn::Ident,
+  is_async: bool,
+  must_be_fast: bool,
+) -> (TokenStream2, TokenStream2) {
+  if !must_be_fast {
+    return (quote! {}, quote! { None });
+  }
+  let fast_info = can_be_fast_api(core, f);
+  if must_be_fast && fast_info.is_none() {
+    panic!("op cannot be a fast api. enforced by #[op(fast)]")
+  }
+  if must_be_fast && is_async {
+    panic!("async op cannot be a fast api. enforced by #[op(fast)]")
+  }
+  if !is_async {
+    if let Some(FastApiSyn {
+      args,
+      ret,
+      use_recv,
+    }) = fast_info
+    {
+      let inputs = &f
+        .sig
+        .inputs
+        .iter()
+        .skip(if use_recv { 1 } else { 0 })
+        .collect::<Vec<_>>();
+      let input_idents = f
+        .sig
+        .inputs
+        .iter()
+        .map(|a| match a {
+          FnArg::Receiver(_) => unreachable!(),
+          FnArg::Typed(t) => match &*t.pat {
+            syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+            _ => unreachable!(),
+          },
+        })
+        .collect::<Vec<_>>();
+      let generics = &f.sig.generics;
+      let (impl_generics, ty_generics, where_clause) =
+        generics.split_for_impl();
+      let type_params = exclude_lifetime_params(&f.sig.generics.params);
+      let (trampoline, raw_block) = if is_async {
+        // TODO(@littledivy): Fast async calls.
+        (
+          quote! {
+            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
+              let op_ctx = recv.get_aligned_pointer_from_internal_field(#core::_ops::V8_WRAPPER_OBJECT_INDEX);
+              let op_id = op_ctx.op_id;
+              #core::_ops::queue_async_op(scope, async move {
+                let result = Self::call(#args);
+                (__promise_id, __op_id, #core::_ops::OpResult::Ok(result))
+              });
+            }
+            func as *const _
+          },
+          quote! {},
+        )
+      } else {
+        let output = &f.sig.output;
+        let func_name = format_ident!("func_{}", name);
+        let recv_decl = if use_recv {
+          quote! {
+            let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(#core::_ops::V8_WRAPPER_OBJECT_INDEX) };
+            let op_ctx = unsafe { &*(ptr as *const #core::_ops::OpCtx) };
+            let state = &mut op_ctx.state.borrow_mut();
+          }
+        } else {
+          quote!()
+        };
+
+        (
+          quote! {
+            fn #func_name #generics (recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
+              #recv_decl
+              #name::call::<#type_params>(#(#input_idents),*)
+            }
+          },
+          quote! {
+            #func_name #ty_generics as *const _
+          },
+        )
+      };
+      return (
+        quote! {
+          #trampoline
+          impl #impl_generics #core::v8::fast_api::FastFunction for #name #ty_generics {
+            fn function(&self) -> *const ::std::ffi::c_void {
+              #raw_block
+            }
+            fn args(&self) -> &'static [#core::v8::fast_api::Type] {
+              &[ #args ]
+            }
+            fn return_type(&self) -> #core::v8::fast_api::CType {
+              #ret
+            }
+          }
+        },
+        quote! { Some(Box::new(#name #ty_generics)) },
+      );
+    }
+  }
+
+  // Default impl to satisfy generic bounds for non-fast ops
+  (quote! {}, quote! { None })
+}
+
 /// Generate the body of a v8 func for a sync op
 fn codegen_v8_sync(
   core: &TokenStream2,
@@ -282,7 +410,6 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-
   let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
@@ -302,6 +429,124 @@ fn codegen_v8_sync(
     op_state.tracker.track_sync(ctx.id);
 
     #ret
+  }
+}
+
+struct FastApiSyn {
+  args: TokenStream2,
+  ret: TokenStream2,
+  use_recv: bool,
+}
+
+fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
+  // TODO(@littledivy): Support generics
+  if !f.sig.generics.params.is_empty() {
+    return None;
+  }
+
+  let inputs = &f.sig.inputs;
+  let ret = match &f.sig.output {
+    syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),
+    syn::ReturnType::Type(_, ty) => match is_fast_scalar(core, ty, true) {
+      Some(ret) => ret,
+      None => return None,
+    },
+  };
+
+  let mut use_recv = false;
+  let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
+  for (pos, input) in inputs.iter().enumerate() {
+    if pos == 0 && is_mut_ref_opstate(input) {
+      use_recv = true;
+      continue;
+    }
+
+    let ty = match input {
+      syn::FnArg::Typed(pat) => &pat.ty,
+      _ => unreachable!(),
+    };
+
+    match is_fast_scalar(core, ty, false) {
+      None => match is_fast_arg_sequence(core, ty) {
+        Some(arg) => {
+          args.push(arg);
+        }
+        // early return, this function cannot be a fast call.
+        None => return None,
+      },
+      Some(arg) => {
+        args.push(arg);
+      }
+    }
+  }
+
+  let args = args
+    .iter()
+    .map(|arg| format!("{}", arg))
+    .collect::<Vec<_>>()
+    .join(", ");
+  Some(FastApiSyn {
+    args: args.parse().unwrap(),
+    ret,
+    use_recv,
+  })
+}
+
+// A v8::Local<v8::Array> or FastApiTypedArray<T>
+fn is_fast_arg_sequence(
+  core: &TokenStream2,
+  ty: impl ToTokens,
+) -> Option<TokenStream2> {
+  // TODO(@littledivy): Make `v8::` parts optional.
+  if is_fast_typed_array(&ty) {
+    return Some(
+      quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) },
+    );
+  }
+  if is_local_array(&ty) {
+    return Some(
+      quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::CType::Void) },
+    );
+  }
+  None
+}
+
+fn is_local_array(arg: impl ToTokens) -> bool {
+  static RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^v8::Local<v8::Array>$").unwrap());
+  RE.is_match(&tokens(arg))
+}
+
+fn is_fast_typed_array(arg: impl ToTokens) -> bool {
+  static RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#": (?:deno_core :: )?FastApiTypedArray$"#).unwrap()
+  });
+  RE.is_match(&tokens(arg))
+}
+
+fn is_fast_scalar(
+  core: &TokenStream2,
+  ty: impl ToTokens,
+  is_ret: bool,
+) -> Option<TokenStream2> {
+  let cty = if is_ret {
+    quote! { CType }
+  } else {
+    quote! { Type }
+  };
+  if is_resource_id(&ty) {
+    return Some(quote! { #core::v8::fast_api::#cty::Uint32 });
+  }
+  if is_void(&ty) {
+    return Some(quote! { #core::v8::fast_api::#cty::Void });
+  }
+  // TODO(@littledivy): Support u8, i8, u16, i16 by casting.
+  match tokens(&ty).as_str() {
+    "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
+    "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
+    "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
+    "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
+    _ => None,
   }
 }
 
@@ -448,7 +693,7 @@ fn is_resource_id(arg: impl ToTokens) -> bool {
   RE.is_match(&tokens(arg))
 }
 
-fn is_mut_ref_opstate(arg: &syn::FnArg) -> bool {
+fn is_mut_ref_opstate(arg: impl ToTokens) -> bool {
   static RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#": & mut (?:deno_core :: )?OpState$"#).unwrap());
   RE.is_match(&tokens(arg))
