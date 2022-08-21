@@ -38,6 +38,7 @@ pub fn external_references(
   }
 
   let refs = v8::ExternalReferences::new(&references);
+  // Leak, V8 takes ownership of the references.
   std::mem::forget(references);
   refs
 }
@@ -130,6 +131,8 @@ fn initialize_ops(
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
+    // If this is a fast op, we don't want it to be in the snapshot.
+    // Only initialize once snapshot is loaded.
     if ctx.decl.fast_fn.is_some() && snapshot_loaded {
       let object_template = v8::ObjectTemplate::new(scope);
       assert!(object_template.set_internal_field_count(
@@ -144,7 +147,7 @@ fn initialize_ops(
       set_func_raw(
         scope,
         method_obj,
-        "call",
+        "fast",
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
@@ -194,6 +197,7 @@ pub fn set_func_raw(
   let builder =
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
+    // Don't initialize fast ops when snapshotting, the external references count mismatch.
     if !snapshot_loaded {
       builder.build(scope)
     } else {

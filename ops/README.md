@@ -4,9 +4,9 @@
 
 ```rust
 // Declare an op.
-#[op]
-pub fn op_add(_: &mut OpState, a: i32, b: i32) -> Result<i32, AnyError> {
-  Ok(a + b)
+#[op(fast)]
+pub fn op_add(_: &mut OpState, a: i32, b: i32) -> i32 {
+  a + b
 }
 
 // Register with an extension.
@@ -37,7 +37,7 @@ The macro will infer and try to auto generate V8 fast API call trait impl for
 - arguments: integers / `&mut OpState`
 - return_type: integers
 
-The `#[op(fast)]` attribute can be used to enforce fast call generation at
+The `#[op(fast)]` attribute shoukd be used to enforce fast call generation at
 compile time.
 
 Trait gen for `async` ops & a ZeroCopyBuf equivalent type is planned and will be

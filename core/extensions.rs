@@ -10,8 +10,6 @@ pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
-pub trait FastFunctionSignature {}
-
 pub struct OpDecl {
   pub name: &'static str,
   pub v8_fn_ptr: OpFnRef,
@@ -35,7 +33,7 @@ impl OpDecl {
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  pub ops: Option<Vec<OpDecl>>,
+  ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
