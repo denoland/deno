@@ -5,15 +5,19 @@ mod registry;
 mod resolution;
 mod tarball;
 
+use std::io::ErrorKind;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
 use deno_core::futures;
 use deno_core::url::Url;
+use deno_runtime::deno_node::DenoDirNpmResolver;
 pub use resolution::NpmPackageId;
 pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
@@ -65,7 +69,7 @@ pub trait NpmPackageResolver {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
   resolution: Arc<NpmResolution>,
@@ -73,12 +77,8 @@ pub struct GlobalNpmPackageResolver {
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn new(root_cache_dir: PathBuf, reload: bool) -> Self {
-    Self::from_cache(NpmCache::new(root_cache_dir), reload)
-  }
-
-  pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Self {
-    Self::from_cache(NpmCache::from_deno_dir(dir), reload)
+  pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Result<Self, AnyError> {
+    Ok(Self::from_cache(NpmCache::from_deno_dir(dir)?, reload))
   }
 
   fn from_cache(cache: NpmCache, reload: bool) -> Self {
@@ -98,11 +98,6 @@ impl GlobalNpmPackageResolver {
     self.resolution.has_packages()
   }
 
-  /// Gets all the packages.
-  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
-    self.resolution.all_packages()
-  }
-
   /// Adds a package requirement to the resolver.
   pub async fn add_package_reqs(
     &self,
@@ -113,22 +108,38 @@ impl GlobalNpmPackageResolver {
 
   /// Caches all the packages in parallel.
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    let handles = self.resolution.all_packages().into_iter().map(|package| {
-      let cache = self.cache.clone();
-      let registry_url = self.registry_url.clone();
-      tokio::task::spawn(async move {
-        cache
-          .ensure_package(&package.id, &package.dist, &registry_url)
+    if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string()) {
+      // for some of the tests, we want downloading of packages
+      // to be deterministic so that the output is always the same
+      let mut packages = self.resolution.all_packages();
+      packages.sort_by(|a, b| a.id.cmp(&b.id));
+      for package in packages {
+        self
+          .cache
+          .ensure_package(&package.id, &package.dist, &self.registry_url)
           .await
           .with_context(|| {
             format!("Failed caching npm package '{}'.", package.id)
-          })
-      })
-    });
-    let results = futures::future::join_all(handles).await;
-    for result in results {
-      // surface the first error
-      result??;
+          })?;
+      }
+    } else {
+      let handles = self.resolution.all_packages().into_iter().map(|package| {
+        let cache = self.cache.clone();
+        let registry_url = self.registry_url.clone();
+        tokio::task::spawn(async move {
+          cache
+            .ensure_package(&package.id, &package.dist, &registry_url)
+            .await
+            .with_context(|| {
+              format!("Failed caching npm package '{}'.", package.id)
+            })
+        })
+      });
+      let results = futures::future::join_all(handles).await;
+      for result in results {
+        // surface the first error
+        result??;
+      }
     }
     Ok(())
   }
@@ -141,6 +152,7 @@ impl GlobalNpmPackageResolver {
   }
 
   /// Creates an inner clone.
+  #[allow(unused)]
   pub fn snapshot(&self) -> NpmPackageResolverSnapshot {
     NpmPackageResolverSnapshot {
       cache: self.cache.as_readonly(),
@@ -245,4 +257,113 @@ impl NpmPackageResolver for NpmPackageResolverSnapshot {
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.local_package_info(&pkg_id))
   }
+}
+
+impl DenoDirNpmResolver for GlobalNpmPackageResolver {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &std::path::Path,
+  ) -> Result<PathBuf, AnyError> {
+    let referrer = specifier_to_path(referrer)?;
+    self
+      .resolve_package_from_package(specifier, &referrer)
+      .map(|p| p.folder_path)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    let specifier = specifier_to_path(path)?;
+    self
+      .resolve_package_from_specifier(&specifier)
+      .map(|p| p.folder_path)
+  }
+
+  fn in_npm_package(&self, path: &Path) -> bool {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(_) => return false,
+    };
+    self.resolve_package_from_specifier(&specifier).is_ok()
+  }
+
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
+    let registry_path = self.cache.registry_folder(&self.registry_url);
+    ensure_read_permission(&registry_path, path)
+  }
+}
+
+impl DenoDirNpmResolver for NpmPackageResolverSnapshot {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &std::path::Path,
+  ) -> Result<PathBuf, AnyError> {
+    let referrer = specifier_to_path(referrer)?;
+    self
+      .resolve_package_from_package(specifier, &referrer)
+      .map(|p| p.folder_path)
+  }
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError> {
+    let specifier = specifier_to_path(path)?;
+    self
+      .resolve_package_from_specifier(&specifier)
+      .map(|p| p.folder_path)
+  }
+
+  fn in_npm_package(&self, path: &Path) -> bool {
+    let specifier = match ModuleSpecifier::from_file_path(path) {
+      Ok(p) => p,
+      Err(_) => return false,
+    };
+    self.resolve_package_from_specifier(&specifier).is_ok()
+  }
+
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
+    let registry_path = self.cache.registry_folder(&self.registry_url);
+    ensure_read_permission(&registry_path, path)
+  }
+}
+
+fn specifier_to_path(path: &Path) -> Result<ModuleSpecifier, AnyError> {
+  match ModuleSpecifier::from_file_path(&path) {
+    Ok(specifier) => Ok(specifier),
+    Err(()) => bail!("Could not convert '{}' to url.", path.display()),
+  }
+}
+
+fn ensure_read_permission(
+  registry_path: &Path,
+  path: &Path,
+) -> Result<(), AnyError> {
+  // allow reading if it's in the deno_dir node modules
+  if path.starts_with(&registry_path)
+    && path
+      .components()
+      .all(|c| !matches!(c, std::path::Component::ParentDir))
+  {
+    // todo(dsherret): cache this?
+    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
+      match std::fs::canonicalize(path) {
+        Ok(path) if path.starts_with(registry_path) => {
+          return Ok(());
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+          return Ok(());
+        }
+        _ => {} // ignore
+      }
+    }
+  }
+
+  Err(deno_core::error::custom_error(
+    "PermissionDenied",
+    format!("Reading {} is not allowed", path.display()),
+  ))
 }

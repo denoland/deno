@@ -834,6 +834,7 @@ dependencies = [
  "notify",
  "once_cell",
  "os_pipe",
+ "path-clean",
  "percent-encoding 2.1.0",
  "pin-project",
  "pretty_assertions",
@@ -1140,6 +1141,8 @@ name = "deno_node"
 version = "0.2.0"
 dependencies = [
  "deno_core",
+ "regex",
+ "serde",
 ]
 
 [[package]]
@@ -4601,6 +4604,7 @@ dependencies = [
  "pretty_assertions",
  "pty",
  "regex",
+ "reqwest",
  "rustls-pemfile 1.0.0",
  "serde",
  "serde_json",

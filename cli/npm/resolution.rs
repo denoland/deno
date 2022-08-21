@@ -105,13 +105,14 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct NpmPackageId {
   pub name: String,
   pub version: semver::Version,
 }
 
 impl NpmPackageId {
+  #[allow(unused)]
   pub fn scope(&self) -> Option<&str> {
     if self.name.starts_with('@') && self.name.contains('/') {
       self.name.split('/').next()
@@ -169,17 +170,19 @@ impl NpmResolutionSnapshot {
     referrer: &NpmPackageId,
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.packages.get(referrer) {
-      Some(referrer_package) => match referrer_package.dependencies.get(name) {
-        Some(id) => Ok(self.packages.get(id).unwrap()),
-        None => {
-          bail!(
-            "could not find package '{}' referenced by '{}'",
-            name,
-            referrer
-          )
+      Some(referrer_package) => {
+        match referrer_package.dependencies.get(name_without_path(name)) {
+          Some(id) => Ok(self.packages.get(id).unwrap()),
+          None => {
+            bail!(
+              "could not find npm package '{}' referenced by '{}'",
+              name,
+              referrer
+            )
+          }
         }
-      },
-      None => bail!("could not find referrer package '{}'", referrer),
+      }
+      None => bail!("could not find referrer npm package '{}'", referrer),
     }
   }
 
@@ -276,7 +279,7 @@ impl NpmResolution {
       let dependencies = version_and_info
         .info
         .dependencies_as_entries()
-        .with_context(|| format!("Package: {}", id))?;
+        .with_context(|| format!("npm package: {}", id))?;
 
       pending_dependencies.push_back((id.clone(), dependencies));
       snapshot.packages.insert(
@@ -334,7 +337,7 @@ impl NpmResolution {
             .info
             .dependencies_as_entries()
             .with_context(|| {
-              format!("Package: {}@{}", dep.name, version_and_info.version)
+              format!("npm package: {}@{}", dep.name, version_and_info.version)
             })?;
 
           let id = NpmPackageId {
@@ -452,7 +455,7 @@ fn get_resolved_package_version_and_info(
     // version, but next time to a different version because it has new information.
     None => bail!(
       concat!(
-        "Could not find package '{}' matching {}{}. ",
+        "Could not find npm package '{}' matching {}{}. ",
         "Try retreiving the latest npm package information by running with --reload",
       ),
       pkg_name,
@@ -462,5 +465,33 @@ fn get_resolved_package_version_and_info(
         None => String::new(),
       }
     ),
+  }
+}
+
+fn name_without_path(name: &str) -> &str {
+  let mut search_start_index = 0;
+  if name.starts_with('@') {
+    if let Some(slash_index) = name.find('/') {
+      search_start_index = slash_index + 1;
+    }
+  }
+  if let Some(slash_index) = &name[search_start_index..].find('/') {
+    // get the name up until the path slash
+    &name[0..search_start_index + slash_index]
+  } else {
+    name
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_name_without_path() {
+    assert_eq!(name_without_path("foo"), "foo");
+    assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
+    assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
+    assert_eq!(name_without_path("@hello"), "@hello");
   }
 }

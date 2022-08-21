@@ -4,22 +4,60 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::normalize_path;
 use deno_core::op;
+use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-pub struct Unstable(pub bool);
+pub use package_json::PackageJson;
+pub use resolution::get_package_scope_config;
+pub use resolution::legacy_main_resolve;
+pub use resolution::package_exports_resolve;
+pub use resolution::package_imports_resolve;
+pub use resolution::package_resolve;
+pub use resolution::DEFAULT_CONDITIONS;
 
-pub fn init(unstable: bool) -> Extension {
+pub trait DenoDirNpmResolver {
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Path,
+  ) -> Result<PathBuf, AnyError>;
+
+  fn resolve_package_folder_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<PathBuf, AnyError>;
+
+  fn in_npm_package(&self, path: &Path) -> bool;
+
+  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+}
+
+mod errors;
+mod package_json;
+mod resolution;
+
+struct Unstable(pub bool);
+
+pub fn init(
+  unstable: bool,
+  maybe_npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/node",
-      "01_require.js",
+      "01_node.js",
+      "02_require.js",
     ))
     .ops(vec![
       op_require_init_paths::decl(),
       op_require_node_module_paths::decl(),
       op_require_proxy_path::decl(),
+      op_require_is_deno_dir_package::decl(),
+      op_require_resolve_deno_dir::decl(),
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
       op_require_try_self_parent_path::decl(),
@@ -31,9 +69,16 @@ pub fn init(unstable: bool) -> Extension {
       op_require_path_resolve::decl(),
       op_require_path_basename::decl(),
       op_require_read_file::decl(),
+      op_require_as_file_path::decl(),
+      op_require_resolve_exports::decl(),
+      op_require_read_package_scope::decl(),
+      op_require_package_imports_resolve::decl(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
+      if let Some(npm_resolver) = maybe_npm_resolver.clone() {
+        state.put(npm_resolver);
+      }
       Ok(())
     })
     .build()
@@ -48,66 +93,82 @@ fn check_unstable(state: &OpState) {
   }
 }
 
+fn ensure_read_permission(
+  state: &mut OpState,
+  file_path: &Path,
+) -> Result<(), AnyError> {
+  let resolver = {
+    let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+    resolver.clone()
+  };
+  resolver.ensure_read_permission(file_path)
+}
+
 #[op]
 pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
   check_unstable(state);
 
-  let (home_dir, node_path) = if cfg!(windows) {
-    (
-      std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
-      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-    )
-  } else {
-    (
-      std::env::var("HOME").unwrap_or_else(|_| "".into()),
-      std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
-    )
-  };
+  // todo(dsherret): this code is node compat mode specific and
+  // we probably don't want it for small mammal, so ignore it for now
 
-  let mut prefix_dir = std::env::current_exe().unwrap();
-  if cfg!(windows) {
-    prefix_dir = prefix_dir.join("..").join("..")
-  } else {
-    prefix_dir = prefix_dir.join("..")
-  }
+  // let (home_dir, node_path) = if cfg!(windows) {
+  //   (
+  //     std::env::var("USERPROFILE").unwrap_or_else(|_| "".into()),
+  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+  //   )
+  // } else {
+  //   (
+  //     std::env::var("HOME").unwrap_or_else(|_| "".into()),
+  //     std::env::var("NODE_PATH").unwrap_or_else(|_| "".into()),
+  //   )
+  // };
 
-  let mut paths = vec![prefix_dir.join("lib").join("node")];
+  // let mut prefix_dir = std::env::current_exe().unwrap();
+  // if cfg!(windows) {
+  //   prefix_dir = prefix_dir.join("..").join("..")
+  // } else {
+  //   prefix_dir = prefix_dir.join("..")
+  // }
 
-  if !home_dir.is_empty() {
-    paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
-    paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
-  }
+  // let mut paths = vec![prefix_dir.join("lib").join("node")];
 
-  let mut paths = paths
-    .into_iter()
-    .map(|p| p.to_string_lossy().to_string())
-    .collect();
+  // if !home_dir.is_empty() {
+  //   paths.insert(0, PathBuf::from(&home_dir).join(".node_libraries"));
+  //   paths.insert(0, PathBuf::from(&home_dir).join(".nod_modules"));
+  // }
 
-  if !node_path.is_empty() {
-    let delimiter = if cfg!(windows) { ";" } else { ":" };
-    let mut node_paths: Vec<String> = node_path
-      .split(delimiter)
-      .filter(|e| !e.is_empty())
-      .map(|s| s.to_string())
-      .collect();
-    node_paths.append(&mut paths);
-    paths = node_paths;
-  }
+  // let mut paths = paths
+  //   .into_iter()
+  //   .map(|p| p.to_string_lossy().to_string())
+  //   .collect();
 
-  paths
+  // if !node_path.is_empty() {
+  //   let delimiter = if cfg!(windows) { ";" } else { ":" };
+  //   let mut node_paths: Vec<String> = node_path
+  //     .split(delimiter)
+  //     .filter(|e| !e.is_empty())
+  //     .map(|s| s.to_string())
+  //     .collect();
+  //   node_paths.append(&mut paths);
+  //   paths = node_paths;
+  // }
+
+  vec![]
 }
 
 #[op]
 pub fn op_require_node_module_paths(
   state: &mut OpState,
   from: String,
-) -> Vec<String> {
+) -> Result<Vec<String>, AnyError> {
   check_unstable(state);
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(&from)
     .unwrap()
     .to_file_path()
     .unwrap();
+
+  ensure_read_permission(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -117,14 +178,14 @@ pub fn op_require_node_module_paths(
       if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
       {
         let p = from_str.to_owned() + "node_modules";
-        return vec![p];
+        return Ok(vec![p]);
       }
     }
   } else {
     // Return early not only to avoid unnecessary work, but to *avoid* returning
     // an array of two items for a root: [ '//node_modules', '/node_modules' ]
     if from.to_string_lossy() == "/" {
-      return vec!["/node_modules".to_string()];
+      return Ok(vec!["/node_modules".to_string()]);
     }
   }
 
@@ -144,7 +205,7 @@ pub fn op_require_node_module_paths(
     paths.push("/node_modules".to_string());
   }
 
-  paths
+  Ok(paths)
 }
 
 #[op]
@@ -171,11 +232,8 @@ fn op_require_is_request_relative(
   request: String,
 ) -> bool {
   check_unstable(state);
-  if request.starts_with("./") {
-    return true;
-  }
-
-  if request.starts_with("../") {
+  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  {
     return true;
   }
 
@@ -190,6 +248,30 @@ fn op_require_is_request_relative(
   }
 
   false
+}
+
+#[op]
+fn op_require_resolve_deno_dir(
+  state: &mut OpState,
+  request: String,
+  parent_filename: String,
+) -> Option<String> {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  resolver
+    .resolve_package_folder_from_package(
+      &request,
+      &PathBuf::from(parent_filename),
+    )
+    .ok()
+    .map(|p| p.to_string_lossy().to_string())
+}
+
+#[op]
+fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  resolver.in_npm_package(&PathBuf::from(path))
 }
 
 #[op]
@@ -242,17 +324,19 @@ fn op_require_path_is_absolute(state: &mut OpState, p: String) -> bool {
 }
 
 #[op]
-fn op_require_stat(state: &mut OpState, filename: String) -> i32 {
+fn op_require_stat(state: &mut OpState, path: String) -> Result<i32, AnyError> {
   check_unstable(state);
-  if let Ok(metadata) = std::fs::metadata(&filename) {
+  let path = PathBuf::from(path);
+  ensure_read_permission(state, &path)?;
+  if let Ok(metadata) = std::fs::metadata(&path) {
     if metadata.is_file() {
-      return 0;
+      return Ok(0);
     } else {
-      return 1;
+      return Ok(1);
     }
   }
 
-  -1
+  Ok(-1)
 }
 
 #[op]
@@ -261,7 +345,9 @@ fn op_require_real_path(
   request: String,
 ) -> Result<String, AnyError> {
   check_unstable(state);
-  let mut canonicalized_path = PathBuf::from(request).canonicalize()?;
+  let path = PathBuf::from(request);
+  ensure_read_permission(state, &path)?;
+  let mut canonicalized_path = path.canonicalize()?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
       canonicalized_path
@@ -273,9 +359,7 @@ fn op_require_real_path(
   Ok(canonicalized_path.to_string_lossy().to_string())
 }
 
-#[op]
-fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
-  check_unstable(state);
+fn path_resolve(parts: Vec<String>) -> String {
   assert!(!parts.is_empty());
   let mut p = PathBuf::from(&parts[0]);
   if parts.len() > 1 {
@@ -284,6 +368,12 @@ fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
     }
   }
   normalize_path(p).to_string_lossy().to_string()
+}
+
+#[op]
+fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
+  check_unstable(state);
+  path_resolve(parts)
 }
 
 #[op]
@@ -306,57 +396,183 @@ fn op_require_try_self_parent_path(
   has_parent: bool,
   maybe_parent_filename: Option<String>,
   maybe_parent_id: Option<String>,
-) -> Option<String> {
+) -> Result<Option<String>, AnyError> {
   check_unstable(state);
   if !has_parent {
-    return None;
+    return Ok(None);
   }
 
   if let Some(parent_filename) = maybe_parent_filename {
-    return Some(parent_filename);
+    return Ok(Some(parent_filename));
   }
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       if let Ok(cwd) = std::env::current_dir() {
-        return Some(cwd.to_string_lossy().to_string());
+        ensure_read_permission(state, &cwd)?;
+        return Ok(Some(cwd.to_string_lossy().to_string()));
       }
     }
   }
-  None
+  Ok(None)
 }
 
 #[op]
 fn op_require_try_self(
   state: &mut OpState,
-  has_parent: bool,
-  maybe_parent_filename: Option<String>,
-  maybe_parent_id: Option<String>,
-) -> Option<String> {
+  parent_path: Option<String>,
+  request: String,
+) -> Result<Option<String>, AnyError> {
   check_unstable(state);
-  if !has_parent {
-    return None;
+  if parent_path.is_none() {
+    return Ok(None);
   }
 
-  if let Some(parent_filename) = maybe_parent_filename {
-    return Some(parent_filename);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let pkg = resolution::get_package_scope_config(
+    &Url::from_file_path(parent_path.unwrap()).unwrap(),
+    &*resolver,
+  )
+  .ok();
+  if pkg.is_none() {
+    return Ok(None);
   }
 
-  if let Some(parent_id) = maybe_parent_id {
-    if parent_id == "<repl>" || parent_id == "internal/preload" {
-      if let Ok(cwd) = std::env::current_dir() {
-        return Some(cwd.to_string_lossy().to_string());
-      }
-    }
+  let pkg = pkg.unwrap();
+  if pkg.exports.is_none() {
+    return Ok(None);
   }
-  None
+  if pkg.name.is_none() {
+    return Ok(None);
+  }
+
+  let pkg_name = pkg.name.as_ref().unwrap().to_string();
+  let mut expansion = ".".to_string();
+
+  if request == pkg_name {
+    // pass
+  } else if request.starts_with(&format!("{}/", pkg_name)) {
+    expansion += &request[pkg_name.len()..];
+  } else {
+    return Ok(None);
+  }
+
+  let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+  if let Some(exports) = &pkg.exports {
+    resolution::package_exports_resolve(
+      deno_core::url::Url::from_file_path(&pkg.path).unwrap(),
+      expansion,
+      exports,
+      &base,
+      resolution::REQUIRE_CONDITIONS,
+      &*resolver,
+    )
+    .map(|r| Some(r.as_str().to_string()))
+  } else {
+    Ok(None)
+  }
 }
 
 #[op]
 fn op_require_read_file(
   state: &mut OpState,
-  _filename: String,
+  file_path: String,
 ) -> Result<String, AnyError> {
   check_unstable(state);
-  todo!("not implemented");
+  let file_path = PathBuf::from(file_path);
+  ensure_read_permission(state, &file_path)?;
+  Ok(std::fs::read_to_string(file_path)?)
+}
+
+#[op]
+pub fn op_require_as_file_path(
+  state: &mut OpState,
+  file_or_url: String,
+) -> String {
+  check_unstable(state);
+  match Url::parse(&file_or_url) {
+    Ok(url) => url.to_file_path().unwrap().to_string_lossy().to_string(),
+    Err(_) => file_or_url,
+  }
+}
+
+#[op]
+fn op_require_resolve_exports(
+  state: &mut OpState,
+  modules_path: String,
+  _request: String,
+  name: String,
+  expansion: String,
+  parent_path: String,
+) -> Result<Option<String>, AnyError> {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+
+  let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
+    modules_path
+  } else {
+    path_resolve(vec![modules_path, name])
+  };
+  let pkg = PackageJson::load(
+    &*resolver,
+    PathBuf::from(&pkg_path).join("package.json"),
+  )?;
+
+  if let Some(exports) = &pkg.exports {
+    let base = Url::from_file_path(parent_path).unwrap();
+    resolution::package_exports_resolve(
+      deno_core::url::Url::from_directory_path(pkg_path).unwrap(),
+      format!(".{}", expansion),
+      exports,
+      &base,
+      resolution::REQUIRE_CONDITIONS,
+      &*resolver,
+    )
+    .map(|r| Some(r.to_file_path().unwrap().to_string_lossy().to_string()))
+  } else {
+    Ok(None)
+  }
+}
+
+#[op]
+fn op_require_read_package_scope(
+  state: &mut OpState,
+  filename: String,
+) -> Option<PackageJson> {
+  check_unstable(state);
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  resolution::get_package_scope_config(
+    &Url::from_file_path(filename).unwrap(),
+    &*resolver,
+  )
+  .ok()
+}
+
+#[op]
+fn op_require_package_imports_resolve(
+  state: &mut OpState,
+  parent_filename: String,
+  request: String,
+) -> Result<Option<String>, AnyError> {
+  check_unstable(state);
+  let parent_path = PathBuf::from(&parent_filename);
+  ensure_read_permission(state, &parent_path)?;
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
+
+  if pkg.imports.is_some() {
+    let referrer =
+      deno_core::url::Url::from_file_path(&parent_filename).unwrap();
+    let r = resolution::package_imports_resolve(
+      &request,
+      &referrer,
+      resolution::REQUIRE_CONDITIONS,
+      &*resolver,
+    )
+    .map(|r| Some(r.as_str().to_string()));
+    state.put(resolver);
+    r
+  } else {
+    Ok(None)
+  }
 }
