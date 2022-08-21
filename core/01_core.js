@@ -218,12 +218,16 @@
   // In other words, set the implementation for
   // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
   function setReportExceptionCallback(cb) {
-    if (typeof cb == "function") {
-      reportExceptionCallback = cb;
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
     }
+    reportExceptionCallback = cb;
   }
 
   function queueMicrotask(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
     return ops.op_queue_microtask(() => {
       try {
         cb();
