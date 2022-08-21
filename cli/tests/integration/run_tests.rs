@@ -2738,6 +2738,13 @@ itest!(report_error_handled {
   output: "report_error_handled.ts.out",
 });
 
+// Regression test for https://github.com/denoland/deno/issues/15513.
+itest!(report_error_end_of_program {
+  args: "run --quiet report_error_end_of_program.ts",
+  output: "report_error_end_of_program.ts.out",
+  exit_code: 1,
+});
+
 itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
