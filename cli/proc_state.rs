@@ -217,8 +217,11 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
-    let npm_resolver =
-      GlobalNpmPackageResolver::from_deno_dir(&dir, cli_options.reload_flag())?;
+    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+      &dir,
+      cli_options.reload_flag(),
+      cli_options.no_remote(),
+    )?;
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -428,7 +431,6 @@ impl ProcState {
     };
 
     if !npm_package_references.is_empty() {
-      self.check_if_npm_imports_are_allowed(&npm_package_references)?;
       self
         .npm_resolver
         .add_package_reqs(npm_package_references)
@@ -481,20 +483,6 @@ impl ProcState {
     }
 
     Ok(())
-  }
-
-  fn check_if_npm_imports_are_allowed(
-    &self,
-    packages: &[crate::npm::NpmPackageReq],
-  ) -> Result<(), AnyError> {
-    if self.options.no_npm() {
-      Err(custom_error(
-        "NoNpm",
-        format!("Following npm specifiers were requested: {}, but --no-npm is specified.", packages.iter().map(|p| p.name.as_str()).collect::<Vec<&str>>().join(", ")),
-      ))
-    } else {
-      Ok(())
-    }
   }
 
   fn handle_node_resolve_result(
@@ -663,7 +651,6 @@ impl ProcState {
       }
     }
     if !package_reqs.is_empty() {
-      self.check_if_npm_imports_are_allowed(&package_reqs)?;
       self.npm_resolver.add_package_reqs(package_reqs).await?;
       self.npm_resolver.cache_packages().await?;
     }

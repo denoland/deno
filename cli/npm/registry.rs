@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
@@ -100,6 +101,7 @@ pub struct NpmRegistryApi {
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
+  no_remote: bool,
 }
 
 impl NpmRegistryApi {
@@ -122,16 +124,22 @@ impl NpmRegistryApi {
     }
   }
 
-  pub fn new(cache: NpmCache, reload: bool) -> Self {
-    Self::from_base(Self::default_url(), cache, reload)
+  pub fn new(cache: NpmCache, reload: bool, no_remote: bool) -> Self {
+    Self::from_base(Self::default_url(), cache, reload, no_remote)
   }
 
-  pub fn from_base(base_url: Url, cache: NpmCache, reload: bool) -> Self {
+  pub fn from_base(
+    base_url: Url,
+    cache: NpmCache,
+    reload: bool,
+    no_remote: bool,
+  ) -> Self {
     Self {
       base_url,
       cache,
       mem_cache: Default::default(),
       reload,
+      no_remote,
     }
   }
 
@@ -220,6 +228,13 @@ impl NpmRegistryApi {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    if self.no_remote {
+      return Err(custom_error(
+        "NoRemote",
+        format!("An npm specifier was requested: \"{}\", but --no-remote is specified.", name),
+      ));
+    }
+
     let response = match reqwest::get(self.get_package_url(name)).await {
       Ok(response) => response,
       Err(err) => {

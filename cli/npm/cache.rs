@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_runtime::colors;
@@ -152,15 +153,24 @@ impl ReadonlyNpmCache {
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Clone, Debug)]
-pub struct NpmCache(ReadonlyNpmCache);
+pub struct NpmCache {
+  readonly: ReadonlyNpmCache,
+  no_remote: bool,
+}
 
 impl NpmCache {
-  pub fn from_deno_dir(dir: &DenoDir) -> Result<Self, AnyError> {
-    Ok(Self(ReadonlyNpmCache::from_deno_dir(dir)?))
+  pub fn from_deno_dir(
+    dir: &DenoDir,
+    no_remote: bool,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
+      no_remote,
+    })
   }
 
   pub fn as_readonly(&self) -> ReadonlyNpmCache {
-    self.0.clone()
+    self.readonly.clone()
   }
 
   pub async fn ensure_package(
@@ -169,13 +179,20 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    let package_folder = self.0.package_folder(id, registry_url);
+    let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
     {
       return Ok(());
+    }
+
+    if self.no_remote {
+      return Err(custom_error(
+        "NoRemote",
+        format!("An npm specifier was requested: \"{}\", but --no-remote is specified.", id.name),
+      ));
     }
 
     log::log!(
@@ -225,15 +242,15 @@ impl NpmCache {
     id: &NpmPackageId,
     registry_url: &Url,
   ) -> PathBuf {
-    self.0.package_folder(id, registry_url)
+    self.readonly.package_folder(id, registry_url)
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
-    self.0.package_name_folder(name, registry_url)
+    self.readonly.package_name_folder(name, registry_url)
   }
 
   pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
-    self.0.registry_folder(registry_url)
+    self.readonly.registry_folder(registry_url)
   }
 
   pub fn resolve_package_id_from_specifier(
@@ -242,7 +259,7 @@ impl NpmCache {
     registry_url: &Url,
   ) -> Result<NpmPackageId, AnyError> {
     self
-      .0
+      .readonly
       .resolve_package_id_from_specifier(specifier, registry_url)
   }
 }
