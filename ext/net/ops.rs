@@ -1047,6 +1047,7 @@ mod tests {
     check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
   }
 
+  #[allow(clippy::type_complexity)]
   async fn check_sockopt(
     addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,

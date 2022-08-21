@@ -185,18 +185,19 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
-  function serve(handler, opts = {}) {
-    delete opts.key;
-    delete opts.cert;
-    return serveInner(handler, opts, false);
-  }
-
-  function serveTls(handler, opts = {}) {
-    return serveInner(handler, opts, true);
-  }
-
-  function serveInner(handler, opts, useTls) {
-    opts = { hostname: "127.0.0.1", port: 9000, useTls, ...opts };
+  function serve(opts = {}) {
+    if (!("fetch" in opts)) {
+      throw new TypeError("Options is missing 'fetch' handler");
+    }
+    if ("cert" in opts && !("key" in opts)) {
+      throw new TypeError("Options is missing 'key' field");
+    }
+    if ("key" in opts && !("cert" in opts)) {
+      throw new TypeError("Options is missing 'cert' field");
+    }
+    opts = { hostname: "127.0.0.1", port: 9000, ...opts };
+    const handler = opts.fetch;
+    delete opts.fetch;
     const signal = opts.signal;
     delete opts.signal;
     const onError = opts.onError ?? function (error) {
@@ -215,8 +216,8 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    core.opAsync("op_flash_wait_for_listening", serverId).then(() => {
-      onListen({ hostname: opts.hostname, port: opts.port });
+    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
+      onListen({ hostname: opts.hostname, port });
     });
 
     const server = {
@@ -237,20 +238,21 @@
         await server.finished;
       },
       async serve() {
+        let offset = 0;
         while (true) {
           if (server.closed) {
             break;
           }
 
-          let token = nextRequestSync();
-          if (token === 0) {
-            token = await core.opAsync("op_flash_next_async", serverId);
+          let tokens = nextRequestSync();
+          if (tokens === 0) {
+            tokens = await core.opAsync("op_flash_next_async", serverId);
             if (server.closed) {
               break;
             }
           }
 
-          for (let i = 0; i < token; i++) {
+          for (let i = offset; i < offset + tokens; i++) {
             let body = null;
             // There might be a body, but we don't expose it for GET/HEAD requests.
             // It will be closed automatically once the request has been handled and
@@ -290,17 +292,6 @@
             if (resp === undefined) {
               continue;
             }
-
-            const ws = resp[_ws];
-            if (!ws) {
-              if (hasBody && body[_state] !== "closed") {
-                // TODO(@littledivy): Optimize by draining in a single op.
-                try {
-                  await req.arrayBuffer();
-                } catch { /* pass */ }
-              }
-            }
-
             const innerResp = toInnerResponse(resp);
 
             // If response body length is known, it will be sent synchronously in a
@@ -360,74 +351,8 @@
               respBody = new Uint8Array(0);
             }
 
-            if (isStreamingResponseBody === true) {
-              const resourceRid = getReadableStreamRid(respBody);
-              if (resourceRid) {
-                if (respBody.locked) {
-                  throw new TypeError("ReadableStream is locked.");
-                }
-                const reader = respBody.getReader(); // Aquire JS lock.
-                try {
-                  core.opAsync(
-                    "op_flash_write_resource",
-                    http1Response(
-                      method,
-                      innerResp.status ?? 200,
-                      innerResp.headerList,
-                      null,
-                      true,
-                    ),
-                    serverId,
-                    i,
-                    resourceRid,
-                  ).then(() => {
-                    // Release JS lock.
-                    readableStreamClose(respBody);
-                  });
-                } catch (error) {
-                  await reader.cancel(error);
-                  throw error;
-                }
-              } else {
-                const reader = respBody.getReader();
-                let first = true;
-                a:
-                while (true) {
-                  const { value, done } = await reader.read();
-                  if (first) {
-                    first = false;
-                    core.ops.op_flash_respond(
-                      serverId,
-                      i,
-                      http1Response(
-                        method,
-                        innerResp.status ?? 200,
-                        innerResp.headerList,
-                        null,
-                      ),
-                      value ?? new Uint8Array(),
-                      false,
-                    );
-                  } else {
-                    if (value === undefined) {
-                      core.ops.op_flash_respond_chuncked(
-                        serverId,
-                        i,
-                        undefined,
-                        done,
-                      );
-                    } else {
-                      respondChunked(
-                        i,
-                        value,
-                        done,
-                      );
-                    }
-                  }
-                  if (done) break a;
-                }
-              }
-            } else {
+            const ws = resp[_ws];
+            if (isStreamingResponseBody === false) {
               const responseStr = http1Response(
                 method,
                 innerResp.status ?? 200,
@@ -456,29 +381,111 @@
               }
             }
 
-            if (ws) {
-              const wsRid = await core.opAsync(
-                "op_flash_upgrade_websocket",
-                serverId,
-                i,
-              );
-              ws[_rid] = wsRid;
-              ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-              ws[_readyState] = WebSocket.OPEN;
-              const event = new Event("open");
-              ws.dispatchEvent(event);
-
-              ws[_eventLoop]();
-              if (ws[_idleTimeoutDuration]) {
-                ws.addEventListener(
-                  "close",
-                  () => clearTimeout(ws[_idleTimeoutTimeout]),
-                );
+            (async () => {
+              if (!ws) {
+                if (hasBody && body[_state] !== "closed") {
+                  // TODO(@littledivy): Optimize by draining in a single op.
+                  try {
+                    await req.arrayBuffer();
+                  } catch { /* pass */ }
+                }
               }
-              ws[_serverHandleIdleTimeout]();
-            }
+
+              if (isStreamingResponseBody === true) {
+                const resourceRid = getReadableStreamRid(respBody);
+                if (resourceRid) {
+                  if (respBody.locked) {
+                    throw new TypeError("ReadableStream is locked.");
+                  }
+                  const reader = respBody.getReader(); // Aquire JS lock.
+                  try {
+                    core.opAsync(
+                      "op_flash_write_resource",
+                      http1Response(
+                        method,
+                        innerResp.status ?? 200,
+                        innerResp.headerList,
+                        null,
+                        true,
+                      ),
+                      serverId,
+                      i,
+                      resourceRid,
+                    ).then(() => {
+                      // Release JS lock.
+                      readableStreamClose(respBody);
+                    });
+                  } catch (error) {
+                    await reader.cancel(error);
+                    throw error;
+                  }
+                } else {
+                  const reader = respBody.getReader();
+                  let first = true;
+                  a:
+                  while (true) {
+                    const { value, done } = await reader.read();
+                    if (first) {
+                      first = false;
+                      core.ops.op_flash_respond(
+                        serverId,
+                        i,
+                        http1Response(
+                          method,
+                          innerResp.status ?? 200,
+                          innerResp.headerList,
+                          null,
+                        ),
+                        value ?? new Uint8Array(),
+                        false,
+                      );
+                    } else {
+                      if (value === undefined) {
+                        core.ops.op_flash_respond_chuncked(
+                          serverId,
+                          i,
+                          undefined,
+                          done,
+                        );
+                      } else {
+                        respondChunked(
+                          i,
+                          value,
+                          done,
+                        );
+                      }
+                    }
+                    if (done) break a;
+                  }
+                }
+              }
+
+              if (ws) {
+                const wsRid = await core.opAsync(
+                  "op_flash_upgrade_websocket",
+                  serverId,
+                  i,
+                );
+                ws[_rid] = wsRid;
+                ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+                ws[_readyState] = WebSocket.OPEN;
+                const event = new Event("open");
+                ws.dispatchEvent(event);
+
+                ws[_eventLoop]();
+                if (ws[_idleTimeoutDuration]) {
+                  ws.addEventListener(
+                    "close",
+                    () => clearTimeout(ws[_idleTimeoutTimeout]),
+                  );
+                }
+                ws[_serverHandleIdleTimeout]();
+              }
+            })().catch(onError);
           }
+
+          offset += tokens;
         }
         await server.finished;
       },
@@ -564,6 +571,5 @@
 
   window.__bootstrap.flash = {
     serve,
-    serveTls,
   };
 })(this);

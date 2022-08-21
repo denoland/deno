@@ -21,8 +21,8 @@ impl SendFile {
       let count = 0x7ffff000;
       let mut offset = self.written as libc::off_t;
 
-      // SAFETY: call to libc::sendfile()
       let res =
+        // SAFETY: call to libc::sendfile()
         unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
       if res == -1 {
         Err(io::Error::last_os_error())

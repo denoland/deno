@@ -154,6 +154,5 @@
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
     serve: __bootstrap.flash.serve,
-    serveTls: __bootstrap.flash.serveTls,
   };
 })(this);

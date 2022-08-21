@@ -64,7 +64,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "ChildStatus",
   "SpawnOutput",
   "serve",
-  "serveTls",
   "ServeInit",
   "ServeTlsInit",
   "Handler",

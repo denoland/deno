@@ -752,7 +752,7 @@ fn extract_files_from_regex_blocks(
           return None;
         }
 
-        match attributes.get(0) {
+        match attributes.first() {
           Some(&"js") => MediaType::JavaScript,
           Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,
