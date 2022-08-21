@@ -295,14 +295,14 @@ fn codegen_fast_impl(
   must_be_fast: bool,
 ) -> (TokenStream2, TokenStream2) {
   if is_async {
+    if must_be_fast {
+      panic!("async op cannot be a fast api. enforced by #[op(fast)]")
+    }
     return (quote! {}, quote! { None });
   }
   let fast_info = can_be_fast_api(core, f);
   if must_be_fast && fast_info.is_none() {
     panic!("op cannot be a fast api. enforced by #[op(fast)]")
-  }
-  if must_be_fast && is_async {
-    panic!("async op cannot be a fast api. enforced by #[op(fast)]")
   }
   if !is_async {
     if let Some(FastApiSyn {
