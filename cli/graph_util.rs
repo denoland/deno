@@ -73,11 +73,7 @@ impl GraphData {
           }
         }
       }
-      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
-      self.graph_imports.push(GraphImport {
-        referrer: graph_import.referrer.clone(),
-        dependencies: graph_import.dependencies.clone(),
-      });
+      self.graph_imports.push(graph_import.clone())
     }
 
     for (specifier, result) in graph.specifiers() {
@@ -280,15 +276,7 @@ impl GraphData {
       modules,
       npm_packages: self.npm_packages.clone(),
       referrer_map,
-      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
-      graph_imports: self
-        .graph_imports
-        .iter()
-        .map(|i| GraphImport {
-          referrer: i.referrer.clone(),
-          dependencies: i.dependencies.clone(),
-        })
-        .collect(),
+      graph_imports: self.graph_imports.iter().cloned().collect(),
       cjs_esm_translations: Default::default(),
     })
   }
