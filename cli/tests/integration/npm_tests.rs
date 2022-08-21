@@ -51,6 +51,20 @@ itest!(dynamic_import {
   http_server: true,
 });
 
+itest!(no_remote {
+  args: "run --no-remote --unstable npm/no_remote/main.ts",
+  output: "npm/no_remote/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
+itest!(no_remote_dynamic_imports {
+  args: "run --no-remote --allow-read --unstable npm/no_remote_dynamic_imports/main.ts",
+  output: "npm/no_remote_dynamic_imports/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
 itest!(import_map {
   args: "run --allow-read --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",

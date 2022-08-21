@@ -1,0 +1,5 @@
+A
+error: Uncaught (in promise) TypeError: Error getting response at http://localhost:4545/npm/registry/chalk
+await import(importName);
+^
+    at async file:///[WILDCARD]/npm/no_remote_dynamic_imports/main.ts:3:1

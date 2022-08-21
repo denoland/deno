@@ -1,0 +1,4 @@
+error: Error getting response at http://localhost:4545/npm/registry/chalk
+
+Caused by:
+    An npm specifier was requested: "chalk", but --no-remote is specified.
