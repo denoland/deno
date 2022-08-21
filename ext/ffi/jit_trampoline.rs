@@ -32,8 +32,8 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
     NativeType::I64 => "int64_t",
     NativeType::ISize => "intptr_t",
     NativeType::USize => "uintptr_t",
-    NativeType::Pointer => "struct FastApiTypedArray*",
-    NativeType::Function => "void*",
+    NativeType::Buffer => "struct FastApiTypedArray*",
+    NativeType::Function | NativeType::Pointer => "void*",
   }
 }
 
@@ -52,7 +52,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
     NativeType::I64 => "int64_t",
     NativeType::ISize => "intptr_t",
     NativeType::USize => "uintptr_t",
-    NativeType::Pointer | NativeType::Function => "void*",
+    NativeType::Pointer | NativeType::Buffer | NativeType::Function => "void*",
   }
 }
 
@@ -97,7 +97,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
       if i > 0 {
         call_s += ", ";
       }
-      if matches!(ty, NativeType::Pointer) {
+      if matches!(ty, NativeType::Buffer) {
         let _ = write!(call_s, "p{i}->data");
       } else {
         let _ = write!(call_s, "p{i}");
