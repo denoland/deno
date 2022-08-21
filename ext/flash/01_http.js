@@ -216,8 +216,8 @@
     const serverId = core.ops.op_flash_serve(opts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    core.opAsync("op_flash_wait_for_listening", serverId).then(() => {
-      onListen({ hostname: opts.hostname, port: opts.port });
+    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
+      onListen({ hostname: opts.hostname, port });
     });
 
     const server = {
