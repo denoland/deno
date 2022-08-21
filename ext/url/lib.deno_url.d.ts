@@ -5,6 +5,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category Web APIs */
 declare class URLSearchParams {
   constructor(
     init?: string[][] | Record<string, string> | string | URLSearchParams,
@@ -151,9 +152,13 @@ declare class URLSearchParams {
   toString(): string;
 }
 
-/** The URL interface represents an object providing static methods used for creating object URLs. */
+/** The URL interface represents an object providing static methods used for
+ * creating object URLs.
+ *
+ * @category Web APIs
+ */
 declare class URL {
-  constructor(url: string, base?: string | URL);
+  constructor(url: string | URL, base?: string | URL);
   static createObjectURL(blob: Blob): string;
   static revokeObjectURL(url: string): void;
 
@@ -173,6 +178,7 @@ declare class URL {
   toJSON(): string;
 }
 
+/** @category Web APIs */
 declare interface URLPatternInit {
   protocol?: string;
   username?: string;
@@ -185,14 +191,19 @@ declare interface URLPatternInit {
   baseURL?: string;
 }
 
+/** @category Web APIs */
 declare type URLPatternInput = string | URLPatternInit;
 
+/** @category Web APIs */
 declare interface URLPatternComponentResult {
   input: string;
   groups: Record<string, string>;
 }
 
-/** `URLPatternResult` is the object returned from `URLPattern.exec`. */
+/** `URLPatternResult` is the object returned from `URLPattern.exec`.
+ *
+ * @category Web APIs
+ */
 declare interface URLPatternResult {
   /** The inputs provided when matching. */
   inputs: [URLPatternInit] | [URLPatternInit, string];
@@ -242,6 +253,8 @@ declare interface URLPatternResult {
  * console.log(pattern.test("https://blog.example.com/article")); // true
  * console.log(pattern.test("https://blog.example.com/article/123")); // false
  * ```
+ *
+ * @category Web APIs
  */
 declare class URLPattern {
   constructor(input: URLPatternInput, baseURL?: string);

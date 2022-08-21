@@ -1,13 +1,21 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
-//
 "use strict";
+
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
+
+// Remove Intl.v8BreakIterator because it is a non-standard API.
+delete Intl.v8BreakIterator;
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
+    ArrayPrototypeIndexOf,
+    ArrayPrototypePush,
+    ArrayPrototypeShift,
+    ArrayPrototypeSplice,
     ArrayPrototypeMap,
     DateNow,
     Error,
@@ -24,9 +32,12 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    SafeWeakMap,
     TypeError,
+    WeakMapPrototypeDelete,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
-  const infra = window.__bootstrap.infra;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
@@ -39,6 +50,8 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const inspectArgs = window.__bootstrap.console.inspectArgs;
+  const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
@@ -91,7 +104,7 @@ delete Object.prototype.__proto__;
     }
 
     isClosing = true;
-    core.opSync("op_worker_close");
+    ops.op_worker_close();
   }
 
   function postMessage(message, transferOrOptions = {}) {
@@ -121,7 +134,7 @@ delete Object.prototype.__proto__;
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    core.opSync("op_worker_post_message", data);
+    ops.op_worker_post_message(data);
   }
 
   let isClosing = false;
@@ -172,7 +185,7 @@ delete Object.prototype.__proto__;
   let loadedMainWorkerScript = false;
 
   function importScripts(...urls) {
-    if (core.opSync("op_worker_get_type") === "module") {
+    if (ops.op_worker_get_type() === "module") {
       throw new TypeError("Can't import scripts in a module worker.");
     }
 
@@ -192,8 +205,7 @@ delete Object.prototype.__proto__;
     // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
     // TODO(andreubotella) Refactor worker creation so the main script isn't
     // loaded with `importScripts()`.
-    const scripts = core.opSync(
-      "op_worker_sync_fetch",
+    const scripts = ops.op_worker_sync_fetch(
       parsedUrls,
       !loadedMainWorkerScript,
     );
@@ -208,12 +220,30 @@ delete Object.prototype.__proto__;
   }
 
   function opMainModule() {
-    return core.opSync("op_main_module");
+    return ops.op_main_module();
+  }
+
+  function formatException(error) {
+    if (error instanceof Error) {
+      return null;
+    } else if (typeof error == "string") {
+      return `Uncaught ${
+        inspectArgs([quoteString(error)], {
+          colors: !colors.getNoColor(),
+        })
+      }`;
+    } else {
+      return `Uncaught ${
+        inspectArgs([error], { colors: !colors.getNoColor() })
+      }`;
+    }
   }
 
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
+    core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+    ops.op_set_format_exception_callback(formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
@@ -301,7 +331,7 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus;
+  let numCpus, userAgent;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -318,6 +348,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return numCpus;
+      },
+    },
+    userAgent: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return userAgent;
       },
     },
   });
@@ -382,6 +420,7 @@ delete Object.prototype.__proto__;
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
+    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
     ProgressEvent: util.nonEnumerable(ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
@@ -524,12 +563,92 @@ delete Object.prototype.__proto__;
     postMessage: util.writable(postMessage),
   };
 
+  const pendingRejections = [];
+  const pendingRejectionsReasons = new SafeWeakMap();
+
+  function promiseRejectCallback(type, promise, reason) {
+    switch (type) {
+      case 0: {
+        ops.op_store_pending_promise_exception(promise, reason);
+        ArrayPrototypePush(pendingRejections, promise);
+        WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
+        break;
+      }
+      case 1: {
+        ops.op_remove_pending_promise_exception(promise);
+        const index = ArrayPrototypeIndexOf(pendingRejections, promise);
+        if (index > -1) {
+          ArrayPrototypeSplice(pendingRejections, index, 1);
+          WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+
+    return !!globalThis.onunhandledrejection ||
+      eventTarget.listenerCount(globalThis, "unhandledrejection") > 0;
+  }
+
+  function promiseRejectMacrotaskCallback() {
+    while (pendingRejections.length > 0) {
+      const promise = ArrayPrototypeShift(pendingRejections);
+      const hasPendingException = ops.op_has_pending_promise_exception(
+        promise,
+      );
+      const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
+      WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
+
+      if (!hasPendingException) {
+        continue;
+      }
+
+      const event = new PromiseRejectionEvent("unhandledrejection", {
+        cancelable: true,
+        promise,
+        reason,
+      });
+
+      const errorEventCb = (event) => {
+        if (event.error === reason) {
+          ops.op_remove_pending_promise_exception(promise);
+        }
+      };
+      // Add a callback for "error" event - it will be dispatched
+      // if error is thrown during dispatch of "unhandledrejection"
+      // event.
+      globalThis.addEventListener("error", errorEventCb);
+      globalThis.dispatchEvent(event);
+      globalThis.removeEventListener("error", errorEventCb);
+
+      // If event was not prevented (or "unhandledrejection" listeners didn't
+      // throw) we will let Rust side handle it.
+      if (event.defaultPrevented) {
+        ops.op_remove_pending_promise_exception(promise);
+      }
+    }
+    return true;
+  }
+
   let hasBootstrapped = false;
 
   function bootstrapMainRuntime(runtimeOptions) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    const {
+      args,
+      location: locationHref,
+      noColor,
+      isTty,
+      pid,
+      ppid,
+      unstableFlag,
+      cpuCount,
+      userAgent: userAgentInfo,
+    } = runtimeOptions;
 
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
@@ -540,6 +659,18 @@ delete Object.prototype.__proto__;
     delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
+
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (locationHref == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(locationHref);
+    }
+
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     if (runtimeOptions.unstableFlag) {
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
@@ -554,7 +685,11 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(window, "error");
     defineEventHandler(window, "load");
+    defineEventHandler(window, "beforeunload");
     defineEventHandler(window, "unload");
+    defineEventHandler(window, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
 
     const isUnloadDispatched = SymbolFor("isUnloadDispatched");
     // Stores the flag for checking whether unload is dispatched or not.
@@ -566,22 +701,10 @@ delete Object.prototype.__proto__;
     });
 
     runtimeStart(runtimeOptions);
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      isTty,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-    } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
-    if (locationHref != null) {
-      location.setLocationHref(locationHref);
-    }
     numCpus = cpuCount;
+    userAgent = userAgentInfo;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -617,7 +740,6 @@ delete Object.prototype.__proto__;
   function bootstrapWorkerRuntime(
     runtimeOptions,
     name,
-    useDenoNamespace,
     internalName,
   ) {
     if (hasBootstrapped) {
@@ -655,6 +777,15 @@ delete Object.prototype.__proto__;
 
     defineEventHandler(self, "message");
     defineEventHandler(self, "error", undefined, true);
+    defineEventHandler(self, "unhandledrejection");
+
+    core.setPromiseRejectCallback(promiseRejectCallback);
+
+    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
+    // code using an op in worker context is a no-op.
+    os.setExitHandler((_exitCode) => {
+      workerClose();
+    });
 
     runtimeStart(
       runtimeOptions,
@@ -687,23 +818,18 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      infra.assert(globalThis.Deno === undefined);
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
     }
+    ObjectDefineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(ObjectFreeze(args)),
+    });
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

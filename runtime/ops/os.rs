@@ -2,41 +2,59 @@
 
 use super::utils::into_string;
 use crate::permissions::Permissions;
+use crate::worker::ExitCode;
 use deno_core::error::{type_error, AnyError};
-use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_core::{op, ExtensionBuilder};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 
-pub fn init(maybe_exit_code: Option<Arc<AtomicI32>>) -> Extension {
-  Extension::builder()
-    .ops(vec![
-      op_env::decl(),
-      op_exec_path::decl(),
-      op_exit::decl(),
-      op_delete_env::decl(),
-      op_get_env::decl(),
-      op_getuid::decl(),
-      op_hostname::decl(),
-      op_loadavg::decl(),
-      op_network_interfaces::decl(),
-      op_os_release::decl(),
-      op_set_env::decl(),
-      op_set_exit_code::decl(),
-      op_system_memory_info::decl(),
-    ])
+fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
+  builder.ops(vec![
+    op_env::decl(),
+    op_exec_path::decl(),
+    op_exit::decl(),
+    op_delete_env::decl(),
+    op_get_env::decl(),
+    op_getgid::decl(),
+    op_getuid::decl(),
+    op_hostname::decl(),
+    op_loadavg::decl(),
+    op_network_interfaces::decl(),
+    op_os_release::decl(),
+    op_set_env::decl(),
+    op_set_exit_code::decl(),
+    op_system_memory_info::decl(),
+  ])
+}
+
+pub fn init(exit_code: ExitCode) -> Extension {
+  let mut builder = Extension::builder();
+  init_ops(&mut builder)
     .state(move |state| {
-      let exit_code = maybe_exit_code.clone().unwrap_or_default();
-      state.put::<Arc<AtomicI32>>(exit_code);
+      state.put::<ExitCode>(exit_code.clone());
       Ok(())
     })
     .build()
+}
+
+pub fn init_for_worker() -> Extension {
+  let mut builder = Extension::builder();
+  init_ops(&mut builder)
+    .middleware(|op| match op.name {
+      "op_exit" => noop_op::decl(),
+      "op_set_exit_code" => noop_op::decl(),
+      _ => op,
+    })
+    .build()
+}
+
+#[op]
+fn noop_op() -> Result<(), AnyError> {
+  Ok(())
 }
 
 #[op]
@@ -103,14 +121,13 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
 }
 
 #[op]
-fn op_set_exit_code(state: &mut OpState, code: i32) -> Result<(), AnyError> {
-  state.borrow_mut::<Arc<AtomicI32>>().store(code, Relaxed);
-  Ok(())
+fn op_set_exit_code(state: &mut OpState, code: i32) {
+  state.borrow_mut::<ExitCode>().set(code);
 }
 
 #[op]
-fn op_exit(state: &mut OpState) -> Result<(), AnyError> {
-  let code = state.borrow::<Arc<AtomicI32>>().load(Relaxed);
+fn op_exit(state: &mut OpState) {
+  let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
 }
 
@@ -228,10 +245,34 @@ fn op_system_memory_info(
 
 #[cfg(not(windows))]
 #[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    Ok(Some(libc::getgid()))
+  }
+}
+
+#[cfg(windows)]
+#[op]
+fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.getGid");
+  state.borrow_mut::<Permissions>().env.check_all()?;
+  Ok(None)
+}
+
+#[cfg(not(windows))]
+#[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
   state.borrow_mut::<Permissions>().env.check_all()?;
-  unsafe { Ok(Some(libc::getuid())) }
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    Ok(Some(libc::getuid()))
+  }
 }
 
 #[cfg(windows)]

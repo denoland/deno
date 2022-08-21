@@ -64,6 +64,13 @@ pub trait Resource: Any + 'static {
   /// resource specific clean-ups, such as cancelling pending futures, after a
   /// resource has been removed from the resource table.
   fn close(self: Rc<Self>) {}
+
+  /// Resources backed by a file descriptor can let ops know to allow for
+  /// low-level optimizations.
+  #[cfg(unix)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
+    None
+  }
 }
 
 impl dyn Resource {
@@ -77,6 +84,8 @@ impl dyn Resource {
   pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Some(unsafe { &*ptr })
     } else {
       None

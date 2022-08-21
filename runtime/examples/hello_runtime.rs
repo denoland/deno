@@ -22,7 +22,7 @@ async fn main() -> Result<(), AnyError> {
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
-  let web_worker_preload_module_cb = Arc::new(|_| {
+  let web_worker_event_cb = Arc::new(|_| {
     todo!("Web workers are not supported in the example");
   });
 
@@ -38,19 +38,21 @@ async fn main() -> Result<(), AnyError> {
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
       unstable: false,
+      user_agent: "hello_runtime".to_string(),
     },
     extensions: vec![],
     unsafely_ignore_certificate_errors: None,
     root_cert_store: None,
-    user_agent: "hello_runtime".to_string(),
     seed: None,
     source_map_getter: None,
     format_js_error_fn: None,
-    web_worker_preload_module_cb,
+    web_worker_preload_module_cb: web_worker_event_cb.clone(),
+    web_worker_pre_execute_module_cb: web_worker_event_cb,
     create_web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
+    npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
     origin_storage_dir: None,
     blob_store: BlobStore::default(),

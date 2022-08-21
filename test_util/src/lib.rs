@@ -49,6 +49,7 @@ use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
+pub mod assertions;
 pub mod lsp;
 pub mod pty;
 mod temp_dir;
@@ -138,7 +139,7 @@ pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
   prebuilt_path().join(platform_dir_name()).join(exe)
 }
 
-fn platform_dir_name() -> &'static str {
+pub fn platform_dir_name() -> &'static str {
   if cfg!(target_os = "linux") {
     "linux64"
   } else if cfg!(target_os = "macos") {
@@ -946,9 +947,35 @@ async fn main_server(
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
-      if let Ok(file) = tokio::fs::read(file_path).await {
+      if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
+      }
+
+      // serve npm registry files
+      if req.uri().path().starts_with("/npm/registry/") {
+        let is_tarball = req.uri().path().ends_with(".tgz");
+        if !is_tarball {
+          file_path.push("registry.json");
+        }
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        } else if should_download_npm_packages() {
+          if let Err(err) =
+            download_npm_registry_file(&file_path, is_tarball).await
+          {
+            return Response::builder()
+              .status(StatusCode::INTERNAL_SERVER_ERROR)
+              .body(format!("{:#}", err).into());
+          };
+
+          // serve the file
+          if let Ok(file) = tokio::fs::read(&file_path).await {
+            let file_resp = custom_headers(req.uri().path(), file);
+            return Ok(file_resp);
+          }
+        }
       }
 
       Response::builder()
@@ -956,6 +983,50 @@ async fn main_server(
         .body(Body::empty())
     }
   };
+}
+
+fn should_download_npm_packages() -> bool {
+  // when this env var is set, it will download and save npm packages
+  // to the testdata/npm/registry directory
+  std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
+}
+
+async fn download_npm_registry_file(
+  file_path: &PathBuf,
+  is_tarball: bool,
+) -> Result<(), anyhow::Error> {
+  let package_name = file_path
+    .parent()
+    .unwrap()
+    .file_name()
+    .unwrap()
+    .to_string_lossy();
+  let url = if is_tarball {
+    let file_name = file_path.file_name().unwrap().to_string_lossy();
+    format!(
+      "https://registry.npmjs.org/{}/-/{}",
+      package_name, file_name
+    )
+  } else {
+    format!("https://registry.npmjs.org/{}", package_name)
+  };
+  let client = reqwest::Client::new();
+  let response = client.get(url).send().await?;
+  let bytes = response.bytes().await?;
+  let bytes = if is_tarball {
+    bytes.to_vec()
+  } else {
+    String::from_utf8(bytes.to_vec())
+      .unwrap()
+      .replace(
+        &format!("https://registry.npmjs.org/{}/-/", package_name),
+        &format!("http://localhost:4545/npm/registry/{}/", package_name),
+      )
+      .into_bytes()
+  };
+  std::fs::create_dir_all(file_path.parent().unwrap())?;
+  std::fs::write(&file_path, bytes)?;
+  Ok(())
 }
 
 /// Taken from example in https://github.com/ctz/hyper-rustls/blob/a02ef72a227dcdf102f86e905baa7415c992e8b3/examples/server.rs
@@ -1737,6 +1808,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub exit_code: i32,
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
+  pub env_clear: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1766,6 +1838,9 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     println!("deno_exe args {}", self.args);
     println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args.iter());
+    if self.env_clear {
+      command.env_clear();
+    }
     command.envs(self.envs.clone());
     command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
@@ -1920,7 +1995,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           println!("ECHO: {}", echo.escape_debug());
 
           // Windows may also echo the previous line, so only check the end
-          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
+          assert_ends_with!(normalize_text(&echo), normalize_text(s));
         }
         PtyData::Output(s) => {
           let mut line = String::new();

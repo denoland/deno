@@ -58,19 +58,6 @@ where
   Ok(t)
 }
 
-macro_rules! wip {
-  ($method:ident) => {
-    fn $method<V>(self, _v: V) -> Result<V::Value>
-    where
-      V: Visitor<'de>,
-    {
-      unimplemented!()
-    }
-  };
-}
-
-// TODO: maybe check for BigInt truncation ?
-// (i.e: values larger than i64/u64 can hold)
 macro_rules! deserialize_signed {
   ($dmethod:ident, $vmethod:ident, $t:tt) => {
     fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
@@ -196,7 +183,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     )
   }
 
-  wip!(deserialize_char);
+  fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    self.deserialize_str(visitor)
+  }
 
   fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
   where
@@ -211,15 +203,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     if self.input.is_string() {
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
-      let string = v8_string.to_rust_string_lossy(self.scope);
+      let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
     }
   }
-
-  wip!(deserialize_bytes);
-  wip!(deserialize_byte_buf);
 
   fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
   where
@@ -286,8 +275,14 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    // TODO: error on length mismatch
     let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+    if obj.is_array() {
+      // If the obj is an array fail if it's length differs from the tuple length
+      let array = v8::Local::<v8::Array>::try_from(self.input).unwrap();
+      if array.length() as usize != len {
+        return Err(Error::LengthMismatch);
+      }
+    }
     let seq = SeqAccess {
       pos: 0,
       len: len as u32,
@@ -317,26 +312,33 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     // Assume object, then get_own_property_names
     let obj = v8::Local::<v8::Object>::try_from(self.input)
       .map_err(|_| Error::ExpectedObject)?;
-    let prop_names = obj.get_own_property_names(self.scope);
-    let mut keys: Vec<magic::Value> = match prop_names {
-      Some(names) => from_v8(self.scope, names.into()).unwrap(),
-      None => vec![],
-    };
-    let keys: Vec<v8::Local<v8::Value>> = keys
-      .drain(..)
-      .map(|x| x.into())
-      // Filter keys to drop keys whose value is undefined
-      // TODO: optimize, since this doubles our get calls
-      .filter(|key| !obj.get(self.scope, *key).unwrap().is_undefined())
-      .collect();
 
-    let map = MapAccess {
-      obj,
-      keys,
-      pos: 0,
-      scope: self.scope,
-    };
-    visitor.visit_map(map)
+    if v8::Local::<v8::Map>::try_from(self.input).is_ok() {
+      let pairs_array = v8::Local::<v8::Map>::try_from(self.input)
+        .unwrap()
+        .as_array(self.scope);
+      let map = MapPairsAccess {
+        pos: 0,
+        len: pairs_array.length(),
+        obj: pairs_array,
+        scope: self.scope,
+      };
+      visitor.visit_map(map)
+    } else {
+      let prop_names = obj.get_own_property_names(self.scope);
+      let keys: Vec<magic::Value> = match prop_names {
+        Some(names) => from_v8(self.scope, names.into()).unwrap(),
+        None => vec![],
+      };
+
+      let map = MapObjectAccess {
+        obj,
+        keys: keys.into_iter(),
+        next_value: None,
+        scope: self.scope,
+      };
+      visitor.visit_map(map)
+    }
   }
 
   fn deserialize_struct<V>(
@@ -445,64 +447,104 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     visitor.visit_none()
   }
+
+  fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+      .and_then(|zb| visitor.visit_bytes(&*zb))
+  }
+
+  fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
+  where
+    V: Visitor<'de>,
+  {
+    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+      .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
+  }
 }
 
-struct MapAccess<'a, 'b, 's> {
+struct MapObjectAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'b mut v8::HandleScope<'s>,
-  keys: Vec<v8::Local<'a, v8::Value>>,
-  pos: usize,
+  scope: &'a mut v8::HandleScope<'s>,
+  keys: std::vec::IntoIter<magic::Value<'a>>,
+  next_value: Option<v8::Local<'a, v8::Value>>,
 }
 
-impl<'de> de::MapAccess<'de> for MapAccess<'_, '_, '_> {
+impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
   type Error = Error;
 
   fn next_key_seed<K: de::DeserializeSeed<'de>>(
     &mut self,
     seed: K,
   ) -> Result<Option<K::Value>> {
-    Ok(match self.keys.get(self.pos) {
-      Some(key) => {
-        let mut deserializer = Deserializer::new(self.scope, *key, None);
-        Some(seed.deserialize(&mut deserializer)?)
+    for key in self.keys.by_ref() {
+      let v8_val = self.obj.get(self.scope, key.v8_value).unwrap();
+      if v8_val.is_undefined() {
+        // Historically keys/value pairs with undefined values are not added to the output
+        continue;
       }
-      None => None,
-    })
+      self.next_value = Some(v8_val);
+      let mut deserializer = Deserializer::new(self.scope, key.v8_value, None);
+      let k = seed.deserialize(&mut deserializer)?;
+      return Ok(Some(k));
+    }
+    Ok(None)
   }
 
   fn next_value_seed<V: de::DeserializeSeed<'de>>(
     &mut self,
     seed: V,
   ) -> Result<V::Value> {
-    if self.pos >= self.keys.len() {
-      return Err(Error::LengthMismatch);
-    }
-    let key = self.keys[self.pos];
-    self.pos += 1;
-    let v8_val = self.obj.get(self.scope, key).unwrap();
+    let v8_val = self.next_value.take().unwrap();
     let mut deserializer = Deserializer::new(self.scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
 
-  fn next_entry_seed<
-    K: de::DeserializeSeed<'de>,
-    V: de::DeserializeSeed<'de>,
-  >(
+  fn size_hint(&self) -> Option<usize> {
+    Some(self.keys.len())
+  }
+}
+
+struct MapPairsAccess<'a, 's> {
+  obj: v8::Local<'a, v8::Array>,
+  pos: u32,
+  len: u32,
+  scope: &'a mut v8::HandleScope<'s>,
+}
+
+impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_> {
+  type Error = Error;
+
+  fn next_key_seed<K: de::DeserializeSeed<'de>>(
     &mut self,
-    kseed: K,
-    vseed: V,
-  ) -> Result<Option<(K::Value, V::Value)>> {
-    if self.pos >= self.keys.len() {
-      return Ok(None);
+    seed: K,
+  ) -> Result<Option<K::Value>> {
+    if self.pos < self.len {
+      let v8_key = self.obj.get_index(self.scope, self.pos).unwrap();
+      self.pos += 1;
+      let mut deserializer = Deserializer::new(self.scope, v8_key, None);
+      let k = seed.deserialize(&mut deserializer)?;
+      Ok(Some(k))
+    } else {
+      Ok(None)
     }
-    let v8_key = self.keys[self.pos];
+  }
+
+  fn next_value_seed<V: de::DeserializeSeed<'de>>(
+    &mut self,
+    seed: V,
+  ) -> Result<V::Value> {
+    debug_assert!(self.pos < self.len);
+    let v8_val = self.obj.get_index(self.scope, self.pos).unwrap();
     self.pos += 1;
-    let mut kdeserializer = Deserializer::new(self.scope, v8_key, None);
-    Ok(Some((kseed.deserialize(&mut kdeserializer)?, {
-      let v8_val = self.obj.get(self.scope, v8_key).unwrap();
-      let mut deserializer = Deserializer::new(self.scope, v8_val, None);
-      vseed.deserialize(&mut deserializer)?
-    })))
+    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    seed.deserialize(&mut deserializer)
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    Some((self.len - self.pos) as usize / 2)
   }
 }
 
@@ -580,7 +622,7 @@ struct EnumAccess<'a, 'b, 's> {
   // p1: std::marker::PhantomData<&'x ()>,
 }
 
-impl<'de, 'a, 'b, 's, 'x> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
+impl<'de, 'a, 'b, 's> de::EnumAccess<'de> for EnumAccess<'a, 'b, 's> {
   type Error = Error;
   type Variant = VariantDeserializer<'a, 'b, 's>;
 
@@ -660,4 +702,67 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
     .map(|(i, w)| (*w as f64) * 2.0f64.powi(64 * i as i32))
     .sum();
   sign * x
+}
+
+pub fn to_utf8(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> String {
+  to_utf8_fast(s, scope).unwrap_or_else(|| to_utf8_slow(s, scope))
+}
+
+fn to_utf8_fast(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> Option<String> {
+  // Over-allocate by 20% to avoid checking string twice
+  let len = s.length();
+  let capacity = (len as f64 * 1.2) as usize;
+  let mut buf = Vec::with_capacity(capacity);
+  let mut nchars = 0;
+  let data = buf.as_mut_ptr();
+  let length = s.write_utf8(
+    scope,
+    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
+    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
+    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
+    // are sufficiently "initialized" for writes
+    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+  if nchars < len {
+    return None;
+  }
+  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+  unsafe {
+    buf.set_len(length);
+    Some(String::from_utf8_unchecked(buf))
+  }
+}
+
+fn to_utf8_slow(
+  s: v8::Local<v8::String>,
+  scope: &mut v8::HandleScope,
+) -> String {
+  let capacity = s.utf8_length(scope);
+  let mut buf = Vec::with_capacity(capacity);
+  let data = buf.as_mut_ptr();
+  let length = s.write_utf8(
+    scope,
+    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
+    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
+    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
+    // are sufficiently "initialized" for writes
+    unsafe { std::slice::from_raw_parts_mut(data, capacity) },
+    None,
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+  // SAFETY: write_utf8 guarantees `length` bytes are initialized & valid utf8
+  unsafe {
+    buf.set_len(length);
+    String::from_utf8_unchecked(buf)
+  }
 }

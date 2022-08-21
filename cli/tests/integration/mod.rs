@@ -15,6 +15,8 @@ use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
 use tokio::task::LocalSet;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 
 #[macro_export]
 macro_rules! itest(
@@ -72,6 +74,8 @@ mod eval;
 mod fmt;
 #[path = "info_tests.rs"]
 mod info;
+#[path = "init_tests.rs"]
+mod init;
 #[path = "inspector_tests.rs"]
 mod inspector;
 #[path = "install_tests.rs"]
@@ -80,6 +84,8 @@ mod install;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "npm_tests.rs"]
+mod npm;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
@@ -148,18 +154,13 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("cache")
+    .arg("--check=all")
     .arg("-L")
     .arg("debug")
     .arg(module_url.to_string())
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
-
-  let out = std::str::from_utf8(&output.stderr).unwrap();
-  // Check if file and dependencies are written successfully
-  assert!(out.contains("host.writeFile(\"deno://subdir/print_hello.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://subdir/mod2.js\")"));
-  assert!(out.contains("host.writeFile(\"deno://006_url_imports.js\")"));
 
   let prg = util::deno_exe_path();
   let output = Command::new(&prg)
@@ -295,7 +296,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -319,7 +319,6 @@ fn ts_dependency_recompilation() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&ats)
@@ -344,7 +343,6 @@ fn ts_no_recheck_on_redirect() {
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let mut initial = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -358,7 +356,6 @@ fn ts_no_recheck_on_redirect() {
 
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
-  cmd.env("DENO_FUTURE_CHECK", "1");
   let output = cmd
     .current_dir(util::testdata_path())
     .arg("run")
@@ -368,44 +365,6 @@ fn ts_no_recheck_on_redirect() {
     .expect("failed to spawn script");
 
   assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
-}
-
-#[test]
-fn ts_reload() {
-  let hello_ts = util::testdata_path().join("002_hello.ts");
-  assert!(hello_ts.is_file());
-
-  let deno_dir = TempDir::new();
-  let mut initial = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(&hello_ts)
-    .spawn()
-    .expect("failed to spawn script");
-  let status_initial =
-    initial.wait().expect("failed to wait for child process");
-  assert!(status_initial.success());
-
-  let output = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg("--reload")
-    .arg("-L")
-    .arg("debug")
-    .arg(&hello_ts)
-    .output()
-    .expect("failed to spawn script");
-
-  // check the output of the the bundle program.
-  let output_path = hello_ts.canonicalize().unwrap();
-  assert!(
-    dbg!(std::str::from_utf8(&output.stderr).unwrap().trim()).contains(
-      &format!(
-        "host.getSourceFile(\"{}\", Latest)",
-        url::Url::from_file_path(&output_path).unwrap().as_str()
-      )
-    )
-  );
 }
 
 #[test]
@@ -439,22 +398,6 @@ console.log("finish");
   // check that program did not run for 10 seconds
   // for timeout to clear
   assert!(end - start < Duration::new(10, 0));
-}
-
-#[test]
-fn compiler_api() {
-  let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--reload")
-    .arg("--allow-read")
-    .arg("compiler_api_test.ts")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
 }
 
 #[test]
@@ -535,6 +478,12 @@ itest!(deno_land_unsafe_ssl {
   args:
     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
   output: "deno_land_unsafe_ssl.ts.out",
+});
+
+itest!(ip_address_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 ip_address_unsafe_ssl.ts",
+  output: "ip_address_unsafe_ssl.ts.out",
 });
 
 itest!(localhost_unsafe_ssl {
@@ -662,7 +611,6 @@ fn cafile_bundle_remote_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
@@ -719,6 +667,46 @@ fn websocketstream() {
 }
 
 #[test]
+fn websocketstream_ping() {
+  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_ping_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
+  let (stream, _) = server.accept().unwrap();
+  let mut socket = tungstenite::accept(stream).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("A")))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Ping(vec![]))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("B")))
+    .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, tungstenite::Message::Pong(vec![]));
+  socket
+    .write_message(tungstenite::Message::Text(String::from("C")))
+    .unwrap();
+  socket.close(None).unwrap();
+
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
 fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("websocket_server_multi_field_connection_header_test.ts");
@@ -746,10 +734,12 @@ fn websocket_server_multi_field_connection_header() {
     .uri("ws://localhost:4319")
     .body(())
     .unwrap();
-  assert!(
+  let (mut socket, _) =
     deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
-      .is_ok()
-  );
+      .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
+  socket.close(None).unwrap();
   assert!(child.wait().unwrap().success());
 }
 
@@ -811,9 +801,6 @@ fn set_raw_should_not_panic_on_no_tty() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_resolve_dns() {
-  use std::collections::BTreeMap;
-  use std::net::Ipv4Addr;
-  use std::net::Ipv6Addr;
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
@@ -821,19 +808,9 @@ async fn test_resolve_dns() {
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
-  use trust_dns_client::rr::LowerName;
-  use trust_dns_client::rr::RecordType;
-  use trust_dns_client::rr::RrKey;
   use trust_dns_server::authority::Catalog;
   use trust_dns_server::authority::ZoneType;
-  use trust_dns_server::proto::rr::rdata::mx::MX;
-  use trust_dns_server::proto::rr::rdata::soa::SOA;
-  use trust_dns_server::proto::rr::rdata::srv::SRV;
-  use trust_dns_server::proto::rr::rdata::txt::TXT;
-  use trust_dns_server::proto::rr::record_data::RData;
-  use trust_dns_server::proto::rr::resource::Record;
   use trust_dns_server::proto::rr::Name;
-  use trust_dns_server::proto::rr::RecordSet;
   use trust_dns_server::store::in_memory::InMemoryAuthority;
   use trust_dns_server::ServerFuture;
 
@@ -841,137 +818,25 @@ async fn test_resolve_dns() {
 
   // Setup DNS server for testing
   async fn run_dns_server(tx: oneshot::Sender<()>) {
-    let catalog = {
-      let records = {
-        let mut map = BTreeMap::new();
-        let lookup_name = "www.example.com".parse::<Name>().unwrap();
-        let lookup_name_lower = LowerName::new(&lookup_name);
-
-        // Inserts SOA record
-        let soa = SOA::new(
-          Name::from_str("net").unwrap(),
-          Name::from_str("example").unwrap(),
-          0,
-          i32::MAX,
-          i32::MAX,
-          i32::MAX,
-          0,
-        );
-        let rdata = RData::SOA(soa);
-        let record = Record::from_rdata(Name::new(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map
-          .insert(RrKey::new(Name::root().into(), RecordType::SOA), record_set);
-
-        // Inserts A record
-        let rdata = RData::A(Ipv4Addr::new(1, 2, 3, 4));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::A),
-          record_set,
-        );
-
-        // Inserts AAAA record
-        let rdata = RData::AAAA(Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::AAAA),
-          record_set,
-        );
-
-        // Inserts ANAME record
-        let rdata = RData::ANAME(Name::from_str("aname.com").unwrap());
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::ANAME),
-          record_set,
-        );
-
-        // Inserts CNAME record
-        let rdata = RData::CNAME(Name::from_str("cname.com").unwrap());
-        let record =
-          Record::from_rdata(Name::from_str("foo").unwrap(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::CNAME),
-          record_set,
-        );
-
-        // Inserts MX record
-        let rdata = RData::MX(MX::new(0, Name::from_str("mx.com").unwrap()));
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::MX),
-          record_set,
-        );
-
-        // Inserts NS record
-        let rdata = RData::NS(Name::from_str("ns1.ns.com").unwrap());
-        let record = Record::from_rdata(lookup_name.clone(), u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::NS),
-          record_set,
-        );
-
-        // Inserts PTR record
-        let rdata = RData::PTR(Name::from_str("ptr.com").unwrap());
-        let record = Record::from_rdata(
-          Name::from_str("5.6.7.8").unwrap(),
-          u32::MAX,
-          rdata,
-        );
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new("5.6.7.8".parse().unwrap(), RecordType::PTR),
-          record_set,
-        );
-
-        // Inserts SRV record
-        let rdata = RData::SRV(SRV::new(
-          0,
-          100,
-          1234,
-          Name::from_str("srv.com").unwrap(),
-        ));
-        let record = Record::from_rdata(
-          Name::from_str("_Service._TCP.example.com").unwrap(),
-          u32::MAX,
-          rdata,
-        );
-        let record_set = RecordSet::from(record);
-        map.insert(
-          RrKey::new(lookup_name_lower.clone(), RecordType::SRV),
-          record_set,
-        );
-
-        // Inserts TXT record
-        let rdata =
-          RData::TXT(TXT::new(vec!["foo".to_string(), "bar".to_string()]));
-        let record = Record::from_rdata(lookup_name, u32::MAX, rdata);
-        let record_set = RecordSet::from(record);
-        map.insert(RrKey::new(lookup_name_lower, RecordType::TXT), record_set);
-
-        map
-      };
-
-      let authority = Box::new(Arc::new(
-        InMemoryAuthority::new(
-          Name::from_str("com").unwrap(),
-          records,
-          ZoneType::Primary,
-          false,
-        )
+    let zone_file =
+      fs::read_to_string(util::testdata_path().join("resolve_dns.zone.in"))
+        .unwrap();
+    let lexer = Lexer::new(&zone_file);
+    let records = Parser::new().parse(
+      lexer,
+      Some(Name::from_str("example.com").unwrap()),
+      None,
+    );
+    if records.is_err() {
+      panic!("failed to parse: {:?}", records.err())
+    }
+    let (origin, records) = records.unwrap();
+    let authority = Box::new(Arc::new(
+      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
         .unwrap(),
-      ));
-      let mut c = Catalog::new();
-      c.upsert(Name::root().into(), authority);
-      c
-    };
+    ));
+    let mut catalog: Catalog = Catalog::new();
+    catalog.upsert(Name::root().into(), authority);
 
     let mut server_fut = ServerFuture::new(catalog);
     let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
@@ -998,7 +863,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net")
@@ -1011,6 +875,7 @@ async fn test_resolve_dns() {
       .unwrap();
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}", err);
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
@@ -1025,7 +890,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
@@ -1052,7 +916,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("--allow-net=deno.land")
@@ -1076,7 +939,6 @@ async fn test_resolve_dns() {
     let output = util::deno_cmd()
       .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
-      .env("DENO_FUTURE_CHECK", "1")
       .arg("run")
       .arg("--check")
       .arg("resolve_dns.ts")

@@ -15,7 +15,11 @@
   const { isProxy } = Deno.core;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
-  const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
+  const {
+    byteLowerCase,
+  } = window.__bootstrap.infra;
+  const { HTTP_TAB_OR_SPACE, regexMatcher, serializeJSValueToJSONString } =
+    window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const { extractMimeType } = window.__bootstrap.mimesniff;
@@ -157,6 +161,67 @@
     return resp;
   }
 
+  /**
+   * https://fetch.spec.whatwg.org#initialize-a-response
+   * @param {Response} response
+   * @param {ResponseInit} init
+   * @param {{ body: __bootstrap.fetchBody.InnerBody, contentType: string | null } | null} bodyWithType
+   */
+  function initializeAResponse(response, init, bodyWithType) {
+    // 1.
+    if ((init.status < 200 || init.status > 599) && init.status != 101) {
+      throw new RangeError(
+        `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
+      );
+    }
+
+    // 2.
+    if (
+      init.statusText &&
+      !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+    ) {
+      throw new TypeError("Status text is not valid.");
+    }
+
+    // 3.
+    response[_response].status = init.status;
+
+    // 4.
+    response[_response].statusMessage = init.statusText;
+    // 5.
+    /** @type {__bootstrap.headers.Headers} */
+    const headers = response[_headers];
+    if (init.headers) {
+      fillHeaders(headers, init.headers);
+    }
+
+    // 6.
+    if (bodyWithType !== null) {
+      if (nullBodyStatus(response[_response].status)) {
+        throw new TypeError(
+          "Response with null body status cannot have body",
+        );
+      }
+
+      const { body, contentType } = bodyWithType;
+      response[_response].body = body;
+
+      if (contentType !== null) {
+        let hasContentType = false;
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          if (byteLowerCase(list[i][0]) === "content-type") {
+            hasContentType = true;
+            break;
+          }
+        }
+        if (!hasContentType) {
+          ArrayPrototypePush(list, ["Content-Type", contentType]);
+        }
+      }
+    }
+  }
+
   class Response {
     get [_mimeType]() {
       const values = getDecodeSplitHeader(
@@ -218,10 +283,36 @@
     }
 
     /**
+     * @param {any} data
+     * @param {ResponseInit} init
+     * @returns {Response}
+     */
+    static json(data, init = {}) {
+      const prefix = "Failed to call 'Response.json'";
+      data = webidl.converters.any(data);
+      init = webidl.converters["ResponseInit_fast"](init, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const str = serializeJSValueToJSONString(data);
+      const res = extractBody(str);
+      res.contentType = "application/json";
+      const response = webidl.createBranded(Response);
+      response[_response] = newInnerResponse();
+      response[_headers] = headersFromHeaderList(
+        response[_response].headerList,
+        "response",
+      );
+      initializeAResponse(response, init, res);
+      return response;
+    }
+
+    /**
      * @param {BodyInit | null} body
      * @param {ResponseInit} init
      */
-    constructor(body = null, init = {}) {
+    constructor(body = null, init = undefined) {
       const prefix = "Failed to construct 'Response'";
       body = webidl.converters["BodyInit_DOMString?"](body, {
         prefix,
@@ -232,40 +323,18 @@
         context: "Argument 2",
       });
 
-      if ((init.status < 200 || init.status > 599) && init.status != 101) {
-        throw new RangeError(
-          `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599].`,
-        );
-      }
+      this[_response] = newInnerResponse();
+      this[_headers] = headersFromHeaderList(
+        this[_response].headerList,
+        "response",
+      );
 
-      if (
-        init.statusText &&
-        !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
-      ) {
-        throw new TypeError("Status text is not valid.");
-      }
-
-      this[webidl.brand] = webidl.brand;
-      const response = newInnerResponse(init.status, init.statusText);
-      /** @type {InnerResponse} */
-      this[_response] = response;
-      /** @type {Headers} */
-      this[_headers] = headersFromHeaderList(response.headerList, "response");
-      if (init.headers) {
-        fillHeaders(this[_headers], init.headers);
-      }
+      let bodyWithType = null;
       if (body !== null) {
-        if (nullBodyStatus(response.status)) {
-          throw new TypeError(
-            "Response with null body status cannot have body",
-          );
-        }
-        const res = extractBody(body);
-        response.body = res.body;
-        if (res.contentType !== null && !this[_headers].has("content-type")) {
-          this[_headers].append("Content-Type", res.contentType);
-        }
+        bodyWithType = extractBody(body);
       }
+      initializeAResponse(this, init, bodyWithType);
+      this[webidl.brand] = webidl.brand;
     }
 
     /**

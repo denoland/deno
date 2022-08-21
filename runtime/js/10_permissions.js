@@ -5,7 +5,7 @@
   const {
     Event,
     EventTarget,
-    Deno: { core },
+    Deno: { core: { ops } },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
   const { pathFromURL } = window.__bootstrap.util;
@@ -48,7 +48,7 @@
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
-    return core.opSync("op_query_permission", desc);
+    return ops.op_query_permission(desc);
   }
 
   /**
@@ -56,7 +56,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
-    return core.opSync("op_revoke_permission", desc);
+    return ops.op_revoke_permission(desc);
   }
 
   /**
@@ -64,7 +64,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
-    return core.opSync("op_request_permission", desc);
+    return ops.op_request_permission(desc);
   }
 
   class PermissionStatus extends EventTarget {
@@ -149,7 +149,7 @@
    * @returns {desc is Deno.PermissionDescriptor}
    */
   function isValidDescriptor(desc) {
-    return desc && desc !== null &&
+    return typeof desc === "object" && desc !== null &&
       ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
@@ -164,7 +164,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -185,7 +185,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -204,7 +204,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }

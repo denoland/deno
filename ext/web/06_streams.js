@@ -569,10 +569,14 @@
   /** @param {WritableStream} stream */
   function initializeWritableStream(stream) {
     stream[_state] = "writable";
-    stream[_storedError] = stream[_writer] = stream[_controller] =
-      stream[_inFlightWriteRequest] = stream[_closeRequest] =
-        stream[_inFlightCloseRequest] = stream[_pendingAbortRequest] =
-          undefined;
+    stream[_storedError] =
+      stream[_writer] =
+      stream[_controller] =
+      stream[_inFlightWriteRequest] =
+      stream[_closeRequest] =
+      stream[_inFlightCloseRequest] =
+      stream[_pendingAbortRequest] =
+        undefined;
     stream[_writeRequests] = [];
     stream[_backpressure] = false;
   }
@@ -643,13 +647,30 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
-  function readableStreamForRid(rid) {
-    const stream = new ReadableStream({
+  /**
+   * @callback unrefCallback
+   * @param {Promise} promise
+   * @returns {undefined}
+   */
+  /**
+   * @param {number} rid
+   * @param {unrefCallback=} unrefCallback
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRid(rid, unrefCallback) {
+    const stream = webidl.createBranded(ReadableStream);
+    stream[_maybeRid] = rid;
+    const underlyingSource = {
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
-          const bytesRead = await core.read(rid, v);
+          const promise = core.read(rid, v);
+
+          unrefCallback?.(promise);
+
+          const bytesRead = await promise;
+
           if (bytesRead === 0) {
             core.tryClose(rid);
             controller.close();
@@ -666,9 +687,15 @@
         core.tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
-    });
+    };
+    initializeReadableStream(stream);
+    setUpReadableByteStreamControllerFromUnderlyingSource(
+      stream,
+      underlyingSource,
+      underlyingSource,
+      0,
+    );
 
-    stream[_maybeRid] = rid;
     return stream;
   }
 
@@ -695,7 +722,6 @@
     }
     return true;
   }
-
   /**
    * @template T
    * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
@@ -2944,8 +2970,11 @@
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     resetQueue(controller);
-    controller[_started] = controller[_closeRequested] =
-      controller[_pullAgain] = controller[_pulling] = false;
+    controller[_started] =
+      controller[_closeRequested] =
+      controller[_pullAgain] =
+      controller[_pulling] =
+        false;
     controller[_strategySizeAlgorithm] = sizeAlgorithm;
     controller[_strategyHWM] = highWaterMark;
     controller[_pullAlgorithm] = pullAlgorithm;
@@ -5875,6 +5904,7 @@
 
   window.__bootstrap.streams = {
     // Non-Public
+    _state,
     isReadableStreamDisturbed,
     errorReadableStream,
     createProxy,

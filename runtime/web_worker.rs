@@ -5,7 +5,7 @@ use crate::js;
 use crate::ops;
 use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
-use crate::tokio_util::run_basic;
+use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -31,6 +31,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_node::DenoDirNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -40,7 +41,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
@@ -312,7 +312,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
@@ -323,14 +322,14 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -338,7 +337,6 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub maybe_exit_code: Option<Arc<AtomicI32>>,
   pub stdio: Stdio,
 }
 
@@ -386,7 +384,7 @@ impl WebWorker {
         Some(main_module.clone()),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -395,7 +393,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -411,33 +409,30 @@ impl WebWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
+        options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
-      ops::fs_events::init().enabled(options.use_deno_namespace),
-      ops::fs::init().enabled(options.use_deno_namespace),
+      ops::fs_events::init(),
+      ops::fs::init(),
       ops::io::init(),
-      ops::io::init_stdio(options.stdio).enabled(options.use_deno_namespace),
-      deno_tls::init().enabled(options.use_deno_namespace),
+      ops::io::init_stdio(options.stdio),
+      deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
-      )
-      .enabled(options.use_deno_namespace),
-      ops::os::init(Some(
-        options
-          .maybe_exit_code
-          .expect("Worker has access to OS ops but exit code was not passed."),
-      ))
-      .enabled(options.use_deno_namespace),
-      ops::permissions::init().enabled(options.use_deno_namespace),
-      ops::process::init().enabled(options.use_deno_namespace),
-      ops::spawn::init().enabled(options.use_deno_namespace),
-      ops::signal::init().enabled(options.use_deno_namespace),
-      ops::tty::init().enabled(options.use_deno_namespace),
-      deno_http::init().enabled(options.use_deno_namespace),
-      ops::http::init().enabled(options.use_deno_namespace),
+      ),
+      deno_node::init(unstable, options.npm_resolver),
+      ops::os::init_for_worker(),
+      ops::permissions::init(),
+      ops::process::init(),
+      ops::spawn::init(),
+      ops::signal::init(),
+      ops::tty::init(),
+      deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -480,7 +475,6 @@ impl WebWorker {
         js_runtime,
         name,
         internal_handle,
-        use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
@@ -493,10 +487,9 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
+      "bootstrap.workerRuntime({}, \"{}\", \"{}\")",
       options.as_json(),
       self.name,
-      self.use_deno_namespace,
       self.id
     );
     self
@@ -526,24 +519,26 @@ impl WebWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
+  }
+
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
@@ -554,7 +549,7 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
+    let id = self.preload_side_module(module_specifier).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       biased;
@@ -679,7 +674,8 @@ pub fn run_web_worker(
   worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
-  preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
@@ -712,8 +708,20 @@ pub fn run_web_worker(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      match worker.preload_module(&specifier, true).await {
+      match worker.preload_main_module(&specifier).await {
         Ok(id) => {
+          worker = match (pre_execute_module_cb)(worker).await {
+            Ok(worker) => worker,
+            Err(e) => {
+              print_worker_error(&e, &name, format_js_error_fn.as_deref());
+              internal_handle
+                .post_event(WorkerControlEvent::TerminalError(e))
+                .expect("Failed to post message to host");
+
+              // Failure to execute script is a terminal error, bye, bye.
+              return Ok(());
+            }
+          };
           worker.start_polling_for_messages();
           worker.execute_main_module(id).await
         }
@@ -746,5 +754,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_basic(fut)
+  run_local(fut)
 }

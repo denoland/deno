@@ -10,15 +10,13 @@ declare namespace Deno {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): any;
 
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): Promise<any>;
 
     /** Mark following promise as "ref", ie. event loop won't exit
@@ -30,10 +28,10 @@ declare namespace Deno {
     function unrefOps(promiseId: number): void;
 
     /**
-     * Retrieve a list of all registered ops, in the form of a map that maps op
+     * List of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.
      */
-    function ops(): Record<string, number>;
+    const ops: Record<string, (...args: unknown[]) => any>;
 
     /**
      * Retrieve a list of all open resources, in the form of a map that maps
@@ -64,12 +62,14 @@ declare namespace Deno {
     function write(rid: number, buf: Uint8Array): Promise<number>;
 
     /**
+     * Print a message to stdout or stderr
+     */
+    function print(message: string, is_err?: boolean): void;
+
+    /**
      * Shutdown a resource
      */
     function shutdown(rid: number): Promise<void>;
-
-    /** Get heap stats for current isolate/worker */
-    function heapStats(): Record<string, number>;
 
     /** Encode a string to its Uint8Array representation. */
     function encode(input: string): Uint8Array;

@@ -3,9 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-
 use deno_core::Extension;
-use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -14,10 +12,10 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
-use wgpu_types::PowerPreference;
 
 use error::DomExceptionOperationError;
 use error::WebGpuResult;
@@ -130,6 +128,12 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::DEPTH_CLIP_CONTROL) {
     return_features.push("depth-clip-control");
   }
+  if features.contains(wgpu_types::Features::DEPTH24UNORM_STENCIL8) {
+    return_features.push("depth24unorm-stencil8");
+  }
+  if features.contains(wgpu_types::Features::DEPTH32FLOAT_STENCIL8) {
+    return_features.push("depth32float-stencil8");
+  }
   if features.contains(wgpu_types::Features::PIPELINE_STATISTICS_QUERY) {
     return_features.push("pipeline-statistics-query");
   }
@@ -147,6 +151,9 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   }
   if features.contains(wgpu_types::Features::INDIRECT_FIRST_INSTANCE) {
     return_features.push("indirect-first-instance");
+  }
+  if features.contains(wgpu_types::Features::SHADER_FLOAT16) {
+    return_features.push("shader-f16")
   }
 
   // extended from spec
@@ -172,18 +179,6 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
     ) {
         return_features.push("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing");
     }
-  if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
-    return_features.push("unsized-binding-array");
-  }
-  if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT) {
-    return_features.push("multi-draw-indirect");
-  }
-  if features.contains(wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT) {
-    return_features.push("multi-draw-indirect-count");
-  }
-  if features.contains(wgpu_types::Features::PUSH_CONSTANTS) {
-    return_features.push("push-constants");
-  }
   if features.contains(wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER) {
     return_features.push("address-mode-clamp-to-border");
   }
@@ -198,30 +193,20 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT) {
     return_features.push("vertex-attribute-64bit");
   }
-  if features.contains(wgpu_types::Features::CONSERVATIVE_RASTERIZATION) {
-    return_features.push("conservative-rasterization");
-  }
   if features.contains(wgpu_types::Features::VERTEX_WRITABLE_STORAGE) {
     return_features.push("vertex-writable-storage");
   }
-  if features.contains(wgpu_types::Features::CLEAR_COMMANDS) {
+  if features.contains(wgpu_types::Features::CLEAR_TEXTURE) {
     return_features.push("clear-texture");
-  }
-  if features.contains(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH) {
-    return_features.push("spirv-shader-passthrough");
   }
   if features.contains(wgpu_types::Features::SHADER_PRIMITIVE_INDEX) {
     return_features.push("shader-primitive-index");
   }
+  if features.contains(wgpu_types::Features::PARTIALLY_BOUND_BINDING_ARRAY) {
+    return_features.push("shader-primitive-index");
+  }
 
   return_features
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestAdapterArgs {
-  power_preference: Option<wgpu_types::PowerPreference>,
-  force_fallback_adapter: bool,
 }
 
 #[derive(Serialize)]
@@ -235,7 +220,6 @@ pub enum GpuAdapterDeviceOrErr {
 #[serde(rename_all = "camelCase")]
 pub struct GpuAdapterDevice {
   rid: ResourceId,
-  name: Option<String>,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
   is_software: bool,
@@ -244,15 +228,15 @@ pub struct GpuAdapterDevice {
 #[op]
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
-  args: RequestAdapterArgs,
+  power_preference: Option<wgpu_types::PowerPreference>,
+  force_fallback_adapter: bool,
 ) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
-  let backends = std::env::var("DENO_WEBGPU_BACKEND")
-    .ok()
-    .map_or_else(wgpu_types::Backends::all, |s| {
-      wgpu_core::instance::parse_backends_from_comma_list(&s)
-    });
+  let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
+    |_| wgpu_types::Backends::all(),
+    |s| wgpu_core::instance::parse_backends_from_comma_list(&s),
+  );
   let instance = if let Some(instance) = state.try_borrow::<Instance>() {
     instance
   } else {
@@ -265,11 +249,8 @@ pub async fn op_webgpu_request_adapter(
   };
 
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
-    power_preference: match args.power_preference {
-      Some(power_preference) => power_preference,
-      None => PowerPreference::default(),
-    },
-    force_fallback_adapter: args.force_fallback_adapter,
+    power_preference: power_preference.unwrap_or_default(),
+    force_fallback_adapter,
     compatible_surface: None, // windowless
   };
   let res = instance.request_adapter(
@@ -287,7 +268,6 @@ pub async fn op_webgpu_request_adapter(
       })
     }
   };
-  let name = gfx_select!(adapter => instance.adapter_get_info(adapter))?.name;
   let adapter_features =
     gfx_select!(adapter => instance.adapter_features(adapter))?;
   let features = deserialize_features(&adapter_features);
@@ -298,20 +278,10 @@ pub async fn op_webgpu_request_adapter(
 
   Ok(GpuAdapterDeviceOrErr::Features(GpuAdapterDevice {
     rid,
-    name: Some(name),
     features,
     limits: adapter_limits,
     is_software: false,
   }))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestDeviceArgs {
-  adapter_rid: ResourceId,
-  label: Option<String>,
-  required_features: Option<GpuRequiredFeatures>,
-  required_limits: Option<wgpu_types::Limits>,
 }
 
 #[derive(Deserialize)]
@@ -323,6 +293,14 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
     features.set(
       wgpu_types::Features::DEPTH_CLIP_CONTROL,
       required_features.0.contains("depth-clip-control"),
+    );
+    features.set(
+      wgpu_types::Features::DEPTH24UNORM_STENCIL8,
+      required_features.0.contains("depth24unorm-stencil8"),
+    );
+    features.set(
+      wgpu_types::Features::DEPTH32FLOAT_STENCIL8,
+      required_features.0.contains("depth32float-stencil8"),
     );
     features.set(
       wgpu_types::Features::PIPELINE_STATISTICS_QUERY,
@@ -347,6 +325,10 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
     features.set(
       wgpu_types::Features::INDIRECT_FIRST_INSTANCE,
       required_features.0.contains("indirect-first-instance"),
+    );
+    features.set(
+      wgpu_types::Features::SHADER_FLOAT16,
+      required_features.0.contains("shader-f16"),
     );
 
     // extended from spec
@@ -381,22 +363,6 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
                 .contains("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing"),
         );
     features.set(
-      wgpu_types::Features::UNSIZED_BINDING_ARRAY,
-      required_features.0.contains("unsized-binding-array"),
-    );
-    features.set(
-      wgpu_types::Features::MULTI_DRAW_INDIRECT,
-      required_features.0.contains("multi-draw-indirect"),
-    );
-    features.set(
-      wgpu_types::Features::MULTI_DRAW_INDIRECT_COUNT,
-      required_features.0.contains("multi-draw-indirect-count"),
-    );
-    features.set(
-      wgpu_types::Features::PUSH_CONSTANTS,
-      required_features.0.contains("push-constants"),
-    );
-    features.set(
       wgpu_types::Features::ADDRESS_MODE_CLAMP_TO_BORDER,
       required_features.0.contains("address-mode-clamp-to-border"),
     );
@@ -415,24 +381,22 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
       required_features.0.contains("vertex-attribute-64bit"),
     );
     features.set(
-      wgpu_types::Features::CONSERVATIVE_RASTERIZATION,
-      required_features.0.contains("conservative-rasterization"),
-    );
-    features.set(
       wgpu_types::Features::VERTEX_WRITABLE_STORAGE,
       required_features.0.contains("vertex-writable-storage"),
     );
     features.set(
-      wgpu_types::Features::CLEAR_COMMANDS,
+      wgpu_types::Features::CLEAR_TEXTURE,
       required_features.0.contains("clear-commands"),
-    );
-    features.set(
-      wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH,
-      required_features.0.contains("spirv-shader-passthrough"),
     );
     features.set(
       wgpu_types::Features::SHADER_PRIMITIVE_INDEX,
       required_features.0.contains("shader-primitive-index"),
+    );
+    features.set(
+      wgpu_types::Features::PARTIALLY_BOUND_BINDING_ARRAY,
+      required_features
+        .0
+        .contains("partially-bound-binding-array"),
     );
 
     features
@@ -442,19 +406,21 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
 #[op]
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
-  args: RequestDeviceArgs,
+  adapter_rid: ResourceId,
+  label: Option<String>,
+  required_features: GpuRequiredFeatures,
+  required_limits: Option<wgpu_types::Limits>,
 ) -> Result<GpuAdapterDevice, AnyError> {
   let mut state = state.borrow_mut();
-  let adapter_resource = state
-    .resource_table
-    .get::<WebGpuAdapter>(args.adapter_rid)?;
+  let adapter_resource =
+    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.0;
   let instance = state.borrow::<Instance>();
 
   let descriptor = wgpu_types::DeviceDescriptor {
-    label: args.label.map(Cow::from),
-    features: args.required_features.map(Into::into).unwrap_or_default(),
-    limits: args.required_limits.map(Into::into).unwrap_or_default(),
+    label: label.map(Cow::from),
+    features: required_features.into(),
+    limits: required_limits.unwrap_or_default(),
   };
 
   let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(
@@ -476,11 +442,40 @@ pub async fn op_webgpu_request_device(
 
   Ok(GpuAdapterDevice {
     rid,
-    name: None,
     features,
     limits,
     // TODO(lucacasonato): report correctly from wgpu
     is_software: false,
+  })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GPUAdapterInfo {
+  vendor: String,
+  architecture: String,
+  device: String,
+  description: String,
+}
+
+#[op]
+pub async fn op_webgpu_request_adapter_info(
+  state: Rc<RefCell<OpState>>,
+  adapter_rid: ResourceId,
+) -> Result<GPUAdapterInfo, AnyError> {
+  let state = state.borrow_mut();
+  let adapter_resource =
+    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
+  let adapter = adapter_resource.0;
+  let instance = state.borrow::<Instance>();
+
+  let info = gfx_select!(adapter => instance.adapter_get_info(adapter))?;
+
+  Ok(GPUAdapterInfo {
+    vendor: info.vendor.to_string(),
+    architecture: String::new(), // TODO(#2170)
+    device: info.device.to_string(),
+    description: info.name,
   })
 }
 
@@ -562,11 +557,12 @@ pub fn op_webgpu_create_query_set(
   ) => state, WebGpuQuerySet)
 }
 
-fn declare_webgpu_ops() -> Vec<OpDecl> {
+fn declare_webgpu_ops() -> Vec<deno_core::OpDecl> {
   vec![
     // Request device/adapter
     op_webgpu_request_adapter::decl(),
     op_webgpu_request_device::decl(),
+    op_webgpu_request_adapter_info::decl(),
     // Query Set
     op_webgpu_create_query_set::decl(),
     // buffer
@@ -615,7 +611,7 @@ fn declare_webgpu_ops() -> Vec<OpDecl> {
     render_pass::op_webgpu_render_pass_end_pipeline_statistics_query::decl(),
     render_pass::op_webgpu_render_pass_write_timestamp::decl(),
     render_pass::op_webgpu_render_pass_execute_bundles::decl(),
-    render_pass::op_webgpu_render_pass_end_pass::decl(),
+    render_pass::op_webgpu_render_pass_end::decl(),
     render_pass::op_webgpu_render_pass_set_bind_group::decl(),
     render_pass::op_webgpu_render_pass_push_debug_group::decl(),
     render_pass::op_webgpu_render_pass_pop_debug_group::decl(),
@@ -629,13 +625,13 @@ fn declare_webgpu_ops() -> Vec<OpDecl> {
     render_pass::op_webgpu_render_pass_draw_indexed_indirect::decl(),
     // compute_pass
     compute_pass::op_webgpu_compute_pass_set_pipeline::decl(),
-    compute_pass::op_webgpu_compute_pass_dispatch::decl(),
-    compute_pass::op_webgpu_compute_pass_dispatch_indirect::decl(),
+    compute_pass::op_webgpu_compute_pass_dispatch_workgroups::decl(),
+    compute_pass::op_webgpu_compute_pass_dispatch_workgroups_indirect::decl(),
     compute_pass::op_webgpu_compute_pass_begin_pipeline_statistics_query::decl(
     ),
     compute_pass::op_webgpu_compute_pass_end_pipeline_statistics_query::decl(),
     compute_pass::op_webgpu_compute_pass_write_timestamp::decl(),
-    compute_pass::op_webgpu_compute_pass_end_pass::decl(),
+    compute_pass::op_webgpu_compute_pass_end::decl(),
     compute_pass::op_webgpu_compute_pass_set_bind_group::decl(),
     compute_pass::op_webgpu_compute_pass_push_debug_group::decl(),
     compute_pass::op_webgpu_compute_pass_pop_debug_group::decl(),

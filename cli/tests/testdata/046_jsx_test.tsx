@@ -1,6 +1,8 @@
-declare namespace JSX {
-  interface IntrinsicElements {
-    [elemName: string]: any;
+declare global {
+  export namespace JSX {
+    interface IntrinsicElements {
+      [elemName: string]: any;
+    }
   }
 }
 const React = {

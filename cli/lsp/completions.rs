@@ -31,6 +31,7 @@ static FILE_PROTO_RE: Lazy<Regex> =
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
 const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
+pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,13 +98,22 @@ fn to_narrow_lsp_range(
   text_info: &SourceTextInfo,
   range: &deno_graph::Range,
 ) -> lsp::Range {
-  let end_byte_index = text_info.byte_index(LineAndColumnIndex {
-    line_index: range.end.line,
-    column_index: range.end.character,
-  });
+  let end_byte_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
+      line_index: range.end.line,
+      column_index: range.end.character,
+    })
+    .as_byte_index(text_info.range().start);
+  let start_byte_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
+      line_index: range.start.line,
+      column_index: range.start.character,
+    })
+    .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
+  let is_empty = end_byte_index - 1 == start_byte_index;
   let has_trailing_quote =
-    matches!(text_bytes[end_byte_index.0 as usize - 1], b'"' | b'\'');
+    !is_empty && matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
@@ -180,6 +190,9 @@ pub async fn get_import_completions(
         detail: Some("(local)".to_string()),
         sort_text: Some("1".to_string()),
         insert_text: Some(s.to_string()),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
         ..Default::default()
       })
       .collect();
@@ -206,8 +219,8 @@ fn get_base_import_map_completions(
   import_map: &ImportMap,
 ) -> Vec<lsp::CompletionItem> {
   import_map
-    .imports_keys()
-    .iter()
+    .imports()
+    .keys()
     .map(|key| {
       // for some strange reason, keys that start with `/` get stored in the
       // import map as `file:///`, and so when we pull the keys out, we need to
@@ -229,6 +242,9 @@ fn get_base_import_map_completions(
         detail: Some("(import map)".to_string()),
         sort_text: Some(label.clone()),
         insert_text: Some(label),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
         ..Default::default()
       }
     })
@@ -251,7 +267,7 @@ fn get_import_map_completions(
   if !text.is_empty() {
     if let Some(import_map) = maybe_import_map {
       let mut items = Vec::new();
-      for key in import_map.imports_keys() {
+      for key in import_map.imports().keys() {
         // for some reason, the import_map stores keys that begin with `/` as
         // `file:///` in its index, so we have to reverse that here
         let key = if key.starts_with("file://") {
@@ -282,6 +298,9 @@ fn get_import_map_completions(
                     sort_text: Some("1".to_string()),
                     filter_text: Some(new_text),
                     text_edit,
+                    commit_characters: Some(
+                      IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                    ),
                     ..Default::default()
                   })
                 } else {
@@ -309,6 +328,9 @@ fn get_import_map_completions(
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
             text_edit,
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+            ),
             ..Default::default()
           });
         }
@@ -380,6 +402,9 @@ fn get_local_completions(
               filter_text,
               sort_text: Some("1".to_string()),
               text_edit,
+              commit_characters: Some(
+                IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+              ),
               ..Default::default()
             }),
             Ok(file_type) if file_type.is_file() => {
@@ -391,6 +416,9 @@ fn get_local_completions(
                   filter_text,
                   sort_text: Some("1".to_string()),
                   text_edit,
+                  commit_characters: Some(
+                    IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                  ),
                   ..Default::default()
                 })
               } else {
@@ -461,6 +489,9 @@ fn get_workspace_completions(
           detail,
           sort_text: Some("1".to_string()),
           text_edit,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
           ..Default::default()
         })
       } else {
@@ -482,7 +513,7 @@ fn get_workspace_completions(
 /// assert_eq!(relative_specifier(&specifier, &base), "../b.ts");
 /// ```
 ///
-fn relative_specifier(
+pub fn relative_specifier(
   specifier: &ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> String {
@@ -577,7 +608,6 @@ mod tests {
   use deno_graph::Range;
   use std::collections::HashMap;
   use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
   fn mock_documents(
@@ -593,7 +623,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     let http_cache = HttpCache::new(location);
@@ -811,6 +841,9 @@ mod tests {
           },
           new_text: "https://deno.land/x/a/b/c.ts".to_string(),
         })),
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+        ),
         ..Default::default()
       }]
     );

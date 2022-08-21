@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+
 use test_util as util;
 use test_util::TempDir;
 
@@ -123,4 +124,9 @@ itest!(deno_info_types_header_direct {
   args: "info --reload type_directives_01.ts",
   output: "info/types_header.out",
   http_server: true,
+});
+
+itest!(deno_info_with_config_override {
+  args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
+  output: "info/with_config/with_config.out",
 });

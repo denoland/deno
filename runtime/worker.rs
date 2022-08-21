@@ -22,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_node::DenoDirNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -35,6 +36,18 @@ use std::task::Poll;
 
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
+#[derive(Clone, Default)]
+pub struct ExitCode(Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Relaxed);
+  }
+}
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -45,6 +58,7 @@ pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
+  exit_code: ExitCode,
 }
 
 pub struct WorkerOptions {
@@ -52,12 +66,13 @@ pub struct WorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -99,6 +114,7 @@ impl MainWorker {
         Ok(())
       })
       .build();
+    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -111,7 +127,7 @@ impl MainWorker {
         options.bootstrap.location.clone(),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -120,7 +136,7 @@ impl MainWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -135,6 +151,7 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
@@ -148,12 +165,14 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      ops::os::init(None),
+      deno_node::init(unstable, options.npm_resolver),
+      ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -182,6 +201,7 @@ impl MainWorker {
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
+      exit_code,
     }
   }
 
@@ -202,27 +222,34 @@ impl MainWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
   }
 
-  async fn evaluate_module(&mut self, id: ModuleId) -> Result<(), AnyError> {
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
+  }
+
+  /// Executes specified JavaScript module.
+  pub async fn evaluate_module(
+    &mut self,
+    id: ModuleId,
+  ) -> Result<(), AnyError> {
+    self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -247,8 +274,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -259,8 +285,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -315,11 +340,8 @@ impl MainWorker {
 
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
-  pub fn get_exit_code(&mut self) -> i32 {
-    let op_state_rc = self.js_runtime.op_state();
-    let op_state = op_state_rc.borrow();
-    let exit_code = op_state.borrow::<Arc<AtomicI32>>().load(Relaxed);
-    exit_code
+  pub fn get_exit_code(&self) -> i32 {
+    self.exit_code.get()
   }
 
   /// Dispatches "load" event to the JavaScript runtime.
@@ -353,6 +375,24 @@ impl MainWorker {
       "dispatchEvent(new Event('unload'))",
     )
   }
+
+  /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
+  /// indicating if the event was prevented and thus event loop should continue
+  /// running.
+  pub fn dispatch_beforeunload_event(
+    &mut self,
+    script_name: &str,
+  ) -> Result<bool, AnyError> {
+    let value = self.js_runtime.execute_script(
+      script_name,
+      // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
+      // it. Instead we're using global `dispatchEvent` function which will
+      // used a saved reference to global scope.
+      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+    )?;
+    let local_value = value.open(&mut self.js_runtime.handle_scope());
+    Ok(local_value.is_false())
+  }
 }
 
 #[cfg(test)]
@@ -376,19 +416,21 @@ mod tests {
         runtime_version: "x".to_string(),
         ts_version: "x".to_string(),
         unstable: false,
+        user_agent: "x".to_string(),
       },
       extensions: vec![],
-      user_agent: "x".to_string(),
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
       format_js_error_fn: None,
       source_map_getter: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
+      npm_resolver: None,
       get_error_class_fn: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),

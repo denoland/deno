@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayIsArray,
@@ -20,6 +21,7 @@
     ObjectKeys,
     SafeArrayIterator,
     StringPrototypeSlice,
+    StringPrototypeSplit,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -42,10 +44,12 @@
 
   // Helper functions
   function opUrlReparse(href, setter, value) {
-    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
+    return _urlParts(
+      ops.op_url_reparse(href, [setter, value]),
+    );
   }
   function opUrlParse(href, maybeBase) {
-    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
+    return _urlParts(ops.op_url_parse(href, maybeBase));
   }
   function _urlParts(internalParts) {
     // WARNING: must match UrlParts serialization rust's url_result()
@@ -61,7 +65,7 @@
       8: protocol,
       9: search,
       10: username,
-    } = internalParts.split("\n");
+    } = StringPrototypeSplit(internalParts, "\n");
     return {
       href,
       hash,
@@ -100,7 +104,7 @@
         if (init[0] == "?") {
           init = StringPrototypeSlice(init, 1);
         }
-        this[_list] = core.opSync("op_url_parse_search_params", init);
+        this[_list] = ops.op_url_parse_search_params(init);
       } else if (ArrayIsArray(init)) {
         // Overload: sequence<sequence<USVString>>
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -290,7 +294,7 @@
      */
     toString() {
       webidl.assertBranded(this, URLSearchParamsPrototype);
-      return core.opSync("op_url_stringify_search_params", this[_list]);
+      return ops.op_url_stringify_search_params(this[_list]);
     }
   }
 
@@ -298,6 +302,11 @@
 
   webidl.configurePrototype(URLSearchParams);
   const URLSearchParamsPrototype = URLSearchParams.prototype;
+
+  webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
+    "URLSearchParams",
+    URLSearchParamsPrototype,
+  );
 
   const _url = Symbol("url");
 
@@ -322,7 +331,7 @@
       this[_url] = opUrlParse(url, base);
     }
 
-    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
       const object = {
         href: this.href,
         origin: this.origin,
@@ -336,14 +345,13 @@
         hash: this.hash,
         search: this.search,
       };
-      return `${this.constructor.name} ${inspect(object)}`;
+      return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
     }
 
     #updateSearchParams() {
       if (this.#queryObject !== null) {
         const params = this.#queryObject[_list];
-        const newParams = core.opSync(
-          "op_url_parse_search_params",
+        const newParams = ops.op_url_parse_search_params(
           StringPrototypeSlice(this.search, 1),
         );
         ArrayPrototypeSplice(
@@ -611,7 +619,7 @@
    * @returns {[string, string][]}
    */
   function parseUrlEncoded(bytes) {
-    return core.opSync("op_url_parse_search_params", null, bytes);
+    return ops.op_url_parse_search_params(null, bytes);
   }
 
   webidl

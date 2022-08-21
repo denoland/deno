@@ -122,6 +122,7 @@ fn json_module_evaluation_steps<'a>(
   context: v8::Local<'a, v8::Context>,
   module: v8::Local<v8::Module>,
 ) -> Option<v8::Local<'a, v8::Value>> {
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
   let module_map = tc_scope
@@ -1517,7 +1518,6 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::error::AnyError;
   use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
@@ -1850,10 +1850,10 @@ import "/a.js";
     static DISPATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     #[op]
-    fn op_test(_: &mut OpState, control: u8) -> Result<u8, AnyError> {
+    fn op_test(control: u8) -> u8 {
       DISPATCH_COUNT.fetch_add(1, Ordering::Relaxed);
       assert_eq!(control, 42);
-      Ok(43)
+      43
     }
 
     let ext = Extension::builder().ops(vec![op_test::decl()]).build();
@@ -1894,7 +1894,7 @@ import "/a.js";
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
-          Deno.core.opSync("op_test", control);
+          Deno.core.ops.op_test(control);
         "#,
         )
         .unwrap();
@@ -2180,15 +2180,11 @@ import "/a.js";
         )
         .unwrap();
 
-      // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
-      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
-
-      // Second poll actually loads modules into the isolate.
       assert!(matches!(
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
       assert_eq!(load_count.load(Ordering::Relaxed), 1);
       assert!(matches!(

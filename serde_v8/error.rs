@@ -6,6 +6,7 @@ use serde::{de, ser};
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
   Message(String),
 
