@@ -109,7 +109,7 @@ impl ParsedSourceCache {
 
   pub fn as_analyzer(&self) -> Box<dyn deno_graph::ModuleAnalyzer> {
     match ParsedSourceCacheModuleAnalyzer::new(
-      self.db_cache_path.as_ref().map(|p| p.as_path()),
+      self.db_cache_path.as_deref(),
       self.cli_version.clone(),
       self.sources.clone(),
     ) {
@@ -234,8 +234,7 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
     let parser = CapturingModuleParser::new(None, &self.sources);
     let analyzer = DefaultModuleAnalyzer::new(&parser);
 
-    let module_info =
-      analyzer.analyze(specifier, source.clone(), media_type)?;
+    let module_info = analyzer.analyze(specifier, source, media_type)?;
 
     // then attempt to cache it
     if let Err(err) =

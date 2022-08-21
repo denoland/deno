@@ -276,7 +276,7 @@ impl GraphData {
       modules,
       npm_packages: self.npm_packages.clone(),
       referrer_map,
-      graph_imports: self.graph_imports.iter().cloned().collect(),
+      graph_imports: self.graph_imports.to_vec(),
       cjs_esm_translations: Default::default(),
     })
   }

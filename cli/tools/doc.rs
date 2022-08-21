@@ -51,8 +51,10 @@ pub async fn print_docs(
       }
     }
 
+    // todo(dsherret): change this back to deno://lib.deno.d.ts once
+    // https://github.com/denoland/deno_ast/issues/109 is fixed
     let source_file_specifier =
-      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+      ModuleSpecifier::parse("deno://dts/lib.deno.d.ts").unwrap();
     let content: Arc<str> = get_types(ps.options.unstable()).into();
     let mut loader = LibDenoDtsLoader {
       specifier: source_file_specifier.clone(),
