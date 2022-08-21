@@ -210,14 +210,14 @@
     return aggregate;
   }
 
-  let reportErrorCallback = undefined;
+  let reportExceptionCallback = undefined;
 
   // Used to report errors thrown from functions passed to `queueMicrotask()`.
   // The callback will be passed the thrown error. For example, you can use this
   // to dispatch an error event to the global scope.
-  function setReportErrorCallback(cb) {
+  function setReportExceptionCallback(cb) {
     if (typeof cb == "function") {
-      reportErrorCallback = cb;
+      reportExceptionCallback = cb;
     }
   }
 
@@ -226,8 +226,8 @@
       try {
         cb();
       } catch (error) {
-        if (reportErrorCallback) {
-          reportErrorCallback(error);
+        if (reportExceptionCallback) {
+          reportExceptionCallback(error);
         } else {
           throw error;
         }
@@ -273,7 +273,7 @@
     opCallTraces,
     refOp,
     unrefOp,
-    setReportErrorCallback,
+    setReportExceptionCallback,
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),

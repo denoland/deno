@@ -243,7 +243,7 @@ delete Intl.v8BreakIterator;
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-    core.setReportErrorCallback(reportException);
+    core.setReportExceptionCallback(reportException);
     ops.op_set_format_exception_callback(formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
