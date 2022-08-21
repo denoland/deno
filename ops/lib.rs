@@ -562,10 +562,10 @@ fn is_fast_v8_value(
   core: &TokenStream2,
   arg: impl ToTokens,
 ) -> Option<TokenStream2> {
-  match tokens(&arg).contains("serde_v8 :: Value") {
-    false => None,
-    true => Some(quote! { #core::v8::fast_api::Type::V8Value }),
+  if tokens(&arg).contains("serde_v8 :: Value") {
+    return Some(quote! { #core::v8::fast_api::Type::V8Value });
   }
+  None
 }
 
 fn is_fast_scalar(
