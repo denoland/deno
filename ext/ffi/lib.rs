@@ -97,7 +97,9 @@ struct Symbol {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for Symbol {}
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for Symbol {}
 
 #[derive(Clone)]
@@ -123,7 +125,9 @@ impl PtrSymbol {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for PtrSymbol {}
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Sync for PtrSymbol {}
 
 struct DynamicLibraryResource {
@@ -363,7 +367,7 @@ impl NativeValue {
       }
       NativeType::ISize => {
         let value = self.isize_value;
-        if value > MAX_SAFE_INTEGER || value < MIN_SAFE_INTEGER {
+        if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
           json!(U32x2::from(self.isize_value as u64))
         } else {
           Value::from(value)
@@ -458,7 +462,7 @@ impl NativeValue {
       NativeType::ISize => {
         let value = self.isize_value;
         let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER || value < MIN_SAFE_INTEGER {
+          if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
             v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
           } else {
             v8::Number::new(scope, value as f64).into()
@@ -489,6 +493,7 @@ impl NativeValue {
   }
 }
 
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for NativeValue {}
 
 #[derive(Serialize, Debug, Clone, Copy)]
@@ -1979,7 +1984,7 @@ fn op_ffi_get_static<'scope>(
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
       let integer: v8::Local<v8::Value> =
-        if result > MAX_SAFE_INTEGER || result < MIN_SAFE_INTEGER {
+        if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&result) {
           v8::BigInt::new_from_i64(scope, result as i64).into()
         } else {
           v8::Number::new(scope, result as f64).into()
