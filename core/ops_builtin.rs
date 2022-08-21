@@ -67,20 +67,14 @@ pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
 #[op(fast)]
-pub fn op_close(
-  state: &mut OpState,
-  rid: u32,
-) -> bool {
+pub fn op_close(state: &mut OpState, rid: u32) -> bool {
   state.resource_table.close(rid).is_ok()
 }
 
 /// Try to remove a resource from the resource table. If there is no resource
 /// with the specified `rid`, this is a no-op.
 #[op(fast)]
-pub fn op_try_close(
-  state: &mut OpState,
-  rid: u32,
-) {
+pub fn op_try_close(state: &mut OpState, rid: u32) {
   let _ = state.resource_table.close(rid);
 }
 

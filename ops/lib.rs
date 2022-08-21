@@ -322,7 +322,7 @@ fn codegen_fast_impl(
                 _ => unreachable!(),
               },
             };
-            return quote! { #ident: #core::v8::Local < #core::v8::Value > }
+            return quote! { #ident: #core::v8::Local < #core::v8::Value > };
           }
           quote!(#arg)
         })
@@ -345,10 +345,10 @@ fn codegen_fast_impl(
               #core::serde_v8::Value {
                 v8_value: #ident,
               }
-            }
+            };
           }
           quote! { #ident }
-      })
+        })
         .collect::<Vec<_>>();
       let generics = &f.sig.generics;
       let (impl_generics, ty_generics, where_clause) =
@@ -558,12 +558,13 @@ fn is_fast_typed_array(arg: impl ToTokens) -> bool {
   RE.is_match(&tokens(arg))
 }
 
-fn is_fast_v8_value(core: &TokenStream2, arg: impl ToTokens) -> Option<TokenStream2> {
+fn is_fast_v8_value(
+  core: &TokenStream2,
+  arg: impl ToTokens,
+) -> Option<TokenStream2> {
   match tokens(&arg).contains("serde_v8 :: Value") {
     false => None,
-    true => Some(
-      quote! { #core::v8::fast_api::Type::V8Value },
-    ),
+    true => Some(quote! { #core::v8::fast_api::Type::V8Value }),
   }
 }
 

@@ -103,17 +103,19 @@ Deno.bench(
 
 Deno.bench("request_new", { n: 5e5 }, () => new Request("https://deno.land"));
 
-Deno.bench("response_new_headers", () => new Response(null, { 
-  headers: {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cache-Control": "max-age=0",
-    "Connection": "keep-alive",
-  }
-}));
+Deno.bench("response_new_headers", () =>
+  new Response(null, {
+    headers: {
+      "Accept":
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cache-Control": "max-age=0",
+      "Connection": "keep-alive",
+    },
+  }));
 
 const { isProxy } = Deno.core;
 Deno.bench("is_proxy", () => {
   isProxy({});
-})
+});
