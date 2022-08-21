@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 // TODO(@littledivy): Fix serde_v8 to not coerce null to 0.
 // Some ops depend on this behavior.
