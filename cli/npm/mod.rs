@@ -29,6 +29,7 @@ use registry::NpmRegistryApi;
 use resolution::NpmResolution;
 
 use crate::deno_dir::DenoDir;
+use crate::file_fetcher::CacheSetting;
 
 use self::cache::ReadonlyNpmCache;
 use self::resolution::NpmResolutionSnapshot;
@@ -81,16 +82,24 @@ impl GlobalNpmPackageResolver {
     dir: &DenoDir,
     reload: bool,
     no_remote: bool,
+    cache_setting: CacheSetting,
   ) -> Result<Self, AnyError> {
     Ok(Self::from_cache(
-      NpmCache::from_deno_dir(dir, no_remote)?,
+      NpmCache::from_deno_dir(dir, no_remote, cache_setting.clone())?,
       reload,
       no_remote,
+      cache_setting,
     ))
   }
 
-  fn from_cache(cache: NpmCache, reload: bool, no_remote: bool) -> Self {
-    let api = NpmRegistryApi::new(cache.clone(), reload, no_remote);
+  fn from_cache(
+    cache: NpmCache,
+    reload: bool,
+    no_remote: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
+    let api =
+      NpmRegistryApi::new(cache.clone(), reload, no_remote, cache_setting);
     let registry_url = api.base_url().to_owned();
     let resolution = Arc::new(NpmResolution::new(api));
 

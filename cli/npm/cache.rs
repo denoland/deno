@@ -14,6 +14,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 
 use super::tarball::verify_and_extract_tarball;
@@ -156,16 +157,19 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   no_remote: bool,
+  cache_setting: CacheSetting,
 }
 
 impl NpmCache {
   pub fn from_deno_dir(
     dir: &DenoDir,
     no_remote: bool,
+    cache_setting: CacheSetting,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
       no_remote,
+      cache_setting,
     })
   }
 
@@ -186,6 +190,15 @@ impl NpmCache {
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
     {
       return Ok(());
+    } else if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+          id.name
+        )
+      )
+      );
     }
 
     if self.no_remote {

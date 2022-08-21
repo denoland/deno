@@ -17,6 +17,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
 
@@ -102,6 +103,7 @@ pub struct NpmRegistryApi {
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
   no_remote: bool,
+  cache_setting: CacheSetting,
 }
 
 impl NpmRegistryApi {
@@ -124,8 +126,19 @@ impl NpmRegistryApi {
     }
   }
 
-  pub fn new(cache: NpmCache, reload: bool, no_remote: bool) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, no_remote)
+  pub fn new(
+    cache: NpmCache,
+    reload: bool,
+    no_remote: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
+    Self::from_base(
+      Self::default_url(),
+      cache,
+      reload,
+      no_remote,
+      cache_setting,
+    )
   }
 
   pub fn from_base(
@@ -133,6 +146,7 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     no_remote: bool,
+    cache_setting: CacheSetting,
   ) -> Self {
     Self {
       base_url,
@@ -140,6 +154,7 @@ impl NpmRegistryApi {
       mem_cache: Default::default(),
       reload,
       no_remote,
+      cache_setting,
     }
   }
 
@@ -171,6 +186,18 @@ impl NpmRegistryApi {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
+
+      if self.cache_setting == CacheSetting::Only {
+        return Err(custom_error(
+          "NotCached",
+          format!(
+            "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+            name
+          )
+        )
+        );
+      }
+
       if maybe_package_info.is_none() {
         maybe_package_info = self
           .load_package_info_from_registry(name)
