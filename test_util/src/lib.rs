@@ -1052,6 +1052,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
@@ -1897,7 +1898,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.get(0) == Some(&"test") {
+    if args.first() == Some(&"test") {
       actual = actual.replace('\u{200B}', "");
     }
 

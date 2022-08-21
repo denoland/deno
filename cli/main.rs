@@ -1070,9 +1070,7 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
-    let exit_code = get_subcommand(flags).await;
-
-    exit_code
+    get_subcommand(flags).await
   };
 
   let exit_code = unwrap_or_exit(run_local(exit_code));
