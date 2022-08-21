@@ -115,7 +115,7 @@ struct SysVAmd64 {
   offset_trampoline: u32,
   offset_callee: u32,
   allocated_stack: u32,
-  stack_pointer: u32,
+  frame_pointer: u32,
 }
 
 #[cfg_attr(
@@ -138,7 +138,7 @@ impl SysVAmd64 {
       // default to tail-call mode. If a new stack frame is allocated this becomes 0
       offset_callee: 8,
       allocated_stack: 0,
-      stack_pointer: 0,
+      frame_pointer: 0,
     }
   }
 
@@ -186,9 +186,6 @@ impl SysVAmd64 {
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
     }
-
-    debug_assert_eq!(compiler.allocated_stack, 0);
-    debug_assert_eq!(compiler.stack_pointer, 0);
 
     Trampoline(compiler.finalize())
   }
@@ -403,6 +400,10 @@ impl SysVAmd64 {
   }
 
   fn zero_first_arg(&mut self) {
+    debug_assert!(
+      self.integer_params == 0,
+      "the trampoline would zero the first argument after having overridden it with the second one"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; xor edi, edi
@@ -422,6 +423,29 @@ impl SysVAmd64 {
     }
   }
 
+  fn save_out_array_to_preserved_register(&mut self) {
+    // functions returning 64 bit integers have the out array appended as their last parameter,
+    // and it is a *FastApiTypedArray<Int32>
+    match self.integer_params {
+      // rdi is always V8 receiver
+      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rsi + 8]),
+      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
+      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [rcx + 8]),
+      3 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
+      4 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
+      5.. => {
+        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
+      }
+    }
+  }
+
+  fn wrap_return_value_in_out_array(&mut self) {
+    dynasm!(self.assmblr
+      ; .arch x64
+      ; mov [rbx], rax
+    )
+  }
+
   fn save_preserved_register_to_stack(&mut self) {
     dynasm!(self.assmblr
       ; .arch x64
@@ -430,15 +454,19 @@ impl SysVAmd64 {
     self.offset_trampoline += 8;
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
     self.offset_callee = 0;
-    self.stack_pointer += 8;
+    self.frame_pointer += 8;
   }
 
   fn recover_preserved_register(&mut self) {
+    debug_assert!(
+      self.frame_pointer >= 8,
+      "the trampoline would try to pop from the stack beyond its frame pointer"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; pop rbx
     );
-    self.stack_pointer -= 8;
+    self.frame_pointer -= 8;
     // parameter offsets are invalid once this method is called
   }
 
@@ -463,7 +491,7 @@ impl SysVAmd64 {
     // > (%rsp + 8) is always a multiple of 16 (32 or 64) when control is transferred to
     // > the function entry point. The stack pointer, %rsp, always points to the end of the
     // > latest allocated stack frame.
-    stack_size += padding_to_align(16, self.stack_pointer + stack_size + 8);
+    stack_size += padding_to_align(16, self.frame_pointer + stack_size + 8);
 
     if stack_size > 0 {
       dynasm!(self.assmblr
@@ -474,46 +502,32 @@ impl SysVAmd64 {
       // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
       self.offset_callee = 0;
       self.allocated_stack += stack_size;
-      self.stack_pointer += stack_size;
+      self.frame_pointer += stack_size;
     }
   }
 
   fn deallocate_stack(&mut self) {
+    debug_assert!(
+      self.frame_pointer >= self.allocated_stack,
+      "the trampoline would try to deallocate stack beyond its frame pointer"
+    );
     if self.allocated_stack > 0 {
       dynasm!(self.assmblr
         ; .arch x64
         ; add rsp, self.allocated_stack as i32
       );
 
-      self.stack_pointer -= self.allocated_stack;
+      self.frame_pointer -= self.allocated_stack;
       self.allocated_stack = 0;
     }
   }
 
-  fn save_out_array_to_preserved_register(&mut self) {
-    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
-    match self.integer_params {
-      // rdi is always V8 receiver
-      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rsi + 8]),
-      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
-      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [rcx + 8]),
-      3 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
-      4 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
-      5.. => {
-        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
-      }
-    }
-  }
-
-  fn wrap_return_value_in_out_array(&mut self) {
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; mov [rbx], rax
-    )
-  }
-
   fn call(&mut self, ptr: *const c_void) {
-    // the stack has been aligned during stack allocation
+    // the stack has been aligned during stack allocation and/or pushing of preserved registers
+    debug_assert!(
+      (8 + self.frame_pointer) % 16 == 0,
+      "the trampoline would call the FFI function with an unaligned stack"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; mov rax, QWORD ptr as _
@@ -524,6 +538,14 @@ impl SysVAmd64 {
   fn tailcall(&mut self, ptr: *const c_void) {
     // stack pointer is never modified and remains aligned
     // return address remains the one provided by the trampoline's caller (V8)
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would tail call the FFI function with an outstanding stack allocation"
+    );
+    debug_assert!(
+      self.frame_pointer == 0,
+      "the trampoline would tail call the FFI function with outstanding locals in the frame"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; mov rax, QWORD ptr as _
@@ -532,7 +554,14 @@ impl SysVAmd64 {
   }
 
   fn ret(&mut self) {
-    // the stack has been deallocated before ret is called
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would return with an outstanding stack allocation"
+    );
+    debug_assert!(
+      self.frame_pointer == 0,
+      "the trampoline would return with outstanding locals in the frame"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; ret
@@ -623,7 +652,7 @@ impl Aarch64Apple {
 
     if cannot_tailcall {
       compiler.allocate_stack(sym);
-      compiler.store_frame_record();
+      compiler.save_frame_record();
       if compiler.must_save_preserved_register_to_stack(sym) {
         compiler.save_preserved_register_to_stack();
       }
@@ -648,14 +677,12 @@ impl Aarch64Apple {
       if must_save_preserved_register {
         compiler.recover_preserved_register();
       }
-      compiler.load_frame_record();
+      compiler.recover_frame_record();
       compiler.deallocate_stack();
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
     }
-
-    debug_assert_eq!(compiler.allocated_stack, 0);
 
     Trampoline(compiler.finalize())
   }
@@ -725,6 +752,10 @@ impl Aarch64Apple {
       }
       self.offset_trampoline += padding_trampl + param.size();
       self.offset_callee += padding_callee + param.size();
+
+      debug_assert!(
+        self.allocated_stack == 0 || self.offset_callee <= self.allocated_stack
+      );
     }
     self.float_params += 1;
   }
@@ -878,12 +909,21 @@ impl Aarch64Apple {
         }
         self.offset_trampoline += padding_trampl + size_trampl;
         self.offset_callee += padding_callee + size_original;
+
+        debug_assert!(
+          self.allocated_stack == 0
+            || self.offset_callee <= self.allocated_stack
+        );
       }
     };
     self.integer_params += 1;
   }
 
   fn zero_first_arg(&mut self) {
+    debug_assert!(
+      self.integer_params == 0,
+      "the trampoline would zero the first argument after having overridden it with the second one"
+    );
     dynasm!(self.assmblr
       ; .arch aarch64
       ; mov x0, xzr
@@ -891,7 +931,8 @@ impl Aarch64Apple {
   }
 
   fn save_out_array_to_preserved_register(&mut self) {
-    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
+    // functions returning 64 bit integers have the out array appended as their last parameter,
+    // and it is a *FastApiTypedArray<Int32>
     match self.integer_params {
       // x0 is always V8's receiver
       0 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x1, 8]),
@@ -911,8 +952,11 @@ impl Aarch64Apple {
     dynasm!(self.assmblr; .arch aarch64; str x0, [x19]);
   }
 
-  fn store_frame_record(&mut self) {
-    debug_assert!(self.allocated_stack >= 16);
+  fn save_frame_record(&mut self) {
+    debug_assert!(
+      self.allocated_stack >= 16,
+      "the trampoline would try to save the frame record to the stack without having allocated enough space for it"
+    );
     dynasm!(self.assmblr
       ; .arch aarch64
       // Frame record is stored at the bottom of the stack frame
@@ -921,9 +965,12 @@ impl Aarch64Apple {
     )
   }
 
-  fn load_frame_record(&mut self) {
+  fn recover_frame_record(&mut self) {
     // The stack cannot have been deallocated before the frame record is restored
-    debug_assert!(self.allocated_stack >= 16);
+    debug_assert!(
+      self.allocated_stack >= 16,
+      "the trampoline would try to load the frame record from the stack, but it couldn't possibly contain it"
+    );
     dynasm!(self.assmblr
       ; .arch aarch64
       // Frame record is stored at the bottom of the stack frame
@@ -931,14 +978,13 @@ impl Aarch64Apple {
     )
   }
 
-  fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
-    self.must_wrap_return_value_in_typed_array(symbol.result_type)
-  }
-
   fn save_preserved_register_to_stack(&mut self) {
     // If a preserved register needs to be used, we must have allocated at least 32 bytes in the stack
     // 16 for the frame record, 8 for the preserved register, and 8 for 16-byte alignment.
-    debug_assert!(self.allocated_stack >= 32);
+    debug_assert!(
+      self.allocated_stack >= 32,
+      "the trampoline would try to save a register to the stack without having allocated enough space for it"
+    );
     dynasm!(self.assmblr
       ; .arch aarch64
         // preserved register is stored after frame record
@@ -949,7 +995,10 @@ impl Aarch64Apple {
   fn recover_preserved_register(&mut self) {
     // The stack cannot have been deallocated before the preserved register is restored
     // 16 for the frame record, 8 for the preserved register, and 8 for 16-byte alignment.
-    debug_assert!(self.allocated_stack >= 32);
+    debug_assert!(
+      self.allocated_stack >= 32,
+      "the trampoline would try to recover the value of a register from the stack, but it couldn't possibly contain it"
+    );
     dynasm!(self.assmblr
       ; .arch aarch64
         // preserved register is stored after frame record
@@ -1007,22 +1056,17 @@ impl Aarch64Apple {
     }
   }
 
-  fn tailcall(&mut self, ptr: *const c_void) {
-    // stack pointer is never modified and remains aligned
-    // frame pointer remains the one provided by the trampoline's caller (V8)
-
-    // Like all ARM instructions, move instructions are 32bit long and can fit at most 16bit immediates.
-    // bigger immediates are loaded in multiple steps applying a left-shift modifier
-    self.load_callee_address(ptr);
-    dynasm!(self.assmblr
-        ; .arch aarch64
-        ; br x8
-    );
-  }
-
   fn call(&mut self, ptr: *const c_void) {
     // the stack has been aligned during stack allocation
     // Frame record has been stored in stack and frame pointer points to it
+    debug_assert!(
+      self.allocated_stack % 16 == 0,
+      "the trampoline would call the FFI function with an unaligned stack"
+    );
+    debug_assert!(
+      self.allocated_stack >= 16,
+      "the trampoline would call the FFI function without allocating enough stack for the frame record"
+    );
     self.load_callee_address(ptr);
     dynasm!(self.assmblr
         ; .arch aarch64
@@ -1030,7 +1074,25 @@ impl Aarch64Apple {
     );
   }
 
+  fn tailcall(&mut self, ptr: *const c_void) {
+    // stack pointer is never modified and remains aligned
+    // frame pointer and link register remain the one provided by the trampoline's caller (V8)
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would tail call the FFI function with an outstanding stack allocation"
+    );
+    self.load_callee_address(ptr);
+    dynasm!(self.assmblr
+        ; .arch aarch64
+        ; br x8
+    );
+  }
+
   fn ret(&mut self) {
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would return with an outstanding stack allocation"
+    );
     dynasm!(self.assmblr
         ; .arch aarch64
         ; ret
@@ -1064,6 +1126,10 @@ impl Aarch64Apple {
     self.integer_params > 0
   }
 
+  fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
+    self.must_wrap_return_value_in_typed_array(symbol.result_type)
+  }
+
   fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
@@ -1084,7 +1150,7 @@ struct Win64 {
   offset_trampoline: u32,
   offset_callee: u32,
   allocated_stack: u32,
-  stack_pointer: u32,
+  frame_pointer: u32,
 }
 
 #[cfg_attr(
@@ -1104,7 +1170,7 @@ impl Win64 {
       offset_trampoline: 8 + 32,
       offset_callee: 8 + 32,
       allocated_stack: 0,
-      stack_pointer: 0,
+      frame_pointer: 0,
     }
   }
 
@@ -1152,9 +1218,6 @@ impl Win64 {
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
     }
-
-    debug_assert_eq!(compiler.allocated_stack, 0);
-    debug_assert_eq!(compiler.stack_pointer, 0);
 
     Trampoline(compiler.finalize())
   }
@@ -1287,6 +1350,10 @@ impl Win64 {
   }
 
   fn zero_first_arg(&mut self) {
+    debug_assert!(
+      self.params == 0,
+      "the trampoline would zero the first argument after having overridden it with the second one"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; xor ecx, ecx
@@ -1307,7 +1374,8 @@ impl Win64 {
   }
 
   fn save_out_array_to_preserved_register(&mut self) {
-    // The out array is the last parameter, and it is a *FastApiTypedArray<Int32>
+    // functions returning 64 bit integers have the out array appended as their last parameter,
+    // and it is a *FastApiTypedArray<Int32>
     match self.params {
       // rcx is always V8 receiver
       0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
@@ -1334,15 +1402,19 @@ impl Win64 {
     self.offset_trampoline += 8;
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
     self.offset_callee = 0;
-    self.stack_pointer += 8;
+    self.frame_pointer += 8;
   }
 
   fn recover_preserved_register(&mut self) {
+    debug_assert!(
+      self.frame_pointer >= 8,
+      "the trampoline would try to pop from the stack beyond its frame pointer"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; pop rbx
     );
-    self.stack_pointer -= 8;
+    self.frame_pointer -= 8;
     // parameter offsets are invalid once this method is called
   }
 
@@ -1362,7 +1434,7 @@ impl Win64 {
     // and any other potential addition to the stack prior to this allocation)
     // Section "Stack Allocation" of stack-usage docs:
     // > The stack will always be maintained 16-byte aligned, except within the prolog (for example, after the return address is pushed)
-    stack_size += padding_to_align(16, self.stack_pointer + stack_size + 8);
+    stack_size += padding_to_align(16, self.frame_pointer + stack_size + 8);
 
     dynasm!(self.assmblr
       ; .arch x64
@@ -1372,20 +1444,28 @@ impl Win64 {
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack right after the shadow space
     self.offset_callee = 32;
     self.allocated_stack += stack_size;
-    self.stack_pointer += stack_size;
+    self.frame_pointer += stack_size;
   }
 
   fn deallocate_stack(&mut self) {
+    debug_assert!(
+      self.frame_pointer >= self.allocated_stack,
+      "the trampoline would try to deallocate stack beyond its frame pointer"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; add rsp, self.allocated_stack as i32
     );
-    self.stack_pointer -= self.allocated_stack;
+    self.frame_pointer -= self.allocated_stack;
     self.allocated_stack = 0;
   }
 
   fn call(&mut self, ptr: *const c_void) {
-    // the stack has been aligned during stack allocation
+    // the stack has been aligned during stack allocation and/or pushing of preserved registers
+    debug_assert!(
+      (8 + self.frame_pointer) % 16 == 0,
+      "the trampoline would call the FFI function with an unaligned stack"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; mov rax, QWORD ptr as _
@@ -1396,6 +1476,14 @@ impl Win64 {
   fn tailcall(&mut self, ptr: *const c_void) {
     // stack pointer is never modified and remains aligned
     // return address remains the one provided by the trampoline's caller (V8)
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would tail call the FFI function with an outstanding stack allocation"
+    );
+    debug_assert!(
+      self.frame_pointer == 0,
+      "the trampoline would tail call the FFI function with outstanding locals in the frame"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; mov rax, QWORD ptr as _
@@ -1404,7 +1492,14 @@ impl Win64 {
   }
 
   fn ret(&mut self) {
-    // the stack has been deallocated before ret is called
+    debug_assert!(
+      self.allocated_stack == 0,
+      "the trampoline would return with an outstanding stack allocation"
+    );
+    debug_assert!(
+      self.frame_pointer == 0,
+      "the trampoline would return with outstanding locals in the frame"
+    );
     dynasm!(self.assmblr
       ; .arch x64
       ; ret
@@ -1433,6 +1528,10 @@ impl Win64 {
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
+}
+
+fn padding_to_align(alignment: u32, size: u32) -> u32 {
+  (alignment - size % alignment) % alignment
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2119,8 +2218,4 @@ mod tests {
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
   }
-}
-
-fn padding_to_align(alignment: u32, size: u32) -> u32 {
-  (alignment - size % alignment) % alignment
 }
