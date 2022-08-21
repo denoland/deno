@@ -200,7 +200,7 @@
     }
 
     kill(signo = "SIGTERM") {
-      ops.op_kill(this.#rid, signo);
+      ops.op_spawn_kill(this.#rid, signo);
     }
 
     ref() {
