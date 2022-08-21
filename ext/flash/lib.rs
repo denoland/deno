@@ -1344,8 +1344,8 @@ async fn op_flash_next_async(
 // the ContextScope creation is optimized away and the op is as simple as:
 //   f(info: *const v8::FunctionCallbackInfo) { let rv = ...; rv.set_uint32(op_flash_next()); }
 #[op]
-fn op_flash_next(op_state: &mut OpState) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next(state: &mut OpState) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&0).unwrap();
   next_request_sync(ctx)
 }
@@ -1353,8 +1353,8 @@ fn op_flash_next(op_state: &mut OpState) -> u32 {
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next_server(state: &mut OpState, server_id: u32) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   next_request_sync(ctx)
 }

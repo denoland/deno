@@ -2,6 +2,7 @@
 use crate::OpState;
 use anyhow::Error;
 use std::{cell::RefCell, rc::Rc, task::Context};
+use v8::fast_api::FastFunction;
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpFnRef = v8::FunctionCallback;
@@ -9,14 +10,14 @@ pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
-#[derive(Clone, Copy)]
 pub struct OpDecl {
   pub name: &'static str,
   pub v8_fn_ptr: OpFnRef,
   pub enabled: bool,
-  pub is_async: bool, // TODO(@AaronO): enum sync/async/fast ?
+  pub is_async: bool,
   pub is_unstable: bool,
   pub is_v8: bool,
+  pub fast_fn: Option<Box<dyn FastFunction>>,
 }
 
 impl OpDecl {

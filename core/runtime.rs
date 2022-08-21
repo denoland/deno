@@ -328,7 +328,6 @@ impl JsRuntime {
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
     }
-
     let op_state = Rc::new(RefCell::new(op_state));
     let op_ctxs = ops
       .into_iter()
@@ -341,12 +340,14 @@ impl JsRuntime {
       .collect::<Vec<_>>()
       .into_boxed_slice();
 
+    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    // V8 takes ownership of external_references.
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+      let mut creator = v8::SnapshotCreator::new(Some(refs));
       // SAFETY: `get_owned_isolate` is unsafe because it may only be called
       // once. This is the only place we call this function, so this call is
       // safe.
@@ -369,7 +370,7 @@ impl JsRuntime {
             V8_WRAPPER_OBJECT_INDEX,
           )
         })
-        .external_references(&**bindings::EXTERNAL_REFERENCES);
+        .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
