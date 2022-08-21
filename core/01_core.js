@@ -252,8 +252,12 @@
     opCallTraces,
     refOp,
     unrefOp,
-    close: (rid) => ops.op_close(rid),
-    tryClose: (rid) => ops.op_try_close(rid),
+    close: (rid) => {
+      if (ops.op_close.fast(rid) === false) {
+        throw new Error("Bad resource ID");
+      }
+    },
+    tryClose: (rid) => ops.op_try_close.fast(rid),
     read: opAsync.bind(null, "op_read"),
     write: opAsync.bind(null, "op_write"),
     shutdown: opAsync.bind(null, "op_shutdown"),
@@ -278,7 +282,7 @@
     deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
     getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
     getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
-    isProxy: (value) => ops.op_is_proxy(value),
+    isProxy: (value) => ops.op_is_proxy.fast(value),
     memoryUsage: () => ops.op_memory_usage(),
     setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
     abortWasmStreaming: (

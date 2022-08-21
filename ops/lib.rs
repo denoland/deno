@@ -304,6 +304,7 @@ fn codegen_fast_impl(
       args,
       ret,
       use_recv,
+      v8_values,
     }) = fast_info
     {
       let inputs = &f
@@ -311,18 +312,43 @@ fn codegen_fast_impl(
         .inputs
         .iter()
         .skip(if use_recv { 1 } else { 0 })
+        .enumerate()
+        .map(|(idx, arg)| {
+          if v8_values.contains(&idx) {
+            let ident = match arg {
+              FnArg::Receiver(_) => unreachable!(),
+              FnArg::Typed(t) => match &*t.pat {
+                syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+                _ => unreachable!(),
+              },
+            };
+            return quote! { #ident: #core::v8::Local < #core::v8::Value > }
+          }
+          quote!(#arg)
+        })
         .collect::<Vec<_>>();
       let input_idents = f
         .sig
         .inputs
         .iter()
-        .map(|a| match a {
-          FnArg::Receiver(_) => unreachable!(),
-          FnArg::Typed(t) => match &*t.pat {
-            syn::Pat::Ident(i) => format_ident!("{}", i.ident),
-            _ => unreachable!(),
-          },
-        })
+        .enumerate()
+        .map(|(idx, a)| {
+          let ident = match a {
+            FnArg::Receiver(_) => unreachable!(),
+            FnArg::Typed(t) => match &*t.pat {
+              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+              _ => unreachable!(),
+            },
+          };
+          if v8_values.contains(&idx) {
+            return quote! {
+              #core::serde_v8::Value {
+                v8_value: #ident,
+              }
+            }
+          }
+          quote! { #ident }
+      })
         .collect::<Vec<_>>();
       let generics = &f.sig.generics;
       let (impl_generics, ty_generics, where_clause) =
@@ -436,6 +462,7 @@ struct FastApiSyn {
   args: TokenStream2,
   ret: TokenStream2,
   use_recv: bool,
+  v8_values: Vec<usize>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
@@ -454,6 +481,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   };
 
   let mut use_recv = false;
+  let mut v8_values = Vec::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
   for (pos, input) in inputs.iter().enumerate() {
     if pos == 0 && is_mut_ref_opstate(input) {
@@ -466,16 +494,21 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
       _ => unreachable!(),
     };
 
-    match is_fast_scalar(core, ty, false) {
-      None => match is_fast_arg_sequence(core, ty) {
+    if let Some(arg) = is_fast_v8_value(core, ty) {
+      args.push(arg);
+      v8_values.push(pos);
+    } else {
+      match is_fast_scalar(core, ty, false) {
+        None => match is_fast_arg_sequence(core, ty) {
+          Some(arg) => {
+            args.push(arg);
+          }
+          // early return, this function cannot be a fast call.
+          None => return None,
+        },
         Some(arg) => {
           args.push(arg);
         }
-        // early return, this function cannot be a fast call.
-        None => return None,
-      },
-      Some(arg) => {
-        args.push(arg);
       }
     }
   }
@@ -489,6 +522,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     args: args.parse().unwrap(),
     ret,
     use_recv,
+    v8_values,
   })
 }
 
@@ -524,6 +558,15 @@ fn is_fast_typed_array(arg: impl ToTokens) -> bool {
   RE.is_match(&tokens(arg))
 }
 
+fn is_fast_v8_value(core: &TokenStream2, arg: impl ToTokens) -> Option<TokenStream2> {
+  match tokens(&arg).contains("serde_v8 :: Value") {
+    false => None,
+    true => Some(
+      quote! { #core::v8::fast_api::Type::V8Value },
+    ),
+  }
+}
+
 fn is_fast_scalar(
   core: &TokenStream2,
   ty: impl ToTokens,
@@ -541,11 +584,13 @@ fn is_fast_scalar(
     return Some(quote! { #core::v8::fast_api::#cty::Void });
   }
   // TODO(@littledivy): Support u8, i8, u16, i16 by casting.
+
   match tokens(&ty).as_str() {
     "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
     "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
+    "bool" => Some(quote! { #core::v8::fast_api::#cty::Bool }),
     _ => None,
   }
 }

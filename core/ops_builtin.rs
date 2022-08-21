@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::error::format_file_name;
-use crate::error::type_error;
 use crate::include_js_files;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
@@ -67,30 +66,22 @@ pub fn op_void_sync() {}
 pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
-#[op]
+#[op(fast)]
 pub fn op_close(
   state: &mut OpState,
-  rid: Option<ResourceId>,
-) -> Result<(), Error> {
-  // TODO(@AaronO): drop Option after improving type-strictness balance in
-  // serde_v8
-  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-  state.resource_table.close(rid)?;
-  Ok(())
+  rid: u32,
+) -> bool {
+  state.resource_table.close(rid).is_ok()
 }
 
 /// Try to remove a resource from the resource table. If there is no resource
 /// with the specified `rid`, this is a no-op.
-#[op]
+#[op(fast)]
 pub fn op_try_close(
   state: &mut OpState,
-  rid: Option<ResourceId>,
-) -> Result<(), Error> {
-  // TODO(@AaronO): drop Option after improving type-strictness balance in
-  // serde_v8.
-  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
+  rid: u32,
+) {
   let _ = state.resource_table.close(rid);
-  Ok(())
 }
 
 #[op]
@@ -191,7 +182,7 @@ fn op_format_file_name(file_name: String) -> String {
   format_file_name(&file_name)
 }
 
-#[op]
+#[op(fast)]
 fn op_is_proxy(value: serde_v8::Value) -> bool {
   value.v8_value.is_proxy()
 }
