@@ -1244,7 +1244,11 @@ where
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
-  let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+  let parsed_hostname = opts
+    .hostname
+    .parse()
+    .map_err(|_| type_error("hostname could not be parsed as an IP address"))?;
+  let addr = SocketAddr::new(parsed_hostname, opts.port);
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);
