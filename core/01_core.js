@@ -215,6 +215,8 @@
   // Used to report errors thrown from functions passed to `queueMicrotask()`.
   // The callback will be passed the thrown error. For example, you can use this
   // to dispatch an error event to the global scope.
+  // In other words, set the implementation for
+  // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
   function setReportExceptionCallback(cb) {
     if (typeof cb == "function") {
       reportExceptionCallback = cb;
