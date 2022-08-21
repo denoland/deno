@@ -72,6 +72,23 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   await server;
 });
 
+Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
+  const ac = new AbortController();
+
+  const server = Deno.serve({
+    fetch() {
+      return new Response("Hello World");
+    },
+    port: 0,
+    signal: ac.signal,
+    onListen({ port }) {
+      assert(port > 0 && port < 65536);
+      ac.abort();
+    },
+  });
+  await server;
+});
+
 // https://github.com/denoland/deno/issues/15107
 Deno.test(
   { permissions: { net: true } },

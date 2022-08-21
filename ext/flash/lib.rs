@@ -76,7 +76,7 @@ pub struct ServerContext {
   rx: mpsc::Receiver<Request>,
   requests: HashMap<u32, Request>,
   next_token: u32,
-  listening_rx: Option<mpsc::Receiver<()>>,
+  listening_rx: Option<mpsc::Receiver<u16>>,
   close_tx: mpsc::Sender<()>,
   cancel_handle: Rc<CancelHandle>,
 }
@@ -939,7 +939,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<Request>,
-  listening_tx: mpsc::Sender<()>,
+  listening_tx: mpsc::Sender<u16>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
@@ -971,7 +971,9 @@ fn run_server(
     }
   };
 
-  listening_tx.blocking_send(()).unwrap();
+  listening_tx
+    .blocking_send(listener.local_addr().unwrap().port())
+    .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
@@ -1274,7 +1276,7 @@ where
 fn op_flash_wait_for_listening(
   state: &mut OpState,
   server_id: u32,
-) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
+) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
@@ -1284,8 +1286,8 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    listening_rx.recv().await;
-    Ok(())
+    let port = listening_rx.recv().await.unwrap();
+    Ok(port)
   })
 }
 
