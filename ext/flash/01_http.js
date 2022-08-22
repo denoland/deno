@@ -205,11 +205,9 @@
       return new Response("Internal Server Error", { status: 500 });
     };
     delete opts.onError;
-    const onListen = opts.onListen ?? function () {
+    const onListen = opts.onListen ?? function ({ port }) {
       console.log(
-        `Listening on http://${
-          hostnameForDisplay(opts.hostname)
-        }:${opts.port}/`,
+        `Listening on http://${hostnameForDisplay(opts.hostname)}:${port}/`,
       );
     };
     delete opts.onListen;
