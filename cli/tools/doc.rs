@@ -11,13 +11,11 @@ use crate::write_to_stdout_ignore_sigpipe;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 pub async fn print_docs(
   flags: Flags,
@@ -29,37 +27,22 @@ pub async fn print_docs(
     .unwrap_or_else(|| "--builtin".to_string());
 
   let mut doc_nodes = if source_file == "--builtin" {
-    struct LibDenoDtsLoader {
-      specifier: ModuleSpecifier,
-      content: Arc<str>,
-    }
-
-    impl deno_graph::source::Loader for LibDenoDtsLoader {
-      fn load(
-        &mut self,
-        specifier: &deno_ast::ModuleSpecifier,
-        _is_dynamic: bool,
-      ) -> deno_graph::source::LoadFuture {
-        assert_eq!(&self.specifier, specifier);
-        Box::pin(futures::future::ready(Ok(Some(
-          deno_graph::source::LoadResponse::Module {
-            content: self.content.clone(),
-            specifier: self.specifier.clone(),
-            maybe_headers: None,
-          },
-        ))))
-      }
-    }
-
     // todo(dsherret): change this back to deno://lib.deno.d.ts once
     // https://github.com/denoland/deno_ast/issues/109 is fixed
     let source_file_specifier =
       ModuleSpecifier::parse("deno://dts/lib.deno.d.ts").unwrap();
-    let content: Arc<str> = get_types(ps.options.unstable()).into();
-    let mut loader = LibDenoDtsLoader {
-      specifier: source_file_specifier.clone(),
-      content: content.clone(),
-    };
+    let content = get_types(ps.options.unstable());
+    let mut loader = deno_graph::source::MemoryLoader::new(
+      vec![(
+        source_file_specifier.to_string(),
+        deno_graph::source::Source::Module {
+          specifier: source_file_specifier.to_string(),
+          content,
+          maybe_headers: None,
+        },
+      )],
+      Vec::new(),
+    );
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![(source_file_specifier.clone(), ModuleKind::Esm)],
