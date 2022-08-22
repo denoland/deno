@@ -1942,7 +1942,7 @@ impl JsRuntime {
       let mut args = vec![];
 
       for (promise_id, resp) in results.into_iter() {
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new(scope, promise_id).into());
         args.push(resp.to_v8(scope).unwrap());
       }
 
