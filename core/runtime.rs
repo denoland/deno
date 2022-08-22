@@ -80,9 +80,6 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  // This is an Option<Box<JsRuntimeInspector> instead of just Box<JsRuntimeInspector>
-  // to workaround a safety issue. See JsRuntime::drop.
-  inspector: Option<Box<JsRuntimeInspector>>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   built_from_snapshot: bool,
@@ -184,19 +181,18 @@ pub(crate) struct JsRuntimeState {
   pub(crate) op_ctxs: Box<[OpCtx]>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  /// The error that was passed to an explicit `Deno.core.terminate` call.
+  /// The error that was passed to an `op_dispatch_exception` call.
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
-  pub(crate) explicit_terminate_exception: Option<v8::Global<v8::Value>>,
+  // TODO(nayeemrmn): This should be a queue, mirroring `pending_promise_exceptions`.
+  // The REPL doesn't terminate on the first one and should keep track of many.
+  pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
+  inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
-
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
       // a `struct OwnedIsolate` which is not actually owned, hence the need
@@ -423,7 +419,8 @@ impl JsRuntime {
       op_state: op_state.clone(),
       op_ctxs,
       have_unpolled_ops: false,
-      explicit_terminate_exception: None,
+      dispatched_exception: None,
+      inspector: Some(inspector),
       waker: AtomicWaker::new(),
     })));
 
@@ -436,7 +433,6 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      inspector: Some(inspector),
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       built_from_snapshot: has_startup_snapshot,
@@ -468,8 +464,8 @@ impl JsRuntime {
     self.v8_isolate.as_mut().unwrap()
   }
 
-  pub fn inspector(&mut self) -> &mut Box<JsRuntimeInspector> {
-    self.inspector.as_mut().unwrap()
+  pub fn inspector(&mut self) -> Rc<RefCell<JsRuntimeInspector>> {
+    Self::state(self.v8_isolate()).borrow().inspector()
   }
 
   pub fn global_realm(&mut self) -> JsRealm {
@@ -742,7 +738,7 @@ impl JsRuntime {
 
     state.borrow_mut().global_realm.take();
 
-    self.inspector.take();
+    state.borrow_mut().inspector.take();
 
     // Overwrite existing ModuleMap to drop v8::Global handles
     self
@@ -946,8 +942,7 @@ impl JsRuntime {
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
     // We always poll the inspector first
-    let _ = self.inspector().poll_unpin(cx);
-
+    let _ = self.inspector().borrow_mut().poll_unpin(cx);
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     {
@@ -1008,11 +1003,8 @@ impl JsRuntime {
     self.evaluate_pending_module();
 
     let pending_state = Self::event_loop_pending_state(self.v8_isolate());
-    let inspector_has_active_sessions = self
-      .inspector
-      .as_ref()
-      .map(|i| i.has_active_sessions())
-      .unwrap_or(false);
+    let inspector_has_active_sessions =
+      self.inspector().borrow_mut().has_active_sessions();
 
     if !pending_state.is_pending() && !maybe_scheduling {
       if wait_for_inspector && inspector_has_active_sessions {
@@ -1149,6 +1141,10 @@ where
 }
 
 impl JsRuntimeState {
+  pub fn inspector(&self) -> Rc<RefCell<JsRuntimeInspector>> {
+    self.inspector.as_ref().unwrap().clone()
+  }
+
   /// Called by `bindings::host_import_module_dynamically_callback`
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
@@ -1172,12 +1168,12 @@ pub(crate) fn exception_to_err_result<'s, T>(
   scope.cancel_terminate_execution();
   let mut exception = exception;
   {
-    // If the termination is the result of a `Deno.core.terminate` call, we want
+    // If termination is the result of a `op_dispatch_exception` call, we want
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
     let mut state = state_rc.borrow_mut();
     exception = state
-      .explicit_terminate_exception
+      .dispatched_exception
       .take()
       .map(|exception| v8::Local::new(scope, exception))
       .unwrap_or_else(|| {
@@ -1391,7 +1387,7 @@ impl JsRuntime {
     status = module.get_status();
 
     let explicit_terminate_exception =
-      state_rc.borrow_mut().explicit_terminate_exception.take();
+      state_rc.borrow_mut().dispatched_exception.take();
     if let Some(exception) = explicit_terminate_exception {
       let exception = v8::Local::new(tc_scope, exception);
       let pending_mod_evaluate = {
@@ -2702,7 +2698,7 @@ pub mod tests {
           Deno.core.setPromiseRejectCallback(() => {
             return false;
           });
-          a = 1 + 2; 
+          a = 1 + 2;
       "#,
         )
         .unwrap();

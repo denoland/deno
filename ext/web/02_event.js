@@ -8,6 +8,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -1451,7 +1452,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      core.terminate(error);
+      ops.op_dispatch_exception(error);
     }
     reportExceptionStackedCalls--;
   }
