@@ -106,12 +106,7 @@ impl CliMainWorker {
       node::initialize_runtime(&mut self.worker.js_runtime).await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
-        &self
-          .main_module
-          .to_file_path()
-          .unwrap()
-          .to_string_lossy()
-          .to_string(),
+        &self.main_module.to_file_path().unwrap().to_string_lossy(),
         true,
       )?;
     } else {

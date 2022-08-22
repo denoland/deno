@@ -192,11 +192,10 @@ pub fn node_resolve_binary_export(
   bin_name: Option<&str>,
   npm_resolver: &GlobalNpmPackageResolver,
 ) -> Result<ResolveResponse, AnyError> {
-  let pkg = npm_resolver.resolve_package_from_deno_module(&pkg_req)?;
+  let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
   let package_folder = pkg.folder_path;
   let package_json_path = package_folder.join("package.json");
-  let package_json =
-    PackageJson::load(npm_resolver, package_json_path.clone())?;
+  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(

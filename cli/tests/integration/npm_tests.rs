@@ -172,7 +172,7 @@ fn deno_run_cjs_module() {
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--allow-write")
-    .arg("npm:mkdirp@=1.0.4")
+    .arg("npm:mkdirp@1.0.4")
     .arg("test_dir")
     .env("NO_COLOR", "1")
     .envs(env_vars())
@@ -185,7 +185,7 @@ fn deno_run_cjs_module() {
 }
 
 itest!(deno_run_non_existent {
-  args: "run --unstable npm:mkdirp@=0.5.125",
+  args: "run --unstable npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
   envs: env_vars(),
   http_server: true,

@@ -14,6 +14,7 @@ use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
+use super::version_req::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages.
@@ -28,10 +29,55 @@ pub struct NpmPackageReference {
   pub sub_path: Option<String>,
 }
 
+impl NpmPackageReference {
+  pub fn from_specifier(
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageReference, AnyError> {
+    Self::from_str(specifier.as_str())
+  }
+
+  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    let specifier = match specifier.strip_prefix("npm:") {
+      Some(s) => s,
+      None => {
+        bail!("Not an npm specifier: '{}'", specifier);
+      }
+    };
+    let (name, version_req) = match specifier.rsplit_once('@') {
+      Some((name, version_req)) => (
+        name,
+        match SpecifierVersionReq::parse(version_req) {
+          Ok(v) => Some(v),
+          Err(_) => None, // not a version requirement
+        },
+      ),
+      None => (specifier, None),
+    };
+    Ok(NpmPackageReference {
+      req: NpmPackageReq {
+        name: name.to_string(),
+        version_req,
+      },
+      // todo: implement and support this
+      sub_path: None,
+    })
+  }
+}
+
+impl std::fmt::Display for NpmPackageReference {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(sub_path) = &self.sub_path {
+      write!(f, "{}/{}", self.req, sub_path)
+    } else {
+      write!(f, "{}", self.req)
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NpmPackageReq {
   pub name: String,
-  pub version_req: Option<semver::VersionReq>,
+  pub version_req: Option<SpecifierVersionReq>,
 }
 
 impl std::fmt::Display for NpmPackageReq {
@@ -57,51 +103,6 @@ impl NpmVersionMatcher for NpmPackageReq {
       .as_ref()
       .map(|v| format!("{}", v))
       .unwrap_or_else(|| "non-prerelease".to_string())
-  }
-}
-
-impl NpmPackageReference {
-  pub fn from_specifier(
-    specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageReference, AnyError> {
-    Self::from_str(specifier.as_str())
-  }
-
-  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
-    let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
-      None => {
-        bail!("Not an npm specifier: '{}'", specifier);
-      }
-    };
-    let (name, version_req) = match specifier.rsplit_once('@') {
-      Some((name, version_req)) => (
-        name,
-        match semver::VersionReq::parse(version_req) {
-          Ok(v) => Some(v),
-          Err(_) => None, // not a version requirement
-        },
-      ),
-      None => (specifier, None),
-    };
-    Ok(NpmPackageReference {
-      req: NpmPackageReq {
-        name: name.to_string(),
-        version_req,
-      },
-      // todo: implement and support this
-      sub_path: None,
-    })
-  }
-}
-
-impl std::fmt::Display for NpmPackageReference {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(sub_path) = &self.sub_path {
-      write!(f, "{}/{}", self.req, sub_path)
-    } else {
-      write!(f, "{}", self.req)
-    }
   }
 }
 
