@@ -3293,7 +3293,7 @@ declare namespace Deno {
    *
    * for await (const conn of Deno.listen({ port: 80 })) {
    *   handleHttp(conn);
-   * }s
+   * }
    * ```
    *
    * @category HTTP Server
