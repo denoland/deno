@@ -19,12 +19,14 @@ mod common;
 mod disk_cache;
 mod emit;
 mod incremental;
+mod parsed_source;
 
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use incremental::IncrementalCache;
+pub use parsed_source::ParsedSourceCache;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.

@@ -82,7 +82,7 @@ pub fn create_pty(
   let pty = windows::WinPseudoConsole::new(
     program,
     args,
-    &cwd.as_ref().to_string_lossy().to_string(),
+    &cwd.as_ref().to_string_lossy(),
     env_vars,
   );
   Box::new(pty)
@@ -338,14 +338,15 @@ mod windows {
     }
   }
 
+  // SAFETY: These handles are ok to send across threads.
   unsafe impl Send for WinHandle {}
+  // SAFETY: These handles are ok to send across threads.
   unsafe impl Sync for WinHandle {}
 
   impl Drop for WinHandle {
     fn drop(&mut self) {
       if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
-        // SAFETY:
-        // winapi call
+        // SAFETY: winapi call
         unsafe {
           winapi::um::handleapi::CloseHandle(self.inner);
         }

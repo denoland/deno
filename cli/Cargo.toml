@@ -48,9 +48,9 @@ winres = "=0.1.12"
 [dependencies]
 deno_ast = { version = "0.17.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.147.0", path = "../core" }
-deno_doc = "0.40.0"
-deno_emit = "0.5.0"
-deno_graph = "0.30.0"
+deno_doc = "0.42.0"
+deno_emit = "0.6.0"
+deno_graph = "0.31.0"
 deno_lint = { version = "0.32.0", features = ["docs"] }
 deno_runtime = { version = "0.73.0", path = "../runtime" }
 deno_task_shell = "0.5.0"
@@ -69,7 +69,7 @@ dprint-plugin-markdown = "=0.14.0"
 dprint-plugin-typescript = "=0.71.2"
 encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
-eszip = "=0.23.0"
+eszip = "=0.24.0"
 fancy-regex = "=0.10.0"
 flate2 = "=1.0.24"
 http = "=0.2.6"
