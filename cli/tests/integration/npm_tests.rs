@@ -1,7 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
+use std::process::Stdio;
 use test_util as util;
+use util::assert_contains;
+use util::http_server;
 
 // NOTE: It's possible to automatically update the npm registry data in the test server
 // by setting the DENO_TEST_UTIL_UPDATE_NPM=1 environment variable.
@@ -141,4 +144,73 @@ fn env_vars() -> Vec<(String, String)> {
     "1".to_string(),
   ));
   env_vars
+}
+
+#[test]
+fn no_remote_after_first_run() {
+  let _server = http_server();
+
+  let deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/no_remote_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert!(output.status.success());
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+
+  let deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-remote")
+    .arg("npm/no_remote_after_first_run/main2.ts")
+    .env("NO_COLOR", "1")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert!(!output.status.success());
+  assert_contains!(
+    stderr,
+    "An npm specifier was requested: \"chalk\", but --no-remote is specified."
+  );
+  assert!(stdout.is_empty());
+
+  let deno = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-remote")
+    .arg("npm/no_remote_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  eprintln!("stderr {}", stderr);
+  eprintln!("stdout {}", stdout);
+  assert!(output.status.success());
+  assert!(stderr.is_empty());
+  assert_contains!(stdout, "createChalk: chalk");
 }
