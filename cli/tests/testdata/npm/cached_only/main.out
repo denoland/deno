@@ -1,0 +1,4 @@
+error: Error getting response at http://localhost:4545/npm/registry/chalk
+
+Caused by:
+    An npm specifier not found in cache: "chalk", --cached-only is specified.

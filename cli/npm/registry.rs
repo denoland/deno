@@ -2,11 +2,13 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
@@ -16,6 +18,7 @@ use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
 
@@ -100,6 +103,7 @@ pub struct NpmRegistryApi {
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
+  cache_setting: CacheSetting,
 }
 
 impl NpmRegistryApi {
@@ -122,16 +126,26 @@ impl NpmRegistryApi {
     }
   }
 
-  pub fn new(cache: NpmCache, reload: bool) -> Self {
-    Self::from_base(Self::default_url(), cache, reload)
+  pub fn new(
+    cache: NpmCache,
+    reload: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
+    Self::from_base(Self::default_url(), cache, reload, cache_setting)
   }
 
-  pub fn from_base(base_url: Url, cache: NpmCache, reload: bool) -> Self {
+  pub fn from_base(
+    base_url: Url,
+    cache: NpmCache,
+    reload: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
     Self {
       base_url,
       cache,
       mem_cache: Default::default(),
       reload,
+      cache_setting,
     }
   }
 
@@ -163,6 +177,7 @@ impl NpmRegistryApi {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
+
       if maybe_package_info.is_none() {
         maybe_package_info = self
           .load_package_info_from_registry(name)
@@ -191,13 +206,14 @@ impl NpmRegistryApi {
     &self,
     name: &str,
   ) -> Option<NpmPackageInfo> {
-    let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = fs::read_to_string(file_cache_path).ok()?;
-    match serde_json::from_str(&file_text) {
-      Ok(result) => Some(result),
+    match self.load_file_cached_package_info_result(name) {
+      Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("could not deserialize: {:#}", err);
+          panic!(
+            "error loading cached npm package info for {}: {:#}",
+            name, err
+          );
         } else {
           None
         }
@@ -205,22 +221,73 @@ impl NpmRegistryApi {
     }
   }
 
+  fn load_file_cached_package_info_result(
+    &self,
+    name: &str,
+  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    let file_cache_path = self.get_package_file_cache_path(name);
+    let file_text = match fs::read_to_string(file_cache_path) {
+      Ok(file_text) => file_text,
+      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+      Err(err) => return Err(err.into()),
+    };
+    Ok(serde_json::from_str(&file_text)?)
+  }
+
   fn save_package_info_to_file_cache(
     &self,
     name: &str,
     package_info: &NpmPackageInfo,
   ) {
+    if let Err(err) =
+      self.save_package_info_to_file_cache_result(name, package_info)
+    {
+      if cfg!(debug_assertions) {
+        panic!(
+          "error saving cached npm package info for {}: {:#}",
+          name, err
+        );
+      }
+    }
+  }
+
+  fn save_package_info_to_file_cache_result(
+    &self,
+    name: &str,
+    package_info: &NpmPackageInfo,
+  ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = serde_json::to_string_pretty(&package_info).unwrap();
-    let _ignore =
-      fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM);
+    let file_text = serde_json::to_string(&package_info)?;
+    std::fs::create_dir_all(&file_cache_path.parent().unwrap())?;
+    fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    Ok(())
   }
 
   async fn load_package_info_from_registry(
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    let response = match reqwest::get(self.get_package_url(name)).await {
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+          name
+        )
+      )
+      );
+    }
+
+    let package_url = self.get_package_url(name);
+
+    log::log!(
+      log::Level::Info,
+      "{} {}",
+      colors::green("Download"),
+      package_url,
+    );
+
+    let response = match reqwest::get(package_url).await {
       Ok(response) => response,
       Err(err) => {
         // attempt to use the local cache

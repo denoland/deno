@@ -217,8 +217,11 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
-    let npm_resolver =
-      GlobalNpmPackageResolver::from_deno_dir(&dir, cli_options.reload_flag())?;
+    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+      &dir,
+      cli_options.reload_flag(),
+      cli_options.cache_setting(),
+    )?;
 
     Ok(ProcState(Arc::new(Inner {
       dir,
