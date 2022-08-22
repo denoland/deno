@@ -176,7 +176,7 @@ Deno.test(
 
     await Deno.writeFile(filePath, bytes);
 
-    assertRejects(async () => {
+    await assertRejects(async () => {
       await Deno.readTextFile(filePath);
     });
 

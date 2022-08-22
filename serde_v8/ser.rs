@@ -424,11 +424,11 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    let maybe_v = v8::String::new(&mut self.scope.borrow_mut(), v);
+    let maybe_str = v8::String::new(&mut self.scope.borrow_mut(), v);
 
     // v8 string can return 'None' if buffer length > kMaxLength.
-    if let Some(v) = maybe_v {
-      Ok(v.into())
+    if let Some(str) = maybe_str {
+      Ok(str.into())
     } else {
       Err(Error::Message(String::from(
         "Cannot allocate String: buffer exceeds maximum length.",
