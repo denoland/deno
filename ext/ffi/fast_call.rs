@@ -208,7 +208,7 @@ impl SysVAmd64 {
       NativeType::U64 | NativeType::USize | NativeType::Function => {
         self.move_integer(U(QW))
       }
-      NativeType::Pointer => self.move_integer(TypedArray),
+      NativeType::Pointer => self.move_integer(Pointer),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -281,7 +281,7 @@ impl SysVAmd64 {
       // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rdi, [rsi + 8]),
+      (0, Pointer) => dynasm!(self.assmblr; .arch x64; mov rdi, [rsi + 8]),
 
       (1, U(B)) => dynasm!(self.assmblr; .arch x64; movzx esi, dl),
       (1, I(B)) => dynasm!(self.assmblr; .arch x64; movsx esi, dl),
@@ -289,7 +289,7 @@ impl SysVAmd64 {
       (1, I(W)) => dynasm!(self.assmblr; .arch x64; movsx esi, dx),
       (1, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov esi, edx),
       (1, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rsi, rdx),
-      (1, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rsi, [rdx + 8]),
+      (1, Pointer) => dynasm!(self.assmblr; .arch x64; mov rsi, [rdx + 8]),
 
       (2, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edx, cl),
       (2, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edx, cl),
@@ -297,7 +297,7 @@ impl SysVAmd64 {
       (2, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edx, cx),
       (2, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edx, ecx),
       (2, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, rcx),
-      (2, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rdx, [rcx + 8]),
+      (2, Pointer) => dynasm!(self.assmblr; .arch x64; mov rdx, [rcx + 8]),
 
       (3, U(B)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8b),
       (3, I(B)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8b),
@@ -305,7 +305,7 @@ impl SysVAmd64 {
       (3, I(W)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8w),
       (3, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, r8d),
       (3, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, r8),
-      (3, TypedArray) => dynasm!(self.assmblr; .arch x64; mov rcx, [r8 + 8]),
+      (3, Pointer) => dynasm!(self.assmblr; .arch x64; mov rcx, [r8 + 8]),
 
       (4, U(B)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9b),
       (4, I(B)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9b),
@@ -313,7 +313,7 @@ impl SysVAmd64 {
       (4, I(W)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9w),
       (4, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
       (4, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
-      (4, TypedArray) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
+      (4, Pointer) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
 
       (5, param) => {
         // First argument in stack goes to last register (r9)
@@ -336,7 +336,7 @@ impl SysVAmd64 {
           U(QW) | I(QW) => {
             dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32])
           }
-          TypedArray => {
+          Pointer => {
             dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32]; mov r9, [r9 + 8])
           }
         }
@@ -378,7 +378,7 @@ impl SysVAmd64 {
             ; mov rax, [rsp + self.offset_trampoline as i32]
             ; mov [rsp + self.offset_callee as i32], rax
           ),
-          TypedArray => dynasm!(self.assmblr
+          Pointer => dynasm!(self.assmblr
             ; .arch x64
             ; mov rax, [rsp + self.offset_trampoline as i32]
             ; mov rax, [rax + 8]
@@ -705,7 +705,7 @@ impl Aarch64Apple {
       NativeType::U64 | NativeType::USize | NativeType::Function => {
         self.move_integer(U(QW))
       }
-      NativeType::Pointer => self.move_integer(TypedArray),
+      NativeType::Pointer => self.move_integer(Pointer),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -783,7 +783,7 @@ impl Aarch64Apple {
       // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x0, [x1, 8]),
+      (0, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x0, [x1, 8]),
 
       (1, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w1, w2),
       (1, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFF),
@@ -791,7 +791,7 @@ impl Aarch64Apple {
       (1, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFFFF),
       (1, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w1, w2),
       (1, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x1, x2),
-      (1, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x1, [x2, 8]),
+      (1, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x1, [x2, 8]),
 
       (2, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w2, w3),
       (2, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFF),
@@ -799,7 +799,7 @@ impl Aarch64Apple {
       (2, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFFFF),
       (2, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w2, w3),
       (2, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x2, x3),
-      (2, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x2, [x3, 8]),
+      (2, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x2, [x3, 8]),
 
       (3, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w3, w4),
       (3, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFF),
@@ -807,7 +807,7 @@ impl Aarch64Apple {
       (3, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFFFF),
       (3, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w3, w4),
       (3, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x3, x4),
-      (3, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x3, [x4, 8]),
+      (3, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x3, [x4, 8]),
 
       (4, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w4, w5),
       (4, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFF),
@@ -815,7 +815,7 @@ impl Aarch64Apple {
       (4, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFFFF),
       (4, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w4, w5),
       (4, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x4, x5),
-      (4, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x4, [x5, 8]),
+      (4, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x4, [x5, 8]),
 
       (5, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w5, w6),
       (5, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFF),
@@ -823,7 +823,7 @@ impl Aarch64Apple {
       (5, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFFFF),
       (5, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w5, w6),
       (5, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x5, x6),
-      (5, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x5, [x6, 8]),
+      (5, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x5, [x6, 8]),
 
       (6, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w6, w7),
       (6, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFF),
@@ -831,7 +831,7 @@ impl Aarch64Apple {
       (6, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFFFF),
       (6, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w6, w7),
       (6, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x6, x7),
-      (6, TypedArray) => dynasm!(self.assmblr; .arch aarch64; ldr x6, [x7, 8]),
+      (6, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x6, [x7, 8]),
 
       (7, param) => {
         match param {
@@ -855,7 +855,7 @@ impl Aarch64Apple {
           I(QW) | U(QW) => {
             dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline])
           }
-          TypedArray => {
+          Pointer => {
             dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline]; ldr x7, [x7, 8])
           }
         }
@@ -900,7 +900,7 @@ impl Aarch64Apple {
             ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
             ; str x8, [sp, self.offset_callee + padding_callee]
           ),
-          TypedArray => dynasm!(self.assmblr
+          Pointer => dynasm!(self.assmblr
             ; .arch aarch64
             ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
             ; ldr x8, [x8, 8]
@@ -1554,14 +1554,14 @@ use Float::*;
 enum Integer {
   I(Size),
   U(Size),
-  TypedArray,
+  Pointer,
 }
 
 impl Integer {
   fn size(self) -> u32 {
     match self {
       I(size) | U(size) => size as u32,
-      TypedArray => 8,
+      Pointer => 8,
     }
   }
 }
