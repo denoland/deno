@@ -150,7 +150,9 @@ fn env_vars() -> Vec<(String, String)> {
 fn no_remote_after_first_run() {
   let _server = http_server();
 
-  let deno = util::deno_cmd()
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
@@ -169,7 +171,7 @@ fn no_remote_after_first_run() {
   assert_contains!(stderr, "Download");
   assert_contains!(stdout, "createChalk: chalk");
 
-  let deno = util::deno_cmd()
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
@@ -192,7 +194,7 @@ fn no_remote_after_first_run() {
   );
   assert!(stdout.is_empty());
 
-  let deno = util::deno_cmd()
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
