@@ -224,6 +224,14 @@ mod tests {
         \n ((uint64_t*)p_ret->data)[0] = r;\n\
       }\n\n",
     );
+    assert_codegen(
+      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U64),
+      "extern uint64_t func(void* p0, void* p1);\n\n\
+      void func_trampoline(void* recv, void* p0, void* p1, struct FastApiTypedArray* const p_ret) {\
+        \n uint64_t r = func(p0, p1);\
+        \n ((uint64_t*)p_ret->data)[0] = r;\n\
+      }\n\n",
+    );
   }
 
   #[test]
