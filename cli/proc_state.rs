@@ -221,8 +221,11 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let npm_resolver =
-      GlobalNpmPackageResolver::from_deno_dir(&dir, cli_options.reload_flag())?;
+    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+      &dir,
+      cli_options.reload_flag(),
+      cli_options.cache_setting(),
+    )?;
 
     Ok(ProcState(Arc::new(Inner {
       dir,
