@@ -203,16 +203,23 @@ pub fn node_resolve_binary_export(
       pkg.id
     ),
   };
-  let bin_name = bin_name.unwrap_or(&pkg_req.name);
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name != pkg_req.name {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
         None
       } else {
         Some(bin)
       }
     }
-    Value::Object(o) => o.get(bin_name),
+    Value::Object(o) => {
+      if let Some(bin_name) = bin_name {
+        o.get(bin_name)
+      } else if o.len() == 1 {
+        o.values().next()
+      } else {
+        o.get(&pkg_req.name)
+      }
+    },
     _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", pkg.id),
   };
   let bin_entry = match bin_entry {
@@ -220,12 +227,15 @@ pub fn node_resolve_binary_export(
     None => bail!(
       "package {} did not have a 'bin' entry for {} in its package.json",
       pkg.id,
-      bin_name,
+      bin_name.unwrap_or(&pkg_req.name),
     ),
   };
   let bin_entry = match bin_entry {
     Value::String(s) => s,
-    _ => bail!("package {} had non-implemented non-string property 'bin' -> '{}' in its package.json", pkg.id, bin_name),
+    _ => bail!(
+      "package {} had a non-string sub property of 'bin' in its package.json",
+      pkg.id
+    ),
   };
 
   let url =

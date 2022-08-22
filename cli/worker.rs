@@ -461,6 +461,7 @@ pub async fn create_main_worker(
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
     ps.npm_resolver.cache_packages().await?;
+    ps.prepare_node_std_graph().await?;
     let resolve_response = node::node_resolve_binary_export(
       &package_ref.req,
       package_ref.sub_path.as_deref(),

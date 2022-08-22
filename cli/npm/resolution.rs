@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 
 use super::registry::NpmPackageInfo;
@@ -314,6 +315,27 @@ impl NpmResolution {
           .cmp(&a.version_req.version_text()),
         ordering => ordering,
       });
+
+      // cache all the dependencies' registry infos in parallel when this env var isn't set
+      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
+      {
+        let handles = deps
+          .iter()
+          .map(|dep| {
+            let name = dep.name.clone();
+            let api = self.api.clone();
+            tokio::task::spawn(async move {
+              // it's ok to call this without storing the result, because
+              // NpmRegistryApi will cache the package info in memory
+              api.package_info(&name).await
+            })
+          })
+          .collect::<Vec<_>>();
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+          result??; // surface the first error
+        }
+      }
 
       // now resolve them
       for dep in deps {
