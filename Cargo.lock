@@ -834,6 +834,7 @@ dependencies = [
  "notify",
  "once_cell",
  "os_pipe",
+ "path-clean",
  "percent-encoding 2.1.0",
  "pin-project",
  "pretty_assertions",
@@ -1041,6 +1042,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_flash"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_tls",
+ "deno_websocket",
+ "http",
+ "httparse",
+ "libc",
+ "log 0.4.17",
+ "mio",
+ "rustls",
+ "rustls-pemfile 0.2.1",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "deno_graph"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1122,18 +1141,22 @@ name = "deno_node"
 version = "0.2.0"
 dependencies = [
  "deno_core",
+ "regex",
+ "serde",
 ]
 
 [[package]]
 name = "deno_ops"
 version = "0.25.0"
 dependencies = [
+ "deno_core",
  "once_cell",
  "proc-macro-crate",
  "proc-macro2 1.0.39",
  "quote 1.0.18",
  "regex",
  "syn 1.0.96",
+ "trybuild",
 ]
 
 [[package]]
@@ -1147,6 +1170,7 @@ dependencies = [
  "deno_crypto",
  "deno_fetch",
  "deno_ffi",
+ "deno_flash",
  "deno_http",
  "deno_net",
  "deno_node",
@@ -1907,6 +1931,12 @@ dependencies = [
  "opaque-debug",
  "polyval",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "glow"
@@ -3608,6 +3638,15 @@ dependencies = [
 
 [[package]]
 name = "rustls-pemfile"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
+dependencies = [
+ "base64 0.13.0",
+]
+
+[[package]]
+name = "rustls-pemfile"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ee86d63972a7c661d1536fefe8c3c8407321c3df668891286de28abcd087360"
@@ -4573,6 +4612,7 @@ dependencies = [
  "pretty_assertions",
  "pty",
  "regex",
+ "reqwest",
  "rustls-pemfile 1.0.0",
  "serde",
  "serde_json",
@@ -4957,6 +4997,21 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+
+[[package]]
+name = "trybuild"
+version = "1.0.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "764b9e244b482a9b81bde596aa37aa6f1347bf8007adab25e59f901b32b4e0a0"
+dependencies = [
+ "glob",
+ "once_cell",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "termcolor",
+ "toml",
+]
 
 [[package]]
 name = "tungstenite"

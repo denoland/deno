@@ -17,3 +17,7 @@ proc-macro2 = "1"
 quote = "1"
 regex = "1.6.0"
 syn = { version = "1", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+deno_core = { path = "../core" }
+trybuild = "1.0.61"

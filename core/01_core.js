@@ -210,8 +210,35 @@
     return aggregate;
   }
 
+  let reportExceptionCallback = undefined;
+
+  // Used to report errors thrown from functions passed to `queueMicrotask()`.
+  // The callback will be passed the thrown error. For example, you can use this
+  // to dispatch an error event to the global scope.
+  // In other words, set the implementation for
+  // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+  function setReportExceptionCallback(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    reportExceptionCallback = cb;
+  }
+
   function queueMicrotask(cb) {
-    return ops.op_queue_microtask(cb);
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    return ops.op_queue_microtask(() => {
+      try {
+        cb();
+      } catch (error) {
+        if (reportExceptionCallback) {
+          reportExceptionCallback(error);
+        } else {
+          throw error;
+        }
+      }
+    });
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -252,6 +279,7 @@
     opCallTraces,
     refOp,
     unrefOp,
+    setReportExceptionCallback,
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),

@@ -1313,6 +1313,15 @@ impl Permissions {
   }
 }
 
+impl deno_flash::FlashPermissions for Permissions {
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.net.check(host)
+  }
+}
+
 impl deno_net::NetPermissions for Permissions {
   fn check_net<T: AsRef<str>>(
     &mut self,

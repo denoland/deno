@@ -23,4 +23,6 @@ rustflags = [
   "clippy::missing_safety_doc",
   "-D",
   "clippy::undocumented_unsafe_blocks",
+  "-A",
+  "clippy::derive-partial-eq-without-eq",
 ]

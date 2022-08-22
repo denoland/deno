@@ -22,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_node::DenoDirNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -67,9 +68,11 @@ pub struct WorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -148,6 +151,7 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
@@ -161,13 +165,14 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      // deno_node::init() // todo(dsherret): re-enable,
+      deno_node::init(unstable, options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -420,10 +425,12 @@ mod tests {
       format_js_error_fn: None,
       source_map_getter: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
+      npm_resolver: None,
       get_error_class_fn: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
