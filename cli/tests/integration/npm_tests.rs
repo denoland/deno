@@ -54,23 +54,9 @@ itest!(dynamic_import {
   http_server: true,
 });
 
-itest!(no_remote {
-  args: "run --no-remote --unstable npm/no_remote/main.ts",
-  output: "npm/no_remote/main.out",
-  envs: env_vars(),
-  exit_code: 1,
-});
-
 itest!(cached_only {
   args: "run --cached-only --unstable npm/cached_only/main.ts",
   output: "npm/cached_only/main.out",
-  envs: env_vars(),
-  exit_code: 1,
-});
-
-itest!(no_remote_dynamic_imports {
-  args: "run --no-remote --allow-read --unstable npm/no_remote_dynamic_imports/main.ts",
-  output: "npm/no_remote_dynamic_imports/main.out",
   envs: env_vars(),
   exit_code: 1,
 });
@@ -98,6 +84,83 @@ fn parallel_downloading() {
     true,
   );
   assert!(out.contains("chalk cjs loads"));
+}
+
+#[test]
+fn cached_only_after_first_run() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/cached_only_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--cached-only")
+    .arg("npm/cached_only_after_first_run/main2.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(
+    stderr,
+    "An npm specifier not found in cache: \"ansi-styles\", --cached-only is specified."
+  );
+  assert!(stdout.is_empty());
+  assert!(!output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--cached-only")
+    .arg("npm/cached_only_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  eprintln!("DENO DIR: {}", deno_dir.path().display());
+  std::mem::forget(deno_dir);
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  eprintln!("stderr {}", stderr);
+  eprintln!("stdout {}", stdout);
+  assert!(output.status.success());
+  assert!(stderr.is_empty());
+  assert_contains!(stdout, "createChalk: chalk");
 }
 
 #[test]
@@ -144,75 +207,4 @@ fn env_vars() -> Vec<(String, String)> {
     "1".to_string(),
   ));
   env_vars
-}
-
-#[test]
-fn no_remote_after_first_run() {
-  let _server = http_server();
-
-  let deno_dir = util::new_deno_dir();
-
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--allow-read")
-    .arg("--allow-env")
-    .arg("npm/no_remote_after_first_run/main1.ts")
-    .env("NO_COLOR", "1")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  let stderr = String::from_utf8_lossy(&output.stderr);
-  let stdout = String::from_utf8_lossy(&output.stdout);
-  assert!(output.status.success());
-  assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
-
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--allow-read")
-    .arg("--allow-env")
-    .arg("--no-remote")
-    .arg("npm/no_remote_after_first_run/main2.ts")
-    .env("NO_COLOR", "1")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  let stderr = String::from_utf8_lossy(&output.stderr);
-  let stdout = String::from_utf8_lossy(&output.stdout);
-  assert!(!output.status.success());
-  assert_contains!(
-    stderr,
-    "An npm specifier was requested: \"chalk\", but --no-remote is specified."
-  );
-  assert!(stdout.is_empty());
-
-  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--allow-read")
-    .arg("--allow-env")
-    .arg("--no-remote")
-    .arg("npm/no_remote_after_first_run/main1.ts")
-    .env("NO_COLOR", "1")
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  let stderr = String::from_utf8_lossy(&output.stderr);
-  let stdout = String::from_utf8_lossy(&output.stdout);
-  eprintln!("stderr {}", stderr);
-  eprintln!("stdout {}", stdout);
-  assert!(output.status.success());
-  assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
 }

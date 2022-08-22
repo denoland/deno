@@ -81,13 +81,11 @@ impl GlobalNpmPackageResolver {
   pub fn from_deno_dir(
     dir: &DenoDir,
     reload: bool,
-    no_remote: bool,
     cache_setting: CacheSetting,
   ) -> Result<Self, AnyError> {
     Ok(Self::from_cache(
-      NpmCache::from_deno_dir(dir, no_remote, cache_setting.clone())?,
+      NpmCache::from_deno_dir(dir, cache_setting.clone())?,
       reload,
-      no_remote,
       cache_setting,
     ))
   }
@@ -95,11 +93,9 @@ impl GlobalNpmPackageResolver {
   fn from_cache(
     cache: NpmCache,
     reload: bool,
-    no_remote: bool,
     cache_setting: CacheSetting,
   ) -> Self {
-    let api =
-      NpmRegistryApi::new(cache.clone(), reload, no_remote, cache_setting);
+    let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
     let registry_url = api.base_url().to_owned();
     let resolution = Arc::new(NpmResolution::new(api));
 

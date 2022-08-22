@@ -220,7 +220,6 @@ impl ProcState {
     let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
       &dir,
       cli_options.reload_flag(),
-      cli_options.no_remote(),
       cli_options.cache_setting(),
     )?;
 

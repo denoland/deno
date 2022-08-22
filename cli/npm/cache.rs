@@ -156,19 +156,16 @@ impl ReadonlyNpmCache {
 #[derive(Clone, Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
-  no_remote: bool,
   cache_setting: CacheSetting,
 }
 
 impl NpmCache {
   pub fn from_deno_dir(
     dir: &DenoDir,
-    no_remote: bool,
     cache_setting: CacheSetting,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
-      no_remote,
       cache_setting,
     })
   }
@@ -199,13 +196,6 @@ impl NpmCache {
         )
       )
       );
-    }
-
-    if self.no_remote {
-      return Err(custom_error(
-        "NoRemote",
-        format!("An npm specifier was requested: \"{}\", but --no-remote is specified.", id.name),
-      ));
     }
 
     log::log!(
