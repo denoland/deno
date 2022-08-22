@@ -37,7 +37,7 @@ use crate::version;
 
 pub struct CliMainWorker {
   main_module: ModuleSpecifier,
-  is_main_esm: bool,
+  is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
 }
@@ -102,8 +102,19 @@ impl CliMainWorker {
           true,
         )?;
       }
+    } else if self.is_main_cjs {
+      node::initialize_runtime(&mut self.worker.js_runtime).await?;
+      node::load_cjs_module_from_ext_node(
+        &mut self.worker.js_runtime,
+        &self
+          .main_module
+          .to_file_path()
+          .unwrap()
+          .to_string_lossy()
+          .to_string(),
+        true,
+      )?;
     } else {
-      // Regular ES module execution
       self.execute_main_module_possibly_with_npm().await?;
     }
 
@@ -418,20 +429,7 @@ impl CliMainWorker {
     if self.ps.npm_resolver.has_packages() {
       node::initialize_runtime(&mut self.worker.js_runtime).await?;
     }
-    if self.is_main_esm {
-      self.worker.evaluate_module(id).await
-    } else {
-      node::load_cjs_module_from_ext_node(
-        &mut self.worker.js_runtime,
-        &self
-          .main_module
-          .to_file_path()
-          .unwrap()
-          .to_string_lossy()
-          .to_string(),
-        true,
-      )
-    }
+    self.worker.evaluate_module(id).await
   }
 
   async fn maybe_setup_coverage_collector(
@@ -461,7 +459,7 @@ pub async fn create_main_worker(
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
 ) -> Result<CliMainWorker, AnyError> {
-  let (main_module, is_main_esm) = if let Ok(package_ref) =
+  let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReference::from_specifier(&main_module)
   {
     ps.npm_resolver
@@ -473,10 +471,10 @@ pub async fn create_main_worker(
       None,
       &ps.npm_resolver,
     )?;
-    let use_esm_loader = matches!(resolve_response, ResolveResponse::Esm(_));
-    (resolve_response.to_result()?, use_esm_loader)
+    let is_main_cjs = matches!(resolve_response, ResolveResponse::CommonJs(_));
+    (resolve_response.to_result()?, is_main_cjs)
   } else {
-    (main_module, true)
+    (main_module, false)
   };
   let module_loader = CliModuleLoader::new(ps.clone());
 
@@ -553,7 +551,7 @@ pub async fn create_main_worker(
   );
   Ok(CliMainWorker {
     main_module,
-    is_main_esm,
+    is_main_cjs,
     worker,
     ps: ps.clone(),
   })
