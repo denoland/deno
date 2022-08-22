@@ -39,7 +39,7 @@ impl SerializablePkg {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    match &*self {
+    match self {
       Self::Primitive(x) => crate::to_v8(scope, x),
       Self::Serializable(x) => x.to_v8(scope),
     }

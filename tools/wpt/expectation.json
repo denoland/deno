@@ -3615,7 +3615,7 @@
         "type-long-settimeout.any.worker.html": true
       },
       "microtask-queuing": {
-        "queue-microtask-exceptions.any.html": false,
+        "queue-microtask-exceptions.any.html": true,
         "queue-microtask.any.html": true,
         "queue-microtask.any.worker.html": true
       },

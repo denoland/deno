@@ -36,6 +36,18 @@ function onListen<T>(
   };
 }
 
+Deno.test(async function httpServerInvalidHostname() {
+  assertThrows(
+    () =>
+      Deno.serve({
+        fetch: (_req) => new Response("ok"),
+        hostname: "localhost",
+      }),
+    TypeError,
+    "hostname could not be parsed as an IP address",
+  );
+});
+
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const ac = new AbortController();
   const promise = deferred();
@@ -71,6 +83,57 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   ac.abort();
   await server;
 });
+
+Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
+  const ac = new AbortController();
+
+  const server = Deno.serve({
+    fetch() {
+      return new Response("Hello World");
+    },
+    port: 0,
+    signal: ac.signal,
+    onListen({ port }) {
+      assert(port > 0 && port < 65536);
+      ac.abort();
+    },
+  });
+  await server;
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerDefaultOnListenCallback() {
+    const ac = new AbortController();
+
+    const consoleLog = console.log;
+    console.log = (msg) => {
+      try {
+        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        assert(!!match);
+        const port = +match[1];
+        assert(port > 0 && port < 65536);
+      } finally {
+        ac.abort();
+      }
+    };
+
+    try {
+      const server = Deno.serve({
+        fetch() {
+          return new Response("Hello World");
+        },
+        hostname: "0.0.0.0",
+        port: 0,
+        signal: ac.signal,
+      });
+
+      await server;
+    } finally {
+      console.log = consoleLog;
+    }
+  },
+);
 
 // https://github.com/denoland/deno/issues/15107
 Deno.test(

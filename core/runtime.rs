@@ -328,7 +328,6 @@ impl JsRuntime {
     if let Some(get_error_class_fn) = options.get_error_class_fn {
       op_state.get_error_class_fn = get_error_class_fn;
     }
-
     let op_state = Rc::new(RefCell::new(op_state));
     let op_ctxs = ops
       .into_iter()
@@ -341,12 +340,14 @@ impl JsRuntime {
       .collect::<Vec<_>>()
       .into_boxed_slice();
 
+    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    // V8 takes ownership of external_references.
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator =
-        v8::SnapshotCreator::new(Some(&bindings::EXTERNAL_REFERENCES));
+      let mut creator = v8::SnapshotCreator::new(Some(refs));
       // SAFETY: `get_owned_isolate` is unsafe because it may only be called
       // once. This is the only place we call this function, so this call is
       // safe.
@@ -369,7 +370,7 @@ impl JsRuntime {
             V8_WRAPPER_OBJECT_INDEX,
           )
         })
-        .external_references(&**bindings::EXTERNAL_REFERENCES);
+        .external_references(&**refs);
       let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
         params = match snapshot {
           Snapshot::Static(data) => params.snapshot_blob(data),
@@ -766,7 +767,14 @@ impl JsRuntime {
             .clear_all_slots(self.v8_isolate());
         }
       }
-      state.borrow_mut().known_realms.clear();
+      let mut state = state.borrow_mut();
+      state.known_realms.clear();
+      // Free up additional global handles before creating the snapshot
+      state.js_macrotask_cbs.clear();
+      state.js_nexttick_cbs.clear();
+      state.js_wasm_streaming_cb = None;
+      state.js_format_exception_cb = None;
+      state.js_promise_reject_cb = None;
     }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -2662,6 +2670,42 @@ pub mod tests {
         ..Default::default()
       });
       runtime.execute_script("a.js", "a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+    runtime2
+      .execute_script("check.js", "if (a != 3) throw Error('x')")
+      .unwrap();
+  }
+  #[test]
+  fn test_snapshot_callbacks() {
+    let snapshot = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime
+        .execute_script(
+          "a.js",
+          r#"
+          Deno.core.ops.op_set_macrotask_callback(() => {
+            return true;
+          });
+          Deno.core.ops.op_set_format_exception_callback(()=> {
+            return null;
+          })
+          Deno.core.setPromiseRejectCallback(() => {
+            return false;
+          });
+          a = 1 + 2; 
+      "#,
+        )
+        .unwrap();
       runtime.snapshot()
     };
 

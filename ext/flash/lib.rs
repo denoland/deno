@@ -76,7 +76,7 @@ pub struct ServerContext {
   rx: mpsc::Receiver<Request>,
   requests: HashMap<u32, Request>,
   next_token: u32,
-  listening_rx: Option<mpsc::Receiver<()>>,
+  listening_rx: Option<mpsc::Receiver<u16>>,
   close_tx: mpsc::Sender<()>,
   cancel_handle: Rc<CancelHandle>,
 }
@@ -939,7 +939,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<Request>,
-  listening_tx: mpsc::Sender<()>,
+  listening_tx: mpsc::Sender<u16>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
@@ -971,7 +971,9 @@ fn run_server(
     }
   };
 
-  listening_tx.blocking_send(()).unwrap();
+  listening_tx
+    .blocking_send(listener.local_addr().unwrap().port())
+    .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
@@ -1242,7 +1244,11 @@ where
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
-  let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+  let parsed_hostname = opts
+    .hostname
+    .parse()
+    .map_err(|_| type_error("hostname could not be parsed as an IP address"))?;
+  let addr = SocketAddr::new(parsed_hostname, opts.port);
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);
@@ -1274,7 +1280,7 @@ where
 fn op_flash_wait_for_listening(
   state: &mut OpState,
   server_id: u32,
-) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
+) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
@@ -1284,8 +1290,8 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    listening_rx.recv().await;
-    Ok(())
+    let port = listening_rx.recv().await.unwrap();
+    Ok(port)
   })
 }
 
@@ -1344,8 +1350,8 @@ async fn op_flash_next_async(
 // the ContextScope creation is optimized away and the op is as simple as:
 //   f(info: *const v8::FunctionCallbackInfo) { let rv = ...; rv.set_uint32(op_flash_next()); }
 #[op]
-fn op_flash_next(op_state: &mut OpState) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next(state: &mut OpState) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&0).unwrap();
   next_request_sync(ctx)
 }
@@ -1353,8 +1359,8 @@ fn op_flash_next(op_state: &mut OpState) -> u32 {
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next_server(state: &mut OpState, server_id: u32) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   next_request_sync(ctx)
 }

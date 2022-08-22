@@ -136,6 +136,7 @@ impl TcpStreamResource {
       .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
   }
 
+  #[allow(clippy::type_complexity)]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
