@@ -91,6 +91,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
 use log::debug;
 use log::info;
+use npm::NpmPackageReference;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -322,7 +323,8 @@ async fn install_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_main_module().await?;
   tools::installer::install(flags, install_flags)?;
@@ -411,7 +413,8 @@ async fn eval_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -693,7 +696,8 @@ async fn repl_command(
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   worker.setup_repl().await?;
   tools::repl::run(
     &ps,
@@ -713,7 +717,8 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -757,7 +762,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         permissions,
         vec![],
         Default::default(),
-      );
+      )
+      .await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -796,8 +802,13 @@ async fn run_command(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags).await?;
+  let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
+  {
+    ModuleSpecifier::parse(&run_flags.script)?
+  } else {
+    resolve_url_or_path(&run_flags.script)?
+  };
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
   let mut worker = create_main_worker(
@@ -806,7 +817,8 @@ async fn run_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
