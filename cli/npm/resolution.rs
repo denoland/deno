@@ -173,7 +173,11 @@ impl NpmResolutionSnapshot {
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.packages.get(referrer) {
       Some(referrer_package) => {
-        match referrer_package.dependencies.get(name_without_path(name)) {
+        let name_ = name_without_path(name);
+        if referrer_package.id.name == name_ {
+          return Ok(referrer_package);
+        }
+        match referrer_package.dependencies.get(name_) {
           Some(id) => Ok(self.packages.get(id).unwrap()),
           None => {
             bail!(
