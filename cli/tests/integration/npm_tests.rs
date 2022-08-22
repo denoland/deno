@@ -58,6 +58,13 @@ itest!(no_remote {
   exit_code: 1,
 });
 
+itest!(cached_only {
+  args: "run --cached-only --unstable npm/cached_only/main.ts",
+  output: "npm/cached_only/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
 itest!(no_remote_dynamic_imports {
   args: "run --no-remote --allow-read --unstable npm/no_remote_dynamic_imports/main.ts",
   output: "npm/no_remote_dynamic_imports/main.out",
