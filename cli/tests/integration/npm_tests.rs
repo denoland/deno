@@ -190,7 +190,7 @@ fn no_remote_after_first_run() {
   assert!(!output.status.success());
   assert_contains!(
     stderr,
-    "An npm specifier was requested: \"chalk\", but --no-remote is specified."
+    "An1 npm specifier was requested: \"chalk\", but --no-remote is specified."
   );
   assert!(stdout.is_empty());
 

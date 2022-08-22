@@ -187,18 +187,18 @@ impl NpmRegistryApi {
         maybe_package_info = self.load_file_cached_package_info(name);
       }
 
-      if self.cache_setting == CacheSetting::Only {
-        return Err(custom_error(
-          "NotCached",
-          format!(
-            "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-            name
-          )
-        )
-        );
-      }
-
       if maybe_package_info.is_none() {
+        if self.cache_setting == CacheSetting::Only {
+          return Err(custom_error(
+            "NotCached",
+            format!(
+              "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+              name
+            )
+          )
+          );
+        }
+
         maybe_package_info = self
           .load_package_info_from_registry(name)
           .await
