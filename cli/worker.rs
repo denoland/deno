@@ -463,7 +463,7 @@ pub async fn create_main_worker(
     ps.npm_resolver.cache_packages().await?;
     let resolve_response = node::node_resolve_binary_export(
       &package_ref.req,
-      None,
+      package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
     )?;
     let is_main_cjs = matches!(resolve_response, ResolveResponse::CommonJs(_));
