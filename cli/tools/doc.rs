@@ -25,21 +25,38 @@ pub async fn print_docs(
   let source_file = doc_flags
     .source_file
     .unwrap_or_else(|| "--builtin".to_string());
-  let source_parser = deno_graph::DefaultSourceParser::new();
 
   let mut doc_nodes = if source_file == "--builtin" {
+    // todo(dsherret): change this back to deno://lib.deno.d.ts once
+    // https://github.com/denoland/deno_ast/issues/109 is fixed
     let source_file_specifier =
-      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let graph = ps
-      .create_graph(vec![(source_file_specifier.clone(), ModuleKind::Esm)])
-      .await?;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
-    doc_parser.parse_source(
-      &source_file_specifier,
-      MediaType::Dts,
-      get_types(ps.options.unstable()).into(),
-    )?
+      ModuleSpecifier::parse("deno://dts/lib.deno.d.ts").unwrap();
+    let content = get_types(ps.options.unstable());
+    let mut loader = deno_graph::source::MemoryLoader::new(
+      vec![(
+        source_file_specifier.to_string(),
+        deno_graph::source::Source::Module {
+          specifier: source_file_specifier.to_string(),
+          content,
+          maybe_headers: None,
+        },
+      )],
+      Vec::new(),
+    );
+    let analyzer = deno_graph::CapturingModuleAnalyzer::default();
+    let graph = deno_graph::create_graph(
+      vec![(source_file_specifier.clone(), ModuleKind::Esm)],
+      false,
+      None,
+      &mut loader,
+      None,
+      None,
+      Some(&analyzer),
+      None,
+    )
+    .await;
+    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &analyzer);
+    doc_parser.parse_module(&source_file_specifier)?.definitions
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
 
@@ -61,8 +78,8 @@ pub async fn print_docs(
     let graph = ps
       .create_graph(vec![(root_specifier.clone(), ModuleKind::Esm)])
       .await?;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
+    let store = ps.parsed_source_cache.as_store();
+    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &*store);
     doc_parser.parse_with_reexports(&root_specifier)?
   };
 

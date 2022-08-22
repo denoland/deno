@@ -245,7 +245,8 @@ async fn compile_command(
 
   graph.valid().unwrap();
 
-  let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
+  let store = ps.parsed_source_cache.as_store();
+  let eszip = eszip::EszipV2::from_graph(graph, &*store, Default::default())?;
 
   info!(
     "{} {}",
@@ -462,6 +463,7 @@ async fn create_graph_and_maybe_check(
       .as_ref()
       .map(|im| im.as_resolver())
   };
+  let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![(root, deno_graph::ModuleKind::Esm)],
@@ -470,7 +472,7 @@ async fn create_graph_and_maybe_check(
       &mut cache,
       maybe_resolver,
       maybe_locker,
-      None,
+      Some(&*analyzer),
       None,
     )
     .await,
@@ -556,7 +558,6 @@ async fn bundle_command(
 
       debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-
       let graph =
         create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
 

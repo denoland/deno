@@ -11,6 +11,7 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::colors;
 use crate::diagnostics::Diagnostics;
@@ -22,7 +23,6 @@ use crate::version;
 use deno_ast::swc::bundler::Hook;
 use deno_ast::swc::bundler::ModuleRecord;
 use deno_ast::swc::common::Span;
-use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
@@ -36,6 +36,8 @@ use deno_graph::MediaType;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::ResolutionError;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::fmt;
 use std::sync::Arc;
 
@@ -206,17 +208,15 @@ fn get_tsc_roots(
     .into_iter()
     .filter_map(|(specifier, module_entry)| match module_entry {
       ModuleEntry::Module {
-        media_type,
-        ts_check,
-        ..
-      } => match &media_type {
+        media_type, code, ..
+      } => match media_type {
         MediaType::TypeScript
         | MediaType::Tsx
         | MediaType::Mts
         | MediaType::Cts
         | MediaType::Jsx => Some((specifier.clone(), *media_type)),
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs
-          if check_js || *ts_check =>
+          if check_js || has_ts_check(*media_type, code) =>
         {
           Some((specifier.clone(), *media_type))
         }
@@ -238,21 +238,30 @@ pub fn get_source_hash(source_text: &str, emit_options_hash: u64) -> u64 {
 }
 
 pub fn emit_parsed_source(
-  cache: &EmitCache,
+  emit_cache: &EmitCache,
+  parsed_source_cache: &ParsedSourceCache,
   specifier: &ModuleSpecifier,
-  parsed_source: &ParsedSource,
+  media_type: MediaType,
+  source: &Arc<str>,
   emit_options: &deno_ast::EmitOptions,
   emit_config_hash: u64,
 ) -> Result<String, AnyError> {
-  let source_hash =
-    get_source_hash(parsed_source.text_info().text_str(), emit_config_hash);
+  let source_hash = get_source_hash(source, emit_config_hash);
 
-  if let Some(emit_code) = cache.get_emit_code(specifier, Some(source_hash)) {
+  if let Some(emit_code) =
+    emit_cache.get_emit_code(specifier, Some(source_hash))
+  {
     Ok(emit_code)
   } else {
+    // this will use a cached version if it exists
+    let parsed_source = parsed_source_cache.get_or_parse_module(
+      specifier,
+      source.clone(),
+      media_type,
+    )?;
     let transpiled_source = parsed_source.transpile(emit_options)?;
     debug_assert!(transpiled_source.source_map.is_none());
-    cache.set_emit_code(specifier, source_hash, &transpiled_source.text);
+    emit_cache.set_emit_code(specifier, source_hash, &transpiled_source.text);
     Ok(transpiled_source.text)
   }
 }
@@ -397,13 +406,11 @@ fn get_check_hash(
   let mut has_file_to_type_check = false;
   for (specifier, module_entry) in sorted_entries {
     if let ModuleEntry::Module {
-      code,
-      media_type,
-      ts_check,
-      ..
+      code, media_type, ..
     } = module_entry
     {
-      if *ts_check {
+      let ts_check = has_ts_check(*media_type, code);
+      if ts_check {
         has_file_to_type_check = true;
       }
 
@@ -547,5 +554,130 @@ impl From<TsConfig> for deno_ast::EmitOptions {
       transform_jsx,
       var_decl_imports: false,
     }
+  }
+}
+
+/// Matches the `@ts-check` pragma.
+static TS_CHECK_RE: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
+
+fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
+  match &media_type {
+    MediaType::JavaScript
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::Jsx => get_leading_comments(file_text)
+      .iter()
+      .any(|text| TS_CHECK_RE.is_match(text)),
+    _ => false,
+  }
+}
+
+fn get_leading_comments(file_text: &str) -> Vec<String> {
+  let mut chars = file_text.chars().peekable();
+
+  // skip over the shebang
+  if file_text.starts_with("#!") {
+    // skip until the end of the line
+    for c in chars.by_ref() {
+      if c == '\n' {
+        break;
+      }
+    }
+  }
+
+  let mut results = Vec::new();
+  // now handle the comments
+  while chars.peek().is_some() {
+    // skip over any whitespace
+    while chars
+      .peek()
+      .map(|c| char::is_whitespace(*c))
+      .unwrap_or(false)
+    {
+      chars.next();
+    }
+
+    if chars.next() != Some('/') {
+      break;
+    }
+    match chars.next() {
+      Some('/') => {
+        let mut text = String::new();
+        for c in chars.by_ref() {
+          if c == '\n' {
+            break;
+          } else {
+            text.push(c);
+          }
+        }
+        results.push(text);
+      }
+      Some('*') => {
+        let mut text = String::new();
+        while let Some(c) = chars.next() {
+          if c == '*' && chars.peek() == Some(&'/') {
+            chars.next();
+            break;
+          } else {
+            text.push(c);
+          }
+        }
+        results.push(text);
+      }
+      _ => break,
+    }
+  }
+  results
+}
+
+#[cfg(test)]
+mod test {
+  use deno_ast::MediaType;
+
+  use super::get_leading_comments;
+  use super::has_ts_check;
+
+  #[test]
+  fn get_leading_comments_test() {
+    assert_eq!(
+      get_leading_comments(
+        "#!/usr/bin/env deno\r\n// test\n/* 1 *//*2*///3\n//\n /**/  /*4 */"
+      ),
+      vec![
+        " test".to_string(),
+        " 1 ".to_string(),
+        "2".to_string(),
+        "3".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "4 ".to_string(),
+      ]
+    );
+    assert_eq!(
+      get_leading_comments("//1 /* */ \na;"),
+      vec!["1 /* */ ".to_string(),]
+    );
+    assert_eq!(get_leading_comments("//"), vec!["".to_string()]);
+  }
+
+  #[test]
+  fn has_ts_check_test() {
+    assert!(has_ts_check(
+      MediaType::JavaScript,
+      "// @ts-check\nconsole.log(5);"
+    ));
+    assert!(has_ts_check(
+      MediaType::JavaScript,
+      "// deno-lint-ignore\n// @ts-check\n"
+    ));
+    assert!(!has_ts_check(
+      MediaType::JavaScript,
+      "test;\n// @ts-check\n"
+    ));
+    assert!(!has_ts_check(
+      MediaType::JavaScript,
+      "// ts-check\nconsole.log(5);"
+    ));
   }
 }
