@@ -248,6 +248,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
     .unwrap()
     .to_rust_string_lossy(scope);
 
+  eprintln!("dynamic import {} {}", specifier_str, referrer_name_str);
   let resolver = v8::PromiseResolver::new(scope).unwrap();
   let promise = resolver.get_promise(scope);
 

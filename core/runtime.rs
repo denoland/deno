@@ -1523,6 +1523,7 @@ impl JsRuntime {
               .push(load.into_future());
           }
           Err(err) => {
+            eprintln!("error preparing {:#?}", err);
             let exception = to_v8_type_error(&mut self.handle_scope(), err);
             self.dynamic_import_reject(dyn_import_id, exception);
           }

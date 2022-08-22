@@ -515,10 +515,11 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!("resolving dynamic import {} {}", specifier, referrer);
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
-        return self
+        let r = self
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
@@ -535,6 +536,8 @@ impl ProcState {
                 .id
             )
           });
+          eprintln!("handle node resolve {:#?}", r);
+          return r;
       }
 
       let graph_data = self.graph_data.read();
@@ -550,6 +553,7 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
+            eprintln!("reference {:?}", reference);
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
@@ -561,6 +565,7 @@ impl ProcState {
           }
         }
         Some(Resolved::Err(err)) => {
+          eprintln!("failed to resolve {:?}", err);
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
