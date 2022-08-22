@@ -1071,10 +1071,67 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
+    // this might fail but we dont want it to bubble up due to missing network connection or other
+    let _ = update_checker(flags.ca_file.clone()).await;
+
     get_subcommand(flags).await
   };
 
   let exit_code = unwrap_or_exit(run_local(exit_code));
 
   std::process::exit(exit_code);
+}
+
+async fn update_checker(ca_file: Option<String>) -> Result<(), AnyError> {
+  use deno_runtime::deno_fetch::reqwest;
+  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+    Ok(())
+  } else {
+    let mut client_builder = reqwest::Client::builder();
+
+    // If we have been provided a CA Certificate, add it into the HTTP client
+    let ca_file = ca_file.or_else(|| env::var("DENO_CERT").ok());
+    if let Some(ca_file) = ca_file {
+      let buf = std::fs::read(ca_file)?;
+      let cert = reqwest::Certificate::from_pem(&buf)?;
+      client_builder = client_builder.add_root_certificate(cert);
+    }
+
+    let client = client_builder.build()?;
+
+    let ver = if version::is_canary() {
+      let res = client.get("https://version.deno.dev/canary").send().await?;
+      let hash = res.text().await?;
+      let hash = hash.trim().to_string();
+      if version::GIT_COMMIT_HASH != hash {
+        Some(hash)
+      } else {
+        None
+      }
+    } else {
+      let res = client.get("https://version.deno.dev").send().await?;
+      let ver = res.text().await?;
+      let ver = ver.trim().to_string();
+      if format!("v{}", env!("CARGO_PKG_VERSION")) != ver {
+        Some(ver)
+      } else {
+        None
+      }
+    };
+
+    if let Some(ver) = ver {
+      if !std::fs::metadata(env::current_exe()?)?
+        .permissions()
+        .readonly() {
+        println!(
+          "{}",
+          colors::green_bold(format!(
+            "Version '{ver}' of Deno is out, update with `deno upgrade`."
+          ))
+        );
+      }
+    }
+
+    Ok(())
+  }
 }
