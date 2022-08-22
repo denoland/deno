@@ -1516,7 +1516,10 @@ declare namespace Deno {
   }
 }
 
-/** @category Fetch API */
+/**
+ * @tags allow-net, allow-read
+ * @category Fetch API
+ */
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit & { client: Deno.HttpClient },
@@ -1577,7 +1580,10 @@ declare interface WebSocketCloseInfo {
   reason?: string;
 }
 
-/** @category Web Sockets */
+/**
+ * @tags allow-net
+ * @category Web Sockets
+ */
 declare class WebSocketStream {
   constructor(url: string, options?: WebSocketStreamOptions);
   url: string;

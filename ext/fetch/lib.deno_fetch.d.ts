@@ -464,6 +464,7 @@ declare class Response implements Body {
  * const jsonData = await response.json();
  * ```
  *
+ * @tags allow-net, allow-read
  * @category Fetch API
  */
 declare function fetch(
