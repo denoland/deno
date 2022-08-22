@@ -2199,7 +2199,7 @@ declare namespace Deno {
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath.
    *
-   * @tags allow-read
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function copyFileSync(
