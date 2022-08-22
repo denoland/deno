@@ -1112,10 +1112,12 @@ impl Aarch64Apple {
     let mut shift = 16;
     while address > 0 {
       imm16 = address & 0xFFFF;
-      dynasm!(self.assmblr
-        ; .arch aarch64
-        ; movk x8, imm16 as u32, lsl shift
-      );
+      if imm16 != 0 {
+        dynasm!(self.assmblr
+          ; .arch aarch64
+          ; movk x8, imm16 as u32, lsl shift
+        );
+      }
       address >>= 16;
       shift += 16;
     }
