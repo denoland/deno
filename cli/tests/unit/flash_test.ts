@@ -101,6 +101,40 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
   await server;
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerDefaultOnListenCallback() {
+    const ac = new AbortController();
+
+    const consoleLog = console.log;
+    console.log = (msg) => {
+      try {
+        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        assert(!!match);
+        const port = +match[1];
+        assert(port > 0 && port < 65536);
+      } finally {
+        ac.abort();
+      }
+    };
+
+    try {
+      const server = Deno.serve({
+        fetch() {
+          return new Response("Hello World");
+        },
+        hostname: "0.0.0.0",
+        port: 0,
+        signal: ac.signal,
+      });
+
+      await server;
+    } finally {
+      console.log = consoleLog;
+    }
+  },
+);
+
 // https://github.com/denoland/deno/issues/15107
 Deno.test(
   { permissions: { net: true } },
