@@ -3,27 +3,33 @@
 import { assertEquals } from "./test_util.ts";
 
 function monitorPromises(outputArray: string[]) {
-  const promiseIds = new Map();
+  const promiseIds = new Map<Promise<unknown>, string>();
 
-  function identify(promise) {
+  function identify(promise: Promise<unknown>) {
     if (!promiseIds.has(promise)) {
       promiseIds.set(promise, "p" + (promiseIds.size + 1));
     }
     return promiseIds.get(promise);
   }
 
-  Deno.core.setPromiseHooks((promise, parentPromise) => {
-    outputArray.push(
-      `init ${identify(promise)}` +
-        (parentPromise ? ` from ${identify(parentPromise)}` : ``),
-    );
-  }, (promise) => {
-    outputArray.push(`before ${identify(promise)}`);
-  }, (promise) => {
-    outputArray.push(`after ${identify(promise)}`);
-  }, (promise) => {
-    outputArray.push(`resolve ${identify(promise)}`);
-  });
+  // @ts-ignore: Deno.core allowed
+  Deno.core.setPromiseHooks(
+    (promise: Promise<unknown>, parentPromise?: Promise<unknown>) => {
+      outputArray.push(
+        `init ${identify(promise)}` +
+          (parentPromise ? ` from ${identify(parentPromise)}` : ``),
+      );
+    },
+    (promise: Promise<unknown>) => {
+      outputArray.push(`before ${identify(promise)}`);
+    },
+    (promise: Promise<unknown>) => {
+      outputArray.push(`after ${identify(promise)}`);
+    },
+    (promise: Promise<unknown>) => {
+      outputArray.push(`resolve ${identify(promise)}`);
+    },
+  );
 }
 
 Deno.test(async function promiseHookBasic() {
