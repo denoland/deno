@@ -233,6 +233,7 @@ fn v8_init(
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
+    " --noexperimental-async-stack-tagging-api",
   );
 
   if predictable {
