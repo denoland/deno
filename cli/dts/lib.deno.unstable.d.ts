@@ -1350,7 +1350,7 @@ declare namespace Deno {
    * `request`, otherwise event loop might deadlock.
    *
    * ```ts
-   * function handler(req): Response {
+   * function handler(req: Request): Response {
    *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
    *     // ...
    *   });
