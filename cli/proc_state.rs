@@ -519,7 +519,7 @@ impl ProcState {
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
-        let r = self
+        return self
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
@@ -536,8 +536,6 @@ impl ProcState {
                 .id
             )
           });
-        eprintln!("error in resolve {:#?}", r);
-        return r;
       }
 
       let graph_data = self.graph_data.read();
@@ -676,7 +674,6 @@ impl ProcState {
       }
     }
     if !package_reqs.is_empty() {
-      eprintln!("after graph {:#?}", package_reqs);
       self.npm_resolver.add_package_reqs(package_reqs).await?;
       self.npm_resolver.cache_packages().await?;
     }

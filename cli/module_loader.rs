@@ -64,8 +64,6 @@ impl CliModuleLoader {
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.as_str() == "node:module" {
-      eprintln!("wants node:module");
-
       let source = r#"
 const m = Deno[Deno.internal].require.moduleExports;
 export const _cache = m._cache;
