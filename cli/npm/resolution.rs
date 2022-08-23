@@ -41,13 +41,13 @@ impl NpmPackageReference {
     let specifier = match specifier.strip_prefix("npm:") {
       Some(s) => s,
       None => {
-        bail!("Not an npm specifier: '{}'", specifier);
+        bail!("Not an npm specifier: {}", specifier);
       }
     };
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      bail!("Not a valid package: '{}'", specifier);
+      bail!("Not a valid package: {}", specifier);
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -611,6 +611,14 @@ mod tests {
         },
         sub_path: Some("sub_path".to_string()),
       }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Not a valid package: @package"
     );
   }
 
