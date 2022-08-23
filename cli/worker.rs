@@ -457,7 +457,6 @@ pub async fn create_main_worker(
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReference::from_specifier(&main_module)
   {
-    eprintln!("create main workers {:#?}", package_ref.req);
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
