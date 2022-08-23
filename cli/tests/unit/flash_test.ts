@@ -938,7 +938,9 @@ Deno.test("upgradeHttpRaw tcp", async () => {
     conn.close();
   };
   const server = Deno.serve({
-    fetch,
+    // NOTE: `as any` is used to bypass type checking for the return value
+    // of the handler.
+    fetch: fetch as any,
     port: 4501,
     signal,
     onListen: onListen(listeningPromise),

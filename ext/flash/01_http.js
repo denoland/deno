@@ -3,7 +3,8 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
+  const { fromFlashRequest, toInnerResponse, _flash } =
+    window.__bootstrap.fetch;
   const core = window.Deno.core;
   const {
     ReadableStream,
@@ -18,7 +19,6 @@
     _readyState,
     _eventLoop,
     _protocol,
-    _server,
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
