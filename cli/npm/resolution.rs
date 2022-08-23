@@ -196,14 +196,14 @@ impl NpmResolutionSnapshot {
           referrer_package.dependencies.get(name_)
         );
 
-        // TODO(bartlomieju): this should use a reverse lookup table in the 
+        // TODO(bartlomieju): this should use a reverse lookup table in the
         // snapshot instead of resolving best version again.
         let req = NpmPackageReq {
           name: name_.to_string(),
           version_req: None,
         };
 
-        if let Some(version) = self.resolve_best_package_version(&name_, &req) {
+        if let Some(version) = self.resolve_best_package_version(name_, &req) {
           let id = NpmPackageId {
             name: name_.to_string(),
             version,
