@@ -151,17 +151,46 @@ fn cached_only_after_first_run() {
     .spawn()
     .unwrap();
 
-  eprintln!("DENO DIR: {}", deno_dir.path().display());
-  std::mem::forget(deno_dir);
   let output = deno.wait_with_output().unwrap();
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
-  eprintln!("stderr {}", stderr);
-  eprintln!("stdout {}", stdout);
   assert!(output.status.success());
   assert!(stderr.is_empty());
   assert_contains!(stdout, "createChalk: chalk");
 }
+
+#[test]
+fn deno_run_cjs_module() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-write")
+    .arg("npm:mkdirp@1.0.4")
+    .arg("test_dir")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  assert!(deno_dir.path().join("test_dir").exists());
+}
+
+itest!(deno_run_non_existent {
+  args: "run --unstable npm:mkdirp@0.5.125",
+  output: "npm/deno_run_non_existent.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
 
 #[test]
 fn ensure_registry_files_local() {

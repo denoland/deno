@@ -443,12 +443,7 @@ impl ProcState {
         .add_package_reqs(npm_package_references)
         .await?;
       self.npm_resolver.cache_packages().await?;
-
-      // add the builtin node modules to the graph data
-      let node_std_graph = self
-        .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
-        .await?;
-      self.graph_data.write().add_graph(&node_std_graph, false);
+      self.prepare_node_std_graph().await?;
     }
 
     // type check if necessary
@@ -489,6 +484,15 @@ impl ProcState {
       g.write()?;
     }
 
+    Ok(())
+  }
+
+  /// Add the builtin node modules to the graph data.
+  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    let node_std_graph = self
+      .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .await?;
+    self.graph_data.write().add_graph(&node_std_graph, false);
     Ok(())
   }
 

@@ -963,7 +963,7 @@ async fn main_server(
           return Ok(file_resp);
         } else if should_download_npm_packages() {
           if let Err(err) =
-            download_npm_registry_file(&file_path, is_tarball).await
+            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
           {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -992,15 +992,21 @@ fn should_download_npm_packages() -> bool {
 }
 
 async fn download_npm_registry_file(
+  uri: &hyper::Uri,
   file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
-  let package_name = file_path
-    .parent()
+  let url_parts = uri
+    .path()
+    .strip_prefix("/npm/registry/")
     .unwrap()
-    .file_name()
-    .unwrap()
-    .to_string_lossy();
+    .split('/')
+    .collect::<Vec<_>>();
+  let package_name = if url_parts[0].starts_with('@') {
+    url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")
+  } else {
+    url_parts.into_iter().take(1).collect::<Vec<_>>().join("/")
+  };
   let url = if is_tarball {
     let file_name = file_path.file_name().unwrap().to_string_lossy();
     format!(

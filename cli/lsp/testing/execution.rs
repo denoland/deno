@@ -164,7 +164,8 @@ async fn test_specifier(
         stdout: StdioPipe::File(sender.stdout()),
         stderr: StdioPipe::File(sender.stderr()),
       },
-    );
+    )
+    .await?;
     worker.run_lsp_test_specifier(mode).await?;
   }
 

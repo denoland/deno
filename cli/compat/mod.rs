@@ -112,24 +112,6 @@ pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   }
 }
 
-#[allow(unused)]
-pub fn load_cjs_module_from_ext_node(
-  js_runtime: &mut JsRuntime,
-  module: &str,
-  main: bool,
-) -> Result<(), AnyError> {
-  let source_code = &format!(
-    r#"(function loadCjsModule(module) {{
-      Deno[Deno.internal].require.Module._load(module, null, {main});
-    }})('{module}');"#,
-    main = main,
-    module = escape_for_single_quote_string(module),
-  );
-
-  js_runtime.execute_script(&located_script_name!(), source_code)?;
-  Ok(())
-}
-
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,
   module: &str,
