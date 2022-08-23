@@ -63,6 +63,34 @@ impl CliModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleCodeSource, AnyError> {
+    if specifier.as_str() == "node:module" {
+      eprintln!("wants node:module");
+
+      let source = r#"
+const m = Deno[Deno.internal].require.moduleExports;
+export const _cache = m._cache;
+export const _extensions = m._extensions;
+export const _findPath = m._findPath;
+export const _initPaths = m._initPaths;
+export const _load = m._load;
+export const _nodeModulePaths = m._nodeModulePaths;
+export const _pathCache = m._pathCache;
+export const _preloadModules = m._preloadModules;
+export const _resolveFilename = m._resolveFilename;
+export const _resolveLookupPaths = m._resolveLookupPaths;
+export const builtinModules = m.builtinModules;
+export const createRequire = m.createRequire;
+export const globalPaths = m.globalPaths;
+export const Module = m.Module;
+export const wrap = m.wrap;
+export default m;
+"#;
+      return Ok(ModuleCodeSource {
+        code: source.to_string(),
+        found_url: specifier.to_owned(),
+        media_type: MediaType::JavaScript,
+      });
+    }
     let graph_data = self.ps.graph_data.read();
     let found_url = graph_data.follow_redirect(specifier);
     match graph_data.get(&found_url) {

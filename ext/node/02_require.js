@@ -885,6 +885,7 @@
       cjsParseCache,
       readPackageScope,
       bindExport,
+      moduleExports: m,
     },
   };
 })(globalThis);
