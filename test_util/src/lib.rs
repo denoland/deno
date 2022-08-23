@@ -1904,6 +1904,8 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
+    } else if self.output.is_empty() {
+      String::new()
     } else {
       let output_path = testdata_dir.join(self.output);
       println!("output path {}", output_path.display());

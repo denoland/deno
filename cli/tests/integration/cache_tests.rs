@@ -94,6 +94,6 @@ itest!(check_local_by_default2 {
 });
 
 itest!(json_import {
+  // should not error
   args: "cache --quiet cache/json_import/main.ts",
-  output: "cache/json_import/main.out",
 });
