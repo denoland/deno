@@ -395,6 +395,8 @@ declare namespace Deno {
 
   type NativePointerType = "pointer";
 
+  type NativeBufferType = "buffer";
+
   type NativeFunctionType = "function";
 
   type NativeVoidType = "void";
@@ -407,6 +409,7 @@ declare namespace Deno {
     | NativeNumberType
     | NativeBigIntType
     | NativePointerType
+    | NativeBufferType
     | NativeFunctionType;
 
   /** @category FFI */
@@ -416,8 +419,9 @@ declare namespace Deno {
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
-    & Record<NativePointerType, TypedArray | PointerValue | null>
-    & Record<NativeFunctionType, PointerValue | null>;
+    & Record<NativePointerType, PointerValue | null>
+    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativeBufferType, TypedArray>;
 
   /** Type conversion for foreign symbol parameters and unsafe callback return
    * types.
@@ -452,6 +456,7 @@ declare namespace Deno {
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
     & Record<NativePointerType, PointerValue>
+    & Record<NativeBufferType, PointerValue>
     & Record<NativeFunctionType, PointerValue>;
 
   /** Type conversion for foreign symbol return types and unsafe callback
