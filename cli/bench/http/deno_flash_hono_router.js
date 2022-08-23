@@ -7,4 +7,4 @@ const [hostname, port] = addr.split(":");
 const app = new Hono();
 app.get("/", (c) => c.text("Hello, World!"));
 
-Deno.serve({ fetch: app.fetch, port: Number(port), hostname });
+Deno.serve(app.fetch, { port: Number(port), hostname });
