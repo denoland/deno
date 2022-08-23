@@ -40,6 +40,8 @@ mod errors;
 mod package_json;
 mod resolution;
 
+pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
+
 struct Unstable(pub bool);
 
 pub fn init(
