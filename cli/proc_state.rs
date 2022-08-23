@@ -536,7 +536,11 @@ impl ProcState {
                 .id
             )
           });
-        eprintln!("handle node resolve {:#?}", r);
+        if let Ok(a) = &r {
+          if a.as_str().ends_with("module.ts") {
+            eprintln!("node resolution module.ts {} {}", referrer, a.as_str());
+          }
+        }
         return r;
       }
 
