@@ -191,6 +191,13 @@ itest!(deno_run_cowsay {
   http_server: true,
 });
 
+itest!(deno_run_cowsay_explicit {
+  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowsay Hello",
+  output: "npm/deno_run_cowsay.out",
+  envs: env_vars_no_sync_download(),
+  http_server: true,
+});
+
 itest!(deno_run_cowthink {
   args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
