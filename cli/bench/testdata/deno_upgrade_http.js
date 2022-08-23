@@ -7,8 +7,4 @@ async function handler(req) {
   await conn.close();
 }
 
-serve({
-  handler,
-  hostname: "127.0.0.1",
-  port: 9000,
-});
+serve(handler, { hostname: "127.0.0.1", port: 9000 });
