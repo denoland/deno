@@ -44,6 +44,7 @@ interface WebSocketEventMap {
  * If you are looking to create a WebSocket server, please take a look at
  * `Deno.upgradeWebSocket()`.
  *
+ * @tags allow-net
  * @category Web Sockets
  */
 declare class WebSocket extends EventTarget {
