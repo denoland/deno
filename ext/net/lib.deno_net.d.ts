@@ -102,6 +102,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function listen(
@@ -117,11 +118,13 @@ declare namespace Deno {
     /** Path to a file containing a PEM formatted CA certificate. Requires
      * `--allow-read`.
      *
+     * @tags allow-read
      * @deprecated This option is deprecated and will be removed in Deno 2.0.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
+     * @tags allow-read
      * @deprecated This option is deprecated and will be removed in Deno 2.0.
      */
     keyFile?: string;
@@ -138,6 +141,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function listenTls(options: ListenTlsOptions): TlsListener;
@@ -165,6 +169,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp".
    *
+   * @tags allow-net
    * @category Network
    */
   export function connect(options: ConnectOptions): Promise<TcpConn>;
@@ -225,6 +230,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
@@ -255,6 +261,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function startTls(

@@ -242,6 +242,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Observability
    */
   export function loadavg(): number[];
@@ -258,6 +259,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Runtime Environment
    */
   export function osRelease(): string;
@@ -275,6 +277,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Runtime Environment
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
@@ -331,6 +334,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Network
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
@@ -345,6 +349,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Runtime Environment
    */
   export function getUid(): number | null;
@@ -359,6 +364,7 @@ declare namespace Deno {
    *
    * Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Runtime Environment
    */
   export function getGid(): number | null;
@@ -790,6 +796,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function utimeSync(
@@ -810,6 +817,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function utime(
@@ -842,6 +850,7 @@ declare namespace Deno {
    *
    *  Requires `allow-env` permission.
    *
+   * @tags allow-env
    * @category Runtime Environment
    */
   export function hostname(): string;
@@ -992,6 +1001,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission.
    *
+   * @tags allow-read, allow-write
    * @category Network
    */
   export function listen(
@@ -1016,6 +1026,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function listenDatagram(
@@ -1035,6 +1046,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission.
    *
+   * @tags allow-read, allow-write
    * @category Network
    */
   export function listenDatagram(
@@ -1062,6 +1074,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
    *
+   * @tags allow-net, allow-read
    * @category Network
    */
   export function connect(
@@ -1118,6 +1131,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
@@ -1502,7 +1516,10 @@ declare namespace Deno {
   }
 }
 
-/** @category Fetch API */
+/**
+ * @tags allow-net, allow-read
+ * @category Fetch API
+ */
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit & { client: Deno.HttpClient },
@@ -1563,7 +1580,10 @@ declare interface WebSocketCloseInfo {
   reason?: string;
 }
 
-/** @category Web Sockets */
+/**
+ * @tags allow-net
+ * @category Web Sockets
+ */
 declare class WebSocketStream {
   constructor(url: string, options?: WebSocketStreamOptions);
   url: string;

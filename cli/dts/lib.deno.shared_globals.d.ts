@@ -586,6 +586,8 @@ declare class Performance extends EventTarget {
    * const t = performance.now();
    * console.log(`${t} ms since start!`);
    * ```
+   *
+   * @tags allow-hrtime
    */
   now(): number;
 
