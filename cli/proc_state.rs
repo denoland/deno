@@ -438,7 +438,6 @@ impl ProcState {
     };
 
     if !npm_package_references.is_empty() {
-      eprintln!("not empty {:#?}", npm_package_references);
       self
         .npm_resolver
         .add_package_reqs(npm_package_references)
@@ -558,7 +557,6 @@ impl ProcState {
         Some(Resolved::Ok { specifier, .. }) => {
           if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
           {
-            eprintln!("reference {:?}", reference);
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
@@ -570,7 +568,6 @@ impl ProcState {
           }
         }
         Some(Resolved::Err(err)) => {
-          eprintln!("failed to resolve {:?}", err);
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
