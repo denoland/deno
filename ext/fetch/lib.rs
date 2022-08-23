@@ -287,7 +287,7 @@ where
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
-        if name != HOST {
+        if !matches!(name, HOST | CONTENT_LENGTH) {
           request = request.header(name, v);
         }
       }
