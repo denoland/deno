@@ -1237,19 +1237,11 @@ declare namespace Deno {
     /**
      * A handler for HTTP requests. Consumes a request and returns a response.
      *
-     * Handler allows `void` or `Promise<void>` return type to enable
-     * request upgrades using `Deno.upgradeHttp()` API. It is callers responsibility
-     * to write response manually to the returned connection. Failing to do so
-     * (or not returning a response without an upgrade) will cause the connection
-     * to hang.
-     *
      * If a handler throws, the server calling the handler will assume the impact
      * of the error is isolated to the individual request. It will catch the error
      * and close the underlying connection.
      */
-    fetch: (
-      request: Request,
-    ) => Response | Promise<Response> | void | Promise<void>;
+    fetch: (request: Request) => Response | Promise<Response>;
 
     /** An AbortSignal to close the server and all connections. */
     signal?: AbortSignal;
@@ -1272,7 +1264,9 @@ declare namespace Deno {
     key: string;
   }
 
-  /** Serves HTTP requests with the given handler.
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
    * address to listen on. The default is port 9000 on hostname "127.0.0.1".
@@ -1345,25 +1339,51 @@ declare namespace Deno {
     options?: ServeInit | ServeTlsInit,
   ): Promise<void>;
 
-  /** **UNSTABLE**: new API, yet to be vetter.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Allows to "hijack" a connection that the request is associated with.
-   * Can be used to implement protocols that build on top of HTTP (eg.
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
-   *
-   * The return type depends if `request` is coming from `Deno.serve()` API
-   * or `Deno.serveHttp()`; for former it returns the connection and first
-   * packet, for latter it returns a promise.
    *
    * The returned promise returns underlying connection and first packet
    * received. The promise shouldn't be awaited before responding to the
    * `request`, otherwise event loop might deadlock.
    *
+   * ```ts
+   * function handler(req): Response {
+   *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
+   *     // ...
+   *   });
+   *   return new Response(null, { status: 101 });
+   * }
+   * ```
+   *
+   * This method can only be called on requests originating the `Deno.serveHttp`
+   * server.
+   *
    * @category HTTP Server
    */
   export function upgradeHttp(
     request: Request,
-  ): [Deno.Conn, Uint8Array] | Promise<[Deno.Conn, Uint8Array]>;
+  ): Promise<[Deno.Conn, Uint8Array]>;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+
+   * Unlike `Deno.upgradeHttp` this function does not require that you respond
+   * to the request with a `Response` object. Instead this function returns
+   * the underlying connection and first packet received immediately, and then
+   * the caller is responsible for writing the response to the connection.
+   *
+   * This method can only be called on requests originating the `Deno.serve`
+   * server.
+   *
+   * @category HTTP Server
+   */
+  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
 
   /** @category Sub Process */
   export interface SpawnOptions {

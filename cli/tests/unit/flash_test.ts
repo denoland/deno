@@ -912,14 +912,14 @@ Deno.test(
   },
 );
 
-Deno.test("upgradeHttp tcp", async () => {
+Deno.test("upgradeHttpRaw tcp", async () => {
   const promise = deferred();
   const listeningPromise = deferred();
   const promise2 = deferred();
   const ac = new AbortController();
   const signal = ac.signal;
   const fetch = async (req: Request) => {
-    const [conn, _] = await Deno.upgradeHttp(req);
+    const [conn, _] = Deno.upgradeHttpRaw(req);
 
     await conn.write(
       new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
