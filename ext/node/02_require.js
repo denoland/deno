@@ -470,6 +470,7 @@
 
     if (isMain) {
       node.globalThis.process.mainModule = module;
+      mainModule = module;
       module.id = ".";
     }
 
