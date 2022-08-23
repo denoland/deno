@@ -626,22 +626,6 @@ impl Aarch64Apple {
     }
   }
 
-  // fn compile(sym: &Symbol) -> Trampoline {
-  //   let mut compiler = Self::new();
-
-  //   for argument in &sym.parameter_types {
-  //     compiler.move_left(argument)
-  //   }
-  //   if !compiler.is_recv_arg_overridden() {
-  //     // the receiver object should never be expected. Avoid its unexpected or deliberate leak
-  //     compiler.zero_first_arg();
-  //   }
-  //   // In Apple the return value is sign/zero extended to 32 bit by the callee. Therefore, casting
-  //   // is implicit and the trampoline can always tail-call.
-  //   compiler.tailcall(sym.ptr.as_ptr());
-
-  //   Trampoline(compiler.finalize())
-  // }
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
