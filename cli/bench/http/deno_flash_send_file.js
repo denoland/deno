@@ -11,4 +11,4 @@ function handler() {
   return new Response(file.readable);
 }
 
-serve({ handler, hostname, port: Number(port) });
+serve(handler, { hostname, port: Number(port) });
