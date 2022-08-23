@@ -3,6 +3,7 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
+  const { TcpConn } = window.__bootstrap.net;
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
