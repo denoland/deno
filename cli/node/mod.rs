@@ -115,6 +115,8 @@ pub fn node_resolve(
 ) -> Result<Option<ResolveResponse>, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
+  // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
+  // `module` from `ext/node/`.
   if specifier == "module" {
     return Ok(Some(ResolveResponse::Esm(
       Url::parse("node:module").unwrap(),
@@ -134,11 +136,15 @@ pub fn node_resolve(
     if protocol == "node" {
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
+
+      // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
+      // `module` from `ext/node/`.
       if specifier == "module" {
         return Ok(Some(ResolveResponse::Esm(
           Url::parse("node:module").unwrap(),
         )));
       }
+
       if let Some(resolved) = compat::try_resolve_builtin_module(&specifier) {
         return Ok(Some(ResolveResponse::Esm(resolved)));
       } else {

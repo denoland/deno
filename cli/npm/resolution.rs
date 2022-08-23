@@ -219,9 +219,7 @@ impl NpmResolutionSnapshot {
           }
         }
       }
-      None => {
-        bail!("could not find referrer npm package '{}'", referrer)
-      }
+      None => bail!("could not find referrer npm package '{}'", referrer),
     }
   }
 
