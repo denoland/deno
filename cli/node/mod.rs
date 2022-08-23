@@ -106,6 +106,27 @@ pub async fn initialize_runtime(
   Ok(())
 }
 
+pub async fn initialize_binary_command(
+  js_runtime: &mut JsRuntime,
+  binary_name: &str,
+) -> Result<(), AnyError> {
+  // overwrite what's done in deno_std in order to set the binary arg name
+  let source_code = &format!(
+    r#"(async function initializeBinaryCommand(binaryName) {{
+      const process = Deno[Deno.internal].node.globalThis.process;
+      Object.defineProperty(process.argv, "0", {{
+        get: () => binaryName,
+      }});
+    }})('{}');"#,
+    binary_name,
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
+}
+
 /// This function is an implementation of `defaultResolve` in
 /// `lib/internal/modules/esm/resolve.js` from Node.
 pub fn node_resolve(
