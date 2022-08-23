@@ -27,7 +27,7 @@ use super::version_req::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
@@ -39,7 +39,7 @@ pub struct NpmDependencyEntry {
   pub version_req: NpmVersionReq,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -177,12 +177,18 @@ impl NpmRegistryApi {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
-
+      eprintln!("maybe package info {}", name);
       if maybe_package_info.is_none() {
-        maybe_package_info = self
-          .load_package_info_from_registry(name)
-          .await
-          .with_context(|| {
+        let r = self.load_package_info_from_registry(name).await;
+
+        eprintln!(
+          "error getting response {} {} {:#?}",
+          name,
+          self.get_package_url(name),
+          r
+        );
+
+        maybe_package_info = r.with_context(|| {
           format!("Error getting response at {}", self.get_package_url(name))
         })?;
       }
@@ -279,7 +285,7 @@ impl NpmRegistryApi {
     }
 
     let package_url = self.get_package_url(name);
-
+    eprintln!("package_url {} {}", name, package_url.as_str());
     log::log!(
       log::Level::Info,
       "{} {}",

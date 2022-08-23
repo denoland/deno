@@ -44,6 +44,9 @@ impl NpmPackageReference {
         bail!("Not an npm specifier: '{}'", specifier);
       }
     };
+    eprintln!("from_str {}", specifier);
+    // FIXME(bartlomieju): this is wrong - given @vitejs/plugin-vue it will
+    // yield ("", None), and it should return ("@vite/plugin-vue", None)
     let (name, version_req) = match specifier.rsplit_once('@') {
       Some((name, version_req)) => (
         name,
@@ -54,6 +57,7 @@ impl NpmPackageReference {
       ),
       None => (specifier, None),
     };
+    eprintln!("from_str1, {} {:?}", name, version_req);
     Ok(NpmPackageReference {
       req: NpmPackageReq {
         name: name.to_string(),
@@ -257,6 +261,7 @@ impl NpmResolution {
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
+    eprintln!("add package reqs {:#?}", packages);
     for package_ref in packages {
       if snapshot.package_reqs.contains_key(&package_ref) {
         // skip analyzing this package, as there's already a matching top level package
@@ -271,6 +276,7 @@ impl NpmResolution {
       }
 
       // no existing best version, so resolve the current packages
+      eprintln!("package info1 {}", package_ref.name);
       let info = self.api.package_info(&package_ref.name).await?;
       let version_and_info = get_resolved_package_version_and_info(
         &package_ref.name,
@@ -353,6 +359,7 @@ impl NpmResolution {
           }
         } else {
           // get the information
+          eprintln!("package info2 {}", dep.name);
           let info = self.api.package_info(&dep.name).await?;
           let version_and_info = get_resolved_package_version_and_info(
             &dep.name,

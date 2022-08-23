@@ -437,6 +437,7 @@ impl ProcState {
     };
 
     if !npm_package_references.is_empty() {
+      eprintln!("not empty {:#?}", npm_package_references);
       self
         .npm_resolver
         .add_package_reqs(npm_package_references)
@@ -536,8 +537,8 @@ impl ProcState {
                 .id
             )
           });
-          eprintln!("handle node resolve {:#?}", r);
-          return r;
+        eprintln!("handle node resolve {:#?}", r);
+        return r;
       }
 
       let graph_data = self.graph_data.read();
@@ -569,7 +570,7 @@ impl ProcState {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
-          ))
+          ));
         }
         Some(Resolved::None) | None => {}
       }
@@ -668,6 +669,7 @@ impl ProcState {
       }
     }
     if !package_reqs.is_empty() {
+      eprintln!("after graph {:#?}", package_reqs);
       self.npm_resolver.add_package_reqs(package_reqs).await?;
       self.npm_resolver.cache_packages().await?;
     }
