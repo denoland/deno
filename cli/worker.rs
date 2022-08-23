@@ -424,7 +424,6 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
       self.initialize_main_module_for_node().await?;
-      node::initialize_runtime(&mut self.worker.js_runtime).await?;
     }
     self.worker.evaluate_module(id).await
   }
