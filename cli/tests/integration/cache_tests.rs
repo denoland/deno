@@ -92,3 +92,8 @@ itest!(check_local_by_default2 {
   output: "cache/check_local_by_default2.out",
   http_server: true,
 });
+
+itest!(json_import {
+  args: "cache --quiet cache/json_import/main.ts",
+  output: "cache/json_import/main.out",
+});

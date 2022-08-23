@@ -30,6 +30,7 @@ use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -598,15 +599,25 @@ impl ProcState {
         code, media_type, ..
       } = entry
       {
-        emit_parsed_source(
-          &self.emit_cache,
-          &self.parsed_source_cache,
-          specifier,
-          *media_type,
-          code,
-          &self.emit_options,
-          self.emit_options_hash,
-        )?;
+        let is_emittable = matches!(
+          media_type,
+          MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx
+        );
+        if is_emittable {
+          emit_parsed_source(
+            &self.emit_cache,
+            &self.parsed_source_cache,
+            specifier,
+            *media_type,
+            code,
+            &self.emit_options,
+            self.emit_options_hash,
+          )?;
+        }
       }
     }
     Ok(())
