@@ -24,7 +24,7 @@ pub trait NpmVersionMatcher {
   fn version_text(&self) -> String;
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
   pub req: NpmPackageReq,
   pub sub_path: Option<String>,
@@ -41,26 +41,39 @@ impl NpmPackageReference {
     let specifier = match specifier.strip_prefix("npm:") {
       Some(s) => s,
       None => {
-        bail!("Not an npm specifier: '{}'", specifier);
+        bail!("Not an npm specifier: {}", specifier);
       }
     };
-    let (name, version_req) = match specifier.rsplit_once('@') {
-      Some((name, version_req)) => (
-        name,
-        match SpecifierVersionReq::parse(version_req) {
-          Ok(v) => Some(v),
-          Err(_) => None, // not a version requirement
-        },
-      ),
-      None => (specifier, None),
+    let parts = specifier.split('/').collect::<Vec<_>>();
+    let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
+    if parts.len() < name_part_len {
+      bail!("Not a valid package: {}", specifier);
+    }
+    let name_parts = &parts[0..name_part_len];
+    let last_name_part = &name_parts[name_part_len - 1];
+    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
+    {
+      let version = &last_name_part[at_index + 1..];
+      let last_name_part = &last_name_part[..at_index];
+      let version_req = SpecifierVersionReq::parse(version)
+        .with_context(|| "Invalid version requirement.")?;
+      let name = if name_part_len == 1 {
+        last_name_part.to_string()
+      } else {
+        format!("{}/{}", name_parts[0], last_name_part)
+      };
+      (name, Some(version_req))
+    } else {
+      (name_parts.join("/"), None)
+    };
+    let sub_path = if parts.len() == name_parts.len() {
+      None
+    } else {
+      Some(parts[name_part_len..].join("/"))
     };
     Ok(NpmPackageReference {
-      req: NpmPackageReq {
-        name: name.to_string(),
-        version_req,
-      },
-      // todo: implement and support this
-      sub_path: None,
+      req: NpmPackageReq { name, version_req },
+      sub_path,
     })
   }
 }
@@ -509,6 +522,105 @@ fn name_without_path(name: &str) -> &str {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn parse_npm_package_ref() {
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@1").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@^1.2").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Not a valid package: @package"
+    );
+  }
 
   #[test]
   fn test_name_without_path() {
