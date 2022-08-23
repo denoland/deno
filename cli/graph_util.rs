@@ -82,7 +82,6 @@ impl GraphData {
       }
       if specifier.scheme() == "npm" {
         // the loader enforces npm specifiers are valid, so it's ok to unwrap here
-        eprintln!("found npm specifier {}", specifier);
         let reference =
           NpmPackageReference::from_specifier(&specifier).unwrap();
         self.npm_packages.insert(reference.req);
