@@ -184,12 +184,35 @@ impl NpmResolutionSnapshot {
     name: &str,
     referrer: &NpmPackageId,
   ) -> Result<&NpmResolutionPackage, AnyError> {
+    eprintln!("resolve package from package {} {:#?}", name, referrer);
     match self.packages.get(referrer) {
       Some(referrer_package) => {
         let name_ = name_without_path(name);
         if referrer_package.id.name == name_ {
           return Ok(referrer_package);
         }
+        eprintln!(
+          "maybe a dependency {:#?}",
+          referrer_package.dependencies.get(name_)
+        );
+
+        // TODO(bartlomieju): this should use a reverse lookup table in the 
+        // snapshot instead of resolving best version again.
+        let req = NpmPackageReq {
+          name: name_.to_string(),
+          version_req: None,
+        };
+
+        if let Some(version) = self.resolve_best_package_version(&name_, &req) {
+          let id = NpmPackageId {
+            name: name_.to_string(),
+            version,
+          };
+          if let Some(pkg) = self.packages.get(&id) {
+            return Ok(pkg);
+          }
+        }
+
         match referrer_package.dependencies.get(name_) {
           Some(id) => Ok(self.packages.get(id).unwrap()),
           None => {
@@ -201,7 +224,10 @@ impl NpmResolutionSnapshot {
           }
         }
       }
-      None => bail!("could not find referrer npm package '{}'", referrer),
+      None => {
+        eprintln!("could not find referrer");
+        bail!("could not find referrer npm package '{}'", referrer)
+      }
     }
   }
 
