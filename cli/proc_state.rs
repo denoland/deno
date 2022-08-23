@@ -516,7 +516,6 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("resolving dynamic import {} {}", specifier, referrer);
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
