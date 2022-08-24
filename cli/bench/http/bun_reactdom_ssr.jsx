@@ -3,6 +3,8 @@ const { renderToReadableStream } = require(
   "../testdata/npm/react-dom/server.browser",
 );
 
+const port = Bun.argv[2] || "4545";
+
 const headers = {
   headers: {
     "Content-Type": "text/html",
@@ -21,5 +23,5 @@ Bun.serve({
   async fetch(req) {
     return new Response(await renderToReadableStream(<App />), headers);
   },
-  port: 9000,
+  port: Number(port),
 });
