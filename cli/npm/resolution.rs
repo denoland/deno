@@ -187,6 +187,10 @@ impl NpmResolutionSnapshot {
     match self.packages.get(referrer) {
       Some(referrer_package) => {
         let name_ = name_without_path(name);
+        if let Some(id) = referrer_package.dependencies.get(name_) {
+          return Ok(self.packages.get(id).unwrap());
+        }
+
         if referrer_package.id.name == name_ {
           return Ok(referrer_package);
         }
@@ -208,16 +212,11 @@ impl NpmResolutionSnapshot {
           }
         }
 
-        match referrer_package.dependencies.get(name_) {
-          Some(id) => Ok(self.packages.get(id).unwrap()),
-          None => {
-            bail!(
-              "could not find npm package '{}' referenced by '{}'",
-              name,
-              referrer
-            )
-          }
-        }
+        bail!(
+          "could not find npm package '{}' referenced by '{}'",
+          name,
+          referrer
+        )
       }
       None => bail!("could not find referrer npm package '{}'", referrer),
     }

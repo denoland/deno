@@ -565,7 +565,7 @@ impl ProcState {
           return Err(custom_error(
             "TypeError",
             format!("{}\n", err.to_string_with_range()),
-          ));
+          ))
         }
         Some(Resolved::None) | None => {}
       }
