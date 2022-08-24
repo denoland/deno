@@ -505,11 +505,11 @@ fn add_export(
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
     source.push(format!(
-      "const __deno_export__{} = {};",
+      "const __deno_export_{}__ = {};",
       temp_var_count, initializer
     ));
     source.push(format!(
-      "export {{ __deno_export__{} as \"{}\" }};",
+      "export {{ __deno_export_{}__ as \"{}\" }};",
       temp_var_count, name
     ));
   } else {
@@ -887,12 +887,12 @@ mod tests {
     assert_eq!(
       source,
       vec![
-        "const __deno_export_1 = init;".to_string(),
-        "export { __deno_export_1 as \"static\" };".to_string(),
+        "const __deno_export_1__ = init;".to_string(),
+        "export { __deno_export_1__ as \"static\" };".to_string(),
         "export const server = init;".to_string(),
         "export const app = init;".to_string(),
-        "const __deno_export_2 = init;".to_string(),
-        "export { __deno_export_2 as \"dashed-export\" };".to_string(),
+        "const __deno_export_2__ = init;".to_string(),
+        "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
   }
