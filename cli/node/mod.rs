@@ -208,7 +208,7 @@ pub fn node_resolve_npm_reference(
       .sub_path
       .as_ref()
       .map(|s| format!("./{}", s))
-      .unwrap_or(".".to_string()),
+      .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     npm_resolver,
   )
