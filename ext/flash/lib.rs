@@ -4,6 +4,7 @@
 // https://github.com/rust-lang/rust-clippy/issues/6446
 #![allow(clippy::await_holding_lock)]
 
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -47,6 +48,7 @@ use std::io::Write;
 use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -1232,6 +1234,28 @@ fn run_server(
   Ok(())
 }
 
+fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
+  // Default to localhost if given just the port. Example: ":80"
+  if hostname.is_empty() {
+    return ("0.0.0.0", port);
+  }
+
+  // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
+  // Then we remove the brackets.
+  let addr = hostname.trim_start_matches('[').trim_end_matches(']');
+  (addr, port)
+}
+
+/// Resolve network address *synchronously*.
+pub fn resolve_addr_sync(
+  hostname: &str,
+  port: u16,
+) -> Result<impl Iterator<Item = SocketAddr>, AnyError> {
+  let addr_port_pair = make_addr_port_pair(hostname, port);
+  let result = addr_port_pair.to_socket_addrs()?;
+  Ok(result)
+}
+
 #[op]
 fn op_flash_serve<P>(
   state: &mut OpState,
@@ -1244,11 +1268,10 @@ where
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
-  let parsed_hostname = opts
-    .hostname
-    .parse()
-    .map_err(|_| type_error("hostname could not be parsed as an IP address"))?;
-  let addr = SocketAddr::new(parsed_hostname, opts.port);
+
+  let addr = resolve_addr_sync(&opts.hostname, opts.port)?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);

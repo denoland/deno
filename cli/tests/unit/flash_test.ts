@@ -34,16 +34,27 @@ function onListen<T>(
   };
 }
 
-Deno.test(async function httpServerInvalidHostname() {
-  await assertRejects(
-    () =>
-      Deno.serve({
-        handler: (_req) => new Response("ok"),
-        hostname: "localhost",
-      }),
-    TypeError,
-    "hostname could not be parsed as an IP address",
-  );
+Deno.test(async function httpServerCanResolveHostnames() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (_req) => new Response("ok"),
+    hostname: "localhost",
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningPromise;
+  const resp = await fetch("http://localhost:4501/", {
+    headers: { "connection": "close" },
+  });
+  const text = await resp.text();
+  assertEquals(text, "ok");
+  ac.abort();
+  await server;
 });
 
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
