@@ -140,7 +140,7 @@
       // MUST NOT generate a payload in a 205 response.
       // indicate a zero-length body for the response by
       // including a Content-Length header field with a value of 0.
-      str += "Content-Length: 0\r\n";
+      str += "Content-Length: 0\r\n\r\n";
       return str;
     }
 

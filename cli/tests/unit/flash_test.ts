@@ -1844,6 +1844,7 @@ Deno.test(
     const msg = decoder.decode(buf.subarray(0, readResult));
 
     assert(msg.startsWith("HTTP/1.1 304 Not Modified"));
+    assert(msg.endsWith("\r\n\r\n"));
 
     conn.close();
 
