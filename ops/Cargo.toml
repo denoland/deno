@@ -1,6 +1,6 @@
 [package]
 name = "deno_ops"
-version = "0.25.0"
+version = "0.26.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -19,5 +19,5 @@ regex = "1.6.0"
 syn = { version = "1", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
-deno_core = { path = "../core" }
+deno_core = { path = "../core", version = "0.148.0" }
 trybuild = "1.0.61"
