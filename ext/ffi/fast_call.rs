@@ -860,9 +860,9 @@ impl Aarch64Apple {
         // 1. leave it broken and wait for v8 to fix the bug
         // 2. Adapt to v8 bug and follow its ABI instead of Apple's. When V8 fixes the implementation, we'll have to fix it here as well
         let padding_trampl =
-          (size_trampl - self.offset_trampoline % size_trampl) % size_trampl;
+          padding_to_align(size_trampl, self.offset_trampoline);
         let padding_callee =
-          (size_original - self.offset_callee % size_original) % size_original;
+          padding_to_align(size_original, self.offset_callee);
         match param {
           I(B) | U(B) => dynasm!(self.assmblr
             ; .arch aarch64
