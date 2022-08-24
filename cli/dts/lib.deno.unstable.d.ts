@@ -1344,25 +1344,51 @@ declare namespace Deno {
     options: ServeInit & (ServeOptions | ServeTlsOptions),
   ): Promise<void>;
 
-  /** **UNSTABLE**: new API, yet to be vetter.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
-   * Allows to "hijack" a connection that the request is associated with.
-   * Can be used to implement protocols that build on top of HTTP (eg.
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
-   *
-   * The return type depends if `request` is coming from `Deno.serve()` API
-   * or `Deno.serveHttp()`; for former it returns the connection and first
-   * packet, for latter it returns a promise.
    *
    * The returned promise returns underlying connection and first packet
    * received. The promise shouldn't be awaited before responding to the
    * `request`, otherwise event loop might deadlock.
    *
+   * ```ts
+   * function handler(req: Request): Response {
+   *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
+   *     // ...
+   *   });
+   *   return new Response(null, { status: 101 });
+   * }
+   * ```
+   *
+   * This method can only be called on requests originating the `Deno.serveHttp`
+   * server.
+   *
    * @category HTTP Server
    */
   export function upgradeHttp(
     request: Request,
-  ): [Deno.Conn, Uint8Array] | Promise<[Deno.Conn, Uint8Array]>;
+  ): Promise<[Deno.Conn, Uint8Array]>;
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+
+   * Unlike `Deno.upgradeHttp` this function does not require that you respond
+   * to the request with a `Response` object. Instead this function returns
+   * the underlying connection and first packet received immediately, and then
+   * the caller is responsible for writing the response to the connection.
+   *
+   * This method can only be called on requests originating the `Deno.serve`
+   * server.
+   *
+   * @category HTTP Server
+   */
+  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
 
   /** @category Sub Process */
   export interface SpawnOptions {

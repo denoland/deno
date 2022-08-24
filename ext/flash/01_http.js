@@ -3,7 +3,9 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
+  const { TcpConn } = window.__bootstrap.net;
+  const { fromFlashRequest, toInnerResponse, _flash } =
+    window.__bootstrap.fetch;
   const core = window.Deno.core;
   const {
     ReadableStream,
@@ -18,7 +20,6 @@
     _readyState,
     _eventLoop,
     _protocol,
-    _server,
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
@@ -597,7 +598,28 @@
     });
   }
 
+  function upgradeHttpRaw(req) {
+    if (!req[_flash]) {
+      throw new TypeError(
+        "Non-flash requests can not be upgraded with `upgradeHttpRaw`. Use `upgradeHttp` instead.",
+      );
+    }
+
+    // NOTE(bartlomieju):
+    // Access these fields so they are cached on `req` object, otherwise
+    // they wouldn't be available after the connection gets upgraded.
+    req.url;
+    req.method;
+    req.headers;
+
+    const { serverId, streamRid } = req[_flash];
+    const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+    // TODO(@littledivy): return already read first packet too.
+    return [new TcpConn(connRid), new Uint8Array()];
+  }
+
   window.__bootstrap.flash = {
     serve,
+    upgradeHttpRaw,
   };
 })(this);
