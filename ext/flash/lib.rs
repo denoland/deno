@@ -42,7 +42,6 @@ use std::ffi::c_void;
 use std::future::Future;
 use std::intrinsics::transmute;
 use std::io::BufReader;
-use std::io::IoSlice;
 use std::io::Read;
 use std::io::Write;
 use std::marker::PhantomPinned;
@@ -172,21 +171,12 @@ fn op_flash_respond(
   sock.read_tx.take();
   sock.read_rx.take();
 
-  if let Some(first_chunk) = maybe_body {
-    // TODO(@littledivy): Optimize
-    let chunk_size = format!("{:x}", response.len());
-
-    let _ = sock.write_vectored(
-      &[
-        IoSlice::new(&response),
-        IoSlice::new(chunk_size.as_bytes()),
-        IoSlice::new(b"\r\n"),
-        IoSlice::new(&first_chunk),
-        IoSlice::new(b"\r\n"),
-      ][..],
-    );
-  } else {
-    let _ = sock.write_all(&response);
+  let _ = sock.write(&response);
+  if let Some(response) = maybe_body {
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(&response);
+    let _ = sock.write(b"\r\n");
   }
 
   // server is done writing and request doesn't want to kept alive.
@@ -272,19 +262,15 @@ async fn op_flash_write_resource(
     let buf = ZeroCopyBuf::new_temp(vec);
     let (nread, buf) = resource.clone().read_return(buf).await?;
     if nread == 0 {
-      let _ = sock.write_all(b"0\r\n\r\n");
+      let _ = sock.write(b"0\r\n\r\n");
       break;
     }
     let response = &buf[..nread];
-    let chunk_size = format!("{:x}", response.len());
-    let _ = sock.write_vectored(
-      &[
-        IoSlice::new(chunk_size.as_bytes()),
-        IoSlice::new(b"\r\n"),
-        IoSlice::new(response),
-        IoSlice::new(b"\r\n"),
-      ][..],
-    );
+
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(response);
+    let _ = sock.write(b"\r\n");
   }
 
   resource.close();
@@ -426,15 +412,10 @@ fn respond_chunked(
   };
 
   if let Some(response) = response {
-    let chunk_size = format!("{:x}", response.len());
-    let _ = sock.write_vectored(
-      &[
-        IoSlice::new(chunk_size.as_bytes()),
-        IoSlice::new(b"\r\n"),
-        IoSlice::new(response),
-        IoSlice::new(b"\r\n"),
-      ][..],
-    );
+    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
+    let _ = sock.write(b"\r\n");
+    let _ = sock.write(response);
+    let _ = sock.write(b"\r\n");
   }
 
   // The last chunk
@@ -789,7 +770,7 @@ fn op_flash_first_packet(
   }
 
   if tx.expect_continue {
-    let _ = sock.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
+    let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
   }
 
