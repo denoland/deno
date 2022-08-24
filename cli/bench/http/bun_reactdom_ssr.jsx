@@ -1,6 +1,5 @@
-// Bun uses a custom non-portable react-dom fork.
-// TODO(@littledivy): Reenable this when it stops segfaulting.
-import { renderToReadableStream } from "./react-dom.js";
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+import { renderToReadableStream } from "../testdata/react-dom.js";
 const headers = {
   headers: {
     "Content-Type": "text/html",
