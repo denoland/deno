@@ -105,6 +105,18 @@ impl From<&NativeType> for fast_api::Type {
   }
 }
 
+macro_rules! x64 {
+  ($assembler:expr; $($tokens:tt)+) => {
+    dynasm!($assembler; .arch x64; $($tokens)+)
+  }
+}
+
+macro_rules! aarch64 {
+  ($assembler:expr; $($tokens:tt)+) => {
+    dynasm!($assembler; .arch aarch64; $($tokens)+)
+  }
+}
+
 struct SysVAmd64 {
   // Reference: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
   assmblr: dynasmrt::x64::Assembler,
@@ -116,18 +128,6 @@ struct SysVAmd64 {
   offset_callee: u32,
   allocated_stack: u32,
   frame_pointer: u32,
-}
-
-macro_rules! x64 {
-  ($assembler:expr; $($tokens:tt)+) => {
-    dynasm!($assembler; .arch x64; $($tokens)+)
-  }
-}
-
-macro_rules! aarch64 {
-  ($assembler:expr; $($tokens:tt)+) => {
-    dynasm!($assembler; .arch aarch64; $($tokens)+)
-  }
 }
 
 #[cfg_attr(
