@@ -226,6 +226,7 @@ impl ProcState {
       &dir,
       cli_options.reload_flag(),
       cli_options.cache_setting(),
+      cli_options.unstable(),
     )?;
 
     Ok(ProcState(Arc::new(Inner {
