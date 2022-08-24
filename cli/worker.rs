@@ -21,6 +21,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 
+use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::compat;
 use crate::errors;
@@ -103,7 +104,7 @@ impl CliMainWorker {
         )?;
       }
     } else if self.is_main_cjs {
-      node::initialize_runtime(&mut self.worker.js_runtime).await?;
+      self.initialize_main_module_for_node().await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
@@ -422,9 +423,29 @@ impl CliMainWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
-      node::initialize_runtime(&mut self.worker.js_runtime).await?;
+      self.initialize_main_module_for_node().await?;
     }
     self.worker.evaluate_module(id).await
+  }
+
+  async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
+    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
+      if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
+        // if the user ran a binary command, we'll need to set process.argv[0]
+        // to be the name of the binary command instead of deno
+        let binary_name = pkg_ref
+          .sub_path
+          .as_deref()
+          .unwrap_or(pkg_ref.req.name.as_str());
+        node::initialize_binary_command(
+          &mut self.worker.js_runtime,
+          binary_name,
+        )
+        .await?;
+      }
+    }
+    Ok(())
   }
 
   async fn maybe_setup_coverage_collector(

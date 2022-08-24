@@ -68,6 +68,13 @@ itest!(import_map {
   http_server: true,
 });
 
+itest!(sub_paths {
+  args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
+  output: "npm/sub_paths/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -183,6 +190,27 @@ fn deno_run_cjs_module() {
 
   assert!(deno_dir.path().join("test_dir").exists());
 }
+
+itest!(deno_run_cowsay {
+  args: "run --unstable -A --quiet npm:cowsay@1.5.0 Hello",
+  output: "npm/deno_run_cowsay.out",
+  envs: env_vars_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_cowsay_explicit {
+  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowsay Hello",
+  output: "npm/deno_run_cowsay.out",
+  envs: env_vars_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_cowthink {
+  args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
+  output: "npm/deno_run_cowthink.out",
+  envs: env_vars_no_sync_download(),
+  http_server: true,
+});
 
 itest!(deno_run_non_existent {
   args: "run --unstable npm:mkdirp@0.5.125",

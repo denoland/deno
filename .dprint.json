@@ -35,6 +35,7 @@
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
     "cli/tests/testdata/inline_js_source_map*",
     "cli/tests/testdata/malformed_config/*",
+    "cli/tests/testdata/npm/registry/",
     "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "gh-pages",

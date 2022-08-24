@@ -1322,6 +1322,12 @@ impl deno_flash::FlashPermissions for Permissions {
   }
 }
 
+impl deno_node::NodePermissions for Permissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+}
+
 impl deno_net::NetPermissions for Permissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
