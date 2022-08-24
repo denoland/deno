@@ -40,6 +40,9 @@
   const cjsParseCache = new SafeWeakMap();
 
   function pathDirname(filepath) {
+    if (filepath == null || filepath === "") {
+      throw new Error("Empty filepath.");
+    }
     return ops.op_require_path_dirname(filepath);
   }
 
@@ -470,6 +473,7 @@
 
     if (isMain) {
       node.globalThis.process.mainModule = module;
+      mainModule = module;
       module.id = ".";
     }
 
@@ -884,6 +888,7 @@
       cjsParseCache,
       readPackageScope,
       bindExport,
+      moduleExports: m,
     },
   };
 })(globalThis);

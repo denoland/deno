@@ -27,7 +27,7 @@ use super::version_req::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
@@ -39,7 +39,7 @@ pub struct NpmDependencyEntry {
   pub version_req: NpmVersionReq,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,

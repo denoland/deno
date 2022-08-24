@@ -587,12 +587,10 @@ pub fn package_resolve(
     }
   }
 
-  let package_dir_path = npm_resolver
-    .resolve_package_folder_from_package(
-      &package_name,
-      &referrer.to_file_path().unwrap(),
-    )
-    .unwrap();
+  let package_dir_path = npm_resolver.resolve_package_folder_from_package(
+    &package_name,
+    &referrer.to_file_path().unwrap(),
+  )?;
   let package_json_path = package_dir_path.join("package.json");
   let package_json_url =
     ModuleSpecifier::from_file_path(&package_json_path).unwrap();
