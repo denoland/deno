@@ -16,7 +16,6 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_graph::source::ResolveResponse;
-use deno_runtime::deno_node::get_package_scope_config;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
@@ -324,7 +323,7 @@ fn url_to_resolve_response(
   Ok(if url.as_str().starts_with("http") {
     ResolveResponse::Esm(url)
   } else if url.as_str().ends_with(".js") {
-    let package_config = get_package_scope_config(&url, npm_resolver)?;
+    let package_config = get_closest_package_json(&url, npm_resolver)?;
     if package_config.typ == "module" {
       ResolveResponse::Esm(url)
     } else {
@@ -335,6 +334,37 @@ fn url_to_resolve_response(
   } else {
     ResolveResponse::Esm(url)
   })
+}
+
+fn get_closest_package_json(
+  url: &ModuleSpecifier,
+  npm_resolver: &dyn DenoDirNpmResolver,
+) -> Result<PackageJson, AnyError> {
+  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
+  PackageJson::load(npm_resolver, package_json_path)
+}
+
+fn get_closest_package_json_path(
+  url: &ModuleSpecifier,
+  npm_resolver: &dyn DenoDirNpmResolver,
+) -> Result<PathBuf, AnyError> {
+  let file_path = url.to_file_path().unwrap();
+  let mut current_dir = file_path.parent().unwrap();
+  let package_json_path = current_dir.join("package.json");
+  if package_json_path.exists() {
+    return Ok(package_json_path);
+  }
+  let root_folder = npm_resolver
+    .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
+  while current_dir != root_folder {
+    current_dir = current_dir.parent().unwrap();
+    let package_json_path = current_dir.join("./package.json");
+    if package_json_path.exists() {
+      return Ok(package_json_path);
+    }
+  }
+
+  bail!("did not find package.json in {}", root_folder.display())
 }
 
 fn finalize_resolution(
