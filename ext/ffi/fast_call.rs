@@ -118,6 +118,18 @@ struct SysVAmd64 {
   frame_pointer: u32,
 }
 
+macro_rules! x64 {
+  ($assembler:expr; $($tokens:tt)+) => {
+    dynasm!($assembler; .arch x64; $($tokens)+)
+  }
+}
+
+macro_rules! aarch64 {
+  ($assembler:expr; $($tokens:tt)+) => {
+    dynasm!($assembler; .arch aarch64; $($tokens)+)
+  }
+}
+
 #[cfg_attr(
   not(all(target_aarch = "x86_64", target_family = "unix")),
   allow(dead_code)
@@ -231,16 +243,17 @@ impl SysVAmd64 {
       || self.integer_params >= Self::INTEGER_REGISTERS;
 
     if is_in_stack && stack_has_moved {
+      let s = &mut self.assmblr;
+      let ot = self.offset_trampoline as i32;
+      let oc = self.offset_callee as i32;
       match param {
-        Single => dynasm!(self.assmblr
-          ; .arch x64
-          ; movss xmm8, [rsp + self.offset_trampoline as i32]
-          ; movss [rsp + self.offset_callee as i32], xmm8
+        Single => x64!(s
+          ; movss xmm8, [rsp + ot]
+          ; movss [rsp + oc], xmm8
         ),
-        Double => dynasm!(self.assmblr
-          ; .arch x64
-          ; movsd xmm8, [rsp + self.offset_trampoline as i32]
-          ; movsd [rsp + self.offset_callee as i32], xmm8
+        Double => x64!(s
+          ; movsd xmm8, [rsp + ot]
+          ; movsd [rsp + oc], xmm8
         ),
       }
 
@@ -263,6 +276,7 @@ impl SysVAmd64 {
     // [...]
     // > Once registers are assigned, the arguments passed in memory are pushed on
     // > the stack in reversed (right-to-left) order
+    let s = &mut self.assmblr;
     let param_i = self.integer_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (r9).
@@ -272,73 +286,63 @@ impl SysVAmd64 {
       // u8 and u16 parameters are defined as u32 parameters in the V8's fast API function. The trampoline takes care of the cast.
       // Conventionally, many compilers expect 8 and 16 bit arguments to be sign/zero extended by the caller
       // See https://stackoverflow.com/a/36760539/2623340
-      (0, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edi, sil),
-      (0, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edi, sil),
-      (0, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edi, si),
-      (0, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edi, si),
-      (0, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edi, esi),
-      (0, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdi, rsi),
+      (0, U(B)) => x64!(s; movzx edi, sil),
+      (0, I(B)) => x64!(s; movsx edi, sil),
+      (0, U(W)) => x64!(s; movzx edi, si),
+      (0, I(W)) => x64!(s; movsx edi, si),
+      (0, U(DW) | I(DW)) => x64!(s; mov edi, esi),
+      (0, U(QW) | I(QW)) => x64!(s; mov rdi, rsi),
       // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, Pointer) => dynasm!(self.assmblr; .arch x64; mov rdi, [rsi + 8]),
+      (0, Pointer) => x64!(s; mov rdi, [rsi + 8]),
 
-      (1, U(B)) => dynasm!(self.assmblr; .arch x64; movzx esi, dl),
-      (1, I(B)) => dynasm!(self.assmblr; .arch x64; movsx esi, dl),
-      (1, U(W)) => dynasm!(self.assmblr; .arch x64; movzx esi, dx),
-      (1, I(W)) => dynasm!(self.assmblr; .arch x64; movsx esi, dx),
-      (1, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov esi, edx),
-      (1, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rsi, rdx),
-      (1, Pointer) => dynasm!(self.assmblr; .arch x64; mov rsi, [rdx + 8]),
+      (1, U(B)) => x64!(s; movzx esi, dl),
+      (1, I(B)) => x64!(s; movsx esi, dl),
+      (1, U(W)) => x64!(s; movzx esi, dx),
+      (1, I(W)) => x64!(s; movsx esi, dx),
+      (1, U(DW) | I(DW)) => x64!(s; mov esi, edx),
+      (1, U(QW) | I(QW)) => x64!(s; mov rsi, rdx),
+      (1, Pointer) => x64!(s; mov rsi, [rdx + 8]),
 
-      (2, U(B)) => dynasm!(self.assmblr; .arch x64; movzx edx, cl),
-      (2, I(B)) => dynasm!(self.assmblr; .arch x64; movsx edx, cl),
-      (2, U(W)) => dynasm!(self.assmblr; .arch x64; movzx edx, cx),
-      (2, I(W)) => dynasm!(self.assmblr; .arch x64; movsx edx, cx),
-      (2, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov edx, ecx),
-      (2, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, rcx),
-      (2, Pointer) => dynasm!(self.assmblr; .arch x64; mov rdx, [rcx + 8]),
+      (2, U(B)) => x64!(s; movzx edx, cl),
+      (2, I(B)) => x64!(s; movsx edx, cl),
+      (2, U(W)) => x64!(s; movzx edx, cx),
+      (2, I(W)) => x64!(s; movsx edx, cx),
+      (2, U(DW) | I(DW)) => x64!(s; mov edx, ecx),
+      (2, U(QW) | I(QW)) => x64!(s; mov rdx, rcx),
+      (2, Pointer) => x64!(s; mov rdx, [rcx + 8]),
 
-      (3, U(B)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8b),
-      (3, I(B)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8b),
-      (3, U(W)) => dynasm!(self.assmblr; .arch x64; movzx ecx, r8w),
-      (3, I(W)) => dynasm!(self.assmblr; .arch x64; movsx ecx, r8w),
-      (3, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, r8d),
-      (3, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, r8),
-      (3, Pointer) => dynasm!(self.assmblr; .arch x64; mov rcx, [r8 + 8]),
+      (3, U(B)) => x64!(s; movzx ecx, r8b),
+      (3, I(B)) => x64!(s; movsx ecx, r8b),
+      (3, U(W)) => x64!(s; movzx ecx, r8w),
+      (3, I(W)) => x64!(s; movsx ecx, r8w),
+      (3, U(DW) | I(DW)) => x64!(s; mov ecx, r8d),
+      (3, U(QW) | I(QW)) => x64!(s; mov rcx, r8),
+      (3, Pointer) => x64!(s; mov rcx, [r8 + 8]),
 
-      (4, U(B)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9b),
-      (4, I(B)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9b),
-      (4, U(W)) => dynasm!(self.assmblr; .arch x64; movzx r8d, r9w),
-      (4, I(W)) => dynasm!(self.assmblr; .arch x64; movsx r8d, r9w),
-      (4, U(DW) | I(DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
-      (4, U(QW) | I(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
-      (4, Pointer) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
+      (4, U(B)) => x64!(s; movzx r8d, r9b),
+      (4, I(B)) => x64!(s; movsx r8d, r9b),
+      (4, U(W)) => x64!(s; movzx r8d, r9w),
+      (4, I(W)) => x64!(s; movsx r8d, r9w),
+      (4, U(DW) | I(DW)) => x64!(s; mov r8d, r9d),
+      (4, U(QW) | I(QW)) => x64!(s; mov r8, r9),
+      (4, Pointer) => x64!(s; mov r8, [r9 + 8]),
 
       (5, param) => {
+        let ot = self.offset_trampoline as i32;
         // First argument in stack goes to last register (r9)
         match param {
-          U(B) => {
-            dynasm!(self.assmblr; .arch x64; movzx r9d, BYTE [rsp + self.offset_trampoline as i32])
-          }
-          I(B) => {
-            dynasm!(self.assmblr; .arch x64; movsx r9d, BYTE [rsp + self.offset_trampoline as i32])
-          }
-          U(W) => {
-            dynasm!(self.assmblr; .arch x64; movzx r9d, WORD [rsp + self.offset_trampoline as i32])
-          }
-          I(W) => {
-            dynasm!(self.assmblr; .arch x64; movsx r9d, WORD [rsp + self.offset_trampoline as i32])
-          }
-          U(DW) | I(DW) => {
-            dynasm!(self.assmblr; .arch x64; mov r9d, [rsp + self.offset_trampoline as i32])
-          }
-          U(QW) | I(QW) => {
-            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32])
-          }
-          Pointer => {
-            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32]; mov r9, [r9 + 8])
-          }
+          U(B) => x64!(s; movzx r9d, BYTE [rsp + ot]),
+          I(B) => x64!(s; movsx r9d, BYTE [rsp + ot]),
+          U(W) => x64!(s; movzx r9d, WORD [rsp + ot]),
+          I(W) => x64!(s; movsx r9d, WORD [rsp + ot]),
+          U(DW) | I(DW) => x64!(s; mov r9d, [rsp + ot]),
+          U(QW) | I(QW) => x64!(s; mov r9, [rsp + ot]),
+          Pointer => x64!(s
+            ; mov r9, [rsp + ot]
+            ; mov r9, [r9 + 8]
+          ),
         }
         // Section 3.2.3 of the SysV AMD64 ABI:
         // > The size of each argument gets rounded up to eightbytes. [...] Therefore the stack will always be eightbyte aligned.
@@ -346,43 +350,38 @@ impl SysVAmd64 {
       }
 
       (6.., param) => {
+        let ot = self.offset_trampoline as i32;
+        let oc = self.offset_callee as i32;
         match param {
-          U(B) => dynasm!(self.assmblr
-            ; .arch x64
-            ; movzx eax, BYTE [rsp + self.offset_trampoline as i32]
+          U(B) => x64!(s
             // TODO: optimize to [rsp] (without immediate) when offset is 0
-            ; mov [rsp + self.offset_callee as i32], eax
+            ; movzx eax, BYTE [rsp + ot]
+            ; mov [rsp + oc], eax
           ),
-          I(B) => dynasm!(self.assmblr
-            ; .arch x64
-            ; movsx eax, BYTE [rsp + self.offset_trampoline as i32]
-            ; mov [rsp + self.offset_callee as i32], eax
+          I(B) => x64!(s
+            ; movsx eax, BYTE [rsp + ot]
+            ; mov [rsp + oc], eax
           ),
-          U(W) => dynasm!(self.assmblr
-            ; .arch x64
-            ; movzx eax, WORD [rsp + self.offset_trampoline as i32]
-            ; mov [rsp + self.offset_callee as i32], eax
+          U(W) => x64!(s
+            ; movzx eax, WORD [rsp + ot]
+            ; mov [rsp + oc], eax
           ),
-          I(W) => dynasm!(self.assmblr
-            ; .arch x64
-            ; movsx eax, WORD [rsp + self.offset_trampoline as i32]
-            ; mov [rsp + self.offset_callee as i32], eax
+          I(W) => x64!(s
+            ; movsx eax, WORD [rsp + ot]
+            ; mov [rsp + oc], eax
           ),
-          U(DW) | I(DW) => dynasm!(self.assmblr
-            ; .arch x64
-            ; mov eax, [rsp + self.offset_trampoline as i32]
-            ; mov [rsp + self.offset_callee as i32], eax
+          U(DW) | I(DW) => x64!(s
+            ; mov eax, [rsp + ot]
+            ; mov [rsp + oc], eax
           ),
-          U(QW) | I(QW) => dynasm!(self.assmblr
-            ; .arch x64
-            ; mov rax, [rsp + self.offset_trampoline as i32]
-            ; mov [rsp + self.offset_callee as i32], rax
+          U(QW) | I(QW) => x64!(s
+            ; mov rax, [rsp + ot]
+            ; mov [rsp + oc], rax
           ),
-          Pointer => dynasm!(self.assmblr
-            ; .arch x64
-            ; mov rax, [rsp + self.offset_trampoline as i32]
+          Pointer => x64!(s
+            ; mov rax, [rsp + ot]
             ; mov rax, [rax + 8]
-            ; mov [rsp + self.offset_callee as i32], rax
+            ; mov [rsp + oc], rax
           ),
         }
         // Section 3.2.3 of the SysV AMD64 ABI:
@@ -411,46 +410,45 @@ impl SysVAmd64 {
   }
 
   fn cast_return_value(&mut self, rv: NativeType) {
+    let s = &mut self.assmblr;
     // V8 only supports 32bit integers. We support 8 and 16 bit integers casting them to 32bits.
     // In SysV-AMD64 the convention dictates that the unused bits of the return value contain garbage, so we
     // need to zero/sign extend the return value explicitly
     match rv {
-      NativeType::U8 => dynasm!(self.assmblr; .arch x64; movzx eax, al),
-      NativeType::I8 => dynasm!(self.assmblr; .arch x64; movsx eax, al),
-      NativeType::U16 => dynasm!(self.assmblr; .arch x64; movzx eax, ax),
-      NativeType::I16 => dynasm!(self.assmblr; .arch x64; movsx eax, ax),
+      NativeType::U8 => x64!(s; movzx eax, al),
+      NativeType::I8 => x64!(s; movsx eax, al),
+      NativeType::U16 => x64!(s; movzx eax, ax),
+      NativeType::I16 => x64!(s; movsx eax, ax),
       _ => (),
     }
   }
 
   fn save_out_array_to_preserved_register(&mut self) {
+    let s = &mut self.assmblr;
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
     match self.integer_params {
       // rdi is always V8 receiver
-      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rsi + 8]),
-      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
-      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [rcx + 8]),
-      3 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
-      4 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
+      0 => x64!(s; mov rbx, [rsi + 8]),
+      1 => x64!(s; mov rbx, [rdx + 8]),
+      2 => x64!(s; mov rbx, [rcx + 8]),
+      3 => x64!(s; mov rbx, [r8 + 8]),
+      4 => x64!(s; mov rbx, [r9 + 8]),
       5.. => {
-        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
+        x64!(s
+          ; mov rax, [rsp + self.offset_trampoline as i32]
+          ; mov rbx, [rax + 8]
+        )
       }
     }
   }
 
   fn wrap_return_value_in_out_array(&mut self) {
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; mov [rbx], rax
-    )
+    x64!(self.assmblr; mov [rbx], rax);
   }
 
   fn save_preserved_register_to_stack(&mut self) {
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; push rbx
-    );
+    x64!(self.assmblr; push rbx);
     self.offset_trampoline += 8;
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
     self.offset_callee = 0;
@@ -462,10 +460,7 @@ impl SysVAmd64 {
       self.frame_pointer >= 8,
       "the trampoline would try to pop from the stack beyond its frame pointer"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; pop rbx
-    );
+    x64!(self.assmblr; pop rbx);
     self.frame_pointer -= 8;
     // parameter offsets are invalid once this method is called
   }
@@ -494,10 +489,7 @@ impl SysVAmd64 {
     stack_size += padding_to_align(16, self.frame_pointer + stack_size + 8);
 
     if stack_size > 0 {
-      dynasm!(self.assmblr
-        ; .arch x64
-        ; sub rsp, stack_size as i32
-      );
+      x64!(self.assmblr; sub rsp, stack_size as i32);
       self.offset_trampoline += stack_size;
       // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
       self.offset_callee = 0;
@@ -512,10 +504,7 @@ impl SysVAmd64 {
       "the trampoline would try to deallocate stack beyond its frame pointer"
     );
     if self.allocated_stack > 0 {
-      dynasm!(self.assmblr
-        ; .arch x64
-        ; add rsp, self.allocated_stack as i32
-      );
+      x64!(self.assmblr; add rsp, self.allocated_stack as i32);
 
       self.frame_pointer -= self.allocated_stack;
       self.allocated_stack = 0;
@@ -528,8 +517,7 @@ impl SysVAmd64 {
       (8 + self.frame_pointer) % 16 == 0,
       "the trampoline would call the FFI function with an unaligned stack"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
+    x64!(self.assmblr
       ; mov rax, QWORD ptr as _
       ; call rax
     );
@@ -546,8 +534,7 @@ impl SysVAmd64 {
       self.frame_pointer == 0,
       "the trampoline would tail call the FFI function with outstanding locals in the frame"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
+    x64!(self.assmblr
       ; mov rax, QWORD ptr as _
       ; jmp rax
     );
@@ -562,10 +549,7 @@ impl SysVAmd64 {
       self.frame_pointer == 0,
       "the trampoline would return with outstanding locals in the frame"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; ret
-    );
+    x64!(self.assmblr; ret);
   }
 
   fn is_recv_arg_overridden(&self) -> bool {
@@ -718,19 +702,20 @@ impl Aarch64Apple {
       // floats are only moved to accommodate integer movement in the stack
       let stack_has_moved = self.integer_params >= Self::INTEGER_REGISTERS;
       if stack_has_moved {
+        let s = &mut self.assmblr;
+        let ot = self.offset_trampoline;
+        let oc = self.offset_callee;
         match param {
-          Single => dynasm!(self.assmblr
-            ; .arch aarch64
+          Single => aarch64!(s
             // 6.1.2 Aarch64 PCS:
             // > Registers v8-v15 must be preserved by a callee across subroutine calls;
             // > the remaining registers (v0-v7, v16-v31) do not need to be preserved (or should be preserved by the caller).
-            ; ldr s16, [sp, self.offset_trampoline + padding_trampl]
-            ; str s16, [sp, self.offset_callee + padding_callee]
+            ; ldr s16, [sp, ot + padding_trampl]
+            ; str s16, [sp, oc + padding_callee]
           ),
-          Double => dynasm!(self.assmblr
-            ; .arch aarch64
-            ; ldr d16, [sp, self.offset_trampoline + padding_trampl]
-            ; str d16, [sp, self.offset_callee + padding_callee]
+          Double => aarch64!(s
+            ; ldr d16, [sp, ot + padding_trampl]
+            ; str d16, [sp, oc + padding_callee]
           ),
         }
       }
@@ -745,6 +730,7 @@ impl Aarch64Apple {
   }
 
   fn move_integer(&mut self, param: Integer) {
+    let s = &mut self.assmblr;
     // Section 6.4.2 of the Aarch64 PCS:
     // > If the argument is an Integral or Pointer Type, the size of the argument is less than or equal to 8 bytes and the NGRN is less than 8,
     // > the argument is copied to the least significant bits in x[NGRN]. The NGRN is incremented by one. The argument has now been allocated.
@@ -758,89 +744,93 @@ impl Aarch64Apple {
       // > The caller of a function is responsible for signing or zero-extending any argument with fewer than 32 bits.
       // > The standard ABI expects the callee to sign or zero-extend those arguments.
       // (this applies to register parameters, as stack parameters are not eightbyte aligned in Apple)
-      (0, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w0, w1),
-      (0, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFF),
-      (0, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w0, w1),
-      (0, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w0, w1, 0xFFFF),
-      (0, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w0, w1),
-      (0, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x0, x1),
+      (0, I(B)) => aarch64!(s; sxtb w0, w1),
+      (0, U(B)) => aarch64!(s; and w0, w1, 0xFF),
+      (0, I(W)) => aarch64!(s; sxth w0, w1),
+      (0, U(W)) => aarch64!(s; and w0, w1, 0xFFFF),
+      (0, I(DW) | U(DW)) => aarch64!(s; mov w0, w1),
+      (0, I(QW) | U(QW)) => aarch64!(s; mov x0, x1),
       // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x0, [x1, 8]),
+      (0, Pointer) => aarch64!(s; ldr x0, [x1, 8]),
 
-      (1, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w1, w2),
-      (1, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFF),
-      (1, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w1, w2),
-      (1, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w1, w2, 0xFFFF),
-      (1, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w1, w2),
-      (1, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x1, x2),
-      (1, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x1, [x2, 8]),
+      (1, I(B)) => aarch64!(s; sxtb w1, w2),
+      (1, U(B)) => aarch64!(s; and w1, w2, 0xFF),
+      (1, I(W)) => aarch64!(s; sxth w1, w2),
+      (1, U(W)) => aarch64!(s; and w1, w2, 0xFFFF),
+      (1, I(DW) | U(DW)) => aarch64!(s; mov w1, w2),
+      (1, I(QW) | U(QW)) => aarch64!(s; mov x1, x2),
+      (1, Pointer) => aarch64!(s; ldr x1, [x2, 8]),
 
-      (2, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w2, w3),
-      (2, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFF),
-      (2, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w2, w3),
-      (2, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w2, w3, 0xFFFF),
-      (2, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w2, w3),
-      (2, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x2, x3),
-      (2, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x2, [x3, 8]),
+      (2, I(B)) => aarch64!(s; sxtb w2, w3),
+      (2, U(B)) => aarch64!(s; and w2, w3, 0xFF),
+      (2, I(W)) => aarch64!(s; sxth w2, w3),
+      (2, U(W)) => aarch64!(s; and w2, w3, 0xFFFF),
+      (2, I(DW) | U(DW)) => aarch64!(s; mov w2, w3),
+      (2, I(QW) | U(QW)) => aarch64!(s; mov x2, x3),
+      (2, Pointer) => aarch64!(s; ldr x2, [x3, 8]),
 
-      (3, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w3, w4),
-      (3, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFF),
-      (3, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w3, w4),
-      (3, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w3, w4, 0xFFFF),
-      (3, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w3, w4),
-      (3, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x3, x4),
-      (3, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x3, [x4, 8]),
+      (3, I(B)) => aarch64!(s; sxtb w3, w4),
+      (3, U(B)) => aarch64!(s; and w3, w4, 0xFF),
+      (3, I(W)) => aarch64!(s; sxth w3, w4),
+      (3, U(W)) => aarch64!(s; and w3, w4, 0xFFFF),
+      (3, I(DW) | U(DW)) => aarch64!(s; mov w3, w4),
+      (3, I(QW) | U(QW)) => aarch64!(s; mov x3, x4),
+      (3, Pointer) => aarch64!(s; ldr x3, [x4, 8]),
 
-      (4, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w4, w5),
-      (4, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFF),
-      (4, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w4, w5),
-      (4, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w4, w5, 0xFFFF),
-      (4, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w4, w5),
-      (4, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x4, x5),
-      (4, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x4, [x5, 8]),
+      (4, I(B)) => aarch64!(s; sxtb w4, w5),
+      (4, U(B)) => aarch64!(s; and w4, w5, 0xFF),
+      (4, I(W)) => aarch64!(s; sxth w4, w5),
+      (4, U(W)) => aarch64!(s; and w4, w5, 0xFFFF),
+      (4, I(DW) | U(DW)) => aarch64!(s; mov w4, w5),
+      (4, I(QW) | U(QW)) => aarch64!(s; mov x4, x5),
+      (4, Pointer) => aarch64!(s; ldr x4, [x5, 8]),
 
-      (5, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w5, w6),
-      (5, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFF),
-      (5, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w5, w6),
-      (5, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w5, w6, 0xFFFF),
-      (5, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w5, w6),
-      (5, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x5, x6),
-      (5, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x5, [x6, 8]),
+      (5, I(B)) => aarch64!(s; sxtb w5, w6),
+      (5, U(B)) => aarch64!(s; and w5, w6, 0xFF),
+      (5, I(W)) => aarch64!(s; sxth w5, w6),
+      (5, U(W)) => aarch64!(s; and w5, w6, 0xFFFF),
+      (5, I(DW) | U(DW)) => aarch64!(s; mov w5, w6),
+      (5, I(QW) | U(QW)) => aarch64!(s; mov x5, x6),
+      (5, Pointer) => aarch64!(s; ldr x5, [x6, 8]),
 
-      (6, I(B)) => dynasm!(self.assmblr; .arch aarch64; sxtb w6, w7),
-      (6, U(B)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFF),
-      (6, I(W)) => dynasm!(self.assmblr; .arch aarch64; sxth w6, w7),
-      (6, U(W)) => dynasm!(self.assmblr; .arch aarch64; and w6, w7, 0xFFFF),
-      (6, I(DW) | U(DW)) => dynasm!(self.assmblr; .arch aarch64; mov w6, w7),
-      (6, I(QW) | U(QW)) => dynasm!(self.assmblr; .arch aarch64; mov x6, x7),
-      (6, Pointer) => dynasm!(self.assmblr; .arch aarch64; ldr x6, [x7, 8]),
+      (6, I(B)) => aarch64!(s; sxtb w6, w7),
+      (6, U(B)) => aarch64!(s; and w6, w7, 0xFF),
+      (6, I(W)) => aarch64!(s; sxth w6, w7),
+      (6, U(W)) => aarch64!(s; and w6, w7, 0xFFFF),
+      (6, I(DW) | U(DW)) => aarch64!(s; mov w6, w7),
+      (6, I(QW) | U(QW)) => aarch64!(s; mov x6, x7),
+      (6, Pointer) => aarch64!(s; ldr x6, [x7, 8]),
 
       (7, param) => {
+        let ot = self.offset_trampoline;
         match param {
           I(B) => {
-            dynasm!(self.assmblr; .arch aarch64; ldrsb w7, [sp, self.offset_trampoline])
+            aarch64!(s; ldrsb w7, [sp, ot])
           }
           U(B) => {
             // ldrb zero-extends the byte to fill the 32bits of the register
-            dynasm!(self.assmblr; .arch aarch64; ldrb w7, [sp, self.offset_trampoline])
+            aarch64!(s; ldrb w7, [sp, ot])
           }
           I(W) => {
-            dynasm!(self.assmblr; .arch aarch64; ldrsh w7, [sp, self.offset_trampoline])
+            aarch64!(s; ldrsh w7, [sp, ot])
           }
           U(W) => {
             // ldrh zero-extends the half-word to fill the 32bits of the register
-            dynasm!(self.assmblr; .arch aarch64; ldrh w7, [sp, self.offset_trampoline])
+            aarch64!(s; ldrh w7, [sp, ot])
           }
           I(DW) | U(DW) => {
-            dynasm!(self.assmblr; .arch aarch64; ldr w7, [sp, self.offset_trampoline])
+            aarch64!(s; ldr w7, [sp, ot])
           }
           I(QW) | U(QW) => {
-            dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline])
+            aarch64!(s; ldr x7, [sp, ot])
           }
           Pointer => {
-            dynasm!(self.assmblr; .arch aarch64; ldr x7, [sp, self.offset_trampoline]; ldr x7, [x7, 8])
+            aarch64!(s
+              ; ldr x7, [sp, ot]
+              ; ldr x7, [x7, 8]
+            )
           }
         }
         // 16 and 8 bit integers are 32 bit integers in v8
@@ -863,32 +853,29 @@ impl Aarch64Apple {
           padding_to_align(size_trampl, self.offset_trampoline);
         let padding_callee =
           padding_to_align(size_original, self.offset_callee);
+        let ot = self.offset_trampoline;
+        let oc = self.offset_callee;
         match param {
-          I(B) | U(B) => dynasm!(self.assmblr
-            ; .arch aarch64
-            ; ldr w8, [sp, self.offset_trampoline + padding_trampl]
-            ; strb w8, [sp, self.offset_callee + padding_callee]
+          I(B) | U(B) => aarch64!(s
+            ; ldr w8, [sp, ot + padding_trampl]
+            ; strb w8, [sp, oc + padding_callee]
           ),
-          I(W) | U(W) => dynasm!(self.assmblr
-            ; .arch aarch64
-            ; ldr w8, [sp, self.offset_trampoline + padding_trampl]
-            ; strh w8, [sp, self.offset_callee + padding_callee]
+          I(W) | U(W) => aarch64!(s
+            ; ldr w8, [sp, ot + padding_trampl]
+            ; strh w8, [sp, oc + padding_callee]
           ),
-          I(DW) | U(DW) => dynasm!(self.assmblr
-            ; .arch aarch64
-            ;  ldr w8, [sp, self.offset_trampoline + padding_trampl]
-            ; str w8, [sp, self.offset_callee + padding_callee]
+          I(DW) | U(DW) => aarch64!(s
+            ;  ldr w8, [sp, ot + padding_trampl]
+            ; str w8, [sp, oc + padding_callee]
           ),
-          I(QW) | U(QW) => dynasm!(self.assmblr
-            ; .arch aarch64
-            ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
-            ; str x8, [sp, self.offset_callee + padding_callee]
+          I(QW) | U(QW) => aarch64!(s
+            ; ldr x8, [sp, ot + padding_trampl]
+            ; str x8, [sp, oc + padding_callee]
           ),
-          Pointer => dynasm!(self.assmblr
-            ; .arch aarch64
-            ; ldr x8, [sp, self.offset_trampoline + padding_trampl]
+          Pointer => aarch64!(s
+            ; ldr x8, [sp, ot + padding_trampl]
             ; ldr x8, [x8, 8]
-            ; str x8, [sp, self.offset_callee + padding_callee]
+            ; str x8, [sp, oc + padding_callee]
           ),
         }
         self.offset_trampoline += padding_trampl + size_trampl;
@@ -908,32 +895,33 @@ impl Aarch64Apple {
       self.integer_params == 0,
       "the trampoline would zero the first argument after having overridden it with the second one"
     );
-    dynasm!(self.assmblr
-      ; .arch aarch64
-      ; mov x0, xzr
-    );
+    aarch64!(self.assmblr; mov x0, xzr);
   }
 
   fn save_out_array_to_preserved_register(&mut self) {
+    let s = &mut self.assmblr;
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
     match self.integer_params {
       // x0 is always V8's receiver
-      0 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x1, 8]),
-      1 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x2, 8]),
-      2 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x3, 8]),
-      3 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x4, 8]),
-      4 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x5, 8]),
-      5 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x6, 8]),
-      6 => dynasm!(self.assmblr; .arch aarch64; ldr x19, [x7, 8]),
+      0 => aarch64!(s; ldr x19, [x1, 8]),
+      1 => aarch64!(s; ldr x19, [x2, 8]),
+      2 => aarch64!(s; ldr x19, [x3, 8]),
+      3 => aarch64!(s; ldr x19, [x4, 8]),
+      4 => aarch64!(s; ldr x19, [x5, 8]),
+      5 => aarch64!(s; ldr x19, [x6, 8]),
+      6 => aarch64!(s; ldr x19, [x7, 8]),
       7.. => {
-        dynasm!(self.assmblr; .arch aarch64; ldr x19, [sp, self.offset_trampoline]; ldr x19, [x19, 8])
+        aarch64!(s
+          ; ldr x19, [sp, self.offset_trampoline]
+          ; ldr x19, [x19, 8]
+        )
       }
     }
   }
 
   fn wrap_return_value_in_out_array(&mut self) {
-    dynasm!(self.assmblr; .arch aarch64; str x0, [x19]);
+    aarch64!(self.assmblr; str x0, [x19]);
   }
 
   fn save_frame_record(&mut self) {
@@ -941,8 +929,7 @@ impl Aarch64Apple {
       self.allocated_stack >= 16,
       "the trampoline would try to save the frame record to the stack without having allocated enough space for it"
     );
-    dynasm!(self.assmblr
-      ; .arch aarch64
+    aarch64!(self.assmblr
       // Frame record is stored at the bottom of the stack frame
       ; stp x29, x30, [sp, self.allocated_stack - 16]
       ; add x29, sp, self.allocated_stack - 16
@@ -955,11 +942,8 @@ impl Aarch64Apple {
       self.allocated_stack >= 16,
       "the trampoline would try to load the frame record from the stack, but it couldn't possibly contain it"
     );
-    dynasm!(self.assmblr
-      ; .arch aarch64
-      // Frame record is stored at the bottom of the stack frame
-      ; ldp x29, x30, [sp, self.allocated_stack - 16]
-    )
+    // Frame record is stored at the bottom of the stack frame
+    aarch64!(self.assmblr; ldp x29, x30, [sp, self.allocated_stack - 16])
   }
 
   fn save_preserved_register_to_stack(&mut self) {
@@ -969,11 +953,8 @@ impl Aarch64Apple {
       self.allocated_stack >= 32,
       "the trampoline would try to save a register to the stack without having allocated enough space for it"
     );
-    dynasm!(self.assmblr
-      ; .arch aarch64
-        // preserved register is stored after frame record
-      ; str x19, [sp, self.allocated_stack - 24]
-    );
+    // preserved register is stored after frame record
+    aarch64!(self.assmblr; str x19, [sp, self.allocated_stack - 24]);
   }
 
   fn recover_preserved_register(&mut self) {
@@ -983,11 +964,8 @@ impl Aarch64Apple {
       self.allocated_stack >= 32,
       "the trampoline would try to recover the value of a register from the stack, but it couldn't possibly contain it"
     );
-    dynasm!(self.assmblr
-      ; .arch aarch64
-        // preserved register is stored after frame record
-      ; ldr x19, [sp, self.allocated_stack - 24]
-    );
+    // preserved register is stored after frame record
+    aarch64!(self.assmblr; ldr x19, [sp, self.allocated_stack - 24]);
   }
 
   fn allocate_stack(&mut self, symbol: &Symbol) {
@@ -1019,10 +997,7 @@ impl Aarch64Apple {
     stack_size += padding_to_align(16, stack_size);
 
     if stack_size > 0 {
-      dynasm!(self.assmblr
-        ; .arch aarch64
-        ; sub sp, sp, stack_size
-      );
+      aarch64!(self.assmblr; sub sp, sp, stack_size);
       self.offset_trampoline += stack_size;
       // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
       self.offset_callee = 0;
@@ -1032,10 +1007,7 @@ impl Aarch64Apple {
 
   fn deallocate_stack(&mut self) {
     if self.allocated_stack > 0 {
-      dynasm!(self.assmblr
-        ; .arch aarch64
-        ; add sp, sp, self.allocated_stack
-      );
+      aarch64!(self.assmblr; add sp, sp, self.allocated_stack);
       self.allocated_stack = 0;
     }
   }
@@ -1052,10 +1024,7 @@ impl Aarch64Apple {
       "the trampoline would call the FFI function without allocating enough stack for the frame record"
     );
     self.load_callee_address(ptr);
-    dynasm!(self.assmblr
-        ; .arch aarch64
-        ; blr x8
-    );
+    aarch64!(self.assmblr; blr x8);
   }
 
   fn tailcall(&mut self, ptr: *const c_void) {
@@ -1066,10 +1035,7 @@ impl Aarch64Apple {
       "the trampoline would tail call the FFI function with an outstanding stack allocation"
     );
     self.load_callee_address(ptr);
-    dynasm!(self.assmblr
-        ; .arch aarch64
-        ; br x8
-    );
+    aarch64!(self.assmblr; br x8);
   }
 
   fn ret(&mut self) {
@@ -1077,10 +1043,7 @@ impl Aarch64Apple {
       self.allocated_stack == 0,
       "the trampoline would return with an outstanding stack allocation"
     );
-    dynasm!(self.assmblr
-        ; .arch aarch64
-        ; ret
-    );
+    aarch64!(self.assmblr; ret);
   }
 
   fn load_callee_address(&mut self, ptr: *const c_void) {
@@ -1088,19 +1051,13 @@ impl Aarch64Apple {
     // bigger immediates are loaded in multiple steps applying a left-shift modifier
     let mut address = ptr as u64;
     let mut imm16 = address & 0xFFFF;
-    dynasm!(self.assmblr
-      ; .arch aarch64
-      ; movz x8, imm16 as u32
-    );
+    aarch64!(self.assmblr; movz x8, imm16 as u32);
     address >>= 16;
     let mut shift = 16;
     while address > 0 {
       imm16 = address & 0xFFFF;
       if imm16 != 0 {
-        dynasm!(self.assmblr
-          ; .arch aarch64
-          ; movk x8, imm16 as u32, lsl shift
-        );
+        aarch64!(self.assmblr; movk x8, imm16 as u32, lsl shift);
       }
       address >>= 16;
       shift += 16;
@@ -1234,6 +1191,7 @@ impl Win64 {
     // > Integer valued arguments in the leftmost four positions are passed in left-to-right order in RCX, RDX, R8, and R9
     // > [...]
     // > Any floating-point and double-precision arguments in the first four parameters are passed in XMM0 - XMM3, depending on position
+    let s = &mut self.assmblr;
     let param_i = self.params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last register (r9 or xmm3).
@@ -1244,43 +1202,46 @@ impl Win64 {
       // > All integer arguments in registers are right-justified, so the callee can ignore the upper bits of the register
       // > and access only the portion of the register necessary.
       // (i.e. unlike in SysV or Aarch64-Apple, 8/16 bit integers are not expected to be zero/sign extended)
-      (0, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov ecx, edx),
-      (0, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov rcx, rdx),
+      (0, WInt(B | W | DW)) => x64!(s; mov ecx, edx),
+      (0, WInt(QW)) => x64!(s; mov rcx, rdx),
       // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, WPointer) => dynasm!(self.assmblr; .arch x64; mov rcx, [rdx + 8]),
+      (0, WPointer) => x64!(s; mov rcx, [rdx + 8]),
       // Use movaps for singles and doubles, benefits of smaller encoding outweigh those of using the correct instruction for the type,
       // which for doubles should technically be movapd
       (0, WFloat) => {
-        dynasm!(self.assmblr; .arch x64; movaps xmm0, xmm1);
+        x64!(s; movaps xmm0, xmm1);
         self.zero_first_arg();
       }
 
-      (1, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov edx, r8d),
-      (1, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov rdx, r8),
-      (1, WPointer) => dynasm!(self.assmblr; .arch x64; mov rdx, [r8 + 8]),
-      (1, WFloat) => dynasm!(self.assmblr; .arch x64; movaps xmm1, xmm2),
+      (1, WInt(B | W | DW)) => x64!(s; mov edx, r8d),
+      (1, WInt(QW)) => x64!(s; mov rdx, r8),
+      (1, WPointer) => x64!(s; mov rdx, [r8 + 8]),
+      (1, WFloat) => x64!(s; movaps xmm1, xmm2),
 
-      (2, WInt(B | W | DW)) => dynasm!(self.assmblr; .arch x64; mov r8d, r9d),
-      (2, WInt(QW)) => dynasm!(self.assmblr; .arch x64; mov r8, r9),
-      (2, WPointer) => dynasm!(self.assmblr; .arch x64; mov r8, [r9 + 8]),
-      (2, WFloat) => dynasm!(self.assmblr; .arch x64; movaps xmm2, xmm3),
+      (2, WInt(B | W | DW)) => x64!(s; mov r8d, r9d),
+      (2, WInt(QW)) => x64!(s; mov r8, r9),
+      (2, WPointer) => x64!(s; mov r8, [r9 + 8]),
+      (2, WFloat) => x64!(s; movaps xmm2, xmm3),
 
       (3, param) => {
+        let ot = self.offset_trampoline as i32;
         match param {
           WInt(B | W | DW) => {
-            dynasm!(self.assmblr; .arch x64; mov r9d, [rsp + self.offset_trampoline as i32])
+            x64!(s; mov r9d, [rsp + ot])
           }
           WInt(QW) => {
-            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32])
+            x64!(s; mov r9, [rsp + ot])
           }
           WPointer => {
-            dynasm!(self.assmblr; .arch x64; mov r9, [rsp + self.offset_trampoline as i32]; mov r9, [r9 + 8])
+            x64!(s
+              ; mov r9, [rsp + ot]
+              ; mov r9, [r9 + 8])
           }
           WFloat => {
             // parameter 4 is always 16-byte aligned, so we can use movaps instead of movups
-            dynasm!(self.assmblr; .arch x64; movaps xmm3, [rsp + self.offset_trampoline as i32])
+            x64!(s; movaps xmm3, [rsp + ot])
           }
         }
         // Section "x64 Aggregate and Union layout" of the windows x64 software conventions doc:
@@ -1289,34 +1250,32 @@ impl Win64 {
         self.offset_trampoline += 8;
       }
       (4.., param) => {
+        let ot = self.offset_trampoline as i32;
+        let oc = self.offset_callee as i32;
         match param {
           WInt(B | W | DW) => {
-            dynasm!(self.assmblr
-              ; .arch x64
-              ; mov eax, [rsp + self.offset_trampoline as i32]
-              ; mov [rsp + self.offset_callee as i32], eax
+            x64!(s
+              ; mov eax, [rsp + ot]
+              ; mov [rsp + oc], eax
             )
           }
           WInt(QW) => {
-            dynasm!(self.assmblr
-              ; .arch x64
-              ; mov rax, [rsp + self.offset_trampoline as i32]
-              ; mov [rsp + self.offset_callee as i32], rax
+            x64!(s
+              ; mov rax, [rsp + ot]
+              ; mov [rsp + oc], rax
             )
           }
           WPointer => {
-            dynasm!(self.assmblr
-              ; .arch x64
-              ; mov rax, [rsp + self.offset_trampoline as i32]
+            x64!(s
+              ; mov rax, [rsp + ot]
               ; mov rax, [rax + 8]
-              ; mov [rsp + self.offset_callee as i32], rax
+              ; mov [rsp + oc], rax
             )
           }
           WFloat => {
-            dynasm!(self.assmblr
-              ; .arch x64
-              ; movups xmm4, [rsp + self.offset_trampoline as i32]
-              ; movups [rsp + self.offset_callee as i32], xmm4
+            x64!(s
+              ; movups xmm4, [rsp + ot]
+              ; movups [rsp + oc], xmm4
             )
           }
         }
@@ -1340,51 +1299,47 @@ impl Win64 {
       self.params == 0,
       "the trampoline would zero the first argument after having overridden it with the second one"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; xor ecx, ecx
-    );
+    x64!(self.assmblr; xor ecx, ecx);
   }
 
   fn cast_return_value(&mut self, rv: NativeType) {
+    let s = &mut self.assmblr;
     // V8 only supports 32bit integers. We support 8 and 16 bit integers casting them to 32bits.
     // Section "Return Values" of the Windows x64 Calling Convention doc:
     // > The state of unused bits in the value returned in RAX or XMM0 is undefined.
     match rv {
-      NativeType::U8 => dynasm!(self.assmblr; .arch x64; movzx eax, al),
-      NativeType::I8 => dynasm!(self.assmblr; .arch x64; movsx eax, al),
-      NativeType::U16 => dynasm!(self.assmblr; .arch x64; movzx eax, ax),
-      NativeType::I16 => dynasm!(self.assmblr; .arch x64; movsx eax, ax),
+      NativeType::U8 => x64!(s; movzx eax, al),
+      NativeType::I8 => x64!(s; movsx eax, al),
+      NativeType::U16 => x64!(s; movzx eax, ax),
+      NativeType::I16 => x64!(s; movsx eax, ax),
       _ => (),
     }
   }
 
   fn save_out_array_to_preserved_register(&mut self) {
+    let s = &mut self.assmblr;
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
     match self.params {
       // rcx is always V8 receiver
-      0 => dynasm!(self.assmblr; .arch x64; mov rbx, [rdx + 8]),
-      1 => dynasm!(self.assmblr; .arch x64; mov rbx, [r8 + 8]),
-      2 => dynasm!(self.assmblr; .arch x64; mov rbx, [r9 + 8]),
+      0 => x64!(s; mov rbx, [rdx + 8]),
+      1 => x64!(s; mov rbx, [r8 + 8]),
+      2 => x64!(s; mov rbx, [r9 + 8]),
       3.. => {
-        dynasm!(self.assmblr; .arch x64; mov rax, [rsp + self.offset_trampoline as i32]; mov rbx, [rax + 8])
+        x64!(s
+          ; mov rax, [rsp + self.offset_trampoline as i32]
+          ; mov rbx, [rax + 8]
+        )
       }
     }
   }
 
   fn wrap_return_value_in_out_array(&mut self) {
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; mov [rbx], rax
-    )
+    x64!(self.assmblr; mov [rbx], rax)
   }
 
   fn save_preserved_register_to_stack(&mut self) {
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; push rbx
-    );
+    x64!(self.assmblr; push rbx);
     self.offset_trampoline += 8;
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack
     self.offset_callee = 0;
@@ -1396,10 +1351,7 @@ impl Win64 {
       self.frame_pointer >= 8,
       "the trampoline would try to pop from the stack beyond its frame pointer"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; pop rbx
-    );
+    x64!(self.assmblr; pop rbx);
     self.frame_pointer -= 8;
     // parameter offsets are invalid once this method is called
   }
@@ -1422,10 +1374,7 @@ impl Win64 {
     // > The stack will always be maintained 16-byte aligned, except within the prolog (for example, after the return address is pushed)
     stack_size += padding_to_align(16, self.frame_pointer + stack_size + 8);
 
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; sub rsp, stack_size as i32
-    );
+    x64!(self.assmblr; sub rsp, stack_size as i32);
     self.offset_trampoline += stack_size;
     // stack pointer has been modified, and the callee stack parameters are expected at the top of the stack right after the shadow space
     self.offset_callee = 32;
@@ -1438,10 +1387,7 @@ impl Win64 {
       self.frame_pointer >= self.allocated_stack,
       "the trampoline would try to deallocate stack beyond its frame pointer"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; add rsp, self.allocated_stack as i32
-    );
+    x64!(self.assmblr; add rsp, self.allocated_stack as i32);
     self.frame_pointer -= self.allocated_stack;
     self.allocated_stack = 0;
   }
@@ -1452,8 +1398,7 @@ impl Win64 {
       (8 + self.frame_pointer) % 16 == 0,
       "the trampoline would call the FFI function with an unaligned stack"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
+    x64!(self.assmblr
       ; mov rax, QWORD ptr as _
       ; call rax
     );
@@ -1470,8 +1415,7 @@ impl Win64 {
       self.frame_pointer == 0,
       "the trampoline would tail call the FFI function with outstanding locals in the frame"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
+    x64!(self.assmblr
       ; mov rax, QWORD ptr as _
       ; jmp rax
     );
@@ -1486,10 +1430,7 @@ impl Win64 {
       self.frame_pointer == 0,
       "the trampoline would return with outstanding locals in the frame"
     );
-    dynasm!(self.assmblr
-      ; .arch x64
-      ; ret
-    );
+    x64!(self.assmblr; ret);
   }
 
   fn is_recv_arg_overridden(&self) -> bool {
