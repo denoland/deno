@@ -2,7 +2,7 @@
 // and also get the parent directory index.js file using require("..")
 import Ajv from "npm:ajv@~8.11";
 import addFormats from "npm:ajv-formats@2.1.1";
-import { expect } from "npm:chai@4.2";
+import { expect } from "npm:chai@4.3";
 
 const ajv = new Ajv();
 addFormats(ajv);

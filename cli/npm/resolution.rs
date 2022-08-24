@@ -8,12 +8,14 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
+use super::version_req::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages.
@@ -28,10 +30,55 @@ pub struct NpmPackageReference {
   pub sub_path: Option<String>,
 }
 
+impl NpmPackageReference {
+  pub fn from_specifier(
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageReference, AnyError> {
+    Self::from_str(specifier.as_str())
+  }
+
+  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    let specifier = match specifier.strip_prefix("npm:") {
+      Some(s) => s,
+      None => {
+        bail!("Not an npm specifier: '{}'", specifier);
+      }
+    };
+    let (name, version_req) = match specifier.rsplit_once('@') {
+      Some((name, version_req)) => (
+        name,
+        match SpecifierVersionReq::parse(version_req) {
+          Ok(v) => Some(v),
+          Err(_) => None, // not a version requirement
+        },
+      ),
+      None => (specifier, None),
+    };
+    Ok(NpmPackageReference {
+      req: NpmPackageReq {
+        name: name.to_string(),
+        version_req,
+      },
+      // todo: implement and support this
+      sub_path: None,
+    })
+  }
+}
+
+impl std::fmt::Display for NpmPackageReference {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(sub_path) = &self.sub_path {
+      write!(f, "{}/{}", self.req, sub_path)
+    } else {
+      write!(f, "{}", self.req)
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NpmPackageReq {
   pub name: String,
-  pub version_req: Option<semver::VersionReq>,
+  pub version_req: Option<SpecifierVersionReq>,
 }
 
 impl std::fmt::Display for NpmPackageReq {
@@ -57,51 +104,6 @@ impl NpmVersionMatcher for NpmPackageReq {
       .as_ref()
       .map(|v| format!("{}", v))
       .unwrap_or_else(|| "non-prerelease".to_string())
-  }
-}
-
-impl NpmPackageReference {
-  pub fn from_specifier(
-    specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageReference, AnyError> {
-    Self::from_str(specifier.as_str())
-  }
-
-  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
-    let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
-      None => {
-        bail!("Not an npm specifier: '{}'", specifier);
-      }
-    };
-    let (name, version_req) = match specifier.rsplit_once('@') {
-      Some((name, version_req)) => (
-        name,
-        match semver::VersionReq::parse(version_req) {
-          Ok(v) => Some(v),
-          Err(_) => None, // not a version requirement
-        },
-      ),
-      None => (specifier, None),
-    };
-    Ok(NpmPackageReference {
-      req: NpmPackageReq {
-        name: name.to_string(),
-        version_req,
-      },
-      // todo: implement and support this
-      sub_path: None,
-    })
-  }
-}
-
-impl std::fmt::Display for NpmPackageReference {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(sub_path) = &self.sub_path {
-      write!(f, "{}/{}", self.req, sub_path)
-    } else {
-      write!(f, "{}", self.req)
-    }
   }
 }
 
@@ -313,6 +315,27 @@ impl NpmResolution {
           .cmp(&a.version_req.version_text()),
         ordering => ordering,
       });
+
+      // cache all the dependencies' registry infos in parallel when this env var isn't set
+      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
+      {
+        let handles = deps
+          .iter()
+          .map(|dep| {
+            let name = dep.name.clone();
+            let api = self.api.clone();
+            tokio::task::spawn(async move {
+              // it's ok to call this without storing the result, because
+              // NpmRegistryApi will cache the package info in memory
+              api.package_info(&name).await
+            })
+          })
+          .collect::<Vec<_>>();
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+          result??; // surface the first error
+        }
+      }
 
       // now resolve them
       for dep in deps {
