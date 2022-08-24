@@ -76,6 +76,7 @@ pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
   resolution: Arc<NpmResolution>,
   registry_url: Url,
+  unstable: bool,
 }
 
 impl GlobalNpmPackageResolver {
@@ -83,11 +84,13 @@ impl GlobalNpmPackageResolver {
     dir: &DenoDir,
     reload: bool,
     cache_setting: CacheSetting,
+    unstable: bool,
   ) -> Result<Self, AnyError> {
     Ok(Self::from_cache(
       NpmCache::from_deno_dir(dir, cache_setting.clone())?,
       reload,
       cache_setting,
+      unstable,
     ))
   }
 
@@ -95,6 +98,7 @@ impl GlobalNpmPackageResolver {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
+    unstable: bool,
   ) -> Self {
     let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
     let registry_url = api.base_url().to_owned();
@@ -104,6 +108,7 @@ impl GlobalNpmPackageResolver {
       cache,
       resolution,
       registry_url,
+      unstable,
     }
   }
 
@@ -117,6 +122,11 @@ impl GlobalNpmPackageResolver {
     &self,
     packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
+    if !self.unstable && !packages.is_empty() {
+      bail!(
+        "Unstable use of npm specifiers. The --unstable flag must be provided."
+      )
+    }
     self.resolution.add_package_reqs(packages).await
   }
 
