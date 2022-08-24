@@ -484,19 +484,33 @@ fn module_resolve(
   })
 }
 
-fn add_export(source: &mut Vec<String>, name: &str, initializer: &str) {
+fn add_export(
+  source: &mut Vec<String>,
+  name: &str,
+  initializer: &str,
+  temp_var_count: &mut usize,
+) {
+  fn is_valid_var_decl(name: &str) -> bool {
+    // it's ok to be super strict here
+    name
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+  }
+
   // TODO(bartlomieju): Node actually checks if a given export exists in `exports` object,
   // but it might not be necessary here since our analysis is more detailed?
-  if RESERVED_WORDS.contains(name) {
-    // we can't create an identifier with a reserved word, so assign it to a temporary
-    // variable that won't have a conflict, then re-export it as a string
+  if RESERVED_WORDS.contains(name) || !is_valid_var_decl(name) {
+    *temp_var_count += 1;
+    // we can't create an identifier with a reserved word or invalid identifier name,
+    // so assign it to a temporary variable that won't have a conflict, then re-export
+    // it as a string
     source.push(format!(
-      "const __deno_reexport_temp__{} = {};",
-      name, initializer
+      "const __deno_export_{}__ = {};",
+      temp_var_count, initializer
     ));
     source.push(format!(
-      "export {{ __deno_reexport_temp__{0} as \"{0}\" }};",
-      name
+      "export {{ __deno_export_{}__ as \"{}\" }};",
+      temp_var_count, name
     ));
   } else {
     source.push(format!("export const {} = {};", name, initializer));
@@ -525,6 +539,7 @@ pub fn translate_cjs_to_esm(
     maybe_syntax: None,
   })?;
   let analysis = parsed_source.analyze_cjs();
+  let mut temp_var_count = 0;
 
   let mut source = vec![
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
@@ -565,7 +580,12 @@ pub fn translate_cjs_to_esm(
 
       for export in analysis.exports.iter().filter(|e| e.as_str() != "default")
       {
-        add_export(&mut source, export, &format!("Deno[Deno.internal].require.bindExport(reexport{0}.{1}, reexport{0})", idx, export));
+        add_export(
+          &mut source,
+          export,
+          &format!("Deno[Deno.internal].require.bindExport(reexport{0}[\"{1}\"], reexport{0})", idx, export),
+          &mut temp_var_count,
+        );
       }
     }
   }
@@ -587,7 +607,7 @@ pub fn translate_cjs_to_esm(
     if export.as_str() == "default" {
       // todo(dsherret): we should only do this if there was a `_esModule: true` instead
       source.push(format!(
-        "export default Deno[Deno.internal].require.bindExport(mod.{}, mod);",
+        "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
         export,
       ));
       had_default = true;
@@ -596,9 +616,10 @@ pub fn translate_cjs_to_esm(
         &mut source,
         export,
         &format!(
-          "Deno[Deno.internal].require.bindExport(mod.{}, mod)",
+          "Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod)",
           export
         ),
+        &mut temp_var_count,
       );
     }
   }
@@ -856,19 +877,22 @@ mod tests {
 
   #[test]
   fn test_add_export() {
+    let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app"];
+    let exports = vec!["static", "server", "app", "dashed-export"];
     for export in exports {
-      add_export(&mut source, export, "init");
+      add_export(&mut source, export, "init", &mut temp_var_count);
     }
     assert_eq!(
       source,
       vec![
-        "const __deno_reexport_temp__static = init;".to_string(),
-        "export { __deno_reexport_temp__static as \"static\" };".to_string(),
+        "const __deno_export_1__ = init;".to_string(),
+        "export { __deno_export_1__ as \"static\" };".to_string(),
         "export const server = init;".to_string(),
         "export const app = init;".to_string(),
+        "const __deno_export_2__ = init;".to_string(),
+        "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
   }
