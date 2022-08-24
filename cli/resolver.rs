@@ -7,6 +7,8 @@ use deno_graph::source::Resolver;
 use import_map::ImportMap;
 use std::sync::Arc;
 
+use crate::args::config_file::JsxImportSourceConfig;
+
 /// Wraps an import map to be used when building a deno_graph module graph.
 /// This is done to avoid having `import_map` be a direct dependency of
 /// `deno_graph`.
@@ -38,17 +40,19 @@ impl Resolver for ImportMapResolver {
 
 #[derive(Debug, Default, Clone)]
 pub struct JsxResolver {
+  default_jsx_import_source: Option<String>,
   jsx_import_source_module: String,
   maybe_import_map_resolver: Option<ImportMapResolver>,
 }
 
 impl JsxResolver {
   pub fn new(
-    jsx_import_source_module: String,
+    jsx_import_source_config: JsxImportSourceConfig,
     maybe_import_map_resolver: Option<ImportMapResolver>,
   ) -> Self {
     Self {
-      jsx_import_source_module,
+      default_jsx_import_source: jsx_import_source_config.default_specifier,
+      jsx_import_source_module: jsx_import_source_config.module,
       maybe_import_map_resolver,
     }
   }
@@ -59,6 +63,10 @@ impl JsxResolver {
 }
 
 impl Resolver for JsxResolver {
+  fn default_jsx_import_source(&self) -> Option<String> {
+    self.default_jsx_import_source.clone()
+  }
+
   fn jsx_import_source_module(&self) -> &str {
     self.jsx_import_source_module.as_str()
   }

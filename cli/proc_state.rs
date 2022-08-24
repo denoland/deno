@@ -192,8 +192,8 @@ impl ProcState {
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if cli_options.compat() {
@@ -643,8 +643,8 @@ impl ProcState {
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_jsx_resolver = self
       .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {

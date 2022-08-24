@@ -457,8 +457,8 @@ async fn create_graph_and_maybe_check(
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let maybe_jsx_resolver = ps
     .options
-    .to_maybe_jsx_import_source_module()
-    .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+    .to_maybe_jsx_import_source_config()
+    .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
