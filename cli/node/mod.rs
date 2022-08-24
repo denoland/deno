@@ -356,7 +356,7 @@ fn get_closest_package_json_path(
   }
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
-  while current_dir != root_folder {
+  while current_dir.starts_with(&root_folder) {
     current_dir = current_dir.parent().unwrap();
     let package_json_path = current_dir.join("./package.json");
     if package_json_path.exists() {
