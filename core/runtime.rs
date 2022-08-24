@@ -233,6 +233,9 @@ fn v8_init(
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
+    // This flag prevents "unresolved external reference" panic during
+    // build, which started happening in V8 10.6
+    " --noexperimental-async-stack-tagging-api",
   );
 
   if predictable {

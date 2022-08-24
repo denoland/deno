@@ -10,6 +10,7 @@ use deno_core::located_script_name;
 use deno_core::serde_json::json;
 use deno_core::Extension;
 use deno_core::ModuleId;
+use deno_graph::source::ResolveResponse;
 use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
@@ -20,12 +21,14 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 
+use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::compat;
 use crate::errors;
 use crate::fmt_errors::format_js_error;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
+use crate::npm::NpmPackageReference;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools;
@@ -35,6 +38,7 @@ use crate::version;
 
 pub struct CliMainWorker {
   main_module: ModuleSpecifier,
+  is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
 }
@@ -99,8 +103,14 @@ impl CliMainWorker {
           true,
         )?;
       }
+    } else if self.is_main_cjs {
+      self.initialize_main_module_for_node().await?;
+      node::load_cjs_module_from_ext_node(
+        &mut self.worker.js_runtime,
+        &self.main_module.to_file_path().unwrap().to_string_lossy(),
+        true,
+      )?;
     } else {
-      // Regular ES module execution
       self.execute_main_module_possibly_with_npm().await?;
     }
 
@@ -413,9 +423,29 @@ impl CliMainWorker {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
-      node::initialize_runtime(&mut self.worker.js_runtime).await?;
+      self.initialize_main_module_for_node().await?;
     }
     self.worker.evaluate_module(id).await
+  }
+
+  async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
+    node::initialize_runtime(&mut self.worker.js_runtime).await?;
+    if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
+      if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
+        // if the user ran a binary command, we'll need to set process.argv[0]
+        // to be the name of the binary command instead of deno
+        let binary_name = pkg_ref
+          .sub_path
+          .as_deref()
+          .unwrap_or(pkg_ref.req.name.as_str());
+        node::initialize_binary_command(
+          &mut self.worker.js_runtime,
+          binary_name,
+        )
+        .await?;
+      }
+    }
+    Ok(())
   }
 
   async fn maybe_setup_coverage_collector(
@@ -438,13 +468,31 @@ impl CliMainWorker {
   }
 }
 
-pub fn create_main_worker(
+pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
   permissions: Permissions,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
-) -> CliMainWorker {
+) -> Result<CliMainWorker, AnyError> {
+  let (main_module, is_main_cjs) = if let Ok(package_ref) =
+    NpmPackageReference::from_specifier(&main_module)
+  {
+    ps.npm_resolver
+      .add_package_reqs(vec![package_ref.req.clone()])
+      .await?;
+    ps.npm_resolver.cache_packages().await?;
+    ps.prepare_node_std_graph().await?;
+    let resolve_response = node::node_resolve_binary_export(
+      &package_ref.req,
+      package_ref.sub_path.as_deref(),
+      &ps.npm_resolver,
+    )?;
+    let is_main_cjs = matches!(resolve_response, ResolveResponse::CommonJs(_));
+    (resolve_response.to_result()?, is_main_cjs)
+  } else {
+    (main_module, false)
+  };
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -518,11 +566,12 @@ pub fn create_main_worker(
     permissions,
     options,
   );
-  CliMainWorker {
+  Ok(CliMainWorker {
     main_module,
+    is_main_cjs,
     worker,
     ps: ps.clone(),
-  }
+  })
 }
 
 fn create_web_worker_preload_module_callback(
