@@ -30,6 +30,7 @@ use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -442,12 +443,7 @@ impl ProcState {
         .add_package_reqs(npm_package_references)
         .await?;
       self.npm_resolver.cache_packages().await?;
-
-      // add the builtin node modules to the graph data
-      let node_std_graph = self
-        .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
-        .await?;
-      self.graph_data.write().add_graph(&node_std_graph, false);
+      self.prepare_node_std_graph().await?;
     }
 
     // type check if necessary
@@ -488,6 +484,15 @@ impl ProcState {
       g.write()?;
     }
 
+    Ok(())
+  }
+
+  /// Add the builtin node modules to the graph data.
+  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    let node_std_graph = self
+      .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .await?;
+    self.graph_data.write().add_graph(&node_std_graph, false);
     Ok(())
   }
 
@@ -598,15 +603,25 @@ impl ProcState {
         code, media_type, ..
       } = entry
       {
-        emit_parsed_source(
-          &self.emit_cache,
-          &self.parsed_source_cache,
-          specifier,
-          *media_type,
-          code,
-          &self.emit_options,
-          self.emit_options_hash,
-        )?;
+        let is_emittable = matches!(
+          media_type,
+          MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx
+        );
+        if is_emittable {
+          emit_parsed_source(
+            &self.emit_cache,
+            &self.parsed_source_cache,
+            specifier,
+            *media_type,
+            code,
+            &self.emit_options,
+            self.emit_options_hash,
+          )?;
+        }
       }
     }
     Ok(())

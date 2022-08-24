@@ -403,11 +403,14 @@
         paths.push(denoDirPath);
       }
     }
-    paths.push(...ops.op_require_resolve_lookup_paths(
+    const lookupPathsResult = ops.op_require_resolve_lookup_paths(
       request,
       parent?.paths,
       parent?.filename ?? "",
-    ));
+    );
+    if (lookupPathsResult) {
+      paths.push(...lookupPathsResult);
+    }
     return paths;
   };
 

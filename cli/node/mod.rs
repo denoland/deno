@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -31,6 +32,7 @@ use crate::compat;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;
@@ -96,6 +98,27 @@ pub async fn initialize_runtime(
       Deno[Deno.internal].node.initialize(moduleAll.default);
     }})('{}');"#,
     compat::MODULE_ALL_URL.as_str(),
+  );
+
+  let value =
+    js_runtime.execute_script(&located_script_name!(), source_code)?;
+  js_runtime.resolve_value(value).await?;
+  Ok(())
+}
+
+pub async fn initialize_binary_command(
+  js_runtime: &mut JsRuntime,
+  binary_name: &str,
+) -> Result<(), AnyError> {
+  // overwrite what's done in deno_std in order to set the binary arg name
+  let source_code = &format!(
+    r#"(async function initializeBinaryCommand(binaryName) {{
+      const process = Deno[Deno.internal].node.globalThis.process;
+      Object.defineProperty(process.argv, "0", {{
+        get: () => binaryName,
+      }});
+    }})('{}');"#,
+    binary_name,
   );
 
   let value =
@@ -183,6 +206,87 @@ pub fn node_resolve_npm_reference(
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
+}
+
+pub fn node_resolve_binary_export(
+  pkg_req: &NpmPackageReq,
+  bin_name: Option<&str>,
+  npm_resolver: &GlobalNpmPackageResolver,
+) -> Result<ResolveResponse, AnyError> {
+  let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
+  let package_folder = pkg.folder_path;
+  let package_json_path = package_folder.join("package.json");
+  let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+  let bin = match &package_json.bin {
+    Some(bin) => bin,
+    None => bail!(
+      "package {} did not have a 'bin' property in its package.json",
+      pkg.id
+    ),
+  };
+  let bin_entry = match bin {
+    Value::String(_) => {
+      if bin_name.is_some() && bin_name.unwrap() != pkg_req.name {
+        None
+      } else {
+        Some(bin)
+      }
+    }
+    Value::Object(o) => {
+      if let Some(bin_name) = bin_name {
+        o.get(bin_name)
+      } else if o.len() == 1 {
+        o.values().next()
+      } else {
+        o.get(&pkg_req.name)
+      }
+    },
+    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", pkg.id),
+  };
+  let bin_entry = match bin_entry {
+    Some(e) => e,
+    None => bail!(
+      "package {} did not have a 'bin' entry for {} in its package.json",
+      pkg.id,
+      bin_name.unwrap_or(&pkg_req.name),
+    ),
+  };
+  let bin_entry = match bin_entry {
+    Value::String(s) => s,
+    _ => bail!(
+      "package {} had a non-string sub property of 'bin' in its package.json",
+      pkg.id
+    ),
+  };
+
+  let url =
+    ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
+
+  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+  // "preserveSymlinksMain"/"preserveSymlinks" options.
+  Ok(resolve_response)
+}
+
+pub fn load_cjs_module_from_ext_node(
+  js_runtime: &mut JsRuntime,
+  module: &str,
+  main: bool,
+) -> Result<(), AnyError> {
+  fn escape_for_single_quote_string(text: &str) -> String {
+    text.replace('\\', r"\\").replace('\'', r"\'")
+  }
+
+  let source_code = &format!(
+    r#"(function loadCjsModule(module) {{
+      Deno[Deno.internal].require.Module._load(module, null, {main});
+    }})('{module}');"#,
+    main = main,
+    module = escape_for_single_quote_string(module),
+  );
+
+  js_runtime.execute_script(&located_script_name!(), source_code)?;
+  Ok(())
 }
 
 fn package_config_resolve(

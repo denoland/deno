@@ -8,12 +8,14 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
+use super::version_req::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages.
@@ -22,16 +24,74 @@ pub trait NpmVersionMatcher {
   fn version_text(&self) -> String;
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
   pub req: NpmPackageReq,
   pub sub_path: Option<String>,
 }
 
+impl NpmPackageReference {
+  pub fn from_specifier(
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageReference, AnyError> {
+    Self::from_str(specifier.as_str())
+  }
+
+  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    let specifier = match specifier.strip_prefix("npm:") {
+      Some(s) => s,
+      None => {
+        bail!("Not an npm specifier: {}", specifier);
+      }
+    };
+    let parts = specifier.split('/').collect::<Vec<_>>();
+    let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
+    if parts.len() < name_part_len {
+      bail!("Not a valid package: {}", specifier);
+    }
+    let name_parts = &parts[0..name_part_len];
+    let last_name_part = &name_parts[name_part_len - 1];
+    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
+    {
+      let version = &last_name_part[at_index + 1..];
+      let last_name_part = &last_name_part[..at_index];
+      let version_req = SpecifierVersionReq::parse(version)
+        .with_context(|| "Invalid version requirement.")?;
+      let name = if name_part_len == 1 {
+        last_name_part.to_string()
+      } else {
+        format!("{}/{}", name_parts[0], last_name_part)
+      };
+      (name, Some(version_req))
+    } else {
+      (name_parts.join("/"), None)
+    };
+    let sub_path = if parts.len() == name_parts.len() {
+      None
+    } else {
+      Some(parts[name_part_len..].join("/"))
+    };
+    Ok(NpmPackageReference {
+      req: NpmPackageReq { name, version_req },
+      sub_path,
+    })
+  }
+}
+
+impl std::fmt::Display for NpmPackageReference {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(sub_path) = &self.sub_path {
+      write!(f, "{}/{}", self.req, sub_path)
+    } else {
+      write!(f, "{}", self.req)
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NpmPackageReq {
   pub name: String,
-  pub version_req: Option<semver::VersionReq>,
+  pub version_req: Option<SpecifierVersionReq>,
 }
 
 impl std::fmt::Display for NpmPackageReq {
@@ -57,51 +117,6 @@ impl NpmVersionMatcher for NpmPackageReq {
       .as_ref()
       .map(|v| format!("{}", v))
       .unwrap_or_else(|| "non-prerelease".to_string())
-  }
-}
-
-impl NpmPackageReference {
-  pub fn from_specifier(
-    specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageReference, AnyError> {
-    Self::from_str(specifier.as_str())
-  }
-
-  pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
-    let specifier = match specifier.strip_prefix("npm:") {
-      Some(s) => s,
-      None => {
-        bail!("Not an npm specifier: '{}'", specifier);
-      }
-    };
-    let (name, version_req) = match specifier.rsplit_once('@') {
-      Some((name, version_req)) => (
-        name,
-        match semver::VersionReq::parse(version_req) {
-          Ok(v) => Some(v),
-          Err(_) => None, // not a version requirement
-        },
-      ),
-      None => (specifier, None),
-    };
-    Ok(NpmPackageReference {
-      req: NpmPackageReq {
-        name: name.to_string(),
-        version_req,
-      },
-      // todo: implement and support this
-      sub_path: None,
-    })
-  }
-}
-
-impl std::fmt::Display for NpmPackageReference {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(sub_path) = &self.sub_path {
-      write!(f, "{}/{}", self.req, sub_path)
-    } else {
-      write!(f, "{}", self.req)
-    }
   }
 }
 
@@ -314,6 +329,27 @@ impl NpmResolution {
         ordering => ordering,
       });
 
+      // cache all the dependencies' registry infos in parallel when this env var isn't set
+      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
+      {
+        let handles = deps
+          .iter()
+          .map(|dep| {
+            let name = dep.name.clone();
+            let api = self.api.clone();
+            tokio::task::spawn(async move {
+              // it's ok to call this without storing the result, because
+              // NpmRegistryApi will cache the package info in memory
+              api.package_info(&name).await
+            })
+          })
+          .collect::<Vec<_>>();
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+          result??; // surface the first error
+        }
+      }
+
       // now resolve them
       for dep in deps {
         // check if an existing dependency matches this
@@ -486,6 +522,105 @@ fn name_without_path(name: &str) -> &str {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn parse_npm_package_ref() {
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@1").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@^1.2").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Not a valid package: @package"
+    );
+  }
 
   #[test]
   fn test_name_without_path() {
