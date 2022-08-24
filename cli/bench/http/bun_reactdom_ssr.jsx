@@ -1,5 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { renderToReadableStream } from "../testdata/react-dom.js";
+const { renderToReadableStream } = require(
+  "../testdata/npm/react-dom/server.browser",
+);
+
 const headers = {
   headers: {
     "Content-Type": "text/html",
