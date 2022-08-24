@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,6 +14,6 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.147.0", path = "../../core" }
+deno_core = { version = "0.148.0", path = "../../core" }
 regex = "1"
 serde = "1.0.136"
