@@ -68,6 +68,13 @@ itest!(import_map {
   http_server: true,
 });
 
+itest!(sub_paths {
+  args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
+  output: "npm/sub_paths/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(

@@ -204,7 +204,11 @@ pub fn node_resolve_npm_reference(
     .resolve_package_from_deno_module(&reference.req)?
     .folder_path;
   let maybe_url = package_config_resolve(
-    reference.sub_path.as_deref().unwrap_or("."),
+    &reference
+      .sub_path
+      .as_ref()
+      .map(|s| format!("./{}", s))
+      .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     npm_resolver,
   )
