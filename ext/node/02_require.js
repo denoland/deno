@@ -40,6 +40,9 @@
   const cjsParseCache = new SafeWeakMap();
 
   function pathDirname(filepath) {
+    if (filepath == null || filepath === "") {
+      throw new Error("Empty filepath.");
+    }
     return ops.op_require_path_dirname(filepath);
   }
 
