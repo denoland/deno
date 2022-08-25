@@ -151,8 +151,9 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub(crate) struct ContextState {
   js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  // TODO(andreubotella): Move the rest of Option<Global<Function>> fields from
-  // JsRuntimeState to this struct.
+  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) unrefed_ops: HashSet<i32>,
 }
 
@@ -163,10 +164,7 @@ pub(crate) struct JsRuntimeState {
   known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
@@ -414,10 +412,7 @@ impl JsRuntime {
       dyn_module_evaluate_idle_counter: 0,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
-      js_promise_reject_cb: None,
-      js_format_exception_cb: None,
       has_tick_scheduled: false,
-      js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
@@ -775,9 +770,6 @@ impl JsRuntime {
       // Free up additional global handles before creating the snapshot
       state.js_macrotask_cbs.clear();
       state.js_nexttick_cbs.clear();
-      state.js_wasm_streaming_cb = None;
-      state.js_format_exception_cb = None;
-      state.js_promise_reject_cb = None;
     }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
