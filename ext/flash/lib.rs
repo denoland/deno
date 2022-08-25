@@ -29,7 +29,6 @@ use http::header::TRANSFER_ENCODING;
 use http::HeaderValue;
 use log::trace;
 use mio::net::TcpListener;
-use mio::net::TcpStream;
 use mio::Events;
 use mio::Interest;
 use mio::Poll;
@@ -45,7 +44,6 @@ use std::intrinsics::transmute;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
-use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -62,9 +60,12 @@ mod chunked;
 mod request;
 #[cfg(unix)]
 mod sendfile;
+mod socket;
 
 use request::InnerRequest;
 use request::Request;
+use socket::InnerStream;
+use socket::Stream;
 
 pub struct FlashContext {
   next_server_id: u32,
@@ -84,64 +85,9 @@ pub struct ServerContext {
 }
 
 #[derive(Debug, PartialEq)]
-enum ParseStatus {
+pub enum ParseStatus {
   None,
   Ongoing(usize),
-}
-
-type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
-
-enum InnerStream {
-  Tcp(TcpStream),
-  Tls(Box<TlsTcpStream>),
-}
-
-pub struct Stream {
-  inner: InnerStream,
-  detached: bool,
-  read_rx: Option<mpsc::Receiver<()>>,
-  read_tx: Option<mpsc::Sender<()>>,
-  parse_done: ParseStatus,
-  buffer: UnsafeCell<Vec<u8>>,
-  read_lock: Arc<Mutex<()>>,
-  _pin: PhantomPinned,
-}
-
-impl Stream {
-  pub fn detach_ownership(&mut self) {
-    self.detached = true;
-  }
-
-  fn reattach_ownership(&mut self) {
-    self.detached = false;
-  }
-}
-
-impl Write for Stream {
-  #[inline]
-  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.write(buf),
-      InnerStream::Tls(ref mut stream) => stream.write(buf),
-    }
-  }
-  #[inline]
-  fn flush(&mut self) -> std::io::Result<()> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.flush(),
-      InnerStream::Tls(ref mut stream) => stream.flush(),
-    }
-  }
-}
-
-impl Read for Stream {
-  #[inline]
-  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.read(buf),
-      InnerStream::Tls(ref mut stream) => stream.read(buf),
-    }
-  }
 }
 
 #[op]
@@ -150,49 +96,66 @@ fn op_flash_respond(
   server_id: u32,
   token: u32,
   response: StringOrBuffer,
-  maybe_body: Option<ZeroCopyBuf>,
   shutdown: bool,
-) {
+) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
 
-  let mut close = false;
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
 
   sock.read_tx.take();
   sock.read_rx.take();
 
-  let _ = sock.write(&response);
-  if let Some(response) = maybe_body {
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(&response);
-    let _ = sock.write(b"\r\n");
+  let left = sock.try_write(&response) as u32;
+
+  if shutdown && left == 0 {
+    if !tx.keep_alive {  
+      sock.shutdown();
+    }
+    ctx.requests.remove(&token).unwrap();
   }
+
+  left
+}
+
+#[op]
+async fn op_flash_respond_async(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+  response: StringOrBuffer,
+  shutdown: bool,
+) -> Result<(), AnyError> {
+  trace!("op_flash_respond_async");
+
+  let mut close = false;
+  let sock = {
+    let mut op_state = state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+
+    match shutdown {
+      true => {
+        let tx = ctx.requests.remove(&token).unwrap();
+        close = !tx.keep_alive;
+        tx.socket()
+      }
+      // In case of a websocket upgrade or streaming response.
+      false => {
+        let tx = ctx.requests.get(&token).unwrap();
+        tx.socket()
+      }
+    }
+  };
+
+  tokio::io::AsyncWriteExt::write(sock, &response).await?;
 
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
-    }
+    sock.shutdown();
   }
+  Ok(())
 }
 
 #[op]
@@ -1024,7 +987,6 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
-                _pin: PhantomPinned,
               });
 
               trace!("New connection: {}", token.0);
@@ -1518,6 +1480,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       op_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
+      op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),

@@ -188,6 +188,38 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
+  function writeFixedResponse(
+    server,
+    requestId,
+    response,
+    end,
+    respondFast,
+  ) {
+    let left = 0;
+    // TypedArray
+    if (typeof response !== "string") {
+      left = respondFast(requestId, response, end);
+    } else {
+      // string
+      const maybeResponse = stringResources[response];
+      if (maybeResponse === undefined) {
+        stringResources[response] = core.encode(response);
+        left = core.ops.op_flash_respond(
+          server,
+          requestId,
+          stringResources[response],
+          end,
+        );
+      } else {
+        left = respondFast(requestId, maybeResponse, end);
+      }
+    }
+
+    if (left > 0) {
+      core.opAsync("op_flash_respond_async", server, requestId, response.slice(response.length - left), end);
+    }
+  }
+
   async function serve(arg1, arg2) {
     let options = undefined;
     let handler = undefined;
@@ -388,26 +420,13 @@
                 innerResp.headerList,
                 respBody,
               );
-
-              // TypedArray
-              if (typeof responseStr !== "string") {
-                respondFast(i, responseStr, !ws);
-              } else {
-                // string
-                const maybeResponse = stringResources[responseStr];
-                if (maybeResponse === undefined) {
-                  stringResources[responseStr] = core.encode(responseStr);
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
-                    stringResources[responseStr],
-                    null,
-                    !ws, // Don't close socket if there is a deferred websocket upgrade.
-                  );
-                } else {
-                  respondFast(i, maybeResponse, !ws);
-                }
-              }
+              writeFixedResponse(
+                serverId,
+                i,
+                responseStr,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
+                respondFast
+              );
             }
 
             (async () => {
@@ -450,41 +469,35 @@
                   }
                 } else {
                   const reader = respBody.getReader();
-                  let first = true;
-                  a:
+                  writeFixedResponse(
+                    serverId,
+                    i,
+                    http1Response(
+                      method,
+                      innerResp.status ?? 200,
+                      innerResp.headerList,
+                      null,
+                    ),
+                    false,
+                    respondFast
+                  );
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (first) {
-                      first = false;
-                      core.ops.op_flash_respond(
+                    if (value === undefined) {
+                      core.ops.op_flash_respond_chuncked(
                         serverId,
                         i,
-                        http1Response(
-                          method,
-                          innerResp.status ?? 200,
-                          innerResp.headerList,
-                          null,
-                        ),
-                        value ?? new Uint8Array(),
-                        false,
+                        undefined,
+                        done,
                       );
                     } else {
-                      if (value === undefined) {
-                        core.ops.op_flash_respond_chuncked(
-                          serverId,
-                          i,
-                          undefined,
-                          done,
-                        );
-                      } else {
-                        respondChunked(
-                          i,
-                          value,
-                          done,
-                        );
-                      }
-                    }
-                    if (done) break a;
+                      respondChunked(
+                        i,
+                        value,
+                        done,
+                      );
+                    }                  
+                    if (done) break;
                   }
                 }
               }
