@@ -190,13 +190,13 @@
   "https://deno.land/x/deno_dom@v0.1.3-alpha2/src/parser.ts": "bda4ab4a1c9a2e156877f33ee4e60caac935a7c995a86bbe026bdc0f0d31b8c1",
   "https://deno.land/x/semver@v1.4.0/mod.ts": "c3e08f7f0a3e625015ecc9a46cf79a9dc3f081f3c5b3037d3c49c0773e58d265",
   "https://deno.land/x/which@0.2.1/mod.ts": "2e076cb85aea9798662b355fb613d27eebcc78dfc8934ece4ae932f6303f6ca8",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/cargo.ts": "3177259ac2370739151ada437c71682b6c3f1be7151d0f555666b42af79a31e2",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/crate.ts": "da80a6db190e9edba75b603d3a9a14e863136e53dabc59b255d15b8caa147364",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/crates_io.ts": "3ff42c79874ab1a422849381d8e8bd2397aeda206aef34e0022f691d1b2090e0",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/deps.ts": "4cdcd195ea494d3d5dce08e561f8bb12e63486402f742b00e168645add84de17",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/github_actions.ts": "3c4b334a94cfb0f6838d9cf30041ad3316c744ffc75cae7b5aad54b61b6c15de",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/helpers.ts": "5e6f51b15b94db597162f4bcea7e275ef0e0eccbaec940393d8dbabf44c195d7",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/mod.ts": "a5a905605448b872bb5671a3c36f6f022a32509f9bff8a932c68b7db9e1d5cd5",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/releases_md.ts": "b30eb02a3ea3da70807c491dc4fe5b8185b91b84fc33bb27a6f2cd8a2aa09c7c",
-  "https://raw.githubusercontent.com/denoland/automation/0.12.1/repo.ts": "cf99b4e7f80fb3bab4264bb0913c5756c1272593360f229d68cc55b635afdf71"
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/cargo.ts": "9410b216fa45a203cec84a518672650a1605abf508f006d65b8f733b318b2000",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/crate.ts": "11d61f61d85943c1243b5c2e4694506883366e40599fe9fc2c64c43fce8760e7",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/crates_io.ts": "3ff42c79874ab1a422849381d8e8bd2397aeda206aef34e0022f691d1b2090e0",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/deps.ts": "4cdcd195ea494d3d5dce08e561f8bb12e63486402f742b00e168645add84de17",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/github_actions.ts": "3c4b334a94cfb0f6838d9cf30041ad3316c744ffc75cae7b5aad54b61b6c15de",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/helpers.ts": "5e6f51b15b94db597162f4bcea7e275ef0e0eccbaec940393d8dbabf44c195d7",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/mod.ts": "a5a905605448b872bb5671a3c36f6f022a32509f9bff8a932c68b7db9e1d5cd5",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/releases_md.ts": "b30eb02a3ea3da70807c491dc4fe5b8185b91b84fc33bb27a6f2cd8a2aa09c7c",
+  "https://raw.githubusercontent.com/denoland/automation/0.12.2/repo.ts": "5185c18effbddda1caa21e1353ab57e56a2bf03a918769b98202da8ef9a25811"
 }
