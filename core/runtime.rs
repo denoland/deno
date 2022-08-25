@@ -3448,6 +3448,54 @@ assertEquals(1, notify_return_value);
   }
 
   #[tokio::test]
+  async fn test_set_promise_reject_callback_realms() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let global_realm = runtime.global_realm();
+    let realm1 = runtime.create_realm().unwrap();
+    let realm2 = runtime.create_realm().unwrap();
+
+    let realm_expectations = &[
+      (&global_realm, "global_realm", 42),
+      (&realm1, "realm1", 140),
+      (&realm2, "realm2", 720),
+    ];
+
+    // Set up promise reject callbacks.
+    for (realm, realm_name, number) in realm_expectations {
+      realm
+        .execute_script(
+          runtime.v8_isolate(),
+          "",
+          &format!(
+            r#"
+              globalThis.rejectValue = undefined;
+              Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
+                globalThis.rejectValue = `{realm_name}/${{reason}}`;
+              }});
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
+            "#,
+            realm_name=realm_name,
+            number=number
+          ),
+        )
+        .unwrap();
+    }
+
+    runtime.run_event_loop(false).await.unwrap();
+
+    for (realm, realm_name, number) in realm_expectations {
+      let reject_value = realm
+        .execute_script(runtime.v8_isolate(), "", "globalThis.rejectValue")
+        .unwrap();
+      let scope = &mut realm.handle_scope(runtime.v8_isolate());
+      let reject_value = v8::Local::new(scope, reject_value);
+      assert!(reject_value.is_string());
+      let reject_value_string = reject_value.to_rust_string_lossy(scope);
+      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+    }
+  }
+
+  #[tokio::test]
   async fn test_set_promise_reject_callback_top_level_await() {
     static PROMISE_REJECT: AtomicUsize = AtomicUsize::new(0);
 
