@@ -110,7 +110,7 @@ fn op_flash_respond(
   let left = sock.try_write(&response) as u32;
 
   if shutdown && left == 0 {
-    if !tx.keep_alive {  
+    if !tx.keep_alive {
       sock.shutdown();
     }
     ctx.requests.remove(&token).unwrap();

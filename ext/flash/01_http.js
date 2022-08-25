@@ -216,7 +216,13 @@
     }
 
     if (left > 0) {
-      core.opAsync("op_flash_respond_async", server, requestId, response.slice(response.length - left), end);
+      core.opAsync(
+        "op_flash_respond_async",
+        server,
+        requestId,
+        response.slice(response.length - left),
+        end,
+      );
     }
   }
 
@@ -425,7 +431,7 @@
                 i,
                 responseStr,
                 !ws, // Don't close socket if there is a deferred websocket upgrade.
-                respondFast
+                respondFast,
               );
             }
 
@@ -479,7 +485,7 @@
                       null,
                     ),
                     false,
-                    respondFast
+                    respondFast,
                   );
                   while (true) {
                     const { value, done } = await reader.read();
@@ -496,7 +502,7 @@
                         value,
                         done,
                       );
-                    }                  
+                    }
                     if (done) break;
                   }
                 }

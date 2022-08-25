@@ -56,14 +56,14 @@ impl Stream {
   #[inline]
   pub fn shutdown(&mut self) {
     match &mut self.inner {
-        InnerStream::Tcp(stream) => {
-          // Typically shutdown shouldn't fail.
-          let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
-        InnerStream::Tls(stream) => {
-          let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-        }
+      InnerStream::Tcp(stream) => {
+        // Typically shutdown shouldn't fail.
+        let _ = stream.shutdown(std::net::Shutdown::Both);
       }
+      InnerStream::Tls(stream) => {
+        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
+      }
+    }
   }
 
   #[inline]
