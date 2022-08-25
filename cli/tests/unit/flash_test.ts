@@ -81,7 +81,6 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
         onError: createOnErrorCb(ac),
       }),
     Deno.errors.AddrInUse,
-    "Address already in use",
   );
   ac.abort();
   await server;
