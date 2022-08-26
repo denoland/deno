@@ -72,7 +72,7 @@
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
   const _closeSent = Symbol("[[closeSent]]");
-  const _pull = Symbol("[[pull]]");
+  const _awaitingEvent = Symbol("[[awaitingEvent]]");
   class WebSocketStream {
     [_rid];
 
@@ -82,7 +82,7 @@
       return this[_url];
     }
 
-    [_pull];
+    [_awaitingEvent] = new Deferred();
     constructor(url, options) {
       this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'WebSocketStream'";
@@ -237,11 +237,13 @@
                   await this.closed;
                 },
               });
-              this[_pull] = async (controller) => {
+              const pull = async (controller) => {
+                this[_awaitingEvent] = new Deferred();
                 const { kind, value } = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
                 );
+                this[_awaitingEvent].resolve();
 
                 switch (kind) {
                   case "string": {
@@ -256,7 +258,7 @@
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "pong",
                     });
-                    await this[_pull](controller);
+                    await pull(controller);
                     break;
                   }
                   case "closed":
@@ -274,9 +276,9 @@
                   }
                 }
 
-                if (this[_closeSent] && this[_closed].state !== 'fulfilled') {
-                  if (new Date().getTime() - this[_closeSent] <= CLOSE_RESPONSE_TIMEOUT) {
-                    return this[_pull](controller);
+                if (this[_closeSent].state === 'fulfilled' && this[_closed].state === 'pending') {
+                  if (new Date().getTime() - await this[_closeSent].promise <= CLOSE_RESPONSE_TIMEOUT) {
+                    return pull(controller);
                   }
 
                   this[_closed].resolve(value);
@@ -300,8 +302,14 @@
                       // needed to ignore warnings & assertions
                     }
                   });
+
+                  PromisePrototypeThen(this[_closeSent].promise, () => {
+                    if (this[_closed].state === 'pending' && this[_awaitingEvent].state === 'fulfilled') {
+                      return pull(controller);
+                    }
+                  });
                 },
-                pull: this[_pull],
+                pull,
                 cancel: async (reason) => {
                   try {
                     this.close(reason?.code !== undefined ? reason : {});
@@ -342,7 +350,7 @@
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
-    [_closeSent];
+    [_closeSent] = new Deferred();
     get closed() {
       webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
@@ -388,8 +396,9 @@
           PromisePrototypeThen(
             core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
             () => {
-              this[_closeSent] = new Date().getTime();
-              this[_pull]();
+              setTimeout(() => {
+                this[_closeSent].resolve(new Date().getTime());
+              }, 0);
             }
           ),
           (err) => {
