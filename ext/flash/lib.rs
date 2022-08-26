@@ -100,23 +100,7 @@ fn op_flash_respond(
 ) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-
-  let tx = ctx.requests.get(&token).unwrap();
-  let sock = tx.socket();
-
-  sock.read_tx.take();
-  sock.read_rx.take();
-
-  let left = sock.try_write(&response) as u32;
-
-  if shutdown && left == 0 {
-    if !tx.keep_alive {
-      sock.shutdown();
-    }
-    ctx.requests.remove(&token).unwrap();
-  }
-
-  left
+  flash_respond(ctx, token, shutdown, &response)
 }
 
 #[op]
@@ -149,8 +133,13 @@ async fn op_flash_respond_async(
     }
   };
 
-  tokio::io::AsyncWriteExt::write(sock, &response).await?;
-
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        Ok(tokio::io::AsyncWriteExt::write(stream, &response).await?)
+      })
+    })
+    .await?;
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
     sock.shutdown();
@@ -221,24 +210,35 @@ async fn op_flash_write_resource(
     }
   }
 
-  let _ = sock.write(b"Transfer-Encoding: chunked\r\n\r\n");
-  loop {
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
-    if nread == 0 {
-      let _ = sock.write(b"0\r\n\r\n");
-      break;
-    }
-    let response = &buf[..nread];
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        use tokio::io::AsyncWriteExt;
+        stream
+          .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
+          .await?;
+        loop {
+          let vec = vec![0u8; 64 * 1024]; // 64KB
+          let buf = ZeroCopyBuf::new_temp(vec);
+          let (nread, buf) = resource.clone().read_return(buf).await?;
+          if nread == 0 {
+            stream.write_all(b"0\r\n\r\n").await?;
+            break;
+          }
 
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(response);
-    let _ = sock.write(b"\r\n");
-  }
-
-  resource.close();
+          let response = &buf[..nread];
+          // TODO(@littledivy): use vectored writes.
+          stream
+            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
+            .await?;
+          stream.write_all(response).await?;
+          stream.write_all(b"\r\n").await?;
+        }
+        resource.close();
+        Ok(())
+      })
+    })
+    .await?;
   Ok(())
 }
 
@@ -259,7 +259,7 @@ impl fast_api::FastFunction for RespondFast {
   }
 
   fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Void
+    fast_api::CType::Uint32
   }
 }
 
@@ -268,37 +268,23 @@ fn flash_respond(
   token: u32,
   shutdown: bool,
   response: &[u8],
-) {
-  let mut close = false;
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
+) -> u32 {
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
 
   sock.read_tx.take();
   sock.read_rx.take();
 
-  let _ = sock.write(response);
-  // server is done writing and request doesn't want to kept alive.
-  if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
+  let nwritten = sock.try_write(response);
+
+  if shutdown && nwritten == response.len() {
+    if !tx.keep_alive {
+      sock.shutdown();
     }
+    ctx.requests.remove(&token).unwrap();
   }
+
+  nwritten as u32
 }
 
 unsafe fn op_flash_respond_fast(
@@ -306,14 +292,14 @@ unsafe fn op_flash_respond_fast(
   token: u32,
   response: *const fast_api::FastApiTypedArray<u8>,
   shutdown: bool,
-) {
+) -> u32 {
   let ptr =
     recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
   if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response);
+    flash_respond(ctx, token, shutdown, response)
   } else {
     todo!();
   }
@@ -638,7 +624,7 @@ fn op_flash_make_request<'scope>(
     let builder = v8::FunctionTemplate::builder(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
-       _: v8::ReturnValue| {
+       mut rv: v8::ReturnValue| {
         let external: v8::Local<v8::External> =
           args.data().unwrap().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
@@ -660,7 +646,7 @@ fn op_flash_make_request<'scope>(
 
         let shutdown = args.get(2).boolean_value(scope);
 
-        flash_respond(ctx, token, shutdown, response);
+        rv.set_uint32(flash_respond(ctx, token, shutdown, response));
       },
     )
     .data(v8::External::new(scope, ctx as *mut _).into());

@@ -195,32 +195,32 @@
     end,
     respondFast,
   ) {
-    let left = 0;
+    let nwritten = 0;
     // TypedArray
     if (typeof response !== "string") {
-      left = respondFast(requestId, response, end);
+      nwritten = respondFast(requestId, response, end);
     } else {
       // string
       const maybeResponse = stringResources[response];
       if (maybeResponse === undefined) {
         stringResources[response] = core.encode(response);
-        left = core.ops.op_flash_respond(
+        nwritten = core.ops.op_flash_respond(
           server,
           requestId,
           stringResources[response],
           end,
         );
       } else {
-        left = respondFast(requestId, maybeResponse, end);
+        nwritten = respondFast(requestId, maybeResponse, end);
       }
     }
 
-    if (left > 0) {
+    if (nwritten < response.length) {
       core.opAsync(
         "op_flash_respond_async",
         server,
         requestId,
-        response.slice(response.length - left),
+        response.slice(nwritten),
         end,
       );
     }
@@ -320,122 +320,122 @@
           }
 
           for (let i = offset; i < offset + tokens; i++) {
-            let body = null;
-            // There might be a body, but we don't expose it for GET/HEAD requests.
-            // It will be closed automatically once the request has been handled and
-            // the response has been sent.
-            const method = getMethodSync(i);
-            let hasBody = method > 2; // Not GET/HEAD/CONNECT
-            if (hasBody) {
-              body = createRequestBodyStream(serverId, i);
-              if (body === null) {
-                hasBody = false;
+            (async () => {
+              let body = null;
+              // There might be a body, but we don't expose it for GET/HEAD requests.
+              // It will be closed automatically once the request has been handled and
+              // the response has been sent.
+              const method = getMethodSync(i);
+              let hasBody = method > 2; // Not GET/HEAD/CONNECT
+              if (hasBody) {
+                body = createRequestBodyStream(serverId, i);
+                if (body === null) {
+                  hasBody = false;
+                }
               }
-            }
 
-            const req = fromFlashRequest(
-              serverId,
-              /* streamRid */
-              i,
-              body,
-              /* methodCb */
-              () => methods[method],
-              /* urlCb */
-              () => {
-                const path = core.ops.op_flash_path(serverId, i);
-                return `${server.transport}://${server.hostname}:${server.port}${path}`;
-              },
-              /* headersCb */
-              () => core.ops.op_flash_headers(serverId, i),
-            );
+              const req = fromFlashRequest(
+                serverId,
+                /* streamRid */
+                i,
+                body,
+                /* methodCb */
+                () => methods[method],
+                /* urlCb */
+                () => {
+                  const path = core.ops.op_flash_path(serverId, i);
+                  return `${server.transport}://${server.hostname}:${server.port}${path}`;
+                },
+                /* headersCb */
+                () => core.ops.op_flash_headers(serverId, i),
+              );
 
-            let resp;
-            try {
-              resp = await handler(req);
-            } catch (e) {
-              resp = await onError(e);
-            }
-            // there might've been an HTTP upgrade.
-            if (resp === undefined) {
-              continue;
-            }
-            const innerResp = toInnerResponse(resp);
+              let resp;
+              try {
+                resp = await handler(req);
+              } catch (e) {
+                resp = await onError(e);
+              }
+              // there might've been an HTTP upgrade.
+              if (resp === undefined) {
+                return;
+              }
+              const innerResp = toInnerResponse(resp);
 
-            // If response body length is known, it will be sent synchronously in a
-            // single op, in other case a "response body" resource will be created and
-            // we'll be streaming it.
-            /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
-            let respBody = null;
-            let isStreamingResponseBody = false;
-            if (innerResp.body !== null) {
-              if (typeof innerResp.body.streamOrStatic?.body === "string") {
-                if (innerResp.body.streamOrStatic.consumed === true) {
-                  throw new TypeError("Body is unusable.");
-                }
-                innerResp.body.streamOrStatic.consumed = true;
-                respBody = innerResp.body.streamOrStatic.body;
-                isStreamingResponseBody = false;
-              } else if (
-                ObjectPrototypeIsPrototypeOf(
-                  ReadableStreamPrototype,
-                  innerResp.body.streamOrStatic,
-                )
-              ) {
-                if (innerResp.body.unusable()) {
-                  throw new TypeError("Body is unusable.");
-                }
-                if (
-                  innerResp.body.length === null ||
+              // If response body length is known, it will be sent synchronously in a
+              // single op, in other case a "response body" resource will be created and
+              // we'll be streaming it.
+              /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+              let respBody = null;
+              let isStreamingResponseBody = false;
+              if (innerResp.body !== null) {
+                if (typeof innerResp.body.streamOrStatic?.body === "string") {
+                  if (innerResp.body.streamOrStatic.consumed === true) {
+                    throw new TypeError("Body is unusable.");
+                  }
+                  innerResp.body.streamOrStatic.consumed = true;
+                  respBody = innerResp.body.streamOrStatic.body;
+                  isStreamingResponseBody = false;
+                } else if (
                   ObjectPrototypeIsPrototypeOf(
-                    BlobPrototype,
-                    innerResp.body.source,
+                    ReadableStreamPrototype,
+                    innerResp.body.streamOrStatic,
                   )
                 ) {
-                  respBody = innerResp.body.stream;
-                } else {
-                  const reader = innerResp.body.stream.getReader();
-                  const r1 = await reader.read();
-                  if (r1.done) {
-                    respBody = new Uint8Array(0);
-                  } else {
-                    respBody = r1.value;
-                    const r2 = await reader.read();
-                    if (!r2.done) throw new TypeError("Unreachable");
+                  if (innerResp.body.unusable()) {
+                    throw new TypeError("Body is unusable.");
                   }
+                  if (
+                    innerResp.body.length === null ||
+                    ObjectPrototypeIsPrototypeOf(
+                      BlobPrototype,
+                      innerResp.body.source,
+                    )
+                  ) {
+                    respBody = innerResp.body.stream;
+                  } else {
+                    const reader = innerResp.body.stream.getReader();
+                    const r1 = await reader.read();
+                    if (r1.done) {
+                      respBody = new Uint8Array(0);
+                    } else {
+                      respBody = r1.value;
+                      const r2 = await reader.read();
+                      if (!r2.done) throw new TypeError("Unreachable");
+                    }
+                  }
+                  isStreamingResponseBody = !(
+                    typeof respBody === "string" ||
+                    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+                  );
+                } else {
+                  if (innerResp.body.streamOrStatic.consumed === true) {
+                    throw new TypeError("Body is unusable.");
+                  }
+                  innerResp.body.streamOrStatic.consumed = true;
+                  respBody = innerResp.body.streamOrStatic.body;
                 }
-                isStreamingResponseBody = !(
-                  typeof respBody === "string" ||
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
-                );
               } else {
-                if (innerResp.body.streamOrStatic.consumed === true) {
-                  throw new TypeError("Body is unusable.");
-                }
-                innerResp.body.streamOrStatic.consumed = true;
-                respBody = innerResp.body.streamOrStatic.body;
+                respBody = new Uint8Array(0);
               }
-            } else {
-              respBody = new Uint8Array(0);
-            }
 
-            const ws = resp[_ws];
-            if (isStreamingResponseBody === false) {
-              const responseStr = http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                respBody,
-              );
-              writeFixedResponse(
-                serverId,
-                i,
-                responseStr,
-                !ws, // Don't close socket if there is a deferred websocket upgrade.
-                respondFast,
-              );
-            }
+              const ws = resp[_ws];
+              if (isStreamingResponseBody === false) {
+                const responseStr = http1Response(
+                  method,
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  respBody,
+                );
+                writeFixedResponse(
+                  serverId,
+                  i,
+                  responseStr,
+                  !ws, // Don't close socket if there is a deferred websocket upgrade.
+                  respondFast,
+                );
+              }
 
-            (async () => {
               if (!ws) {
                 if (hasBody && body[_state] !== "closed") {
                   // TODO(@littledivy): Optimize by draining in a single op.
@@ -530,7 +530,7 @@
                 }
                 ws[_serverHandleIdleTimeout]();
               }
-            })().catch(onError);
+            })().catch(console.error);
           }
 
           offset += tokens;

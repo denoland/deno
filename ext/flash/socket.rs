@@ -1,10 +1,13 @@
+use deno_core::error::AnyError;
 use mio::net::TcpStream;
 use std::{
   cell::UnsafeCell,
+  future::Future,
   io::{Read, Write},
+  pin::Pin,
   sync::{Arc, Mutex},
 };
-use tokio::{io::AsyncWrite, sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::ParseStatus;
 
@@ -34,7 +37,7 @@ impl Stream {
     self.detached = false;
   }
 
-  /// Try to write to the socket. If socket will block, return the amount of bytes left.
+  /// Try to write to the socket.
   #[inline]
   pub fn try_write(&mut self, buf: &[u8]) -> usize {
     let mut nwritten = 0;
@@ -50,7 +53,7 @@ impl Stream {
         }
       }
     }
-    buf.len() - nwritten
+    nwritten
   }
 
   #[inline]
@@ -66,18 +69,57 @@ impl Stream {
     }
   }
 
+  pub fn as_std(&mut self) -> std::net::TcpStream {
+    #[cfg(unix)]
+    let std_stream = {
+      use std::os::unix::prelude::AsRawFd;
+      use std::os::unix::prelude::FromRawFd;
+      let fd = match self.inner {
+        InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
+        _ => todo!(),
+      };
+      // SAFETY: `fd` is a valid file descriptor.
+      unsafe { std::net::TcpStream::from_raw_fd(fd) }
+    };
+    #[cfg(windows)]
+    let std_stream = {
+      use std::os::windows::prelude::AsRawSocket;
+      use std::os::windows::prelude::FromRawSocket;
+      let fd = match self.inner {
+        InnerStream::Tcp(ref tcp) => tcp.as_raw_socket(),
+        _ => todo!(),
+      };
+      // SAFETY: `fd` is a valid file descriptor.
+      unsafe { std::net::TcpStream::from_raw_socket(fd) }
+    };
+    std_stream
+  }
+
   #[inline]
-  pub(crate) fn poll_write_inner(
-    &mut self,
-    buf: &[u8],
-  ) -> std::task::Poll<std::io::Result<usize>> {
-    match self.write(buf) {
-      Ok(ret) => std::task::Poll::Ready(Ok(ret)),
-      Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-        std::task::Poll::Pending
-      }
-      Err(e) => std::task::Poll::Ready(Err(e)),
-    }
+  pub async fn with_async_stream<F, T>(&mut self, f: F) -> Result<T, AnyError>
+  where
+    F: FnOnce(
+      &mut tokio::net::TcpStream,
+    ) -> Pin<Box<dyn '_ + Future<Output = Result<T, AnyError>>>>,
+  {
+    let mut async_stream = tokio::net::TcpStream::from_std(self.as_std())?;
+    let result = f(&mut async_stream).await?;
+    forget_stream(async_stream.into_std()?);
+    Ok(result)
+  }
+}
+
+#[inline]
+pub fn forget_stream(stream: std::net::TcpStream) {
+  #[cfg(unix)]
+  {
+    use std::os::unix::prelude::IntoRawFd;
+    let _ = stream.into_raw_fd();
+  }
+  #[cfg(windows)]
+  {
+    use std::os::windows::prelude::IntoRawSocket;
+    let _ = stream.into_raw_socket();
   }
 }
 
@@ -105,31 +147,5 @@ impl Read for Stream {
       InnerStream::Tcp(ref mut stream) => stream.read(buf),
       InnerStream::Tls(ref mut stream) => stream.read(buf),
     }
-  }
-}
-
-impl AsyncWrite for Stream {
-  #[inline]
-  fn poll_write(
-    self: std::pin::Pin<&mut Self>,
-    _: &mut std::task::Context<'_>,
-    buf: &[u8],
-  ) -> std::task::Poll<std::io::Result<usize>> {
-    self.get_mut().poll_write_inner(buf)
-  }
-  #[inline]
-  fn poll_flush(
-    self: std::pin::Pin<&mut Self>,
-    _: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<std::io::Result<()>> {
-    // no-op for tcp
-    std::task::Poll::Ready(Ok(()))
-  }
-  #[inline]
-  fn poll_shutdown(
-    self: std::pin::Pin<&mut Self>,
-    _: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<std::io::Result<()>> {
-    unreachable!()
   }
 }
