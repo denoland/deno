@@ -232,7 +232,6 @@ async fn op_flash_write_resource(
   };
 
   drop(op_state);
-  let _ = sock.write(&response);
 
   #[cfg(unix)]
   {
@@ -244,12 +243,15 @@ async fn op_flash_write_resource(
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: call to libc::fstat.
         if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let _ = sock.write(
-            format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
-          );
+          let cnt_length = format!("Content-Length: {}\r\n\r\n", stat.st_size);
           let tx = sendfile::SendFile {
             io: (fd, stream_handle),
             written: 0,
+            slices: &mut [
+              sendfile::UnixIoSlice::new(&response),
+              sendfile::UnixIoSlice::new(cnt_length.as_bytes()),
+            ],
+            sending_headers: true,
           };
           tx.await?;
           return Ok(());
@@ -258,6 +260,7 @@ async fn op_flash_write_resource(
     }
   }
 
+  let _ = sock.write(&response);
   let _ = sock.write(b"Transfer-Encoding: chunked\r\n\r\n");
   loop {
     let vec = vec![0u8; 64 * 1024]; // 64KB

@@ -3,16 +3,78 @@
 
 use std::future::Future;
 use std::io;
+use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{self, Poll};
 
-pub struct SendFile {
-  pub io: (RawFd, RawFd),
-  pub written: usize,
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+pub struct UnixIoSlice<'a> {
+  iov: libc::iovec,
+  _p: PhantomData<&'a [u8]>,
 }
 
-impl SendFile {
+impl<'a> UnixIoSlice<'a> {
+  #[inline]
+  pub fn new(buf: &'a [u8]) -> Self {
+    let iov = libc::iovec {
+      iov_base: buf.as_ptr() as *mut _,
+      iov_len: buf.len(),
+    };
+    UnixIoSlice {
+      iov,
+      _p: PhantomData,
+    }
+  }
+
+  #[inline]
+  pub fn advance(&mut self, n: usize) {
+    if self.iov.iov_len < n {
+      panic!("advancing IoSlice beyond its length");
+    }
+    self.iov.iov_len -= n;
+    // SAFETY: iov_base base pointer and resulting pointer at `n` bytes are guaranteed to be valid. Backing &[u8] is tied
+    // to the lifetime of Self.
+    self.iov.iov_base = unsafe { self.iov.iov_base.add(n) };
+  }
+
+  #[inline]
+  pub fn len(&self) -> usize {
+    self.iov.iov_len
+  }
+}
+
+#[inline]
+fn advance_io_vec(io_vec: &mut &mut [UnixIoSlice], length: usize) -> usize {
+  // Number of buffers to remove.
+  let mut remove = 0;
+  // Total length of all the to be removed buffers.
+  let mut accumulated_len = 0;
+  for buf in io_vec.iter() {
+    if accumulated_len + buf.len() > length as usize {
+      break;
+    } else {
+      accumulated_len += buf.len();
+      remove += 1;
+    }
+  }
+
+  *io_vec = &mut std::mem::take(io_vec)[remove..];
+  if !io_vec.is_empty() {
+    io_vec[0].advance(length as usize - accumulated_len);
+  }
+  accumulated_len
+}
+
+pub struct SendFile<'a> {
+  pub io: (RawFd, RawFd),
+  pub written: usize,
+  pub slices: &'a mut [UnixIoSlice<'a>],
+  pub sending_headers: bool,
+}
+
+impl<'a> SendFile<'a> {
   #[inline]
   pub fn try_send(&mut self) -> Result<usize, std::io::Error> {
     #[cfg(target_os = "linux")]
@@ -21,9 +83,32 @@ impl SendFile {
       let count = 0x7ffff000;
       let mut offset = self.written as libc::off_t;
 
+      // sendfile() with TCP_CORK
+      if self.sending_headers {
+        let opt = 1;
+        libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt, 4);
+        let length = libc::writev(
+          self.io.1,
+          self.slices.as_ptr(),
+          self.slices.len() as i32,
+        );
+
+        let io_vec = &mut self.slices;
+        let accumulated_len = advance_io_vec(io_vec, length as usize);
+        if io_vec.is_empty() {
+          self.sending_headers = false;
+          self.written += length as usize - accumulated_len;
+        }
+        return Ok(length as usize);
+      }
+
       let res =
         // SAFETY: call to libc::sendfile()
         unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
+
+      let opt = 0;
+      libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt, 4);
+
       if res == -1 {
         Err(io::Error::last_os_error())
       } else {
@@ -35,6 +120,42 @@ impl SendFile {
     {
       // Send all bytes.
       let mut length = 0;
+
+      if self.sending_headers {
+        let mut hdtr = libc::sf_hdtr {
+          headers: self.slices.as_mut_ptr() as _,
+          hdr_cnt: self.slices.len() as libc::c_int,
+          trailers: std::ptr::null_mut(),
+          trl_cnt: 0,
+        };
+        // On macOS `length` is value-result parameter. It determines the number
+        // of bytes to write and returns the number of bytes written also in
+        // case of `EAGAIN` errors.
+        // SAFETY: call to libc::sendfile()
+        let res = unsafe {
+          libc::sendfile(
+            self.io.0,
+            self.io.1,
+            self.written as libc::off_t,
+            &mut length,
+            &mut hdtr,
+            0,
+          )
+        };
+        if res == -1 {
+          return Err(io::Error::last_os_error());
+        }
+
+        let io_vec = &mut self.slices;
+        let accumulated_len = advance_io_vec(io_vec, length as usize);
+        if io_vec.is_empty() {
+          self.sending_headers = false;
+          self.written += length as usize - accumulated_len;
+        }
+
+        return Ok(length as usize);
+      }
+
       // On macOS `length` is value-result parameter. It determines the number
       // of bytes to write and returns the number of bytes written also in
       // case of `EAGAIN` errors.
@@ -59,7 +180,7 @@ impl SendFile {
   }
 }
 
-impl Future for SendFile {
+impl<'a> Future for SendFile<'a> {
   type Output = Result<(), std::io::Error>;
 
   fn poll(
