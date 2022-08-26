@@ -250,6 +250,7 @@ async fn op_flash_write_resource(
           let tx = sendfile::SendFile {
             io: (fd, stream_handle),
             written: 0,
+            count: stat.st_size as usize,
           };
           tx.await?;
           return Ok(());

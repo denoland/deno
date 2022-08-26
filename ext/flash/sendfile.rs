@@ -10,6 +10,7 @@ use std::task::{self, Poll};
 pub struct SendFile {
   pub io: (RawFd, RawFd),
   pub written: usize,
+  pub count: usize,
 }
 
 impl SendFile {
@@ -17,13 +18,11 @@ impl SendFile {
   pub fn try_send(&mut self) -> Result<usize, std::io::Error> {
     #[cfg(target_os = "linux")]
     {
-      // This is the maximum the Linux kernel will write in a single call.
-      let count = 0x7ffff000;
       let mut offset = self.written as libc::off_t;
 
       let res =
         // SAFETY: call to libc::sendfile()
-        unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
+        unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, self.count) };
       if res == -1 {
         Err(io::Error::last_os_error())
       } else {
@@ -34,7 +33,7 @@ impl SendFile {
     #[cfg(target_os = "macos")]
     {
       // Send all bytes.
-      let mut length = 0;
+      let mut length = self.count as _;
       // On macOS `length` is value-result parameter. It determines the number
       // of bytes to write and returns the number of bytes written also in
       // case of `EAGAIN` errors.
