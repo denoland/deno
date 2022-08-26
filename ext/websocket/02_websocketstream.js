@@ -64,11 +64,15 @@
     ],
   );
 
+  const CLOSE_RESPONSE_TIMEOUT = 5000;
+
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
+  const _closeSent = Symbol("[[closeSent]]");
+  const _pull = Symbol("[[pull]]");
   class WebSocketStream {
     [_rid];
 
@@ -78,6 +82,7 @@
       return this[_url];
     }
 
+    [_pull];
     constructor(url, options) {
       this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'WebSocketStream'";
@@ -232,7 +237,7 @@
                   await this.closed;
                 },
               });
-              const pull = async (controller) => {
+              this[_pull] = async (controller) => {
                 const { kind, value } = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
@@ -251,7 +256,7 @@
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "pong",
                     });
-                    await pull(controller);
+                    await this[_pull](controller);
                     break;
                   }
                   case "closed":
@@ -267,6 +272,15 @@
                     core.tryClose(this[_rid]);
                     break;
                   }
+                }
+
+                if (this[_closeSent] && this[_closed].state !== 'fulfilled') {
+                  if (new Date().getTime() - this[_closeSent] <= CLOSE_RESPONSE_TIMEOUT) {
+                    return this[_pull](controller);
+                  }
+
+                  this[_closed].resolve(value);
+                  core.tryClose(this[_rid]);
                 }
               };
               const readable = new ReadableStream({
@@ -287,7 +301,7 @@
                     }
                   });
                 },
-                pull,
+                pull: this[_pull],
                 cancel: async (reason) => {
                   try {
                     this.close(reason?.code !== undefined ? reason : {});
@@ -328,6 +342,7 @@
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
+    [_closeSent];
     get closed() {
       webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
@@ -370,7 +385,13 @@
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
         PromisePrototypeCatch(
-          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          PromisePrototypeThen(
+            core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+            () => {
+              this[_closeSent] = new Date().getTime();
+              this[_pull]();
+            }
+          ),
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);
