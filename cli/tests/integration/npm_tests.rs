@@ -226,6 +226,13 @@ itest!(deno_run_cowthink {
   http_server: true,
 });
 
+itest!(deno_run_esm_module {
+  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(deno_run_non_existent {
   args: "run --unstable npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
