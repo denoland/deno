@@ -54,6 +54,13 @@ itest!(cjs_local_global_decls {
   http_server: true,
 });
 
+itest!(compare_globals {
+  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  output: "npm/compare_globals/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
   args: "run --allow-read --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
