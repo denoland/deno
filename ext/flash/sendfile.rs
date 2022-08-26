@@ -86,12 +86,21 @@ impl<'a> SendFile<'a> {
       // sendfile() with TCP_CORK
       if self.sending_headers {
         let opt = 1;
-        libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt as *const _ as _, 4);
-        let length = libc::writev(
-          self.io.1,
-          self.slices.as_ptr() as _,
-          self.slices.len() as i32,
-        );
+        // SAFETY: call to libc
+        let length = unsafe {
+          libc::setsockopt(
+            self.io.1,
+            libc::SOL_SOCKET,
+            libc::TCP_CORK,
+            &opt as *const _ as _,
+            4,
+          );
+          libc::writev(
+            self.io.1,
+            self.slices.as_ptr() as _,
+            self.slices.len() as i32,
+          )
+        };
 
         let io_vec = &mut self.slices;
         let accumulated_len = advance_io_vec(io_vec, length as usize);
@@ -106,8 +115,17 @@ impl<'a> SendFile<'a> {
         // SAFETY: call to libc::sendfile()
         unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
 
-      let opt = 0;
-      libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt as *const _ as _, 4);
+      // SAFETY: call to libc
+      unsafe {
+        let opt = 0;
+        libc::setsockopt(
+          self.io.1,
+          libc::SOL_SOCKET,
+          libc::TCP_CORK,
+          &opt as *const _ as _,
+          4,
+        );
+      }
 
       if res == -1 {
         Err(io::Error::last_os_error())
