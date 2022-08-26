@@ -7,6 +7,7 @@
 ((window) => {
   const {
     ArrayPrototypePush,
+    ArrayPrototypeFilter,
     ObjectEntries,
     ObjectCreate,
   } = window.__bootstrap.primordials;

@@ -302,7 +302,16 @@ impl NpmRegistryApi {
     if response.status() == 404 {
       Ok(None)
     } else if !response.status().is_success() {
-      bail!("Bad response: {:?}", response.status());
+      let status = response.status();
+      let maybe_response_text = response.text().await.ok();
+      bail!(
+        "Bad response: {:?}{}",
+        status,
+        match maybe_response_text {
+          Some(text) => format!("\n\n{}", text),
+          None => String::new(),
+        }
+      );
     } else {
       let bytes = response.bytes().await?;
       let package_info = serde_json::from_slice(&bytes)?;

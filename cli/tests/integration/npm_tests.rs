@@ -6,8 +6,7 @@ use test_util as util;
 use util::assert_contains;
 use util::http_server;
 
-// NOTE: It's possible to automatically update the npm registry data in the test server
-// by setting the DENO_TEST_UTIL_UPDATE_NPM=1 environment variable.
+// NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
   args: "run --allow-read --unstable npm/esm/main.js",
@@ -44,6 +43,13 @@ itest!(cjs_with_deps {
 itest!(cjs_sub_path {
   args: "run --allow-read --unstable npm/cjs_sub_path/main.js",
   output: "npm/cjs_sub_path/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_local_global_decls {
+  args: "run --allow-read --unstable npm/cjs_local_global_decls/main.ts",
+  output: "npm/cjs_local_global_decls/main.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -238,12 +244,14 @@ fn ensure_registry_files_local() {
       let registry_json_path = registry_dir_path
         .join(entry.file_name())
         .join("registry.json");
-      let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
-      if file_text.contains("https://registry.npmjs.org/") {
-        panic!(
-          "file {} contained a reference to the npm registry",
-          registry_json_path.display(),
-        );
+      if registry_json_path.exists() {
+        let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
+        if file_text.contains("https://registry.npmjs.org/") {
+          panic!(
+            "file {} contained a reference to the npm registry",
+            registry_json_path.display(),
+          );
+        }
       }
     }
   }

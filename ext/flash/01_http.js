@@ -28,7 +28,7 @@
   const {
     Function,
     ObjectPrototypeIsPrototypeOf,
-    PromiseResolve,
+    PromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
@@ -287,7 +287,8 @@
 
     core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
       onListen({ hostname: listenOpts.hostname, port });
-    });
+    }).catch(() => {});
+    const finishedPromise = serverPromise.catch(() => {});
 
     const server = {
       id: serverId,
@@ -295,7 +296,7 @@
       hostname: listenOpts.hostname,
       port: listenOpts.port,
       closed: false,
-      finished: PromiseResolve(serverPromise),
+      finished: finishedPromise,
       async close() {
         if (server.closed) {
           return;
@@ -570,7 +571,10 @@
       }, 1000);
     }
 
-    return await server.serve().catch(console.error);
+    await PromiseAll([
+      server.serve().catch(console.error),
+      serverPromise,
+    ]);
   }
 
   function createRequestBodyStream(serverId, token) {
