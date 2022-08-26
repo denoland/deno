@@ -1313,8 +1313,11 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    let port = listening_rx.recv().await.unwrap();
-    Ok(port)
+    if let Some(port) = listening_rx.recv().await {
+      Ok(port)
+    } else {
+      Err(generic_error("This error will be discarded"))
+    }
   })
 }
 
