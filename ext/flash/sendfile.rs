@@ -86,10 +86,10 @@ impl<'a> SendFile<'a> {
       // sendfile() with TCP_CORK
       if self.sending_headers {
         let opt = 1;
-        libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt, 4);
+        libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt as *const _ as _, 4);
         let length = libc::writev(
           self.io.1,
-          self.slices.as_ptr(),
+          self.slices.as_ptr() as _,
           self.slices.len() as i32,
         );
 
@@ -107,7 +107,7 @@ impl<'a> SendFile<'a> {
         unsafe { libc::sendfile(self.io.1, self.io.0, &mut offset, count) };
 
       let opt = 0;
-      libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt, 4);
+      libc::setsockopt(self.io.1, libc::SOL_SOCKET, libc::TCP_CORK, &opt as *const _ as _, 4);
 
       if res == -1 {
         Err(io::Error::last_os_error())
