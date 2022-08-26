@@ -72,7 +72,6 @@
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
   const _closeSent = Symbol("[[closeSent]]");
-  const _awaitingEvent = Symbol("[[awaitingEvent]]");
   class WebSocketStream {
     [_rid];
 
@@ -82,7 +81,6 @@
       return this[_url];
     }
 
-    [_awaitingEvent] = new Deferred();
     constructor(url, options) {
       this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'WebSocketStream'";
@@ -238,12 +236,10 @@
                 },
               });
               const pull = async (controller) => {
-                this[_awaitingEvent] = new Deferred();
                 const { kind, value } = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
                 );
-                this[_awaitingEvent].resolve();
 
                 switch (kind) {
                   case "string": {
@@ -304,7 +300,7 @@
                   });
 
                   PromisePrototypeThen(this[_closeSent].promise, () => {
-                    if (this[_closed].state === 'pending' && this[_awaitingEvent].state === 'fulfilled') {
+                    if (this[_closed].state === 'pending') {
                       return pull(controller);
                     }
                   });
