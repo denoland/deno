@@ -605,13 +605,12 @@ pub fn translate_cjs_to_esm(
   let mut had_default = false;
   for export in analysis.exports.iter() {
     if export.as_str() == "default" {
-      if analysis.exports.iter().any(|e| e == "__esModule") {
-        source.push(format!(
-          "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-          export,
-        ));
-        had_default = true;
-      }
+      // todo(dsherret): we should only do this if there was a `_esModule: true` instead
+      source.push(format!(
+        "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
+        export,
+      ));
+      had_default = true;
     } else {
       add_export(
         &mut source,
