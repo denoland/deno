@@ -54,6 +54,13 @@ itest!(cjs_local_global_decls {
   http_server: true,
 });
 
+itest!(cjs_reexport_collision {
+  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  output: "npm/cjs_reexport_collision/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(compare_globals {
   args: "run --allow-read --unstable npm/compare_globals/main.js",
   output: "npm/compare_globals/main.out",
