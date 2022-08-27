@@ -54,6 +54,20 @@ itest!(cjs_local_global_decls {
   http_server: true,
 });
 
+itest!(cjs_reexport_collision {
+  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  output: "npm/cjs_reexport_collision/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(compare_globals {
+  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  output: "npm/compare_globals/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
   args: "run --allow-read --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
@@ -223,6 +237,13 @@ itest!(deno_run_cowthink {
   args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
   envs: env_vars_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_esm_module {
+  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars(),
   http_server: true,
 });
 
