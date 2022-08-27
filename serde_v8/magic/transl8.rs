@@ -105,13 +105,13 @@ pub(crate) unsafe fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
 
 /// Transmutes an "opaque" ptr back into a reference
 pub(crate) unsafe fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
-  std::mem::transmute(ptr)
+  std::mem::transmute(ptr as usize)
 }
 
 /// Transmutes & copies the value from the "opaque" ptr
 /// NOTE: takes ownership & requires other end to forget its ownership
 pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
-  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
+  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr as usize))
 }
 
 macro_rules! impl_magic {
