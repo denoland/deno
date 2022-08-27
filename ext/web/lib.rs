@@ -51,6 +51,7 @@ pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
 use crate::timers::op_now;
+use crate::timers::op_now_set_buf;
 use crate::timers::op_sleep;
 use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
@@ -106,6 +107,7 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_new::decl(),
       compression::op_compression_write::decl(),
       compression::op_compression_finish::decl(),
+      op_now_set_buf::decl(),
       op_now::decl::<P>(),
       op_timer_handle::decl(),
       op_cancel_handle::decl(),

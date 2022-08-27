@@ -365,15 +365,32 @@ fn codegen_fast_impl(
             }
           },
           quote! {
-            #func_name #ty_generics as *const _
+            #func_name::<#type_params> as *const _
           },
         )
       };
+
+      let fast_struct = format_ident!("fast_{}", name);
+      let (type_params, ty_generics, struct_generics) =
+        if type_params.is_empty() {
+          (quote! { () }, quote! {}, quote! {})
+        } else {
+          (
+            quote! { #type_params },
+            quote! { #ty_generics },
+            quote! { ::<#type_params> },
+          )
+        };
       return (
         quote! {
+          #[allow(non_camel_case_types)]
+          #[doc(hidden)]
+          struct #fast_struct #ty_generics {
+            _phantom: ::std::marker::PhantomData<#type_params>,
+          }
           #trampoline
-          impl #impl_generics #core::v8::fast_api::FastFunction for #name #ty_generics {
-            fn function(&self) -> *const ::std::ffi::c_void {
+          impl #impl_generics #core::v8::fast_api::FastFunction for #fast_struct #ty_generics #where_clause {
+            fn function(&self) -> *const ::std::ffi::c_void  {
               #raw_block
             }
             fn args(&self) -> &'static [#core::v8::fast_api::Type] {
@@ -384,7 +401,7 @@ fn codegen_fast_impl(
             }
           }
         },
-        quote! { Some(Box::new(#name #ty_generics)) },
+        quote! { Some(Box::new(#fast_struct #struct_generics { _phantom: ::std::marker::PhantomData })) },
       );
     }
   }
@@ -439,11 +456,6 @@ struct FastApiSyn {
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
-  // TODO(@littledivy): Support generics
-  if !f.sig.generics.params.is_empty() {
-    return None;
-  }
-
   let inputs = &f.sig.inputs;
   let ret = match &f.sig.output {
     syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),

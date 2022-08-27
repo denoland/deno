@@ -25,8 +25,15 @@
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
+  let opNowInitialized = false;
+  const hr = new Uint32Array(2);
   function opNow() {
-    return ops.op_now();
+    if (!opNowInitialized) {
+      ops.op_now_set_buf(hr);
+      opNowInitialized = true;
+    }
+    ops.op_now.fast();
+    return (hr[0] * 1000 + hr[1] / 1e6);
   }
 
   // ---------------------------------------------------------------------------
