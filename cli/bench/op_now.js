@@ -16,5 +16,4 @@ function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-console.log(performance.now());
 bench(() => performance.now());

@@ -28,6 +28,9 @@ static mut NOW_BUF: *mut u32 = std::ptr::null_mut();
 
 #[op]
 pub fn op_now_set_buf(buf: ZeroCopyBuf) {
+  assert_eq!(buf.len(), 8);
+  // SAFETY: This is safe because this is the only place where we initialize
+  // NOW_BUF.
   unsafe {
     NOW_BUF = buf.as_ptr() as *mut u32;
   }
@@ -55,10 +58,15 @@ where
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
+  // SAFETY: This is safe because we initialize NOW_BUF in op_now_set_buf, its a null pointer
+  // otherwise.
+  // op_now_set_buf guarantees that the buffer is 8 bytes long.
   unsafe {
-    let buf = std::slice::from_raw_parts_mut(NOW_BUF, 2);
-    buf[0] = seconds as u32;
-    buf[1] = subsec_nanos as u32;
+    if !NOW_BUF.is_null() {
+      let buf = std::slice::from_raw_parts_mut(NOW_BUF, 2);
+      buf[0] = seconds as u32;
+      buf[1] = subsec_nanos as u32;
+    }
   }
 }
 

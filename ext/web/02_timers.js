@@ -13,6 +13,7 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
+    Uint32Array,
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
