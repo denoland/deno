@@ -567,13 +567,13 @@ impl ConfigFile {
         Ok(Some(value)) if value.is_object() => value,
         Ok(Some(_)) => {
           return Err(anyhow!(
-            "config file JSON {:?} should be an object",
+            "config file JSON {} should be an object",
             specifier,
           ))
         }
         Err(e) => {
           return Err(anyhow!(
-            "Unable to parse config file JSON {:?} because of {}",
+            "Unable to parse config file JSON {} because of {}",
             specifier,
             e.to_string()
           ))
