@@ -83,47 +83,48 @@ impl Drop for Storage {
 }
 
 impl Storage {
-  fn new(db: *mut sqlite3) -> Self {
+  fn new(db: *mut sqlite3) -> Result<Self, AnyError> {
     #[inline]
-    fn exec(db: *mut sqlite3, str: &'static str) {
+    fn exec(db: *mut sqlite3, str: &'static str) -> Result<(), AnyError> {
       // SAFETY: str is guaranteed to be a null terminated string.
       unsafe {
-        libsqlite3_sys::sqlite3_exec(
+        unwrap_err(libsqlite3_sys::sqlite3_exec(
           db,
           str.as_ptr() as *const _,
           None,
           std::ptr::null_mut(),
           std::ptr::null_mut(),
-        )
+        ))?
       };
+      Ok(())
     }
 
     exec(
       db,
       "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)\0",
-    );
-    exec(db, PRAGMAS);
+    )?;
+    exec(db, PRAGMAS)?;
 
-    let len_stmt = Storage::prepare(db, "SELECT COUNT(*) FROM data");
+    let len_stmt = Storage::prepare(db, "SELECT COUNT(*) FROM data")?;
     let key_stmt =
-      Storage::prepare(db, "SELECT key FROM data LIMIT 1 OFFSET ?");
+      Storage::prepare(db, "SELECT key FROM data LIMIT 1 OFFSET ?")?;
     let size_stmt: *mut sqlite3_stmt = Storage::prepare(
       db,
       "SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'",
-    );
+    )?;
     let set_stmt: *mut sqlite3_stmt = Storage::prepare(
       db,
       "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
-    );
+    )?;
     let get_stmt: *mut sqlite3_stmt =
-      Storage::prepare(db, "SELECT value FROM data WHERE key = ?");
+      Storage::prepare(db, "SELECT value FROM data WHERE key = ?")?;
     let remove_stmt: *mut sqlite3_stmt =
-      Storage::prepare(db, "DELETE FROM data WHERE key = ?");
+      Storage::prepare(db, "DELETE FROM data WHERE key = ?")?;
     let clear_stmt: *mut sqlite3_stmt =
-      Storage::prepare(db, "DELETE FROM data");
+      Storage::prepare(db, "DELETE FROM data")?;
     let all_keys_stmt: *mut sqlite3_stmt =
-      Storage::prepare(db, "SELECT key FROM data");
-    Self {
+      Storage::prepare(db, "SELECT key FROM data")?;
+    Ok(Self {
       db,
       len_stmt,
       key_stmt,
@@ -133,23 +134,26 @@ impl Storage {
       remove_stmt,
       clear_stmt,
       all_keys_stmt,
-    }
+    })
   }
 
   #[inline]
-  fn prepare(db: *mut sqlite3, str: &'static str) -> *mut sqlite3_stmt {
+  fn prepare(
+    db: *mut sqlite3,
+    str: &'static str,
+  ) -> Result<*mut sqlite3_stmt, AnyError> {
     let mut stmt = std::ptr::null_mut();
     // SAFETY: db is a valid pointer to an open database.
     unsafe {
-      libsqlite3_sys::sqlite3_prepare_v2(
+      unwrap_err(libsqlite3_sys::sqlite3_prepare_v2(
         db,
         str.as_ptr() as *const _,
         str.len() as _,
         &mut stmt,
         std::ptr::null_mut(),
-      )
+      ))?
     };
-    stmt
+    Ok(stmt)
   }
 }
 
@@ -201,7 +205,7 @@ fn get_webstorage(
       )
     };
   }
-  state.put(Storage::new(db));
+  state.put(Storage::new(db)?);
   Ok(state.borrow::<Storage>())
 }
 
