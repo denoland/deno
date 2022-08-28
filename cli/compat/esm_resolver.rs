@@ -1154,7 +1154,7 @@ fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::deno_std::STD_URL;
+  use crate::deno_std::CURRENT_STD_URL;
 
   fn testdir(name: &str) -> PathBuf {
     let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1233,7 +1233,7 @@ mod tests {
   fn builtin_http() {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
-    let expected = STD_URL.unwrap().join("node/http.ts").unwrap();
+    let expected = CURRENT_STD_URL.join("node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));

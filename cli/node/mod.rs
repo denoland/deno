@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::deno_std::STD_URL_STR;
+use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -85,18 +85,19 @@ pub(crate) static SUPPORTED_MODULES: &[&str] = &[
   "zlib",
 ];
 
-pub(crate) static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
-  std::env::var("DENO_NODE_COMPAT_URL")
-    .map(String::into)
-    .ok()
-    .unwrap_or_else(|| STD_URL_STR.to_string())
+pub(crate) static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
+  if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
+    let url = Url::parse(&url_str).expect(
+      "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
+    );
+    return url;
+  }
+
+  CURRENT_STD_URL.clone()
 });
 
-static MODULE_ALL_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
-
 pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
+  Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
 pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
@@ -104,9 +105,9 @@ pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
       "stream/promises" => "mjs",
       _ => "ts",
     };
-    let module_url =
-      format!("{}node/{}.{}", NODE_COMPAT_URL.as_str(), specifier, ext);
-    Some(Url::parse(&module_url).unwrap())
+    let specifier = format!("node/{}.{}", specifier, ext);
+    let module_url = NODE_COMPAT_URL.join(&specifier).unwrap();
+    Some(module_url)
   } else {
     None
   }

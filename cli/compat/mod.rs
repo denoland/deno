@@ -16,24 +16,21 @@ use once_cell::sync::Lazy;
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
 
-static GLOBAL_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
-
 pub static GLOBAL_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
-
-static MODULE_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
+  Lazy::new(|| NODE_COMPAT_URL.join("node/global.ts").unwrap());
 
 pub static MODULE_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
+  Lazy::new(|| NODE_COMPAT_URL.join("node/module.ts").unwrap());
 
 static COMPAT_IMPORT_URL: Lazy<Url> =
   Lazy::new(|| Url::parse("flags:compat").unwrap());
 
 /// Provide imports into a module graph when the compat flag is true.
 pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
-  vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
+  vec![(
+    COMPAT_IMPORT_URL.clone(),
+    vec![GLOBAL_URL.as_str().to_owned()],
+  )]
 }
 
 pub fn load_cjs_module(
@@ -46,7 +43,7 @@ pub fn load_cjs_module(
       const Module = await import("{module_loader}");
       Module.default._load(module, null, {main});
     }})('{module}');"#,
-    module_loader = MODULE_URL_STR.as_str(),
+    module_loader = MODULE_URL.as_str(),
     main = main,
     module = escape_for_single_quote_string(module),
   );
@@ -65,7 +62,7 @@ pub fn add_global_require(
       const require = Module.createRequire(main);
       globalThis.require = require;
     }})('{}');"#,
-    MODULE_URL_STR.as_str(),
+    MODULE_URL.as_str(),
     escape_for_single_quote_string(main_module),
   );
 
