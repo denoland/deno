@@ -1,8 +1,8 @@
 use deno_core::Extension;
 
+use deno_bench_util::bench_js_async;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
-use deno_bench_util::{bench_js_async, bench_js_sync};
 use deno_web::BlobStore;
 
 struct Permissions;
@@ -27,7 +27,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder()
     .js(vec![
       ("setup", r#"
-      const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
+      const { setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);
       "#),
     ])
@@ -39,13 +39,9 @@ fn setup() -> Vec<Extension> {
   ]
 }
 
-fn bench_op_now(b: &mut Bencher) {
-  bench_js_sync(b, r#"opNow();"#, setup);
-}
-
 fn bench_set_timeout(b: &mut Bencher) {
   bench_js_async(b, r#"setTimeout(() => {}, 0);"#, setup);
 }
 
-benchmark_group!(benches, bench_op_now, bench_set_timeout,);
+benchmark_group!(benches, bench_set_timeout,);
 bench_or_profile!(benches);
