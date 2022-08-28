@@ -35,6 +35,7 @@ use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;
+pub mod errors;
 
 pub use analyze::esm_code_with_node_globals;
 
@@ -173,7 +174,7 @@ pub fn node_resolve(
     }
 
     if protocol != "file" && protocol != "data" {
-      return Err(compat::errors::err_unsupported_esm_url_scheme(&url));
+      return Err(errors::err_unsupported_esm_url_scheme(&url));
     }
 
     // todo(THIS PR): I think this is handled upstream so can be removed?
@@ -410,7 +411,7 @@ fn finalize_resolution(
   let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
 
   if encoded_sep_re.is_match(resolved.path()) {
-    return Err(compat::errors::err_invalid_module_specifier(
+    return Err(errors::err_invalid_module_specifier(
       resolved.path(),
       "must not include encoded \"/\" or \"\\\\\" characters",
       Some(to_file_path_string(base)),
@@ -437,12 +438,12 @@ fn finalize_resolution(
     (false, false)
   };
   if is_dir {
-    return Err(compat::errors::err_unsupported_dir_import(
+    return Err(errors::err_unsupported_dir_import(
       resolved.as_str(),
       base.as_str(),
     ));
   } else if !is_file {
-    return Err(compat::errors::err_module_not_found(
+    return Err(errors::err_module_not_found(
       resolved.as_str(),
       base.as_str(),
       "module",

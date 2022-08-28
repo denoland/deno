@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-pub mod errors;
 mod esm_resolver;
 
 use crate::file_fetcher::FileFetcher;

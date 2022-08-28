@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use super::errors;
+use crate::node::errors;
 use crate::resolver::ImportMapResolver;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
