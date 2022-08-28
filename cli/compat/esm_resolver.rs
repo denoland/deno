@@ -1154,7 +1154,7 @@ fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::node::STD_URL_STR;
+  use crate::deno_std::STD_URL_STR;
 
   fn testdir(name: &str) -> PathBuf {
     let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

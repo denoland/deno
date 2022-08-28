@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::deno_std::STD_URL_STR;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -83,10 +84,6 @@ pub(crate) static SUPPORTED_MODULES: &[&str] = &[
   "worker_threads",
   "zlib",
 ];
-
-// WARNING: Ensure this is the only deno_std version reference as this
-// is automatically updated by the version bump workflow.
-pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.153.0/";
 
 pub(crate) static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
   std::env::var("DENO_NODE_COMPAT_URL")

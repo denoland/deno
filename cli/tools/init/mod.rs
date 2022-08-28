@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::InitFlags;
-use crate::node;
+use crate::deno_std;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use std::io::Write;
@@ -36,7 +36,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   create_file(&dir, "main.ts", main_ts)?;
 
   let main_test_ts = include_str!("./templates/main_test.ts")
-    .replace("{CURRENT_STD_URL}", node::STD_URL_STR);
+    .replace("{CURRENT_STD_URL}", deno_std::STD_URL_STR);
   create_file(&dir, "main_test.ts", &main_test_ts)?;
 
   println!("✅ Project initialized");
