@@ -80,8 +80,12 @@ pub fn setup_builtin_modules(
   let mut script = String::new();
   for module in SUPPORTED_MODULES {
     // skipping the modules that contains '/' as they are not available in NodeJS repl as well
-    if !module.contains('/') {
-      script = format!("{}const {} = require('{}');\n", script, module, module);
+    if !module.name.contains('/') {
+      script = format!(
+        "{}const {MODULE_NAME} = require('{MODULE_NAME}');\n",
+        script,
+        MODULE_NAME = module.name
+      );
     }
   }
 
