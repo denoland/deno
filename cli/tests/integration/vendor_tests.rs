@@ -161,10 +161,6 @@ fn import_map_output_dir() {
     "{ \"imports\": { \"https://localhost:4545/\": \"./localhost/\" }}",
   );
   t.write(
-    "deno.json",
-    "{ \"import_map\": \"./vendor/import_map.json\" }",
-  );
-  t.write(
     "my_app.ts",
     "import {Logger} from 'http://localhost:4545/vendor/logger.ts'; new Logger().log('outputted');",
   );
