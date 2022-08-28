@@ -428,7 +428,7 @@ pub struct TestConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<String>,
@@ -750,6 +750,7 @@ mod tests {
   use super::*;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
+  use test_util::assert_contains;
 
   #[test]
   fn read_config_file_relative() {
@@ -993,7 +994,18 @@ mod tests {
     let d = testdata.join("malformed_config/");
     let mut checked = HashSet::new();
     let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
-    assert!(err.to_string().contains("Unable to parse config file"));
+    assert_contains!(err.to_string(), "Unable to parse config file");
+  }
+
+  #[test]
+  fn extra_invalid_keys() {
+    let err = ConfigFile::new(
+      "{ \"extra\": 5 }",
+      &ModuleSpecifier::parse("file:///deno.json").unwrap(),
+    )
+    .err()
+    .unwrap();
+    assert_contains!(err.to_string(), "unknown field `extra`, expected one of");
   }
 
   #[test]
