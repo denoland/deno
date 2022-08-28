@@ -14,8 +14,8 @@ use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::ModuleInfo;
 use deno_graph::ModuleParser;
 use deno_graph::ParsedSourceStore;
-use deno_runtime::deno_webstorage::rusqlite::params;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
+use rusqlite::params;
+use rusqlite::Connection;
 
 use super::common::run_sqlite_pragma;
 use super::FastInsecureHasher;

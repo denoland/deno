@@ -841,6 +841,7 @@ dependencies = [
  "rand",
  "regex",
  "ring",
+ "rusqlite",
  "rustyline",
  "rustyline-derive",
  "semver 1.0.13",
@@ -1302,7 +1303,7 @@ version = "0.61.0"
 dependencies = [
  "deno_core",
  "deno_web",
- "rusqlite",
+ "libsqlite3-sys",
  "serde",
 ]
 

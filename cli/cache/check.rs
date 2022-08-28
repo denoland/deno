@@ -4,8 +4,8 @@ use std::path::Path;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::params;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
+use rusqlite::params;
+use rusqlite::Connection;
 
 use super::common::run_sqlite_pragma;
 

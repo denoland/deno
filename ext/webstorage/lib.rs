@@ -2,18 +2,30 @@
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use rusqlite::params;
-use rusqlite::Connection;
-use rusqlite::OptionalExtension;
+use libsqlite3_sys::sqlite3;
+use libsqlite3_sys::sqlite3_bind_int;
+use libsqlite3_sys::sqlite3_bind_text;
+use libsqlite3_sys::sqlite3_column_int;
+use libsqlite3_sys::sqlite3_column_text;
+use libsqlite3_sys::sqlite3_column_type;
+use libsqlite3_sys::sqlite3_reset;
+use libsqlite3_sys::sqlite3_step;
+use libsqlite3_sys::sqlite3_stmt;
+use libsqlite3_sys::SQLITE_NULL;
+use libsqlite3_sys::SQLITE_OPEN_CREATE;
+use libsqlite3_sys::SQLITE_OPEN_MEMORY;
+use libsqlite3_sys::SQLITE_OPEN_READWRITE;
+use libsqlite3_sys::SQLITE_ROW;
+use std::ffi::CStr;
 use std::fmt;
+use std::os::raw::c_int;
 use std::path::PathBuf;
-
-pub use rusqlite;
 
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
@@ -48,61 +60,167 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
 }
 
-struct LocalStorage(Connection);
-struct SessionStorage(Connection);
+struct Storage {
+  db: *mut sqlite3,
+  // prepared statements
+  len_stmt: *mut sqlite3_stmt,
+  key_stmt: *mut sqlite3_stmt,
+  size_stmt: *mut sqlite3_stmt,
+  get_stmt: *mut sqlite3_stmt,
+  set_stmt: *mut sqlite3_stmt,
+  remove_stmt: *mut sqlite3_stmt,
+  clear_stmt: *mut sqlite3_stmt,
+  all_keys_stmt: *mut sqlite3_stmt,
+}
 
+impl Drop for Storage {
+  fn drop(&mut self) {
+    // SAFETY: This is never called twice on the same db.
+    unsafe {
+      libsqlite3_sys::sqlite3_close(self.db);
+    }
+  }
+}
+
+impl Storage {
+  fn new(db: *mut sqlite3) -> Self {
+    #[inline]
+    fn exec(db: *mut sqlite3, str: &'static str) {
+      // SAFETY: str is guaranteed to be a null terminated string.
+      unsafe {
+        libsqlite3_sys::sqlite3_exec(
+          db,
+          str.as_ptr() as *const _,
+          None,
+          std::ptr::null_mut(),
+          std::ptr::null_mut(),
+        )
+      };
+    }
+
+    exec(
+      db,
+      "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)\0",
+    );
+    exec(db, PRAGMAS);
+
+    let len_stmt = Storage::prepare(db, "SELECT COUNT(*) FROM data");
+    let key_stmt =
+      Storage::prepare(db, "SELECT key FROM data LIMIT 1 OFFSET ?");
+    let size_stmt: *mut sqlite3_stmt = Storage::prepare(
+      db,
+      "SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'",
+    );
+    let set_stmt: *mut sqlite3_stmt = Storage::prepare(
+      db,
+      "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
+    );
+    let get_stmt: *mut sqlite3_stmt =
+      Storage::prepare(db, "SELECT value FROM data WHERE key = ?");
+    let remove_stmt: *mut sqlite3_stmt =
+      Storage::prepare(db, "DELETE FROM data WHERE key = ?");
+    let clear_stmt: *mut sqlite3_stmt =
+      Storage::prepare(db, "DELETE FROM data");
+    let all_keys_stmt: *mut sqlite3_stmt =
+      Storage::prepare(db, "SELECT key FROM data");
+    Self {
+      db,
+      len_stmt,
+      key_stmt,
+      size_stmt,
+      set_stmt,
+      get_stmt,
+      remove_stmt,
+      clear_stmt,
+      all_keys_stmt,
+    }
+  }
+
+  #[inline]
+  fn prepare(db: *mut sqlite3, str: &'static str) -> *mut sqlite3_stmt {
+    let mut stmt = std::ptr::null_mut();
+    // SAFETY: db is a valid pointer to an open database.
+    unsafe {
+      libsqlite3_sys::sqlite3_prepare_v2(
+        db,
+        str.as_ptr() as *const _,
+        str.len() as _,
+        &mut stmt,
+        std::ptr::null_mut(),
+      )
+    };
+    stmt
+  }
+}
+
+// Enable write-ahead-logging and tweak some other stuff.
+const PRAGMAS: &str = "
+  PRAGMA journal_mode=WAL;
+  PRAGMA synchronous=NORMAL;
+  PRAGMA temp_store=memory;
+  PRAGMA page_size=4096;
+  PRAGMA mmap_size=6000000;
+  PRAGMA optimize;\0";
+
+#[inline]
 fn get_webstorage(
   state: &mut OpState,
   persistent: bool,
-) -> Result<&Connection, AnyError> {
-  let conn = if persistent {
-    if state.try_borrow::<LocalStorage>().is_none() {
-      let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
-        DomExceptionNotSupportedError::new(
-          "LocalStorage is not supported in this context.",
-        )
-      })?;
-      std::fs::create_dir_all(&path.0)?;
-      let conn = Connection::open(path.0.join("local_storage"))?;
-      // Enable write-ahead-logging and tweak some other stuff.
-      let initial_pragmas = "
-        -- enable write-ahead-logging mode
-        PRAGMA journal_mode=WAL;
-        PRAGMA synchronous=NORMAL;
-        PRAGMA temp_store=memory;
-        PRAGMA page_size=4096;
-        PRAGMA mmap_size=6000000;
-        PRAGMA optimize;
-      ";
+) -> Result<&Storage, AnyError> {
+  if state.try_borrow::<Storage>().is_some() {
+    return Ok(state.borrow::<Storage>());
+  }
 
-      conn.execute_batch(initial_pragmas)?;
-      conn.set_prepared_statement_cache_capacity(128);
-      {
-        let mut stmt = conn.prepare_cached(
-          "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-        )?;
-        stmt.execute(params![])?;
-      }
-      state.put(LocalStorage(conn));
-    }
-
-    &state.borrow::<LocalStorage>().0
+  let mut db: *mut sqlite3 = std::ptr::null_mut();
+  if !persistent {
+    // SAFETY: name is a null terminated string.
+    unsafe {
+      libsqlite3_sys::sqlite3_open_v2(
+        ":memory:\0".as_ptr() as _,
+        &mut db,
+        SQLITE_OPEN_MEMORY | SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        std::ptr::null_mut(),
+      )
+    };
   } else {
-    if state.try_borrow::<SessionStorage>().is_none() {
-      let conn = Connection::open_in_memory()?;
-      {
-        let mut stmt = conn.prepare_cached(
-          "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-        )?;
-        stmt.execute(params![])?;
-      }
-      state.put(SessionStorage(conn));
-    }
+    let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
+      DomExceptionNotSupportedError::new(
+        "LocalStorage is not supported in this context.",
+      )
+    })?;
+    std::fs::create_dir_all(&path.0)?;
+    let filename =
+      format!("{}\0", path.0.join("local_storage").to_string_lossy());
+    // SAFETY: filename is a null terminated string.
+    unsafe {
+      libsqlite3_sys::sqlite3_open_v2(
+        filename.as_ptr() as _,
+        &mut db,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        std::ptr::null_mut(),
+      )
+    };
+  }
+  state.put(Storage::new(db));
+  Ok(state.borrow::<Storage>())
+}
 
-    &state.borrow::<SessionStorage>().0
-  };
+#[inline(always)]
+fn unwrap_err(code: c_int) -> Result<(), AnyError> {
+  if code == libsqlite3_sys::SQLITE_OK {
+    Ok(())
+  } else {
+    Err(type_error("Internal operation failed"))
+  }
+}
 
-  Ok(conn)
+#[inline(always)]
+fn unwrap_reset_err(code: c_int) -> Result<(), AnyError> {
+  if code == libsqlite3_sys::SQLITE_DONE || code == libsqlite3_sys::SQLITE_ROW {
+    Ok(())
+  } else {
+    Err(type_error("Internal operation failed"))
+  }
 }
 
 #[op]
@@ -112,10 +230,13 @@ pub fn op_webstorage_length(
 ) -> Result<u32, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
-  let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
-
-  Ok(length)
+  // SAFETY: len_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.len_stmt))?;
+    unwrap_reset_err(sqlite3_step(conn.len_stmt))?;
+    let len = sqlite3_column_int(conn.len_stmt, 0);
+    Ok(len as u32)
+  }
 }
 
 #[op]
@@ -126,14 +247,20 @@ pub fn op_webstorage_key(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt =
-    conn.prepare_cached("SELECT key FROM data LIMIT 1 OFFSET ?")?;
+  // SAFETY: key_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.key_stmt))?;
+    unwrap_err(sqlite3_bind_int(conn.key_stmt, 1, index as _))?;
+    unwrap_reset_err(sqlite3_step(conn.key_stmt))?;
 
-  let key: Option<String> = stmt
-    .query_row(params![index], |row| row.get(0))
-    .optional()?;
-
-  Ok(key)
+    if sqlite3_column_type(conn.key_stmt, 0) == SQLITE_NULL {
+      Ok(None)
+    } else {
+      let key = sqlite3_column_text(conn.key_stmt, 0);
+      let key = CStr::from_ptr(key as _).to_string_lossy().into_owned();
+      Ok(Some(key))
+    }
+  }
 }
 
 #[op]
@@ -145,9 +272,12 @@ pub fn op_webstorage_set(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn
-    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
-  let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
+  // SAFETY: size_stmt is valid for the lifetime of the Storage.
+  let size = unsafe {
+    unwrap_err(sqlite3_reset(conn.size_stmt))?;
+    unwrap_reset_err(sqlite3_step(conn.size_stmt))?;
+    sqlite3_column_int(conn.size_stmt, 0) as u32
+  };
 
   if size >= MAX_STORAGE_BYTES {
     return Err(
@@ -158,9 +288,25 @@ pub fn op_webstorage_set(
     );
   }
 
-  let mut stmt = conn
-    .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
-  stmt.execute(params![key, value])?;
+  // SAFETY: set_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.set_stmt))?;
+    unwrap_err(sqlite3_bind_text(
+      conn.set_stmt,
+      1,
+      key.as_ptr() as _,
+      key.len() as _,
+      None,
+    ))?;
+    unwrap_err(sqlite3_bind_text(
+      conn.set_stmt,
+      2,
+      value.as_ptr() as _,
+      value.len() as _,
+      None,
+    ))?;
+    unwrap_reset_err(sqlite3_step(conn.set_stmt))?;
+  }
 
   Ok(())
 }
@@ -173,12 +319,26 @@ pub fn op_webstorage_get(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
-  let val = stmt
-    .query_row(params![key_name], |row| row.get(0))
-    .optional()?;
+  // SAFETY: get_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.get_stmt))?;
+    unwrap_err(sqlite3_bind_text(
+      conn.get_stmt,
+      1,
+      key_name.as_ptr() as _,
+      key_name.len() as _,
+      None,
+    ))?;
+    unwrap_reset_err(sqlite3_step(conn.get_stmt))?;
 
-  Ok(val)
+    if sqlite3_column_type(conn.get_stmt, 0) == SQLITE_NULL {
+      Ok(None)
+    } else {
+      let value = sqlite3_column_text(conn.get_stmt, 0);
+      let value = CStr::from_ptr(value as _).to_string_lossy().into_owned();
+      Ok(Some(value))
+    }
+  }
 }
 
 #[op]
@@ -189,8 +349,18 @@ pub fn op_webstorage_remove(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
-  stmt.execute(params![key_name])?;
+  // SAFETY: remove_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.remove_stmt))?;
+    unwrap_err(sqlite3_bind_text(
+      conn.remove_stmt,
+      1,
+      key_name.as_ptr() as _,
+      key_name.len() as _,
+      None,
+    ))?;
+    unwrap_reset_err(sqlite3_step(conn.remove_stmt))?;
+  }
 
   Ok(())
 }
@@ -202,8 +372,11 @@ pub fn op_webstorage_clear(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("DELETE FROM data")?;
-  stmt.execute(params![])?;
+  // SAFETY: clear_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.clear_stmt))?;
+    unwrap_reset_err(sqlite3_step(conn.clear_stmt))?;
+  }
 
   Ok(())
 }
@@ -215,13 +388,17 @@ pub fn op_webstorage_iterate_keys(
 ) -> Result<Vec<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
-  let keys = stmt
-    .query_map(params![], |row| row.get::<_, String>(0))?
-    .map(|r| r.unwrap())
-    .collect();
-
-  Ok(keys)
+  // SAFETY: iterate_keys_stmt is valid for the lifetime of the Storage.
+  unsafe {
+    unwrap_err(sqlite3_reset(conn.all_keys_stmt))?;
+    let mut keys = Vec::new();
+    while sqlite3_step(conn.all_keys_stmt) == SQLITE_ROW {
+      let key = sqlite3_column_text(conn.all_keys_stmt, 0);
+      let key = CStr::from_ptr(key as _).to_string_lossy().into_owned();
+      keys.push(key);
+    }
+    Ok(keys)
+  }
 }
 
 #[derive(Debug)]

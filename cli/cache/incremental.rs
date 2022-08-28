@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_runtime::deno_webstorage::rusqlite::params;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
+use rusqlite::params;
+use rusqlite::Connection;
 use serde::Serialize;
 use tokio::task::JoinHandle;
 

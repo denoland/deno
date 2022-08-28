@@ -3,7 +3,7 @@
 use std::hash::Hasher;
 
 use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
+use rusqlite::Connection;
 
 /// A very fast insecure hasher that uses the xxHash algorithm.
 #[derive(Default)]
