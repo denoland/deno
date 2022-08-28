@@ -25,12 +25,6 @@ pub static GLOBAL_URL: Lazy<Url> =
 static MODULE_URL_STR: Lazy<String> =
   Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
 
-pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
-
-static MODULE_ALL_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
-
 pub static MODULE_URL: Lazy<Url> =
   Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
 

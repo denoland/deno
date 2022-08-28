@@ -27,7 +27,6 @@ use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
 
-use crate::compat;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
@@ -95,6 +94,12 @@ pub(crate) static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
     .ok()
     .unwrap_or_else(|| STD_URL_STR.to_string())
 });
+
+static MODULE_ALL_URL_STR: Lazy<String> =
+  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
+
+pub static MODULE_ALL_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
 
 pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   if SUPPORTED_MODULES.contains(&specifier) {
@@ -168,7 +173,7 @@ pub async fn initialize_runtime(
       const moduleAll = await import(moduleAllUrl);
       Deno[Deno.internal].node.initialize(moduleAll.default);
     }})('{}');"#,
-    compat::MODULE_ALL_URL.as_str(),
+    MODULE_ALL_URL.as_str(),
   );
 
   let value =
