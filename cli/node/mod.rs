@@ -39,6 +39,77 @@ pub mod errors;
 
 pub use analyze::esm_code_with_node_globals;
 
+pub(crate) static SUPPORTED_MODULES: &[&str] = &[
+  "assert",
+  "assert/strict",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "dns",
+  "domain",
+  "events",
+  "fs",
+  "fs/promises",
+  "http",
+  "https",
+  "module",
+  "net",
+  "os",
+  "path",
+  "path/posix",
+  "path/win32",
+  "perf_hooks",
+  "process",
+  "querystring",
+  "readline",
+  "stream",
+  "stream/promises",
+  "stream/web",
+  "string_decoder",
+  "sys",
+  "timers",
+  "timers/promises",
+  "tls",
+  "tty",
+  "url",
+  "util",
+  "util/types",
+  "v8",
+  "vm",
+  "worker_threads",
+  "zlib",
+];
+
+// WARNING: Ensure this is the only deno_std version reference as this
+// is automatically updated by the version bump workflow.
+pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.153.0/";
+
+pub(crate) static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
+  std::env::var("DENO_NODE_COMPAT_URL")
+    .map(String::into)
+    .ok()
+    .unwrap_or_else(|| STD_URL_STR.to_string())
+});
+
+pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
+  if SUPPORTED_MODULES.contains(&specifier) {
+    let ext = match specifier {
+      "stream/promises" => "mjs",
+      _ => "ts",
+    };
+    let module_url =
+      format!("{}node/{}.{}", NODE_COMPAT_URL.as_str(), specifier, ext);
+    Some(Url::parse(&module_url).unwrap())
+  } else {
+    None
+  }
+}
+
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
     "break",
@@ -143,7 +214,7 @@ pub fn node_resolve(
       Url::parse("node:module").unwrap(),
     )));
   }
-  if let Some(resolved) = compat::try_resolve_builtin_module(specifier) {
+  if let Some(resolved) = try_resolve_builtin_module(specifier) {
     return Ok(Some(ResolveResponse::Esm(resolved)));
   }
 
@@ -166,7 +237,7 @@ pub fn node_resolve(
         )));
       }
 
-      if let Some(resolved) = compat::try_resolve_builtin_module(&specifier) {
+      if let Some(resolved) = try_resolve_builtin_module(&specifier) {
         return Ok(Some(ResolveResponse::Esm(resolved)));
       } else {
         return Err(generic_error(format!("Unknown module {}", specifier)));

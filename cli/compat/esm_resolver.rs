@@ -84,7 +84,7 @@ fn node_resolve(
 ) -> Result<ResolveResponse, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
+  if let Some(resolved) = crate::node::try_resolve_builtin_module(specifier) {
     return Ok(ResolveResponse::Esm(resolved));
   }
 
@@ -99,7 +99,7 @@ fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
       if let Some(resolved) =
-        crate::compat::try_resolve_builtin_module(&specifier)
+        crate::node::try_resolve_builtin_module(&specifier)
       {
         return Ok(ResolveResponse::Esm(resolved));
       } else {
@@ -1154,7 +1154,7 @@ fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::compat::STD_URL_STR;
+  use crate::node::STD_URL_STR;
 
   fn testdir(name: &str) -> PathBuf {
     let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
