@@ -399,8 +399,6 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       serialize_u16(u16, serialize_u32, 'a);
 
       serialize_f32(f32, serialize_f64, 'a);
-      serialize_u64(u64, serialize_f64, 'a);
-      serialize_i64(i64, serialize_f64, 'a);
   }
 
   fn serialize_i32(self, v: i32) -> JsResult<'a> {
@@ -409,6 +407,14 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
 
   fn serialize_u32(self, v: u32) -> JsResult<'a> {
     Ok(v8::Integer::new_from_unsigned(&mut self.scope.borrow_mut(), v).into())
+  }
+
+  fn serialize_i64(self, v: i64) -> JsResult<'a> {
+    Ok(v8::BigInt::new_from_i64(&mut self.scope.borrow_mut(), v).into())
+  }
+
+  fn serialize_u64(self, v: u64) -> JsResult<'a> {
+    Ok(v8::BigInt::new_from_u64(&mut self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
