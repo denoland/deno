@@ -68,6 +68,13 @@ itest!(compare_globals {
   http_server: true,
 });
 
+itest!(conditional_exports {
+  args: "run --allow-read --unstable npm/conditional_exports/main.js",
+  output: "npm/conditional_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
