@@ -52,6 +52,7 @@ async fn main() -> Result<(), AnyError> {
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
+    npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
     origin_storage_dir: None,
     blob_store: BlobStore::default(),

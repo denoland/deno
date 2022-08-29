@@ -42,12 +42,13 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
-  "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
+  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
+  "print_pointer": { name: "print_buffer", parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
-    parameters: ["pointer", "usize", "pointer", "usize"],
+    parameters: ["buffer", "usize", "buffer", "usize"],
     result: "void",
   },
-  "return_buffer": { parameters: [], result: "pointer" },
+  "return_buffer": { parameters: [], result: "buffer" },
   "is_null_ptr": { parameters: ["pointer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
@@ -106,7 +107,7 @@ const dylib = Deno.dlopen(libPath, {
     result: "f64",
     nonblocking: true,
   },
-  "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
+  "fill_buffer": { parameters: ["u8", "buffer", "usize"], result: "void" },
   "sleep_nonblocking": {
     name: "sleep_blocking",
     parameters: ["u64"],
@@ -115,7 +116,7 @@ const dylib = Deno.dlopen(libPath, {
   },
   "sleep_blocking": { parameters: ["u64"], result: "void" },
   "nonblocking_buffer": {
-    parameters: ["pointer", "usize"],
+    parameters: ["buffer", "usize"],
     result: "void",
     nonblocking: true,
   },
@@ -214,7 +215,7 @@ if (!(status & (1 << 4))) {
   throw new Error("returnBuffer is not optimized");
 }
 
-dylib.symbols.print_buffer(ptr0, 8);
+dylib.symbols.print_pointer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
 const into2 = new Uint8Array(3);
@@ -239,9 +240,9 @@ console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 const emptyBuffer = new BigUint64Array(0);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer))));
 const emptySlice = into.subarray(6);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice))));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {

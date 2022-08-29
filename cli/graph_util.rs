@@ -3,8 +3,9 @@
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 
-use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -16,17 +17,11 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-
-/// Matches the `@ts-check` pragma.
-static TS_CHECK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
@@ -40,11 +35,8 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
-    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
-    /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
-    ts_check: bool,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
     checked_libs: HashSet<TsTypeLib>,
@@ -58,6 +50,7 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
@@ -80,15 +73,18 @@ impl GraphData {
           }
         }
       }
-      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
-      self.graph_imports.push(GraphImport {
-        referrer: graph_import.referrer.clone(),
-        dependencies: graph_import.dependencies.clone(),
-      });
+      self.graph_imports.push(graph_import.clone())
     }
 
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
+        continue;
+      }
+      if specifier.scheme() == "npm" {
+        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
+        let reference =
+          NpmPackageReference::from_specifier(&specifier).unwrap();
+        self.npm_packages.insert(reference.req);
         continue;
       }
       if let Some(found) = graph.redirects.get(&specifier) {
@@ -129,24 +125,9 @@ impl GraphData {
               }
             }
           }
-          let ts_check = match &media_type {
-            MediaType::JavaScript
-            | MediaType::Mjs
-            | MediaType::Cjs
-            | MediaType::Jsx => {
-              let parsed_source = module.maybe_parsed_source.as_ref().unwrap();
-              parsed_source
-                .get_leading_comments()
-                .iter()
-                .any(|c| TS_CHECK_RE.is_match(&c.text))
-            }
-            _ => false,
-          };
           let module_entry = ModuleEntry::Module {
             code,
-            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
-            ts_check,
             media_type,
             checked_libs: Default::default(),
             maybe_types,
@@ -165,6 +146,11 @@ impl GraphData {
     &self,
   ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
     self.modules.iter()
+  }
+
+  /// Gets the unique npm package requirements from all the encountered graphs.
+  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
+    self.npm_packages.iter().cloned().collect()
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.
@@ -199,6 +185,10 @@ impl GraphData {
       }
     }
     while let Some(specifier) = visiting.pop_front() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        continue; // skip analyzing npm specifiers
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => return None,
@@ -228,7 +218,13 @@ impl GraphData {
               }
             }
           }
-          for (_, dep) in dependencies.iter().rev() {
+          for (dep_specifier, dep) in dependencies.iter().rev() {
+            // todo(dsherret): ideally there would be a way to skip external dependencies
+            // in the graph here rather than specifically npm package references
+            if NpmPackageReference::from_str(dep_specifier).is_ok() {
+              continue;
+            }
+
             if !dep.is_dynamic || follow_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
               if check_types {
@@ -278,16 +274,9 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      npm_packages: self.npm_packages.clone(),
       referrer_map,
-      // TODO(nayeemrmn): Implement `Clone` on `GraphImport`.
-      graph_imports: self
-        .graph_imports
-        .iter()
-        .map(|i| GraphImport {
-          referrer: i.referrer.clone(),
-          dependencies: i.dependencies.clone(),
-        })
-        .collect(),
+      graph_imports: self.graph_imports.to_vec(),
       cjs_esm_translations: Default::default(),
     })
   }

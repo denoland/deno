@@ -21,6 +21,7 @@ async function dlint() {
     ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/http/node*.js",
+    ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
@@ -28,6 +29,7 @@ async function dlint() {
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
     ":!:cli/tests/testdata/fmt/**",
+    ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
@@ -110,7 +112,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: cmd,
+    args: [...cmd, "--", "-D", "warnings"],
     stdout: "inherit",
     stderr: "inherit",
   });

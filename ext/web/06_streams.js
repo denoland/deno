@@ -658,7 +658,9 @@
    * @returns {ReadableStream<Uint8Array>}
    */
   function readableStreamForRid(rid, unrefCallback) {
-    const stream = new ReadableStream({
+    const stream = webidl.createBranded(ReadableStream);
+    stream[_maybeRid] = rid;
+    const underlyingSource = {
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
@@ -685,9 +687,15 @@
         core.tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
-    });
+    };
+    initializeReadableStream(stream);
+    setUpReadableByteStreamControllerFromUnderlyingSource(
+      stream,
+      underlyingSource,
+      underlyingSource,
+      0,
+    );
 
-    stream[_maybeRid] = rid;
     return stream;
   }
 
@@ -714,7 +722,6 @@
     }
     return true;
   }
-
   /**
    * @template T
    * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container

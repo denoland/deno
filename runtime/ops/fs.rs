@@ -128,15 +128,18 @@ pub struct OpenOptions {
   create_new: bool,
 }
 
+#[inline]
 fn open_helper(
   state: &mut OpState,
-  args: &OpenArgs,
+  path: &str,
+  mode: Option<u32>,
+  options: Option<&OpenOptions>,
 ) -> Result<(PathBuf, std::fs::OpenOptions), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
+  let path = Path::new(path).to_path_buf();
 
   let mut open_options = std::fs::OpenOptions::new();
 
-  if let Some(mode) = args.mode {
+  if let Some(mode) = mode {
     // mode only used if creating the file on Unix
     // if not specified, defaults to 0o666
     #[cfg(unix)]
@@ -149,23 +152,36 @@ fn open_helper(
   }
 
   let permissions = state.borrow_mut::<Permissions>();
-  let options = &args.options;
 
-  if options.read {
-    permissions.read.check(&path)?;
+  match options {
+    None => {
+      permissions.read.check(&path)?;
+      open_options
+        .read(true)
+        .create(false)
+        .write(false)
+        .truncate(false)
+        .append(false)
+        .create_new(false);
+    }
+    Some(options) => {
+      if options.read {
+        permissions.read.check(&path)?;
+      }
+
+      if options.write || options.append {
+        permissions.write.check(&path)?;
+      }
+
+      open_options
+        .read(options.read)
+        .create(options.create)
+        .write(options.write)
+        .truncate(options.truncate)
+        .append(options.append)
+        .create_new(options.create_new);
+    }
   }
-
-  if options.write || options.append {
-    permissions.write.check(&path)?;
-  }
-
-  open_options
-    .read(options.read)
-    .create(options.create)
-    .write(options.write)
-    .truncate(options.truncate)
-    .append(options.append)
-    .create_new(options.create_new);
 
   Ok((path, open_options))
 }
@@ -173,9 +189,11 @@ fn open_helper(
 #[op]
 fn op_open_sync(
   state: &mut OpState,
-  args: OpenArgs,
+  path: String,
+  options: Option<OpenOptions>,
+  mode: Option<u32>,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(state, &args)?;
+  let (path, open_options) = open_helper(state, &path, mode, options.as_ref())?;
   let std_file = open_options.open(&path).map_err(|err| {
     Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
   })?;
@@ -187,9 +205,12 @@ fn op_open_sync(
 #[op]
 async fn op_open_async(
   state: Rc<RefCell<OpState>>,
-  args: OpenArgs,
+  path: String,
+  options: Option<OpenOptions>,
+  mode: Option<u32>,
 ) -> Result<ResourceId, AnyError> {
-  let (path, open_options) = open_helper(&mut state.borrow_mut(), &args)?;
+  let (path, open_options) =
+    open_helper(&mut state.borrow_mut(), &path, mode, options.as_ref())?;
   let std_file = tokio::task::spawn_blocking(move || {
     open_options.open(path.clone()).map_err(|err| {
       Error::new(err.kind(), format!("{}, open '{}'", err, path.display()))
@@ -238,7 +259,12 @@ fn op_write_file_sync(
   args: WriteFileArgs,
 ) -> Result<(), AnyError> {
   let (open_args, data) = args.into_open_args_and_data();
-  let (path, open_options) = open_helper(state, &open_args)?;
+  let (path, open_options) = open_helper(
+    state,
+    &open_args.path,
+    open_args.mode,
+    Some(&open_args.options),
+  )?;
   write_file(&path, open_options, &open_args, data)
 }
 
@@ -256,7 +282,12 @@ async fn op_write_file_async(
     None => None,
   };
   let (open_args, data) = args.into_open_args_and_data();
-  let (path, open_options) = open_helper(&mut *state.borrow_mut(), &open_args)?;
+  let (path, open_options) = open_helper(
+    &mut *state.borrow_mut(),
+    &open_args.path,
+    open_args.mode,
+    Some(&open_args.options),
+  )?;
   let write_future = tokio::task::spawn_blocking(move || {
     write_file(&path, open_options, &open_args, data)
   });

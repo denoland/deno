@@ -2,28 +2,32 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use serde::Serialize;
 
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
 
 use super::cache::NpmCache;
-use super::resolution::NpmVersionMatcher;
+use super::version_req::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
@@ -35,7 +39,7 @@ pub struct NpmDependencyEntry {
   pub version_req: NpmVersionReq,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -63,8 +67,13 @@ impl NpmPackageVersionInfo {
         } else {
           (entry.0.clone(), entry.1.clone())
         };
-      let version_req = NpmVersionReq::parse(&version_req)
-        .with_context(|| format!("Dependency: {}", bare_specifier))?;
+      let version_req =
+        NpmVersionReq::parse(&version_req).with_context(|| {
+          format!(
+            "error parsing version requirement for dependency: {}@{}",
+            bare_specifier, version_req
+          )
+        })?;
       Ok(NpmDependencyEntry {
         bare_specifier,
         name,
@@ -94,23 +103,49 @@ pub struct NpmRegistryApi {
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
+  cache_setting: CacheSetting,
 }
 
 impl NpmRegistryApi {
   pub fn default_url() -> Url {
-    Url::parse("https://registry.npmjs.org").unwrap()
+    let env_var_name = "DENO_NPM_REGISTRY";
+    if let Ok(registry_url) = std::env::var(env_var_name) {
+      // ensure there is a trailing slash for the directory
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => url,
+        Err(err) => {
+          eprintln!("{}: Invalid {} environment variable. Please provide a valid url.\n\n{:#}",
+          colors::red_bold("error"),
+          env_var_name, err);
+          std::process::exit(1);
+        }
+      }
+    } else {
+      Url::parse("https://registry.npmjs.org").unwrap()
+    }
   }
 
-  pub fn new(cache: NpmCache, reload: bool) -> Self {
-    Self::from_base(Self::default_url(), cache, reload)
+  pub fn new(
+    cache: NpmCache,
+    reload: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
+    Self::from_base(Self::default_url(), cache, reload, cache_setting)
   }
 
-  pub fn from_base(base_url: Url, cache: NpmCache, reload: bool) -> Self {
+  pub fn from_base(
+    base_url: Url,
+    cache: NpmCache,
+    reload: bool,
+    cache_setting: CacheSetting,
+  ) -> Self {
     Self {
       base_url,
       cache,
       mem_cache: Default::default(),
       reload,
+      cache_setting,
     }
   }
 
@@ -125,7 +160,7 @@ impl NpmRegistryApi {
     let maybe_package_info = self.maybe_package_info(name).await?;
     match maybe_package_info {
       Some(package_info) => Ok(package_info),
-      None => bail!("package '{}' does not exist", name),
+      None => bail!("npm package '{}' does not exist", name),
     }
   }
 
@@ -142,6 +177,7 @@ impl NpmRegistryApi {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
+
       if maybe_package_info.is_none() {
         maybe_package_info = self
           .load_package_info_from_registry(name)
@@ -170,13 +206,14 @@ impl NpmRegistryApi {
     &self,
     name: &str,
   ) -> Option<NpmPackageInfo> {
-    let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = fs::read_to_string(file_cache_path).ok()?;
-    match serde_json::from_str(&file_text) {
-      Ok(result) => Some(result),
+    match self.load_file_cached_package_info_result(name) {
+      Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
-          panic!("could not deserialize: {:#}", err);
+          panic!(
+            "error loading cached npm package info for {}: {:#}",
+            name, err
+          );
         } else {
           None
         }
@@ -184,22 +221,73 @@ impl NpmRegistryApi {
     }
   }
 
+  fn load_file_cached_package_info_result(
+    &self,
+    name: &str,
+  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    let file_cache_path = self.get_package_file_cache_path(name);
+    let file_text = match fs::read_to_string(file_cache_path) {
+      Ok(file_text) => file_text,
+      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+      Err(err) => return Err(err.into()),
+    };
+    Ok(serde_json::from_str(&file_text)?)
+  }
+
   fn save_package_info_to_file_cache(
     &self,
     name: &str,
     package_info: &NpmPackageInfo,
   ) {
+    if let Err(err) =
+      self.save_package_info_to_file_cache_result(name, package_info)
+    {
+      if cfg!(debug_assertions) {
+        panic!(
+          "error saving cached npm package info for {}: {:#}",
+          name, err
+        );
+      }
+    }
+  }
+
+  fn save_package_info_to_file_cache_result(
+    &self,
+    name: &str,
+    package_info: &NpmPackageInfo,
+  ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = serde_json::to_string_pretty(&package_info).unwrap();
-    let _ignore =
-      fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM);
+    let file_text = serde_json::to_string(&package_info)?;
+    std::fs::create_dir_all(&file_cache_path.parent().unwrap())?;
+    fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    Ok(())
   }
 
   async fn load_package_info_from_registry(
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
-    let response = match reqwest::get(self.get_package_url(name)).await {
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+          name
+        )
+      )
+      );
+    }
+
+    let package_url = self.get_package_url(name);
+
+    log::log!(
+      log::Level::Info,
+      "{} {}",
+      colors::green("Download"),
+      package_url,
+    );
+
+    let response = match reqwest::get(package_url).await {
       Ok(response) => response,
       Err(err) => {
         // attempt to use the local cache
@@ -214,7 +302,16 @@ impl NpmRegistryApi {
     if response.status() == 404 {
       Ok(None)
     } else if !response.status().is_success() {
-      bail!("Bad response: {:?}", response.status());
+      let status = response.status();
+      let maybe_response_text = response.text().await.ok();
+      bail!(
+        "Bad response: {:?}{}",
+        status,
+        match maybe_response_text {
+          Some(text) => format!("\n\n{}", text),
+          None => String::new(),
+        }
+      );
     } else {
       let bytes = response.bytes().await?;
       let package_info = serde_json::from_slice(&bytes)?;
@@ -230,94 +327,5 @@ impl NpmRegistryApi {
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
     let name_folder_path = self.cache.package_name_folder(name, &self.base_url);
     name_folder_path.join("registry.json")
-  }
-}
-
-/// A version requirement found in an npm package's dependencies.
-pub struct NpmVersionReq {
-  raw_text: String,
-  comparators: Vec<semver::VersionReq>,
-}
-
-impl NpmVersionReq {
-  pub fn parse(text: &str) -> Result<NpmVersionReq, AnyError> {
-    // semver::VersionReq doesn't support spaces between comparators
-    // and it doesn't support using || for "OR", so we pre-process
-    // the version requirement in order to make this work.
-    let raw_text = text.to_string();
-    let part_texts = text.split("||").collect::<Vec<_>>();
-    let mut comparators = Vec::with_capacity(part_texts.len());
-    for part in part_texts {
-      comparators.push(npm_version_req_parse_part(part)?);
-    }
-    Ok(NpmVersionReq {
-      raw_text,
-      comparators,
-    })
-  }
-}
-
-impl NpmVersionMatcher for NpmVersionReq {
-  fn matches(&self, version: &semver::Version) -> bool {
-    self.comparators.iter().any(|c| c.matches(version))
-  }
-
-  fn version_text(&self) -> String {
-    self.raw_text.to_string()
-  }
-}
-
-fn npm_version_req_parse_part(
-  text: &str,
-) -> Result<semver::VersionReq, AnyError> {
-  let text = text.trim();
-  let mut chars = text.chars().enumerate().peekable();
-  let mut final_text = String::new();
-  while chars.peek().is_some() {
-    let (i, c) = chars.next().unwrap();
-    let is_greater_or_less_than = c == '<' || c == '>';
-    if is_greater_or_less_than || c == '=' {
-      if i > 0 {
-        final_text = final_text.trim().to_string();
-        // add a comma to make semver::VersionReq parse this
-        final_text.push(',');
-      }
-      final_text.push(c);
-      let next_char = chars.peek().map(|(_, c)| c);
-      if is_greater_or_less_than && matches!(next_char, Some('=')) {
-        let c = chars.next().unwrap().1; // skip
-        final_text.push(c);
-      }
-    } else {
-      final_text.push(c);
-    }
-  }
-  Ok(semver::VersionReq::parse(&final_text)?)
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  struct NpmVersionReqTester(NpmVersionReq);
-
-  impl NpmVersionReqTester {
-    fn matches(&self, version: &str) -> bool {
-      self.0.matches(&semver::Version::parse(version).unwrap())
-    }
-  }
-
-  #[test]
-  pub fn npm_version_req_ranges() {
-    let tester = NpmVersionReqTester(
-      NpmVersionReq::parse(">= 2.1.2 < 3.0.0 || 5.x").unwrap(),
-    );
-    assert!(!tester.matches("2.1.1"));
-    assert!(tester.matches("2.1.2"));
-    assert!(tester.matches("2.9.9"));
-    assert!(!tester.matches("3.0.0"));
-    assert!(tester.matches("5.0.0"));
-    assert!(tester.matches("5.1.0"));
-    assert!(!tester.matches("6.1.0"));
   }
 }

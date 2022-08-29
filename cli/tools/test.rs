@@ -723,7 +723,8 @@ async fn test_specifier(
       stdout: StdioPipe::File(sender.stdout()),
       stderr: StdioPipe::File(sender.stderr()),
     },
-  );
+  )
+  .await?;
 
   worker.run_test_specifier(mode).await
 }
@@ -752,7 +753,7 @@ fn extract_files_from_regex_blocks(
           return None;
         }
 
-        match attributes.get(0) {
+        match attributes.first() {
           Some(&"js") => MediaType::JavaScript,
           Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,

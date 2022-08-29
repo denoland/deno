@@ -6,12 +6,15 @@ use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 
 use super::tarball::verify_and_extract_tarball;
@@ -37,20 +40,23 @@ impl Default for ReadonlyNpmCache {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap())
+    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap()).unwrap()
   }
 }
 
 impl ReadonlyNpmCache {
-  pub fn new(root_dir: PathBuf) -> Self {
+  pub fn new(root_dir: PathBuf) -> Result<Self, AnyError> {
+    std::fs::create_dir_all(&root_dir)
+      .with_context(|| format!("Error creating {}", root_dir.display()))?;
+    let root_dir = crate::fs_util::canonicalize_path(&root_dir)?;
     let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
-    Self {
+    Ok(Self {
       root_dir,
       root_dir_url,
-    }
+    })
   }
 
-  pub fn from_deno_dir(dir: &DenoDir) -> Self {
+  pub fn from_deno_dir(dir: &DenoDir) -> Result<Self, AnyError> {
     Self::new(dir.root.join("npm"))
   }
 
@@ -65,16 +71,14 @@ impl ReadonlyNpmCache {
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
-    let mut dir = self
-      .root_dir
-      .join(fs_util::root_url_to_safe_local_dirname(registry_url));
+    let mut dir = self.registry_folder(registry_url);
     let mut parts = name.split('/').map(Cow::Borrowed).collect::<Vec<_>>();
     // package names were not always enforced to be lowercase and so we need
     // to ensure package names, which are therefore case sensitive, are stored
     // on a case insensitive file system to not have conflicts. We do this by
     // first putting it in a "_" folder then hashing the package name.
     if name.to_lowercase() != name {
-      let mut last_part = parts.last_mut().unwrap();
+      let last_part = parts.last_mut().unwrap();
       *last_part = Cow::Owned(crate::checksum::gen(&[last_part.as_bytes()]));
       // We can't just use the hash as part of the directory because it may
       // have a collision with an actual package name in case someone wanted
@@ -88,6 +92,12 @@ impl ReadonlyNpmCache {
       dir = dir.join(&*part);
     }
     dir
+  }
+
+  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+    self
+      .root_dir
+      .join(fs_util::root_url_to_safe_local_dirname(registry_url))
   }
 
   pub fn resolve_package_id_from_specifier(
@@ -144,19 +154,24 @@ impl ReadonlyNpmCache {
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Clone, Debug)]
-pub struct NpmCache(ReadonlyNpmCache);
+pub struct NpmCache {
+  readonly: ReadonlyNpmCache,
+  cache_setting: CacheSetting,
+}
 
 impl NpmCache {
-  pub fn new(root_dir: PathBuf) -> Self {
-    Self(ReadonlyNpmCache::new(root_dir))
-  }
-
-  pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self(ReadonlyNpmCache::from_deno_dir(dir))
+  pub fn from_deno_dir(
+    dir: &DenoDir,
+    cache_setting: CacheSetting,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
+      cache_setting,
+    })
   }
 
   pub fn as_readonly(&self) -> ReadonlyNpmCache {
-    self.0.clone()
+    self.readonly.clone()
   }
 
   pub async fn ensure_package(
@@ -165,13 +180,22 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    let package_folder = self.0.package_folder(id, registry_url);
+    let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
     {
       return Ok(());
+    } else if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotCached",
+        format!(
+          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+          id.name
+        )
+      )
+      );
     }
 
     log::log!(
@@ -186,7 +210,16 @@ impl NpmCache {
     if response.status() == 404 {
       bail!("Could not find npm package tarball at: {}", dist.tarball);
     } else if !response.status().is_success() {
-      bail!("Bad response: {:?}", response.status());
+      let status = response.status();
+      let maybe_response_text = response.text().await.ok();
+      bail!(
+        "Bad response: {:?}{}",
+        status,
+        match maybe_response_text {
+          Some(text) => format!("\n\n{}", text),
+          None => String::new(),
+        }
+      );
     } else {
       let bytes = response.bytes().await?;
 
@@ -221,11 +254,15 @@ impl NpmCache {
     id: &NpmPackageId,
     registry_url: &Url,
   ) -> PathBuf {
-    self.0.package_folder(id, registry_url)
+    self.readonly.package_folder(id, registry_url)
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
-    self.0.package_name_folder(name, registry_url)
+    self.readonly.package_name_folder(name, registry_url)
+  }
+
+  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+    self.readonly.registry_folder(registry_url)
   }
 
   pub fn resolve_package_id_from_specifier(
@@ -234,7 +271,7 @@ impl NpmCache {
     registry_url: &Url,
   ) -> Result<NpmPackageId, AnyError> {
     self
-      .0
+      .readonly
       .resolve_package_id_from_specifier(specifier, registry_url)
   }
 }
@@ -242,7 +279,6 @@ impl NpmCache {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
-  use std::path::PathBuf;
 
   use super::ReadonlyNpmCache;
   use crate::npm::NpmPackageId;
@@ -250,7 +286,7 @@ mod test {
   #[test]
   fn should_get_lowercase_package_folder() {
     let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
-    let cache = ReadonlyNpmCache::new(root_dir.clone());
+    let cache = ReadonlyNpmCache::new(root_dir.clone()).unwrap();
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
 
     // all lowercase should be as-is
@@ -273,7 +309,7 @@ mod test {
   fn should_handle_non_all_lowercase_package_names() {
     // it was possible at one point for npm packages to not just be lowercase
     let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
-    let cache = ReadonlyNpmCache::new(root_dir.clone());
+    let cache = ReadonlyNpmCache::new(root_dir.clone()).unwrap();
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
     let json_uppercase_hash =
       "db1a21a0bc2ef8fbe13ac4cf044e8c9116d29137d5ed8b916ab63dcb2d4290df";

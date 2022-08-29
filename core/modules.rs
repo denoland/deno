@@ -1346,7 +1346,7 @@ import "/a.js";
         Err(..) => return Err(MockError::ResolveErr.into()),
       };
 
-      if mock_source_code(&output_specifier.to_string()).is_some() {
+      if mock_source_code(output_specifier.as_ref()).is_some() {
         Ok(output_specifier)
       } else {
         Err(MockError::ResolveErr.into())
