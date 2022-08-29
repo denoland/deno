@@ -1369,7 +1369,7 @@ async fn op_flash_next_async(
   0
 }
 
-// Syncrhonous version of op_flash_next_async. Under heavy load,
+// Synchronous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 //
 // perf: please do not add any arguments to this op. With optimizations enabled,
