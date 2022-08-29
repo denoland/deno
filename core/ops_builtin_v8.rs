@@ -214,12 +214,9 @@ fn op_create_host_object<'a>(
 #[op(v8)]
 fn op_encode<'a>(
   scope: &mut v8::HandleScope<'a>,
-  text: serde_v8::Value<'a>,
+  text: String,
 ) -> Result<serde_v8::Value<'a>, Error> {
-  let text = v8::Local::<v8::String>::try_from(text.v8_value)
-    .map_err(|_| type_error("Invalid argument"))?;
-  let text_str = serde_v8::to_utf8(text, scope);
-  let bytes = text_str.into_bytes();
+  let bytes = text.into_bytes();
   let len = bytes.len();
   let backing_store =
     v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();

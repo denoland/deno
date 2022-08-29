@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use serde::de::{self, Visitor};
 use serde::Deserialize;
@@ -704,6 +706,7 @@ fn bigint_to_f64(b: v8::Local<v8::BigInt>) -> f64 {
   sign * x
 }
 
+#[inline]
 pub fn to_utf8(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,
@@ -711,6 +714,39 @@ pub fn to_utf8(
   to_utf8_fast(s, scope).unwrap_or_else(|| to_utf8_slow(s, scope))
 }
 
+static mut UTF8_BUF: [u8; 1024 * 64] = [0; 1024 * 64];
+
+/// # Safety
+/// This function must only be called from synchronous ops.
+#[inline]
+pub unsafe fn to_utf8_borrowed<'a, 'b>(
+  s: v8::Local<v8::String>,
+  scope: &'a mut v8::HandleScope,
+) -> Cow<'b, str> {
+  let len = s.length();
+  if len > 1024 * 64 {
+    return Cow::Owned(to_utf8(s, scope));
+  }
+  let buf = &mut UTF8_BUF;
+  let mut nchars = 0;
+  let length = s.write_utf8(
+    scope,
+    // SAFETY: we're essentially providing the raw internal slice/buffer owned by the Vec
+    // which fulfills all of from_raw_parts_mut's safety requirements besides "initialization"
+    // and since we're operating on a [u8] not [T] we can safely assume the slice's values
+    // are sufficiently "initialized" for writes
+    buf,
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  ); 
+  if nchars < len {
+    return Cow::Owned(to_utf8(s, scope));
+  }
+  Cow::Borrowed(std::str::from_utf8_unchecked(&buf[..length]))
+}
+
+#[inline]
 fn to_utf8_fast(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,
@@ -742,6 +778,7 @@ fn to_utf8_fast(
   }
 }
 
+#[inline]
 fn to_utf8_slow(
   s: v8::Local<v8::String>,
   scope: &mut v8::HandleScope,

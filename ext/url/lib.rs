@@ -12,6 +12,7 @@ use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -57,7 +58,7 @@ type UrlParts = String;
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
 pub fn op_url_parse(
-  href: String,
+  href: Cow<'_, str>,
   base_href: Option<String>,
 ) -> Result<UrlParts, AnyError> {
   let base_url = base_href
@@ -88,7 +89,7 @@ pub enum UrlSetter {
 
 #[op]
 pub fn op_url_reparse(
-  href: String,
+  href: Cow<'_, str>,
   setter_opts: (u8, String),
 ) -> Result<UrlParts, AnyError> {
   let mut url = Url::options()

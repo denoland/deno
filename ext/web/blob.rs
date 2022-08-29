@@ -6,6 +6,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -252,7 +253,7 @@ pub fn op_blob_create_object_url(
 #[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
-  url: String,
+  url: Cow<'_, str>,
 ) -> Result<(), AnyError> {
   let url = Url::parse(&url)?;
   let blob_store = state.borrow::<BlobStore>();
@@ -275,7 +276,7 @@ pub struct ReturnBlobPart {
 #[op]
 pub fn op_blob_from_object_url(
   state: &mut deno_core::OpState,
-  url: String,
+  url: Cow<'_, str>,
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;
   if url.scheme() != "blob" {
