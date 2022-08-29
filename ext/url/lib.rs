@@ -2,15 +2,17 @@
 
 mod urlpattern;
 
-use deno_core::OpState;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::Extension;
+use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::mem::transmute;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -43,10 +45,20 @@ pub fn init() -> Extension {
 
 struct UrlOffsetBuf(*mut u32);
 
-#[op]
-pub fn op_url_set_buf(state: &mut OpState, buf: ZeroCopyBuf) {
-  assert_eq!(buf.len(), 32);
-  state.put(UrlOffsetBuf(buf.as_ptr() as *mut u32));
+#[op(v8)]
+pub fn op_url_set_buf(
+  scope: &mut v8::HandleScope,
+  state: &mut OpState,
+  value: serde_v8::Value,
+) -> Result<(), AnyError> {
+  let ab: v8::Local<v8::ArrayBuffer> = value.v8_value.try_into()?;
+  let len = ab.byte_length();
+  assert_eq!(len, 32);
+  let store = ab.get_backing_store();
+
+  state.put(v8::Global::new(scope, ab)); // Prevent GC from collecting the ArrayBuffer.
+  state.put(UrlOffsetBuf(&store as *const _ as *mut u32));
+  Ok(())
 }
 
 #[allow(dead_code)]
@@ -87,7 +99,11 @@ const _: () = {
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
-pub fn op_url_parse_with_base(state: &mut OpState, href: String, base_href: String) -> u32 {
+pub fn op_url_parse_with_base(
+  state: &mut OpState,
+  href: String,
+  base_href: String,
+) -> u32 {
   let base_url = match Url::parse(&base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
@@ -115,10 +131,16 @@ pub fn op_url_parse(state: &mut OpState, href: String) -> u32 {
 }
 
 #[inline]
-fn parse_url(state: &mut OpState, href: String, base_href: Option<&Url>) -> u32 {
+fn parse_url(
+  state: &mut OpState,
+  href: String,
+  base_href: Option<&Url>,
+) -> u32 {
   let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   match Url::options().base_url(base_href).parse(&href) {
     Ok(url) => {
+      // SAFETY: Layout of `Url` and `InnerUrl` are the same.
+      // TODO(@littledivy): Safer way to get internal components from rust-url.
       let inner_url: InnerUrl = unsafe { transmute(url) };
 
       // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer
@@ -161,7 +183,12 @@ pub enum UrlSetter {
 }
 
 #[op]
-pub fn op_url_reparse(state: &mut OpState, href: String, setter: u8, setter_value: String) -> u32 {
+pub fn op_url_reparse(
+  state: &mut OpState,
+  href: String,
+  setter: u8,
+  setter_value: String,
+) -> u32 {
   let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   let mut url = match Url::options().parse(&href) {
     Ok(url) => url,
@@ -201,6 +228,8 @@ pub fn op_url_reparse(state: &mut OpState, href: String, setter: u8, setter_valu
 
   match e {
     Ok(_) => {
+      // SAFETY: Layout of `Url` and `InnerUrl` are the same.
+      // TODO(@littledivy): Safer way to get internal components from rust-url.
       let inner_url: InnerUrl = unsafe { transmute(url) };
 
       // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer

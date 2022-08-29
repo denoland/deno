@@ -19,6 +19,7 @@
     ArrayPrototypeSort,
     ArrayPrototypeSplice,
     ObjectKeys,
+    Uint32Array,
     SafeArrayIterator,
     StringPrototypeSlice,
     Symbol,
@@ -45,7 +46,7 @@
   function opUrlReparse(href, setter, value) {
     if (!componentsBuf) {
       componentsBuf = new Uint32Array(8);
-      core.ops.op_url_set_buf(componentsBuf);
+      core.ops.op_url_set_buf(componentsBuf.buffer);
     }
 
     const status = ops.op_url_reparse(href, setter, value);
@@ -55,7 +56,7 @@
   function opUrlParse(href, maybeBase) {
     if (!componentsBuf) {
       componentsBuf = new Uint32Array(8);
-      core.ops.op_url_set_buf(componentsBuf);
+      core.ops.op_url_set_buf(componentsBuf.buffer);
     }
 
     let status;
@@ -387,6 +388,11 @@
       }
     }
 
+    #hasAuthority() {
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
+      return this.#serialization.slice(this.#schemeEnd).startsWith("://");
+    }
+
     /** @return {string} */
     get hash() {
       webidl.assertBranded(this, URLPrototype);
@@ -491,7 +497,7 @@
         scheme === "ws" || scheme === "wss"
       ) {
         if (this.port) {
-          return `${scheme}://${this.host}/${this.port}`;
+          return `${scheme}://${this.host}:${this.port}`;
         } else {
           return `${scheme}://${this.host}`;
         }
@@ -524,11 +530,6 @@
         );
       }
       return "";
-    }
-
-    #hasAuthority() {
-      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
-      return this.#serialization.slice(this.#schemeEnd).startsWith("://");
     }
 
     /** @param {string} value */
