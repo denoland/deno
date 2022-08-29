@@ -1144,7 +1144,7 @@ where
 }
 
 impl JsRuntimeState {
-  fn inspector(&self) -> Rc<RefCell<JsRuntimeInspector>> {
+  pub(crate) fn inspector(&self) -> Rc<RefCell<JsRuntimeInspector>> {
     self.inspector.as_ref().unwrap().clone()
   }
 
