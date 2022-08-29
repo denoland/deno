@@ -22,6 +22,7 @@ pub fn err_invalid_module_specifier(
   type_error(msg)
 }
 
+#[allow(dead_code)]
 pub fn err_invalid_package_config(
   path: &str,
   maybe_base: Option<String>,
@@ -70,6 +71,7 @@ pub fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
   generic_error(msg)
 }
 
+#[allow(dead_code)]
 pub fn err_invalid_package_target(
   pkg_path: String,
   key: String,
@@ -98,6 +100,7 @@ pub fn err_invalid_package_target(
   generic_error(msg)
 }
 
+#[allow(dead_code)]
 pub fn err_package_path_not_exported(
   pkg_path: String,
   subpath: String,
@@ -121,6 +124,7 @@ pub fn err_package_path_not_exported(
   generic_error(msg)
 }
 
+#[allow(dead_code)]
 pub fn err_package_import_not_defined(
   specifier: &str,
   package_path: Option<String>,

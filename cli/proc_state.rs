@@ -10,7 +10,6 @@ use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::compat;
-use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
 use crate::emit;
 use crate::emit::emit_parsed_source;
@@ -186,9 +185,6 @@ impl ProcState {
 
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
     // created below
-    let node_resolver = NodeEsmResolver::new(
-      maybe_import_map.clone().map(ImportMapResolver::new),
-    );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
@@ -196,9 +192,7 @@ impl ProcState {
       .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if cli_options.compat() {
-      Some(Arc::new(node_resolver))
-    } else if let Some(jsx_resolver) = maybe_jsx_resolver {
+    > = if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
       // the default Deno explicit import resolution.
       Some(Arc::new(jsx_resolver))
@@ -284,7 +278,7 @@ impl ProcState {
     // One might argue that this is a code smell, and I would agree. However
     // due to flux in "Node compatibility" it's not clear where it should be
     // decided what `ModuleKind` is decided for root specifier.
-    let roots = roots
+    let roots: Vec<(deno_core::url::Url, deno_graph::ModuleKind)> = roots
       .into_iter()
       .map(|r| {
         if let Some(resolver) = &maybe_resolver {
@@ -304,13 +298,6 @@ impl ProcState {
 
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
-    let roots = if self.options.compat() {
-      let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
-      r.extend(roots);
-      r
-    } else {
-      roots
-    };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
