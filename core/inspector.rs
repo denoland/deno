@@ -438,6 +438,7 @@ struct InspectorWakerInner {
   isolate_handle: v8::IsolateHandle,
 }
 
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for InspectorWakerInner {}
 
 struct InspectorWaker(Mutex<InspectorWakerInner>);

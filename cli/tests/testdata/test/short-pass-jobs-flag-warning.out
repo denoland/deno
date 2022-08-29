@@ -1,7 +1,6 @@
 Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable.
 Check [WILDCARD]/test/short-pass.ts
-running 1 test from ./test/short-pass.ts
-test ... ok ([WILDCARD])
+./test/short-pass.ts => test ... ok ([WILDCARD])
 
 ok | 1 passed | 0 failed ([WILDCARD])
 

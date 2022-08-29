@@ -3,6 +3,7 @@
 
 // Run using cargo test or `--v8-options=--allow-natives-syntax`
 
+import { assertEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
 } from "../../test_util/std/testing/asserts.ts";
@@ -16,10 +17,6 @@ const [libPrefix, libSuffix] = {
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
-
-function ptr(v) {
-  return Deno.UnsafePointer.of(v);
-}
 
 // dlopen shouldn't panic
 assertThrows(() => {
@@ -45,12 +42,13 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
-  "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
+  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
+  "print_pointer": { name: "print_buffer", parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
-    parameters: ["pointer", "usize", "pointer", "usize"],
+    parameters: ["buffer", "usize", "buffer", "usize"],
     result: "void",
   },
-  "return_buffer": { parameters: [], result: "pointer" },
+  "return_buffer": { parameters: [], result: "buffer" },
   "is_null_ptr": { parameters: ["pointer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
@@ -109,7 +107,7 @@ const dylib = Deno.dlopen(libPath, {
     result: "f64",
     nonblocking: true,
   },
-  "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
+  "fill_buffer": { parameters: ["u8", "buffer", "usize"], result: "void" },
   "sleep_nonblocking": {
     name: "sleep_blocking",
     parameters: ["u64"],
@@ -118,7 +116,7 @@ const dylib = Deno.dlopen(libPath, {
   },
   "sleep_blocking": { parameters: ["u64"], result: "void" },
   "nonblocking_buffer": {
-    parameters: ["pointer", "usize"],
+    parameters: ["buffer", "usize"],
     result: "void",
     nonblocking: true,
   },
@@ -186,6 +184,12 @@ const dylib = Deno.dlopen(libPath, {
   "static_ptr": {
     type: "pointer",
   },
+  /**
+   * Invalid UTF-8 characters, buffer of length 14
+   */
+  "static_char": {
+    type: "pointer",
+  },
 });
 const { symbols } = dylib;
 
@@ -211,7 +215,7 @@ if (!(status & (1 << 4))) {
   throw new Error("returnBuffer is not optimized");
 }
 
-dylib.symbols.print_buffer(ptr0, 8);
+dylib.symbols.print_pointer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
 const into2 = new Uint8Array(3);
@@ -236,9 +240,9 @@ console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 const emptyBuffer = new BigUint64Array(0);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer))));
 const emptySlice = into.subarray(6);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice))));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
@@ -413,7 +417,7 @@ const throwCallback = new Deno.UnsafeCallback({
 
 assertThrows(
   () => {
-    dylib.symbols.call_fn_ptr(ptr(throwCallback));
+    dylib.symbols.call_fn_ptr(throwCallback.pointer);
   },
   TypeError,
   "hi",
@@ -421,13 +425,13 @@ assertThrows(
 
 const { call_stored_function } = dylib.symbols;
 
-dylib.symbols.call_fn_ptr(ptr(logCallback));
-dylib.symbols.call_fn_ptr_many_parameters(ptr(logManyParametersCallback));
-dylib.symbols.call_fn_ptr_return_u8(ptr(returnU8Callback));
-dylib.symbols.call_fn_ptr_return_buffer(ptr(returnBufferCallback));
-dylib.symbols.store_function(ptr(logCallback));
+dylib.symbols.call_fn_ptr(logCallback.pointer);
+dylib.symbols.call_fn_ptr_many_parameters(logManyParametersCallback.pointer);
+dylib.symbols.call_fn_ptr_return_u8(returnU8Callback.pointer);
+dylib.symbols.call_fn_ptr_return_buffer(returnBufferCallback.pointer);
+dylib.symbols.store_function(logCallback.pointer);
 call_stored_function();
-dylib.symbols.store_function_2(ptr(add10Callback));
+dylib.symbols.store_function_2(add10Callback.pointer);
 dylib.symbols.call_stored_function_2(20);
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -436,7 +440,7 @@ const nestedCallback = new Deno.UnsafeCallback(
     dylib.symbols.call_stored_function_2(10);
   },
 );
-dylib.symbols.store_function(ptr(nestedCallback));
+dylib.symbols.store_function(nestedCallback.pointer);
 
 dylib.symbols.store_function(null);
 dylib.symbols.store_function_2(null);
@@ -450,14 +454,14 @@ const addToFooCallback = new Deno.UnsafeCallback({
 // Test thread safe callbacks
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(addToFooCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
 addToFooCallback.unref();
 logCallback.ref();
-await dylib.symbols.call_fn_ptr_thread_safe(ptr(logCallback));
+await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
 logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
-await dylib.symbols.call_fn_ptr_return_u8_thread_safe(ptr(returnU8Callback));
+await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
@@ -477,6 +481,23 @@ console.log("uint32Array[0]:", uint32Array[0]);
 uint32Array[0] = 55; // MUTATES!
 console.log("uint32Array[0] after mutation:", uint32Array[0]);
 console.log("Static ptr value after mutation:", view.getUint32());
+
+// Test non-UTF-8 characters
+
+const charView = new Deno.UnsafePointerView(dylib.symbols.static_char);
+
+const charArrayBuffer = charView.getArrayBuffer(14);
+const uint8Array = new Uint8Array(charArrayBuffer);
+assertEquals([...uint8Array], [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00
+]);
+
+try {
+  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
+} catch (_err) {
+  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+}
 
 (function cleanup() {
   dylib.close();

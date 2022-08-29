@@ -34,18 +34,22 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::client_async;
+use tokio_tungstenite::client_async_with_config;
 use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::tungstenite::protocol::Role;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -66,26 +70,36 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
+
 pub enum WebSocketStreamType {
   Client {
-    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<WsStream>>,
+    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
   },
   Server {
-    tx: AsyncRefCell<
-      SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>,
-    >,
-    rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
+    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
   },
 }
 
+pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
+
 pub async fn ws_create_server_stream(
   state: &Rc<RefCell<OpState>>,
-  transport: hyper::upgrade::Upgraded,
+  transport: Pin<Box<dyn Upgraded>>,
 ) -> Result<ResourceId, AnyError> {
-  let ws_stream =
-    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let ws_stream = WebSocketStream::from_raw_socket(
+    transport,
+    Role::Server,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  )
+  .await;
   let (ws_tx, ws_rx) = ws_stream.split();
 
   let ws_resource = WsStreamResource {
@@ -322,8 +336,16 @@ where
     _ => unreachable!(),
   };
 
-  let client = client_async(request, socket);
-  let (stream, response): (WsStream, Response) =
+  let client = client_async_with_config(
+    request,
+    socket,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  );
+  let (stream, response): (ClientWsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
       client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {

@@ -9,8 +9,7 @@
       "insertText": ".",
       "commitCharacters": [
         "\"",
-        "'",
-        "/"
+        "'"
       ]
     },
     {
@@ -21,8 +20,7 @@
       "insertText": "..",
       "commitCharacters": [
         "\"",
-        "'",
-        "/"
+        "'"
       ]
     },
     {
@@ -42,7 +40,12 @@
           }
         },
         "newText": "http://localhost:4545"
-      }
+      },
+      "commitCharacters": [
+        "\"",
+        "'",
+        "/"
+      ]
     }
   ]
 }

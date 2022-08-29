@@ -304,12 +304,6 @@ itest!(steps_passing_steps {
   output: "test/steps/passing_steps.out",
 });
 
-itest!(steps_passing_steps_concurrent {
-  args: "test --jobs=2 test/steps/passing_steps.ts",
-  exit_code: 0,
-  output: "test/steps/passing_steps.out",
-});
-
 itest!(steps_failing_steps {
   args: "test test/steps/failing_steps.ts",
   exit_code: 1,
@@ -445,5 +439,11 @@ itest!(check_local_by_default2 {
 itest!(non_error_thrown {
   args: "test --quiet test/non_error_thrown.ts",
   output: "test/non_error_thrown.out",
+  exit_code: 1,
+});
+
+itest!(parallel_output {
+  args: "test --parallel --reload test/parallel_output.ts",
+  output: "test/parallel_output.out",
   exit_code: 1,
 });

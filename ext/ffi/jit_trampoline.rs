@@ -32,8 +32,8 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
     NativeType::I64 => "int64_t",
     NativeType::ISize => "intptr_t",
     NativeType::USize => "uintptr_t",
-    NativeType::Pointer => "struct FastApiTypedArray*",
-    NativeType::Function => "void*",
+    NativeType::Buffer => "struct FastApiTypedArray*",
+    NativeType::Function | NativeType::Pointer => "void*",
   }
 }
 
@@ -52,7 +52,7 @@ fn native_to_c(ty: &NativeType) -> &'static str {
     NativeType::I64 => "int64_t",
     NativeType::ISize => "intptr_t",
     NativeType::USize => "uintptr_t",
-    NativeType::Pointer | NativeType::Function => "void*",
+    NativeType::Pointer | NativeType::Buffer | NativeType::Function => "void*",
   }
 }
 
@@ -97,7 +97,7 @@ pub(crate) fn codegen(sym: &crate::Symbol) -> String {
       if i > 0 {
         call_s += ", ";
       }
-      if matches!(ty, NativeType::Pointer) {
+      if matches!(ty, NativeType::Buffer) {
         let _ = write!(call_s, "p{i}->data");
       } else {
         let _ = write!(call_s, "p{i}");
@@ -195,14 +195,14 @@ mod tests {
       }\n\n",
     );
     assert_codegen(
-      codegen(vec![NativeType::Pointer, NativeType::U32], NativeType::U32),
+      codegen(vec![NativeType::Buffer, NativeType::U32], NativeType::U32),
       "extern uint32_t func(void* p0, uint32_t p1);\n\n\
       uint32_t func_trampoline(void* recv, struct FastApiTypedArray* p0, uint32_t p1) {\
         \n  return func(p0->data, p1);\n\
       }\n\n",
     );
     assert_codegen(
-      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U32),
+      codegen(vec![NativeType::Buffer, NativeType::Buffer], NativeType::U32),
       "extern uint32_t func(void* p0, void* p1);\n\n\
       uint32_t func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1) {\
         \n  return func(p0->data, p1->data);\n\
@@ -217,10 +217,18 @@ mod tests {
       }\n\n",
     );
     assert_codegen(
-      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U64),
+      codegen(vec![NativeType::Buffer, NativeType::Buffer], NativeType::U64),
       "extern uint64_t func(void* p0, void* p1);\n\n\
       void func_trampoline(void* recv, struct FastApiTypedArray* p0, struct FastApiTypedArray* p1, struct FastApiTypedArray* const p_ret) {\
         \n uint64_t r = func(p0->data, p1->data);\
+        \n ((uint64_t*)p_ret->data)[0] = r;\n\
+      }\n\n",
+    );
+    assert_codegen(
+      codegen(vec![NativeType::Pointer, NativeType::Pointer], NativeType::U64),
+      "extern uint64_t func(void* p0, void* p1);\n\n\
+      void func_trampoline(void* recv, void* p0, void* p1, struct FastApiTypedArray* const p_ret) {\
+        \n uint64_t r = func(p0, p1);\
         \n ((uint64_t*)p_ret->data)[0] = r;\n\
       }\n\n",
     );

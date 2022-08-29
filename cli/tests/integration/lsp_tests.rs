@@ -775,7 +775,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(local)",
           "sortText": "1",
           "insertText": ".",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "..",
@@ -783,7 +783,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(local)",
           "sortText": "1",
           "insertText": "..",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "std",
@@ -791,7 +791,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "std",
           "insertText": "std",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "fs",
@@ -799,7 +799,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "fs",
           "insertText": "fs",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "/~",
@@ -807,7 +807,7 @@ fn lsp_import_map_import_completions() {
           "detail": "(import map)",
           "sortText": "/~",
           "insertText": "/~",
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -889,7 +889,7 @@ fn lsp_import_map_import_completions() {
             },
             "newText": "/~/b.ts"
           },
-          "commitCharacters": ["\"", "'", "/"],
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -935,7 +935,8 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
+        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range": {
         "start": {
@@ -1359,7 +1360,8 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent."
+        "The pid of the current process's parent.",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range":{
         "start":{

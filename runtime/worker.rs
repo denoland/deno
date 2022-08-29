@@ -22,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_node::DenoDirNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -67,9 +68,11 @@ pub struct WorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -148,6 +151,7 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
@@ -161,12 +165,14 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      deno_node::init::<Permissions>(unstable, options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -216,24 +222,26 @@ impl MainWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
+  }
+
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
   }
 
   /// Executes specified JavaScript module.
@@ -241,6 +249,7 @@ impl MainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
+    self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -265,8 +274,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -277,8 +285,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -418,10 +425,12 @@ mod tests {
       format_js_error_fn: None,
       source_map_getter: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
+      npm_resolver: None,
       get_error_class_fn: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),

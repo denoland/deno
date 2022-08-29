@@ -90,10 +90,10 @@ async function setup() {
         `The WPT require certain entries to be present in your ${hostsPath} file. Should these be configured automatically?`,
       );
     if (autoConfigure) {
-      const { status, stdout } = await runPy(["wpt", "make-hosts-file"], {
+      const { success, stdout } = await runPy(["wpt", "make-hosts-file"], {
         stdout: "piped",
       }).output();
-      assert(status.success, "wpt make-hosts-file should not fail");
+      assert(success, "wpt make-hosts-file should not fail");
       const entries = new TextDecoder().decode(stdout);
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
