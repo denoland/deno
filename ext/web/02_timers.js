@@ -30,7 +30,7 @@
   function opNow() {
     if (!hr) {
       hr = new Uint32Array(2);
-      ops.op_now_set_buf(hr);
+      ops.op_now_set_buf(hr.buffer);
     }
     ops.op_now.fast();
     return (hr[0] * 1000 + hr[1] / 1e6);

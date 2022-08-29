@@ -4,8 +4,9 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ZeroCopyBuf;
 
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -26,10 +27,20 @@ pub type StartTime = Instant;
 
 struct NowBuf(*mut u32);
 
-#[op]
-pub fn op_now_set_buf(state: &mut OpState, buf: ZeroCopyBuf) {
-  assert_eq!(buf.len(), 8);
-  state.put(NowBuf(buf.as_ptr() as *mut u32));
+#[op(v8)]
+pub fn op_now_set_buf(
+  scope: &mut v8::HandleScope,
+  state: &mut OpState,
+  value: serde_v8::Value,
+) -> Result<(), AnyError> {
+  let ab: v8::Local<v8::ArrayBuffer> = value.v8_value.try_into()?;
+  let len = ab.byte_length();
+  assert_eq!(len, 8);
+  let store = ab.get_backing_store();
+
+  state.put(v8::Global::new(scope, ab)); // Prevent GC from collecting the ArrayBuffer.
+  state.put(NowBuf(&store as *const _ as *mut u32));
+  Ok(())
 }
 
 // Returns a milliseconds and nanoseconds subsec
