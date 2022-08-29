@@ -539,6 +539,11 @@ pub fn translate_cjs_to_esm(
     maybe_syntax: None,
   })?;
   let analysis = parsed_source.analyze_cjs();
+  let root_exports = analysis
+    .exports
+    .iter()
+    .map(|s| s.as_str())
+    .collect::<HashSet<_>>();
   let mut temp_var_count = 0;
 
   let mut source = vec![
@@ -578,8 +583,9 @@ pub fn translate_cjs_to_esm(
         idx, reexport
       ));
 
-      for export in analysis.exports.iter().filter(|e| e.as_str() != "default")
-      {
+      for export in analysis.exports.iter().filter(|e| {
+        e.as_str() != "default" && !root_exports.contains(e.as_str())
+      }) {
         add_export(
           &mut source,
           export,
@@ -605,12 +611,13 @@ pub fn translate_cjs_to_esm(
   let mut had_default = false;
   for export in analysis.exports.iter() {
     if export.as_str() == "default" {
-      // todo(dsherret): we should only do this if there was a `_esModule: true` instead
-      source.push(format!(
-        "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-        export,
-      ));
-      had_default = true;
+      if root_exports.contains("__esModule") {
+        source.push(format!(
+          "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
+          export,
+        ));
+        had_default = true;
+      }
     } else {
       add_export(
         &mut source,

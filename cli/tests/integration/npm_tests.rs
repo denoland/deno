@@ -9,7 +9,7 @@ use util::http_server;
 // NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
-  args: "run --allow-read --unstable npm/esm/main.js",
+  args: "run --allow-read --allow-env --unstable npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -27,14 +27,14 @@ itest!(esm_module_eval {
 });
 
 itest!(esm_module_deno_test {
-  args: "test --allow-read --unstable npm/esm/test.js",
+  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_with_deps {
-  args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
@@ -54,6 +54,13 @@ itest!(cjs_local_global_decls {
   http_server: true,
 });
 
+itest!(cjs_reexport_collision {
+  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  output: "npm/cjs_reexport_collision/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(compare_globals {
   args: "run --allow-read --unstable npm/compare_globals/main.js",
   output: "npm/compare_globals/main.out",
@@ -62,7 +69,7 @@ itest!(compare_globals {
 });
 
 itest!(dynamic_import {
-  args: "run --allow-read --unstable npm/dynamic_import/main.ts",
+  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
   envs: env_vars(),
   http_server: true,
@@ -83,7 +90,7 @@ itest!(no_unstable {
 });
 
 itest!(import_map {
-  args: "run --allow-read --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  args: "run --allow-read --allow-env --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",
   envs: env_vars(),
   http_server: true,
@@ -104,6 +111,7 @@ fn parallel_downloading() {
       "run",
       "--allow-read",
       "--unstable",
+      "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
     None,
