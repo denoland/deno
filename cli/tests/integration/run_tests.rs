@@ -1337,6 +1337,18 @@ itest!(jsx_import_source_import_map_dev {
   http_server: true,
 });
 
+itest!(jsx_import_source_import_map_scoped {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_scoped_dev {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
 itest!(jsx_import_source_pragma_no_check {
   args: "run --reload --no-check jsx_import_source_pragma.tsx",
   output: "jsx_import_source.out",

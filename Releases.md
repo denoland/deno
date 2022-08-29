@@ -6,6 +6,33 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.25.0 / 2022.08.24
+
+- BREAKING(ext/ffi): specialized `buffer` type (#15518)
+- feat(ext/crypto): deriveBits P-384 (#15138)
+- feat(ext/flash): An optimized http/1.1 server (#15405)
+- feat(ext/flash): split upgradeHttp into two APIs (#15557)
+- feat(ops): V8 Fast Calls (#15291)
+- feat(repl): add color to functions for syntax highlighting (#15434)
+- feat(runtime): add pre_execute_module_cb (#15485)
+- feat(unstable): initial support for npm specifiers (#15484)
+- feat: `queueMicrotask()` error handling (#15522)
+- feat: add "deno init" subcommand (#15469)
+- fix(cache): do not attempt to emit non-emitable files (#15562)
+- fix(core/runtime): always cancel termination in exception handling (#15514)
+- fix(coverage): ensure coverage is only collected in certain situations
+  (#15467)
+- fix(ext/fetch): ignore user content-length header (#15555)
+- fix(ext/flash): concurrent response streams (#15493)
+- fix(ext/flash): fix default onListen callback (#15533)
+- fix(ext/flash): fix listening port (#15519)
+- fix: Free up JsRuntime state global handles before snapshot (#15491)
+- fix: resolve `jsxImportSource` relative to module (#15561)
+- perf(runtime): optimize Deno.file open & stream (#15496)
+- perf: cache swc dependency analysis and don't hold onto `ParsedSource`s in
+  memory (#15502)
+- perf: improve performance.now (#15481)
+
 ### 1.24.3 / 2022.08.11
 
 - fix(ext/fetch): add socks proxy support (#15372)

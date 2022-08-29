@@ -13,6 +13,7 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
+    Uint32Array,
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
@@ -25,8 +26,14 @@
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
+  let hr;
   function opNow() {
-    return ops.op_now();
+    if (!hr) {
+      hr = new Uint32Array(2);
+      ops.op_now_set_buf(hr);
+    }
+    ops.op_now.fast();
+    return (hr[0] * 1000 + hr[1] / 1e6);
   }
 
   // ---------------------------------------------------------------------------

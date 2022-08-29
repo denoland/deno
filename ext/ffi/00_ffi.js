@@ -216,7 +216,7 @@
   }
 
   function isPointerType(type) {
-    return type === "pointer" ||
+    return type === "buffer" || type === "pointer" ||
       typeof type === "object" && type !== null && "function" in type;
   }
 

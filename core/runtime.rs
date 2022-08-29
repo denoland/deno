@@ -229,6 +229,9 @@ fn v8_init(
     " --harmony-import-assertions",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
+    // This flag prevents "unresolved external reference" panic during
+    // build, which started happening in V8 10.6
+    " --noexperimental-async-stack-tagging-api",
   );
 
   if predictable {
@@ -1938,7 +1941,7 @@ impl JsRuntime {
       let mut args = vec![];
 
       for (promise_id, resp) in results.into_iter() {
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
+        args.push(v8::Integer::new(scope, promise_id).into());
         args.push(resp.to_v8(scope).unwrap());
       }
 

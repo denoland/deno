@@ -19,6 +19,10 @@ pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
 pub use resolution::DEFAULT_CONDITIONS;
 
+pub trait NodePermissions {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
 pub trait DenoDirNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
@@ -40,9 +44,11 @@ mod errors;
 mod package_json;
 mod resolution;
 
+pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
+
 struct Unstable(pub bool);
 
-pub fn init(
+pub fn init<P: NodePermissions + 'static>(
   unstable: bool,
   maybe_npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
 ) -> Extension {
@@ -54,25 +60,25 @@ pub fn init(
     ))
     .ops(vec![
       op_require_init_paths::decl(),
-      op_require_node_module_paths::decl(),
+      op_require_node_module_paths::decl::<P>(),
       op_require_proxy_path::decl(),
       op_require_is_deno_dir_package::decl(),
       op_require_resolve_deno_dir::decl(),
       op_require_is_request_relative::decl(),
       op_require_resolve_lookup_paths::decl(),
-      op_require_try_self_parent_path::decl(),
+      op_require_try_self_parent_path::decl::<P>(),
       op_require_try_self::decl(),
-      op_require_real_path::decl(),
+      op_require_real_path::decl::<P>(),
       op_require_path_is_absolute::decl(),
       op_require_path_dirname::decl(),
-      op_require_stat::decl(),
+      op_require_stat::decl::<P>(),
       op_require_path_resolve::decl(),
       op_require_path_basename::decl(),
-      op_require_read_file::decl(),
+      op_require_read_file::decl::<P>(),
       op_require_as_file_path::decl(),
       op_require_resolve_exports::decl(),
       op_require_read_package_scope::decl(),
-      op_require_package_imports_resolve::decl(),
+      op_require_package_imports_resolve::decl::<P>(),
     ])
     .state(move |state| {
       state.put(Unstable(unstable));
@@ -93,15 +99,22 @@ fn check_unstable(state: &OpState) {
   }
 }
 
-fn ensure_read_permission(
+fn ensure_read_permission<P>(
   state: &mut OpState,
   file_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
   let resolver = {
     let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
     resolver.clone()
   };
-  resolver.ensure_read_permission(file_path)
+  if resolver.ensure_read_permission(file_path).is_ok() {
+    return Ok(());
+  }
+
+  state.borrow_mut::<P>().check_read(file_path)
 }
 
 #[op]
@@ -157,10 +170,13 @@ pub fn op_require_init_paths(state: &mut OpState) -> Vec<String> {
 }
 
 #[op]
-pub fn op_require_node_module_paths(
+pub fn op_require_node_module_paths<P>(
   state: &mut OpState,
   from: String,
-) -> Result<Vec<String>, AnyError> {
+) -> Result<Vec<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   // Guarantee that "from" is absolute.
   let from = deno_core::resolve_path(&from)
@@ -168,7 +184,7 @@ pub fn op_require_node_module_paths(
     .to_file_path()
     .unwrap();
 
-  ensure_read_permission(state, &from)?;
+  ensure_read_permission::<P>(state, &from)?;
 
   if cfg!(windows) {
     // return root node_modules when path is 'D:\\'.
@@ -324,10 +340,16 @@ fn op_require_path_is_absolute(state: &mut OpState, p: String) -> bool {
 }
 
 #[op]
-fn op_require_stat(state: &mut OpState, path: String) -> Result<i32, AnyError> {
+fn op_require_stat<P>(
+  state: &mut OpState,
+  path: String,
+) -> Result<i32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   let path = PathBuf::from(path);
-  ensure_read_permission(state, &path)?;
+  ensure_read_permission::<P>(state, &path)?;
   if let Ok(metadata) = std::fs::metadata(&path) {
     if metadata.is_file() {
       return Ok(0);
@@ -340,13 +362,16 @@ fn op_require_stat(state: &mut OpState, path: String) -> Result<i32, AnyError> {
 }
 
 #[op]
-fn op_require_real_path(
+fn op_require_real_path<P>(
   state: &mut OpState,
   request: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   let path = PathBuf::from(request);
-  ensure_read_permission(state, &path)?;
+  ensure_read_permission::<P>(state, &path)?;
   let mut canonicalized_path = path.canonicalize()?;
   if cfg!(windows) {
     canonicalized_path = PathBuf::from(
@@ -391,12 +416,15 @@ fn op_require_path_basename(state: &mut OpState, request: String) -> String {
 }
 
 #[op]
-fn op_require_try_self_parent_path(
+fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
   has_parent: bool,
   maybe_parent_filename: Option<String>,
   maybe_parent_id: Option<String>,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   if !has_parent {
     return Ok(None);
@@ -409,7 +437,7 @@ fn op_require_try_self_parent_path(
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
       if let Ok(cwd) = std::env::current_dir() {
-        ensure_read_permission(state, &cwd)?;
+        ensure_read_permission::<P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
       }
     }
@@ -474,13 +502,16 @@ fn op_require_try_self(
 }
 
 #[op]
-fn op_require_read_file(
+fn op_require_read_file<P>(
   state: &mut OpState,
   file_path: String,
-) -> Result<String, AnyError> {
+) -> Result<String, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   let file_path = PathBuf::from(file_path);
-  ensure_read_permission(state, &file_path)?;
+  ensure_read_permission::<P>(state, &file_path)?;
   Ok(std::fs::read_to_string(file_path)?)
 }
 
@@ -549,14 +580,17 @@ fn op_require_read_package_scope(
 }
 
 #[op]
-fn op_require_package_imports_resolve(
+fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
   parent_filename: String,
   request: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, AnyError>
+where
+  P: NodePermissions + 'static,
+{
   check_unstable(state);
   let parent_path = PathBuf::from(&parent_filename);
-  ensure_read_permission(state, &parent_path)?;
+  ensure_read_permission::<P>(state, &parent_path)?;
   let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
   let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
 
