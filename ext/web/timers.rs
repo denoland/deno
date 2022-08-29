@@ -24,16 +24,12 @@ pub trait TimersPermission {
 
 pub type StartTime = Instant;
 
-static mut NOW_BUF: *mut u32 = std::ptr::null_mut();
+struct NowBuf(*mut u32);
 
 #[op]
-pub fn op_now_set_buf(buf: ZeroCopyBuf) {
+pub fn op_now_set_buf(state: &mut OpState, buf: ZeroCopyBuf) {
   assert_eq!(buf.len(), 8);
-  // SAFETY: This is safe because this is the only place where we initialize
-  // NOW_BUF.
-  unsafe {
-    NOW_BUF = buf.as_ptr() as *mut u32;
-  }
+  state.put(NowBuf(buf.as_ptr() as *mut u32));
 }
 
 // Returns a milliseconds and nanoseconds subsec
@@ -58,15 +54,12 @@ where
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
 
-  // SAFETY: This is safe because we initialize NOW_BUF in op_now_set_buf, its a null pointer
-  // otherwise.
-  // op_now_set_buf guarantees that the buffer is 8 bytes long.
+  let ptr = state.borrow::<NowBuf>().0;
+  // SAFETY: op_now_set_buf guarantees that the buffer valid and 8 bytes long.
   unsafe {
-    if !NOW_BUF.is_null() {
-      let buf = std::slice::from_raw_parts_mut(NOW_BUF, 2);
-      buf[0] = seconds as u32;
-      buf[1] = subsec_nanos as u32;
-    }
+    let buf = std::slice::from_raw_parts_mut(ptr, 2);
+    buf[0] = seconds as u32;
+    buf[1] = subsec_nanos as u32;
   }
 }
 
