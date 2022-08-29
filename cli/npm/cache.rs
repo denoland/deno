@@ -157,16 +157,19 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
+  no_npm: bool,
 }
 
 impl NpmCache {
   pub fn from_deno_dir(
     dir: &DenoDir,
     cache_setting: CacheSetting,
+    no_npm: bool,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
       cache_setting,
+      no_npm,
     })
   }
 
@@ -196,6 +199,16 @@ impl NpmCache {
         )
       )
       );
+    }
+
+    if self.no_npm {
+      return Err(custom_error(
+        "NoNpm",
+        format!(
+          "An npm specifier was requested: \"{}\", but --no-npm is specified.",
+          id.name
+        ),
+      ));
     }
 
     log::log!(
