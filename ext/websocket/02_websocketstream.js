@@ -272,8 +272,14 @@
                   }
                 }
 
-                if (this[_closeSent].state === 'fulfilled' && this[_closed].state === 'pending') {
-                  if (new Date().getTime() - await this[_closeSent].promise <= CLOSE_RESPONSE_TIMEOUT) {
+                if (
+                  this[_closeSent].state === "fulfilled" &&
+                  this[_closed].state === "pending"
+                ) {
+                  if (
+                    new Date().getTime() - await this[_closeSent].promise <=
+                      CLOSE_RESPONSE_TIMEOUT
+                  ) {
                     return pull(controller);
                   }
 
@@ -300,7 +306,7 @@
                   });
 
                   PromisePrototypeThen(this[_closeSent].promise, () => {
-                    if (this[_closed].state === 'pending') {
+                    if (this[_closed].state === "pending") {
                       return pull(controller);
                     }
                   });
@@ -395,7 +401,7 @@
               setTimeout(() => {
                 this[_closeSent].resolve(new Date().getTime());
               }, 0);
-            }
+            },
           ),
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);

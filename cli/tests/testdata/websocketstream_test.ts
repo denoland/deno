@@ -211,9 +211,9 @@ Deno.test("sync close with empty stream", async () => {
     const { response, socket } = Deno.upgradeWebSocket(request);
     const p = new Promise<void>((resolve) => {
       socket.onopen = () => {
-        socket.send('first message');
-        socket.send('second message');
-      }
+        socket.send("first message");
+        socket.send("second message");
+      };
       socket.onclose = () => resolve();
     });
     await respondWith(response);
@@ -224,9 +224,9 @@ Deno.test("sync close with empty stream", async () => {
   const { readable } = await ws.connection;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
-  assertEquals(firstMessage.value, 'first message');
+  assertEquals(firstMessage.value, "first message");
   const secondMessage = await reader.read();
-  assertEquals(secondMessage.value, 'second message');
+  assertEquals(secondMessage.value, "second message");
   ws.close({ code: 1000 });
   await ws.closed;
   await promise;
@@ -242,11 +242,11 @@ Deno.test("sync close with unread messages in stream", async () => {
     const { response, socket } = Deno.upgradeWebSocket(request);
     const p = new Promise<void>((resolve) => {
       socket.onopen = () => {
-        socket.send('first message');
-        socket.send('second message');
-        socket.send('third message');
-        socket.send('fourth message');
-      }
+        socket.send("first message");
+        socket.send("second message");
+        socket.send("third message");
+        socket.send("fourth message");
+      };
       socket.onclose = () => resolve();
     });
     await respondWith(response);
@@ -257,15 +257,14 @@ Deno.test("sync close with unread messages in stream", async () => {
   const { readable } = await ws.connection;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
-  assertEquals(firstMessage.value, 'first message');
+  assertEquals(firstMessage.value, "first message");
   const secondMessage = await reader.read();
-  assertEquals(secondMessage.value, 'second message');
+  assertEquals(secondMessage.value, "second message");
   ws.close({ code: 1000 });
   await ws.closed;
   await promise;
   listener.close();
 });
-
 
 Deno.test("async close with empty stream", async () => {
   const listener = Deno.listen({ port: 4512 });
@@ -276,9 +275,9 @@ Deno.test("async close with empty stream", async () => {
     const { response, socket } = Deno.upgradeWebSocket(request);
     const p = new Promise<void>((resolve) => {
       socket.onopen = () => {
-        socket.send('first message');
-        socket.send('second message');
-      }
+        socket.send("first message");
+        socket.send("second message");
+      };
       socket.onclose = () => resolve();
     });
     await respondWith(response);
@@ -289,12 +288,12 @@ Deno.test("async close with empty stream", async () => {
   const { readable } = await ws.connection;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
-  assertEquals(firstMessage.value, 'first message');
+  assertEquals(firstMessage.value, "first message");
   const secondMessage = await reader.read();
-  assertEquals(secondMessage.value, 'second message');
+  assertEquals(secondMessage.value, "second message");
   setTimeout(() => {
     ws.close({ code: 1000 });
-  }, 0)
+  }, 0);
   await ws.closed;
   await promise;
   listener.close();
@@ -309,11 +308,11 @@ Deno.test("async close with unread messages in stream", async () => {
     const { response, socket } = Deno.upgradeWebSocket(request);
     const p = new Promise<void>((resolve) => {
       socket.onopen = () => {
-        socket.send('first message');
-        socket.send('second message');
-        socket.send('third message');
-        socket.send('fourth message');
-      }
+        socket.send("first message");
+        socket.send("second message");
+        socket.send("third message");
+        socket.send("fourth message");
+      };
       socket.onclose = () => resolve();
     });
     await respondWith(response);
@@ -324,12 +323,12 @@ Deno.test("async close with unread messages in stream", async () => {
   const { readable } = await ws.connection;
   const reader = readable.getReader();
   const firstMessage = await reader.read();
-  assertEquals(firstMessage.value, 'first message');
+  assertEquals(firstMessage.value, "first message");
   const secondMessage = await reader.read();
-  assertEquals(secondMessage.value, 'second message');
+  assertEquals(secondMessage.value, "second message");
   setTimeout(() => {
     ws.close({ code: 1000 });
-  }, 0)
+  }, 0);
   await ws.closed;
   await promise;
   listener.close();
