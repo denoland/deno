@@ -124,7 +124,8 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
     let path = entry.path()?;
     let entry_type = entry.header().entry_type();
 
-    // Some package tarballs contain "pax_global_header", they should be skipped.
+    // Some package tarballs contain "pax_global_header", these entries
+    // should be skipped.
     if entry_type == EntryType::XGlobalHeader {
       continue;
     }
