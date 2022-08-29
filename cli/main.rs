@@ -246,8 +246,8 @@ async fn compile_command(
 
   graph.valid().unwrap();
 
-  let store = ps.parsed_source_cache.as_store();
-  let eszip = eszip::EszipV2::from_graph(graph, &*store, Default::default())?;
+  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 
   info!(
     "{} {}",
