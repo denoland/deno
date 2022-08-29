@@ -394,15 +394,13 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        PromisePrototypeCatch(
-          PromisePrototypeThen(
-            core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
-            () => {
-              setTimeout(() => {
-                this[_closeSent].resolve(new Date().getTime());
-              }, 0);
-            },
-          ),
+        PromisePrototypeThen(
+          core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          () => {
+            setTimeout(() => {
+              this[_closeSent].resolve(new Date().getTime());
+            }, 0);
+          },
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);
