@@ -43,7 +43,7 @@ pub enum PermissionState {
 
 impl PermissionState {
   #[inline(always)]
-  fn log_perm_access(name: &str, info: Option<&str>) {
+  fn log_perm_access(name: &str, info: impl FnOnce() -> Option<String>) {
     // Eliminates log overhead (when logging is disabled),
     // log_enabled!(Debug) check in a hot path still has overhead
     // TODO(AaronO): generalize or upstream this optimization
@@ -59,15 +59,15 @@ impl PermissionState {
     }
   }
 
-  fn fmt_access(name: &str, info: Option<&str>) -> String {
+  fn fmt_access(name: &str, info: impl FnOnce() -> Option<String>) -> String {
     format!(
       "{} access{}",
       name,
-      info.map_or(String::new(), |info| { format!(" to {}", info) }),
+      info().map_or(String::new(), |info| { format!(" to {}", info) }),
     )
   }
 
-  fn error(name: &str, info: Option<&str>) -> AnyError {
+  fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
     custom_error(
       "PermissionDenied",
       format!(
@@ -79,10 +79,21 @@ impl PermissionState {
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
+  #[inline]
   fn check(
     self,
     name: &str,
     info: Option<&str>,
+    prompt: bool,
+  ) -> (Result<(), AnyError>, bool) {
+    self.check2(name, || info.map(|s| s.to_string()), prompt)
+  }
+
+  #[inline]
+  fn check2(
+    self,
+    name: &str,
+    info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), AnyError>, bool) {
     match self {
@@ -91,7 +102,11 @@ impl PermissionState {
         (Ok(()), false)
       }
       PermissionState::Prompt if prompt => {
-        let msg = Self::fmt_access(name, info);
+        let msg = format!(
+          "{} access{}",
+          name,
+          info().map_or(String::new(), |info| { format!(" to {}", info) }),
+        );
         if permission_prompt(&msg, name) {
           Self::log_perm_access(name, info);
           (Ok(()), true)
@@ -367,14 +382,15 @@ impl UnaryPermission<ReadDescriptor> {
     self.query(path)
   }
 
+  #[inline]
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
+    let (result, prompted) = self.query(Some(path)).check2(
       self.name,
-      Some(&format!("\"{}\"", display_path.display())),
+      || Some(format!("\"{}\"", path.to_path_buf().display())),
       self.prompt,
     );
     if prompted {
+      let resolved_path = resolve_from_cwd(path).unwrap();
       if result.is_ok() {
         self.granted_list.insert(ReadDescriptor(resolved_path));
       } else {
@@ -518,14 +534,15 @@ impl UnaryPermission<WriteDescriptor> {
     self.query(path)
   }
 
+  #[inline]
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
-    let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
+    let (result, prompted) = self.query(Some(path)).check2(
       self.name,
-      Some(&format!("\"{}\"", display_path.display())),
+      || Some(format!("\"{}\"", path.to_path_buf().display())),
       self.prompt,
     );
     if prompted {
+      let resolved_path = resolve_from_cwd(path).unwrap();
       if result.is_ok() {
         self.granted_list.insert(WriteDescriptor(resolved_path));
       } else {
@@ -1459,6 +1476,7 @@ pub fn resolve_ffi_allowlist(
 
 /// Arbitrary helper. Resolves the path from CWD, and also gets a path that
 /// can be displayed without leaking the CWD when not allowed.
+#[inline]
 fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
   let resolved_path = resolve_from_cwd(path).unwrap();
   let display_path = path.to_path_buf();

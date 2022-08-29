@@ -93,25 +93,29 @@ fn bundle_exports_no_check() {
 #[test]
 fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
-  let circular1 = util::testdata_path().join("subdir/circular1.ts");
-  assert!(circular1.is_file());
+  let circular1_path = util::testdata_path().join("subdir/circular1.ts");
+  assert!(circular1_path.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("circular1.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("bundle")
-    .arg(circular1)
-    .arg(&bundle)
-    .spawn()
-    .unwrap();
-  let status = deno.wait().unwrap();
-  assert!(status.success());
-  assert!(bundle.is_file());
+  let bundle_path = t.path().join("circular1.bundle.js");
 
-  let output = util::deno_cmd()
+  // run this twice to ensure it works even when cached
+  for _ in 0..2 {
+    let mut deno = util::deno_cmd_with_deno_dir(&t)
+      .current_dir(util::testdata_path())
+      .arg("bundle")
+      .arg(&circular1_path)
+      .arg(&bundle_path)
+      .spawn()
+      .unwrap();
+    let status = deno.wait().unwrap();
+    assert!(status.success());
+    assert!(bundle_path.is_file());
+  }
+
+  let output = util::deno_cmd_with_deno_dir(&t)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg(&bundle)
+    .arg(&bundle_path)
     .output()
     .unwrap();
   // check the output of the the bundle program.

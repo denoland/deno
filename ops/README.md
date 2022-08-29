@@ -15,7 +15,7 @@ Extension::builder()
   .build();
 ```
 
-## Peformance
+## Performance
 
 The macro can optimize away code, short circuit fast paths and generate a Fast
 API impl.

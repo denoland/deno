@@ -656,11 +656,10 @@
   };
 
   Module.wrapper = [
-    // TODO:
-    // We provide non standard timer APIs in the CommonJS wrapper
+    // We provide the non-standard APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, globalThis) { (function (exports, require, module, __filename, __dirname, globalThis, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout) {",
-    "\n}).call(this, exports, require, module, __filename, __dirname, globalThis, globalThis.Buffer, globalThis.clearImmediate, globalThis.clearInterval, globalThis.clearTimeout, globalThis.global, globalThis.process, globalThis.setImmediate, globalThis.setInterval, globalThis.setTimeout); })",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; (function () {",
+    "\n}).call(this); })",
   ];
   Module.wrap = function (script) {
     script = script.replace(/^#!.*?\n/, "");
@@ -731,9 +730,15 @@
     if (StringPrototypeEndsWith(filename, ".js")) {
       const pkg = core.ops.op_require_read_package_scope(filename);
       if (pkg && pkg.exists && pkg.typ == "module") {
-        throw new Error(
-          `Import ESM module: ${filename} from ${module.parent.filename}`,
-        );
+        let message = `Trying to import ESM module: ${filename}`;
+
+        if (module.parent) {
+          message += ` from ${module.parent.filename}`;
+        }
+
+        message += ` using require()`;
+
+        throw new Error(message);
       }
     }
 

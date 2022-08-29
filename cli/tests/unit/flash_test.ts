@@ -57,6 +57,35 @@ Deno.test(async function httpServerCanResolveHostnames() {
   await server;
 });
 
+Deno.test(async function httpServerRejectsOnAddrInUse() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (_req) => new Response("ok"),
+    hostname: "localhost",
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
+
+  assertRejects(
+    () =>
+      Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      }),
+    Deno.errors.AddrInUse,
+  );
+  ac.abort();
+  await server;
+});
+
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const ac = new AbortController();
   const promise = deferred();

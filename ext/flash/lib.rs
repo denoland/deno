@@ -1313,8 +1313,11 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    let port = listening_rx.recv().await.unwrap();
-    Ok(port)
+    if let Some(port) = listening_rx.recv().await {
+      Ok(port)
+    } else {
+      Err(generic_error("This error will be discarded"))
+    }
   })
 }
 
@@ -1366,7 +1369,7 @@ async fn op_flash_next_async(
   0
 }
 
-// Syncrhonous version of op_flash_next_async. Under heavy load,
+// Synchronous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 //
 // perf: please do not add any arguments to this op. With optimizations enabled,

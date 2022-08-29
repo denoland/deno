@@ -1329,6 +1329,7 @@ declare namespace Deno {
    * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
    * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
    * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
+   * ```
    *
    * @category HTTP Server
    */

@@ -1,9 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-pub mod errors;
 mod esm_resolver;
 
 use crate::file_fetcher::FileFetcher;
+use crate::node::NODE_COMPAT_URL;
+use crate::node::SUPPORTED_MODULES;
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -15,101 +16,21 @@ use once_cell::sync::Lazy;
 pub use esm_resolver::check_if_should_use_esm_loader;
 pub use esm_resolver::NodeEsmResolver;
 
-// WARNING: Ensure this is the only deno_std version reference as this
-// is automatically updated by the version bump workflow.
-pub(crate) static STD_URL_STR: &str = "https://deno.land/std@0.153.0/";
-
-static SUPPORTED_MODULES: &[&str] = &[
-  "assert",
-  "assert/strict",
-  "async_hooks",
-  "buffer",
-  "child_process",
-  "cluster",
-  "console",
-  "constants",
-  "crypto",
-  "dgram",
-  "dns",
-  "domain",
-  "events",
-  "fs",
-  "fs/promises",
-  "http",
-  "https",
-  "module",
-  "net",
-  "os",
-  "path",
-  "path/posix",
-  "path/win32",
-  "perf_hooks",
-  "process",
-  "querystring",
-  "readline",
-  "stream",
-  "stream/promises",
-  "stream/web",
-  "string_decoder",
-  "sys",
-  "timers",
-  "timers/promises",
-  "tls",
-  "tty",
-  "url",
-  "util",
-  "util/types",
-  "v8",
-  "vm",
-  "worker_threads",
-  "zlib",
-];
-
-static NODE_COMPAT_URL: Lazy<String> = Lazy::new(|| {
-  std::env::var("DENO_NODE_COMPAT_URL")
-    .map(String::into)
-    .ok()
-    .unwrap_or_else(|| STD_URL_STR.to_string())
-});
-
-static GLOBAL_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/global.ts", NODE_COMPAT_URL.as_str()));
-
 pub static GLOBAL_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&GLOBAL_URL_STR).unwrap());
-
-static MODULE_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/module.ts", NODE_COMPAT_URL.as_str()));
-
-pub static MODULE_ALL_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&MODULE_ALL_URL_STR).unwrap());
-
-static MODULE_ALL_URL_STR: Lazy<String> =
-  Lazy::new(|| format!("{}node/module_all.ts", NODE_COMPAT_URL.as_str()));
+  Lazy::new(|| NODE_COMPAT_URL.join("node/global.ts").unwrap());
 
 pub static MODULE_URL: Lazy<Url> =
-  Lazy::new(|| Url::parse(&MODULE_URL_STR).unwrap());
+  Lazy::new(|| NODE_COMPAT_URL.join("node/module.ts").unwrap());
 
 static COMPAT_IMPORT_URL: Lazy<Url> =
   Lazy::new(|| Url::parse("flags:compat").unwrap());
 
 /// Provide imports into a module graph when the compat flag is true.
 pub fn get_node_imports() -> Vec<(Url, Vec<String>)> {
-  vec![(COMPAT_IMPORT_URL.clone(), vec![GLOBAL_URL_STR.clone()])]
-}
-
-pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
-  if SUPPORTED_MODULES.contains(&specifier) {
-    let ext = match specifier {
-      "stream/promises" => "mjs",
-      _ => "ts",
-    };
-    let module_url =
-      format!("{}node/{}.{}", NODE_COMPAT_URL.as_str(), specifier, ext);
-    Some(Url::parse(&module_url).unwrap())
-  } else {
-    None
-  }
+  vec![(
+    COMPAT_IMPORT_URL.clone(),
+    vec![GLOBAL_URL.as_str().to_owned()],
+  )]
 }
 
 pub fn load_cjs_module(
@@ -122,7 +43,7 @@ pub fn load_cjs_module(
       const Module = await import("{module_loader}");
       Module.default._load(module, null, {main});
     }})('{module}');"#,
-    module_loader = MODULE_URL_STR.as_str(),
+    module_loader = MODULE_URL.as_str(),
     main = main,
     module = escape_for_single_quote_string(module),
   );
@@ -141,7 +62,7 @@ pub fn add_global_require(
       const require = Module.createRequire(main);
       globalThis.require = require;
     }})('{}');"#,
-    MODULE_URL_STR.as_str(),
+    MODULE_URL.as_str(),
     escape_for_single_quote_string(main_module),
   );
 
@@ -159,8 +80,12 @@ pub fn setup_builtin_modules(
   let mut script = String::new();
   for module in SUPPORTED_MODULES {
     // skipping the modules that contains '/' as they are not available in NodeJS repl as well
-    if !module.contains('/') {
-      script = format!("{}const {} = require('{}');\n", script, module, module);
+    if !module.name.contains('/') {
+      script = format!(
+        "{}const {MODULE_NAME} = require('{MODULE_NAME}');\n",
+        script,
+        MODULE_NAME = module.name
+      );
     }
   }
 

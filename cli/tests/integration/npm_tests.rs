@@ -6,11 +6,10 @@ use test_util as util;
 use util::assert_contains;
 use util::http_server;
 
-// NOTE: It's possible to automatically update the npm registry data in the test server
-// by setting the DENO_TEST_UTIL_UPDATE_NPM=1 environment variable.
+// NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
-  args: "run --allow-read --unstable npm/esm/main.js",
+  args: "run --allow-read --allow-env --unstable npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -28,14 +27,14 @@ itest!(esm_module_eval {
 });
 
 itest!(esm_module_deno_test {
-  args: "test --allow-read --unstable npm/esm/test.js",
+  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_with_deps {
-  args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
@@ -48,8 +47,36 @@ itest!(cjs_sub_path {
   http_server: true,
 });
 
+itest!(cjs_local_global_decls {
+  args: "run --allow-read --unstable npm/cjs_local_global_decls/main.ts",
+  output: "npm/cjs_local_global_decls/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_reexport_collision {
+  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  output: "npm/cjs_reexport_collision/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(compare_globals {
+  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  output: "npm/compare_globals/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(conditional_exports {
+  args: "run --allow-read --unstable npm/conditional_exports/main.js",
+  output: "npm/conditional_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
-  args: "run --allow-read --unstable npm/dynamic_import/main.ts",
+  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
   envs: env_vars(),
   http_server: true,
@@ -70,7 +97,7 @@ itest!(no_unstable {
 });
 
 itest!(import_map {
-  args: "run --allow-read --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  args: "run --allow-read --allow-env --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",
   envs: env_vars(),
   http_server: true,
@@ -91,6 +118,7 @@ fn parallel_downloading() {
       "run",
       "--allow-read",
       "--unstable",
+      "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
     None,
@@ -220,6 +248,13 @@ itest!(deno_run_cowthink {
   http_server: true,
 });
 
+itest!(deno_run_esm_module {
+  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(deno_run_non_existent {
   args: "run --unstable npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
@@ -238,12 +273,14 @@ fn ensure_registry_files_local() {
       let registry_json_path = registry_dir_path
         .join(entry.file_name())
         .join("registry.json");
-      let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
-      if file_text.contains("https://registry.npmjs.org/") {
-        panic!(
-          "file {} contained a reference to the npm registry",
-          registry_json_path.display(),
-        );
+      if registry_json_path.exists() {
+        let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
+        if file_text.contains("https://registry.npmjs.org/") {
+          panic!(
+            "file {} contained a reference to the npm registry",
+            registry_json_path.display(),
+          );
+        }
       }
     }
   }
