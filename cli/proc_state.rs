@@ -154,8 +154,11 @@ impl ProcState {
       broadcast_channel: Default::default(),
       shared_array_buffer_store: Default::default(),
       compiled_wasm_module_store: Default::default(),
+      parsed_source_cache: self.parsed_source_cache.reset_for_file_watcher(),
       maybe_resolver: self.maybe_resolver.clone(),
       maybe_file_watcher_reporter: self.maybe_file_watcher_reporter.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+      cjs_resolutions: Default::default(),
     }))
   }
 
@@ -512,7 +515,7 @@ impl ProcState {
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
       .await?;
-    self.graph_data.write().add_graph(&node_std_graph, false);
+    self.graph_data.write().add_graph(&node_std_graph);
     Ok(())
   }
 

@@ -65,6 +65,14 @@ impl ParsedSourceCache {
     }
   }
 
+  pub fn reset_for_file_watcher(&self) -> Self {
+    Self {
+      db_cache_path: self.db_cache_path.clone(),
+      cli_version: self.cli_version.clone(),
+      sources: Default::default(),
+    }
+  }
+
   pub fn get_parsed_source_from_module(
     &self,
     module: &deno_graph::Module,
