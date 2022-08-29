@@ -2,6 +2,7 @@
 
 mod urlpattern;
 
+use deno_core::OpState;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
@@ -40,16 +41,12 @@ pub fn init() -> Extension {
     .build()
 }
 
-static mut URL_OFFSET_BUF: *mut u32 = std::ptr::null_mut();
+struct UrlOffsetBuf(*mut u32);
 
 #[op]
-pub fn op_url_set_buf(buf: ZeroCopyBuf) {
+pub fn op_url_set_buf(state: &mut OpState, buf: ZeroCopyBuf) {
   assert_eq!(buf.len(), 32);
-  // SAFETY: This is safe because this is the only place where we initialize
-  // NOW_BUF.
-  unsafe {
-    URL_OFFSET_BUF = buf.as_ptr() as *mut u32;
-  }
+  state.put(UrlOffsetBuf(buf.as_ptr() as *mut u32));
 }
 
 #[allow(dead_code)]
@@ -90,12 +87,12 @@ const _: () = {
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
-pub fn op_url_parse_with_base(href: String, base_href: String) -> u32 {
+pub fn op_url_parse_with_base(state: &mut OpState, href: String, base_href: String) -> u32 {
   let base_url = match Url::parse(&base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
   };
-  parse_url(href, Some(&base_url))
+  parse_url(state, href, Some(&base_url))
 }
 
 #[repr(u32)]
@@ -105,20 +102,21 @@ pub enum ParseStatus {
   Err,
 }
 
-static mut URL_SERIALIZATION: Option<String> = None;
+struct UrlSerialization(String);
 
 #[op]
-pub fn op_url_get_serialization() -> String {
-  unsafe { URL_SERIALIZATION.take().unwrap_or_default() }
+pub fn op_url_get_serialization(state: &mut OpState) -> String {
+  state.take::<UrlSerialization>().0
 }
 
 #[op]
-pub fn op_url_parse(href: String) -> u32 {
-  parse_url(href, None)
+pub fn op_url_parse(state: &mut OpState, href: String) -> u32 {
+  parse_url(state, href, None)
 }
 
 #[inline]
-fn parse_url(href: String, base_href: Option<&Url>) -> u32 {
+fn parse_url(state: &mut OpState, href: String, base_href: Option<&Url>) -> u32 {
+  let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   match Url::options().base_url(base_href).parse(&href) {
     Ok(url) => {
       let inner_url: InnerUrl = unsafe { transmute(url) };
@@ -127,19 +125,17 @@ fn parse_url(href: String, base_href: Option<&Url>) -> u32 {
       // otherwise.
       // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
       unsafe {
-        if !URL_OFFSET_BUF.is_null() {
-          let buf = std::slice::from_raw_parts_mut(URL_OFFSET_BUF, 8);
-          buf[0] = inner_url.scheme_end;
-          buf[1] = inner_url.username_end;
-          buf[2] = inner_url.host_start;
-          buf[3] = inner_url.host_end;
-          buf[4] = inner_url.port.unwrap_or(0) as u32;
-          buf[5] = inner_url.path_start;
-          buf[6] = inner_url.query_start.unwrap_or(0);
-          buf[7] = inner_url.fragment_start.unwrap_or(0);
-        }
+        let buf = std::slice::from_raw_parts_mut(url_offset_buf, 8);
+        buf[0] = inner_url.scheme_end;
+        buf[1] = inner_url.username_end;
+        buf[2] = inner_url.host_start;
+        buf[3] = inner_url.host_end;
+        buf[4] = inner_url.port.unwrap_or(0) as u32;
+        buf[5] = inner_url.path_start;
+        buf[6] = inner_url.query_start.unwrap_or(0);
+        buf[7] = inner_url.fragment_start.unwrap_or(0);
         if inner_url.serialization != href {
-          URL_SERIALIZATION.replace(inner_url.serialization);
+          state.put(UrlSerialization(inner_url.serialization));
           ParseStatus::OkSerialization as u32
         } else {
           ParseStatus::Ok as u32
@@ -165,7 +161,8 @@ pub enum UrlSetter {
 }
 
 #[op]
-pub fn op_url_reparse(href: String, setter: u8, setter_value: String) -> u32 {
+pub fn op_url_reparse(state: &mut OpState, href: String, setter: u8, setter_value: String) -> u32 {
+  let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   let mut url = match Url::options().parse(&href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
@@ -210,19 +207,17 @@ pub fn op_url_reparse(href: String, setter: u8, setter_value: String) -> u32 {
       // otherwise.
       // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
       unsafe {
-        if !URL_OFFSET_BUF.is_null() {
-          let buf = std::slice::from_raw_parts_mut(URL_OFFSET_BUF, 8);
-          buf[0] = inner_url.scheme_end;
-          buf[1] = inner_url.username_end;
-          buf[2] = inner_url.host_start;
-          buf[3] = inner_url.host_end;
-          buf[4] = inner_url.port.unwrap_or(0) as u32;
-          buf[5] = inner_url.path_start;
-          buf[6] = inner_url.query_start.unwrap_or(0);
-          buf[7] = inner_url.fragment_start.unwrap_or(0);
-        }
+        let buf = std::slice::from_raw_parts_mut(url_offset_buf, 8);
+        buf[0] = inner_url.scheme_end;
+        buf[1] = inner_url.username_end;
+        buf[2] = inner_url.host_start;
+        buf[3] = inner_url.host_end;
+        buf[4] = inner_url.port.unwrap_or(0) as u32;
+        buf[5] = inner_url.path_start;
+        buf[6] = inner_url.query_start.unwrap_or(0);
+        buf[7] = inner_url.fragment_start.unwrap_or(0);
         if inner_url.serialization != href {
-          URL_SERIALIZATION.replace(inner_url.serialization);
+          state.put(UrlSerialization(inner_url.serialization));
           ParseStatus::OkSerialization as u32
         } else {
           ParseStatus::Ok as u32
