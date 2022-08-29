@@ -100,7 +100,7 @@ verify on GitHub that everything looks correct.
   1. Checkout the branch the release is being made on.
   2. Manually run `./tools/release/01_bump_crate_versions.ts`
      1. Ensure the crate versions were bumped correctly
-     2. Ensure deno_std version was updated correctly in `cli/compat/mod.rs`
+     2. Ensure deno_std version was updated correctly in `cli/deno_std.rs`
      3. Ensure `Releases.md` was updated correctly
   3. Open a PR with the changes and continue with the steps below.
   </details>

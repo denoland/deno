@@ -88,7 +88,7 @@ impl ParsedSourceCache {
     source: Arc<str>,
     media_type: MediaType,
   ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
-    let parser = CapturingModuleParser::new(None, &self.sources);
+    let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingModuleParser
     parser.parse_module(specifier, source, media_type)
   }
@@ -123,6 +123,12 @@ impl ParsedSourceCache {
         ))
       }
     }
+  }
+
+  /// Creates a parser that will reuse a ParsedSource from the store
+  /// if it exists, or else parse.
+  pub fn as_capturing_parser(&self) -> CapturingModuleParser {
+    CapturingModuleParser::new(None, &self.sources)
   }
 }
 
