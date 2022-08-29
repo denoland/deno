@@ -673,6 +673,7 @@ fn op_set_wasm_streaming_callback(
   Ok(())
 }
 
+#[allow(clippy::let_and_return)]
 #[op(v8)]
 fn op_abort_wasm_streaming(
   scope: &mut v8::HandleScope,

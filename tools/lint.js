@@ -29,6 +29,7 @@ async function dlint() {
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
     ":!:cli/tests/testdata/fmt/**",
+    ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
@@ -111,7 +112,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: cmd,
+    args: [...cmd, "--", "-D", "warnings"],
     stdout: "inherit",
     stderr: "inherit",
   });

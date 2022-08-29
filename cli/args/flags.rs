@@ -120,6 +120,11 @@ pub struct FmtFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct InitFlags {
+  pub dir: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
@@ -217,6 +222,7 @@ pub enum DenoSubcommand {
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
+  Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
   Uninstall(UninstallFlags),
@@ -554,6 +560,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("doc", m)) => doc_parse(&mut flags, m),
     Some(("eval", m)) => eval_parse(&mut flags, m),
     Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("init", m)) => init_parse(&mut flags, m),
     Some(("info", m)) => info_parse(&mut flags, m),
     Some(("install", m)) => install_parse(&mut flags, m),
     Some(("lint", m)) => lint_parse(&mut flags, m),
@@ -629,6 +636,7 @@ fn clap_root(version: &str) -> Command {
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
+    .subcommand(init_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
     .subcommand(uninstall_subcommand())
@@ -1138,6 +1146,15 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .possible_values(&["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
+}
+
+fn init_subcommand<'a>() -> Command<'a> {
+  Command::new("init").about("Initialize a new project").arg(
+    Arg::new("dir")
+      .takes_value(true)
+      .required(false)
+      .value_hint(ValueHint::DirPath),
+  )
 }
 
 fn info_subcommand<'a>() -> Command<'a> {
@@ -2433,6 +2450,12 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     indent_width,
     single_quote,
     prose_wrap,
+  });
+}
+
+fn init_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Init(InitFlags {
+    dir: matches.value_of("dir").map(|f| f.to_string()),
   });
 }
 
@@ -5950,5 +5973,28 @@ mod tests {
       "script.ts",
     ]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn init() {
+    let r = flags_from_vec(svec!["deno", "init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: Some(String::from("foo")),
+        }),
+        ..Flags::default()
+      }
+    );
   }
 }
