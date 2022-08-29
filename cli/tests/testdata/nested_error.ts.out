@@ -1,0 +1,4 @@
+error: Uncaught {
+  foo: Error
+    at file:///[WILDCARD]testdata/nested_error.ts:2:8
+}

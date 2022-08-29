@@ -101,6 +101,8 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
+pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
+pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
 pub use deno_ops::op;
 
@@ -116,6 +118,8 @@ pub mod _ops {
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
+  pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be

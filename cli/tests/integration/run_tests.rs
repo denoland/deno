@@ -1337,6 +1337,18 @@ itest!(jsx_import_source_import_map_dev {
   http_server: true,
 });
 
+itest!(jsx_import_source_import_map_scoped {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_scoped_dev {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
 itest!(jsx_import_source_pragma_no_check {
   args: "run --reload --no-check jsx_import_source_pragma.tsx",
   output: "jsx_import_source.out",
@@ -2738,6 +2750,24 @@ itest!(report_error_handled {
   output: "report_error_handled.ts.out",
 });
 
+// Regression test for https://github.com/denoland/deno/issues/15513.
+itest!(report_error_end_of_program {
+  args: "run --quiet report_error_end_of_program.ts",
+  output: "report_error_end_of_program.ts.out",
+  exit_code: 1,
+});
+
+itest!(queue_microtask_error {
+  args: "run --quiet queue_microtask_error.ts",
+  output: "queue_microtask_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(queue_microtask_error_handled {
+  args: "run --quiet queue_microtask_error_handled.ts",
+  output: "queue_microtask_error_handled.ts.out",
+});
+
 itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
@@ -2752,6 +2782,12 @@ itest!(error_name_non_string {
 itest!(custom_inspect_url {
   args: "run custom_inspect_url.js",
   output: "custom_inspect_url.js.out",
+});
+
+itest!(config_json_import {
+  args: "run --quiet -c jsx/deno-jsx.json config_json_import.ts",
+  output: "config_json_import.ts.out",
+  http_server: true,
 });
 
 #[test]
@@ -2786,4 +2822,15 @@ itest!(followup_dyn_import_resolved {
 itest!(unhandled_rejection {
   args: "run --check unhandled_rejection.ts",
   output: "unhandled_rejection.ts.out",
+});
+
+itest!(unhandled_rejection_sync_error {
+  args: "run --check unhandled_rejection_sync_error.ts",
+  output: "unhandled_rejection_sync_error.ts.out",
+});
+
+itest!(nested_error {
+  args: "run nested_error.ts",
+  output: "nested_error.ts.out",
+  exit_code: 1,
 });

@@ -1346,7 +1346,7 @@ import "/a.js";
         Err(..) => return Err(MockError::ResolveErr.into()),
       };
 
-      if mock_source_code(&output_specifier.to_string()).is_some() {
+      if mock_source_code(output_specifier.as_ref()).is_some() {
         Ok(output_specifier)
       } else {
         Err(MockError::ResolveErr.into())
@@ -1518,7 +1518,7 @@ import "/a.js";
           import { b } from './b.js'
           if (b() != 'b') throw Error();
           let control = 42;
-          Deno.core.opSync("op_test", control);
+          Deno.core.ops.op_test(control);
         "#,
         )
         .unwrap();

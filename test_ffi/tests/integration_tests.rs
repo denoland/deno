@@ -66,17 +66,29 @@ fn basic() {
     5\n\
     5\n\
     579\n\
-    8589934590n\n\
-    -8589934590n\n\
-    8589934590n\n\
-    -8589934590n\n\
+    8589934590\n\
+    -8589934590\n\
+    8589934590\n\
+    -8589934590\n\
+    9007199254740992n\n\
+    9007199254740992n\n\
+    -9007199254740992n\n\
+    9007199254740992n\n\
+    9007199254740992n\n\
+    -9007199254740992n\n\
     579.9119873046875\n\
     579.912\n\
     579\n\
-    8589934590n\n\
-    -8589934590n\n\
-    8589934590n\n\
-    -8589934590n\n\
+    8589934590\n\
+    -8589934590\n\
+    8589934590\n\
+    -8589934590\n\
+    9007199254740992n\n\
+    9007199254740992n\n\
+    -9007199254740992n\n\
+    9007199254740992n\n\
+    9007199254740992n\n\
+    -9007199254740992n\n\
     579.9119873046875\n\
     579.912\n\
     After sleep_blocking\n\
@@ -86,7 +98,7 @@ fn basic() {
     After\n\
     true\n\
     logCallback\n\
-    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    1 -1 2 -2 3 -3 4 -4 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\
@@ -98,9 +110,14 @@ fn basic() {
     Thread safe call counter: 1\n\
     u8: 8\n\
     Static u32: 42\n\
-    Static i64: -1242464576485n\n\
+    Static i64: -1242464576485\n\
     Static ptr: true\n\
     Static ptr value: 42\n\
+    arrayBuffer.byteLength: 4\n\
+    uint32Array.length: 1\n\
+    uint32Array[0]: 42\n\
+    uint32Array[0] after mutation: 55\n\
+    Static ptr value after mutation: 55\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
@@ -111,7 +128,7 @@ fn symbol_types() {
   build();
 
   let output = deno_cmd()
-    .arg("cache")
+    .arg("check")
     .arg("--unstable")
     .arg("--quiet")
     .arg("tests/ffi_types.ts")

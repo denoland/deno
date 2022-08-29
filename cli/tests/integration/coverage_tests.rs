@@ -32,6 +32,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
   let status = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("test")
+    .arg("-A")
     .arg("--quiet")
     .arg("--unstable")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))

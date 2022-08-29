@@ -38,6 +38,10 @@ const remote = Deno.dlopen(
       parameters: ["pointer"],
       result: "void",
     },
+    method23: {
+      parameters: ["buffer"],
+      result: "void",
+    },
     static1: { type: "usize" },
     static2: { type: "pointer" },
     static3: { type: "usize" },
@@ -131,7 +135,8 @@ remote.symbols.method14(null);
 remote.symbols.method14(0);
 
 // @ts-expect-error: Invalid argument
-remote.symbols.method15(0);
+remote.symbols.method15("foo");
+// @ts-expect-error: Invalid argument
 remote.symbols.method15(new Uint16Array(1));
 remote.symbols.method15(0n);
 
@@ -243,18 +248,29 @@ remote.symbols.method20(null);
 remote.symbols.method20(unsafe_callback_right2);
 remote.symbols.method20(unsafe_callback_right1.pointer);
 
+remote.symbols.method23(new Uint8Array(1));
+remote.symbols.method23(new Uint32Array(1));
+remote.symbols.method23(new Uint8Array(1));
+
+// @ts-expect-error: Cannot pass pointer values as buffer.
+remote.symbols.method23(0);
+// @ts-expect-error: Cannot pass pointer values as buffer.
+remote.symbols.method23(0n);
+// @ts-expect-error: Cannot pass pointer values as buffer.
+remote.symbols.method23(null);
+
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
-const static1_right: bigint = remote.symbols.static1;
+const static1_right: Deno.PointerValue = remote.symbols.static1;
 // @ts-expect-error: Invalid member type
 const static2_wrong: null = remote.symbols.static2;
 const static2_right: Deno.UnsafePointer = remote.symbols.static2;
 // @ts-expect-error: Invalid member type
 const static3_wrong: null = remote.symbols.static3;
-const static3_right: bigint = remote.symbols.static3;
+const static3_right: Deno.PointerValue = remote.symbols.static3;
 // @ts-expect-error: Invalid member type
 const static4_wrong: null = remote.symbols.static4;
-const static4_right: bigint = remote.symbols.static4;
+const static4_right: Deno.PointerValue = remote.symbols.static4;
 // @ts-expect-error: Invalid member type
 const static5_wrong: null = remote.symbols.static5;
 const static5_right: number = remote.symbols.static5;
@@ -266,7 +282,7 @@ const static7_wrong: null = remote.symbols.static7;
 const static7_right: number = remote.symbols.static7;
 // @ts-expect-error: Invalid member type
 const static8_wrong: null = remote.symbols.static8;
-const static8_right: bigint = remote.symbols.static8;
+const static8_right: Deno.PointerValue = remote.symbols.static8;
 // @ts-expect-error: Invalid member type
 const static9_wrong: null = remote.symbols.static9;
 const static9_right: number = remote.symbols.static9;
@@ -278,7 +294,7 @@ const static11_wrong: null = remote.symbols.static11;
 const static11_right: number = remote.symbols.static11;
 // @ts-expect-error: Invalid member type
 const static12_wrong: null = remote.symbols.static12;
-const static12_right: bigint = remote.symbols.static12;
+const static12_right: Deno.PointerValue = remote.symbols.static12;
 // @ts-expect-error: Invalid member type
 const static13_wrong: null = remote.symbols.static13;
 const static13_right: number = remote.symbols.static13;
@@ -331,32 +347,49 @@ type __Tests__ = [
   higher_order_params: AssertEqual<
     {
       symbols: {
-        pushBuf: (ptr: bigint | TypedArray | null, func: bigint | null) => void;
+        pushBuf: (
+          buf: TypedArray,
+          ptr: number | bigint | null,
+          func: number | bigint | null,
+        ) => void;
       };
       close(): void;
     },
     Deno.DynamicLibrary<
-      { pushBuf: { parameters: ["pointer", "function"]; result: "void" } }
+      {
+        pushBuf: {
+          parameters: ["buffer", "pointer", "function"];
+          result: "void";
+        };
+      }
     >
   >,
   higher_order_returns: AssertEqual<
     {
       symbols: {
         pushBuf: (
-          ptr: bigint | TypedArray | null,
-          func: bigint | null,
-        ) => bigint;
+          buf: TypedArray,
+          ptr: number | bigint | null,
+          func: number | bigint | null,
+        ) => number | bigint;
       };
       close(): void;
     },
     Deno.DynamicLibrary<
-      { pushBuf: { parameters: ["pointer", "function"]; result: "pointer" } }
+      {
+        pushBuf: {
+          parameters: ["buffer", "pointer", "function"];
+          result: "pointer";
+        };
+      }
     >
   >,
   non_exact_params: AssertEqual<
     {
       symbols: {
-        foo: (...args: (number | bigint | TypedArray | null)[]) => bigint;
+        foo: (
+          ...args: (number | bigint | null)[]
+        ) => number | bigint;
       };
       close(): void;
     },

@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -10,6 +10,7 @@ delete Intl.v8BreakIterator;
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
     ArrayPrototypeIndexOf,
     ArrayPrototypePush,
@@ -75,7 +76,7 @@ delete Intl.v8BreakIterator;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { defineEventHandler, reportException } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
 
@@ -103,7 +104,7 @@ delete Intl.v8BreakIterator;
     }
 
     isClosing = true;
-    core.opSync("op_worker_close");
+    ops.op_worker_close();
   }
 
   function postMessage(message, transferOrOptions = {}) {
@@ -133,7 +134,7 @@ delete Intl.v8BreakIterator;
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    core.opSync("op_worker_post_message", data);
+    ops.op_worker_post_message(data);
   }
 
   let isClosing = false;
@@ -184,7 +185,7 @@ delete Intl.v8BreakIterator;
   let loadedMainWorkerScript = false;
 
   function importScripts(...urls) {
-    if (core.opSync("op_worker_get_type") === "module") {
+    if (ops.op_worker_get_type() === "module") {
       throw new TypeError("Can't import scripts in a module worker.");
     }
 
@@ -204,8 +205,7 @@ delete Intl.v8BreakIterator;
     // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
     // TODO(andreubotella) Refactor worker creation so the main script isn't
     // loaded with `importScripts()`.
-    const scripts = core.opSync(
-      "op_worker_sync_fetch",
+    const scripts = ops.op_worker_sync_fetch(
       parsedUrls,
       !loadedMainWorkerScript,
     );
@@ -220,7 +220,7 @@ delete Intl.v8BreakIterator;
   }
 
   function opMainModule() {
-    return core.opSync("op_main_module");
+    return ops.op_main_module();
   }
 
   function formatException(error) {
@@ -243,7 +243,8 @@ delete Intl.v8BreakIterator;
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     core.setMacrotaskCallback(promiseRejectMacrotaskCallback);
     core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-    core.opSync("op_set_format_exception_callback", formatException);
+    core.setReportExceptionCallback(reportException);
+    ops.op_set_format_exception_callback(formatException);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
@@ -569,13 +570,13 @@ delete Intl.v8BreakIterator;
   function promiseRejectCallback(type, promise, reason) {
     switch (type) {
       case 0: {
-        core.opSync("op_store_pending_promise_exception", promise, reason);
+        ops.op_store_pending_promise_exception(promise, reason);
         ArrayPrototypePush(pendingRejections, promise);
         WeakMapPrototypeSet(pendingRejectionsReasons, promise, reason);
         break;
       }
       case 1: {
-        core.opSync("op_remove_pending_promise_exception", promise);
+        ops.op_remove_pending_promise_exception(promise);
         const index = ArrayPrototypeIndexOf(pendingRejections, promise);
         if (index > -1) {
           ArrayPrototypeSplice(pendingRejections, index, 1);
@@ -594,15 +595,14 @@ delete Intl.v8BreakIterator;
   function promiseRejectMacrotaskCallback() {
     while (pendingRejections.length > 0) {
       const promise = ArrayPrototypeShift(pendingRejections);
-      const hasPendingException = core.opSync(
-        "op_has_pending_promise_exception",
+      const hasPendingException = ops.op_has_pending_promise_exception(
         promise,
       );
       const reason = WeakMapPrototypeGet(pendingRejectionsReasons, promise);
       WeakMapPrototypeDelete(pendingRejectionsReasons, promise);
 
       if (!hasPendingException) {
-        return;
+        continue;
       }
 
       const event = new PromiseRejectionEvent("unhandledrejection", {
@@ -610,11 +610,23 @@ delete Intl.v8BreakIterator;
         promise,
         reason,
       });
-      globalThis.dispatchEvent(event);
 
-      // If event was not prevented we will let Rust side handle it.
+      const errorEventCb = (event) => {
+        if (event.error === reason) {
+          ops.op_remove_pending_promise_exception(promise);
+        }
+      };
+      // Add a callback for "error" event - it will be dispatched
+      // if error is thrown during dispatch of "unhandledrejection"
+      // event.
+      globalThis.addEventListener("error", errorEventCb);
+      globalThis.dispatchEvent(event);
+      globalThis.removeEventListener("error", errorEventCb);
+
+      // If event was not prevented (or "unhandledrejection" listeners didn't
+      // throw) we will let Rust side handle it.
       if (event.defaultPrevented) {
-        core.opSync("op_remove_pending_promise_exception", promise);
+        ops.op_remove_pending_promise_exception(promise);
       }
     }
     return true;
@@ -627,6 +639,18 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    const {
+      args,
+      location: locationHref,
+      noColor,
+      isTty,
+      pid,
+      ppid,
+      unstableFlag,
+      cpuCount,
+      userAgent: userAgentInfo,
+    } = runtimeOptions;
+
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -636,6 +660,18 @@ delete Intl.v8BreakIterator;
     delete globalThis.bootstrap;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
+
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (locationHref == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(locationHref);
+    }
+
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     if (runtimeOptions.unstableFlag) {
       ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
@@ -666,22 +702,8 @@ delete Intl.v8BreakIterator;
     });
 
     runtimeStart(runtimeOptions);
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      isTty,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-      userAgent: userAgentInfo,
-    } = runtimeOptions;
 
     colors.setNoColor(noColor || !isTty);
-    if (locationHref != null) {
-      location.setLocationHref(locationHref);
-    }
     numCpus = cpuCount;
     userAgent = userAgentInfo;
     registerErrors();

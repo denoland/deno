@@ -53,7 +53,7 @@ pub fn init_for_worker() -> Extension {
 }
 
 #[op]
-fn noop_op(_code: i32) -> Result<(), AnyError> {
+fn noop_op() -> Result<(), AnyError> {
   Ok(())
 }
 

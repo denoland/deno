@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferIsView,
@@ -51,7 +52,7 @@
         prefix,
         context: "Argument 2",
       });
-      const encoding = core.opSync("op_encoding_normalize_label", label);
+      const encoding = ops.op_encoding_normalize_label(label);
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
@@ -124,7 +125,7 @@
         }
 
         if (!options.stream && this.#rid === null) {
-          return core.opSync("op_encoding_decode_single", input, {
+          return ops.op_encoding_decode_single(input, {
             label: this.#encoding,
             fatal: this.#fatal,
             ignoreBom: this.#ignoreBOM,
@@ -132,13 +133,13 @@
         }
 
         if (this.#rid === null) {
-          this.#rid = core.opSync("op_encoding_new_decoder", {
+          this.#rid = ops.op_encoding_new_decoder({
             label: this.#encoding,
             fatal: this.#fatal,
             ignoreBom: this.#ignoreBOM,
           });
         }
-        return core.opSync("op_encoding_decode", input, {
+        return ops.op_encoding_decode(input, {
           rid: this.#rid,
           stream: options.stream,
         });
@@ -200,7 +201,7 @@
         context: "Argument 2",
         allowShared: true,
       });
-      return core.opSync("op_encoding_encode_into", source, destination);
+      return ops.op_encoding_encode_into(source, destination);
     }
   }
 

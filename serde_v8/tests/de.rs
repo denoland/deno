@@ -90,6 +90,7 @@ detest!(de_option_undefined, Option<bool>, "undefined", None);
 detest!(de_unit_null, (), "null", ());
 detest!(de_unit_undefined, (), "undefined", ());
 detest!(de_bool, bool, "true", true);
+detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
@@ -104,6 +105,12 @@ detest!(
   (u64, bool, ()),
   "[123, true, null]",
   (123, true, ())
+);
+defail!(
+  de_tuple_wrong_len,
+  (u64, bool, ()),
+  "[123, true, null, 'extra']",
+  |e| e == Err(Error::LengthMismatch)
 );
 detest!(
   de_mathop,
@@ -281,24 +288,30 @@ detest!(
   de_json_object,
   serde_json::Value,
   "({a: 1, b: 'hello', c: true})",
-  serde_json::Value::Object(
-    vec![
-      (
-        "a".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(1)),
-      ),
-      (
-        "b".to_string(),
-        serde_json::Value::String("hello".to_string()),
-      ),
-      ("c".to_string(), serde_json::Value::Bool(true),),
-    ]
-    .drain(..)
-    .collect()
-  )
+  serde_json::json!({
+    "a": 1,
+    "b": "hello",
+    "c": true,
+  })
 );
-detest!(de_bigint_u64, u64, "BigInt(2**59)", 1 << 59);
-detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));
+detest!(
+  de_json_object_from_map,
+  serde_json::Value,
+  "(new Map([['a', 1], ['b', 'hello'], ['c', true]]))",
+  serde_json::json!({
+    "a": 1,
+    "b": "hello",
+    "c": true,
+  })
+);
+// TODO: this is not optimal, ideally we'd get an array of [1,2,3] instead.
+// Fixing that will require exposing Set::AsArray in the v8 bindings.
+detest!(
+  de_json_object_from_set,
+  serde_json::Value,
+  "(new Set([1, 2, 3]))",
+  serde_json::json!({})
+);
 
 defail!(defail_struct, MathOp, "123", |e| e
   == Err(Error::ExpectedObject));
@@ -323,6 +336,25 @@ detest!(de_bstr, ByteString, "'hello'", "hello".into());
 defail!(defail_bstr, ByteString, "'👋bye'", |e| e
   == Err(Error::ExpectedLatin1));
 
+#[derive(PartialEq, Debug, Deserialize)]
+pub struct StructWithBytes {
+  #[serde(with = "serde_bytes")]
+  a: Vec<u8>,
+  #[serde(with = "serde_bytes")]
+  b: Vec<u8>,
+  #[serde(with = "serde_bytes")]
+  c: Vec<u8>,
+}
+detest!(
+  de_struct_with_bytes,
+  StructWithBytes,
+  "({ a: new Uint8Array([1, 2]), b: (new Uint8Array([3 , 4])).buffer, c: (new Uint32Array([0])).buffer})",
+  StructWithBytes {
+    a: vec![1, 2],
+    b: vec![3, 4],
+    c: vec![0, 0, 0, 0],
+  }
+);
 detest!(
   de_u16str,
   U16String,

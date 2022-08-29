@@ -20,6 +20,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleKind;
 use import_map::ImportMap;
 
+use crate::cache::ParsedSourceCache;
 use crate::resolver::ImportMapResolver;
 
 use super::build::VendorEnvironment;
@@ -42,6 +43,22 @@ impl TestLoader {
     path_or_specifier: impl AsRef<str>,
     text: impl AsRef<str>,
   ) -> &mut Self {
+    self.add_result(path_or_specifier, Ok((text.as_ref().to_string(), None)))
+  }
+
+  pub fn add_failure(
+    &mut self,
+    path_or_specifier: impl AsRef<str>,
+    message: impl AsRef<str>,
+  ) -> &mut Self {
+    self.add_result(path_or_specifier, Err(message.as_ref().to_string()))
+  }
+
+  fn add_result(
+    &mut self,
+    path_or_specifier: impl AsRef<str>,
+    result: RemoteFileResult,
+  ) -> &mut Self {
     if path_or_specifier
       .as_ref()
       .to_lowercase()
@@ -49,14 +66,12 @@ impl TestLoader {
     {
       self.files.insert(
         ModuleSpecifier::parse(path_or_specifier.as_ref()).unwrap(),
-        Ok((text.as_ref().to_string(), None)),
+        result,
       );
     } else {
       let path = make_path(path_or_specifier.as_ref());
       let specifier = ModuleSpecifier::from_file_path(path).unwrap();
-      self
-        .files
-        .insert(specifier, Ok((text.as_ref().to_string(), None)));
+      self.files.insert(specifier, result);
     }
     self
   }
@@ -205,11 +220,18 @@ impl VendorTestBuilder {
       .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
       .collect();
     let loader = self.loader.clone();
-    let graph =
-      build_test_graph(roots, self.original_import_map.clone(), loader.clone())
-        .await;
+    let parsed_source_cache = ParsedSourceCache::new(None);
+    let analyzer = parsed_source_cache.as_analyzer();
+    let graph = build_test_graph(
+      roots,
+      self.original_import_map.clone(),
+      loader.clone(),
+      &*analyzer,
+    )
+    .await;
     super::build::build(
       graph,
+      &parsed_source_cache,
       &output_dir,
       self.original_import_map.as_ref(),
       &self.environment,
@@ -240,6 +262,7 @@ async fn build_test_graph(
   roots: Vec<(ModuleSpecifier, ModuleKind)>,
   original_import_map: Option<ImportMap>,
   mut loader: TestLoader,
+  analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
   let resolver =
     original_import_map.map(|m| ImportMapResolver::new(Arc::new(m)));
@@ -250,7 +273,7 @@ async fn build_test_graph(
     &mut loader,
     resolver.as_ref().map(|im| im.as_resolver()),
     None,
-    None,
+    Some(analyzer),
     None,
   )
   .await

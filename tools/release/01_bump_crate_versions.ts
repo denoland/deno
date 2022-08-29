@@ -97,7 +97,7 @@ async function getGitLog() {
 }
 
 async function updateStdVersion() {
-  const compatFilePath = $.path.join(cliCrate.folderPath, "compat/mod.rs");
+  const compatFilePath = $.path.join(cliCrate.folderPath, "deno_std.rs");
   const text = await Deno.readTextFile(compatFilePath);
   const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
   const stdVersionText = versionRe.exec(text)?.[1];

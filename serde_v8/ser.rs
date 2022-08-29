@@ -419,19 +419,20 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     Ok(v8::Boolean::new(&mut self.scope.borrow_mut(), v).into())
   }
 
-  fn serialize_char(self, _v: char) -> JsResult<'a> {
-    unimplemented!();
+  fn serialize_char(self, v: char) -> JsResult<'a> {
+    self.serialize_str(&v.to_string())
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    v8::String::new(&mut self.scope.borrow_mut(), v)
-      .map(|v| v.into())
-      .ok_or(Error::ExpectedString)
+    Ok(
+      v8::String::new(&mut self.scope.borrow_mut(), v)
+        .unwrap()
+        .into(),
+    )
   }
 
-  fn serialize_bytes(self, _v: &[u8]) -> JsResult<'a> {
-    // TODO: investigate using Uint8Arrays
-    unimplemented!()
+  fn serialize_bytes(self, v: &[u8]) -> JsResult<'a> {
+    Ok(slice_to_uint8array(&mut self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_none(self) -> JsResult<'a> {
@@ -569,4 +570,27 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
   }
+}
+
+pub fn slice_to_uint8array<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: &[u8],
+) -> v8::Local<'a, v8::Uint8Array> {
+  let buffer = if buf.is_empty() {
+    v8::ArrayBuffer::new(scope, 0)
+  } else {
+    let store: v8::UniqueRef<_> =
+      v8::ArrayBuffer::new_backing_store(scope, buf.len());
+    // SAFETY: raw memory copy into the v8 ArrayBuffer allocated above
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        buf.as_ptr(),
+        store.data().unwrap().as_ptr() as *mut u8,
+        buf.len(),
+      )
+    }
+    v8::ArrayBuffer::with_backing_store(scope, &store.make_shared())
+  };
+  v8::Uint8Array::new(scope, buffer, 0, buf.len())
+    .expect("Failed to create UintArray8")
 }

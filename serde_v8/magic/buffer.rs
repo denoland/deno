@@ -58,7 +58,7 @@ impl Clone for ZeroCopyBuf {
 
 impl AsRef<[u8]> for ZeroCopyBuf {
   fn as_ref(&self) -> &[u8] {
-    &*self
+    self
   }
 }
 
@@ -72,8 +72,8 @@ impl Deref for ZeroCopyBuf {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     match self {
-      Self::FromV8(buf) => &*buf,
-      Self::Temp(vec) => &*vec,
+      Self::FromV8(buf) => buf,
+      Self::Temp(vec) => vec,
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }

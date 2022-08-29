@@ -582,6 +582,16 @@ impl Resource for StdFileResource {
   fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
     Box::pin(self.write(buf))
   }
+
+  #[cfg(unix)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
+    use std::os::unix::io::AsRawFd;
+    self
+      .with_inner_and_metadata(move |std_file, _| {
+        Ok(std_file.with_file(|f| f.as_raw_fd()))
+      })
+      .ok()
+  }
 }
 
 // override op_print to use the stdout and stderr in the resource table
