@@ -9,7 +9,6 @@ use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::compat;
 use crate::deno_dir;
 use crate::emit;
 use crate::emit::emit_parsed_source;
@@ -373,32 +372,6 @@ impl ProcState {
       maybe_file_watcher_reporter,
     )
     .await;
-
-    let needs_cjs_esm_translation = graph
-      .modules()
-      .iter()
-      .any(|m| m.kind == ModuleKind::CommonJs);
-
-    if needs_cjs_esm_translation {
-      for module in graph.modules() {
-        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
-        // in compat mode, all files ending with plain `.js` extension are
-        // considered CommonJs modules. Which leads to situation where valid
-        // ESM modules with `.js` extension might undergo translation (it won't
-        // work in this situation).
-        if module.kind == ModuleKind::CommonJs {
-          let translated_source = compat::translate_cjs_to_esm(
-            &self.file_fetcher,
-            &module.specifier,
-            module.maybe_source.as_ref().unwrap().to_string(),
-            module.media_type,
-          )?;
-          let mut graph_data = self.graph_data.write();
-          graph_data
-            .add_cjs_esm_translation(&module.specifier, translated_source);
-        }
-      }
-    }
 
     // If there was a locker, validate the integrity of all the modules in the
     // locker.

@@ -11,7 +11,6 @@ use serde::Serialize;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
-// TODO(bartlomieju): deduplicate with cli/compat/esm_resolver.rs
 #[derive(Clone, Debug, Serialize)]
 pub struct PackageJson {
   pub exists: bool,

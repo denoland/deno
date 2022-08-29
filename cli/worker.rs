@@ -195,8 +195,8 @@ impl CliMainWorker {
     // We only execute the specifier as a module if it is tagged with TestMode::Module or
     // TestMode::Both.
     if mode != TestMode::Documentation {
-        // We execute the module module as a side module so that import.meta.main is not set.
-        self.execute_side_module_possibly_with_npm().await?;
+      // We execute the module module as a side module so that import.meta.main is not set.
+      self.execute_side_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
@@ -483,9 +483,7 @@ fn create_web_worker_preload_module_callback(
   _ps: ProcState,
 ) -> Arc<WorkerEventCb> {
   Arc::new(move |worker| {
-    let fut = async move {
-      Ok(worker)
-    };
+    let fut = async move { Ok(worker) };
     LocalFutureObj::new(Box::new(fut))
   })
 }

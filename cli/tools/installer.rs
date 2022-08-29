@@ -608,7 +608,6 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--compat",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]

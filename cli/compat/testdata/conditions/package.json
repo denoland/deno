@@ -1,7 +1,0 @@
-{
-  "name": "conditions",
-  "type": "module",
-  "dependencies": {
-    "imports_exports": "1.0.0"
-  }
-}
