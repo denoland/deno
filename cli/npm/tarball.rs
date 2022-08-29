@@ -123,6 +123,12 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
     let mut entry = entry?;
     let path = entry.path()?;
     let entry_type = entry.header().entry_type();
+
+    // Some package tarballs contain "pax_global_header", they should be skipped.
+    if entry_type == EntryType::XGlobalHeader {
+      continue;
+    }
+
     // skip the first component which will be either "package" or the name of the package
     let relative_path = path.components().skip(1).collect::<PathBuf>();
     let absolute_path = output_folder.join(relative_path);
