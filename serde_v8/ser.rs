@@ -416,7 +416,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let s = &mut self.scope.borrow_mut();
     // If i64 can fit in max safe integer bounds then serialize as v8::Number
     // otherwise serialize as v8::BigInt
-    if v <= MAX_SAFE_INTEGER && v >= MIN_SAFE_INTEGER {
+    if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
       Ok(v8::Number::new(s, v as _).into())
     } else {
       Ok(v8::BigInt::new_from_i64(s, v).into())
