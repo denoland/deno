@@ -85,10 +85,16 @@ impl Loader for FetchCacher {
     if specifier.scheme() == "npm" {
       return Box::pin(futures::future::ready(
         match npm::NpmPackageReference::from_specifier(specifier) {
-          Ok(_) => Ok(Some(deno_graph::source::LoadResponse::External {
-            specifier: specifier.clone(),
-          })),
-          Err(err) => Err(err),
+          Ok(_) => {
+            eprintln!("FetchCacher2 {}", specifier);
+            Ok(Some(deno_graph::source::LoadResponse::External {
+              specifier: specifier.clone(),
+            }))
+          },
+          Err(err) => {
+            eprintln!("FetchCacher {} {:#?}", specifier, err);
+            Err(err)
+          },
         },
       ));
     }
@@ -107,6 +113,7 @@ impl Loader for FetchCacher {
         .await
         .map_or_else(
           |err| {
+            eprintln!("fetch {:#?}", err);
             if let Some(err) = err.downcast_ref::<std::io::Error>() {
               if err.kind() == std::io::ErrorKind::NotFound {
                 return Ok(None);

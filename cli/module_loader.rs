@@ -149,7 +149,7 @@ impl CliModuleLoader {
         // only inject node globals for esm
         node::esm_code_with_node_globals(specifier, code)?
       };
-
+      println!("[found URL] {}\ncode: {}", specifier, code);
       ModuleCodeSource {
         code,
         found_url: specifier.clone(),
@@ -186,6 +186,7 @@ impl ModuleLoader for CliModuleLoader {
     referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
+    println!("[resolve] {}: {}", specifier, referrer);
     self.ps.resolve(specifier, referrer)
   }
 
