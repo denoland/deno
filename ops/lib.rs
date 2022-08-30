@@ -592,13 +592,33 @@ fn codegen_arg(
   idx: usize,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
-  let pat = match arg {
-    syn::FnArg::Typed(pat) => &pat.pat,
+  let (pat, ty) = match arg {
+    syn::FnArg::Typed(pat) => (&pat.pat, &pat.ty),
     _ => unreachable!(),
   };
   // Fast path if arg should be skipped
   if matches!(**pat, syn::Pat::Wild(_)) {
     return quote! { let #ident = (); };
+  }
+  // Fast path for `String`
+  if is_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
+        Err(_) => {
+          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
+        }
+      };
+    };
+  }
+  // Fast path for `Option<String>`
+  if is_option_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => Some(#core::serde_v8::to_utf8(v8_string, scope)),
+        Err(_) => None
+      };
+    };
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -678,6 +698,14 @@ fn is_result(ty: impl ToTokens) -> bool {
     Some(idx) => !tokens.split_at(idx).0.contains('<'),
     None => false,
   }
+}
+
+fn is_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "String"
+}
+
+fn is_option_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "Option < String >"
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path
