@@ -855,6 +855,7 @@ declare class MessageEvent<T = any> extends Event {
   constructor(type: string, eventInitDict?: MessageEventInit);
 }
 
+/** @category DOM APIs */
 type Transferable = ArrayBuffer | MessagePort;
 
 /**
