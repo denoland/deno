@@ -715,6 +715,7 @@ pub fn translate_cjs_to_esm(
   media_type: MediaType,
   npm_resolver: &GlobalNpmPackageResolver,
 ) -> Result<String, AnyError> {
+  eprintln!("translating {}\ncode:{}", specifier, code);
   let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
     specifier: specifier.to_string(),
     text_info: deno_ast::SourceTextInfo::new(code.into()),
@@ -737,6 +738,7 @@ pub fn translate_cjs_to_esm(
 
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
+    eprintln!("found reexport in CJS {}", reexport);
     // Firstly, resolve relate reexport specifier
     // todo(dsherret): call module_resolve instead?
     let resolved_reexport = resolve(
@@ -767,7 +769,7 @@ pub fn translate_cjs_to_esm(
         "const reexport{} = require(\"{}\");",
         idx, reexport
       ));
-
+      eprintln!("found reexport2 in CJS {:?}", analysis.exports);
       for export in analysis.exports.iter().filter(|e| {
         e.as_str() != "default" && !root_exports.contains(e.as_str())
       }) {
@@ -795,6 +797,7 @@ pub fn translate_cjs_to_esm(
 
   let mut had_default = false;
   for export in analysis.exports.iter() {
+    eprintln!("found export in CJS {}", export);
     if export.as_str() == "default" {
       if root_exports.contains("__esModule") {
         source.push(format!(
