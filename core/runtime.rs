@@ -1162,8 +1162,8 @@ impl JsRuntimeState {
   }
 }
 
-fn check_dispatched_exceptions<'s>(
-  scope: &mut v8::HandleScope<'s>,
+fn check_dispatched_exceptions(
+  scope: &mut v8::HandleScope,
 ) -> Result<(), Error> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
