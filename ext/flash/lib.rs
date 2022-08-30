@@ -243,13 +243,17 @@ async fn op_flash_write_resource(
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: call to libc::fstat.
         if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let cnt_length = format!("Content-Length: {}\r\n\r\n", stat.st_size);
+          let mut length_buf = itoa::Buffer::new();
           let tx = sendfile::SendFile {
             io: (fd, stream_handle),
             written: 0,
             slices: &mut [
               sendfile::UnixIoSlice::new(&response),
-              sendfile::UnixIoSlice::new(cnt_length.as_bytes()),
+              sendfile::UnixIoSlice::new(b"Content-Length: "),
+              sendfile::UnixIoSlice::new(
+                length_buf.format(stat.st_size).as_bytes(),
+              ),
+              sendfile::UnixIoSlice::new(b"\r\n\r\n"),
             ],
             sending_headers: true,
           };
