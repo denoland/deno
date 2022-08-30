@@ -75,6 +75,13 @@ itest!(conditional_exports {
   http_server: true,
 });
 
+itest!(dual_cjs_esm {
+  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  output: "npm/dual_cjs_esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
@@ -106,6 +113,13 @@ itest!(import_map {
 itest!(sub_paths {
   args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(tarball_with_global_header {
+  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  output: "npm/tarball_with_global_header/main.out",
   envs: env_vars(),
   http_server: true,
 });
