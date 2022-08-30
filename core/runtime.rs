@@ -1167,7 +1167,6 @@ fn check_dispatched_exceptions(
 ) -> Result<(), Error> {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-
   if let Some(exception) = state.dispatched_exceptions.pop_back() {
     drop(state);
     let exception = v8::Local::new(scope, exception);
