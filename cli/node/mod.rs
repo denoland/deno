@@ -1055,7 +1055,7 @@ fn file_extension_probe(
   } else {
     let mut p_js = p.clone();
     p_js.set_extension("js");
-    if p_js.exists() {
+    if p_js.exists() && !p_js.is_dir() {
       return Ok(p_js);
     }
   }
