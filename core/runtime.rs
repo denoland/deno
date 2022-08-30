@@ -961,7 +961,7 @@ impl JsRuntime {
       self.resolve_async_ops(cx)?;
       self.drain_nexttick()?;
       self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
+      self.check_async_exceptions()?;
     }
 
     // Dynamic module loading - ie. modules loaded using "import()"
@@ -989,7 +989,7 @@ impl JsRuntime {
         }
       }
 
-      self.check_promise_exceptions()?;
+      self.check_async_exceptions()?;
     }
 
     // Event loop middlewares
@@ -1170,26 +1170,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
   // have returned false if TerminateExecution was indeed called but there was
   // no JS to execute after the call.
   scope.cancel_terminate_execution();
-  let mut exception = exception;
-  {
-    // If termination is the result of a `op_dispatch_exception` call, we want
-    // to use the exception that was passed to it rather than the exception that
-    // was passed to this function.
-    let mut state = state_rc.borrow_mut();
-    exception = state
-      .dispatched_exceptions
-      .pop_back()
-      .map(|exception| v8::Local::new(scope, exception))
-      .unwrap_or_else(|| {
-        // Maybe make a new exception object.
-        if was_terminating_execution && exception.is_null_or_undefined() {
-          let message = v8::String::new(scope, "execution terminated").unwrap();
-          v8::Exception::error(scope, message)
-        } else {
-          exception
-        }
-      });
-  }
 
   let mut js_error = JsError::from_v8_exception(scope, exception);
   if in_promise {
@@ -1390,11 +1370,11 @@ impl JsRuntime {
     // Update status after evaluating.
     status = module.get_status();
 
-    let has_dispatched_exception =
-      !state_rc.borrow_mut().dispatched_exceptions.is_empty();
-    if has_dispatched_exception {
+    let dispatched_exception =
+      state_rc.borrow_mut().dispatched_exceptions.back().cloned();
+    if let Some(exception) = dispatched_exception {
       // This will be overrided in `exception_to_err_result()`.
-      let exception = v8::undefined(tc_scope).into();
+      let exception = v8::Local::new(tc_scope, exception);
       let pending_mod_evaluate = {
         let mut state = state_rc.borrow_mut();
         state.pending_mod_evaluate.take().unwrap()
@@ -1843,9 +1823,16 @@ impl JsRuntime {
     Ok(root_id)
   }
 
-  fn check_promise_exceptions(&mut self) -> Result<(), Error> {
+  fn check_async_exceptions(&mut self) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
     let mut state = state_rc.borrow_mut();
+
+    if let Some(exception) = state.dispatched_exceptions.pop_back() {
+      drop(state);
+      let scope = &mut self.handle_scope();
+      let exception = v8::Local::new(scope, exception);
+      return exception_to_err_result(scope, exception, true);
+    }
 
     if state.pending_promise_exceptions.is_empty() {
       return Ok(());
