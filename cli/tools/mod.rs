@@ -4,6 +4,7 @@ pub mod bench;
 pub mod coverage;
 pub mod doc;
 pub mod fmt;
+pub mod init;
 pub mod installer;
 pub mod lint;
 pub mod repl;

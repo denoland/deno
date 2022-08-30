@@ -74,6 +74,8 @@ mod eval;
 mod fmt;
 #[path = "info_tests.rs"]
 mod info;
+#[path = "init_tests.rs"]
+mod init;
 #[path = "inspector_tests.rs"]
 mod inspector;
 #[path = "install_tests.rs"]
@@ -82,6 +84,8 @@ mod install;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "npm_tests.rs"]
+mod npm;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]

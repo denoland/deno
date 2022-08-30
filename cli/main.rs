@@ -7,6 +7,7 @@ mod cdp;
 mod checksum;
 mod compat;
 mod deno_dir;
+mod deno_std;
 mod diagnostics;
 mod diff;
 mod display;
@@ -23,7 +24,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
-#[allow(unused)]
+mod node;
 mod npm;
 mod ops;
 mod proc_state;
@@ -51,6 +52,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::FmtFlags;
 use crate::args::InfoFlags;
+use crate::args::InitFlags;
 use crate::args::InstallFlags;
 use crate::args::LintFlags;
 use crate::args::ReplFlags;
@@ -90,6 +92,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
 use log::debug;
 use log::info;
+use npm::NpmPackageReference;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -244,7 +247,8 @@ async fn compile_command(
 
   graph.valid().unwrap();
 
-  let eszip = eszip::EszipV2::from_graph(graph, Default::default())?;
+  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 
   info!(
     "{} {}",
@@ -270,6 +274,14 @@ async fn compile_command(
 
   tools::standalone::write_standalone_binary(output_path, final_bin).await?;
 
+  Ok(0)
+}
+
+async fn init_command(
+  _flags: Flags,
+  init_flags: InitFlags,
+) -> Result<i32, AnyError> {
+  tools::init::init_project(init_flags).await?;
   Ok(0)
 }
 
@@ -313,7 +325,8 @@ async fn install_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_main_module().await?;
   tools::installer::install(flags, install_flags)?;
@@ -402,7 +415,8 @@ async fn eval_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -444,8 +458,8 @@ async fn create_graph_and_maybe_check(
     ps.maybe_import_map.clone().map(ImportMapResolver::new);
   let maybe_jsx_resolver = ps
     .options
-    .to_maybe_jsx_import_source_module()
-    .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+    .to_maybe_jsx_import_source_config()
+    .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
   let maybe_resolver = if maybe_jsx_resolver.is_some() {
     maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
   } else {
@@ -453,6 +467,7 @@ async fn create_graph_and_maybe_check(
       .as_ref()
       .map(|im| im.as_resolver())
   };
+  let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![(root, deno_graph::ModuleKind::Esm)],
@@ -461,7 +476,7 @@ async fn create_graph_and_maybe_check(
       &mut cache,
       maybe_resolver,
       maybe_locker,
-      None,
+      Some(&*analyzer),
       None,
     )
     .await,
@@ -547,7 +562,6 @@ async fn bundle_command(
 
       debug!(">>>>> bundle START");
       let ps = ProcState::from_options(cli_options).await?;
-
       let graph =
         create_graph_and_maybe_check(module_specifier, &ps, debug).await?;
 
@@ -684,7 +698,8 @@ async fn repl_command(
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
   worker.setup_repl().await?;
   tools::repl::run(
     &ps,
@@ -704,7 +719,8 @@ async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     Permissions::from_options(&ps.options.permissions_options())?,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
 
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -748,7 +764,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
         permissions,
         vec![],
         Default::default(),
-      );
+      )
+      .await?;
       worker.run_for_watcher().await?;
 
       Ok(())
@@ -787,8 +804,13 @@ async fn run_command(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
-  let main_module = resolve_url_or_path(&run_flags.script)?;
   let ps = ProcState::build(flags).await?;
+  let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
+  {
+    ModuleSpecifier::parse(&run_flags.script)?
+  } else {
+    resolve_url_or_path(&run_flags.script)?
+  };
   let permissions =
     Permissions::from_options(&ps.options.permissions_options())?;
   let mut worker = create_main_worker(
@@ -797,7 +819,8 @@ async fn run_command(
     permissions,
     vec![],
     Default::default(),
-  );
+  )
+  .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -941,6 +964,9 @@ fn get_subcommand(
     DenoSubcommand::Fmt(fmt_flags) => {
       format_command(flags, fmt_flags).boxed_local()
     }
+    DenoSubcommand::Init(init_flags) => {
+      init_command(flags, init_flags).boxed_local()
+    }
     DenoSubcommand::Info(info_flags) => {
       info_command(flags, info_flags).boxed_local()
     }
@@ -1058,9 +1084,7 @@ pub fn main() {
 
     logger::init(flags.log_level);
 
-    let exit_code = get_subcommand(flags).await;
-
-    exit_code
+    get_subcommand(flags).await
   };
 
   let exit_code = unwrap_or_exit(run_local(exit_code));

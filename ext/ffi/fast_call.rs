@@ -99,8 +99,10 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Function => fast_api::Type::Uint64,
-      NativeType::Pointer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
+      NativeType::USize | NativeType::Pointer | NativeType::Function => {
+        fast_api::Type::Uint64
+      }
+      NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
     }
   }
 }
@@ -217,10 +219,11 @@ impl SysVAmd64 {
       NativeType::U8 => self.move_integer(U(B)),
       NativeType::U16 => self.move_integer(U(W)),
       NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64 | NativeType::USize | NativeType::Function => {
-        self.move_integer(U(QW))
-      }
-      NativeType::Pointer => self.move_integer(Pointer),
+      NativeType::U64
+      | NativeType::USize
+      | NativeType::Pointer
+      | NativeType::Function => self.move_integer(U(QW)),
+      NativeType::Buffer => self.move_integer(Buffer),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -292,10 +295,10 @@ impl SysVAmd64 {
       (0, I(W)) => x64!(s; movsx edi, si),
       (0, U(DW) | I(DW)) => x64!(s; mov edi, esi),
       (0, U(QW) | I(QW)) => x64!(s; mov rdi, rsi),
-      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // The fast API expects buffer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, Pointer) => x64!(s; mov rdi, [rsi + 8]),
+      (0, Buffer) => x64!(s; mov rdi, [rsi + 8]),
 
       (1, U(B)) => x64!(s; movzx esi, dl),
       (1, I(B)) => x64!(s; movsx esi, dl),
@@ -303,7 +306,7 @@ impl SysVAmd64 {
       (1, I(W)) => x64!(s; movsx esi, dx),
       (1, U(DW) | I(DW)) => x64!(s; mov esi, edx),
       (1, U(QW) | I(QW)) => x64!(s; mov rsi, rdx),
-      (1, Pointer) => x64!(s; mov rsi, [rdx + 8]),
+      (1, Buffer) => x64!(s; mov rsi, [rdx + 8]),
 
       (2, U(B)) => x64!(s; movzx edx, cl),
       (2, I(B)) => x64!(s; movsx edx, cl),
@@ -311,7 +314,7 @@ impl SysVAmd64 {
       (2, I(W)) => x64!(s; movsx edx, cx),
       (2, U(DW) | I(DW)) => x64!(s; mov edx, ecx),
       (2, U(QW) | I(QW)) => x64!(s; mov rdx, rcx),
-      (2, Pointer) => x64!(s; mov rdx, [rcx + 8]),
+      (2, Buffer) => x64!(s; mov rdx, [rcx + 8]),
 
       (3, U(B)) => x64!(s; movzx ecx, r8b),
       (3, I(B)) => x64!(s; movsx ecx, r8b),
@@ -319,7 +322,7 @@ impl SysVAmd64 {
       (3, I(W)) => x64!(s; movsx ecx, r8w),
       (3, U(DW) | I(DW)) => x64!(s; mov ecx, r8d),
       (3, U(QW) | I(QW)) => x64!(s; mov rcx, r8),
-      (3, Pointer) => x64!(s; mov rcx, [r8 + 8]),
+      (3, Buffer) => x64!(s; mov rcx, [r8 + 8]),
 
       (4, U(B)) => x64!(s; movzx r8d, r9b),
       (4, I(B)) => x64!(s; movsx r8d, r9b),
@@ -327,7 +330,7 @@ impl SysVAmd64 {
       (4, I(W)) => x64!(s; movsx r8d, r9w),
       (4, U(DW) | I(DW)) => x64!(s; mov r8d, r9d),
       (4, U(QW) | I(QW)) => x64!(s; mov r8, r9),
-      (4, Pointer) => x64!(s; mov r8, [r9 + 8]),
+      (4, Buffer) => x64!(s; mov r8, [r9 + 8]),
 
       (5, param) => {
         let ot = self.offset_trampoline as i32;
@@ -339,7 +342,7 @@ impl SysVAmd64 {
           I(W) => x64!(s; movsx r9d, WORD [rsp + ot]),
           U(DW) | I(DW) => x64!(s; mov r9d, [rsp + ot]),
           U(QW) | I(QW) => x64!(s; mov r9, [rsp + ot]),
-          Pointer => x64!(s
+          Buffer => x64!(s
             ; mov r9, [rsp + ot]
             ; mov r9, [r9 + 8]
           ),
@@ -378,7 +381,7 @@ impl SysVAmd64 {
             ; mov rax, [rsp + ot]
             ; mov [rsp + oc], rax
           ),
-          Pointer => x64!(s
+          Buffer => x64!(s
             ; mov rax, [rsp + ot]
             ; mov rax, [rax + 8]
             ; mov [rsp + oc], rax
@@ -670,10 +673,11 @@ impl Aarch64Apple {
       NativeType::U8 => self.move_integer(U(B)),
       NativeType::U16 => self.move_integer(U(W)),
       NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64 | NativeType::USize | NativeType::Function => {
-        self.move_integer(U(QW))
-      }
-      NativeType::Pointer => self.move_integer(Pointer),
+      NativeType::U64
+      | NativeType::Pointer
+      | NativeType::USize
+      | NativeType::Function => self.move_integer(U(QW)),
+      NativeType::Buffer => self.move_integer(Buffer),
       NativeType::I8 => self.move_integer(I(B)),
       NativeType::I16 => self.move_integer(I(W)),
       NativeType::I32 => self.move_integer(I(DW)),
@@ -750,10 +754,10 @@ impl Aarch64Apple {
       (0, U(W)) => aarch64!(s; and w0, w1, 0xFFFF),
       (0, I(DW) | U(DW)) => aarch64!(s; mov w0, w1),
       (0, I(QW) | U(QW)) => aarch64!(s; mov x0, x1),
-      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // The fast API expects buffer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, Pointer) => aarch64!(s; ldr x0, [x1, 8]),
+      (0, Buffer) => aarch64!(s; ldr x0, [x1, 8]),
 
       (1, I(B)) => aarch64!(s; sxtb w1, w2),
       (1, U(B)) => aarch64!(s; and w1, w2, 0xFF),
@@ -761,7 +765,7 @@ impl Aarch64Apple {
       (1, U(W)) => aarch64!(s; and w1, w2, 0xFFFF),
       (1, I(DW) | U(DW)) => aarch64!(s; mov w1, w2),
       (1, I(QW) | U(QW)) => aarch64!(s; mov x1, x2),
-      (1, Pointer) => aarch64!(s; ldr x1, [x2, 8]),
+      (1, Buffer) => aarch64!(s; ldr x1, [x2, 8]),
 
       (2, I(B)) => aarch64!(s; sxtb w2, w3),
       (2, U(B)) => aarch64!(s; and w2, w3, 0xFF),
@@ -769,7 +773,7 @@ impl Aarch64Apple {
       (2, U(W)) => aarch64!(s; and w2, w3, 0xFFFF),
       (2, I(DW) | U(DW)) => aarch64!(s; mov w2, w3),
       (2, I(QW) | U(QW)) => aarch64!(s; mov x2, x3),
-      (2, Pointer) => aarch64!(s; ldr x2, [x3, 8]),
+      (2, Buffer) => aarch64!(s; ldr x2, [x3, 8]),
 
       (3, I(B)) => aarch64!(s; sxtb w3, w4),
       (3, U(B)) => aarch64!(s; and w3, w4, 0xFF),
@@ -777,7 +781,7 @@ impl Aarch64Apple {
       (3, U(W)) => aarch64!(s; and w3, w4, 0xFFFF),
       (3, I(DW) | U(DW)) => aarch64!(s; mov w3, w4),
       (3, I(QW) | U(QW)) => aarch64!(s; mov x3, x4),
-      (3, Pointer) => aarch64!(s; ldr x3, [x4, 8]),
+      (3, Buffer) => aarch64!(s; ldr x3, [x4, 8]),
 
       (4, I(B)) => aarch64!(s; sxtb w4, w5),
       (4, U(B)) => aarch64!(s; and w4, w5, 0xFF),
@@ -785,7 +789,7 @@ impl Aarch64Apple {
       (4, U(W)) => aarch64!(s; and w4, w5, 0xFFFF),
       (4, I(DW) | U(DW)) => aarch64!(s; mov w4, w5),
       (4, I(QW) | U(QW)) => aarch64!(s; mov x4, x5),
-      (4, Pointer) => aarch64!(s; ldr x4, [x5, 8]),
+      (4, Buffer) => aarch64!(s; ldr x4, [x5, 8]),
 
       (5, I(B)) => aarch64!(s; sxtb w5, w6),
       (5, U(B)) => aarch64!(s; and w5, w6, 0xFF),
@@ -793,7 +797,7 @@ impl Aarch64Apple {
       (5, U(W)) => aarch64!(s; and w5, w6, 0xFFFF),
       (5, I(DW) | U(DW)) => aarch64!(s; mov w5, w6),
       (5, I(QW) | U(QW)) => aarch64!(s; mov x5, x6),
-      (5, Pointer) => aarch64!(s; ldr x5, [x6, 8]),
+      (5, Buffer) => aarch64!(s; ldr x5, [x6, 8]),
 
       (6, I(B)) => aarch64!(s; sxtb w6, w7),
       (6, U(B)) => aarch64!(s; and w6, w7, 0xFF),
@@ -801,7 +805,7 @@ impl Aarch64Apple {
       (6, U(W)) => aarch64!(s; and w6, w7, 0xFFFF),
       (6, I(DW) | U(DW)) => aarch64!(s; mov w6, w7),
       (6, I(QW) | U(QW)) => aarch64!(s; mov x6, x7),
-      (6, Pointer) => aarch64!(s; ldr x6, [x7, 8]),
+      (6, Buffer) => aarch64!(s; ldr x6, [x7, 8]),
 
       (7, param) => {
         let ot = self.offset_trampoline;
@@ -826,7 +830,7 @@ impl Aarch64Apple {
           I(QW) | U(QW) => {
             aarch64!(s; ldr x7, [sp, ot])
           }
-          Pointer => {
+          Buffer => {
             aarch64!(s
               ; ldr x7, [sp, ot]
               ; ldr x7, [x7, 8]
@@ -872,7 +876,7 @@ impl Aarch64Apple {
             ; ldr x8, [sp, ot + padding_trampl]
             ; str x8, [sp, oc + padding_callee]
           ),
-          Pointer => aarch64!(s
+          Buffer => aarch64!(s
             ; ldr x8, [sp, ot + padding_trampl]
             ; ldr x8, [x8, 8]
             ; str x8, [sp, oc + padding_callee]
@@ -1175,10 +1179,11 @@ impl Win64 {
       }
       NativeType::U64
       | NativeType::USize
+      | NativeType::Pointer
       | NativeType::Function
       | NativeType::I64
       | NativeType::ISize => self.move_arg(WInt(QW)),
-      NativeType::Pointer => self.move_arg(WPointer),
+      NativeType::Buffer => self.move_arg(WBuffer),
     }
   }
 
@@ -1204,10 +1209,10 @@ impl Win64 {
       // (i.e. unlike in SysV or Aarch64-Apple, 8/16 bit integers are not expected to be zero/sign extended)
       (0, WInt(B | W | DW)) => x64!(s; mov ecx, edx),
       (0, WInt(QW)) => x64!(s; mov rcx, rdx),
-      // The fast API expects pointer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
+      // The fast API expects buffer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, WPointer) => x64!(s; mov rcx, [rdx + 8]),
+      (0, WBuffer) => x64!(s; mov rcx, [rdx + 8]),
       // Use movaps for singles and doubles, benefits of smaller encoding outweigh those of using the correct instruction for the type,
       // which for doubles should technically be movapd
       (0, WFloat) => {
@@ -1217,12 +1222,12 @@ impl Win64 {
 
       (1, WInt(B | W | DW)) => x64!(s; mov edx, r8d),
       (1, WInt(QW)) => x64!(s; mov rdx, r8),
-      (1, WPointer) => x64!(s; mov rdx, [r8 + 8]),
+      (1, WBuffer) => x64!(s; mov rdx, [r8 + 8]),
       (1, WFloat) => x64!(s; movaps xmm1, xmm2),
 
       (2, WInt(B | W | DW)) => x64!(s; mov r8d, r9d),
       (2, WInt(QW)) => x64!(s; mov r8, r9),
-      (2, WPointer) => x64!(s; mov r8, [r9 + 8]),
+      (2, WBuffer) => x64!(s; mov r8, [r9 + 8]),
       (2, WFloat) => x64!(s; movaps xmm2, xmm3),
 
       (3, param) => {
@@ -1234,7 +1239,7 @@ impl Win64 {
           WInt(QW) => {
             x64!(s; mov r9, [rsp + ot])
           }
-          WPointer => {
+          WBuffer => {
             x64!(s
               ; mov r9, [rsp + ot]
               ; mov r9, [r9 + 8])
@@ -1265,7 +1270,7 @@ impl Win64 {
               ; mov [rsp + oc], rax
             )
           }
-          WPointer => {
+          WBuffer => {
             x64!(s
               ; mov rax, [rsp + ot]
               ; mov rax, [rax + 8]
@@ -1479,14 +1484,14 @@ use Float::*;
 enum Integer {
   I(Size),
   U(Size),
-  Pointer,
+  Buffer,
 }
 
 impl Integer {
   fn size(self) -> u32 {
     match self {
       I(size) | U(size) => size as u32,
-      Pointer => 8,
+      Buffer => 8,
     }
   }
 }
@@ -1507,7 +1512,7 @@ use Size::*;
 enum WinParam {
   WInt(Size),
   WFloat,
-  WPointer,
+  WBuffer,
 }
 
 use WinParam::*;
@@ -1627,8 +1632,8 @@ mod tests {
     fn tailcall() {
       let trampoline = SysVAmd64::compile(&symbol(
         vec![
-          U8, U16, I16, I8, U32, U64, Pointer, Function, I64, I32, I16, I8,
-          F32, F32, F32, F32, F64, F64, F64, F64, F32, F64,
+          U8, U16, I16, I8, U32, U64, Buffer, Function, I64, I32, I16, I8, F32,
+          F32, F32, F32, F64, F64, F64, F64, F32, F64,
         ],
         Void,
       ));
@@ -1643,7 +1648,7 @@ mod tests {
         ; movsx ecx, r8b                   // i8
         ; mov r8d, r9d                     // u32
         ; mov r9, [DWORD rsp + 8]          // u64
-        ; mov rax, [DWORD rsp + 16]        // Pointer
+        ; mov rax, [DWORD rsp + 16]        // Buffer
         ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 8], rax         // ..
         ; mov rax, [DWORD rsp + 24]        // Function
@@ -1708,11 +1713,10 @@ mod tests {
     }
 
     #[test]
-    fn typed_array_pointer() {
+    fn buffer_parameters() {
       let trampoline = SysVAmd64::compile(&symbol(
         vec![
-          Pointer, Pointer, Pointer, Pointer, Pointer, Pointer, Pointer,
-          Pointer,
+          Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer,
         ],
         Void,
       ));
@@ -1721,17 +1725,17 @@ mod tests {
       // See https://godbolt.org/z/hqv63M3Ko
       dynasm!(assembler
         ; .arch x64
-        ; mov rdi, [rsi + 8]               // Pointer
-        ; mov rsi, [rdx + 8]               // Pointer
-        ; mov rdx, [rcx + 8]               // Pointer
-        ; mov rcx, [r8 + 8]                // Pointer
-        ; mov r8, [r9 + 8]                 // Pointer
-        ; mov r9, [DWORD rsp + 8]          // Pointer
+        ; mov rdi, [rsi + 8]               // Buffer
+        ; mov rsi, [rdx + 8]               // Buffer
+        ; mov rdx, [rcx + 8]               // Buffer
+        ; mov rcx, [r8 + 8]                // Buffer
+        ; mov r8, [r9 + 8]                 // Buffer
+        ; mov r9, [DWORD rsp + 8]          // Buffer
         ; mov r9, [r9 + 8]                 // ..
-        ; mov rax, [DWORD rsp + 16]        // Pointer
+        ; mov rax, [DWORD rsp + 16]        // Buffer
         ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 8], rax         // ..
-        ; mov rax, [DWORD rsp + 24]        // Pointer
+        ; mov rax, [DWORD rsp + 24]        // Buffer
         ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 16], rax        // ..
         ; mov rax, QWORD 0
@@ -1810,8 +1814,8 @@ mod tests {
     fn tailcall() {
       let trampoline = Aarch64Apple::compile(&symbol(
         vec![
-          U8, U16, I16, I8, U32, U64, Pointer, Function, I64, I32, I16, I8,
-          F32, F32, F32, F32, F64, F64, F64, F64, F32, F64,
+          U8, U16, I16, I8, U32, U64, Buffer, Function, I64, I32, I16, I8, F32,
+          F32, F32, F32, F64, F64, F64, F64, F32, F64,
         ],
         Void,
       ));
@@ -1826,7 +1830,7 @@ mod tests {
         ; sxtb w3, w4        // i8
         ; mov w4, w5         // u32
         ; mov x5, x6         // u64
-        ; ldr x6, [x7, 8]    // Pointer
+        ; ldr x6, [x7, 8]    // Buffer
         ; ldr x7, [sp]       // Function
         ; ldr x8, [sp, 8]    // i64
         ; str x8, [sp]       // ..
@@ -1882,11 +1886,11 @@ mod tests {
     }
 
     #[test]
-    fn typed_array_pointer() {
+    fn buffer_parameters() {
       let trampoline = Aarch64Apple::compile(&symbol(
         vec![
-          Pointer, Pointer, Pointer, Pointer, Pointer, Pointer, Pointer,
-          Pointer, Pointer, Pointer,
+          Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer, Buffer,
+          Buffer, Buffer,
         ],
         Void,
       ));
@@ -1895,19 +1899,19 @@ mod tests {
       // See https://godbolt.org/z/obd6z6vsf
       dynasm!(assembler
         ; .arch aarch64
-        ; ldr x0, [x1, 8]               // Pointer
-        ; ldr x1, [x2, 8]               // Pointer
-        ; ldr x2, [x3, 8]               // Pointer
-        ; ldr x3, [x4, 8]               // Pointer
-        ; ldr x4, [x5, 8]               // Pointer
-        ; ldr x5, [x6, 8]               // Pointer
-        ; ldr x6, [x7, 8]               // Pointer
-        ; ldr x7, [sp]                  // Pointer
+        ; ldr x0, [x1, 8]               // Buffer
+        ; ldr x1, [x2, 8]               // Buffer
+        ; ldr x2, [x3, 8]               // Buffer
+        ; ldr x3, [x4, 8]               // Buffer
+        ; ldr x4, [x5, 8]               // Buffer
+        ; ldr x5, [x6, 8]               // Buffer
+        ; ldr x6, [x7, 8]               // Buffer
+        ; ldr x7, [sp]                  // Buffer
         ; ldr x7, [x7, 8]               // ..
-        ; ldr x8, [sp, 8]               // Pointer
+        ; ldr x8, [sp, 8]               // Buffer
         ; ldr x8, [x8, 8]               // ..
         ; str x8, [sp]                  // ..
-        ; ldr x8, [sp, 16]              // Pointer
+        ; ldr x8, [sp, 16]              // Buffer
         ; ldr x8, [x8, 8]               // ..
         ; str x8, [sp, 8]               // ..
         ; movz x8, 0
@@ -1994,10 +1998,8 @@ mod tests {
 
     #[test]
     fn tailcall() {
-      let trampoline = Win64::compile(&symbol(
-        vec![U8, I16, F64, F32, U32, I8, Pointer],
-        Void,
-      ));
+      let trampoline =
+        Win64::compile(&symbol(vec![U8, I16, F64, F32, U32, I8, Buffer], Void));
 
       let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
       // See https://godbolt.org/z/TYzqrf9aj
@@ -2011,7 +2013,7 @@ mod tests {
         ; mov [DWORD rsp + 40], eax     // ..
         ; mov eax, [DWORD rsp + 56]     // i8
         ; mov [DWORD rsp + 48], eax     // ..
-        ; mov rax, [DWORD rsp + 64]     // Pointer
+        ; mov rax, [DWORD rsp + 64]     // Buffer
         ; mov rax, [rax + 8]            // ..
         ; mov [DWORD rsp + 56], rax     // ..
         ; mov rax, QWORD 0
@@ -2064,9 +2066,9 @@ mod tests {
     }
 
     #[test]
-    fn typed_array_pointer() {
+    fn buffer_parameters() {
       let trampoline = Win64::compile(&symbol(
-        vec![Pointer, Pointer, Pointer, Pointer, Pointer, Pointer],
+        vec![Buffer, Buffer, Buffer, Buffer, Buffer, Buffer],
         Void,
       ));
 
@@ -2074,15 +2076,15 @@ mod tests {
       // See https://godbolt.org/z/TYzqrf9aj
       dynasm!(assembler
         ; .arch x64
-        ; mov rcx, [rdx + 8]               // Pointer
-        ; mov rdx, [r8 + 8]                // Pointer
-        ; mov r8, [r9 + 8]                 // Pointer
-        ; mov r9, [DWORD rsp + 40]         // Pointer
+        ; mov rcx, [rdx + 8]               // Buffer
+        ; mov rdx, [r8 + 8]                // Buffer
+        ; mov r8, [r9 + 8]                 // Buffer
+        ; mov r9, [DWORD rsp + 40]         // Buffer
         ; mov r9, [r9 + 8]                 // ..
-        ; mov rax, [DWORD rsp + 48]        // Pointer
+        ; mov rax, [DWORD rsp + 48]        // Buffer
         ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 40], rax        // ..
-        ; mov rax, [DWORD rsp + 56]        // Pointer
+        ; mov rax, [DWORD rsp + 56]        // Buffer
         ; mov rax, [rax + 8]               // ..
         ; mov [DWORD rsp + 48], rax        // ..
         ; mov rax, QWORD 0

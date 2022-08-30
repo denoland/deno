@@ -3,7 +3,9 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
+  const { TcpConn } = window.__bootstrap.net;
+  const { fromFlashRequest, toInnerResponse, _flash } =
+    window.__bootstrap.fetch;
   const core = window.Deno.core;
   const {
     ReadableStream,
@@ -18,14 +20,15 @@
     _readyState,
     _eventLoop,
     _protocol,
-    _server,
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
+    Function,
     ObjectPrototypeIsPrototypeOf,
+    PromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
@@ -137,7 +140,7 @@
       // MUST NOT generate a payload in a 205 response.
       // indicate a zero-length body for the response by
       // including a Content-Length header field with a value of 0.
-      str += "Content-Length: 0\r\n";
+      str += "Content-Length: 0\r\n\r\n";
       return str;
     }
 
@@ -185,50 +188,77 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
-  function serve(opts = {}) {
-    if (!("fetch" in opts)) {
-      throw new TypeError("Options is missing 'fetch' handler");
+  async function serve(arg1, arg2) {
+    let options = undefined;
+    let handler = undefined;
+    if (arg1 instanceof Function) {
+      handler = arg1;
+      options = arg2;
+    } else if (arg2 instanceof Function) {
+      handler = arg2;
+      options = arg1;
+    } else {
+      options = arg1;
     }
-    if ("cert" in opts && !("key" in opts)) {
-      throw new TypeError("Options is missing 'key' field");
+    if (handler === undefined) {
+      if (options === undefined) {
+        throw new TypeError(
+          "No handler was provided, so an options bag is mandatory.",
+        );
+      }
+      handler = options.handler;
     }
-    if ("key" in opts && !("cert" in opts)) {
-      throw new TypeError("Options is missing 'cert' field");
+    if (!(handler instanceof Function)) {
+      throw new TypeError("A handler function must be provided.");
     }
-    opts = { hostname: "127.0.0.1", port: 9000, ...opts };
-    const handler = opts.fetch;
-    delete opts.fetch;
-    const signal = opts.signal;
-    delete opts.signal;
-    const onError = opts.onError ?? function (error) {
+    if (options === undefined) {
+      options = {};
+    }
+
+    const signal = options.signal;
+
+    const onError = options.onError ?? function (error) {
       console.error(error);
       return new Response("Internal Server Error", { status: 500 });
     };
-    delete opts.onError;
-    const onListen = opts.onListen ?? function () {
+
+    const onListen = options.onListen ?? function ({ port }) {
       console.log(
         `Listening on http://${
-          hostnameForDisplay(opts.hostname)
-        }:${opts.port}/`,
+          hostnameForDisplay(listenOpts.hostname)
+        }:${port}/`,
       );
     };
-    delete opts.onListen;
-    const serverId = core.ops.op_flash_serve(opts);
+
+    const listenOpts = {
+      hostname: options.hostname ?? "127.0.0.1",
+      port: options.port ?? 9000,
+    };
+    if (options.cert || options.key) {
+      if (!options.cert || !options.key) {
+        throw new TypeError(
+          "Both cert and key must be provided to enable HTTPS.",
+        );
+      }
+      listenOpts.cert = options.cert;
+      listenOpts.key = options.key;
+    }
+
+    const serverId = core.ops.op_flash_serve(listenOpts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    core.opAsync("op_flash_wait_for_listening", serverId).then(() => {
-      onListen({ hostname: opts.hostname, port: opts.port });
-    });
+    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
+      onListen({ hostname: listenOpts.hostname, port });
+    }).catch(() => {});
+    const finishedPromise = serverPromise.catch(() => {});
 
     const server = {
       id: serverId,
-      transport: opts.cert && opts.key ? "https" : "http",
-      hostname: opts.hostname,
-      port: opts.port,
+      transport: listenOpts.cert && listenOpts.key ? "https" : "http",
+      hostname: listenOpts.hostname,
+      port: listenOpts.port,
       closed: false,
-      finished: (async () => {
-        return await serverPromise;
-      })(),
+      finished: finishedPromise,
       async close() {
         if (server.closed) {
           return;
@@ -522,7 +552,10 @@
       }, 1000);
     }
 
-    return server.serve().catch(console.error);
+    await PromiseAll([
+      server.serve().catch(console.error),
+      serverPromise,
+    ]);
   }
 
   function createRequestBodyStream(serverId, token) {
@@ -569,7 +602,28 @@
     });
   }
 
+  function upgradeHttpRaw(req) {
+    if (!req[_flash]) {
+      throw new TypeError(
+        "Non-flash requests can not be upgraded with `upgradeHttpRaw`. Use `upgradeHttp` instead.",
+      );
+    }
+
+    // NOTE(bartlomieju):
+    // Access these fields so they are cached on `req` object, otherwise
+    // they wouldn't be available after the connection gets upgraded.
+    req.url;
+    req.method;
+    req.headers;
+
+    const { serverId, streamRid } = req[_flash];
+    const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+    // TODO(@littledivy): return already read first packet too.
+    return [new TcpConn(connRid), new Uint8Array()];
+  }
+
   window.__bootstrap.flash = {
     serve,
+    upgradeHttpRaw,
   };
 })(this);

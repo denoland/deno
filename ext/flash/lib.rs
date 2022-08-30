@@ -4,6 +4,7 @@
 // https://github.com/rust-lang/rust-clippy/issues/6446
 #![allow(clippy::await_holding_lock)]
 
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -47,6 +48,7 @@ use std::io::Write;
 use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -76,7 +78,7 @@ pub struct ServerContext {
   rx: mpsc::Receiver<Request>,
   requests: HashMap<u32, Request>,
   next_token: u32,
-  listening_rx: Option<mpsc::Receiver<()>>,
+  listening_rx: Option<mpsc::Receiver<u16>>,
   close_tx: mpsc::Sender<()>,
   cancel_handle: Rc<CancelHandle>,
 }
@@ -939,7 +941,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<Request>,
-  listening_tx: mpsc::Sender<()>,
+  listening_tx: mpsc::Sender<u16>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
@@ -971,7 +973,9 @@ fn run_server(
     }
   };
 
-  listening_tx.blocking_send(()).unwrap();
+  listening_tx
+    .blocking_send(listener.local_addr().unwrap().port())
+    .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
@@ -1230,6 +1234,28 @@ fn run_server(
   Ok(())
 }
 
+fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
+  // Default to localhost if given just the port. Example: ":80"
+  if hostname.is_empty() {
+    return ("0.0.0.0", port);
+  }
+
+  // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
+  // Then we remove the brackets.
+  let addr = hostname.trim_start_matches('[').trim_end_matches(']');
+  (addr, port)
+}
+
+/// Resolve network address *synchronously*.
+pub fn resolve_addr_sync(
+  hostname: &str,
+  port: u16,
+) -> Result<impl Iterator<Item = SocketAddr>, AnyError> {
+  let addr_port_pair = make_addr_port_pair(hostname, port);
+  let result = addr_port_pair.to_socket_addrs()?;
+  Ok(result)
+}
+
 #[op]
 fn op_flash_serve<P>(
   state: &mut OpState,
@@ -1242,7 +1268,10 @@ where
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
-  let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+
+  let addr = resolve_addr_sync(&opts.hostname, opts.port)?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);
@@ -1274,7 +1303,7 @@ where
 fn op_flash_wait_for_listening(
   state: &mut OpState,
   server_id: u32,
-) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
+) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
@@ -1284,8 +1313,11 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    listening_rx.recv().await;
-    Ok(())
+    if let Some(port) = listening_rx.recv().await {
+      Ok(port)
+    } else {
+      Err(generic_error("This error will be discarded"))
+    }
   })
 }
 
@@ -1337,15 +1369,15 @@ async fn op_flash_next_async(
   0
 }
 
-// Syncrhonous version of op_flash_next_async. Under heavy load,
+// Synchronous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 //
 // perf: please do not add any arguments to this op. With optimizations enabled,
 // the ContextScope creation is optimized away and the op is as simple as:
 //   f(info: *const v8::FunctionCallbackInfo) { let rv = ...; rv.set_uint32(op_flash_next()); }
 #[op]
-fn op_flash_next(op_state: &mut OpState) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next(state: &mut OpState) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&0).unwrap();
   next_request_sync(ctx)
 }
@@ -1353,8 +1385,8 @@ fn op_flash_next(op_state: &mut OpState) -> u32 {
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next_server(state: &mut OpState, server_id: u32) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   next_request_sync(ctx)
 }

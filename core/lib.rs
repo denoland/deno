@@ -118,6 +118,8 @@ pub mod _ops {
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
+  pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
