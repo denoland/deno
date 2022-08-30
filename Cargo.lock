@@ -1141,6 +1141,7 @@ name = "deno_node"
 version = "0.3.0"
 dependencies = [
  "deno_core",
+ "path-clean",
  "regex",
  "serde",
 ]
