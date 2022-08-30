@@ -377,6 +377,9 @@ macro_rules! forward_to {
     };
 }
 
+const MAX_SAFE_INTEGER: i64 = 9007199254740991;
+const MIN_SAFE_INTEGER: i64 = -9007199254740991;
+
 impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
   type Error = Error;
@@ -410,11 +413,25 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_i64(self, v: i64) -> JsResult<'a> {
-    Ok(v8::BigInt::new_from_i64(&mut self.scope.borrow_mut(), v).into())
+    let s = &mut self.scope.borrow_mut();
+    // If i64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if v <= MAX_SAFE_INTEGER && v >= MIN_SAFE_INTEGER {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_i64(s, v).into())
+    }
   }
 
   fn serialize_u64(self, v: u64) -> JsResult<'a> {
-    Ok(v8::BigInt::new_from_u64(&mut self.scope.borrow_mut(), v).into())
+    let s = &mut self.scope.borrow_mut();
+    // If u64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if v <= (MAX_SAFE_INTEGER as u64) {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_u64(s, v).into())
+    }
   }
 
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
