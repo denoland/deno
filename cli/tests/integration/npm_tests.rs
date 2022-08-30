@@ -75,6 +75,13 @@ itest!(conditional_exports {
   http_server: true,
 });
 
+itest!(dual_cjs_esm {
+  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  output: "npm/dual_cjs_esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
