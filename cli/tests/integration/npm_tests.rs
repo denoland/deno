@@ -110,6 +110,13 @@ itest!(sub_paths {
   http_server: true,
 });
 
+itest!(tarball_with_global_header {
+  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  output: "npm/tarball_with_global_header/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(

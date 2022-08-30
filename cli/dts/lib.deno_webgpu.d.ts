@@ -81,6 +81,7 @@ declare class GPU {
   ): Promise<GPUAdapter | null>;
 }
 
+/** @category WebGPU */
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
   forceFallbackAdapter?: boolean;
