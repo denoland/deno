@@ -36,6 +36,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::mem::forget;
 use std::option::Option;
@@ -184,9 +185,9 @@ pub(crate) struct JsRuntimeState {
   /// The error that was passed to an `op_dispatch_exception` call.
   /// It will be retrieved by `exception_to_err_result` and used as an error
   /// instead of any other exceptions.
-  // TODO(nayeemrmn): This should be a queue, mirroring `pending_promise_exceptions`.
-  // The REPL doesn't terminate on the first one and should keep track of many.
-  pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
+  // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
+  // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
+  pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
@@ -422,7 +423,7 @@ impl JsRuntime {
       op_state: op_state.clone(),
       op_ctxs,
       have_unpolled_ops: false,
-      dispatched_exception: None,
+      dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
     })));
@@ -1176,12 +1177,12 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // was passed to this function.
     let mut state = state_rc.borrow_mut();
     exception = state
-      .dispatched_exception
-      .take()
+      .dispatched_exceptions
+      .pop_back()
       .map(|exception| v8::Local::new(scope, exception))
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
-        if exception.is_null_or_undefined() {
+        if was_terminating_execution && exception.is_null_or_undefined() {
           let message = v8::String::new(scope, "execution terminated").unwrap();
           v8::Exception::error(scope, message)
         } else {
@@ -1389,10 +1390,11 @@ impl JsRuntime {
     // Update status after evaluating.
     status = module.get_status();
 
-    let explicit_terminate_exception =
-      state_rc.borrow_mut().dispatched_exception.take();
-    if let Some(exception) = explicit_terminate_exception {
-      let exception = v8::Local::new(tc_scope, exception);
+    let has_dispatched_exception =
+      !state_rc.borrow_mut().dispatched_exceptions.is_empty();
+    if has_dispatched_exception {
+      // This will be overrided in `exception_to_err_result()`.
+      let exception = v8::undefined(tc_scope).into();
       let pending_mod_evaluate = {
         let mut state = state_rc.borrow_mut();
         state.pending_mod_evaluate.take().unwrap()

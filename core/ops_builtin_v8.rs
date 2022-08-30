@@ -722,7 +722,9 @@ fn op_dispatch_exception(
 ) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  state.dispatched_exception = Some(v8::Global::new(scope, exception.v8_value));
+  state
+    .dispatched_exceptions
+    .push_front(v8::Global::new(scope, exception.v8_value));
   // Only terminate execution if there are no inspector sessions.
   match state.inspector().try_borrow() {
     Ok(inspector) if !inspector.has_active_sessions() => {
