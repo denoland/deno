@@ -1338,7 +1338,10 @@ declare namespace Deno {
     readonly rid: number;
     readonly writable: WritableStream<Uint8Array>;
   };
-  /** A handle for `stderr`. */
+  /** A handle for `stderr`.
+   *
+   * @category I/O
+   */
   export const stderr: Writer & WriterSync & Closer & {
     readonly rid: number;
     readonly writable: WritableStream<Uint8Array>;
@@ -2145,6 +2148,7 @@ declare namespace Deno {
    */
   export function realPath(path: string | URL): Promise<string>;
 
+  /** @category File System */
   export interface DirEntry {
     name: string;
     isFile: boolean;
@@ -2760,6 +2764,7 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
+  /** @category Sub Process */
   export type ProcessStatus =
     | {
       success: true;
