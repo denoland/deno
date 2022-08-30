@@ -390,8 +390,8 @@
     return false;
   };
 
-  Module._nodeModulePaths = function (from) {
-    return ops.op_require_node_module_paths(from);
+  Module._nodeModulePaths = function (fromPath) {
+    return ops.op_require_node_module_paths(fromPath);
   };
 
   Module._resolveLookupPaths = function (request, parent) {

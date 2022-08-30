@@ -488,9 +488,7 @@ fn op_require_try_self(
     return Ok(None);
   }
 
-  // todo(dsherret): this won't work on Windows
-  let referrer =
-    deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+  let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
     resolution::package_exports_resolve(
       &pkg.path,
@@ -501,7 +499,7 @@ fn op_require_try_self(
       resolution::REQUIRE_CONDITIONS,
       &*resolver,
     )
-    .map(|r| Some(Url::from_file_path(r).unwrap().as_str().to_string()))
+    .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
     Ok(None)
   }
