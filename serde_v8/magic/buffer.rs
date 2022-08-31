@@ -103,7 +103,7 @@ impl From<Vec<u8>> for ZeroCopyBuf {
 
 impl ToV8 for ZeroCopyBuf {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let buf: Box<[u8]> = match self {
