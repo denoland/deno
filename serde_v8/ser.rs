@@ -377,8 +377,8 @@ macro_rules! forward_to {
     };
 }
 
-const MAX_SAFE_INTEGER: i64 = 9007199254740991;
-const MIN_SAFE_INTEGER: i64 = -9007199254740991;
+const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
 
 impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
