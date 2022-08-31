@@ -201,8 +201,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    if self.input.is_string() {
-      let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
+    if self.input.is_string() || self.input.is_string_object() {
+      let v8_string = self.input.to_string(self.scope).unwrap();
       let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
@@ -396,7 +396,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     // Unit variant
-    if self.input.is_string() {
+    if self.input.is_string() || self.input.is_string_object() {
       let payload = v8::undefined(self.scope).into();
       visitor.visit_enum(EnumAccess {
         scope: self.scope,
