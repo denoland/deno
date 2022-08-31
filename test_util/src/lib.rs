@@ -14,7 +14,7 @@ use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
-use npm::custom_npm_cache;
+use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
@@ -1009,19 +1009,18 @@ fn handle_custom_npm_registry_path(
     .split('/')
     .filter(|p| !p.is_empty())
     .collect::<Vec<_>>();
-  let cache = custom_npm_cache()?;
+  let cache = &CUSTOM_NPM_PACKAGE_CACHE;
   let package_name = format!("@denotest/{}", parts[0]);
   if parts.len() == 2 {
     if let Some(file_bytes) =
-      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))
+      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
     {
-      let file_resp = custom_headers("file.tgz", file_bytes.to_owned());
+      let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
   } else if parts.len() == 1 {
-    if let Some(registry_file) = cache.registry_file(&package_name) {
-      let file_resp =
-        custom_headers("registry.json", registry_file.as_bytes().to_vec());
+    if let Some(registry_file) = cache.registry_file(&package_name)? {
+      let file_resp = custom_headers("registry.json", registry_file);
       return Ok(Some(file_resp));
     }
   }

@@ -982,9 +982,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.43.0"
+version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22162c77cbcf8da271482b0facf45e4654cdf72dc09ebc7d8d534650ceb0effe"
+checksum = "f574fcfacf7b4ecce58c4cb67a3d76c025e4e010863e57f77827eaa9bf41248e"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1000,9 +1000,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d98268720377863f697b8e74955c33d237f527bdecb3e4b134b43390ba0aff40"
+checksum = "8ae998e26631299d03ba724cef7a2337e06777b6dfeae432dc932810679a5b68"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -1061,9 +1061,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30317c100055c82f433bffb130c6dc62346f46a5d3de24d14e8913ad7c490c39"
+checksum = "a8d375dac1b6f7092c29c4603a7795c98b55257d39e108da02dd5b4e42f9d8a6"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1141,6 +1141,7 @@ name = "deno_node"
 version = "0.3.0"
 dependencies = [
  "deno_core",
+ "path-clean",
  "regex",
  "serde",
 ]
@@ -1601,9 +1602,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "006cd7d8f0b2f0de3a5f21b770974d6f293a2104536f7060033f17b4d63f8e91"
+checksum = "8043f99a09a1a1d4449ffcd2b068fabf2cb6d70b406e11c2b2d623ce8984baa7"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -2050,14 +2051,17 @@ name = "hashbrown"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
+dependencies = [
+ "ahash",
+]
 
 [[package]]
 name = "hashlink"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7249a3129cbc1ffccd74857f81464a323a152173cdb134e0fd81bc803b29facf"
+checksum = "d452c155cb93fecdfb02a73dd57b5d8e442c2063bd7aac72f1bc5e4263a43086"
 dependencies = [
- "hashbrown 0.11.2",
+ "hashbrown 0.12.1",
 ]
 
 [[package]]
@@ -2134,9 +2138,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.7.1"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "496ce29bb5a52785b44e0f7ca2847ae0bb839c9bd28f69acac9b99d461c0c04c"
+checksum = "d897f394bad6a705d5f4104762e116a75639e470d80901eed05a860a95cb1904"
 
 [[package]]
 name = "httpdate"
@@ -2544,9 +2548,9 @@ checksum = "33a33a362ce288760ec6a508b94caaec573ae7d3bbbd91b87aa0bad4456839db"
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.24.2"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "898745e570c7d0453cc1fbc4a701eb6c662ed54e8fec8b7d14be137ebeeb9d14"
+checksum = "9f0455f2c1bc9a7caa792907026e469c1d91761fb0ea37cbb16427c77280cf35"
 dependencies = [
  "cc",
  "pkg-config",
@@ -3561,16 +3565,15 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.27.0"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85127183a999f7db96d1a976a309eebbfb6ea3b0b400ddd8340190129de6eb7a"
+checksum = "01e213bc3ecb39ac32e81e51ebe31fd888a940515173e3a18a35f8c6e896422a"
 dependencies = [
  "bitflags",
  "fallible-iterator",
  "fallible-streaming-iterator",
  "hashlink",
  "libsqlite3-sys",
- "memchr",
  "smallvec",
 ]
 

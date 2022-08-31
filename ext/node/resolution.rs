@@ -1,13 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use path_clean::PathClean;
 use regex::Regex;
 
 use crate::errors;
@@ -17,25 +20,29 @@ use crate::DenoDirNpmResolver;
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 
-fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
-  url
-    .to_file_path()
-    .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {}", url))
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeModuleKind {
+  Esm,
+  Cjs,
 }
 
-fn to_file_path_string(url: &ModuleSpecifier) -> String {
-  to_file_path(url).display().to_string()
+fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
+  if let Ok(path) = url.to_file_path() {
+    path.display().to_string()
+  } else {
+    url.to_string()
+  }
 }
 
 fn throw_import_not_defined(
   specifier: &str,
-  package_json_url: Option<ModuleSpecifier>,
+  package_json_path: Option<&Path>,
   base: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_package_import_not_defined(
     specifier,
-    package_json_url.map(|u| to_file_path_string(&u.join(".").unwrap())),
-    &to_file_path_string(base),
+    package_json_path.map(|p| p.parent().unwrap().display().to_string()),
+    &to_specifier_display_string(base),
   )
 }
 
@@ -84,30 +91,32 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 pub fn package_imports_resolve(
   name: &str,
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<PathBuf, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
     let reason = "is not a valid internal imports specifier name";
     return Err(errors::err_invalid_module_specifier(
       name,
       reason,
-      Some(to_file_path_string(referrer)),
+      Some(to_specifier_display_string(referrer)),
     ));
   }
 
   let package_config = get_package_scope_config(referrer, npm_resolver)?;
-  let mut package_json_url = None;
+  let mut package_json_path = None;
   if package_config.exists {
-    package_json_url = Some(Url::from_file_path(package_config.path).unwrap());
+    package_json_path = Some(package_config.path.clone());
     if let Some(imports) = &package_config.imports {
       if imports.contains_key(name) && !name.contains('*') {
         let maybe_resolved = resolve_package_target(
-          package_json_url.clone().unwrap(),
+          package_json_path.as_ref().unwrap(),
           imports.get(name).unwrap().to_owned(),
           "".to_string(),
           name.to_string(),
           referrer,
+          referrer_kind,
           false,
           true,
           conditions,
@@ -143,11 +152,12 @@ pub fn package_imports_resolve(
         if !best_match.is_empty() {
           let target = imports.get(best_match).unwrap().to_owned();
           let maybe_resolved = resolve_package_target(
-            package_json_url.clone().unwrap(),
+            package_json_path.as_ref().unwrap(),
             target,
             best_match_subpath.unwrap(),
             best_match.to_string(),
             referrer,
+            referrer_kind,
             true,
             true,
             conditions,
@@ -161,41 +171,45 @@ pub fn package_imports_resolve(
     }
   }
 
-  Err(throw_import_not_defined(name, package_json_url, referrer))
+  Err(throw_import_not_defined(
+    name,
+    package_json_path.as_deref(),
+    referrer,
+  ))
 }
 
 fn throw_invalid_package_target(
   subpath: String,
   target: String,
-  package_json_url: &ModuleSpecifier,
+  package_json_path: &Path,
   internal: bool,
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_invalid_package_target(
-    to_file_path_string(&package_json_url.join(".").unwrap()),
+    package_json_path.parent().unwrap().display().to_string(),
     subpath,
     target,
     internal,
-    Some(base.as_str().to_string()),
+    Some(referrer.as_str().to_string()),
   )
 }
 
 fn throw_invalid_subpath(
   subpath: String,
-  package_json_url: &ModuleSpecifier,
+  package_json_path: &Path,
   internal: bool,
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
 ) -> AnyError {
   let ie = if internal { "imports" } else { "exports" };
   let reason = format!(
     "request is not a valid subpath for the \"{}\" resolution of {}",
     ie,
-    to_file_path_string(package_json_url)
+    package_json_path.display(),
   );
   errors::err_invalid_module_specifier(
     &subpath,
     &reason,
-    Some(to_file_path_string(base)),
+    Some(to_specifier_display_string(referrer)),
   )
 }
 
@@ -204,20 +218,21 @@ fn resolve_package_target_string(
   target: String,
   subpath: String,
   match_: String,
-  package_json_url: ModuleSpecifier,
-  base: &ModuleSpecifier,
+  package_json_path: &Path,
+  referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   pattern: bool,
   internal: bool,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<PathBuf, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
-      base,
+      referrer,
     ));
   }
   let invalid_segment_re =
@@ -234,9 +249,12 @@ fn resolve_package_target_string(
         } else {
           format!("{}{}", target, subpath)
         };
+        let package_json_url =
+          ModuleSpecifier::from_file_path(package_json_path).unwrap();
         return package_resolve(
           &export_target,
           &package_json_url,
+          referrer_kind,
           conditions,
           npm_resolver,
         );
@@ -245,35 +263,33 @@ fn resolve_package_target_string(
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
-      base,
+      referrer,
     ));
   }
   if invalid_segment_re.is_match(&target[2..]) {
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
-      base,
+      referrer,
     ));
   }
-  let resolved = package_json_url.join(&target)?;
-  let resolved_path = resolved.path();
-  let package_url = package_json_url.join(".").unwrap();
-  let package_path = package_url.path();
+  let package_path = package_json_path.parent().unwrap();
+  let resolved_path = package_path.join(&target).clean();
   if !resolved_path.starts_with(package_path) {
     return Err(throw_invalid_package_target(
       match_,
       target,
-      &package_json_url,
+      package_json_path,
       internal,
-      base,
+      referrer,
     ));
   }
   if subpath.is_empty() {
-    return Ok(resolved);
+    return Ok(resolved_path);
   }
   if invalid_segment_re.is_match(&subpath) {
     let request = if pattern {
@@ -283,39 +299,43 @@ fn resolve_package_target_string(
     };
     return Err(throw_invalid_subpath(
       request,
-      &package_json_url,
+      package_json_path,
       internal,
-      base,
+      referrer,
     ));
   }
   if pattern {
+    let resolved_path_str = resolved_path.to_string_lossy();
     let replaced = pattern_re
-      .replace(resolved.as_str(), |_caps: &regex::Captures| subpath.clone());
-    let url = Url::parse(&replaced)?;
-    return Ok(url);
+      .replace(&resolved_path_str, |_caps: &regex::Captures| {
+        subpath.clone()
+      });
+    return Ok(PathBuf::from(replaced.to_string()));
   }
-  Ok(resolved.join(&subpath)?)
+  Ok(resolved_path.join(&subpath).clean())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn resolve_package_target(
-  package_json_url: ModuleSpecifier,
+  package_json_path: &Path,
   target: Value,
   subpath: String,
   package_subpath: String,
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   pattern: bool,
   internal: bool,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
     return Ok(Some(resolve_package_target_string(
       target.to_string(),
       subpath,
       package_subpath,
-      package_json_url,
-      base,
+      package_json_path,
+      referrer,
+      referrer_kind,
       pattern,
       internal,
       conditions,
@@ -329,11 +349,12 @@ fn resolve_package_target(
     let mut last_error = None;
     for target_item in target_arr {
       let resolved_result = resolve_package_target(
-        package_json_url.clone(),
+        package_json_path,
         target_item.to_owned(),
         subpath.clone(),
         package_subpath.clone(),
-        base,
+        referrer,
+        referrer_kind,
         pattern,
         internal,
         conditions,
@@ -371,11 +392,12 @@ fn resolve_package_target(
       if key == "default" || conditions.contains(&key.as_str()) {
         let condition_target = target_obj.get(key).unwrap().to_owned();
         let resolved = resolve_package_target(
-          package_json_url.clone(),
+          package_json_path,
           condition_target,
           subpath.clone(),
           package_subpath.clone(),
-          base,
+          referrer,
+          referrer_kind,
           pattern,
           internal,
           conditions,
@@ -394,43 +416,45 @@ fn resolve_package_target(
   Err(throw_invalid_package_target(
     package_subpath,
     target.to_string(),
-    &package_json_url,
+    package_json_path,
     internal,
-    base,
+    referrer,
   ))
 }
 
 fn throw_exports_not_found(
   subpath: String,
-  package_json_url: &ModuleSpecifier,
-  base: &ModuleSpecifier,
+  package_json_path: &Path,
+  referrer: &ModuleSpecifier,
 ) -> AnyError {
   errors::err_package_path_not_exported(
-    to_file_path_string(&package_json_url.join(".").unwrap()),
+    package_json_path.parent().unwrap().display().to_string(),
     subpath,
-    Some(to_file_path_string(base)),
+    Some(to_specifier_display_string(referrer)),
   )
 }
 
 pub fn package_exports_resolve(
-  package_json_url: ModuleSpecifier,
+  package_json_path: &Path,
   package_subpath: String,
   package_exports: &Map<String, Value>,
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<PathBuf, AnyError> {
   if package_exports.contains_key(&package_subpath)
     && package_subpath.find('*').is_none()
     && !package_subpath.ends_with('/')
   {
     let target = package_exports.get(&package_subpath).unwrap().to_owned();
     let resolved = resolve_package_target(
-      package_json_url.clone(),
+      package_json_path,
       target,
       "".to_string(),
       package_subpath.to_string(),
-      base,
+      referrer,
+      referrer_kind,
       false,
       false,
       conditions,
@@ -439,8 +463,8 @@ pub fn package_exports_resolve(
     if resolved.is_none() {
       return Err(throw_exports_not_found(
         package_subpath,
-        &package_json_url,
-        base,
+        package_json_path,
+        referrer,
       ));
     }
     return Ok(resolved.unwrap());
@@ -451,7 +475,7 @@ pub fn package_exports_resolve(
   for key in package_exports.keys() {
     let pattern_index = key.find('*');
     if let Some(pattern_index) = pattern_index {
-      let key_sub = &key[0..=pattern_index];
+      let key_sub = &key[0..pattern_index];
       if package_subpath.starts_with(key_sub) {
         // When this reaches EOL, this can throw at the top of the whole function:
         //
@@ -472,7 +496,7 @@ pub fn package_exports_resolve(
           best_match = key;
           best_match_subpath = Some(
             package_subpath
-              [pattern_index..=(package_subpath.len() - pattern_trailer.len())]
+              [pattern_index..(package_subpath.len() - pattern_trailer.len())]
               .to_string(),
           );
         }
@@ -483,11 +507,12 @@ pub fn package_exports_resolve(
   if !best_match.is_empty() {
     let target = package_exports.get(best_match).unwrap().to_owned();
     let maybe_resolved = resolve_package_target(
-      package_json_url.clone(),
+      package_json_path,
       target,
       best_match_subpath.unwrap(),
       best_match.to_string(),
-      base,
+      referrer,
+      referrer_kind,
       true,
       false,
       conditions,
@@ -498,22 +523,22 @@ pub fn package_exports_resolve(
     } else {
       return Err(throw_exports_not_found(
         package_subpath,
-        &package_json_url,
-        base,
+        package_json_path,
+        referrer,
       ));
     }
   }
 
   Err(throw_exports_not_found(
     package_subpath,
-    &package_json_url,
-    base,
+    package_json_path,
+    referrer,
   ))
 }
 
 fn parse_package_name(
   specifier: &str,
-  base: &ModuleSpecifier,
+  referrer: &ModuleSpecifier,
 ) -> Result<(String, String, bool), AnyError> {
   let mut separator_index = specifier.find('/');
   let mut valid_package_name = true;
@@ -547,7 +572,7 @@ fn parse_package_name(
     return Err(errors::err_invalid_module_specifier(
       specifier,
       "is not a valid package name",
-      Some(to_file_path_string(base)),
+      Some(to_specifier_display_string(referrer)),
     ));
   }
 
@@ -563,27 +588,28 @@ fn parse_package_name(
 pub fn package_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<PathBuf, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
 
   // ResolveSelf
   let package_config = get_package_scope_config(referrer, npm_resolver)?;
-  if package_config.exists {
-    let package_json_url = Url::from_file_path(&package_config.path).unwrap();
-    if package_config.name.as_ref() == Some(&package_name) {
-      if let Some(exports) = &package_config.exports {
-        return package_exports_resolve(
-          package_json_url,
-          package_subpath,
-          exports,
-          referrer,
-          conditions,
-          npm_resolver,
-        );
-      }
+  if package_config.exists
+    && package_config.name.as_ref() == Some(&package_name)
+  {
+    if let Some(exports) = &package_config.exports {
+      return package_exports_resolve(
+        &package_config.path,
+        package_subpath,
+        exports,
+        referrer,
+        referrer_kind,
+        conditions,
+        npm_resolver,
+      );
     }
   }
 
@@ -592,8 +618,6 @@ pub fn package_resolve(
     &referrer.to_file_path().unwrap(),
   )?;
   let package_json_path = package_dir_path.join("package.json");
-  let package_json_url =
-    ModuleSpecifier::from_file_path(&package_json_path).unwrap();
 
   // todo: error with this instead when can't find package
   // Err(errors::err_module_not_found(
@@ -612,21 +636,20 @@ pub fn package_resolve(
   let package_json = PackageJson::load(npm_resolver, package_json_path)?;
   if let Some(exports) = &package_json.exports {
     return package_exports_resolve(
-      package_json_url,
+      &package_json.path,
       package_subpath,
       exports,
       referrer,
+      referrer_kind,
       conditions,
       npm_resolver,
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json_url, &package_json, referrer);
+    return legacy_main_resolve(&package_json, referrer_kind);
   }
 
-  package_json_url
-    .join(&package_subpath)
-    .map_err(AnyError::from)
+  Ok(package_json.path.parent().unwrap().join(&package_subpath))
 }
 
 pub fn get_package_scope_config(
@@ -635,12 +658,43 @@ pub fn get_package_scope_config(
 ) -> Result<PackageJson, AnyError> {
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
-  let package_json_path = root_folder.join("./package.json");
+  let package_json_path = root_folder.join("package.json");
   PackageJson::load(npm_resolver, package_json_path)
 }
 
-fn file_exists(path_url: &ModuleSpecifier) -> bool {
-  if let Ok(stats) = std::fs::metadata(to_file_path(path_url)) {
+pub fn get_closest_package_json(
+  url: &ModuleSpecifier,
+  npm_resolver: &dyn DenoDirNpmResolver,
+) -> Result<PackageJson, AnyError> {
+  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
+  PackageJson::load(npm_resolver, package_json_path)
+}
+
+fn get_closest_package_json_path(
+  url: &ModuleSpecifier,
+  npm_resolver: &dyn DenoDirNpmResolver,
+) -> Result<PathBuf, AnyError> {
+  let file_path = url.to_file_path().unwrap();
+  let mut current_dir = file_path.parent().unwrap();
+  let package_json_path = current_dir.join("package.json");
+  if package_json_path.exists() {
+    return Ok(package_json_path);
+  }
+  let root_pkg_folder = npm_resolver
+    .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
+  while current_dir.starts_with(&root_pkg_folder) {
+    current_dir = current_dir.parent().unwrap();
+    let package_json_path = current_dir.join("package.json");
+    if package_json_path.exists() {
+      return Ok(package_json_path);
+    }
+  }
+
+  bail!("did not find package.json in {}", root_pkg_folder.display())
+}
+
+fn file_exists(path: &Path) -> bool {
+  if let Ok(stats) = std::fs::metadata(path) {
     stats.is_file()
   } else {
     false
@@ -648,28 +702,56 @@ fn file_exists(path_url: &ModuleSpecifier) -> bool {
 }
 
 pub fn legacy_main_resolve(
-  package_json_url: &ModuleSpecifier,
   package_json: &PackageJson,
-  _base: &ModuleSpecifier,
-) -> Result<ModuleSpecifier, AnyError> {
+  referrer_kind: NodeModuleKind,
+) -> Result<PathBuf, AnyError> {
+  let maybe_main =
+    if referrer_kind == NodeModuleKind::Esm && package_json.typ == "module" {
+      &package_json.module
+    } else {
+      &package_json.main
+    };
   let mut guess;
 
-  if let Some(main) = &package_json.main {
-    guess = package_json_url.join(&format!("./{}", main))?;
+  if let Some(main) = maybe_main {
+    guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
       return Ok(guess);
     }
 
     let mut found = false;
-    for ext in [
-      ".js",
-      ".json",
-      ".node",
-      "/index.js",
-      "/index.json",
-      "/index.node",
-    ] {
-      guess = package_json_url.join(&format!("./{}{}", main, ext))?;
+    // todo(dsherret): investigate exactly how node handles this
+    let endings = match referrer_kind {
+      NodeModuleKind::Cjs => vec![
+        ".js",
+        ".cjs",
+        ".json",
+        ".node",
+        "/index.js",
+        "/index.cjs",
+        "/index.json",
+        "/index.node",
+      ],
+      NodeModuleKind::Esm => vec![
+        ".js",
+        ".mjs",
+        ".json",
+        ".node",
+        "/index.js",
+        "/index.mjs",
+        ".cjs",
+        "/index.cjs",
+        "/index.json",
+        "/index.node",
+      ],
+    };
+    for ending in endings {
+      guess = package_json
+        .path
+        .parent()
+        .unwrap()
+        .join(&format!("{}{}", main, ending))
+        .clean();
       if file_exists(&guess) {
         found = true;
         break;
@@ -682,8 +764,25 @@ pub fn legacy_main_resolve(
     }
   }
 
-  for p in ["./index.js", "./index.json", "./index.node"] {
-    guess = package_json_url.join(p)?;
+  let index_file_names = match referrer_kind {
+    NodeModuleKind::Cjs => {
+      vec!["index.js", "index.cjs", "index.json", "index.node"]
+    }
+    NodeModuleKind::Esm => vec![
+      "index.js",
+      "index.mjs",
+      "index.cjs",
+      "index.json",
+      "index.node",
+    ],
+  };
+  for index_file_name in index_file_names {
+    guess = package_json
+      .path
+      .parent()
+      .unwrap()
+      .join(index_file_name)
+      .clean();
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
       return Ok(guess);

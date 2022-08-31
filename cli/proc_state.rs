@@ -491,7 +491,7 @@ impl ProcState {
   /// Add the builtin node modules to the graph data.
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     let node_std_graph = self
-      .create_graph(vec![(compat::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
       .await?;
     self.graph_data.write().add_graph(&node_std_graph, false);
     Ok(())
