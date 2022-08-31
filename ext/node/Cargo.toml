@@ -15,5 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.148.0", path = "../../core" }
+path-clean = "=0.1.0"
 regex = "1"
 serde = "1.0.136"
