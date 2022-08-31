@@ -738,7 +738,6 @@ pub fn translate_cjs_to_esm(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    // todo(dsherret): call module_resolve instead?
     let resolved_reexport = resolve(
       reexport,
       specifier,
@@ -1039,19 +1038,29 @@ fn is_relative_specifier(specifier: &str) -> bool {
 }
 
 fn file_extension_probe(
-  mut p: PathBuf,
+  p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
-  if p.exists() && !p.is_dir() {
-    Ok(p.clean())
-  } else {
-    p.set_extension("js");
-    if p.exists() && !p.is_dir() {
-      Ok(p)
+  let p = p.clean();
+  if p.exists() {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
+    } else if p.is_dir() {
+      return Ok(p.join("index.js"));
     } else {
-      Err(not_found(&p.clean().to_string_lossy(), referrer))
+      return Ok(p);
+    }
+  } else {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
     }
   }
+
+  Err(not_found(&p.to_string_lossy(), referrer))
 }
 
 fn not_found(path: &str, referrer: &Path) -> AnyError {
