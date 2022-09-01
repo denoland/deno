@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
 use crate::magic::transl8::MAGIC_FIELD;
-use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
+use crate::magic::transl8::{opaque_deref_mut, opaque_recv, MagicType, ToV8};
 use crate::{
   magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
 };
@@ -253,7 +253,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
   fn end(self) -> JsResult<'a> {
     // SAFETY: transerialization assumptions imply `T` is still alive.
-    let x: &T = unsafe { opaque_deref(self.opaque) };
+    let x: &mut T = unsafe { opaque_deref_mut(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
     x.to_v8(scope)
   }

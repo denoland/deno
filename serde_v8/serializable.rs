@@ -12,7 +12,7 @@ use crate::ZeroCopyBuf;
 /// (and thus doesn't have to have generic outputs, etc...)
 pub trait Serializable {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error>;
 }
@@ -20,7 +20,7 @@ pub trait Serializable {
 /// Allows all implementors of `serde::Serialize` to implement Serializable
 impl<T: serde::Serialize> Serializable for T {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     crate::to_v8(scope, self)
@@ -36,7 +36,7 @@ pub enum SerializablePkg {
 
 impl SerializablePkg {
   pub fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
