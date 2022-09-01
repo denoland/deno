@@ -158,12 +158,13 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::npm::semver::NpmVersion;
 
   #[test]
   pub fn test_verify_tarball() {
     let package_id = NpmPackageId {
       name: "package".to_string(),
-      version: semver::Version::parse("1.0.0").unwrap(),
+      version: NpmVersion::parse("1.0.0").unwrap(),
     };
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";
