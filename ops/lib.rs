@@ -306,6 +306,7 @@ fn codegen_fast_impl(
       use_recv,
       use_fast_cb_opts,
       v8_values,
+      slices,
     }) = fast_info
     {
       let offset = if use_recv { 1 } else { 0 };
@@ -324,10 +325,13 @@ fn codegen_fast_impl(
             },
           };
           if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
-            return quote! { #ident: *mut #core::v8::fast_api::FastApiCallbackOptions };
+            return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
           }
           if v8_values.contains(&idx) {
             return quote! { #ident: #core::v8::Local < #core::v8::Value > };
+          }
+          if slices.contains(&idx) {
+            return quote! { fast_api_callback_options: *const #core::v8::FastApiTypedArray<u8> };
           }
           quote!(#arg)
         })
@@ -346,12 +350,23 @@ fn codegen_fast_impl(
             },
           };
           if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
-            return quote! { Some(unsafe { &mut * #ident }) };
+            return quote! { Some(unsafe { &mut * fast_api_callback_options }) };
           }
           if v8_values.contains(&idx) {
             return quote! {
               #core::serde_v8::Value {
                 v8_value: #ident,
+              }
+            };
+          }
+          if slices.contains(&idx) {
+            return quote! {
+              match unsafe { &*ident }.get_storage_if_aligned() {
+                Some(s) => s,
+                None => {
+                  unsafe { &mut * fast_api_callback_options }.fallback = true;
+                  return Default::default()
+                },
               }
             };
           }
@@ -489,6 +504,7 @@ struct FastApiSyn {
   use_recv: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
+  slices: Vec<usize>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
@@ -504,6 +520,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   let mut use_recv = false;
   let mut use_fast_cb_opts = false;
   let mut v8_values = Vec::new();
+  let mut slices = Vec::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
   for (pos, input) in inputs.iter().enumerate() {
     if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
@@ -531,8 +548,18 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
           Some(arg) => {
             args.push(arg);
           }
-          // early return, this function cannot be a fast call.
-          None => return None,
+          None => match is_ref_slice(&ty) {
+            Some(ty) => {
+              slices.push(pos);
+              use_fast_cb_opts = true;
+              match ty {
+                SliceType::U8 | SliceType::U8Mut => args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint8) }),
+                SliceType::U32 | SliceType::U32Mut => args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) }),
+              }
+            }
+            // early return, this function cannot be a fast call.
+            None => return None,
+          },
         },
         Some(arg) => {
           args.push(arg);
@@ -550,6 +577,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     args: args.parse().unwrap(),
     ret,
     use_recv,
+    slices,
     v8_values,
     use_fast_cb_opts,
   })
@@ -687,6 +715,40 @@ fn codegen_arg(
       };
     };
   }
+  // Fast path for &/&mut [u8] and &/&mut [u32]
+  if let Some(ty) = is_ref_slice(&**ty) {
+    let (ptr_ty, mutability) = match ty {
+      SliceType::U8 => (quote!([u8]), quote!(&)),
+      SliceType::U32 => (quote!([u32]), quote!(&)),
+      SliceType::U8Mut => (quote!([u8]), quote!(&mut)),
+      SliceType::U32Mut => (quote!([u32]), quote!(&mut)),
+    };
+    return quote! {
+      let #ident = {
+        let value = args.get(#idx as i32);
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let (offset, len) = (view.byte_offset(), view.byte_length());
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = buffer.get_backing_store();
+          unsafe { #mutability *(&store[offset..offset + len] as *const _ as *mut #ptr_ty) }
+        } else {
+          let b: #core::v8::Local<#core::v8::ArrayBuffer> = match value.try_into() {
+            Ok(v) => v,
+            Err(_) => {
+              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBuffer at position {}", #idx));
+            }
+          };
+          let store = b.get_backing_store();
+          unsafe { #mutability *(&store[0..b.byte_length()] as *const _ as *mut #ptr_ty) }
+        }
+      };
+    };
+  }
   // Otherwise deserialize it via serde_v8
   quote! {
     let #ident = args.get(#idx as i32);
@@ -773,6 +835,45 @@ fn is_string(ty: impl ToTokens) -> bool {
 
 fn is_option_string(ty: impl ToTokens) -> bool {
   tokens(ty) == "Option < String >"
+}
+
+enum SliceType {
+  U8,
+  U32,
+  U8Mut,
+  U32Mut,
+}
+
+fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
+  if is_u8_slice(&ty) {
+    return Some(SliceType::U8);
+  }
+  if is_u8_slice_mut(&ty) {
+    return Some(SliceType::U8Mut);
+  }
+  if is_u32_slice(&ty) {
+    return Some(SliceType::U32);
+  }
+  if is_u32_slice_mut(&ty) {
+    return Some(SliceType::U32Mut);
+  }
+  None
+}
+
+fn is_u8_slice(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& [u8]"
+}
+
+fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [u8]"
+}
+
+fn is_u32_slice(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& [u32]"
+}
+
+fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [u32]"
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
