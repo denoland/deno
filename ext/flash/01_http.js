@@ -188,6 +188,44 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
+  function writeFixedResponse(
+    server,
+    requestId,
+    response,
+    end,
+    respondFast,
+  ) {
+    let nwritten = 0;
+    // TypedArray
+    if (typeof response !== "string") {
+      nwritten = respondFast(requestId, response, end);
+    } else {
+      // string
+      const maybeResponse = stringResources[response];
+      if (maybeResponse === undefined) {
+        stringResources[response] = core.encode(response);
+        nwritten = core.ops.op_flash_respond(
+          server,
+          requestId,
+          stringResources[response],
+          end,
+        );
+      } else {
+        nwritten = respondFast(requestId, maybeResponse, end);
+      }
+    }
+
+    if (nwritten < response.length) {
+      core.opAsync(
+        "op_flash_respond_async",
+        server,
+        requestId,
+        response.slice(nwritten),
+        end,
+      );
+    }
+  }
+
   async function serve(arg1, arg2) {
     let options = undefined;
     let handler = undefined;
@@ -320,7 +358,7 @@
             }
             // there might've been an HTTP upgrade.
             if (resp === undefined) {
-              continue;
+              return;
             }
             const innerResp = toInnerResponse(resp);
 
@@ -389,26 +427,13 @@
                 innerResp.headerList,
                 respBody,
               );
-
-              // TypedArray
-              if (typeof responseStr !== "string") {
-                respondFast(i, responseStr, !ws);
-              } else {
-                // string
-                const maybeResponse = stringResources[responseStr];
-                if (maybeResponse === undefined) {
-                  stringResources[responseStr] = core.encode(responseStr);
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
-                    stringResources[responseStr],
-                    null,
-                    !ws, // Don't close socket if there is a deferred websocket upgrade.
-                  );
-                } else {
-                  respondFast(i, maybeResponse, !ws);
-                }
-              }
+              writeFixedResponse(
+                serverId,
+                i,
+                responseStr,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
+                respondFast,
+              );
             }
 
             (async () => {
@@ -451,41 +476,26 @@
                   }
                 } else {
                   const reader = respBody.getReader();
-                  let first = true;
-                  a:
+                  writeFixedResponse(
+                    serverId,
+                    i,
+                    http1Response(
+                      method,
+                      innerResp.status ?? 200,
+                      innerResp.headerList,
+                      null,
+                    ),
+                    false,
+                    respondFast,
+                  );
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (first) {
-                      first = false;
-                      core.ops.op_flash_respond(
-                        serverId,
-                        i,
-                        http1Response(
-                          method,
-                          innerResp.status ?? 200,
-                          innerResp.headerList,
-                          null,
-                        ),
-                        value ?? new Uint8Array(),
-                        false,
-                      );
-                    } else {
-                      if (value === undefined) {
-                        core.ops.op_flash_respond_chuncked(
-                          serverId,
-                          i,
-                          undefined,
-                          done,
-                        );
-                      } else {
-                        respondChunked(
-                          i,
-                          value,
-                          done,
-                        );
-                      }
-                    }
-                    if (done) break a;
+                    await respondChunked(
+                      i,
+                      value,
+                      done,
+                    );
+                    if (done) break;
                   }
                 }
               }
@@ -528,18 +538,24 @@
       once: true,
     });
 
+    function respondChunked(token, chunk, shutdown) {
+      return core.opAsync(
+        "op_flash_respond_chuncked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+      );
+    }
+
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondChunked = (token, chunk, shutdown) =>
-      fastOp.respondChunked(token, chunk, shutdown);
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondChunked = (token, chunk, shutdown) =>
-        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
       respondFast = (token, response, shutdown) =>
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }

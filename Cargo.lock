@@ -829,6 +829,7 @@ dependencies = [
  "libc",
  "log 0.4.17",
  "mitata",
+ "monch",
  "nix",
  "node_resolver",
  "notify",
@@ -1211,12 +1212,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8348a58271a9672a735850dd2293770c83344759f8d18e4636e53de9e4605d2"
+checksum = "91059ae4dccefd55b84e0582683fe41e78b4287a2fe283962ea0a1698ea43d4d"
 dependencies = [
  "anyhow",
  "futures",
+ "monch",
  "os_pipe",
  "path-dedot",
  "tokio",
@@ -2723,6 +2725,12 @@ checksum = "21fd49a3bd69c5be5d2c21899e2995ed99193b48e2c9f3ac09596a0d69f7fa79"
 dependencies = [
  "clap",
 ]
+
+[[package]]
+name = "monch"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "350537f27a69018269e534582e2f1ec532ea7078b06485fdd4db0509bd70feb8"
 
 [[package]]
 name = "naga"

@@ -17,6 +17,7 @@ use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 
+use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
 use super::NpmPackageVersionDistInfo;
@@ -147,7 +148,7 @@ impl ReadonlyNpmCache {
 
     Some(NpmPackageId {
       name,
-      version: semver::Version::parse(version).unwrap(),
+      version: NpmVersion::parse(version).unwrap(),
     })
   }
 }
@@ -281,6 +282,7 @@ mod test {
   use deno_core::url::Url;
 
   use super::ReadonlyNpmCache;
+  use crate::npm::semver::NpmVersion;
   use crate::npm::NpmPackageId;
 
   #[test]
@@ -294,7 +296,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "json".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),
@@ -317,7 +319,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "JSON".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),
@@ -331,7 +333,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "@types/JSON".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),
