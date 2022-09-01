@@ -1283,29 +1283,35 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     await promise;
 
     const decoder = new TextDecoder();
-    const buf = new Uint8Array(1024);
-    const readResult = await conn.read(buf);
-    assert(readResult);
-    const msg = decoder.decode(buf.subarray(0, readResult));
-
-    try {
-      assert(testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:"));
-      assert(testCase.expects_chunked == hasHeader(msg, "chunked"));
-      assert(testCase.expects_con_len == hasHeader(msg, "Content-Length:"));
-
-      const n = msg.indexOf("\r\n\r\n") + 4;
-
-      if (testCase.expects_chunked) {
-        assertEquals(msg.slice(n + 1, n + 3), "\r\n");
-        assertEquals(msg.slice(msg.length - 7), "\r\n0\r\n\r\n");
+    let msg = "";
+    while (true) {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      if (!readResult) {
+        break;
       }
+      msg += decoder.decode(buf.subarray(0, readResult));
+      try {
+        assert(
+          testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:"),
+        );
+        assert(testCase.expects_chunked == hasHeader(msg, "chunked"));
+        assert(testCase.expects_con_len == hasHeader(msg, "Content-Length:"));
 
-      if (testCase.expects_con_len && typeof testCase.body === "string") {
-        assertEquals(msg.slice(n), testCase.body);
+        const n = msg.indexOf("\r\n\r\n") + 4;
+
+        if (testCase.expects_chunked) {
+          assertEquals(msg.slice(n + 1, n + 3), "\r\n");
+          assertEquals(msg.slice(msg.length - 7), "\r\n0\r\n\r\n");
+        }
+
+        if (testCase.expects_con_len && typeof testCase.body === "string") {
+          assertEquals(msg.slice(n), testCase.body);
+        }
+        break;
+      } catch (e) {
+        continue;
       }
-    } catch (e) {
-      console.error(e);
-      throw e;
     }
 
     conn.close();
@@ -1419,11 +1425,19 @@ Deno.test(
 
     const decoder = new TextDecoder();
     {
-      const buf = new Uint8Array(1024);
-      const readResult = await conn.read(buf);
-      assert(readResult);
-      const msg = decoder.decode(buf.subarray(0, readResult));
-      assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
+      let msg = "";
+      while (true) {
+        try {
+          const buf = new Uint8Array(1024);
+          const readResult = await conn.read(buf);
+          assert(readResult);
+          msg += decoder.decode(buf.subarray(0, readResult));
+          assert(msg.endsWith("\r\nfoo bar baz\r\n0\r\n\r\n"));
+          break;
+        } catch {
+          continue;
+        }
+      }
     }
 
     // once more!
