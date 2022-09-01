@@ -389,22 +389,19 @@ fn xr<'a>() -> impl Fn(&'a str) -> ParseResult<'a, XRange> {
 
 // nr ::= '0' | ['1'-'9'] ( ['0'-'9'] ) *
 fn nr(input: &str) -> ParseResult<u64> {
-  or(map(tag("0"), |_| 0), move |input| {
-    let (input, result) = substring(pair(
-      if_true(next_char, |c| c.is_ascii_digit() && *c != '0'),
-      skip_while(|c| c.is_ascii_digit()),
-    ))(input)?;
-    let val = match result.parse::<u64>() {
-      Ok(val) => val,
-      Err(err) => {
-        return ParseError::fail(
-          input,
-          format!("Error parsing '{}' to usize.\n\n{:#}", result, err),
-        )
-      }
-    };
-    Ok((input, val))
-  })(input)
+  // we do loose parsing to support people doing stuff like 01.02.03
+  let (input, result) =
+    if_not_empty(substring(skip_while(|c| c.is_ascii_digit())))(input)?;
+  let val = match result.parse::<u64>() {
+    Ok(val) => val,
+    Err(err) => {
+      return ParseError::fail(
+        input,
+        format!("Error parsing '{}' to u64.\n\n{:#}", result, err),
+      )
+    }
+  };
+  Ok((input, val))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -428,7 +425,7 @@ fn qualifier(input: &str) -> ParseResult<Qualifier> {
 
 // pre ::= parts
 fn pre(input: &str) -> ParseResult<Vec<String>> {
-  preceded(ch('-'), parts)(input)
+  preceded(maybe(ch('-')), parts)(input)
 }
 
 // build ::= parts
@@ -642,12 +639,9 @@ mod tests {
     // https://github.com/npm/node-semver/blob/4907647d169948a53156502867ed679268063a9f/test/fixtures/range-parse.js
     let fixtures = &[
       ("1.0.0 - 2.0.0", ">=1.0.0 <=2.0.0"),
-      // ("1.0.0 - 2.0.0", ">=1.0.0-0 <2.0.1-0", { includePrerelease: true }),
       ("1 - 2", ">=1.0.0 <3.0.0-0"),
-      //("1 - 2", ">=1.0.0-0 <3.0.0-0", { includePrerelease: true }),
       ("1.0 - 2.0", ">=1.0.0 <2.1.0-0"),
-      //("1.0 - 2.0", ">=1.0.0-0 <2.1.0-0", { includePrerelease: true }),
-      // ("1.0.0", "1.0.0", { loose: false }),
+      ("1.0.0", "1.0.0"),
       (">=*", "*"),
       ("", "*"),
       ("*", "*"),
@@ -723,14 +717,9 @@ mod tests {
       ("<X", "<0.0.0-0"),
       ("<x <* || >* 2.x", "<0.0.0-0"),
       (">x 2.x || * || <x", "*"),
-      // (">01.02.03", ">1.2.3", true),
-      // (">01.02.03", null),
-      // ("~1.2.3beta", ">=1.2.3-beta <1.3.0-0", { loose: true }),
-      // ("~1.2.3beta", null),
-      // (">=09090", null),
-      // (">=09090", ">=9090.0.0", true),
-      // (">=09090-0", null, { includePrerelease: true }),
-      // (">=09090-0", null, { loose: true, includePrerelease: true }),
+      (">01.02.03", ">1.2.3"),
+      ("~1.2.3beta", ">=1.2.3-beta <1.3.0-0"),
+      (">=09090", ">=9090.0.0"),
     ];
     for (range_text, expected) in fixtures {
       let range = NpmVersionReq::parse(range_text).unwrap();
@@ -751,21 +740,21 @@ mod tests {
       ("^1.2.3+build", "1.2.3"),
       ("^1.2.3+build", "1.3.0"),
       ("1.2.3-pre+asdf - 2.4.3-pre+asdf", "1.2.3"),
-      // ("1.2.3pre+asdf - 2.4.3-pre+asdf", "1.2.3", true),
-      // ("1.2.3-pre+asdf - 2.4.3pre+asdf", "1.2.3", true),
-      // ("1.2.3pre+asdf - 2.4.3pre+asdf", "1.2.3", true),
+      ("1.2.3pre+asdf - 2.4.3-pre+asdf", "1.2.3"),
+      ("1.2.3-pre+asdf - 2.4.3pre+asdf", "1.2.3"),
+      ("1.2.3pre+asdf - 2.4.3pre+asdf", "1.2.3"),
       ("1.2.3-pre+asdf - 2.4.3-pre+asdf", "1.2.3-pre.2"),
       ("1.2.3-pre+asdf - 2.4.3-pre+asdf", "2.4.3-alpha"),
       ("1.2.3+asdf - 2.4.3+asdf", "1.2.3"),
       ("1.0.0", "1.0.0"),
       (">=*", "0.2.4"),
       ("", "1.0.0"),
-      // ("*", "1.2.3", {}),
-      // ("*", "v1.2.3", { loose: 123 }),
-      // (">=1.0.0", "1.0.0", /asdf/),
-      // (">=1.0.0", "1.0.1", { loose: null }),
-      // (">=1.0.0", "1.1.0", { loose: 0 }),
-      // (">1.0.0", "1.0.1", { loose: undefined }),
+      ("*", "1.2.3"),
+      ("*", "v1.2.3"),
+      (">=1.0.0", "1.0.0"),
+      (">=1.0.0", "1.0.1"),
+      (">=1.0.0", "1.1.0"),
+      (">1.0.0", "1.0.1"),
       (">1.0.0", "1.1.0"),
       ("<=2.0.0", "2.0.0"),
       ("<=2.0.0", "1.9999.9999"),
@@ -782,7 +771,7 @@ mod tests {
       ("<=  2.0.0", "0.2.9"),
       ("<    2.0.0", "1.9999.9999"),
       ("<\t2.0.0", "0.2.9"),
-      // (">=0.1.97", "v0.1.97", true),
+      (">=0.1.97", "v0.1.97"),
       (">=0.1.97", "0.1.97"),
       ("0.1.20 || 1.2.4", "1.2.4"),
       (">=0.2.3 || <0.0.1", "0.0.0"),
@@ -814,7 +803,7 @@ mod tests {
       ("~1.0", "1.0.2"), // >=1.0.0 <1.1.0,
       ("~ 1.0", "1.0.2"),
       ("~ 1.0.3", "1.0.12"),
-      // ("~ 1.0.3alpha", "1.0.12", { loose: true }),
+      ("~ 1.0.3alpha", "1.0.12"),
       (">=1", "1.0.0"),
       (">= 1", "1.0.0"),
       ("<1.2", "1.1.1"),
@@ -853,24 +842,6 @@ mod tests {
       ("1.0.0 - x", "1.9.7"),
       ("1.x - x", "1.9.7"),
       ("<=7.x", "7.9.9"),
-      // ("2.x", "2.0.0-pre.0", { includePrerelease: true }),
-      // ("2.x", "2.1.0-pre.0", { includePrerelease: true }),
-      // ("1.1.x", "1.1.0-a", { includePrerelease: true }),
-      // ("1.1.x", "1.1.1-a", { includePrerelease: true }),
-      // ("*", "1.0.0-rc1", { includePrerelease: true }),
-      // ("^1.0.0-0", "1.0.1-rc1", { includePrerelease: true }),
-      // ("^1.0.0-rc2", "1.0.1-rc1", { includePrerelease: true }),
-      // ("^1.0.0", "1.0.1-rc1", { includePrerelease: true }),
-      // ("^1.0.0", "1.1.0-rc1", { includePrerelease: true }),
-      // ("1 - 2", "2.0.0-pre", { includePrerelease: true }),
-      // ("1 - 2", "1.0.0-pre", { includePrerelease: true }),
-      // ("1.0 - 2", "1.0.0-pre", { includePrerelease: true }),
-
-      // ("=0.7.x", "0.7.0-asdf", { includePrerelease: true }),
-      // (">=0.7.x", "0.7.0-asdf", { includePrerelease: true }),
-      // ("<=0.7.x", "0.7.0-asdf", { includePrerelease: true }),
-
-      // (">=1.0.0 <=1.1.0", "1.1.0-pre", { includePrerelease: true }),
     ];
     for (req_text, version_text) in fixtures {
       let req = NpmVersionReq::parse(req_text).unwrap();
@@ -900,9 +871,9 @@ mod tests {
       ("=0.7.x", "0.7.0-asdf"),
       (">=0.7.x", "0.7.0-asdf"),
       ("<=0.7.x", "0.7.0-asdf"),
-      // ("1", "1.0.0beta", { loose: 420 }),
-      // ("<1", "1.0.0beta", true),
-      // ("< 1", "1.0.0beta", true),
+      ("1", "1.0.0beta"),
+      ("<1", "1.0.0beta"),
+      ("< 1", "1.0.0beta"),
       ("1.0.0", "1.0.1"),
       (">=1.0.0", "0.0.0"),
       (">=1.0.0", "0.0.1"),
@@ -914,12 +885,12 @@ mod tests {
       ("<=2.0.0", "2.2.9"),
       ("<2.0.0", "2.9999.9999"),
       ("<2.0.0", "2.2.9"),
-      // (">=0.1.97", "v0.1.93", true),
+      (">=0.1.97", "v0.1.93"),
       (">=0.1.97", "0.1.93"),
       ("0.1.20 || 1.2.4", "1.2.3"),
       (">=0.2.3 || <0.0.1", "0.0.3"),
       (">=0.2.3 || <0.0.1", "0.2.2"),
-      // ("2.x.x", "1.1.3", { loose: NaN }),
+      ("2.x.x", "1.1.3"),
       ("2.x.x", "3.1.3"),
       ("1.2.x", "1.3.3"),
       ("1.2.x || 2.x", "3.1.3"),
@@ -942,7 +913,7 @@ mod tests {
       ("~1.0", "1.1.0"), // >=1.0.0 <1.1.0
       ("<1", "1.0.0"),
       (">=1.2", "1.1.1"),
-      // ("1", "2.0.0beta", true),
+      ("1", "2.0.0beta"),
       ("~v0.5.4-beta", "0.5.4-alpha"),
       ("=0.7.x", "0.8.2"),
       (">=0.7.x", "0.6.2"),
@@ -955,30 +926,18 @@ mod tests {
       ("^1.2.3", "2.0.0-alpha"),
       ("^1.2.3", "1.2.2"),
       ("^1.2", "1.1.9"),
-      // ("*", "v1.2.3-foo", true),
-
-      // ("2.x", "3.0.0-pre.0", { includePrerelease: true }),
-      // ("^1.0.0", "1.0.0-rc1", { includePrerelease: true }),
-      // ("^1.0.0", "2.0.0-rc1", { includePrerelease: true }),
-      // ("^1.2.3-rc2", "2.0.0", { includePrerelease: true }),
-      // ("^1.0.0", "2.0.0-rc1", { includePrerelease: true }),
+      ("*", "v1.2.3-foo"),
       ("^1.0.0", "2.0.0-rc1"),
-      // ("1 - 2", "3.0.0-pre", { includePrerelease: true }),
       ("1 - 2", "2.0.0-pre"),
       ("1 - 2", "1.0.0-pre"),
       ("1.0 - 2", "1.0.0-pre"),
       ("1.1.x", "1.0.0-a"),
       ("1.1.x", "1.1.0-a"),
       ("1.1.x", "1.2.0-a"),
-      // ("1.1.x", "1.2.0-a", { includePrerelease: true }),
-      // ("1.1.x", "1.0.0-a", { includePrerelease: true }),
       ("1.x", "1.0.0-a"),
       ("1.x", "1.1.0-a"),
       ("1.x", "1.2.0-a"),
-      // ("1.x", "0.0.0-a", { includePrerelease: true }),
-      // ("1.x", "2.0.0-a", { includePrerelease: true }),
       (">=1.0.0 <1.1.0", "1.1.0"),
-      // (">=1.0.0 <1.1.0", "1.1.0", { includePrerelease: true }),
       (">=1.0.0 <1.1.0", "1.1.0-pre"),
       (">=1.0.0 <1.1.0-pre", "1.1.0-pre"),
     ];

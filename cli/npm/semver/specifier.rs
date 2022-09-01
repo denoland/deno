@@ -110,7 +110,7 @@ fn nr(input: &str) -> ParseResult<u64> {
       Err(err) => {
         return ParseError::fail(
           input,
-          format!("Error parsing '{}' to usize.\n\n{:#}", result, err),
+          format!("Error parsing '{}' to u64.\n\n{:#}", result, err),
         )
       }
     };
