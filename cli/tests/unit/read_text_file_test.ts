@@ -176,9 +176,13 @@ Deno.test(
 
     await Deno.writeFile(filePath, bytes);
 
-    await assertRejects(async () => {
-      await Deno.readTextFile(filePath);
-    });
+    await assertRejects(
+      async () => {
+        await Deno.readTextFile(filePath);
+      },
+      TypeError,
+      "buffer exceeds maximum length",
+    );
 
     await Deno.remove(filePath);
   },
