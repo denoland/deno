@@ -1938,7 +1938,12 @@ impl JsRuntime {
 
       for (promise_id, mut resp) in results.into_iter() {
         args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(resp.to_v8(scope).unwrap());
+        args.push(match resp.to_v8(scope) {
+          Ok(v) => v,
+          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+            .to_v8(scope)
+            .unwrap(),
+        });
       }
 
       let tc_scope = &mut v8::TryCatch::new(scope);
