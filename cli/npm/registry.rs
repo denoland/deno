@@ -23,7 +23,7 @@ use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
 
 use super::cache::NpmCache;
-use super::version_req::NpmVersionReq;
+use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
