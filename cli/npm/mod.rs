@@ -3,8 +3,8 @@
 mod cache;
 mod registry;
 mod resolution;
+mod semver;
 mod tarball;
-mod version_req;
 
 use std::io::ErrorKind;
 use std::path::Path;
