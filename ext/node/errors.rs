@@ -56,7 +56,7 @@ pub fn err_invalid_package_target(
   key: String,
   target: String,
   is_import: bool,
-  maybe_base: Option<String>,
+  maybe_referrer: Option<String>,
 ) -> AnyError {
   let rel_error = !is_import && !target.is_empty() && !target.starts_with("./");
   let mut msg = "[ERR_INVALID_PACKAGE_TARGET]".to_string();
@@ -69,7 +69,7 @@ pub fn err_invalid_package_target(
     msg = format!("{} Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", msg, ie, target, key, pkg_path)
   };
 
-  if let Some(base) = maybe_base {
+  if let Some(base) = maybe_referrer {
     msg = format!("{} imported from {}", msg, base);
   };
   if rel_error {
@@ -82,7 +82,7 @@ pub fn err_invalid_package_target(
 pub fn err_package_path_not_exported(
   pkg_path: String,
   subpath: String,
-  maybe_base: Option<String>,
+  maybe_referrer: Option<String>,
 ) -> AnyError {
   let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
 
@@ -95,8 +95,8 @@ pub fn err_package_path_not_exported(
     msg = format!("{} Package subpath \'{}\' is not defined by \"exports\" in {}package.json", msg, subpath, pkg_path);
   };
 
-  if let Some(base) = maybe_base {
-    msg = format!("{} imported from {}", msg, base);
+  if let Some(referrer) = maybe_referrer {
+    msg = format!("{} imported from {}", msg, referrer);
   }
 
   generic_error(msg)

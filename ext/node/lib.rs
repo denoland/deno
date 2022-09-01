@@ -12,11 +12,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub use package_json::PackageJson;
+pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
 pub use resolution::legacy_main_resolve;
 pub use resolution::package_exports_resolve;
 pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
+pub use resolution::NodeModuleKind;
 pub use resolution::DEFAULT_CONDITIONS;
 
 pub trait NodePermissions {
@@ -77,6 +79,7 @@ pub fn init<P: NodePermissions + 'static>(
       op_require_read_file::decl::<P>(),
       op_require_as_file_path::decl(),
       op_require_resolve_exports::decl(),
+      op_require_read_closest_package_json::decl::<P>(),
       op_require_read_package_scope::decl(),
       op_require_package_imports_resolve::decl::<P>(),
     ])
@@ -485,17 +488,18 @@ fn op_require_try_self(
     return Ok(None);
   }
 
-  let base = deno_core::url::Url::from_file_path(PathBuf::from("/")).unwrap();
+  let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
     resolution::package_exports_resolve(
-      deno_core::url::Url::from_file_path(&pkg.path).unwrap(),
+      &pkg.path,
       expansion,
       exports,
-      &base,
+      &referrer,
+      NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
       &*resolver,
     )
-    .map(|r| Some(r.as_str().to_string()))
+    .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
     Ok(None)
   }
@@ -550,19 +554,40 @@ fn op_require_resolve_exports(
   )?;
 
   if let Some(exports) = &pkg.exports {
-    let base = Url::from_file_path(parent_path).unwrap();
+    let referrer = Url::from_file_path(parent_path).unwrap();
     resolution::package_exports_resolve(
-      deno_core::url::Url::from_directory_path(pkg_path).unwrap(),
+      &pkg.path,
       format!(".{}", expansion),
       exports,
-      &base,
+      &referrer,
+      NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
       &*resolver,
     )
-    .map(|r| Some(r.to_file_path().unwrap().to_string_lossy().to_string()))
+    .map(|r| Some(r.to_string_lossy().to_string()))
   } else {
     Ok(None)
   }
+}
+
+#[op]
+fn op_require_read_closest_package_json<P>(
+  state: &mut OpState,
+  filename: String,
+) -> Result<PackageJson, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  check_unstable(state);
+  ensure_read_permission::<P>(
+    state,
+    PathBuf::from(&filename).parent().unwrap(),
+  )?;
+  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  resolution::get_closest_package_json(
+    &Url::from_file_path(filename).unwrap(),
+    &*resolver,
+  )
 }
 
 #[op]
@@ -600,10 +625,11 @@ where
     let r = resolution::package_imports_resolve(
       &request,
       &referrer,
+      NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
       &*resolver,
     )
-    .map(|r| Some(r.as_str().to_string()));
+    .map(|r| Some(Url::from_file_path(r).unwrap().to_string()));
     state.put(resolver);
     r
   } else {
