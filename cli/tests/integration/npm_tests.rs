@@ -9,7 +9,7 @@ use util::http_server;
 // NOTE: See how to make test npm packages at ../testdata/npm/README.md
 
 itest!(esm_module {
-  args: "run --allow-read --unstable npm/esm/main.js",
+  args: "run --allow-read --allow-env --unstable npm/esm/main.js",
   output: "npm/esm/main.out",
   envs: env_vars(),
   http_server: true,
@@ -27,14 +27,14 @@ itest!(esm_module_eval {
 });
 
 itest!(esm_module_deno_test {
-  args: "test --allow-read --unstable npm/esm/test.js",
+  args: "test --allow-read --allow-env --unstable npm/esm/test.js",
   output: "npm/esm/test.out",
   envs: env_vars(),
   http_server: true,
 });
 
 itest!(cjs_with_deps {
-  args: "run --allow-read --unstable npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
@@ -54,8 +54,43 @@ itest!(cjs_local_global_decls {
   http_server: true,
 });
 
+itest!(cjs_reexport_collision {
+  args: "run --unstable -A --quiet npm/cjs_reexport_collision/main.ts",
+  output: "npm/cjs_reexport_collision/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(translate_cjs_to_esm {
+  args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
+  output: "npm/translate_cjs_to_esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(compare_globals {
+  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  output: "npm/compare_globals/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(conditional_exports {
+  args: "run --allow-read --unstable npm/conditional_exports/main.js",
+  output: "npm/conditional_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(dual_cjs_esm {
+  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  output: "npm/dual_cjs_esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(dynamic_import {
-  args: "run --allow-read --unstable npm/dynamic_import/main.ts",
+  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
   output: "npm/dynamic_import/main.out",
   envs: env_vars(),
   http_server: true,
@@ -76,7 +111,7 @@ itest!(no_unstable {
 });
 
 itest!(import_map {
-  args: "run --allow-read --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  args: "run --allow-read --allow-env --unstable --import-map npm/import_map/import_map.json npm/import_map/main.js",
   output: "npm/import_map/main.out",
   envs: env_vars(),
   http_server: true,
@@ -89,6 +124,13 @@ itest!(sub_paths {
   http_server: true,
 });
 
+itest!(tarball_with_global_header {
+  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  output: "npm/tarball_with_global_header/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -97,6 +139,7 @@ fn parallel_downloading() {
       "run",
       "--allow-read",
       "--unstable",
+      "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
     None,
@@ -223,6 +266,13 @@ itest!(deno_run_cowthink {
   args: "run --unstable -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
   envs: env_vars_no_sync_download(),
+  http_server: true,
+});
+
+itest!(deno_run_esm_module {
+  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars(),
   http_server: true,
 });
 
