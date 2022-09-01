@@ -754,6 +754,7 @@ fn check_subcommand<'a>() -> Command<'a> {
     Arg::new("remote")
       .long("remote")
       .help("Type-check all modules, including remote")
+      .conflicts_with("no-remote")
     )
     .arg(
       Arg::new("file")
@@ -3835,6 +3836,15 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--remote",
+      "--no-remote",
+      "script.ts"
+    ]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
   }
 
   #[test]
