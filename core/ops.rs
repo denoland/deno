@@ -99,7 +99,7 @@ pub enum OpResult {
 
 impl OpResult {
   pub fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
     match self {
