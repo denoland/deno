@@ -101,10 +101,10 @@ fn xr<'a>() -> impl Fn(&'a str) -> ParseResult<'a, XRange> {
 // nr ::= '0' | ['1'-'9'] ( ['0'-'9'] ) *
 fn nr(input: &str) -> ParseResult<u64> {
   or(map(tag("0"), |_| 0), move |input| {
-    let (input, result) = substring(pair(
+    let (input, result) = if_not_empty(substring(pair(
       if_true(next_char, |c| c.is_ascii_digit() && *c != '0'),
       skip_while(|c| c.is_ascii_digit()),
-    ))(input)?;
+    )))(input)?;
     let val = match result.parse::<u64>() {
       Ok(val) => val,
       Err(err) => {
