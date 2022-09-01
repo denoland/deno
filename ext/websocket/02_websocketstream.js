@@ -64,11 +64,14 @@
     ],
   );
 
+  const CLOSE_RESPONSE_TIMEOUT = 5000;
+
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
+  const _closeSent = Symbol("[[closeSent]]");
   class WebSocketStream {
     [_rid];
 
@@ -268,6 +271,21 @@
                     break;
                   }
                 }
+
+                if (
+                  this[_closeSent].state === "fulfilled" &&
+                  this[_closed].state === "pending"
+                ) {
+                  if (
+                    new Date().getTime() - await this[_closeSent].promise <=
+                      CLOSE_RESPONSE_TIMEOUT
+                  ) {
+                    return pull(controller);
+                  }
+
+                  this[_closed].resolve(value);
+                  core.tryClose(this[_rid]);
+                }
               };
               const readable = new ReadableStream({
                 start: (controller) => {
@@ -284,6 +302,12 @@
                       );
                     } catch (_) {
                       // needed to ignore warnings & assertions
+                    }
+                  });
+
+                  PromisePrototypeThen(this[_closeSent].promise, () => {
+                    if (this[_closed].state === "pending") {
+                      return pull(controller);
                     }
                   });
                 },
@@ -328,6 +352,7 @@
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
+    [_closeSent] = new Deferred();
     get closed() {
       webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
@@ -369,8 +394,13 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        PromisePrototypeCatch(
+        PromisePrototypeThen(
           core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          () => {
+            setTimeout(() => {
+              this[_closeSent].resolve(new Date().getTime());
+            }, 0);
+          },
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);

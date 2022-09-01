@@ -17,11 +17,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_graph::source::ResolveResponse;
+use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::DenoDirNpmResolver;
+use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use once_cell::sync::Lazy;
@@ -342,6 +344,8 @@ pub fn node_resolve(
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<Option<ResolveResponse>, AnyError> {
+  // Note: if we are here, then the referrer is an esm module
+
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
@@ -385,7 +389,7 @@ pub fn node_resolve(
       return Err(errors::err_unsupported_esm_url_scheme(&url));
     }
 
-    // todo(THIS PR): I think this is handled upstream so can be removed?
+    // todo(dsherret): this seems wrong
     if referrer.scheme() == "data" {
       let url = referrer.join(specifier).map_err(AnyError::from)?;
       return Ok(Some(ResolveResponse::Specifier(url)));
@@ -412,7 +416,7 @@ pub fn node_resolve_npm_reference(
   let package_folder = npm_resolver
     .resolve_package_from_deno_module(&reference.req)?
     .folder_path;
-  let maybe_url = package_config_resolve(
+  let resolved_path = package_config_resolve(
     &reference
       .sub_path
       .as_ref()
@@ -420,16 +424,13 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     npm_resolver,
+    NodeModuleKind::Esm,
   )
-  .map(Some)
   .with_context(|| {
     format!("Error resolving package config for '{}'.", reference)
   })?;
-  let url = match maybe_url {
-    Some(url) => url,
-    None => return Ok(None),
-  };
 
+  let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
   let resolve_response = url_to_resolve_response(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -521,33 +522,30 @@ fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+  referrer_kind: NodeModuleKind,
+) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
-  // todo(dsherret): remove base from this code
-  let base =
+  let referrer =
     ModuleSpecifier::from_directory_path(package_json_path.parent().unwrap())
       .unwrap();
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
-  let package_json_url =
-    ModuleSpecifier::from_file_path(&package_json_path).unwrap();
   if let Some(exports) = &package_config.exports {
     return package_exports_resolve(
-      package_json_url,
+      &package_json_path,
       package_subpath.to_string(),
       exports,
-      &base,
+      &referrer,
+      referrer_kind,
       DEFAULT_CONDITIONS,
       npm_resolver,
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json_url, &package_config, &base);
+    return legacy_main_resolve(&package_config, referrer_kind);
   }
 
-  package_json_url
-    .join(package_subpath)
-    .map_err(AnyError::from)
+  Ok(package_dir.join(package_subpath))
 }
 
 fn url_to_resolve_response(
@@ -568,37 +566,6 @@ fn url_to_resolve_response(
   } else {
     ResolveResponse::Esm(url)
   })
-}
-
-fn get_closest_package_json(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PackageJson, AnyError> {
-  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, package_json_path)
-}
-
-fn get_closest_package_json_path(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PathBuf, AnyError> {
-  let file_path = url.to_file_path().unwrap();
-  let mut current_dir = file_path.parent().unwrap();
-  let package_json_path = current_dir.join("package.json");
-  if package_json_path.exists() {
-    return Ok(package_json_path);
-  }
-  let root_folder = npm_resolver
-    .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
-  while current_dir.starts_with(&root_folder) {
-    current_dir = current_dir.parent().unwrap();
-    let package_json_path = current_dir.join("./package.json");
-    if package_json_path.exists() {
-      return Ok(package_json_path);
-    }
-  }
-
-  bail!("did not find package.json in {}", root_folder.display())
 }
 
 fn finalize_resolution(
@@ -667,25 +634,34 @@ fn module_resolve(
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
+  // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
     Some(resolved_specifier)
   } else if specifier.starts_with('#') {
-    Some(package_imports_resolve(
-      specifier,
-      referrer,
-      conditions,
-      npm_resolver,
-    )?)
+    Some(
+      package_imports_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      )
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+    )
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    Some(package_resolve(
-      specifier,
-      referrer,
-      conditions,
-      npm_resolver,
-    )?)
+    Some(
+      package_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      )
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+    )
   };
   Ok(match url {
     Some(url) => Some(finalize_resolution(url, referrer)?),
@@ -762,7 +738,6 @@ pub fn translate_cjs_to_esm(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    // todo(dsherret): call module_resolve instead?
     let resolved_reexport = resolve(
       reexport,
       specifier,
@@ -1063,19 +1038,29 @@ fn is_relative_specifier(specifier: &str) -> bool {
 }
 
 fn file_extension_probe(
-  mut p: PathBuf,
+  p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
-  if p.exists() && !p.is_dir() {
-    Ok(p.clean())
-  } else {
-    p.set_extension("js");
-    if p.exists() && !p.is_dir() {
-      Ok(p)
+  let p = p.clean();
+  if p.exists() {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
+    } else if p.is_dir() {
+      return Ok(p.join("index.js"));
     } else {
-      Err(not_found(&p.clean().to_string_lossy(), referrer))
+      return Ok(p);
+    }
+  } else {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
     }
   }
+
+  Err(not_found(&p.to_string_lossy(), referrer))
 }
 
 fn not_found(path: &str, referrer: &Path) -> AnyError {
