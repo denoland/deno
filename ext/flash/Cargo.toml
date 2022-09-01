@@ -19,7 +19,7 @@ deno_tls = { version = "0.53.0", path = "../tls" }
 # For HTTP/2 and websocket upgrades
 deno_websocket = { version = "0.71.0", path = "../websocket" }
 http = "0.2.6"
-httparse = "1.7"
+httparse = "1.8"
 libc = "0.2"
 log = "0.4.17"
 mio = { version = "0.8.1", features = ["os-poll", "net"] }

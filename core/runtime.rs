@@ -1942,7 +1942,7 @@ impl JsRuntime {
       // and then each tuple is used to resolve or reject promises
       let mut args = vec![];
 
-      for (promise_id, resp) in results.into_iter() {
+      for (promise_id, mut resp) in results.into_iter() {
         args.push(v8::Integer::new(scope, promise_id).into());
         args.push(resp.to_v8(scope).unwrap());
       }
