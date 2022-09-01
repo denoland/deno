@@ -112,7 +112,9 @@ impl ToV8 for ZeroCopyBuf {
         value.into()
       }
       Self::Temp(_) => unreachable!(),
-      Self::ToV8(x) => x.lock().unwrap().take().expect("ZeroCopyBuf was empty"),
+      Self::ToV8(x) => {
+        x.get_mut().unwrap().take().expect("ZeroCopyBuf was empty")
+      }
     };
 
     if buf.is_empty() {
