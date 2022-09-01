@@ -181,8 +181,8 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
 fn op_encoding_decode_single(
   data: ZeroCopyBuf,
   label: String,
-  ignore_bom: bool,
   fatal: bool,
+  ignore_bom: bool,
 ) -> Result<U16String, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
@@ -235,8 +235,8 @@ fn op_encoding_decode_single(
 fn op_encoding_new_decoder(
   state: &mut OpState,
   label: String,
-  ignore_bom: bool,
   fatal: bool,
+  ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
