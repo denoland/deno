@@ -151,8 +151,9 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 pub(crate) struct ContextState {
   js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
-  // TODO(andreubotella): Move the rest of Option<Global<Function>> fields from
-  // JsRuntimeState to this struct.
+  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) unrefed_ops: HashSet<i32>,
 }
 
@@ -163,10 +164,7 @@ pub(crate) struct JsRuntimeState {
   known_realms: Vec<v8::Weak<v8::Context>>,
   pub(crate) js_macrotask_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
-  pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
-  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
@@ -414,10 +412,7 @@ impl JsRuntime {
       dyn_module_evaluate_idle_counter: 0,
       js_macrotask_cbs: vec![],
       js_nexttick_cbs: vec![],
-      js_promise_reject_cb: None,
-      js_format_exception_cb: None,
       has_tick_scheduled: false,
-      js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
@@ -775,9 +770,6 @@ impl JsRuntime {
       // Free up additional global handles before creating the snapshot
       state.js_macrotask_cbs.clear();
       state.js_nexttick_cbs.clear();
-      state.js_wasm_streaming_cb = None;
-      state.js_format_exception_cb = None;
-      state.js_promise_reject_cb = None;
     }
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -3459,6 +3451,54 @@ assertEquals(1, notify_return_value);
     runtime.run_event_loop(false).await.unwrap_err();
 
     assert_eq!(2, PROMISE_REJECT.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn test_set_promise_reject_callback_realms() {
+    let mut runtime = JsRuntime::new(RuntimeOptions::default());
+    let global_realm = runtime.global_realm();
+    let realm1 = runtime.create_realm().unwrap();
+    let realm2 = runtime.create_realm().unwrap();
+
+    let realm_expectations = &[
+      (&global_realm, "global_realm", 42),
+      (&realm1, "realm1", 140),
+      (&realm2, "realm2", 720),
+    ];
+
+    // Set up promise reject callbacks.
+    for (realm, realm_name, number) in realm_expectations {
+      realm
+        .execute_script(
+          runtime.v8_isolate(),
+          "",
+          &format!(
+            r#"
+              globalThis.rejectValue = undefined;
+              Deno.core.setPromiseRejectCallback((_type, _promise, reason) => {{
+                globalThis.rejectValue = `{realm_name}/${{reason}}`;
+              }});
+              Deno.core.opAsync("op_void_async").then(() => Promise.reject({number}));
+            "#,
+            realm_name=realm_name,
+            number=number
+          ),
+        )
+        .unwrap();
+    }
+
+    runtime.run_event_loop(false).await.unwrap();
+
+    for (realm, realm_name, number) in realm_expectations {
+      let reject_value = realm
+        .execute_script(runtime.v8_isolate(), "", "globalThis.rejectValue")
+        .unwrap();
+      let scope = &mut realm.handle_scope(runtime.v8_isolate());
+      let reject_value = v8::Local::new(scope, reject_value);
+      assert!(reject_value.is_string());
+      let reject_value_string = reject_value.to_rust_string_lossy(scope);
+      assert_eq!(reject_value_string, format!("{}/{}", realm_name, number));
+    }
   }
 
   #[tokio::test]

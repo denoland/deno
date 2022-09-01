@@ -218,10 +218,10 @@ impl JsError {
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
-    let state_rc = JsRuntime::state(scope);
+    let realm_state_rc = JsRealm::state_from_scope(scope);
 
     let js_format_exception_cb =
-      state_rc.borrow().js_format_exception_cb.clone();
+      realm_state_rc.borrow().js_format_exception_cb.clone();
     if let Some(format_exception_cb) = js_format_exception_cb {
       let format_exception_cb = format_exception_cb.open(scope);
       let this = v8::undefined(scope).into();
@@ -286,6 +286,7 @@ impl JsError {
       let mut source_line = None;
       let mut source_line_frame_index = None;
       {
+        let state_rc = JsRuntime::state(scope);
         let state = &mut *state_rc.borrow_mut();
 
         // When the stack frame array is empty, but the source location given by
