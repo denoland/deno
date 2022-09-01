@@ -33,10 +33,6 @@ impl Stream {
     self.detached = true;
   }
 
-  pub fn reattach_ownership(&mut self) {
-    self.detached = false;
-  }
-
   /// Try to write to the socket.
   #[inline]
   pub fn try_write(&mut self, buf: &[u8]) -> usize {

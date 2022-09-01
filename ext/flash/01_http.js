@@ -490,20 +490,11 @@
                   );
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (value === undefined) {
-                      core.ops.op_flash_respond_chuncked(
-                        serverId,
-                        i,
-                        undefined,
-                        done,
-                      );
-                    } else {
-                      respondChunked(
-                        i,
-                        value,
-                        done,
-                      );
-                    }
+                    await respondChunked(
+                      i,
+                      value,
+                      done,
+                    );
                     if (done) break;
                   }
                 }
@@ -531,7 +522,7 @@
                 }
                 ws[_serverHandleIdleTimeout]();
               }
-            })().catch(console.error);
+            })().catch(onError);
           }
 
           offset += tokens;
@@ -547,18 +538,24 @@
       once: true,
     });
 
+    function respondChunked(token, chunk, shutdown) {
+      return core.opAsync(
+        "op_flash_respond_chuncked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+      );
+    }
+
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondChunked = (token, chunk, shutdown) =>
-      fastOp.respondChunked(token, chunk, shutdown);
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondChunked = (token, chunk, shutdown) =>
-        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
       respondFast = (token, response, shutdown) =>
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
