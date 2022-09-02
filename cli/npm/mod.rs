@@ -3,6 +3,7 @@
 mod cache;
 mod registry;
 mod resolution;
+mod semver;
 mod tarball;
 
 use std::io::ErrorKind;
@@ -29,6 +30,7 @@ use registry::NpmRegistryApi;
 use resolution::NpmResolution;
 
 use crate::deno_dir::DenoDir;
+use crate::file_fetcher::CacheSetting;
 
 use self::cache::ReadonlyNpmCache;
 use self::resolution::NpmResolutionSnapshot;
@@ -57,7 +59,7 @@ pub trait NpmPackageResolver {
 
   /// Resolve the root folder of the package the provided specifier is in.
   ///
-  /// This will erorr when the provided specifier is not in an npm package.
+  /// This will error when the provided specifier is not in an npm package.
   fn resolve_package_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -74,15 +76,31 @@ pub struct GlobalNpmPackageResolver {
   cache: NpmCache,
   resolution: Arc<NpmResolution>,
   registry_url: Url,
+  unstable: bool,
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn from_deno_dir(dir: &DenoDir, reload: bool) -> Result<Self, AnyError> {
-    Ok(Self::from_cache(NpmCache::from_deno_dir(dir)?, reload))
+  pub fn from_deno_dir(
+    dir: &DenoDir,
+    reload: bool,
+    cache_setting: CacheSetting,
+    unstable: bool,
+  ) -> Self {
+    Self::from_cache(
+      NpmCache::from_deno_dir(dir, cache_setting.clone()),
+      reload,
+      cache_setting,
+      unstable,
+    )
   }
 
-  fn from_cache(cache: NpmCache, reload: bool) -> Self {
-    let api = NpmRegistryApi::new(cache.clone(), reload);
+  fn from_cache(
+    cache: NpmCache,
+    reload: bool,
+    cache_setting: CacheSetting,
+    unstable: bool,
+  ) -> Self {
+    let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
     let registry_url = api.base_url().to_owned();
     let resolution = Arc::new(NpmResolution::new(api));
 
@@ -90,6 +108,7 @@ impl GlobalNpmPackageResolver {
       cache,
       resolution,
       registry_url,
+      unstable,
     }
   }
 
@@ -103,6 +122,11 @@ impl GlobalNpmPackageResolver {
     &self,
     packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
+    if !self.unstable && !packages.is_empty() {
+      bail!(
+        "Unstable use of npm specifiers. The --unstable flag must be provided."
+      )
+    }
     self.resolution.add_package_reqs(packages).await
   }
 

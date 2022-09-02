@@ -79,8 +79,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let mut latest_hash = latest_version.clone();
-        latest_hash.truncate(7);
+        let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
         let current = semver::Version::parse(&crate::version::deno()).unwrap();

@@ -1,5 +1,5 @@
 import chalk from "npm:chalk@4";
-import { expect } from "npm:chai@4.2";
+import { expect } from "npm:chai@4.3";
 
 console.log(chalk.green("chalk cjs loads"));
 

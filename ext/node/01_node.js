@@ -7,6 +7,7 @@
 ((window) => {
   const {
     ArrayPrototypePush,
+    ArrayPrototypeFilter,
     ObjectEntries,
     ObjectCreate,
   } = window.__bootstrap.primordials;
@@ -92,7 +93,7 @@
     nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
     nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
     nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
-    nodeGlobals.global = nodeGlobals;
+    nodeGlobals.global = nodeGlobalThis;
     nodeGlobals.process = nativeModuleExports["process"];
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
     nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;

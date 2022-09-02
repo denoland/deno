@@ -562,7 +562,10 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** @category Runtime Environment */
+  /**
+   * @tags allow-env
+   * @category Runtime Environment
+   */
   export const env: {
     /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.
@@ -571,7 +574,10 @@ declare namespace Deno {
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
      * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
-     * Requires `allow-env` permission. */
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
     get(key: string): string | undefined;
 
     /** Set the value of an environment variable.
@@ -581,7 +587,10 @@ declare namespace Deno {
      * Deno.env.get("SOME_VAR");  // outputs "Value"
      * ```
      *
-     * Requires `allow-env` permission. */
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
     set(key: string, value: string): void;
 
     /** Delete the value of an environment variable.
@@ -591,7 +600,10 @@ declare namespace Deno {
      * Deno.env.delete("SOME_VAR");  // outputs "undefined"
      * ```
      *
-     * Requires `allow-env` permission. */
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
     delete(key: string): void;
 
     /** Returns a snapshot of the environment variables at invocation.
@@ -604,7 +616,10 @@ declare namespace Deno {
      * console.log(myEnv.TEST_VAR);  // outputs "A"
      * ```
      *
-     * Requires `allow-env` permission. */
+     * Requires `allow-env` permission.
+     *
+     * @tags allow-env
+     */
     toObject(): { [index: string]: string };
   };
 
@@ -617,6 +632,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category Runtime Environment
    */
   export function execPath(): string;
@@ -636,6 +652,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    *
+   * @tags allow-read
    * @category Runtime Environment
    */
   export function chdir(directory: string | URL): void;
@@ -654,6 +671,7 @@ declare namespace Deno {
    *
    * Requires --allow-read
    *
+   * @tags allow-read
    * @category Runtime Environment
    */
   export function cwd(): string;
@@ -667,6 +685,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read
    * @category File System
    */
   export function linkSync(oldpath: string, newpath: string): void;
@@ -680,6 +699,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read
    * @category File System
    */
   export function link(oldpath: string, newpath: string): Promise<void>;
@@ -935,6 +955,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function openSync(path: string | URL, options?: OpenOptions): FsFile;
@@ -952,6 +973,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function open(
@@ -968,6 +990,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function createSync(path: string | URL): FsFile;
@@ -981,6 +1004,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function create(path: string | URL): Promise<FsFile>;
@@ -1314,7 +1338,10 @@ declare namespace Deno {
     readonly rid: number;
     readonly writable: WritableStream<Uint8Array>;
   };
-  /** A handle for `stderr`. */
+  /** A handle for `stderr`.
+   *
+   * @category I/O
+   */
   export const stderr: Writer & WriterSync & Closer & {
     readonly rid: number;
     readonly writable: WritableStream<Uint8Array>;
@@ -1615,6 +1642,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function mkdirSync(path: string | URL, options?: MkdirOptions): void;
@@ -1631,6 +1659,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function mkdir(
@@ -1673,6 +1702,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   // TODO(ry) Doesn't check permissions.
@@ -1696,6 +1726,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   // TODO(ry) Doesn't check permissions.
@@ -1719,6 +1750,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function makeTempFileSync(options?: MakeTempOptions): string;
@@ -1741,6 +1773,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function makeTempFile(options?: MakeTempOptions): Promise<string>;
@@ -1758,6 +1791,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function chmodSync(path: string | URL, mode: number): void;
@@ -1791,6 +1825,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function chmod(path: string | URL, mode: number): Promise<void>;
@@ -1806,6 +1841,7 @@ declare namespace Deno {
    *
    * Throws Error (not implemented) if executed on Windows
    *
+   * @tags allow-write
    * @category File System
    *
    * @param path path to the file
@@ -1829,6 +1865,7 @@ declare namespace Deno {
    *
    * Throws Error (not implemented) if executed on Windows
    *
+   * @tags allow-write
    * @category File System
    *
    * @param path path to the file
@@ -1860,6 +1897,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function removeSync(path: string | URL, options?: RemoveOptions): void;
@@ -1876,6 +1914,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function remove(
@@ -1899,6 +1938,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function renameSync(
@@ -1922,6 +1962,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permission.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function rename(
@@ -1939,6 +1980,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readTextFileSync(path: string | URL): string;
@@ -1953,6 +1995,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readTextFile(
@@ -1972,6 +2015,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readFileSync(path: string | URL): Uint8Array;
@@ -1988,6 +2032,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readFile(
@@ -2078,6 +2123,7 @@ declare namespace Deno {
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.
    *
+   * @tags allow-read
    * @category File System
    */
   export function realPathSync(path: string | URL): string;
@@ -2097,10 +2143,12 @@ declare namespace Deno {
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.
    *
+   * @tags allow-read
    * @category File System
    */
   export function realPath(path: string | URL): Promise<string>;
 
+  /** @category File System */
   export interface DirEntry {
     name: string;
     isFile: boolean;
@@ -2121,6 +2169,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readDirSync(path: string | URL): Iterable<DirEntry>;
@@ -2138,6 +2187,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readDir(path: string | URL): AsyncIterable<DirEntry>;
@@ -2153,6 +2203,7 @@ declare namespace Deno {
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function copyFileSync(
@@ -2171,6 +2222,7 @@ declare namespace Deno {
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function copyFile(
@@ -2189,6 +2241,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readLinkSync(path: string | URL): string;
@@ -2204,6 +2257,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function readLink(path: string | URL): Promise<string>;
@@ -2220,6 +2274,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function lstat(path: string | URL): Promise<FileInfo>;
@@ -2236,6 +2291,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function lstatSync(path: string | URL): FileInfo;
@@ -2251,6 +2307,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function stat(path: string | URL): Promise<FileInfo>;
@@ -2266,6 +2323,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
+   * @tags allow-read
    * @category File System
    */
   export function statSync(path: string | URL): FileInfo;
@@ -2306,6 +2364,7 @@ declare namespace Deno {
    * Requires `allow-write` permission, and `allow-read` if `options.create` is
    * `false`.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function writeFileSync(
@@ -2328,6 +2387,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function writeFile(
@@ -2345,6 +2405,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function writeTextFileSync(
@@ -2362,6 +2423,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission, and `allow-read` if `options.create` is `false`.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function writeTextFile(
@@ -2388,6 +2450,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function truncateSync(name: string, len?: number): void;
@@ -2409,6 +2472,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission.
    *
+   * @tags allow-write
    * @category File System
    */
   export function truncate(name: string, len?: number): Promise<void>;
@@ -2556,6 +2620,7 @@ declare namespace Deno {
    * }
    * ```
    *
+   * @tags allow-read
    * @category File System
    */
   export function watchFs(
@@ -2699,6 +2764,7 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
+  /** @category Sub Process */
   export type ProcessStatus =
     | {
       success: true;
@@ -2769,6 +2835,7 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission.
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
@@ -3073,6 +3140,7 @@ declare namespace Deno {
    *
    * Requires full `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function symlinkSync(
@@ -3093,6 +3161,7 @@ declare namespace Deno {
    *
    * Requires full `allow-read` and `allow-write` permissions.
    *
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function symlink(
@@ -3310,6 +3379,7 @@ declare namespace Deno {
    *
    * Requires `allow-run` permission.
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export function kill(pid: number, signo: Signal): void;
@@ -3474,6 +3544,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
+   * @tags allow-net
    * @category Network
    */
   export function resolveDns(

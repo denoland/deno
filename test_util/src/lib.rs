@@ -14,6 +14,7 @@ use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use lazy_static::lazy_static;
+use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 use regex::Regex;
@@ -51,6 +52,7 @@ use tokio_tungstenite::accept_async;
 
 pub mod assertions;
 pub mod lsp;
+mod npm;
 pub mod pty;
 mod temp_dir;
 
@@ -953,7 +955,22 @@ async fn main_server(
       }
 
       // serve npm registry files
-      if req.uri().path().starts_with("/npm/registry/") {
+      if let Some(suffix) =
+        req.uri().path().strip_prefix("/npm/registry/@denotest/")
+      {
+        // serve all requests to /npm/registry/@deno using the file system
+        // at that path
+        match handle_custom_npm_registry_path(suffix) {
+          Ok(Some(response)) => return Ok(response),
+          Ok(None) => {} // ignore, not found
+          Err(err) => {
+            return Response::builder()
+              .status(StatusCode::INTERNAL_SERVER_ERROR)
+              .body(format!("{:#}", err).into());
+          }
+        }
+      } else if req.uri().path().starts_with("/npm/registry/") {
+        // otherwise, serve based on registry.json and tgz files
         let is_tarball = req.uri().path().ends_with(".tgz");
         if !is_tarball {
           file_path.push("registry.json");
@@ -963,7 +980,7 @@ async fn main_server(
           return Ok(file_resp);
         } else if should_download_npm_packages() {
           if let Err(err) =
-            download_npm_registry_file(&file_path, is_tarball).await
+            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
           {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -985,6 +1002,32 @@ async fn main_server(
   };
 }
 
+fn handle_custom_npm_registry_path(
+  path: &str,
+) -> Result<Option<Response<Body>>, anyhow::Error> {
+  let parts = path
+    .split('/')
+    .filter(|p| !p.is_empty())
+    .collect::<Vec<_>>();
+  let cache = &CUSTOM_NPM_PACKAGE_CACHE;
+  let package_name = format!("@denotest/{}", parts[0]);
+  if parts.len() == 2 {
+    if let Some(file_bytes) =
+      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
+    {
+      let file_resp = custom_headers("file.tgz", file_bytes);
+      return Ok(Some(file_resp));
+    }
+  } else if parts.len() == 1 {
+    if let Some(registry_file) = cache.registry_file(&package_name)? {
+      let file_resp = custom_headers("registry.json", registry_file);
+      return Ok(Some(file_resp));
+    }
+  }
+
+  Ok(None)
+}
+
 fn should_download_npm_packages() -> bool {
   // when this env var is set, it will download and save npm packages
   // to the testdata/npm/registry directory
@@ -992,15 +1035,21 @@ fn should_download_npm_packages() -> bool {
 }
 
 async fn download_npm_registry_file(
+  uri: &hyper::Uri,
   file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
-  let package_name = file_path
-    .parent()
+  let url_parts = uri
+    .path()
+    .strip_prefix("/npm/registry/")
     .unwrap()
-    .file_name()
-    .unwrap()
-    .to_string_lossy();
+    .split('/')
+    .collect::<Vec<_>>();
+  let package_name = if url_parts[0].starts_with('@') {
+    url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")
+  } else {
+    url_parts.into_iter().take(1).collect::<Vec<_>>().join("/")
+  };
   let url = if is_tarball {
     let file_name = file_path.file_name().unwrap().to_string_lossy();
     format!(
@@ -1052,6 +1101,7 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl std::marker::Send for HyperAcceptor<'_> {}
 
 async fn wrap_redirect_server() {
@@ -1482,6 +1532,8 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     Some("application/json")
   } else if p.ends_with(".wasm") {
     Some("application/wasm")
+  } else if p.ends_with(".tgz") {
+    Some("application/gzip")
   } else {
     None
   };
@@ -1897,12 +1949,14 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.get(0) == Some(&"test") {
+    if args.first() == Some(&"test") {
       actual = actual.replace('\u{200B}', "");
     }
 
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
+    } else if self.output.is_empty() {
+      String::new()
     } else {
       let output_path = testdata_dir.join(self.output);
       println!("output path {}", output_path.display());

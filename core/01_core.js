@@ -210,8 +210,35 @@
     return aggregate;
   }
 
+  let reportExceptionCallback = undefined;
+
+  // Used to report errors thrown from functions passed to `queueMicrotask()`.
+  // The callback will be passed the thrown error. For example, you can use this
+  // to dispatch an error event to the global scope.
+  // In other words, set the implementation for
+  // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+  function setReportExceptionCallback(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    reportExceptionCallback = cb;
+  }
+
   function queueMicrotask(cb) {
-    return ops.op_queue_microtask(cb);
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    return ops.op_queue_microtask(() => {
+      try {
+        cb();
+      } catch (error) {
+        if (reportExceptionCallback) {
+          reportExceptionCallback(error);
+        } else {
+          throw error;
+        }
+      }
+    });
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -252,6 +279,7 @@
     opCallTraces,
     refOp,
     unrefOp,
+    setReportExceptionCallback,
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),
@@ -278,7 +306,7 @@
     deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
     getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
     getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
-    isProxy: (value) => ops.op_is_proxy(value),
+    isProxy: (value) => ops.op_is_proxy.fast(value),
     memoryUsage: () => ops.op_memory_usage(),
     setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
     abortWasmStreaming: (
@@ -286,7 +314,6 @@
       error,
     ) => ops.op_abort_wasm_streaming(rid, error),
     destructureError: (error) => ops.op_destructure_error(error),
-    terminate: (exception) => ops.op_terminate(exception),
     opNames: () => ops.op_op_names(),
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
