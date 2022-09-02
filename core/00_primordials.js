@@ -468,6 +468,11 @@
     queueMicrotask = value;
   };
 
+  // Renaming from `eval` is necessary because otherwise it would perform direct
+  // evaluation, allowing user-land access to local variables.
+  // This is because the identifier `eval` is somewhat treated as a keyword
+  primordials.indirectEval = eval;
+
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);
 
