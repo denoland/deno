@@ -2,7 +2,6 @@
 
 use crate::args::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::emit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 
@@ -15,7 +14,9 @@ use deno_core::op;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -28,6 +29,7 @@ use deno_core::Snapshot;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -114,6 +116,40 @@ pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
       .cloned()
       .collect()
   });
+
+/// A structure representing stats from a type check operation for a graph.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Stats(pub Vec<(String, u32)>);
+
+impl<'de> Deserialize<'de> for Stats {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let items: Vec<(String, u32)> = Deserialize::deserialize(deserializer)?;
+    Ok(Stats(items))
+  }
+}
+
+impl Serialize for Stats {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
+  }
+}
+
+impl fmt::Display for Stats {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "Compilation statistics:")?;
+    for (key, value) in self.0.clone() {
+      writeln!(f, "  {}: {}", key, value)?;
+    }
+
+    Ok(())
+  }
+}
 
 /// Retrieve a static asset that are included in the binary.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
@@ -255,7 +291,7 @@ pub struct Response {
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
-  pub stats: emit::Stats,
+  pub stats: Stats,
 }
 
 #[derive(Debug)]
@@ -565,7 +601,7 @@ fn op_resolve(
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
-  pub stats: emit::Stats,
+  pub stats: Stats,
 }
 
 #[op]
@@ -674,7 +710,6 @@ mod tests {
   use crate::args::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::emit::Stats;
   use deno_core::futures::future;
   use deno_core::OpState;
   use deno_graph::ModuleKind;
