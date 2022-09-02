@@ -14,7 +14,7 @@
   },
 
   "extensions": [
-    "rust-lang.rust-analyzer",
+    "matklad.rust-analyzer",
     "bungcip.better-toml",
     "vadimcn.vscode-lldb",
     "mutantdino.resourcemonitor"
