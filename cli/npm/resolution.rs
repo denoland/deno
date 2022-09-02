@@ -15,12 +15,13 @@ use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
-use super::version_req::SpecifierVersionReq;
+use super::semver::NpmVersion;
+use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages.
 pub trait NpmVersionMatcher {
-  fn matches(&self, version: &semver::Version) -> bool;
+  fn matches(&self, version: &NpmVersion) -> bool;
   fn version_text(&self) -> String;
 }
 
@@ -104,7 +105,7 @@ impl std::fmt::Display for NpmPackageReq {
 }
 
 impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &semver::Version) -> bool {
+  fn matches(&self, version: &NpmVersion) -> bool {
     match &self.version_req {
       Some(req) => req.matches(version),
       None => version.pre.is_empty(),
@@ -123,7 +124,7 @@ impl NpmVersionMatcher for NpmPackageReq {
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: semver::Version,
+  pub version: NpmVersion,
 }
 
 impl NpmPackageId {
@@ -154,8 +155,8 @@ pub struct NpmResolutionPackage {
 
 #[derive(Debug, Clone, Default)]
 pub struct NpmResolutionSnapshot {
-  package_reqs: HashMap<NpmPackageReq, semver::Version>,
-  packages_by_name: HashMap<String, Vec<semver::Version>>,
+  package_reqs: HashMap<NpmPackageReq, NpmVersion>,
+  packages_by_name: HashMap<String, Vec<NpmVersion>>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
@@ -230,8 +231,8 @@ impl NpmResolutionSnapshot {
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<semver::Version> {
-    let mut maybe_best_version: Option<&semver::Version> = None;
+  ) -> Option<NpmVersion> {
+    let mut maybe_best_version: Option<&NpmVersion> = None;
     if let Some(versions) = self.packages_by_name.get(name) {
       for version in versions {
         if version_matcher.matches(version) {
@@ -472,7 +473,7 @@ impl NpmResolution {
 
 #[derive(Clone)]
 struct VersionAndInfo {
-  version: semver::Version,
+  version: NpmVersion,
   info: NpmPackageVersionInfo,
 }
 
@@ -484,7 +485,7 @@ fn get_resolved_package_version_and_info(
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
   for (_, version_info) in info.versions.into_iter() {
-    let version = semver::Version::parse(&version_info.version)?;
+    let version = NpmVersion::parse(&version_info.version)?;
     if version_matcher.matches(&version) {
       let is_best_version = maybe_best_version
         .as_ref()

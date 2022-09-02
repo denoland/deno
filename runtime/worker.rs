@@ -294,6 +294,7 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
+        .borrow_mut()
         .wait_for_session_and_break_on_next_statement()
     }
   }
@@ -301,8 +302,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.js_runtime.inspector();
-    inspector.create_local_session()
+    self.js_runtime.inspector().borrow().create_local_session()
   }
 
   pub fn poll_event_loop(

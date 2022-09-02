@@ -145,3 +145,45 @@ Deno.test(
     assert(data.length > 0);
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function readTextFileSyncV8LimitError() {
+    const kStringMaxLengthPlusOne = 536870888 + 1;
+    const bytes = new Uint8Array(kStringMaxLengthPlusOne);
+    const filePath = "cli/tests/testdata/too_big_a_file.txt";
+
+    Deno.writeFileSync(filePath, bytes);
+
+    assertThrows(
+      () => {
+        Deno.readTextFileSync(filePath);
+      },
+      TypeError,
+      "buffer exceeds maximum length",
+    );
+
+    Deno.removeSync(filePath);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readTextFileV8LimitError() {
+    const kStringMaxLengthPlusOne = 536870888 + 1;
+    const bytes = new Uint8Array(kStringMaxLengthPlusOne);
+    const filePath = "cli/tests/testdata/too_big_a_file_2.txt";
+
+    await Deno.writeFile(filePath, bytes);
+
+    await assertRejects(
+      async () => {
+        await Deno.readTextFile(filePath);
+      },
+      TypeError,
+      "buffer exceeds maximum length",
+    );
+
+    await Deno.remove(filePath);
+  },
+);
