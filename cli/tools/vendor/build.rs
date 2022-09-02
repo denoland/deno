@@ -14,6 +14,8 @@ use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::cache::ParsedSourceCache;
+
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
 use super::mappings::Mappings;
@@ -52,6 +54,7 @@ impl VendorEnvironment for RealVendorEnvironment {
 /// Vendors remote modules and returns how many were vendored.
 pub fn build(
   graph: ModuleGraph,
+  parsed_source_cache: &ParsedSourceCache,
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
   environment: &impl VendorEnvironment,
@@ -110,7 +113,8 @@ pub fn build(
   for (specifier, proxied_module) in mappings.proxied_modules() {
     let proxy_path = mappings.local_path(specifier);
     let module = graph.get(specifier).unwrap();
-    let text = build_proxy_module_source(module, proxied_module);
+    let text =
+      build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
     environment.write_file(&proxy_path, &text)?;
   }
@@ -124,7 +128,8 @@ pub fn build(
       &all_modules,
       &mappings,
       original_import_map,
-    );
+      parsed_source_cache,
+    )?;
     environment.write_file(&import_map_path, &import_map_text)?;
   }
 
@@ -171,7 +176,8 @@ fn validate_original_import_map(
 fn build_proxy_module_source(
   module: &Module,
   proxied_module: &ProxiedModule,
-) -> String {
+  parsed_source_cache: &ParsedSourceCache,
+) -> Result<String, AnyError> {
   let mut text = String::new();
   writeln!(
     text,
@@ -194,8 +200,10 @@ fn build_proxy_module_source(
   writeln!(text, "export * from \"{}\";", relative_specifier).unwrap();
 
   // add a default export if one exists in the module
-  if let Some(parsed_source) = module.maybe_parsed_source.as_ref() {
-    if has_default_export(parsed_source) {
+  if let Some(parsed_source) =
+    parsed_source_cache.get_parsed_source_from_module(module)?
+  {
+    if has_default_export(&parsed_source) {
       writeln!(
         text,
         "export {{ default }} from \"{}\";",
@@ -205,7 +213,7 @@ fn build_proxy_module_source(
     }
   }
 
-  text
+  Ok(text)
 }
 
 #[cfg(test)]

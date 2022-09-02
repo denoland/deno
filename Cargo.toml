@@ -15,6 +15,7 @@ members = [
   "ext/console",
   "ext/crypto",
   "ext/fetch",
+  "ext/flash",
   "ext/ffi",
   "ext/http",
   "ext/net",
@@ -133,6 +134,8 @@ opt-level = 3
 [profile.release.package.deno_runtime]
 opt-level = 3
 [profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_flash]
 opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3

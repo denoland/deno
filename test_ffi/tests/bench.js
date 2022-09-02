@@ -14,7 +14,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
   "ffi_string": { parameters: [], result: "pointer" },
-  "hash": { parameters: ["pointer", "u32"], result: "u32" },
+  "hash": { parameters: ["buffer", "u32"], result: "u32" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -27,7 +27,7 @@ const dylib = Deno.dlopen(libPath, {
   "nop_isize": { parameters: ["isize"], result: "void" },
   "nop_f32": { parameters: ["f32"], result: "void" },
   "nop_f64": { parameters: ["f64"], result: "void" },
-  "nop_buffer": { parameters: ["pointer"], result: "void" },
+  "nop_buffer": { parameters: ["buffer"], result: "void" },
   "return_u8": { parameters: [], result: "u8" },
   "return_i8": { parameters: [], result: "i8" },
   "return_u16": { parameters: [], result: "u16" },
@@ -40,7 +40,7 @@ const dylib = Deno.dlopen(libPath, {
   "return_isize": { parameters: [], result: "isize" },
   "return_f32": { parameters: [], result: "f32" },
   "return_f64": { parameters: [], result: "f64" },
-  "return_buffer": { parameters: [], result: "pointer" },
+  "return_buffer": { parameters: [], result: "buffer" },
   // Nonblocking calls
   "nop_nonblocking": { name: "nop", parameters: [], result: "void" },
   "nop_u8_nonblocking": { name: "nop_u8", parameters: ["u8"], result: "void" },
@@ -97,7 +97,7 @@ const dylib = Deno.dlopen(libPath, {
   },
   "nop_buffer_nonblocking": {
     name: "nop_buffer",
-    parameters: ["pointer"],
+    parameters: ["buffer"],
     result: "void",
   },
   "return_u8_nonblocking": { name: "return_u8", parameters: [], result: "u8" },
@@ -155,7 +155,7 @@ const dylib = Deno.dlopen(libPath, {
   "return_buffer_nonblocking": {
     name: "return_buffer",
     parameters: [],
-    result: "pointer",
+    result: "buffer",
   },
   // Parameter checking
   "nop_many_parameters": {
@@ -172,7 +172,7 @@ const dylib = Deno.dlopen(libPath, {
       "isize",
       "f32",
       "f64",
-      "pointer",
+      "buffer",
       "u8",
       "i8",
       "u16",
@@ -185,7 +185,7 @@ const dylib = Deno.dlopen(libPath, {
       "isize",
       "f32",
       "f64",
-      "pointer",
+      "buffer",
     ],
     result: "void",
   },
@@ -343,11 +343,6 @@ Deno.bench("nop_buffer()", () => {
   nop_buffer(buffer);
 });
 
-const buffer_ptr = Deno.UnsafePointer.of(buffer);
-Deno.bench("nop_buffer() number", () => {
-  nop_buffer(buffer_ptr);
-});
-
 const { return_u8 } = dylib.symbols;
 Deno.bench("return_u8()", () => {
   return_u8();
@@ -431,6 +426,7 @@ Deno.bench("nop_u32_nonblocking()", async () => {
 });
 
 const { nop_i32_nonblocking } = dylib.symbols;
+
 Deno.bench("nop_i32_nonblocking()", async () => {
   await nop_i32_nonblocking(100);
 });
@@ -469,11 +465,6 @@ const { nop_buffer_nonblocking } = dylib.symbols;
 Deno.bench("nop_buffer_nonblocking()", async () => {
   await nop_buffer_nonblocking(buffer);
 });
-
-Deno.bench("nop_buffer_nonblocking() number", async () => {
-  await nop_buffer_nonblocking(buffer_ptr);
-});
-
 const { return_u8_nonblocking } = dylib.symbols;
 Deno.bench("return_u8_nonblocking()", async () => {
   await return_u8_nonblocking();
@@ -571,38 +562,6 @@ Deno.bench("nop_many_parameters()", () => {
     135.26437e3,
     264.3576468623546834,
     buffer2,
-  );
-});
-
-const buffer2_ptr = Deno.UnsafePointer.of(buffer2);
-Deno.bench("nop_many_parameters() number", () => {
-  nop_many_parameters(
-    135,
-    47,
-    356,
-    -236,
-    7457,
-    -1356,
-    16471468,
-    -1334748136,
-    132658769535,
-    -42745856824,
-    13567.26437,
-    7.686234e-3,
-    buffer_ptr,
-    64,
-    -42,
-    83,
-    -136,
-    3657,
-    -2376,
-    3277918,
-    -474628146,
-    344657895,
-    -2436732,
-    135.26437e3,
-    264.3576468623546834,
-    buffer2_ptr,
   );
 });
 
