@@ -43,7 +43,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_set_wasm_streaming_callback::decl(),
     op_abort_wasm_streaming::decl(),
     op_destructure_error::decl(),
-    op_terminate::decl(),
+    op_dispatch_exception::decl(),
     op_op_names::decl(),
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
@@ -718,13 +718,27 @@ fn op_destructure_error(
   JsError::from_v8_exception(scope, error.v8_value)
 }
 
+/// Effectively throw an uncatchable error. This will terminate runtime
+/// execution before any more JS code can run, except in the REPL where it
+/// should just output the error to the console.
 #[op(v8)]
-fn op_terminate(scope: &mut v8::HandleScope, exception: serde_v8::Value) {
+fn op_dispatch_exception(
+  scope: &mut v8::HandleScope,
+  exception: serde_v8::Value,
+) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  state.explicit_terminate_exception =
-    Some(v8::Global::new(scope, exception.v8_value));
-  scope.terminate_execution();
+  state
+    .dispatched_exceptions
+    .push_front(v8::Global::new(scope, exception.v8_value));
+  // Only terminate execution if there are no inspector sessions.
+  match state.inspector().try_borrow() {
+    Ok(inspector) if !inspector.has_active_sessions() => {
+      scope.terminate_execution();
+    }
+    // If the inspector is borrowed at this time, assume an inspector is active.
+    _ => {}
+  }
 }
 
 #[op(v8)]
