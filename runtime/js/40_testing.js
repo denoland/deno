@@ -16,6 +16,7 @@
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSort,
+    BigInt,
     DateNow,
     Error,
     FunctionPrototype,
@@ -1065,12 +1066,12 @@
     if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
       const nextInt = (function (state) {
-        const m = 0x80000000;
-        const a = 1103515245;
-        const c = 12345;
+        const m = 0x80000000n;
+        const a = 1103515245n;
+        const c = 12345n;
 
         return function (max) {
-          return state = ((a * state + c) % m) % max;
+          return state = ((a * state + c) % m) % BigInt(max);
         };
       }(shuffle));
 
