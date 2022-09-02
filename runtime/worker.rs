@@ -159,6 +159,7 @@ impl MainWorker {
       ops::fs::init(),
       ops::io::init(),
       ops::io::init_stdio(options.stdio),
+      ops::encoding::init(),
       deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),

@@ -11,6 +11,7 @@ pub mod runtime;
 pub mod signal;
 pub mod spawn;
 pub mod tty;
+pub mod encoding;
 mod utils;
 pub mod web_worker;
 pub mod worker_host;
