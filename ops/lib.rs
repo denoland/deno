@@ -11,6 +11,7 @@ use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
 use regex::Regex;
+use std::collections::HashMap;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::FnArg;
@@ -310,7 +311,7 @@ fn codegen_fast_impl(
     }) = fast_info
     {
       let offset = if use_recv { 1 } else { 0 };
-      let inputs = &f
+      let mut inputs = f
         .sig
         .inputs
         .iter()
@@ -324,18 +325,21 @@ fn codegen_fast_impl(
               _ => unreachable!(),
             },
           };
-          if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
+          if let Some(ty) = slices.get(&(idx + offset)) {
+            return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
+          }
+          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
             return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
           }
           if v8_values.contains(&idx) {
             return quote! { #ident: #core::v8::Local < #core::v8::Value > };
           }
-          if slices.contains(&idx) {
-            return quote! { fast_api_callback_options: *const #core::v8::FastApiTypedArray<u8> };
-          }
           quote!(#arg)
         })
         .collect::<Vec<_>>();
+      if !slices.is_empty() && !use_fast_cb_opts {
+        inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
+      }
       let input_idents = f
         .sig
         .inputs
@@ -349,6 +353,17 @@ fn codegen_fast_impl(
               _ => unreachable!(),
             },
           };
+          if slices.get(&idx).is_some() {
+            return quote! {
+              match unsafe { &* #ident }.get_storage_if_aligned() {
+                Some(s) => s,
+                None => {
+                  unsafe { &mut * fast_api_callback_options }.fallback = true;
+                  return Default::default();
+                },
+              }
+            };
+          }
           if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
             return quote! { Some(unsafe { &mut * fast_api_callback_options }) };
           }
@@ -356,17 +371,6 @@ fn codegen_fast_impl(
             return quote! {
               #core::serde_v8::Value {
                 v8_value: #ident,
-              }
-            };
-          }
-          if slices.contains(&idx) {
-            return quote! {
-              match unsafe { &*ident }.get_storage_if_aligned() {
-                Some(s) => s,
-                None => {
-                  unsafe { &mut * fast_api_callback_options }.fallback = true;
-                  return Default::default()
-                },
               }
             };
           }
@@ -504,7 +508,7 @@ struct FastApiSyn {
   use_recv: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
-  slices: Vec<usize>,
+  slices: HashMap<usize, TokenStream2>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
@@ -520,12 +524,12 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   let mut use_recv = false;
   let mut use_fast_cb_opts = false;
   let mut v8_values = Vec::new();
-  let mut slices = Vec::new();
+  let mut slices = HashMap::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
   for (pos, input) in inputs.iter().enumerate() {
     if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
-      args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
       use_fast_cb_opts = true;
+      args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
       continue;
     }
 
@@ -549,13 +553,9 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
             args.push(arg);
           }
           None => match is_ref_slice(&ty) {
-            Some(ty) => {
-              slices.push(pos);
-              use_fast_cb_opts = true;
-              match ty {
-                SliceType::U8 | SliceType::U8Mut => args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint8) }),
-                SliceType::U32 | SliceType::U32Mut => args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) }),
-              }
+            Some(_) => {
+              args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint8) });
+              slices.insert(pos, quote!(u8));
             }
             // early return, this function cannot be a fast call.
             None => return None,
@@ -719,9 +719,7 @@ fn codegen_arg(
   if let Some(ty) = is_ref_slice(&**ty) {
     let (ptr_ty, mutability) = match ty {
       SliceType::U8 => (quote!([u8]), quote!(&)),
-      SliceType::U32 => (quote!([u32]), quote!(&)),
       SliceType::U8Mut => (quote!([u8]), quote!(&mut)),
-      SliceType::U32Mut => (quote!([u32]), quote!(&mut)),
     };
     return quote! {
       let #ident = {
@@ -839,9 +837,7 @@ fn is_option_string(ty: impl ToTokens) -> bool {
 
 enum SliceType {
   U8,
-  U32,
   U8Mut,
-  U32Mut,
 }
 
 fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
@@ -850,12 +846,6 @@ fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
   }
   if is_u8_slice_mut(&ty) {
     return Some(SliceType::U8Mut);
-  }
-  if is_u32_slice(&ty) {
-    return Some(SliceType::U32);
-  }
-  if is_u32_slice_mut(&ty) {
-    return Some(SliceType::U32Mut);
   }
   None
 }
@@ -866,14 +856,6 @@ fn is_u8_slice(ty: impl ToTokens) -> bool {
 
 fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u8]"
-}
-
-fn is_u32_slice(ty: impl ToTokens) -> bool {
-  tokens(ty) == "& [u32]"
-}
-
-fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
-  tokens(ty) == "& mut [u32]"
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
