@@ -629,7 +629,7 @@ impl JsRuntime {
       .ok()
   }
 
-  pub(crate) fn grab_global<'s, T>(
+  pub fn grab_global<'s, T>(
     scope: &mut v8::HandleScope<'s>,
     path: &str,
   ) -> Option<v8::Local<'s, T>>
