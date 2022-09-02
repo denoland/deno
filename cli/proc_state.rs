@@ -7,11 +7,11 @@ use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
-use crate::emit;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
@@ -22,10 +22,17 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::node;
+use crate::npm::GlobalNpmPackageResolver;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -51,7 +58,6 @@ use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
-use std::env;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -64,7 +70,6 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: deno_dir::DenoDir,
-  pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -79,8 +84,11 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  pub npm_resolver: GlobalNpmPackageResolver,
+  pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
 }
 
 impl Deref for ProcState {
@@ -176,11 +184,6 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let coverage_dir = cli_options
-      .coverage_dir()
-      .map(ToOwned::to_owned)
-      .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
-
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
     // created below
     let node_resolver = NodeEsmResolver::new(
@@ -189,8 +192,8 @@ impl ProcState {
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
     > = if cli_options.compat() {
@@ -217,10 +220,19 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
+    let parsed_source_cache =
+      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+      &dir,
+      cli_options.reload_flag(),
+      cli_options.cache_setting(),
+      cli_options.unstable()
+        // don't do the unstable error when in the lsp
+        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+    );
 
     Ok(ProcState(Arc::new(Inner {
       dir,
-      coverage_dir,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
@@ -238,8 +250,11 @@ impl ProcState {
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
+      parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      npm_resolver,
+      cjs_resolutions: Default::default(),
     })))
   }
 
@@ -361,6 +376,7 @@ impl ProcState {
         None
       };
 
+    let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
       is_dynamic,
@@ -368,7 +384,7 @@ impl ProcState {
       &mut loader,
       maybe_resolver,
       maybe_locker,
-      None,
+      Some(&*analyzer),
       maybe_file_watcher_reporter,
     )
     .await;
@@ -391,8 +407,7 @@ impl ProcState {
             &module.specifier,
             module.maybe_source.as_ref().unwrap().to_string(),
             module.media_type,
-          )
-          .await?;
+          )?;
           let mut graph_data = self.graph_data.write();
           graph_data
             .add_cjs_esm_translation(&module.specifier, translated_source);
@@ -411,7 +426,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    {
+    let npm_package_references = {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
       let check_js = self.options.check_js();
@@ -422,13 +437,23 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
+      graph_data.npm_package_reqs()
+    };
+
+    if !npm_package_references.is_empty() {
+      self
+        .npm_resolver
+        .add_package_reqs(npm_package_references)
+        .await?;
+      self.npm_resolver.cache_packages().await?;
+      self.prepare_node_std_graph().await?;
     }
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
-      let options = emit::CheckOptions {
+      let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
@@ -444,7 +469,7 @@ impl ProcState {
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
       let check_result =
-        emit::check(&roots, graph_data, &check_cache, options)?;
+        check::check(&roots, graph_data, &check_cache, options)?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -465,12 +490,57 @@ impl ProcState {
     Ok(())
   }
 
+  /// Add the builtin node modules to the graph data.
+  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    let node_std_graph = self
+      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .await?;
+    self.graph_data.write().add_graph(&node_std_graph, false);
+    Ok(())
+  }
+
+  fn handle_node_resolve_result(
+    &self,
+    result: Result<Option<ResolveResponse>, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let response = match result? {
+      Some(response) => response,
+      None => bail!("Not found."),
+    };
+    if let ResolveResponse::CommonJs(specifier) = &response {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.lock().insert(specifier.clone());
+    }
+    response.to_result()
+  }
+
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
+      if self.npm_resolver.in_npm_package(&referrer) {
+        // we're in an npm package, so use node resolution
+        return self
+          .handle_node_resolve_result(node::node_resolve(
+            specifier,
+            &referrer,
+            &self.npm_resolver,
+          ))
+          .with_context(|| {
+            format!(
+              "Could not resolve '{}' from '{}'.",
+              specifier,
+              self
+                .npm_resolver
+                .resolve_package_from_specifier(&referrer)
+                .unwrap()
+                .id
+            )
+          });
+      }
+
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
@@ -481,7 +551,19 @@ impl ProcState {
       };
 
       match maybe_resolved {
-        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Ok { specifier, .. }) => {
+          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          {
+            return self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &reference,
+                &self.npm_resolver,
+              ))
+              .with_context(|| format!("Could not resolve '{}'.", reference));
+          } else {
+            return Ok(specifier.clone());
+          }
+        }
         Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
@@ -521,17 +603,28 @@ impl ProcState {
     let graph_data = self.graph_data.read();
     for (specifier, entry) in graph_data.entries() {
       if let ModuleEntry::Module {
-        maybe_parsed_source: Some(parsed_source),
-        ..
+        code, media_type, ..
       } = entry
       {
-        emit_parsed_source(
-          &self.emit_cache,
-          specifier,
-          parsed_source,
-          &self.emit_options,
-          self.emit_options_hash,
-        )?;
+        let is_emittable = matches!(
+          media_type,
+          MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx
+        );
+        if is_emittable {
+          emit_parsed_source(
+            &self.emit_cache,
+            &self.parsed_source_cache,
+            specifier,
+            *media_type,
+            code,
+            &self.emit_options,
+            self.emit_options_hash,
+          )?;
+        }
       }
     }
     Ok(())
@@ -553,8 +646,8 @@ impl ProcState {
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_jsx_resolver = self
       .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -562,20 +655,33 @@ impl ProcState {
         .as_ref()
         .map(|im| im.as_resolver())
     };
+    let analyzer = self.parsed_source_cache.as_analyzer();
 
-    Ok(
-      create_graph(
-        roots,
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await,
+    let graph = create_graph(
+      roots,
+      false,
+      maybe_imports,
+      &mut cache,
+      maybe_resolver,
+      maybe_locker,
+      Some(&*analyzer),
+      None,
     )
+    .await;
+
+    // add the found npm package references to the npm resolver and cache them
+    let mut package_reqs = Vec::new();
+    for (specifier, _) in graph.specifiers() {
+      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        package_reqs.push(reference.req);
+      }
+    }
+    if !package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(package_reqs).await?;
+      self.npm_resolver.cache_packages().await?;
+    }
+
+    Ok(graph)
   }
 }
 

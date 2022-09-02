@@ -3,6 +3,7 @@
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
@@ -12,6 +13,8 @@ use import_map::ImportMap;
 use import_map::SpecifierMap;
 use indexmap::IndexMap;
 use log::warn;
+
+use crate::cache::ParsedSourceCache;
 
 use super::mappings::Mappings;
 use super::specifiers::is_remote_specifier;
@@ -179,9 +182,10 @@ pub fn build_import_map(
   modules: &[&Module],
   mappings: &Mappings,
   original_import_map: Option<&ImportMap>,
-) -> String {
+  parsed_source_cache: &ParsedSourceCache,
+) -> Result<String, AnyError> {
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
-  visit_modules(graph, modules, mappings, &mut builder);
+  visit_modules(graph, modules, mappings, &mut builder, parsed_source_cache)?;
 
   for base_specifier in mappings.base_specifiers() {
     builder
@@ -189,7 +193,7 @@ pub fn build_import_map(
       .add(base_specifier.to_string(), base_specifier);
   }
 
-  builder.into_import_map(original_import_map).to_json()
+  Ok(builder.into_import_map(original_import_map).to_json())
 }
 
 fn visit_modules(
@@ -197,12 +201,14 @@ fn visit_modules(
   modules: &[&Module],
   mappings: &Mappings,
   import_map: &mut ImportMapBuilder,
-) {
+  parsed_source_cache: &ParsedSourceCache,
+) -> Result<(), AnyError> {
   for module in modules {
-    let text_info = match &module.maybe_parsed_source {
-      Some(source) => source.text_info(),
-      None => continue,
-    };
+    let text_info =
+      match parsed_source_cache.get_parsed_source_from_module(module)? {
+        Some(source) => source.text_info().clone(),
+        None => continue,
+      };
     let source_text = match &module.maybe_source {
       Some(source) => source,
       None => continue,
@@ -215,7 +221,7 @@ fn visit_modules(
         import_map,
         &module.specifier,
         mappings,
-        text_info,
+        &text_info,
         source_text,
       );
       visit_maybe_resolved(
@@ -224,7 +230,7 @@ fn visit_modules(
         import_map,
         &module.specifier,
         mappings,
-        text_info,
+        &text_info,
         source_text,
       );
     }
@@ -236,11 +242,13 @@ fn visit_modules(
         import_map,
         &module.specifier,
         mappings,
-        text_info,
+        &text_info,
         source_text,
       );
     }
   }
+
+  Ok(())
 }
 
 fn visit_maybe_resolved(
@@ -333,12 +341,12 @@ fn handle_remote_dep_specifier(
       return;
     }
 
-    let base_specifier = mappings.base_specifier(specifier);
+    let base_referrer = mappings.base_specifier(referrer);
     let base_dir = import_map.base_dir().clone();
-    let imports = import_map.scope(base_specifier);
+    let imports = import_map.scope(base_referrer);
     if text.starts_with("./") || text.starts_with("../") {
       // resolve relative specifier key
-      let mut local_base_specifier = mappings.local_uri(base_specifier);
+      let mut local_base_specifier = mappings.local_uri(base_referrer);
       local_base_specifier = local_base_specifier
         // path includes "/" so make it relative
         .join(&format!(".{}", unresolved_specifier.path()))

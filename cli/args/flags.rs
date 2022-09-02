@@ -120,6 +120,11 @@ pub struct FmtFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct InitFlags {
+  pub dir: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
@@ -160,6 +165,12 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct RunFlags {
   pub script: String,
+}
+
+impl RunFlags {
+  pub fn is_stdin(&self) -> bool {
+    self.script == "-"
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -211,6 +222,7 @@ pub enum DenoSubcommand {
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
+  Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
   Uninstall(UninstallFlags),
@@ -548,6 +560,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("doc", m)) => doc_parse(&mut flags, m),
     Some(("eval", m)) => eval_parse(&mut flags, m),
     Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("init", m)) => init_parse(&mut flags, m),
     Some(("info", m)) => info_parse(&mut flags, m),
     Some(("install", m)) => install_parse(&mut flags, m),
     Some(("lint", m)) => lint_parse(&mut flags, m),
@@ -623,6 +636,7 @@ fn clap_root(version: &str) -> Command {
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
+    .subcommand(init_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
     .subcommand(uninstall_subcommand())
@@ -677,7 +691,7 @@ and report results to standard output:
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
 Directory arguments are expanded to all contained files matching the \
-glob {*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
+glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
     )
@@ -740,6 +754,7 @@ fn check_subcommand<'a>() -> Command<'a> {
     Arg::new("remote")
       .long("remote")
       .help("Type-check all modules, including remote")
+      .conflicts_with("no-remote")
     )
     .arg(
       Arg::new("file")
@@ -1132,6 +1147,15 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .possible_values(&["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
+}
+
+fn init_subcommand<'a>() -> Command<'a> {
+  Command::new("init").about("Initialize a new project").arg(
+    Arg::new("dir")
+      .takes_value(true)
+      .required(false)
+      .value_hint(ValueHint::DirPath),
+  )
 }
 
 fn info_subcommand<'a>() -> Command<'a> {
@@ -1593,7 +1617,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}test.{js,mjs,ts,jsx,tsx}:
+{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}:
 
   deno test src/",
     )
@@ -2430,6 +2454,12 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
+fn init_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Init(InitFlags {
+    dir: matches.value_of("dir").map(|f| f.to_string()),
+  });
+}
+
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   config_args_parse(flags, matches);
@@ -2582,7 +2612,8 @@ fn task_parse(
   }
 
   if let Some(mut index) = matches.index_of("task_name_and_args") {
-    index += 1; // skip `task`
+    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
+    let raw_args = &raw_args[task_word_index..];
 
     // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
     while index < raw_args.len() {
@@ -3805,6 +3836,15 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--remote",
+      "--no-remote",
+      "script.ts"
+    ]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
   }
 
   #[test]
@@ -5765,6 +5805,25 @@ mod tests {
   }
 
   #[test]
+  fn task_with_global_flags() {
+    // can fail if the custom parser in task_parse() starts at the wrong index
+    let r =
+      flags_from_vec(svec!["deno", "--quiet", "--unstable", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: "build".to_string(),
+        }),
+        unstable: true,
+        log_level: Some(log::Level::Error),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_empty() {
     let r = flags_from_vec(svec!["deno", "task"]);
     assert_eq!(
@@ -5924,5 +5983,38 @@ mod tests {
       "script.ts",
     ]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn init() {
+    let r = flags_from_vec(svec!["deno", "init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: Some(String::from("foo")),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--quiet"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
   }
 }

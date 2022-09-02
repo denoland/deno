@@ -3,7 +3,7 @@
 // `self.close()`.
 
 // @ts-ignore Deno.core doesn't have type-defs
-Deno.core.opSync("op_set_exit_code", 21);
+Deno.core.ops.op_set_exit_code(21);
 
 const worker = new Worker(
   import.meta.resolve("./op_exit_op_set_exit_code_worker.js"),

@@ -151,7 +151,7 @@
   // DICTIONARY: GPUDeviceDescriptor
   const dictMembersGPUDeviceDescriptor = [
     {
-      key: "nonGuaranteedFeatures",
+      key: "requiredFeatures",
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUFeatureName"],
       ),
@@ -160,14 +160,11 @@
       },
     },
     {
-      key: "nonGuaranteedLimits",
+      key: "requiredLimits",
       converter: webidl.createRecordConverter(
         webidl.converters["DOMString"],
         webidl.converters["GPUSize32"],
       ),
-      get defaultValue() {
-        return {};
-      },
     },
   ];
   webidl.converters["GPUDeviceDescriptor"] = webidl.createDictionaryConverter(

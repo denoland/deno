@@ -11,5 +11,6 @@ Location {
   protocol: "https:",
   search: "?baz"
 }
+NotSupportedError: Cannot set "location".
 NotSupportedError: Cannot set "location.hostname".
 [WILDCARD]

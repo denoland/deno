@@ -411,3 +411,10 @@ static STRING: &str = "Hello, world!\0";
 extern "C" fn ffi_string() -> *const u8 {
   STRING.as_ptr()
 }
+
+/// Invalid UTF-8 characters, array of length 14
+#[no_mangle]
+pub static static_char: [u8; 14] = [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00,
+];

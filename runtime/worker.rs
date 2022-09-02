@@ -11,6 +11,9 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::serde_json::json;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
@@ -22,6 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_node::DenoDirNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -58,6 +62,10 @@ pub struct MainWorker {
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
   exit_code: ExitCode,
+  js_run_tests_callback: v8::Global<v8::Function>,
+  js_run_benchmarks_callback: v8::Global<v8::Function>,
+  js_enable_test_callback: v8::Global<v8::Function>,
+  js_enable_bench_callback: v8::Global<v8::Function>,
 }
 
 pub struct WorkerOptions {
@@ -67,9 +75,11 @@ pub struct WorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
@@ -81,6 +91,15 @@ pub struct WorkerOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub stdio: Stdio,
+}
+
+fn grab_cb(
+  scope: &mut v8::HandleScope,
+  path: &str,
+) -> v8::Global<v8::Function> {
+  let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
+    .unwrap_or_else(|| panic!("{} must be defined", path));
+  v8::Global::new(scope, cb)
 }
 
 impl MainWorker {
@@ -148,6 +167,7 @@ impl MainWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
+        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::spawn::init(),
@@ -161,12 +181,14 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      deno_node::init::<Permissions>(unstable, options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
       deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
       ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -192,10 +214,29 @@ impl MainWorker {
       );
     }
 
+    let (
+      js_run_tests_callback,
+      js_run_benchmarks_callback,
+      js_enable_test_callback,
+      js_enable_bench_callback,
+    ) = {
+      let scope = &mut js_runtime.handle_scope();
+      (
+        grab_cb(scope, "__bootstrap.testing.runTests"),
+        grab_cb(scope, "__bootstrap.testing.runBenchmarks"),
+        grab_cb(scope, "__bootstrap.testing.enableTest"),
+        grab_cb(scope, "__bootstrap.testing.enableBench"),
+      )
+    };
+
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       exit_code,
+      js_run_tests_callback,
+      js_run_benchmarks_callback,
+      js_enable_test_callback,
+      js_enable_bench_callback,
     }
   }
 
@@ -216,24 +257,26 @@ impl MainWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
+  }
+
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
   }
 
   /// Executes specified JavaScript module.
@@ -241,6 +284,7 @@ impl MainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
+    self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
       // Not using biased mode leads to non-determinism for relatively simple
@@ -265,8 +309,7 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
 
@@ -277,9 +320,67 @@ impl MainWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, true).await?;
-    self.wait_for_inspector_session();
+    let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
+  }
+
+  /// Run tests declared with `Deno.test()`. Test events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
+  #[doc(hidden)]
+  pub async fn run_tests(
+    &mut self,
+    shuffle: &Option<u64>,
+  ) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.js_runtime.handle_scope();
+      let cb = self.js_run_tests_callback.open(scope);
+      let this = v8::undefined(scope).into();
+      let options =
+        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
+      let promise = cb.call(scope, this, &[options]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
+  #[doc(hidden)]
+  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.js_runtime.handle_scope();
+      let cb = self.js_run_benchmarks_callback.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Enable `Deno.test()`. If this isn't called before executing user code,
+  /// `Deno.test()` calls will noop.
+  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
+  #[doc(hidden)]
+  pub fn enable_test(&mut self) {
+    let scope = &mut self.js_runtime.handle_scope();
+    let cb = self.js_enable_test_callback.open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
+  }
+
+  /// Enable `Deno.bench()`. If this isn't called before executing user code,
+  /// `Deno.bench()` calls will noop.
+  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
+  #[doc(hidden)]
+  pub fn enable_bench(&mut self) {
+    let scope = &mut self.js_runtime.handle_scope();
+    let cb = self.js_enable_bench_callback.open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
   }
 
   fn wait_for_inspector_session(&mut self) {
@@ -287,6 +388,7 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
+        .borrow_mut()
         .wait_for_session_and_break_on_next_statement()
     }
   }
@@ -294,8 +396,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.js_runtime.inspector();
-    inspector.create_local_session()
+    self.js_runtime.inspector().borrow().create_local_session()
   }
 
   pub fn poll_event_loop(
@@ -418,10 +519,12 @@ mod tests {
       format_js_error_fn: None,
       source_map_getter: None,
       web_worker_preload_module_cb: Arc::new(|_| unreachable!()),
+      web_worker_pre_execute_module_cb: Arc::new(|_| unreachable!()),
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),
+      npm_resolver: None,
       get_error_class_fn: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
