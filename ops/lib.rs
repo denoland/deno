@@ -733,6 +733,9 @@ fn codegen_arg(
               }
           };
           let store = buffer.get_backing_store();
+          if store.is_shared() {
+            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
+          }
           unsafe { #mutability *(&store[offset..offset + len] as *const _ as *mut #ptr_ty) }
         } else {
           let b: #core::v8::Local<#core::v8::ArrayBuffer> = match value.try_into() {
@@ -742,6 +745,9 @@ fn codegen_arg(
             }
           };
           let store = b.get_backing_store();
+          if store.is_shared() {
+            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
+          }
           unsafe { #mutability *(&store[0..b.byte_length()] as *const _ as *mut #ptr_ty) }
         }
       };
