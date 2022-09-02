@@ -47,8 +47,8 @@ where
   if buf.len() < 8 {
     return;
   }
-  // SAFETY: buffer is at least 8 bytes long.
   let buf: &mut [u32] =
+    // SAFETY: buffer is at least 8 bytes long.
     unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as _, 2) };
   buf[0] = seconds as u32;
   buf[1] = subsec_nanos as u32;
