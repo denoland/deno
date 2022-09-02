@@ -6006,5 +6006,15 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "init", "--quiet"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
   }
 }
