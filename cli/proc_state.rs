@@ -353,18 +353,13 @@ impl ProcState {
         specifier: &ModuleSpecifier,
         is_dynamic: bool,
       ) -> LoadFuture {
-        eprintln!("ProcStateLoader::load {}", specifier);
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
           Some(_) if !self.reload => {
-            eprintln!("ProcStateLoader::load2");
             Box::pin(futures::future::ready(Err(anyhow!(""))))
           }
-          _ => {
-            eprintln!("ProcStateLoader::load3");
-            self.inner.load(specifier, is_dynamic)
-          },
+          _ => self.inner.load(specifier, is_dynamic),
         }
       }
     }
