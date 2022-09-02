@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use super::errors;
+use crate::node::errors;
 use crate::resolver::ImportMapResolver;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -84,7 +84,7 @@ fn node_resolve(
 ) -> Result<ResolveResponse, AnyError> {
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  if let Some(resolved) = crate::compat::try_resolve_builtin_module(specifier) {
+  if let Some(resolved) = crate::node::try_resolve_builtin_module(specifier) {
     return Ok(ResolveResponse::Esm(resolved));
   }
 
@@ -99,7 +99,7 @@ fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
       if let Some(resolved) =
-        crate::compat::try_resolve_builtin_module(&specifier)
+        crate::node::try_resolve_builtin_module(&specifier)
       {
         return Ok(ResolveResponse::Esm(resolved));
       } else {
@@ -1154,7 +1154,7 @@ fn legacy_main_resolve(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::compat::STD_URL_STR;
+  use crate::deno_std::CURRENT_STD_URL;
 
   fn testdir(name: &str) -> PathBuf {
     let c = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1233,10 +1233,7 @@ mod tests {
   fn builtin_http() {
     let cwd = testdir("basic");
     let main = Url::from_file_path(cwd.join("main.js")).unwrap();
-    let expected = Url::parse(STD_URL_STR)
-      .unwrap()
-      .join("node/http.ts")
-      .unwrap();
+    let expected = CURRENT_STD_URL.join("node/http.ts").unwrap();
 
     let actual = node_resolve("http", main.as_str(), &cwd).unwrap();
     assert!(matches!(actual, ResolveResponse::Esm(_)));

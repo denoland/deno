@@ -3,8 +3,8 @@
 mod cache;
 mod registry;
 mod resolution;
+mod semver;
 mod tarball;
-mod version_req;
 
 use std::io::ErrorKind;
 use std::path::Path;
@@ -86,14 +86,14 @@ impl GlobalNpmPackageResolver {
     cache_setting: CacheSetting,
     unstable: bool,
     no_npm: bool,
-  ) -> Result<Self, AnyError> {
-    Ok(Self::from_cache(
-      NpmCache::from_deno_dir(dir, cache_setting.clone(), no_npm)?,
+  ) -> Self {
+    Self::from_cache(
+      NpmCache::from_deno_dir(dir, cache_setting.clone(), no_npm),
       reload,
       cache_setting,
       unstable,
       no_npm,
-    ))
+    )
   }
 
   fn from_cache(

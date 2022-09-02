@@ -7,6 +7,7 @@ mod cdp;
 mod checksum;
 mod compat;
 mod deno_dir;
+mod deno_std;
 mod diagnostics;
 mod diff;
 mod display;
@@ -72,6 +73,7 @@ use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
 use args::CliOptions;
 use deno_ast::MediaType;
@@ -246,8 +248,8 @@ async fn compile_command(
 
   graph.valid().unwrap();
 
-  let store = ps.parsed_source_cache.as_store();
-  let eszip = eszip::EszipV2::from_graph(graph, &*store, Default::default())?;
+  let parser = ps.parsed_source_cache.as_capturing_parser();
+  let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
 
   info!(
     "{} {}",
@@ -499,11 +501,11 @@ async fn create_graph_and_maybe_check(
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
-    let check_result = emit::check(
+    let check_result = check::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
       &cache,
-      emit::CheckOptions {
+      check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
         maybe_config_specifier,

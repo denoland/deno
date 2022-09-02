@@ -23,7 +23,6 @@ use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
-use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -166,14 +165,6 @@ fn forgiving_base64_encode(s: &[u8]) -> String {
   BASE64_STANDARD.encode_to_boxed_str(s).into_string()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecoderOptions {
-  label: String,
-  ignore_bom: bool,
-  fatal: bool,
-}
-
 #[op]
 fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
@@ -189,14 +180,10 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
 #[op]
 fn op_encoding_decode_single(
   data: ZeroCopyBuf,
-  options: DecoderOptions,
+  label: String,
+  fatal: bool,
+  ignore_bom: bool,
 ) -> Result<U16String, AnyError> {
-  let DecoderOptions {
-    label,
-    ignore_bom,
-    fatal,
-  } = options;
-
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{}') is invalid.",
@@ -247,14 +234,10 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  options: DecoderOptions,
+  label: String,
+  fatal: bool,
+  ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
-  let DecoderOptions {
-    label,
-    fatal,
-    ignore_bom,
-  } = options;
-
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{}') is invalid.",
@@ -276,21 +259,13 @@ fn op_encoding_new_decoder(
   Ok(rid)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecodeOptions {
-  rid: ResourceId,
-  stream: bool,
-}
-
 #[op]
 fn op_encoding_decode(
   state: &mut OpState,
   data: ZeroCopyBuf,
-  options: DecodeOptions,
+  rid: ResourceId,
+  stream: bool,
 ) -> Result<U16String, AnyError> {
-  let DecodeOptions { rid, stream } = options;
-
   let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
 
   let mut decoder = resource.decoder.borrow_mut();
