@@ -12,7 +12,6 @@ use crate::args::LintFlags;
 use crate::colors;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors;
 use crate::fs_util::collect_files;
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
@@ -29,6 +28,7 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use deno_runtime::fmt_errors::format_location;
 use log::debug;
 use log::info;
 use serde::Serialize;
@@ -382,7 +382,7 @@ impl LintReporter for PrettyLintReporter {
       &source_lines,
       d.range.clone(),
       d.hint.as_ref(),
-      &fmt_errors::format_location(&JsStackFrame::from_location(
+      &format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
         Some(d.range.start.line_index as i64 + 1), // 1-indexed
         // todo(#11111): make 1-indexed as well

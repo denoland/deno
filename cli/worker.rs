@@ -7,11 +7,11 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_graph::source::ResolveResponse;
 use deno_runtime::colors;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::Permissions;
@@ -24,7 +24,6 @@ use deno_runtime::BootstrapOptions;
 use crate::args::DenoSubcommand;
 use crate::checksum;
 use crate::errors;
-use crate::fmt_errors::format_js_error;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
 use crate::npm::NpmPackageReference;
@@ -171,10 +170,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_test();
 
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
@@ -200,17 +196,10 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let test_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      &format!(
-        r#"Deno[Deno.internal].runTests({})"#,
-        json!({ "shuffle": self.ps.options.shuffle_tests() }),
-      ),
-    )?;
-
-    self.worker.js_runtime.resolve_value(test_result).await?;
-
+    self
+      .worker
+      .run_tests(&self.ps.options.shuffle_tests())
+      .await?;
     loop {
       if !self
         .worker
@@ -236,10 +225,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_test();
 
     self
       .worker
@@ -255,14 +241,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let test_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runTests()"#,
-    )?;
-
-    self.worker.js_runtime.resolve_value(test_result).await?;
-
+    self.worker.run_tests(&None).await?;
     loop {
       if !self
         .worker
@@ -277,23 +256,13 @@ impl CliMainWorker {
   }
 
   pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_bench();
 
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let bench_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runBenchmarks()"#,
-    )?;
-
-    self.worker.js_runtime.resolve_value(bench_result).await?;
-
+    self.worker.run_benchmarks().await?;
     loop {
       if !self
         .worker
