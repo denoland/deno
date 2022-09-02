@@ -15,12 +15,14 @@ use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
-use super::version_req::SpecifierVersionReq;
+use super::semver::NpmVersion;
+use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages.
+/// the one used by npm packages and so we represent either via a trait.
 pub trait NpmVersionMatcher {
-  fn matches(&self, version: &semver::Version) -> bool;
+  fn matches(&self, version: &NpmVersion) -> bool;
+  fn is_latest(&self) -> bool;
   fn version_text(&self) -> String;
 }
 
@@ -104,11 +106,15 @@ impl std::fmt::Display for NpmPackageReq {
 }
 
 impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &semver::Version) -> bool {
+  fn matches(&self, version: &NpmVersion) -> bool {
     match &self.version_req {
       Some(req) => req.matches(version),
       None => version.pre.is_empty(),
     }
+  }
+
+  fn is_latest(&self) -> bool {
+    self.version_req.is_none()
   }
 
   fn version_text(&self) -> String {
@@ -123,7 +129,7 @@ impl NpmVersionMatcher for NpmPackageReq {
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: semver::Version,
+  pub version: NpmVersion,
 }
 
 impl NpmPackageId {
@@ -154,8 +160,8 @@ pub struct NpmResolutionPackage {
 
 #[derive(Debug, Clone, Default)]
 pub struct NpmResolutionSnapshot {
-  package_reqs: HashMap<NpmPackageReq, semver::Version>,
-  packages_by_name: HashMap<String, Vec<semver::Version>>,
+  package_reqs: HashMap<NpmPackageReq, NpmVersion>,
+  packages_by_name: HashMap<String, Vec<NpmVersion>>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
@@ -230,8 +236,8 @@ impl NpmResolutionSnapshot {
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<semver::Version> {
-    let mut maybe_best_version: Option<&semver::Version> = None;
+  ) -> Option<NpmVersion> {
+    let mut maybe_best_version: Option<&NpmVersion> = None;
     if let Some(versions) = self.packages_by_name.get(name) {
       for version in versions {
         if version_matcher.matches(version) {
@@ -472,7 +478,7 @@ impl NpmResolution {
 
 #[derive(Clone)]
 struct VersionAndInfo {
-  version: semver::Version,
+  version: NpmVersion,
   info: NpmPackageVersionInfo,
 }
 
@@ -483,8 +489,27 @@ fn get_resolved_package_version_and_info(
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
+  if version_matcher.is_latest() {
+    if let Some(version) = info.dist_tags.get("latest") {
+      match info.versions.get(version) {
+        Some(info) => {
+          return Ok(VersionAndInfo {
+            version: NpmVersion::parse(version)?,
+            info: info.clone(),
+          });
+        }
+        None => {
+          bail!(
+            "Could not find version '{}' referenced in dist-tag 'latest'.",
+            version,
+          )
+        }
+      }
+    }
+  }
+
   for (_, version_info) in info.versions.into_iter() {
-    let version = semver::Version::parse(&version_info.version)?;
+    let version = NpmVersion::parse(&version_info.version)?;
     if version_matcher.matches(&version) {
       let is_best_version = maybe_best_version
         .as_ref()
@@ -513,7 +538,7 @@ fn get_resolved_package_version_and_info(
     None => bail!(
       concat!(
         "Could not find npm package '{}' matching {}{}. ",
-        "Try retreiving the latest npm package information by running with --reload",
+        "Try retrieving the latest npm package information by running with --reload",
       ),
       pkg_name,
       version_matcher.version_text(),
@@ -649,5 +674,54 @@ mod tests {
     assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
     assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
     assert_eq!(name_without_path("@hello"), "@hello");
+  }
+
+  #[test]
+  fn test_get_resolved_package_version_and_info() {
+    // dist tag where version doesn't exist
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::new(),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(
+      result.err().unwrap().to_string(),
+      "Could not find version '1.0.0-alpha' referenced in dist-tag 'latest'."
+    );
+
+    // dist tag where version is a pre-release
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::from([
+          ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
+          (
+            "1.0.0-alpha".to_string(),
+            NpmPackageVersionInfo {
+              version: "0.1.0-alpha".to_string(),
+              ..Default::default()
+            },
+          ),
+        ]),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(result.unwrap().version.to_string(), "1.0.0-alpha");
   }
 }

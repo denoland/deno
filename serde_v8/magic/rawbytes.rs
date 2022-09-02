@@ -26,10 +26,24 @@ impl RawBytes {
   }
 }
 
+// Validate some bytes::Bytes layout assumptions at compile time.
+const _: () = {
+  assert!(
+    core::mem::size_of::<RawBytes>() == core::mem::size_of::<bytes::Bytes>(),
+  );
+  assert!(
+    core::mem::align_of::<RawBytes>() == core::mem::align_of::<bytes::Bytes>(),
+  );
+};
+
 #[allow(unused)]
 pub(crate) struct Vtable {
   /// fn(data, ptr, len)
   pub clone: unsafe fn(&AtomicPtr<()>, *const u8, usize) -> bytes::Bytes,
+  /// fn(data, ptr, len)
+  ///
+  /// takes `Bytes` to value
+  pub to_vec: unsafe fn(&AtomicPtr<()>, *const u8, usize) -> Vec<u8>,
   /// fn(data, ptr, len)
   pub drop: unsafe fn(&mut AtomicPtr<()>, *const u8, usize),
 }
@@ -55,6 +69,7 @@ mod tests {
   const STATIC_VTABLE: Vtable = Vtable {
     clone: static_clone,
     drop: static_drop,
+    to_vec: static_to_vec,
   };
 
   unsafe fn static_clone(
@@ -63,6 +78,15 @@ mod tests {
     len: usize,
   ) -> bytes::Bytes {
     from_static(std::slice::from_raw_parts(ptr, len)).into()
+  }
+
+  unsafe fn static_to_vec(
+    _: &AtomicPtr<()>,
+    ptr: *const u8,
+    len: usize,
+  ) -> Vec<u8> {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    slice.to_vec()
   }
 
   unsafe fn static_drop(_: &mut AtomicPtr<()>, _: *const u8, _: usize) {

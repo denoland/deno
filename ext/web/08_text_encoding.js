@@ -125,24 +125,22 @@
         }
 
         if (!options.stream && this.#rid === null) {
-          return ops.op_encoding_decode_single(input, {
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          return ops.op_encoding_decode_single(
+            input,
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
 
         if (this.#rid === null) {
-          this.#rid = ops.op_encoding_new_decoder({
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          this.#rid = ops.op_encoding_new_decoder(
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
-        return ops.op_encoding_decode(input, {
-          rid: this.#rid,
-          stream: options.stream,
-        });
+        return ops.op_encoding_decode(input, this.#rid, options.stream);
       } finally {
         if (!options.stream && this.#rid !== null) {
           core.close(this.#rid);

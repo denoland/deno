@@ -12,7 +12,6 @@ use crate::cache::TypeCheckCache;
 use crate::compat;
 use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
-use crate::emit;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
@@ -29,6 +28,7 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -226,8 +226,10 @@ impl ProcState {
       &dir,
       cli_options.reload_flag(),
       cli_options.cache_setting(),
-      cli_options.unstable(),
-    )?;
+      cli_options.unstable()
+        // don't do the unstable error when in the lsp
+        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+    );
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -456,7 +458,7 @@ impl ProcState {
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
-      let options = emit::CheckOptions {
+      let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
@@ -472,7 +474,7 @@ impl ProcState {
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
       let check_result =
-        emit::check(&roots, graph_data, &check_cache, options)?;
+        check::check(&roots, graph_data, &check_cache, options)?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
