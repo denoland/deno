@@ -108,3 +108,52 @@ fn init_subcommand_with_dir_arg() {
   let stdout = String::from_utf8(output.stdout).unwrap();
   assert_contains!(stdout, "1 passed");
 }
+
+#[test]
+fn init_subcommand_with_quiet_arg() {
+  let temp_dir = TempDir::new();
+  let cwd = temp_dir.path();
+  let deno_dir = util::new_deno_dir();
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+  let output = deno_cmd
+    .current_dir(cwd)
+    .arg("init")
+    .arg("--quiet")
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert_eq!(stdout, "");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+  let output = deno_cmd
+    .current_dir(cwd)
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg("main.ts")
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert_eq!(output.stdout, b"Add 2 + 3 = 5\n");
+
+  let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
+  let output = deno_cmd
+    .current_dir(cwd)
+    .env("NO_COLOR", "1")
+    .arg("test")
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert_contains!(stdout, "1 passed");
+}
