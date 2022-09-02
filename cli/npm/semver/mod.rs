@@ -174,6 +174,10 @@ impl NpmVersionMatcher for NpmVersionReq {
     self.satisfies(version)
   }
 
+  fn is_latest(&self) -> bool {
+    false
+  }
+
   fn version_text(&self) -> String {
     self.raw_text.clone()
   }

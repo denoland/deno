@@ -4627,6 +4627,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rustls-pemfile 1.0.0",
+ "semver 1.0.13",
  "serde",
  "serde_json",
  "tar",
