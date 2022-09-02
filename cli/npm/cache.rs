@@ -195,6 +195,16 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    if self.no_npm {
+      return Err(custom_error(
+        "NoNpm",
+        format!(
+          "An npm specifier was requested: \"{}\", but --no-npm is specified.",
+          id.name
+        ),
+      ));
+    }
+
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
@@ -211,16 +221,6 @@ impl NpmCache {
         )
       )
       );
-    }
-
-    if self.no_npm {
-      return Err(custom_error(
-        "NoNpm",
-        format!(
-          "An npm specifier was requested: \"{}\", but --no-npm is specified.",
-          id.name
-        ),
-      ));
     }
 
     log::log!(
