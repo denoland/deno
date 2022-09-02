@@ -861,3 +861,17 @@ fn repl_report_error() {
   assert_contains!(out, "1\n2\nundefined\n");
   assert!(err.is_empty());
 }
+
+#[test]
+fn pty_aggregate_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.any([])"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  assert_contains!(out, "AggregateError");
+  assert!(err.is_empty());
+}

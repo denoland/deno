@@ -514,7 +514,7 @@ fn get_resolved_package_version_and_info(
     None => bail!(
       concat!(
         "Could not find npm package '{}' matching {}{}. ",
-        "Try retreiving the latest npm package information by running with --reload",
+        "Try retrieving the latest npm package information by running with --reload",
       ),
       pkg_name,
       version_matcher.version_text(),
