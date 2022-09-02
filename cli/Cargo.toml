@@ -53,7 +53,7 @@ deno_emit = "0.8.0"
 deno_graph = "0.33.0"
 deno_lint = { version = "0.32.0", features = ["docs"] }
 deno_runtime = { version = "0.74.0", path = "../runtime" }
-deno_task_shell = "0.5.0"
+deno_task_shell = "0.5.2"
 
 atty = "=0.2.14"
 base64 = "=0.13.0"
@@ -78,7 +78,8 @@ indexmap = "1.8.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
-mitata = '=0.0.7'
+mitata = "=0.0.7"
+monch = "=0.2.0"
 node_resolver = "=0.1.1"
 notify = "=5.0.0-pre.15"
 once_cell = "=1.12.0"

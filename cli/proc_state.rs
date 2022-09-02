@@ -226,8 +226,10 @@ impl ProcState {
       &dir,
       cli_options.reload_flag(),
       cli_options.cache_setting(),
-      cli_options.unstable(),
-    )?;
+      cli_options.unstable()
+        // don't do the unstable error when in the lsp
+        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+    );
 
     Ok(ProcState(Arc::new(Inner {
       dir,
