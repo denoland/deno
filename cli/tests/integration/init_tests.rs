@@ -15,17 +15,17 @@ fn init_subcommand_without_dir() {
   let output = deno_cmd
     .current_dir(cwd)
     .arg("init")
-    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "Project initialized");
-  assert!(!stdout.contains("cd"));
-  assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test");
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_contains!(stderr, "Project initialized");
+  assert!(!stderr.contains("cd"));
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno test");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
@@ -67,17 +67,17 @@ fn init_subcommand_with_dir_arg() {
     .current_dir(cwd)
     .arg("init")
     .arg("my_dir")
-    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   assert!(output.status.success());
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_contains!(stdout, "Project initialized");
-  assert_contains!(stdout, "cd my_dir");
-  assert_contains!(stdout, "deno run main.ts");
-  assert_contains!(stdout, "deno test");
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_contains!(stderr, "Project initialized");
+  assert_contains!(stderr, "cd my_dir");
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno test");
 
   let mut deno_cmd = util::deno_cmd_with_deno_dir(&deno_dir);
   let output = deno_cmd
