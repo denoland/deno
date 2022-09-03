@@ -1978,6 +1978,7 @@ fn op_ffi_get_static<'scope>(
       return Err(type_error("Invalid FFI static type 'void'"));
     }
     NativeType::Bool => {
+      // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const bool) };
       let boolean: v8::Local<v8::Value> =
         v8::Boolean::new(scope, result).into();
