@@ -441,20 +441,6 @@ impl GraphData {
     None
   }
 
-  // TODO(bartlomieju): after saving translated source
-  // it's never removed, potentially leading to excessive
-  // memory consumption
-  pub fn add_cjs_esm_translation(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    source: String,
-  ) {
-    let prev = self
-      .cjs_esm_translations
-      .insert(specifier.to_owned(), source);
-    assert!(prev.is_none());
-  }
-
   pub fn get_cjs_esm_translation<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
