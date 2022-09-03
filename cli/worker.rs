@@ -23,7 +23,6 @@ use deno_runtime::BootstrapOptions;
 
 use crate::args::DenoSubcommand;
 use crate::checksum;
-use crate::compat;
 use crate::errors;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
@@ -52,15 +51,6 @@ impl CliMainWorker {
   }
 
   pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
-    if self.ps.options.compat() {
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      compat::add_global_require(
-        &mut self.worker.js_runtime,
-        self.main_module.as_str(),
-      )?;
-      self.worker.run_event_loop(false).await?;
-      compat::setup_builtin_modules(&mut self.worker.js_runtime)?;
-    }
     self.worker.run_event_loop(false).await?;
     Ok(())
   }
@@ -70,39 +60,7 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
 
-    if self.ps.options.compat() {
-      // TODO(bartlomieju): fix me
-      assert_eq!(self.main_module.scheme(), "file");
-
-      // Set up Node globals
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      // And `module` module that we'll use for checking which
-      // loader to use and potentially load CJS module with.
-      // This allows to skip permission check for `--allow-net`
-      // which would otherwise be requested by dynamically importing
-      // this file.
-      self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-      let use_esm_loader =
-        compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-      if use_esm_loader {
-        // ES module execution in Node compatiblity mode
-        self.worker.execute_main_module(&self.main_module).await?;
-      } else {
-        // CJS module execution in Node compatiblity mode
-        compat::load_cjs_module(
-          &mut self.worker.js_runtime,
-          &self
-            .main_module
-            .to_file_path()
-            .unwrap()
-            .display()
-            .to_string(),
-          true,
-        )?;
-      }
-    } else if self.is_main_cjs {
+    if self.is_main_cjs {
       self.initialize_main_module_for_node().await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
@@ -160,13 +118,6 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
-        if self.inner.ps.options.compat() {
-          self
-            .inner
-            .worker
-            .execute_side_module(&compat::GLOBAL_URL)
-            .await?;
-        }
         self.inner.execute_main_module_possibly_with_npm().await?;
         self
           .inner
@@ -240,32 +191,8 @@ impl CliMainWorker {
     // We only execute the specifier as a module if it is tagged with TestMode::Module or
     // TestMode::Both.
     if mode != TestMode::Documentation {
-      if self.ps.options.compat() {
-        self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-        self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-        let use_esm_loader =
-          compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-        if use_esm_loader {
-          self.worker.execute_side_module(&self.main_module).await?;
-        } else {
-          compat::load_cjs_module(
-            &mut self.worker.js_runtime,
-            &self
-              .main_module
-              .to_file_path()
-              .unwrap()
-              .display()
-              .to_string(),
-            false,
-          )?;
-          self.worker.run_event_loop(false).await?;
-        }
-      } else {
-        // We execute the module module as a side module so that import.meta.main is not set.
-        self.execute_side_module_possibly_with_npm().await?;
-      }
+      // We execute the module module as a side module so that import.meta.main is not set.
+      self.execute_side_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
@@ -331,32 +258,8 @@ impl CliMainWorker {
   pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
     self.worker.enable_bench();
 
-    if self.ps.options.compat() {
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-      let use_esm_loader =
-        compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-      if use_esm_loader {
-        self.worker.execute_side_module(&self.main_module).await?;
-      } else {
-        compat::load_cjs_module(
-          &mut self.worker.js_runtime,
-          &self
-            .main_module
-            .to_file_path()
-            .unwrap()
-            .display()
-            .to_string(),
-          false,
-        )?;
-        self.worker.run_event_loop(false).await?;
-      }
-    } else {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
+    // We execute the module module as a side module so that import.meta.main is not set.
+    self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(&located_script_name!())?;
     self.worker.run_benchmarks().await?;
@@ -543,20 +446,13 @@ pub async fn create_main_worker(
   })
 }
 
+// TODO(bartlomieju): this callback could have default value
+// and not be required
 fn create_web_worker_preload_module_callback(
-  ps: ProcState,
+  _ps: ProcState,
 ) -> Arc<WorkerEventCb> {
-  let compat = ps.options.compat();
-
-  Arc::new(move |mut worker| {
-    let fut = async move {
-      if compat {
-        worker.execute_side_module(&compat::GLOBAL_URL).await?;
-        worker.execute_side_module(&compat::MODULE_URL).await?;
-      }
-
-      Ok(worker)
-    };
+  Arc::new(move |worker| {
+    let fut = async move { Ok(worker) };
     LocalFutureObj::new(Box::new(fut))
   })
 }

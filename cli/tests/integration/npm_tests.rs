@@ -131,6 +131,14 @@ itest!(tarball_with_global_header {
   http_server: true,
 });
 
+itest!(nonexistent_file {
+  args: "run --unstable -A --quiet npm/nonexistent_file/main.js",
+  output: "npm/nonexistent_file/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
