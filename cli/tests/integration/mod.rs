@@ -425,6 +425,20 @@ itest!(error_cause {
   exit_code: 1,
 });
 
+itest!(error_cause_recursive_aggregate {
+  args: "run error_cause_recursive_aggregate.ts",
+  output: "error_cause_recursive_aggregate.ts.out",
+  exit_code: 1,
+});
+
+// TOOD: what to do about this?
+// TODO(Cre3per): Caused by #15602
+// itest!(error_cause_recursive_non_topmost {
+//   args: "run error_cause_recursive_non_topmost.ts",
+//   output: "error_cause_recursive_non_topmost.ts.out",
+//   exit_code: 1,
+// });
+
 itest!(error_cause_recursive {
   args: "run error_cause_recursive.ts",
   output: "error_cause_recursive.ts.out",
