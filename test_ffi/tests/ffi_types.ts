@@ -42,6 +42,10 @@ const remote = Deno.dlopen(
       parameters: ["buffer"],
       result: "void",
     },
+    method24: {
+      parameters: ["bool"],
+      result: "bool",
+    },
     static1: { type: "usize" },
     static2: { type: "pointer" },
     static3: { type: "usize" },
@@ -56,6 +60,7 @@ const remote = Deno.dlopen(
     static12: { type: "i64" },
     static13: { type: "f32" },
     static14: { type: "f64" },
+    static15: { type: "bool" },
   } as const,
 );
 
@@ -258,6 +263,22 @@ remote.symbols.method23(0);
 remote.symbols.method23(0n);
 remote.symbols.method23(null);
 
+// @ts-expect-error: Cannot pass number as bool.
+remote.symbols.method24(0);
+// @ts-expect-error: Cannot pass number as bool.
+remote.symbols.method24(1);
+// @ts-expect-error: Cannot pass null as bool.
+remote.symbols.method24(null);
+remote.symbols.method24(true);
+remote.symbols.method24(false);
+// @ts-expect-error: Cannot assert return type as a number.
+<number> remote.symbols.method24(true);
+// @ts-expect-error: Cannot assert return type truthiness.
+let r24_0: true = remote.symbols.method24(true);
+// @ts-expect-error: Cannot assert return type as a number.
+let r42_1: number = remote.symbols.method24(true);
+<boolean> remote.symbols.method24(Math.random() > 0.5);
+
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
 const static1_right: Deno.PointerValue = remote.symbols.static1;
@@ -300,6 +321,9 @@ const static13_right: number = remote.symbols.static13;
 // @ts-expect-error: Invalid member type
 const static14_wrong: null = remote.symbols.static14;
 const static14_right: number = remote.symbols.static14;
+// @ts-expect-error: Invalid member type
+const static15_wrong: number = remote.symbols.static15;
+const static15_right: boolean = remote.symbols.static15;
 
 // Adapted from https://stackoverflow.com/a/53808212/10873797
 type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
