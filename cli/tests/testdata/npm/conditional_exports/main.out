@@ -1,0 +1,6 @@
+Download http://localhost:4545/npm/registry/@denotest/conditional-exports
+Download http://localhost:4545/npm/registry/@denotest/conditional-exports/1.0.0.tgz
+{ hello: "from esm" }
+{ hello: "from esm client" }
+{ hello: "from esm client foo" }
+{ hello: "from esm client bar" }

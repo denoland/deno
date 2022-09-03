@@ -34,6 +34,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::args::config_file::JsxImportSourceConfig;
 use crate::compat;
 use crate::deno_dir::DenoDir;
 use crate::emit::get_ts_config_for_emit;
@@ -210,12 +211,14 @@ impl CliOptions {
     }
   }
 
-  /// Return the implied JSX import source module.
-  pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
+  /// Return the JSX import source configuration.
+  pub fn to_maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
     self
       .maybe_config_file
       .as_ref()
-      .and_then(|c| c.to_maybe_jsx_import_source_module())
+      .and_then(|c| c.to_maybe_jsx_import_source_config())
   }
 
   /// Return any imports that should be brought into the scope of the module

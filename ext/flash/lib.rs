@@ -3,7 +3,10 @@
 // False positive lint for explicit drops.
 // https://github.com/rust-lang/rust-clippy/issues/6446
 #![allow(clippy::await_holding_lock)]
+// https://github.com/rust-lang/rust-clippy/issues/6353
+#![allow(clippy::await_holding_refcell_ref)]
 
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -28,7 +31,6 @@ use http::header::TRANSFER_ENCODING;
 use http::HeaderValue;
 use log::trace;
 use mio::net::TcpListener;
-use mio::net::TcpStream;
 use mio::Events;
 use mio::Interest;
 use mio::Poll;
@@ -44,9 +46,9 @@ use std::intrinsics::transmute;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
-use std::marker::PhantomPinned;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -60,9 +62,12 @@ mod chunked;
 mod request;
 #[cfg(unix)]
 mod sendfile;
+mod socket;
 
 use request::InnerRequest;
 use request::Request;
+use socket::InnerStream;
+use socket::Stream;
 
 pub struct FlashContext {
   next_server_id: u32,
@@ -76,70 +81,15 @@ pub struct ServerContext {
   rx: mpsc::Receiver<Request>,
   requests: HashMap<u32, Request>,
   next_token: u32,
-  listening_rx: Option<mpsc::Receiver<()>>,
+  listening_rx: Option<mpsc::Receiver<u16>>,
   close_tx: mpsc::Sender<()>,
   cancel_handle: Rc<CancelHandle>,
 }
 
 #[derive(Debug, PartialEq)]
-enum ParseStatus {
+pub enum ParseStatus {
   None,
   Ongoing(usize),
-}
-
-type TlsTcpStream = rustls::StreamOwned<rustls::ServerConnection, TcpStream>;
-
-enum InnerStream {
-  Tcp(TcpStream),
-  Tls(Box<TlsTcpStream>),
-}
-
-pub struct Stream {
-  inner: InnerStream,
-  detached: bool,
-  read_rx: Option<mpsc::Receiver<()>>,
-  read_tx: Option<mpsc::Sender<()>>,
-  parse_done: ParseStatus,
-  buffer: UnsafeCell<Vec<u8>>,
-  read_lock: Arc<Mutex<()>>,
-  _pin: PhantomPinned,
-}
-
-impl Stream {
-  pub fn detach_ownership(&mut self) {
-    self.detached = true;
-  }
-
-  fn reattach_ownership(&mut self) {
-    self.detached = false;
-  }
-}
-
-impl Write for Stream {
-  #[inline]
-  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.write(buf),
-      InnerStream::Tls(ref mut stream) => stream.write(buf),
-    }
-  }
-  #[inline]
-  fn flush(&mut self) -> std::io::Result<()> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.flush(),
-      InnerStream::Tls(ref mut stream) => stream.flush(),
-    }
-  }
-}
-
-impl Read for Stream {
-  #[inline]
-  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-    match self.inner {
-      InnerStream::Tcp(ref mut stream) => stream.read(buf),
-      InnerStream::Tls(ref mut stream) => stream.read(buf),
-    }
-  }
 }
 
 #[op]
@@ -148,17 +98,71 @@ fn op_flash_respond(
   server_id: u32,
   token: u32,
   response: StringOrBuffer,
-  maybe_body: Option<ZeroCopyBuf>,
   shutdown: bool,
-) {
+) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  flash_respond(ctx, token, shutdown, &response)
+}
+
+#[op]
+async fn op_flash_respond_async(
+  state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+  response: StringOrBuffer,
+  shutdown: bool,
+) -> Result<(), AnyError> {
+  trace!("op_flash_respond_async");
 
   let mut close = false;
+  let sock = {
+    let mut op_state = state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+
+    match shutdown {
+      true => {
+        let tx = ctx.requests.remove(&token).unwrap();
+        close = !tx.keep_alive;
+        tx.socket()
+      }
+      // In case of a websocket upgrade or streaming response.
+      false => {
+        let tx = ctx.requests.get(&token).unwrap();
+        tx.socket()
+      }
+    }
+  };
+
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        Ok(tokio::io::AsyncWriteExt::write(stream, &response).await?)
+      })
+    })
+    .await?;
+  // server is done writing and request doesn't want to kept alive.
+  if shutdown && close {
+    sock.shutdown();
+  }
+  Ok(())
+}
+
+#[op]
+async fn op_flash_respond_chuncked(
+  op_state: Rc<RefCell<OpState>>,
+  server_id: u32,
+  token: u32,
+  response: Option<ZeroCopyBuf>,
+  shutdown: bool,
+) -> Result<(), AnyError> {
+  let mut op_state = op_state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   let sock = match shutdown {
     true => {
       let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
       tx.socket()
     }
     // In case of a websocket upgrade or streaming response.
@@ -168,49 +172,29 @@ fn op_flash_respond(
     }
   };
 
-  sock.read_tx.take();
-  sock.read_rx.take();
+  drop(op_state);
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        use tokio::io::AsyncWriteExt;
+        if let Some(response) = response {
+          stream
+            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
+            .await?;
+          stream.write_all(&response).await?;
+          stream.write_all(b"\r\n").await?;
+        }
 
-  let _ = sock.write(&response);
-  if let Some(response) = maybe_body {
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(&response);
-    let _ = sock.write(b"\r\n");
-  }
+        // The last chunk
+        if shutdown {
+          stream.write_all(b"0\r\n\r\n").await?;
+        }
 
-  // server is done writing and request doesn't want to kept alive.
-  if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
-    }
-  }
-}
-
-#[op]
-fn op_flash_respond_chuncked(
-  op_state: &mut OpState,
-  server_id: u32,
-  token: u32,
-  response: Option<ZeroCopyBuf>,
-  shutdown: bool,
-) {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  match response {
-    Some(response) => {
-      respond_chunked(ctx, token, shutdown, Some(&response));
-    }
-    None => {
-      respond_chunked(ctx, token, shutdown, None);
-    }
-  }
+        Ok(())
+      })
+    })
+    .await?;
+  Ok(())
 }
 
 #[op]
@@ -256,24 +240,35 @@ async fn op_flash_write_resource(
     }
   }
 
-  let _ = sock.write(b"Transfer-Encoding: chunked\r\n\r\n");
-  loop {
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
-    if nread == 0 {
-      let _ = sock.write(b"0\r\n\r\n");
-      break;
-    }
-    let response = &buf[..nread];
+  sock
+    .with_async_stream(|stream| {
+      Box::pin(async move {
+        use tokio::io::AsyncWriteExt;
+        stream
+          .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
+          .await?;
+        loop {
+          let vec = vec![0u8; 64 * 1024]; // 64KB
+          let buf = ZeroCopyBuf::new_temp(vec);
+          let (nread, buf) = resource.clone().read_return(buf).await?;
+          if nread == 0 {
+            stream.write_all(b"0\r\n\r\n").await?;
+            break;
+          }
 
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(response);
-    let _ = sock.write(b"\r\n");
-  }
-
-  resource.close();
+          let response = &buf[..nread];
+          // TODO(@littledivy): use vectored writes.
+          stream
+            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
+            .await?;
+          stream.write_all(response).await?;
+          stream.write_all(b"\r\n").await?;
+        }
+        resource.close();
+        Ok(())
+      })
+    })
+    .await?;
   Ok(())
 }
 
@@ -294,7 +289,7 @@ impl fast_api::FastFunction for RespondFast {
   }
 
   fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Void
+    fast_api::CType::Uint32
   }
 }
 
@@ -303,37 +298,23 @@ fn flash_respond(
   token: u32,
   shutdown: bool,
   response: &[u8],
-) {
-  let mut close = false;
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      close = !tx.keep_alive;
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
+) -> u32 {
+  let tx = ctx.requests.get(&token).unwrap();
+  let sock = tx.socket();
 
   sock.read_tx.take();
   sock.read_rx.take();
 
-  let _ = sock.write(response);
-  // server is done writing and request doesn't want to kept alive.
-  if shutdown && close {
-    match &mut sock.inner {
-      InnerStream::Tcp(stream) => {
-        // Typically shutdown shouldn't fail.
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-      }
-      InnerStream::Tls(stream) => {
-        let _ = stream.sock.shutdown(std::net::Shutdown::Both);
-      }
+  let nwritten = sock.try_write(response);
+
+  if shutdown && nwritten == response.len() {
+    if !tx.keep_alive {
+      sock.shutdown();
     }
+    ctx.requests.remove(&token).unwrap();
   }
+
+  nwritten as u32
 }
 
 unsafe fn op_flash_respond_fast(
@@ -341,88 +322,17 @@ unsafe fn op_flash_respond_fast(
   token: u32,
   response: *const fast_api::FastApiTypedArray<u8>,
   shutdown: bool,
-) {
+) -> u32 {
   let ptr =
     recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
   let ctx = &mut *(ptr as *mut ServerContext);
 
   let response = &*response;
   if let Some(response) = response.get_storage_if_aligned() {
-    flash_respond(ctx, token, shutdown, response);
+    flash_respond(ctx, token, shutdown, response)
   } else {
     todo!();
   }
-}
-
-pub struct RespondChunkedFast;
-
-impl fast_api::FastFunction for RespondChunkedFast {
-  fn function(&self) -> *const c_void {
-    op_flash_respond_chunked_fast as *const c_void
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    &[
-      fast_api::Type::V8Value,
-      fast_api::Type::Uint32,
-      fast_api::Type::TypedArray(fast_api::CType::Uint8),
-      fast_api::Type::Bool,
-    ]
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    fast_api::CType::Void
-  }
-}
-
-unsafe fn op_flash_respond_chunked_fast(
-  recv: v8::Local<v8::Object>,
-  token: u32,
-  response: *const fast_api::FastApiTypedArray<u8>,
-  shutdown: bool,
-) {
-  let ptr =
-    recv.get_aligned_pointer_from_internal_field(V8_WRAPPER_OBJECT_INDEX);
-  let ctx = &mut *(ptr as *mut ServerContext);
-
-  let response = &*response;
-  if let Some(response) = response.get_storage_if_aligned() {
-    respond_chunked(ctx, token, shutdown, Some(response));
-  } else {
-    todo!();
-  }
-}
-
-fn respond_chunked(
-  ctx: &mut ServerContext,
-  token: u32,
-  shutdown: bool,
-  response: Option<&[u8]>,
-) {
-  let sock = match shutdown {
-    true => {
-      let tx = ctx.requests.remove(&token).unwrap();
-      tx.socket()
-    }
-    // In case of a websocket upgrade or streaming response.
-    false => {
-      let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
-    }
-  };
-
-  if let Some(response) = response {
-    let _ = sock.write(format!("{:x}", response.len()).as_bytes());
-    let _ = sock.write(b"\r\n");
-    let _ = sock.write(response);
-    let _ = sock.write(b"\r\n");
-  }
-
-  // The last chunk
-  if shutdown {
-    let _ = sock.write(b"0\r\n\r\n");
-  }
-  sock.reattach_ownership();
 }
 
 macro_rules! get_request {
@@ -629,51 +539,12 @@ fn op_flash_make_request<'scope>(
     obj.set(scope, key.into(), func).unwrap();
   }
 
-  // respondChunked
-  {
-    let builder = v8::FunctionTemplate::builder(
-      |scope: &mut v8::HandleScope,
-       args: v8::FunctionCallbackArguments,
-       _: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
-        // SAFETY: This external is guaranteed to be a pointer to a ServerContext
-        let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
-
-        let token = args.get(0).uint32_value(scope).unwrap();
-
-        let response: v8::Local<v8::ArrayBufferView> =
-          args.get(1).try_into().unwrap();
-        let ab = response.buffer(scope).unwrap();
-        let store = ab.get_backing_store();
-        let (offset, len) = (response.byte_offset(), response.byte_length());
-        // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-        // it points to a fixed continuous slice of bytes on the heap.
-        // We assume it's initialized and thus safe to read (though may not contain meaningful data)
-        let response = unsafe {
-          &*(&store[offset..offset + len] as *const _ as *const [u8])
-        };
-
-        let shutdown = args.get(2).boolean_value(scope);
-
-        respond_chunked(ctx, token, shutdown, Some(response));
-      },
-    )
-    .data(v8::External::new(scope, ctx as *mut _).into());
-
-    let func = builder.build_fast(scope, &RespondChunkedFast, None);
-    let func: v8::Local<v8::Value> = func.get_function(scope).unwrap().into();
-
-    let key = v8::String::new(scope, "respondChunked").unwrap();
-    obj.set(scope, key.into(), func).unwrap();
-  }
-
   // respond
   {
     let builder = v8::FunctionTemplate::builder(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
-       _: v8::ReturnValue| {
+       mut rv: v8::ReturnValue| {
         let external: v8::Local<v8::External> =
           args.data().unwrap().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
@@ -695,7 +566,7 @@ fn op_flash_make_request<'scope>(
 
         let shutdown = args.get(2).boolean_value(scope);
 
-        flash_respond(ctx, token, shutdown, response);
+        rv.set_uint32(flash_respond(ctx, token, shutdown, response));
       },
     )
     .data(v8::External::new(scope, ctx as *mut _).into());
@@ -939,7 +810,7 @@ pub struct ListenOpts {
 
 fn run_server(
   tx: mpsc::Sender<Request>,
-  listening_tx: mpsc::Sender<()>,
+  listening_tx: mpsc::Sender<u16>,
   mut close_rx: mpsc::Receiver<()>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
@@ -971,7 +842,9 @@ fn run_server(
     }
   };
 
-  listening_tx.blocking_send(()).unwrap();
+  listening_tx
+    .blocking_send(listener.local_addr().unwrap().port())
+    .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
   let mut counter: usize = 1;
   let mut events = Events::with_capacity(1024);
@@ -1020,7 +893,6 @@ fn run_server(
                 read_lock: Arc::new(Mutex::new(())),
                 parse_done: ParseStatus::None,
                 buffer: UnsafeCell::new(vec![0_u8; 1024]),
-                _pin: PhantomPinned,
               });
 
               trace!("New connection: {}", token.0);
@@ -1230,6 +1102,28 @@ fn run_server(
   Ok(())
 }
 
+fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
+  // Default to localhost if given just the port. Example: ":80"
+  if hostname.is_empty() {
+    return ("0.0.0.0", port);
+  }
+
+  // If this looks like an ipv6 IP address. Example: "[2001:db8::1]"
+  // Then we remove the brackets.
+  let addr = hostname.trim_start_matches('[').trim_end_matches(']');
+  (addr, port)
+}
+
+/// Resolve network address *synchronously*.
+pub fn resolve_addr_sync(
+  hostname: &str,
+  port: u16,
+) -> Result<impl Iterator<Item = SocketAddr>, AnyError> {
+  let addr_port_pair = make_addr_port_pair(hostname, port);
+  let result = addr_port_pair.to_socket_addrs()?;
+  Ok(result)
+}
+
 #[op]
 fn op_flash_serve<P>(
   state: &mut OpState,
@@ -1242,7 +1136,10 @@ where
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)))?;
-  let addr = SocketAddr::new(opts.hostname.parse()?, opts.port);
+
+  let addr = resolve_addr_sync(&opts.hostname, opts.port)?
+    .next()
+    .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
   let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);
@@ -1274,7 +1171,7 @@ where
 fn op_flash_wait_for_listening(
   state: &mut OpState,
   server_id: u32,
-) -> Result<impl Future<Output = Result<(), AnyError>> + 'static, AnyError> {
+) -> Result<impl Future<Output = Result<u16, AnyError>> + 'static, AnyError> {
   let mut listening_rx = {
     let flash_ctx = state.borrow_mut::<FlashContext>();
     let server_ctx = flash_ctx
@@ -1284,8 +1181,11 @@ fn op_flash_wait_for_listening(
     server_ctx.listening_rx.take().unwrap()
   };
   Ok(async move {
-    listening_rx.recv().await;
-    Ok(())
+    if let Some(port) = listening_rx.recv().await {
+      Ok(port)
+    } else {
+      Err(generic_error("This error will be discarded"))
+    }
   })
 }
 
@@ -1337,15 +1237,15 @@ async fn op_flash_next_async(
   0
 }
 
-// Syncrhonous version of op_flash_next_async. Under heavy load,
+// Synchronous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 //
 // perf: please do not add any arguments to this op. With optimizations enabled,
 // the ContextScope creation is optimized away and the op is as simple as:
 //   f(info: *const v8::FunctionCallbackInfo) { let rv = ...; rv.set_uint32(op_flash_next()); }
 #[op]
-fn op_flash_next(op_state: &mut OpState) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next(state: &mut OpState) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&0).unwrap();
   next_request_sync(ctx)
 }
@@ -1353,8 +1253,8 @@ fn op_flash_next(op_state: &mut OpState) -> u32 {
 // Syncrhonous version of op_flash_next_async. Under heavy load,
 // this can collect buffered requests from rx channel and return tokens in a single batch.
 #[op]
-fn op_flash_next_server(op_state: &mut OpState, server_id: u32) -> u32 {
-  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+fn op_flash_next_server(state: &mut OpState, server_id: u32) -> u32 {
+  let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   next_request_sync(ctx)
 }
@@ -1489,6 +1389,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     .ops(vec![
       op_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
+      op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),

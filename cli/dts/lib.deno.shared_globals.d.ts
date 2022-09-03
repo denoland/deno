@@ -586,6 +586,8 @@ declare class Performance extends EventTarget {
    * const t = performance.now();
    * console.log(`${t} ms since start!`);
    * ```
+   *
+   * @tags allow-hrtime
    */
   now(): number;
 
@@ -673,6 +675,7 @@ declare class CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
+/** @category DOM APIs */
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(error: Object, constructor?: Function): void;

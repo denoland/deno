@@ -18,12 +18,6 @@ const headers = {
   },
 };
 
-serve(
-  {
-    fetch: async () => {
-      return new Response(await renderToReadableStream(<App />), headers);
-    },
-    hostname,
-    port,
-  },
-);
+serve({ hostname, port }, async () => {
+  return new Response(await renderToReadableStream(<App />), headers);
+});

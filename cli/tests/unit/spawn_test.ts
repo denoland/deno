@@ -714,7 +714,12 @@ Deno.test(function spawnSyncStdinPipedFails() {
 });
 
 Deno.test(
-  { permissions: { write: true, run: true, read: true } },
+  // TODO(bartlomieju): this test became flaky on Windows CI
+  // raising "PermissionDenied" instead of "NotFound".
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { write: true, run: true, read: true },
+  },
   async function spawnChildUnref() {
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
