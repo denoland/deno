@@ -11,6 +11,7 @@ use crate::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -130,10 +131,19 @@ impl CliModuleLoader {
   fn load_sync(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
       let file_path = specifier.to_file_path().unwrap();
-      let code = std::fs::read_to_string(file_path)?;
+      let code = std::fs::read_to_string(&file_path).with_context(|| {
+        let mut msg = "Unable to load ".to_string();
+        msg.push_str(&*file_path.to_string_lossy());
+        if let Some(referrer) = maybe_referrer {
+          msg.push_str(" imported from ");
+          msg.push_str(referrer.as_str());
+        }
+        msg
+      })?;
       let is_cjs = self.ps.cjs_resolutions.lock().contains(specifier);
 
       let code = if is_cjs {
@@ -149,7 +159,6 @@ impl CliModuleLoader {
         // only inject node globals for esm
         node::esm_code_with_node_globals(specifier, code)?
       };
-
       ModuleCodeSource {
         code,
         found_url: specifier.clone(),
@@ -192,13 +201,15 @@ impl ModuleLoader for CliModuleLoader {
   fn load(
     &self,
     specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
-    Box::pin(deno_core::futures::future::ready(self.load_sync(specifier)))
+    Box::pin(deno_core::futures::future::ready(
+      self.load_sync(specifier, maybe_referrer),
+    ))
   }
 
   fn prepare_load(
