@@ -23,6 +23,7 @@ macro_rules! cstr {
 
 fn native_arg_to_c(ty: &NativeType) -> &'static str {
   match ty {
+    NativeType::Bool => "bool",
     NativeType::U8 | NativeType::U16 | NativeType::U32 => "uint32_t",
     NativeType::I8 | NativeType::I16 | NativeType::I32 => "int32_t",
     NativeType::Void => "void",
@@ -39,6 +40,7 @@ fn native_arg_to_c(ty: &NativeType) -> &'static str {
 
 fn native_to_c(ty: &NativeType) -> &'static str {
   match ty {
+    NativeType::Bool => "bool",
     NativeType::U8 => "uint8_t",
     NativeType::U16 => "uint16_t",
     NativeType::U32 => "uint32_t",
