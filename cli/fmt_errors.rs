@@ -33,7 +33,7 @@ impl From<&JsError> for ErrorIdentity {
       exception_message: error.exception_message.clone(),
       frames: error.frames.clone(),
       source_line: error.source_line.clone(),
-      source_line_frame_index: error.source_line_frame_index.clone(),
+      source_line_frame_index: error.source_line_frame_index,
       aggregated: error.aggregated.clone(),
     }
   }
@@ -205,18 +205,18 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
 
     if let Some(seen) = history.iter().find(|&el| el == &cause_identity) {
       return Some(ErrorReference {
-        from: error_identity.clone(),
+        from: error_identity,
         to: seen.clone(),
       });
     } else {
-      current_error = &cause;
+      current_error = cause;
     }
   }
 
   None
 }
 
-fn write_aggregated_error(
+fn format_aggregated_error(
   aggregated_errors: &Vec<JsError>,
   circular_reference_index: usize,
 ) -> String {
@@ -230,11 +230,9 @@ fn write_aggregated_error(
     }
     let error_string = format_js_error_inner(
       js_error,
-      aggregated_circular.map_or(None, |reference| {
-        Some(IndexedErrorReference {
-          reference,
-          index: nested_circular_reference_index,
-        })
+      aggregated_circular.map(|reference| IndexedErrorReference {
+        reference,
+        index: nested_circular_reference_index,
       }),
       false,
     );
@@ -265,7 +263,7 @@ fn format_js_error_inner(
   }
 
   if let Some(aggregated) = &js_error.aggregated {
-    let aggregated_message = write_aggregated_error(
+    let aggregated_message = format_aggregated_error(
       aggregated,
       circular.as_ref().map_or(0, |circular| circular.index),
     );
@@ -310,14 +308,11 @@ fn format_js_error_inner(
 }
 
 pub fn format_js_error(js_error: &JsError) -> String {
-  let circular = find_recursive_cause(js_error).map_or(None, |reference| {
-    Some(IndexedErrorReference {
+  let circular =
+    find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
       reference,
       index: 1,
-    })
-  });
-
-  println!("{:#?}", circular);
+    });
 
   format_js_error_inner(js_error, circular, true)
 }
