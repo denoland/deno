@@ -1,0 +1,10 @@
+[WILDCARD]
+error: Uncaught Error: baz
+const z = new Error("baz", { cause: y });
+          ^
+    at file:///[WILDCARD]/error_cause_recursive_non_topmost.ts:3:11
+Caused by: Error: bar <ref *1>
+    at file:///[WILDCARD]/error_cause_recursive_non_topmost.ts:2:11
+Caused by: Error: foo
+    at file:///[WILDCARD]/error_cause_recursive_non_topmost.ts:1:11
+Caused by: [Circular *1]
