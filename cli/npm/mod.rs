@@ -187,6 +187,10 @@ impl GlobalNpmPackageResolver {
       registry_url: self.registry_url.clone(),
     }
   }
+
+  pub fn get_cache_location(&self) -> PathBuf {
+    self.cache.as_readonly().get_cache_location()
+  }
 }
 
 impl NpmPackageResolver for GlobalNpmPackageResolver {

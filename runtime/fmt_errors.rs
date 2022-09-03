@@ -189,6 +189,7 @@ fn format_js_error_inner(js_error: &JsError, is_child: bool) -> String {
   s
 }
 
+/// Format a [`JsError`] for terminal output.
 pub fn format_js_error(js_error: &JsError) -> String {
   format_js_error_inner(js_error, false)
 }
