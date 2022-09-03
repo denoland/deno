@@ -15,7 +15,6 @@ mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
-mod fmt_errors;
 mod fs_util;
 mod graph_util;
 mod http_cache;
@@ -67,7 +66,6 @@ use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors::format_js_error;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
@@ -89,6 +87,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
 use log::debug;
@@ -134,6 +133,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
+  let npm_cache = &state.npm_resolver.get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
@@ -150,6 +150,7 @@ fn print_cache_info(
     let mut output = json!({
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
+      "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
@@ -170,6 +171,11 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Remote modules cache:"),
       modules_cache.display()
+    );
+    println!(
+      "{} {}",
+      colors::bold("npm modules cache:"),
+      npm_cache.display()
     );
     println!(
       "{} {}",
