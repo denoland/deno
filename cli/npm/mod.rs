@@ -127,7 +127,9 @@ impl GlobalNpmPackageResolver {
     &self,
     packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    if !self.unstable && !packages.is_empty() {
+    assert!(!packages.is_empty());
+
+    if !self.unstable {
       bail!(
         "Unstable use of npm specifiers. The --unstable flag must be provided."
       )
