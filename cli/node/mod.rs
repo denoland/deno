@@ -238,15 +238,24 @@ pub(crate) static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
 pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
-pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
-  for module in SUPPORTED_MODULES {
-    if module.name == specifier {
-      let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
-      return Some(module_url);
-    }
+fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
+  SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
+}
+
+fn is_builtin_node_module(specifier: &str) -> bool {
+  find_builtin_node_module(specifier).is_some()
+}
+
+pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(specifier) {
+    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
+    return Ok(module_url);
   }
 
-  None
+  Err(generic_error(format!(
+    "Unknown built-in Node module: {}",
+    specifier
+  )))
 }
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
@@ -348,15 +357,9 @@ pub fn node_resolve(
 
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-  // `module` from `ext/node/`.
-  if specifier == "module" {
-    return Ok(Some(ResolveResponse::Esm(
-      Url::parse("node:module").unwrap(),
-    )));
-  }
-  if let Some(resolved) = try_resolve_builtin_module(specifier) {
-    return Ok(Some(ResolveResponse::Esm(resolved)));
+  if is_builtin_node_module(specifier) {
+    let url = Url::parse(&format!("node:{}", specifier)).unwrap();
+    return Ok(Some(ResolveResponse::Esm(url)));
   }
 
   if let Ok(url) = Url::parse(specifier) {
@@ -370,18 +373,9 @@ pub fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
 
-      // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-      // `module` from `ext/node/`.
-      if specifier == "module" {
-        return Ok(Some(ResolveResponse::Esm(
-          Url::parse("node:module").unwrap(),
-        )));
-      }
-
-      if let Some(resolved) = try_resolve_builtin_module(&specifier) {
-        return Ok(Some(ResolveResponse::Esm(resolved)));
-      } else {
-        return Err(generic_error(format!("Unknown module {}", specifier)));
+      if is_builtin_node_module(&specifier) {
+        let url = Url::parse(&format!("node:{}", specifier)).unwrap();
+        return Ok(Some(ResolveResponse::Esm(url)));
       }
     }
 
@@ -572,16 +566,6 @@ fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution algorithm
-  // (as it doesn't support http/https); but I had to short circuit here
-  // for remote modules because they are mainly used to polyfill `node` built
-  // in modules. Another option would be to leave the resolved URLs
-  // as `node:<module_name>` and do the actual remapping to std's polyfill
-  // in module loader. I'm not sure which approach is better.
-  if resolved.scheme().starts_with("http") {
-    return Ok(resolved);
-  }
-
   // todo(dsherret): cache
   let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
 

@@ -470,6 +470,10 @@ impl ProcState {
     if let ResolveResponse::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
       self.cjs_resolutions.lock().insert(specifier.clone());
+    } else if let ResolveResponse::Esm(specifier) = &response {
+      if specifier.scheme() == "node" {
+        return node::resolve_builtin_node_module(specifier.path());
+      }
     }
     response.to_result()
   }
