@@ -345,7 +345,7 @@
     deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
     getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
     getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
-    isProxy: (value) => ops.op_is_proxy(value),
+    isProxy: (value) => ops.op_is_proxy.fast(value),
     memoryUsage: () => ops.op_memory_usage(),
     setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
     abortWasmStreaming: (
@@ -353,7 +353,6 @@
       error,
     ) => ops.op_abort_wasm_streaming(rid, error),
     destructureError: (error) => ops.op_destructure_error(error),
-    terminate: (exception) => ops.op_terminate(exception),
     opNames: () => ops.op_op_names(),
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),

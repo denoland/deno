@@ -13,6 +13,7 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
+    Uint32Array,
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
@@ -20,13 +21,20 @@
     SafeArrayIterator,
     SymbolFor,
     TypeError,
+    indirectEval,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
+  let hr;
   function opNow() {
-    return ops.op_now();
+    if (!hr) {
+      hr = new Uint32Array(2);
+      ops.op_now_set_buf(hr);
+    }
+    ops.op_now.fast();
+    return (hr[0] * 1000 + hr[1] / 1e6);
   }
 
   // ---------------------------------------------------------------------------
@@ -148,9 +156,7 @@
             reportException(error);
           }
         } else {
-          // TODO(@andreubotella): eval doesn't seem to have a primordial, but
-          // it can be redefined in the global scope.
-          (0, eval)(callback);
+          indirectEval(callback);
         }
 
         if (repeat) {

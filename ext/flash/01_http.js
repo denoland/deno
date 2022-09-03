@@ -3,7 +3,9 @@
 
 ((window) => {
   const { BlobPrototype } = window.__bootstrap.file;
-  const { fromFlashRequest, toInnerResponse } = window.__bootstrap.fetch;
+  const { TcpConn } = window.__bootstrap.net;
+  const { fromFlashRequest, toInnerResponse, _flash } =
+    window.__bootstrap.fetch;
   const core = window.Deno.core;
   const {
     ReadableStream,
@@ -18,14 +20,15 @@
     _readyState,
     _eventLoop,
     _protocol,
-    _server,
     _idleTimeoutDuration,
     _idleTimeoutTimeout,
     _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
+    Function,
     ObjectPrototypeIsPrototypeOf,
+    PromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
@@ -137,7 +140,7 @@
       // MUST NOT generate a payload in a 205 response.
       // indicate a zero-length body for the response by
       // including a Content-Length header field with a value of 0.
-      str += "Content-Length: 0\r\n";
+      str += "Content-Length: 0\r\n\r\n";
       return str;
     }
 
@@ -185,48 +188,115 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
-  function serve(opts = {}) {
-    if (!("fetch" in opts)) {
-      throw new TypeError("Options is missing 'fetch' handler");
+  function writeFixedResponse(
+    server,
+    requestId,
+    response,
+    end,
+    respondFast,
+  ) {
+    let nwritten = 0;
+    // TypedArray
+    if (typeof response !== "string") {
+      nwritten = respondFast(requestId, response, end);
+    } else {
+      // string
+      const maybeResponse = stringResources[response];
+      if (maybeResponse === undefined) {
+        stringResources[response] = core.encode(response);
+        nwritten = core.ops.op_flash_respond(
+          server,
+          requestId,
+          stringResources[response],
+          end,
+        );
+      } else {
+        nwritten = respondFast(requestId, maybeResponse, end);
+      }
     }
-    if ("cert" in opts && !("key" in opts)) {
-      throw new TypeError("Options is missing 'key' field");
+
+    if (nwritten < response.length) {
+      core.opAsync(
+        "op_flash_respond_async",
+        server,
+        requestId,
+        response.slice(nwritten),
+        end,
+      );
     }
-    if ("key" in opts && !("cert" in opts)) {
-      throw new TypeError("Options is missing 'cert' field");
+  }
+
+  async function serve(arg1, arg2) {
+    let options = undefined;
+    let handler = undefined;
+    if (arg1 instanceof Function) {
+      handler = arg1;
+      options = arg2;
+    } else if (arg2 instanceof Function) {
+      handler = arg2;
+      options = arg1;
+    } else {
+      options = arg1;
     }
-    opts = { hostname: "127.0.0.1", port: 9000, ...opts };
-    const handler = opts.fetch;
-    delete opts.fetch;
-    const signal = opts.signal;
-    delete opts.signal;
-    const onError = opts.onError ?? function (error) {
+    if (handler === undefined) {
+      if (options === undefined) {
+        throw new TypeError(
+          "No handler was provided, so an options bag is mandatory.",
+        );
+      }
+      handler = options.handler;
+    }
+    if (!(handler instanceof Function)) {
+      throw new TypeError("A handler function must be provided.");
+    }
+    if (options === undefined) {
+      options = {};
+    }
+
+    const signal = options.signal;
+
+    const onError = options.onError ?? function (error) {
       console.error(error);
       return new Response("Internal Server Error", { status: 500 });
     };
-    delete opts.onError;
-    const onListen = opts.onListen ?? function ({ port }) {
+
+    const onListen = options.onListen ?? function ({ port }) {
       console.log(
-        `Listening on http://${hostnameForDisplay(opts.hostname)}:${port}/`,
+        `Listening on http://${
+          hostnameForDisplay(listenOpts.hostname)
+        }:${port}/`,
       );
     };
-    delete opts.onListen;
-    const serverId = core.ops.op_flash_serve(opts);
+
+    const listenOpts = {
+      hostname: options.hostname ?? "127.0.0.1",
+      port: options.port ?? 9000,
+    };
+    if (options.cert || options.key) {
+      if (!options.cert || !options.key) {
+        throw new TypeError(
+          "Both cert and key must be provided to enable HTTPS.",
+        );
+      }
+      listenOpts.cert = options.cert;
+      listenOpts.key = options.key;
+    }
+
+    const serverId = core.ops.op_flash_serve(listenOpts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
     core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
-      onListen({ hostname: opts.hostname, port });
-    });
+      onListen({ hostname: listenOpts.hostname, port });
+    }).catch(() => {});
+    const finishedPromise = serverPromise.catch(() => {});
 
     const server = {
       id: serverId,
-      transport: opts.cert && opts.key ? "https" : "http",
-      hostname: opts.hostname,
-      port: opts.port,
+      transport: listenOpts.cert && listenOpts.key ? "https" : "http",
+      hostname: listenOpts.hostname,
+      port: listenOpts.port,
       closed: false,
-      finished: (async () => {
-        return await serverPromise;
-      })(),
+      finished: finishedPromise,
       async close() {
         if (server.closed) {
           return;
@@ -288,7 +358,7 @@
             }
             // there might've been an HTTP upgrade.
             if (resp === undefined) {
-              continue;
+              return;
             }
             const innerResp = toInnerResponse(resp);
 
@@ -357,26 +427,13 @@
                 innerResp.headerList,
                 respBody,
               );
-
-              // TypedArray
-              if (typeof responseStr !== "string") {
-                respondFast(i, responseStr, !ws);
-              } else {
-                // string
-                const maybeResponse = stringResources[responseStr];
-                if (maybeResponse === undefined) {
-                  stringResources[responseStr] = core.encode(responseStr);
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
-                    stringResources[responseStr],
-                    null,
-                    !ws, // Don't close socket if there is a deferred websocket upgrade.
-                  );
-                } else {
-                  respondFast(i, maybeResponse, !ws);
-                }
-              }
+              writeFixedResponse(
+                serverId,
+                i,
+                responseStr,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
+                respondFast,
+              );
             }
 
             (async () => {
@@ -419,41 +476,26 @@
                   }
                 } else {
                   const reader = respBody.getReader();
-                  let first = true;
-                  a:
+                  writeFixedResponse(
+                    serverId,
+                    i,
+                    http1Response(
+                      method,
+                      innerResp.status ?? 200,
+                      innerResp.headerList,
+                      null,
+                    ),
+                    false,
+                    respondFast,
+                  );
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (first) {
-                      first = false;
-                      core.ops.op_flash_respond(
-                        serverId,
-                        i,
-                        http1Response(
-                          method,
-                          innerResp.status ?? 200,
-                          innerResp.headerList,
-                          null,
-                        ),
-                        value ?? new Uint8Array(),
-                        false,
-                      );
-                    } else {
-                      if (value === undefined) {
-                        core.ops.op_flash_respond_chuncked(
-                          serverId,
-                          i,
-                          undefined,
-                          done,
-                        );
-                      } else {
-                        respondChunked(
-                          i,
-                          value,
-                          done,
-                        );
-                      }
-                    }
-                    if (done) break a;
+                    await respondChunked(
+                      i,
+                      value,
+                      done,
+                    );
+                    if (done) break;
                   }
                 }
               }
@@ -496,18 +538,24 @@
       once: true,
     });
 
+    function respondChunked(token, chunk, shutdown) {
+      return core.opAsync(
+        "op_flash_respond_chuncked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+      );
+    }
+
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondChunked = (token, chunk, shutdown) =>
-      fastOp.respondChunked(token, chunk, shutdown);
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondChunked = (token, chunk, shutdown) =>
-        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
       respondFast = (token, response, shutdown) =>
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
@@ -520,7 +568,10 @@
       }, 1000);
     }
 
-    return server.serve().catch(console.error);
+    await PromiseAll([
+      server.serve().catch(console.error),
+      serverPromise,
+    ]);
   }
 
   function createRequestBodyStream(serverId, token) {
@@ -567,7 +618,28 @@
     });
   }
 
+  function upgradeHttpRaw(req) {
+    if (!req[_flash]) {
+      throw new TypeError(
+        "Non-flash requests can not be upgraded with `upgradeHttpRaw`. Use `upgradeHttp` instead.",
+      );
+    }
+
+    // NOTE(bartlomieju):
+    // Access these fields so they are cached on `req` object, otherwise
+    // they wouldn't be available after the connection gets upgraded.
+    req.url;
+    req.method;
+    req.headers;
+
+    const { serverId, streamRid } = req[_flash];
+    const connRid = core.ops.op_flash_upgrade_http(streamRid, serverId);
+    // TODO(@littledivy): return already read first packet too.
+    return [new TcpConn(connRid), new Uint8Array()];
+  }
+
   window.__bootstrap.flash = {
     serve,
+    upgradeHttpRaw,
   };
 })(this);

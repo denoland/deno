@@ -74,7 +74,15 @@ pub fn esm_code_with_node_globals(
     write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
   }
 
-  result.push_str(parsed_source.text_info().text_str());
+  let file_text = parsed_source.text_info().text_str();
+  // strip the shebang
+  let file_text = if file_text.starts_with("#!/") {
+    let start_index = file_text.find('\n').unwrap_or(file_text.len());
+    &file_text[start_index..]
+  } else {
+    file_text
+  };
+  result.push_str(file_text);
 
   Ok(result)
 }
@@ -157,5 +165,25 @@ mod tests {
     assert!(r.contains("var globalThis = Deno[Deno.internal].node.globalThis;"));
     assert!(r.contains("var process = globalThis.process;"));
     assert!(r.contains("export const x = 1;"));
+  }
+
+  #[test]
+  fn test_esm_code_with_node_globals_with_shebang() {
+    let r = esm_code_with_node_globals(
+      &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
+      "#!/usr/bin/env node\nexport const x = 1;".to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+      r,
+      concat!(
+        "var globalThis = Deno[Deno.internal].node.globalThis;var Buffer = globalThis.Buffer;",
+        "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
+        "var clearTimeout = globalThis.clearTimeout;var global = globalThis.global;",
+        "var process = globalThis.process;var setImmediate = globalThis.setImmediate;",
+        "var setInterval = globalThis.setInterval;var setTimeout = globalThis.setTimeout;\n",
+        "export const x = 1;"
+      ),
+    );
   }
 }

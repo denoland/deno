@@ -103,7 +103,7 @@ impl From<Vec<u8>> for ZeroCopyBuf {
 
 impl ToV8 for ZeroCopyBuf {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let buf: Box<[u8]> = match self {
@@ -112,7 +112,9 @@ impl ToV8 for ZeroCopyBuf {
         value.into()
       }
       Self::Temp(_) => unreachable!(),
-      Self::ToV8(x) => x.lock().unwrap().take().expect("ZeroCopyBuf was empty"),
+      Self::ToV8(x) => {
+        x.get_mut().unwrap().take().expect("ZeroCopyBuf was empty")
+      }
     };
 
     if buf.is_empty() {

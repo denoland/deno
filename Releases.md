@@ -6,6 +6,75 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.25.1 / 2022.09.01
+
+- feat(ops): support `v8::FastApiCallbackOptions` (#15721)
+- feat(serde_v8): Serialize integers as BigInt (#15692)
+- fix(check): --remote and --no-remote should be mutually exclusive (#14964)
+- fix(cli): `deno upgrade --canary` always downloaded latest version even if it
+  was already latest (#15639)
+- fix(compile): panic when running with a populated dep analysis cache (#15672)
+- fix(docs): add missing categories (#15684)
+- fix(ext/ffi): Fix pointer types (#15730)
+- fix(ext/flash): add missing backticks in server docs (#15644)
+- fix(ext/flash): panic on AddrInUse (#15607)
+- fix(ext/flash): retry write failures (#15591)
+- fix(ext/node): add missing primordial (#15595)
+- fix(ext/node): better error for importing ES module via require() call
+  (#15671)
+- fix(ext/node): fix global in node env (#15622)
+- fix(ext/websocket): fix closing of WebSocketStream with unread messages
+  (#15632)
+- fix(fmt): add the file path to the panic messages when formatting is unstable
+  (#15693)
+- fix(npm): better node version and version requirement compatibility (#15714)
+- fix(npm): conditional exports with wildcards (#15652)
+- fix(npm): handle cjs re-exports with the same name as an export (#15626)
+- fix(npm): ignore npm cache directory creation errors (#15728)
+- fix(npm): ignore the unstable error in the lsp (#15727)
+- fix(npm): prefer importing esm from esm (#15676)
+- fix(npm): skip extracting pax_global_header from tarballs (#15677)
+- fix(npm): translate CJS to ESM with name clashes for files and dirs (#15697)
+- fix(serde_v8): no panic on reading large text file (#15494)
+- fix(serde_v8): update bytes::Bytes layout assumptions (#15718)
+- fix: avoid global declaration collisions in cjs (#15608)
+- fix: config file errors should not print specifier with debug formatting
+  (#15648)
+- fix: typo in deno_ops README (#15606)
+- perf(ext/web): flatten op arguments for text_encoding (#15723)
+- perf(ops): inline String args (#15681)
+- perf(runtime): optimize allocations in read/write checks (#15631)
+- perf: use fast api for `core.isProxy` (#15682)
+- perf: use fast api for op_now (#15643)
+- serde_v8: fix pointer size assumptions (#15613)
+
+### 1.25.0 / 2022.08.24
+
+- BREAKING(ext/ffi): specialized `buffer` type (#15518)
+- feat(ext/crypto): deriveBits P-384 (#15138)
+- feat(ext/flash): An optimized http/1.1 server (#15405)
+- feat(ext/flash): split upgradeHttp into two APIs (#15557)
+- feat(ops): V8 Fast Calls (#15291)
+- feat(repl): add color to functions for syntax highlighting (#15434)
+- feat(runtime): add pre_execute_module_cb (#15485)
+- feat(unstable): initial support for npm specifiers (#15484)
+- feat: `queueMicrotask()` error handling (#15522)
+- feat: add "deno init" subcommand (#15469)
+- fix(cache): do not attempt to emit non-emitable files (#15562)
+- fix(core/runtime): always cancel termination in exception handling (#15514)
+- fix(coverage): ensure coverage is only collected in certain situations
+  (#15467)
+- fix(ext/fetch): ignore user content-length header (#15555)
+- fix(ext/flash): concurrent response streams (#15493)
+- fix(ext/flash): fix default onListen callback (#15533)
+- fix(ext/flash): fix listening port (#15519)
+- fix: Free up JsRuntime state global handles before snapshot (#15491)
+- fix: resolve `jsxImportSource` relative to module (#15561)
+- perf(runtime): optimize Deno.file open & stream (#15496)
+- perf: cache swc dependency analysis and don't hold onto `ParsedSource`s in
+  memory (#15502)
+- perf: improve performance.now (#15481)
+
 ### 1.24.3 / 2022.08.11
 
 - fix(ext/fetch): add socks proxy support (#15372)
