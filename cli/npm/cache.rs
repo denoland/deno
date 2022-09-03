@@ -173,19 +173,13 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  no_npm: bool,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
-    cache_setting: CacheSetting,
-    no_npm: bool,
-  ) -> Self {
+  pub fn from_deno_dir(dir: &DenoDir, cache_setting: CacheSetting) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
-      no_npm,
     }
   }
 
@@ -199,16 +193,6 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    if self.no_npm {
-      return Err(custom_error(
-        "NoNpm",
-        format!(
-          "An npm specifier was requested: \"{}\", but --no-npm is specified.",
-          id.name
-        ),
-      ));
-    }
-
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract

@@ -248,7 +248,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier was requested: \"chalk\", but --no-npm is specified."
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
@@ -292,7 +292,7 @@ fn no_npm_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier was requested: \"chalk\", but --no-npm is specified."
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());
