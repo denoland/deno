@@ -60,8 +60,6 @@ mod bundle;
 mod cache;
 #[path = "check_tests.rs"]
 mod check;
-#[path = "compat_tests.rs"]
-mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]

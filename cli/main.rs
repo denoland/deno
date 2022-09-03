@@ -5,7 +5,6 @@ mod auth_tokens;
 mod cache;
 mod cdp;
 mod checksum;
-mod compat;
 mod deno_dir;
 mod deno_std;
 mod diagnostics;
@@ -799,8 +798,6 @@ async fn run_command(
     return run_with_watch(flags, run_flags.script).await;
   }
 
-  // TODO(bartlomieju): it should not be resolved here if we're in compat mode
-  // because it might be a bare specifier
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
