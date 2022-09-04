@@ -271,7 +271,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
-    let module_map_rc = JsRuntime::module_map(scope);
+    let module_map_rc = JsRealm::module_map_from_scope(scope);
 
     debug!(
       "dyn_import specifier {} referrer {} ",
@@ -308,7 +308,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 ) {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRealm::module_map_from_scope(scope);
   let module_map = module_map_rc.borrow();
 
   let module_global = v8::Global::new(scope, module);
@@ -349,7 +349,7 @@ fn import_meta_resolve(
     let url_prop = args.data().unwrap();
     url_prop.to_rust_string_lossy(scope)
   };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRealm::module_map_from_scope(scope);
   let loader = {
     let module_map = module_map_rc.borrow();
     module_map.loader.clone()
@@ -459,9 +459,9 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
-      let mut state = state_rc.borrow_mut();
-      if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
+      if let Some(pending_mod_evaluate) =
+        realm_state_rc.borrow_mut().pending_mod_evaluate.as_mut()
+      {
         if !pending_mod_evaluate.has_evaluated {
           pending_mod_evaluate
             .handled_promise_rejections
@@ -557,7 +557,7 @@ pub fn module_resolve_callback<'s>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRealm::module_map_from_scope(scope);
   let module_map = module_map_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);

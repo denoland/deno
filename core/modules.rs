@@ -5,6 +5,7 @@ use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::JsRealm;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -125,10 +126,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = tc_scope
-    .get_slot::<Rc<RefCell<ModuleMap>>>()
-    .unwrap()
-    .clone();
+  let module_map = JsRealm::module_map_from_scope(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map
@@ -1392,7 +1390,7 @@ import "/a.js";
       ]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.global_realm().module_map(runtime.v8_isolate());
     let modules = module_map_rc.borrow();
 
     assert_eq!(
@@ -1504,7 +1502,7 @@ import "/a.js";
 
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.global_realm().module_map(runtime.v8_isolate());
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -1547,11 +1545,17 @@ import "/a.js";
       (mod_a, mod_b)
     };
 
-    runtime.instantiate_module(mod_b).unwrap();
+    runtime
+      .global_realm()
+      .instantiate_module(runtime.v8_isolate(), mod_b)
+      .unwrap();
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.instantiate_module(mod_a).unwrap();
+    runtime
+      .global_realm()
+      .instantiate_module(runtime.v8_isolate(), mod_a)
+      .unwrap();
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
     let _ = runtime.mod_evaluate(mod_a);
@@ -1611,7 +1615,7 @@ import "/a.js";
       )
       .unwrap();
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.global_realm().module_map(runtime.v8_isolate());
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -1651,10 +1655,16 @@ import "/a.js";
       (mod_a, mod_b)
     };
 
-    runtime.instantiate_module(mod_b).unwrap();
+    runtime
+      .global_realm()
+      .instantiate_module(runtime.v8_isolate(), mod_b)
+      .unwrap();
     assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
 
-    runtime.instantiate_module(mod_a).unwrap();
+    runtime
+      .global_realm()
+      .instantiate_module(runtime.v8_isolate(), mod_a)
+      .unwrap();
 
     let receiver = runtime.mod_evaluate(mod_a);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
@@ -1946,7 +1956,8 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc =
+        runtime.global_realm().module_map(runtime.v8_isolate());
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2025,7 +2036,8 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc =
+        runtime.global_realm().module_map(runtime.v8_isolate());
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2180,7 +2192,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.global_realm().module_map(runtime.v8_isolate());
     let modules = module_map_rc.borrow();
 
     assert_eq!(
