@@ -726,7 +726,7 @@ impl JsRuntime {
     {
       let scope = &mut self.handle_scope();
       let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
-      let names = o.get_own_property_names(scope).unwrap();
+      let names = o.get_own_property_names(scope, Default::default()).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
         o.delete(scope, key);
