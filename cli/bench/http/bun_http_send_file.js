@@ -6,7 +6,9 @@ const path = new URL("../testdata/128k.bin", import.meta.url).pathname;
 Bun.serve({
   fetch(_req) {
     const file = Bun.file(path);
-    return new Response(file);
+    return new Response(file, {
+      headers: { "Date": (new Date()).toUTCString() },
+    });
   },
   port: Number(port),
 });
