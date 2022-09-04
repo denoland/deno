@@ -369,6 +369,18 @@ declare namespace Deno {
    */
   export function getGid(): number | null;
 
+  /** **Unstable** new API. yet to be vetted.
+   *
+   * Escape special characters in the given string of text, such that it can be interpolated in HTML content.
+   *
+   * ```ts
+   * Deno.escapeHtml('<script type=\'\' src="">const s = "국제 회의가"</script>');
+   * ```
+   *
+   * @category Encoding
+   */
+  export function escapeHtml(input: string): string;
+
   /** All plain number types for interfacing with foreign functions.
    *
    * @category FFI

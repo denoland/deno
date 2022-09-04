@@ -155,5 +155,6 @@
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+    escapeHtml: __bootstrap.runtime_encoding.escapeHtml,
   };
 })(this);

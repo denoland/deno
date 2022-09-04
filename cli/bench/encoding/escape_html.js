@@ -50,7 +50,6 @@ function escapeHtmlSmol(string) {
 const labels = [];
 const jsValues = [];
 const nativeValues = [];
-const { ops } = Deno.core;
 
 console.log("%crunning Deno.escapeHTML benchmark", "color: green");
 
@@ -60,7 +59,7 @@ while (true) {
   labels.push(t.length);
   const start = performance.now();
   for (let k = 0; k < 100; k++) {
-    ops.op_escape_html(t);
+    Deno.escapeHtml(t);
   }
   const elapsed = performance.now() - start;
   nativeValues.push(elapsed);

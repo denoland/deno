@@ -1,6 +1,5 @@
 //! Non-web API ops that deal with encoding and decoding of data.
 use deno_core::op;
-use deno_core::ByteString;
 use deno_core::Extension;
 
 pub fn init() -> Extension {
@@ -9,10 +8,20 @@ pub fn init() -> Extension {
     .build()
 }
 
+// TODO(@littledivy): Fast path for Latin1 strings
 #[op]
-fn op_escape_html(mut s: String) -> String {
+fn op_escape_html(s: String) -> String {
   let mut out = Vec::with_capacity(s.len());
-  simd_escape(s.as_bytes(), &mut out);
+  // TODO(@littledivy): Add ssse3 implementation for x86
+  #[cfg(all(target_arch = "aarch64"))]
+  {
+    simd_escape(s.as_bytes(), &mut out);
+  }
+  #[cfg(not(all(target_arch = "aarch64")))]
+  {
+    fallback_escape(s.as_bytes(), &mut out);
+  }
+  // SAFETY: `out` is guaranteed to be valid UTF-8 string.
   unsafe { String::from_utf8_unchecked(out) }
 }
 
@@ -94,6 +103,8 @@ pub fn fallback_escape(raw: &[u8], escaped: &mut Vec<u8>) {
 pub fn simd_escape(raw: &[u8], escaped: &mut Vec<u8>) {
   let mut pos = 0;
   while let Some(i) =
+    // SAFETY: the resulting pointer is within bounds. n is also within bounds from
+    // the resulting pointer.
     unsafe { simd::find(raw.as_ptr().add(pos), raw.len() - pos) }
   {
     let new_pos = pos + i;
