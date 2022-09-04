@@ -11,6 +11,7 @@ gclient_config.py_entries
 /target/
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
+/cli/bench/encoding/results.json
 
 # Files that help ensure VSCode can work but we don't want checked into the
 # repo

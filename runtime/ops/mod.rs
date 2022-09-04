@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+pub mod encoding;
 pub mod fs;
 pub mod fs_events;
 pub mod http;
@@ -11,7 +12,6 @@ pub mod runtime;
 pub mod signal;
 pub mod spawn;
 pub mod tty;
-pub mod encoding;
 mod utils;
 pub mod web_worker;
 pub mod worker_host;
