@@ -106,7 +106,6 @@ pub struct NpmRegistryApi {
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
   cache_setting: CacheSetting,
-  no_npm: bool,
 }
 
 impl NpmRegistryApi {
@@ -133,9 +132,8 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
-    no_npm: bool,
   ) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, cache_setting, no_npm)
+    Self::from_base(Self::default_url(), cache, reload, cache_setting)
   }
 
   pub fn from_base(
@@ -143,7 +141,6 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
-    no_npm: bool,
   ) -> Self {
     Self {
       base_url,
@@ -151,7 +148,6 @@ impl NpmRegistryApi {
       mem_cache: Default::default(),
       reload,
       cache_setting,
-      no_npm,
     }
   }
 
@@ -295,16 +291,6 @@ impl NpmRegistryApi {
         )
       )
       );
-    }
-
-    if self.no_npm {
-      return Err(custom_error(
-        "NoNpm",
-        format!(
-          "An npm specifier was requested: \"{}\", but --no-npm is specified.",
-          name
-        ),
-      ));
     }
 
     let package_url = self.get_package_url(name);
