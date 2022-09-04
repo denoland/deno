@@ -17,6 +17,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_graph::source::ResolveResponse;
+use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
@@ -37,7 +38,6 @@ use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;
-pub mod errors;
 
 pub use analyze::esm_code_with_node_globals;
 
