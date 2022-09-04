@@ -104,7 +104,7 @@ impl GlobalNpmPackageResolver {
     unstable: bool,
     no_npm: bool,
   ) -> Self {
-    let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting, no_npm);
+    let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
     let registry_url = api.base_url().to_owned();
     let resolution = Arc::new(NpmResolution::new(api));
 
