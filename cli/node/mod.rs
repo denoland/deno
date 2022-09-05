@@ -12,7 +12,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -345,7 +344,6 @@ pub fn node_resolve(
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<Option<ResolveResponse>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
-  // eprintln!("node resolve {} {:?}", specifier, referrer);
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
@@ -849,7 +847,7 @@ fn resolve(
 
   // todo(dsherret): use not_found error on not found here
   let module_dir = npm_resolver.resolve_package_folder_from_package(
-    &package_specifier.as_str(),
+    package_specifier.as_str(),
     &referrer_path,
   )?;
 

@@ -548,7 +548,9 @@ fn parse_package_name(
   } else if specifier.starts_with('@') {
     is_scoped = true;
     if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/');
+      separator_index = specifier[index + 1..]
+        .find('/')
+        .map(|new_index| index + 1 + new_index);
     } else {
       valid_package_name = false;
     }
@@ -705,12 +707,13 @@ pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
 ) -> Result<PathBuf, AnyError> {
-  let maybe_main =
-    if referrer_kind == NodeModuleKind::Esm && package_json.typ == "module" {
-      &package_json.module
-    } else {
-      &package_json.main
-    };
+  let mut maybe_main = package_json.main.as_ref();
+
+  if referrer_kind == NodeModuleKind::Esm && package_json.typ == "module" {
+    if let Some(module) = &package_json.module {
+      maybe_main = Some(module);
+    }
+  }
   let mut guess;
 
   if let Some(main) = maybe_main {
@@ -790,4 +793,32 @@ pub fn legacy_main_resolve(
   }
 
   Err(generic_error("not found"))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_package_name() {
+    let dummy_referrer = Url::parse("http://example.com").unwrap();
+
+    assert_eq!(
+      parse_package_name("fetch-blob", &dummy_referrer).unwrap(),
+      ("fetch-blob".to_string(), ".".to_string(), false)
+    );
+    assert_eq!(
+      parse_package_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
+      ("@vue/plugin-vue".to_string(), ".".to_string(), true)
+    );
+    assert_eq!(
+      parse_package_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
+        .unwrap(),
+      (
+        "@astrojs/prism".to_string(),
+        "./dist/highlighter".to_string(),
+        true
+      )
+    );
+  }
 }
