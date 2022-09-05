@@ -393,6 +393,8 @@ declare namespace Deno {
     | "usize"
     | "isize";
 
+  type NativeBooleanType = "bool";
+
   type NativePointerType = "pointer";
 
   type NativeBufferType = "buffer";
@@ -408,6 +410,7 @@ declare namespace Deno {
   export type NativeType =
     | NativeNumberType
     | NativeBigIntType
+    | NativeBooleanType
     | NativePointerType
     | NativeBufferType
     | NativeFunctionType;
@@ -419,6 +422,7 @@ declare namespace Deno {
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
     & Record<NativeBufferType, TypedArray | null>;
@@ -455,6 +459,7 @@ declare namespace Deno {
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
     & Record<NativeFunctionType, PointerValue>;
@@ -610,6 +615,8 @@ declare namespace Deno {
 
     pointer: bigint;
 
+    /** Gets a boolean at the specified byte offset from the pointer. */
+    getBool(offset?: number): boolean;
     /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
     getUint8(offset?: number): number;
     /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
