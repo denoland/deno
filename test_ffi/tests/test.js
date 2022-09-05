@@ -59,6 +59,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "and": { parameters: ["bool", "bool"], result: "bool" },
   "add_u32_nonblocking": {
     name: "add_u32",
     parameters: ["u32", "u32"],
@@ -290,6 +291,8 @@ console.log(dylib.symbols.add_isize(Number.MAX_SAFE_INTEGER, 1));
 console.log(dylib.symbols.add_isize(Number.MIN_SAFE_INTEGER, -1));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+console.log(dylib.symbols.and(true, true));
+console.log(dylib.symbols.and(true, false));
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
