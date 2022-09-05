@@ -6,7 +6,6 @@ use monch::*;
 
 use super::errors::with_failure_handling;
 use super::range::Partial;
-use super::range::VersionBoundKind;
 use super::range::VersionRange;
 use super::range::XRange;
 use super::NpmVersion;
@@ -57,9 +56,7 @@ fn version_range(input: &str) -> ParseResult<VersionRange> {
     map(preceded(ch('^'), partial), |partial| {
       partial.as_caret_version_range()
     }),
-    map(partial, |partial| {
-      partial.as_greater_range(VersionBoundKind::Inclusive)
-    }),
+    map(partial, |partial| partial.as_equal_range()),
   )(input)
 }
 
@@ -186,6 +183,10 @@ mod tests {
     assert!(tester.matches("1.0.1"));
     assert!(!tester.matches("1.0.2"));
     assert!(!tester.matches("1.1.1"));
+
+    // pre-release
+    let tester = VersionReqTester::new("1.0.0-alpha.13");
+    assert!(tester.matches("1.0.0-alpha.13"));
   }
 
   #[test]

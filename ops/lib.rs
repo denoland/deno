@@ -476,7 +476,8 @@ fn codegen_v8_sync(
 
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    let op_state = &*ctx.state.borrow();
+    // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
+    let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
     op_state.tracker.track_sync(ctx.id);
 
     #ret

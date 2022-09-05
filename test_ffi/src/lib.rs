@@ -95,6 +95,11 @@ pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
 }
 
 #[no_mangle]
+pub extern "C" fn and(a: bool, b: bool) -> bool {
+  a && b
+}
+
+#[no_mangle]
 unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 {
   let buf = std::slice::from_raw_parts(ptr, length as usize);
   let mut hash: u32 = 0;
@@ -258,6 +263,9 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
 pub extern "C" fn nop() {}
 
 #[no_mangle]
+pub extern "C" fn nop_bool(_a: bool) {}
+
+#[no_mangle]
 pub extern "C" fn nop_u8(_a: u8) {}
 
 #[no_mangle]
@@ -295,6 +303,11 @@ pub extern "C" fn nop_f64(_a: f64) {}
 
 #[no_mangle]
 pub extern "C" fn nop_buffer(_buffer: *mut [u8; 8]) {}
+
+#[no_mangle]
+pub extern "C" fn return_bool() -> bool {
+  true
+}
 
 #[no_mangle]
 pub extern "C" fn return_u8() -> u8 {

@@ -125,8 +125,11 @@ detest!(
 
 // Unit enums
 detest!(de_enum_unit_a, EnumUnit, "'A'", EnumUnit::A);
+detest!(de_enum_unit_so_a, EnumUnit, "new String('A')", EnumUnit::A);
 detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
+detest!(de_enum_unit_so_b, EnumUnit, "new String('B')", EnumUnit::B);
 detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
+detest!(de_enum_unit_so_c, EnumUnit, "new String('C')", EnumUnit::C);
 
 // Enums with payloads (tuples & struct)
 detest!(

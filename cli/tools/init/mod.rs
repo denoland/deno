@@ -4,6 +4,7 @@ use crate::args::InitFlags;
 use crate::deno_std;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use log::info;
 use std::io::Write;
 use std::path::Path;
 
@@ -39,12 +40,12 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
   create_file(&dir, "main_test.ts", &main_test_ts)?;
 
-  println!("✅ Project initialized");
-  println!("Run these commands to get started");
+  info!("✅ Project initialized");
+  info!("Run these commands to get started");
   if let Some(dir) = init_flags.dir {
-    println!("  cd {}", dir);
+    info!("  cd {}", dir);
   }
-  println!("  deno run main.ts");
-  println!("  deno test");
+  info!("  deno run main.ts");
+  info!("  deno test");
   Ok(())
 }
