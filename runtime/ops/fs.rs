@@ -244,8 +244,6 @@ fn op_write_file_sync(
   write_file(&path, open_options, mode, data)
 }
 
-fn try_nonblocking_write(file: &std::fs::File, dst: ZeroCopyBuf) {}
-
 #[op]
 async fn op_write_file_async(
   state: Rc<RefCell<OpState>>,
