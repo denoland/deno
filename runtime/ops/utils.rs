@@ -33,22 +33,25 @@ struct TaskQueueTasks {
 /// A queue that executes tasks sequentially one after the other
 /// ensuring order and that no task runs at the same time as another.
 ///
-/// For some strange reason, using a tokio semaphore with 1 permit sometimes
-/// led to tasks being executed out of order. Perhaps there is a bug in the
-/// semaphore implementation. This TaskQueue therefore most likely exists
-/// as a temporary solution.
+/// Note that tokio's semaphore doesn't seem to maintain order
+/// and so we can't use that in the code that uses this or use
+/// that here.
 #[derive(Clone, Default)]
 pub struct TaskQueue {
   tasks: Arc<Mutex<TaskQueueTasks>>,
 }
 
 impl TaskQueue {
+  /// Alternate API that acquires a permit internally
+  /// for the duration of the future.
   #[cfg(test)]
   pub async fn queue<R>(&self, future: impl Future<Output = R>) -> R {
     let _permit = self.acquire().await;
     future.await
   }
 
+  /// Acquires a permit where the tasks are executed one at a time
+  /// and in the order that they were acquired.
   pub async fn acquire(&self) -> TaskQueuePermit {
     let acquire = TaskQueuePermitAcquire::new(self.tasks.clone());
     acquire.await;
