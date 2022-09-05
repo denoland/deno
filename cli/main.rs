@@ -1051,6 +1051,35 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+fn check_for_updates() {
+  use update_informer::{registry, Check};
+
+  let pkg_name = env!("CARGO_PKG_NAME");
+  let pkg_version = env!("CARGO_PKG_VERSION");
+  let informer = update_informer::new(registry::GitHub, pkg_name, pkg_version);
+
+  if let Some(new_version) = informer.check_version().ok().flatten() {
+    let msg = format!(
+      "A new version of {pkg_name} is available: v{pkg_version} -> {new_version}",
+      pkg_name = colors::cyan(pkg_name),
+      new_version = colors::green(new_version.to_string())
+    );
+
+    let release_url = format!(
+      "https://github.com/denoland/{pkg_name}/releases/tag/{new_version}"
+    );
+    let changelog = format!(
+      "Changelog: {release_url}",
+      release_url = colors::yellow(release_url)
+    );
+
+    let cmd =
+      format!("Run to update: {cmd}", cmd = colors::green("deno upgrade"));
+
+    println!("\n{msg}\n{changelog}\n{cmd}");
+  }
+}
+
 pub fn main() {
   setup_panic_hook();
 
@@ -1092,6 +1121,8 @@ pub fn main() {
   };
 
   let exit_code = unwrap_or_exit(run_local(exit_code));
+
+  check_for_updates();
 
   std::process::exit(exit_code);
 }

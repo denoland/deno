@@ -105,6 +105,7 @@ tokio-util = "=0.7.2"
 tower-lsp = "=0.17.0"
 twox-hash = "=1.6.2"
 typed-arena = "2.0.1"
+update-informer = { version = "0.5.0", default_features = false, features = ["github"] }
 uuid = { version = "=1.0.0", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
 zstd = '=0.11.1'
