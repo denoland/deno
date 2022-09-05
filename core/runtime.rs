@@ -2154,12 +2154,22 @@ impl JsRealm {
 
 #[inline]
 pub fn queue_async_op(
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
   op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
     + 'static,
 ) {
   match OpCall::eager(op) {
-    EagerPollResult::Ready((context, promise_id, _, mut resp)) => {
+    // This calls promise.resolve() before the control goes back to userland JS. It works something
+    // along the lines of:
+    //
+    // function opresolve(promiseId, ...) {
+    //   getPromise(promiseId).resolve(...);
+    // }
+    // const p = setPromise();
+    // op.op_async(promiseId, ...); // Calls `opresolve`
+    // return p;
+    EagerPollResult::Ready((context, promise_id, op_id, mut resp)) => {
       let args = &[
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
@@ -2168,6 +2178,7 @@ pub fn queue_async_op(
       let realm = JsRealm::new(context);
       let js_recv_cb_handle =
         realm.state(scope).borrow().js_recv_cb.clone().unwrap();
+      state.borrow().tracker.track_async_completed(op_id);
 
       let tc_scope = &mut v8::TryCatch::new(scope);
       let js_recv_cb = js_recv_cb_handle.open(tc_scope);

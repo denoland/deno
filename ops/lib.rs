@@ -256,7 +256,7 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(scope, async move {
+    #core::_ops::queue_async_op(state, scope, async move {
       let result = #result_fut
       #result_wrapper
       (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
