@@ -9,7 +9,6 @@ use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::source::ResolveResponse;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -355,13 +354,14 @@ pub async fn create_main_worker(
       .await?;
     ps.npm_resolver.cache_packages().await?;
     ps.prepare_node_std_graph().await?;
-    let resolve_response = node::node_resolve_binary_export(
+    let node_resolution = node::node_resolve_binary_export(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
     )?;
-    let is_main_cjs = matches!(resolve_response, ResolveResponse::CommonJs(_));
-    (resolve_response.to_result()?, is_main_cjs)
+    let is_main_cjs =
+      matches!(node_resolution, node::NodeResolution::CommonJs(_));
+    (node_resolution.into_url(), is_main_cjs)
   } else {
     (main_module, false)
   };
