@@ -87,6 +87,7 @@ impl fast_api::FastFunction for Template {
 impl From<&NativeType> for fast_api::Type {
   fn from(native_type: &NativeType) -> Self {
     match native_type {
+      NativeType::Bool => fast_api::Type::Bool,
       NativeType::U8 | NativeType::U16 | NativeType::U32 => {
         fast_api::Type::Uint32
       }
@@ -214,6 +215,7 @@ impl SysVAmd64 {
     //    > __m64 are in class SSE.
     //
     match param {
+      NativeType::Bool => self.move_integer(U(B)),
       NativeType::F32 => self.move_float(Single),
       NativeType::F64 => self.move_float(Double),
       NativeType::U8 => self.move_integer(U(B)),
@@ -668,6 +670,7 @@ impl Aarch64Apple {
     //    > If the argument is a Half-, Single-, Double- or Quad- precision Floating-point or short vector type
     //    > and the NSRN is less than 8, then the argument is allocated to the least significant bits of register v[NSRN]
     match param {
+      NativeType::Bool => self.move_integer(U(B)),
       NativeType::F32 => self.move_float(Single),
       NativeType::F64 => self.move_float(Double),
       NativeType::U8 => self.move_integer(U(B)),
@@ -736,10 +739,13 @@ impl Aarch64Apple {
   fn move_integer(&mut self, param: Integer) {
     let s = &mut self.assmblr;
     // Section 6.4.2 of the Aarch64 PCS:
-    // > If the argument is an Integral or Pointer Type, the size of the argument is less than or equal to 8 bytes and the NGRN is less than 8,
-    // > the argument is copied to the least significant bits in x[NGRN]. The NGRN is incremented by one. The argument has now been allocated.
-    // > [if NGRN is equal or more than 8]
-    // > The argument is copied to memory at the adjusted NSAA. The NSAA is incremented by the size of the argument. The argument has now been allocated.
+    // If the argument is an Integral or Pointer Type, the size of the argument is less than or
+    // equal to 8 bytes and the NGRN is less than 8, the argument is copied to the least
+    // significant bits in x[NGRN]. The NGRN is incremented by one. The argument has now been
+    // allocated.
+    // [if NGRN is equal or more than 8]
+    // The argument is copied to memory at the adjusted NSAA. The NSAA is incremented by the size
+    // of the argument. The argument has now been allocated.
     let param_i = self.integer_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (x7).
@@ -1171,6 +1177,7 @@ impl Win64 {
 
   fn move_left(&mut self, arg: &NativeType) {
     match arg {
+      NativeType::Bool => self.move_arg(WInt(B)),
       NativeType::F32 | NativeType::F64 => self.move_arg(WFloat),
       NativeType::U8 | NativeType::I8 => self.move_arg(WInt(B)),
       NativeType::U16 | NativeType::I16 => self.move_arg(WInt(W)),
