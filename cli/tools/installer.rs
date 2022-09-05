@@ -333,10 +333,6 @@ fn resolve_shim_data(
     executable_args.push("--no-prompt".to_string());
   }
 
-  if flags.compat {
-    executable_args.push("--compat".to_string());
-  }
-
   if !flags.v8_flags.is_empty() {
     executable_args.push(format!("--v8-flags={}", flags.v8_flags.join(",")));
   }
@@ -592,7 +588,6 @@ mod tests {
         allow_read: Some(vec![]),
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
-        compat: true,
         ..Flags::default()
       },
       &InstallFlags {
@@ -613,7 +608,6 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--compat",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]

@@ -84,6 +84,27 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
   Reflect.deleteProperty(global, "globalPromise");
 });
 
+Deno.test(async function evalPrimordial() {
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+  };
+  global.globalPromise = deferred();
+  const originalEval = globalThis.eval;
+  let wasCalled = false;
+  globalThis.eval = (argument) => {
+    wasCalled = true;
+    return originalEval(argument);
+  };
+  setTimeout(
+    "globalThis.globalPromise.resolve();" as unknown as () => void,
+    0,
+  );
+  await global.globalPromise;
+  assert(!wasCalled);
+  Reflect.deleteProperty(global, "globalPromise");
+  globalThis.eval = originalEval;
+});
+
 Deno.test(async function timeoutArgs() {
   const promise = deferred();
   const arg = 1;
