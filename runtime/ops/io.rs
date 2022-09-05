@@ -29,7 +29,6 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-use tokio::sync::Semaphore;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -162,6 +161,8 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
 
 #[cfg(unix)]
 use nix::sys::termios;
+
+use super::utils::TaskQueue;
 
 #[derive(Default)]
 pub struct TtyMetadata {
@@ -445,8 +446,8 @@ pub struct StdFileResource {
   // asynchronously one at a time in order
   cell: RefCell<Option<StdFileResourceCellValue>>,
   // Used to keep async actions in order and only allow one
-  // to occurr at a time
-  cell_async_sempahore: Semaphore,
+  // to occur at a time
+  cell_async_task_queue: TaskQueue,
 }
 
 impl StdFileResource {
@@ -456,7 +457,7 @@ impl StdFileResource {
         inner,
         meta_data: Default::default(),
       })),
-      cell_async_sempahore: Semaphore::new(1),
+      cell_async_task_queue: Default::default(),
       name: name.to_string(),
     }
   }
@@ -467,7 +468,7 @@ impl StdFileResource {
         inner: StdFileResourceInner::file(fs_file),
         meta_data: Default::default(),
       })),
-      cell_async_sempahore: Semaphore::new(1),
+      cell_async_task_queue: Default::default(),
       name: "fsFile".to_string(),
     }
   }
@@ -498,7 +499,7 @@ impl StdFileResource {
     F: FnOnce(&mut StdFileResourceInner) -> R + Send + 'static,
   {
     // we want to restrict this to one async action at a time
-    let _permit = self.cell_async_sempahore.acquire().await.unwrap();
+    let _permit = self.cell_async_task_queue.acquire().await;
     // we take the value out of the cell, use it on a blocking task,
     // then put it back into the cell when we're done
     let mut did_take = false;
