@@ -17,6 +17,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_graph::source::ResolveResponse;
+use deno_runtime::deno_node::errors;
 use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
@@ -37,19 +38,18 @@ use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 
 mod analyze;
-pub mod errors;
 
 pub use analyze::esm_code_with_node_globals;
 
-pub struct NodeModulePolyfill {
+struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
-  pub name: &'static str,
+  name: &'static str,
 
   /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
-  pub specifier: &'static str,
+  specifier: &'static str,
 }
 
-pub(crate) static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
+static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "assert",
     specifier: "node/assert.ts",
@@ -224,7 +224,7 @@ pub(crate) static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   },
 ];
 
-pub(crate) static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
+static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
   if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
     let url = Url::parse(&url_str).expect(
       "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
@@ -238,7 +238,7 @@ pub(crate) static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
 pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
-pub fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
+fn try_resolve_builtin_module(specifier: &str) -> Option<Url> {
   for module in SUPPORTED_MODULES {
     if module.name == specifier {
       let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
