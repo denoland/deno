@@ -499,7 +499,7 @@ impl StdFileResource {
     F: FnOnce(&mut StdFileResourceInner) -> R + Send + 'static,
   {
     // we want to restrict this to one async action at a time
-    self.cell_async_task_queue.acquire().await;
+    let _permit = self.cell_async_task_queue.acquire().await;
     // we take the value out of the cell, use it on a blocking task,
     // then put it back into the cell when we're done
     let mut did_take = false;
