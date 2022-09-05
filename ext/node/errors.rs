@@ -3,6 +3,7 @@
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 
 pub fn err_invalid_module_specifier(
   request: &str,
@@ -119,4 +120,24 @@ pub fn err_package_import_not_defined(
   msg = format!("{} imported from {}", msg, base);
 
   type_error(msg)
+}
+
+pub fn err_unsupported_dir_import(path: &str, base: &str) -> AnyError {
+  generic_error(format!("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules imported from {}", path, base))
+}
+
+pub fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
+  let mut msg =
+    "[ERR_UNSUPPORTED_ESM_URL_SCHEME] Only file and data URLS are supported by the default ESM loader"
+      .to_string();
+
+  if cfg!(window) && url.scheme().len() == 2 {
+    msg = format!(
+      "{}. On Windows, absolute path must be valid file:// URLs",
+      msg
+    );
+  }
+
+  msg = format!("{}. Received protocol '{}'", msg, url.scheme());
+  generic_error(msg)
 }
