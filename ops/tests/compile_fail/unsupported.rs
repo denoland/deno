@@ -17,6 +17,13 @@ fn op_u16_arg(a: u16, b: u16) {
   //
 }
 
+use deno_core::v8::fast_api::FastApiCallbackOptions;
+
+#[op(fast)]
+fn op_callback_options(options: &mut FastApiCallbackOptions) {
+  // fast callback options must be an Option.
+}
+
 #[op(fast)]
 async fn op_async_fn(a: i32, b: i32) -> i32 {
   a + b

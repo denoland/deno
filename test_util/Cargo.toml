@@ -28,6 +28,7 @@ regex = "1.6.0"
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 ring = "0.16.20"
 rustls-pemfile = "1.0.0"
+semver = "1.0.13"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 tar = "0.4.38"

@@ -304,24 +304,58 @@ fn codegen_fast_impl(
       args,
       ret,
       use_recv,
+      use_fast_cb_opts,
+      v8_values,
     }) = fast_info
     {
+      let offset = if use_recv { 1 } else { 0 };
       let inputs = &f
         .sig
         .inputs
         .iter()
-        .skip(if use_recv { 1 } else { 0 })
+        .skip(offset)
+        .enumerate()
+        .map(|(idx, arg)| {
+          let ident = match arg {
+            FnArg::Receiver(_) => unreachable!(),
+            FnArg::Typed(t) => match &*t.pat {
+              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+              _ => unreachable!(),
+            },
+          };
+          if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
+            return quote! { #ident: *mut #core::v8::fast_api::FastApiCallbackOptions };
+          }
+          if v8_values.contains(&idx) {
+            return quote! { #ident: #core::v8::Local < #core::v8::Value > };
+          }
+          quote!(#arg)
+        })
         .collect::<Vec<_>>();
       let input_idents = f
         .sig
         .inputs
         .iter()
-        .map(|a| match a {
-          FnArg::Receiver(_) => unreachable!(),
-          FnArg::Typed(t) => match &*t.pat {
-            syn::Pat::Ident(i) => format_ident!("{}", i.ident),
-            _ => unreachable!(),
-          },
+        .enumerate()
+        .map(|(idx, a)| {
+          let ident = match a {
+            FnArg::Receiver(_) => unreachable!(),
+            FnArg::Typed(t) => match &*t.pat {
+              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+              _ => unreachable!(),
+            },
+          };
+          if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
+            return quote! { Some(unsafe { &mut * #ident }) };
+          }
+          if v8_values.contains(&idx) {
+            return quote! {
+              #core::serde_v8::Value {
+                v8_value: #ident,
+              }
+            };
+          }
+          quote! { #ident }
         })
         .collect::<Vec<_>>();
       let generics = &f.sig.generics;
@@ -442,7 +476,8 @@ fn codegen_v8_sync(
 
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    let op_state = &*ctx.state.borrow();
+    // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
+    let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
     op_state.tracker.track_sync(ctx.id);
 
     #ret
@@ -453,6 +488,8 @@ struct FastApiSyn {
   args: TokenStream2,
   ret: TokenStream2,
   use_recv: bool,
+  use_fast_cb_opts: bool,
+  v8_values: Vec<usize>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
@@ -466,8 +503,16 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   };
 
   let mut use_recv = false;
+  let mut use_fast_cb_opts = false;
+  let mut v8_values = Vec::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
   for (pos, input) in inputs.iter().enumerate() {
+    if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
+      args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
+      use_fast_cb_opts = true;
+      continue;
+    }
+
     if pos == 0 && is_mut_ref_opstate(input) {
       use_recv = true;
       continue;
@@ -478,16 +523,21 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
       _ => unreachable!(),
     };
 
-    match is_fast_scalar(core, ty, false) {
-      None => match is_fast_arg_sequence(core, ty) {
+    if let Some(arg) = is_fast_v8_value(core, ty) {
+      args.push(arg);
+      v8_values.push(pos);
+    } else {
+      match is_fast_scalar(core, ty, false) {
+        None => match is_fast_arg_sequence(core, ty) {
+          Some(arg) => {
+            args.push(arg);
+          }
+          // early return, this function cannot be a fast call.
+          None => return None,
+        },
         Some(arg) => {
           args.push(arg);
         }
-        // early return, this function cannot be a fast call.
-        None => return None,
-      },
-      Some(arg) => {
-        args.push(arg);
       }
     }
   }
@@ -501,6 +551,8 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     args: args.parse().unwrap(),
     ret,
     use_recv,
+    v8_values,
+    use_fast_cb_opts,
   })
 }
 
@@ -519,6 +571,16 @@ fn is_fast_arg_sequence(
     return Some(
       quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::CType::Void) },
     );
+  }
+  None
+}
+
+fn is_fast_v8_value(
+  core: &TokenStream2,
+  arg: impl ToTokens,
+) -> Option<TokenStream2> {
+  if tokens(&arg).contains("serde_v8 :: Value") {
+    return Some(quote! { #core::v8::fast_api::Type::V8Value });
   }
   None
 }
@@ -558,6 +620,7 @@ fn is_fast_scalar(
     "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
+    "bool" => Some(quote! { #core::v8::fast_api::#cty::Bool }),
     _ => None,
   }
 }
@@ -592,13 +655,38 @@ fn codegen_arg(
   idx: usize,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
-  let pat = match arg {
-    syn::FnArg::Typed(pat) => &pat.pat,
+  let (pat, ty) = match arg {
+    syn::FnArg::Typed(pat) => {
+      if is_optional_fast_callback_option(&pat.ty) {
+        return quote! { let #ident = None; };
+      }
+      (&pat.pat, &pat.ty)
+    }
     _ => unreachable!(),
   };
   // Fast path if arg should be skipped
   if matches!(**pat, syn::Pat::Wild(_)) {
     return quote! { let #ident = (); };
+  }
+  // Fast path for `String`
+  if is_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
+        Err(_) => {
+          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
+        }
+      };
+    };
+  }
+  // Fast path for `Option<String>`
+  if is_option_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => Some(#core::serde_v8::to_utf8(v8_string, scope)),
+        Err(_) => None
+      };
+    };
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -678,6 +766,18 @@ fn is_result(ty: impl ToTokens) -> bool {
     Some(idx) => !tokens.split_at(idx).0.contains('<'),
     None => false,
   }
+}
+
+fn is_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "String"
+}
+
+fn is_option_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "Option < String >"
+}
+
+fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path

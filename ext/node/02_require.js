@@ -390,8 +390,8 @@
     return false;
   };
 
-  Module._nodeModulePaths = function (from) {
-    return ops.op_require_node_module_paths(from);
+  Module._nodeModulePaths = function (fromPath) {
+    return ops.op_require_node_module_paths(fromPath);
   };
 
   Module._resolveLookupPaths = function (request, parent) {
@@ -728,7 +728,7 @@
     const content = ops.op_require_read_file(filename);
 
     if (StringPrototypeEndsWith(filename, ".js")) {
-      const pkg = core.ops.op_require_read_package_scope(filename);
+      const pkg = core.ops.op_require_read_closest_package_json(filename);
       if (pkg && pkg.exists && pkg.typ == "module") {
         let message = `Trying to import ESM module: ${filename}`;
 

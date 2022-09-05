@@ -9,10 +9,7 @@ use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::compat;
-use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
-use crate::emit;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
@@ -29,6 +26,7 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -186,9 +184,6 @@ impl ProcState {
 
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
     // created below
-    let node_resolver = NodeEsmResolver::new(
-      maybe_import_map.clone().map(ImportMapResolver::new),
-    );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
@@ -196,9 +191,7 @@ impl ProcState {
       .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if cli_options.compat() {
-      Some(Arc::new(node_resolver))
-    } else if let Some(jsx_resolver) = maybe_jsx_resolver {
+    > = if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
       // the default Deno explicit import resolution.
       Some(Arc::new(jsx_resolver))
@@ -226,8 +219,10 @@ impl ProcState {
       &dir,
       cli_options.reload_flag(),
       cli_options.cache_setting(),
-      cli_options.unstable(),
-    )?;
+      cli_options.unstable()
+        // don't do the unstable error when in the lsp
+        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+    );
 
     Ok(ProcState(Arc::new(Inner {
       dir,
@@ -284,7 +279,7 @@ impl ProcState {
     // One might argue that this is a code smell, and I would agree. However
     // due to flux in "Node compatibility" it's not clear where it should be
     // decided what `ModuleKind` is decided for root specifier.
-    let roots = roots
+    let roots: Vec<(deno_core::url::Url, deno_graph::ModuleKind)> = roots
       .into_iter()
       .map(|r| {
         if let Some(resolver) = &maybe_resolver {
@@ -304,13 +299,6 @@ impl ProcState {
 
     // TODO(bartlomieju): this is very make-shift, is there an existing API
     // that we could include it like with "maybe_imports"?
-    let roots = if self.options.compat() {
-      let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
-      r.extend(roots);
-      r
-    } else {
-      roots
-    };
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
@@ -387,32 +375,6 @@ impl ProcState {
     )
     .await;
 
-    let needs_cjs_esm_translation = graph
-      .modules()
-      .iter()
-      .any(|m| m.kind == ModuleKind::CommonJs);
-
-    if needs_cjs_esm_translation {
-      for module in graph.modules() {
-        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
-        // in compat mode, all files ending with plain `.js` extension are
-        // considered CommonJs modules. Which leads to situation where valid
-        // ESM modules with `.js` extension might undergo translation (it won't
-        // work in this situation).
-        if module.kind == ModuleKind::CommonJs {
-          let translated_source = compat::translate_cjs_to_esm(
-            &self.file_fetcher,
-            &module.specifier,
-            module.maybe_source.as_ref().unwrap().to_string(),
-            module.media_type,
-          )?;
-          let mut graph_data = self.graph_data.write();
-          graph_data
-            .add_cjs_esm_translation(&module.specifier, translated_source);
-        }
-      }
-    }
-
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -451,7 +413,7 @@ impl ProcState {
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
-      let options = emit::CheckOptions {
+      let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
@@ -467,7 +429,7 @@ impl ProcState {
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
       let check_result =
-        emit::check(&roots, graph_data, &check_cache, options)?;
+        check::check(&roots, graph_data, &check_cache, options)?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }

@@ -312,9 +312,6 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  /// If true, a list of Node built-in modules will be injected into
-  /// the import map.
-  pub compat: bool,
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
@@ -754,6 +751,7 @@ fn check_subcommand<'a>() -> Command<'a> {
     Arg::new("remote")
       .long("remote")
       .help("Type-check all modules, including remote")
+      .conflicts_with("no-remote")
     )
     .arg(
       Arg::new("file")
@@ -1868,7 +1866,6 @@ fn runtime_args(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
-    .arg(compat_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -2006,21 +2003,6 @@ fn seed_arg<'a>() -> Arg<'a> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
-}
-
-static COMPAT_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "See https://deno.land/manual@v{}/node/compatibility_mode",
-    SHORT_VERSION.as_str()
-  )
-});
-
-fn compat_arg<'a>() -> Arg<'a> {
-  Arg::new("compat")
-    .long("compat")
-    .requires("unstable")
-    .help("UNSTABLE: Node compatibility mode.")
-    .long_help(COMPAT_HELP.as_str())
 }
 
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
@@ -2915,7 +2897,6 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
-  compat_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
 
@@ -2997,12 +2978,6 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
     flags.seed = Some(seed);
 
     flags.v8_flags.push(format!("--random-seed={}", seed));
-  }
-}
-
-fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("compat") {
-    flags.compat = true;
   }
 }
 
@@ -3835,6 +3810,15 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--remote",
+      "--no-remote",
+      "script.ts"
+    ]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
   }
 
   #[test]
@@ -5556,23 +5540,6 @@ mod tests {
   }
 
   #[test]
-  fn compat() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "foo.js".to_string(),
-        }),
-        compat: true,
-        unstable: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
@@ -5993,6 +5960,16 @@ mod tests {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: Some(String::from("foo")),
         }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--quiet"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        log_level: Some(Level::Error),
         ..Flags::default()
       }
     );

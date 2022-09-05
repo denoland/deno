@@ -61,6 +61,13 @@ itest!(cjs_reexport_collision {
   http_server: true,
 });
 
+itest!(translate_cjs_to_esm {
+  args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
+  output: "npm/translate_cjs_to_esm/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(compare_globals {
   args: "run --allow-read --unstable npm/compare_globals/main.js",
   output: "npm/compare_globals/main.out",
@@ -71,6 +78,13 @@ itest!(compare_globals {
 itest!(conditional_exports {
   args: "run --allow-read --unstable npm/conditional_exports/main.js",
   output: "npm/conditional_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(dual_cjs_esm {
+  args: "run --unstable -A --quiet npm/dual_cjs_esm/main.ts",
+  output: "npm/dual_cjs_esm/main.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -108,6 +122,21 @@ itest!(sub_paths {
   output: "npm/sub_paths/main.out",
   envs: env_vars(),
   http_server: true,
+});
+
+itest!(tarball_with_global_header {
+  args: "run --unstable -A --quiet npm/tarball_with_global_header/main.js",
+  output: "npm/tarball_with_global_header/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(nonexistent_file {
+  args: "run --unstable -A --quiet npm/nonexistent_file/main.js",
+  output: "npm/nonexistent_file/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
 });
 
 #[test]

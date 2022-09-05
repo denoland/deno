@@ -18,6 +18,11 @@ itest!(stdin_read_all {
   input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
+itest!(stdout_write_sync_async {
+  args: "run --quiet run/stdout_write_sync_async.ts",
+  output: "run/stdout_write_sync_async.out",
+});
+
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
