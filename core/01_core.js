@@ -314,7 +314,6 @@
       error,
     ) => ops.op_abort_wasm_streaming(rid, error),
     destructureError: (error) => ops.op_destructure_error(error),
-    terminate: (exception) => ops.op_terminate(exception),
     opNames: () => ops.op_op_names(),
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),

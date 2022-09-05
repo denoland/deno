@@ -35,7 +35,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use crate::args::config_file::JsxImportSourceConfig;
-use crate::compat;
 use crate::deno_dir::DenoDir;
 use crate::emit::get_ts_config_for_emit;
 use crate::emit::TsConfigType;
@@ -230,9 +229,6 @@ impl CliOptions {
         imports.extend(config_imports);
       }
     }
-    if self.flags.compat {
-      imports.extend(compat::get_node_imports());
-    }
     if imports.is_empty() {
       Ok(None)
     } else {
@@ -275,10 +271,6 @@ impl CliOptions {
       .as_ref()
       .map(|cf| cf.get_check_js())
       .unwrap_or(false)
-  }
-
-  pub fn compat(&self) -> bool {
-    self.flags.compat
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
