@@ -2154,14 +2154,33 @@ impl JsRealm {
 
 #[inline]
 pub fn queue_async_op(
-  scope: &v8::Isolate,
+  scope: &mut v8::HandleScope,
   op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
     + 'static,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  state.pending_ops.push(OpCall::eager(op));
-  state.have_unpolled_ops = true;
+  match OpCall::eager(op) {
+    EagerPollResult::Ready((context, promise_id, _, mut resp)) => {
+      let args = &[
+        v8::Integer::new(scope, promise_id).into(),
+        resp.to_v8(scope).unwrap(),
+      ];
+
+      let realm = JsRealm::new(context);
+      let js_recv_cb_handle =
+        realm.state(scope).borrow().js_recv_cb.clone().unwrap();
+
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let this = v8::undefined(tc_scope).into();
+      js_recv_cb.call(tc_scope, this, args);
+    }
+    EagerPollResult::Pending(op) => {
+      let state_rc = JsRuntime::state(scope);
+      let mut state = state_rc.borrow_mut();
+      state.pending_ops.push(op);
+      state.have_unpolled_ops = true;
+    }
+  }
 }
 
 #[cfg(test)]
