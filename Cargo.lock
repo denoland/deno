@@ -831,7 +831,6 @@ dependencies = [
  "mitata",
  "monch",
  "nix",
- "node_resolver",
  "notify",
  "once_cell",
  "os_pipe",
@@ -2788,18 +2787,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
-]
-
-[[package]]
-name = "node_resolver"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1012fcb4f5cc14c272731f4baf6ba8a2d40c650908f4d2531f7ed17f214e5ae"
-dependencies = [
- "anyhow",
- "path-clean",
- "serde",
- "serde_json",
 ]
 
 [[package]]
