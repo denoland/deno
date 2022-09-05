@@ -855,16 +855,17 @@ fn resolve(
 
   // We've got a bare specifier or maybe bare_specifier/blah.js"
 
-  let (_, package_subpath) = parse_specifier(specifier).unwrap();
+  let (package_specifier, package_subpath) = parse_specifier(specifier).unwrap();
 
   // todo(dsherret): use not_found error on not found here
   let module_dir =
-    npm_resolver.resolve_package_folder_from_path(&referrer_path)?;
+    npm_resolver.resolve_package_folder_from_package(&package_specifier.as_str(), &referrer_path)?;
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
     let package_json = PackageJson::load(npm_resolver, package_json_path)?;
 
+    // eprintln!("resolve exports {:?} {:?} {:?} {:#?}", specifier, package_subpath, referrer.as_str(), &package_json);
     if let Some(map) = package_json.exports {
       if let Some((key, subpath)) = exports_resolve(&map, &package_subpath) {
         let value = map.get(&key).unwrap();
@@ -901,6 +902,7 @@ fn conditions_resolve(value: &Value, conditions: &[&str]) -> String {
     Value::String(s) => s.to_string(),
     Value::Object(map) => {
       for condition in conditions {
+        eprintln!("condition {}", condition);
         if let Some(x) = map.get(&condition.to_string()) {
           if let Value::String(s) = x {
             return s.to_string();
