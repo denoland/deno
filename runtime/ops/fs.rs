@@ -108,14 +108,6 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenArgs {
-  path: String,
-  mode: Option<u32>,
-  options: OpenOptions,
-}
-
 #[derive(Deserialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -222,58 +214,47 @@ async fn op_open_async(
   Ok(rid)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WriteFileArgs {
-  path: String,
-  mode: Option<u32>,
-  append: bool,
-  create: bool,
-  data: ZeroCopyBuf,
-  cancel_rid: Option<ResourceId>,
-}
-
-impl WriteFileArgs {
-  fn into_open_args_and_data(self) -> (OpenArgs, ZeroCopyBuf) {
-    (
-      OpenArgs {
-        path: self.path,
-        mode: self.mode,
-        options: OpenOptions {
-          read: false,
-          write: true,
-          create: self.create,
-          truncate: !self.append,
-          append: self.append,
-          create_new: false,
-        },
-      },
-      self.data,
-    )
+#[inline]
+fn write_open_options(create: bool, append: bool) -> OpenOptions {
+  OpenOptions {
+    read: false,
+    write: true,
+    create,
+    truncate: !append,
+    append,
+    create_new: false,
   }
 }
 
 #[op]
 fn op_write_file_sync(
   state: &mut OpState,
-  args: WriteFileArgs,
+  path: String,
+  mode: Option<u32>,
+  append: bool,
+  create: bool,
+  data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let (open_args, data) = args.into_open_args_and_data();
   let (path, open_options) = open_helper(
     state,
-    &open_args.path,
-    open_args.mode,
-    Some(&open_args.options),
+    &path,
+    mode,
+    Some(&write_open_options(create, append)),
   )?;
-  write_file(&path, open_options, &open_args, data)
+  write_file(&path, open_options, mode, data)
 }
 
 #[op]
 async fn op_write_file_async(
   state: Rc<RefCell<OpState>>,
-  args: WriteFileArgs,
+  path: String,
+  mode: Option<u32>,
+  append: bool,
+  create: bool,
+  data: ZeroCopyBuf,
+  cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError> {
-  let cancel_handle = match args.cancel_rid {
+  let cancel_handle = match cancel_rid {
     Some(cancel_rid) => state
       .borrow_mut()
       .resource_table
@@ -281,15 +262,14 @@ async fn op_write_file_async(
       .ok(),
     None => None,
   };
-  let (open_args, data) = args.into_open_args_and_data();
   let (path, open_options) = open_helper(
     &mut *state.borrow_mut(),
-    &open_args.path,
-    open_args.mode,
-    Some(&open_args.options),
+    &path,
+    mode,
+    Some(&write_open_options(create, append)),
   )?;
   let write_future = tokio::task::spawn_blocking(move || {
-    write_file(&path, open_options, &open_args, data)
+    write_file(&path, open_options, mode, data)
   });
   if let Some(cancel_handle) = cancel_handle {
     write_future.or_cancel(cancel_handle).await???;
@@ -302,7 +282,7 @@ async fn op_write_file_async(
 fn write_file(
   path: &Path,
   open_options: std::fs::OpenOptions,
-  _open_args: &OpenArgs,
+  _mode: Option<u32>,
   data: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
   let mut std_file = open_options.open(path).map_err(|err| {
@@ -311,7 +291,7 @@ fn write_file(
 
   // need to chmod the file if it already exists and a mode is specified
   #[cfg(unix)]
-  if let Some(mode) = &_open_args.mode {
+  if let Some(mode) = _mode {
     use std::os::unix::fs::PermissionsExt;
     let permissions = PermissionsExt::from_mode(mode & 0o777);
     std_file
