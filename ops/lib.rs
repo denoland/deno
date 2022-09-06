@@ -51,6 +51,7 @@ struct MacroArgs {
   is_unstable: bool,
   is_v8: bool,
   must_be_fast: bool,
+  deferred: bool,
 }
 
 impl syn::parse::Parse for MacroArgs {
@@ -62,7 +63,7 @@ impl syn::parse::Parse for MacroArgs {
     let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
     let vars: Vec<_> = vars.iter().map(String::as_str).collect();
     for var in vars.iter() {
-      if !["unstable", "v8", "fast"].contains(var) {
+      if !["unstable", "v8", "fast", "deferred"].contains(var) {
         return Err(syn::Error::new(
           input.span(),
           "Ops expect #[op] or #[op(unstable)]",
@@ -73,6 +74,7 @@ impl syn::parse::Parse for MacroArgs {
       is_unstable: vars.contains(&"unstable"),
       is_v8: vars.contains(&"v8"),
       must_be_fast: vars.contains(&"fast"),
+      deferred: vars.contains(&"deferred"),
     })
   }
 }
@@ -84,6 +86,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
     is_unstable,
     is_v8,
     must_be_fast,
+    deferred,
   } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
@@ -110,7 +113,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let asyncness = func.sig.asyncness.is_some();
   let is_async = asyncness || is_future(&func.sig.output);
   let v8_body = if is_async {
-    codegen_v8_async(&core, &func, margs, asyncness)
+    codegen_v8_async(&core, &func, margs, asyncness, deferred)
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
@@ -173,6 +176,7 @@ fn codegen_v8_async(
   f: &syn::ItemFn,
   margs: MacroArgs,
   asyncness: bool,
+  deferred: bool,
 ) -> TokenStream2 {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
@@ -256,7 +260,7 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(scope, async move {
+    #core::_ops::queue_async_op(state, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
