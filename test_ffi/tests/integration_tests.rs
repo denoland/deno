@@ -116,7 +116,7 @@ fn basic() {
     0\n\
     0\n\
     78\n\
-    45\n\
+    78\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
     Thread safe call counter: 0\n\

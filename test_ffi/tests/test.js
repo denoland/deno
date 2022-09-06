@@ -480,11 +480,10 @@ testOptimized(castU32U8Fast, () => castU32U8Fast(256));
 function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { 
   return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
 };
-// TODO: this test currently fails in aarch64-apple-darwin (also in branch main!). The reason is v8 does not follow Apple's custom
-// ABI properly (aligns arguments to 8 byte boundaries instead of the natural alignment of the parameter type).
-// A decision needs to be taken:
-// 1. leave it broken and wait for v8 to fix the bug
-// 2. Adapt to v8 bug and follow its ABI instead of Apple's. When V8 fixes the implementation, we'll have to fix it here as well
+// N.B. V8 does not currently follow Aarch64 Apple's calling convention.
+// The current implementation of the JIT trampoline follows the V8 incorrect calling convention. This test covers the use-case
+// and is expected to fail once Deno uses a V8 version with the bug fixed.
+// The V8 bug is being tracked in https://bugs.chromium.org/p/v8/issues/detail?id=13171
 testOptimized(addManyU16Fast, () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
 
 

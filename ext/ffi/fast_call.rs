@@ -124,7 +124,7 @@ struct SysVAmd64 {
   // Reference: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
   assmblr: dynasmrt::x64::Assembler,
   // Parameter counters
-  integer_params: u32,
+  integral_params: u32,
   float_params: u32,
   // Stack offset accumulators
   offset_trampoline: u32,
@@ -138,15 +138,15 @@ struct SysVAmd64 {
   allow(dead_code)
 )]
 impl SysVAmd64 {
-  // Integer arguments go to the following GPR, in order: rdi, rsi, rdx, rcx, r8, r9
-  const INTEGER_REGISTERS: u32 = 6;
+  // Integral arguments go to the following GPR, in order: rdi, rsi, rdx, rcx, r8, r9
+  const INTEGRAL_REGISTERS: u32 = 6;
   // SSE arguments go to the first 8 SSE registers: xmm0-xmm7
   const FLOAT_REGISTERS: u32 = 8;
 
   fn new() -> Self {
     Self {
       assmblr: dynasmrt::x64::Assembler::new().unwrap(),
-      integer_params: 0,
+      integral_params: 0,
       float_params: 0,
       // Start at 8 to account for trampoline caller's return address
       offset_trampoline: 8,
@@ -174,7 +174,7 @@ impl SysVAmd64 {
       compiler.allocate_stack(&sym.parameter_types);
     }
 
-    for param in &sym.parameter_types {
+    for param in sym.parameter_types.iter().copied() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
@@ -205,7 +205,7 @@ impl SysVAmd64 {
     Trampoline(compiler.finalize())
   }
 
-  fn move_left(&mut self, param: &NativeType) {
+  fn move_left(&mut self, param: NativeType) {
     // Section 3.2.3 of the SysV ABI spec, on argument classification:
     // - INTEGER:
     //    > Arguments of types (signed and unsigned) _Bool, char, short, int,
@@ -213,27 +213,13 @@ impl SysVAmd64 {
     // - SSE:
     //    > Arguments of types float, double, _Decimal32, _Decimal64 and
     //    > __m64 are in class SSE.
-    //
-    match param {
-      NativeType::Bool => self.move_integer(U(B)),
-      NativeType::F32 => self.move_float(Single),
-      NativeType::F64 => self.move_float(Double),
-      NativeType::U8 => self.move_integer(U(B)),
-      NativeType::U16 => self.move_integer(U(W)),
-      NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64
-      | NativeType::USize
-      | NativeType::Pointer
-      | NativeType::Function => self.move_integer(U(QW)),
-      NativeType::Buffer => self.move_integer(Buffer),
-      NativeType::I8 => self.move_integer(I(B)),
-      NativeType::I16 => self.move_integer(I(W)),
-      NativeType::I32 => self.move_integer(I(DW)),
-      NativeType::I64 | NativeType::ISize => self.move_integer(I(QW)),
+    match param.into() {
+      Int(integral) => self.move_integral(integral),
+      Float(float) => self.move_float(float),
     }
   }
 
-  fn move_float(&mut self, param: Float) {
+  fn move_float(&mut self, param: Floating) {
     // Section 3.2.3 of the SysV AMD64 ABI:
     // > If the class is SSE, the next available vector register is used, the registers
     // > are taken in the order from %xmm0 to %xmm7.
@@ -245,7 +231,7 @@ impl SysVAmd64 {
     let is_in_stack = param_i >= Self::FLOAT_REGISTERS;
     // floats are only moved to accommodate integer movement in the stack
     let stack_has_moved = self.allocated_stack > 0
-      || self.integer_params >= Self::INTEGER_REGISTERS;
+      || self.integral_params >= Self::INTEGRAL_REGISTERS;
 
     if is_in_stack && stack_has_moved {
       let s = &mut self.assmblr;
@@ -274,7 +260,7 @@ impl SysVAmd64 {
     self.float_params += 1;
   }
 
-  fn move_integer(&mut self, arg: Integer) {
+  fn move_integral(&mut self, arg: Integral) {
     // Section 3.2.3 of the SysV AMD64 ABI:
     // > If the class is INTEGER, the next available register of the sequence %rdi,
     // > %rsi, %rdx, %rcx, %r8 and %r9 is used
@@ -282,7 +268,7 @@ impl SysVAmd64 {
     // > Once registers are assigned, the arguments passed in memory are pushed on
     // > the stack in reversed (right-to-left) order
     let s = &mut self.assmblr;
-    let param_i = self.integer_params;
+    let param_i = self.integral_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (r9).
     // If the FFI function is called with a new stack frame, the arguments remaining in the stack are copied to the new stack frame.
@@ -400,12 +386,12 @@ impl SysVAmd64 {
         );
       }
     }
-    self.integer_params += 1;
+    self.integral_params += 1;
   }
 
   fn zero_first_arg(&mut self) {
     debug_assert!(
-      self.integer_params == 0,
+      self.integral_params == 0,
       "the trampoline would zero the first argument after having overridden it with the second one"
     );
     dynasm!(self.assmblr
@@ -432,7 +418,7 @@ impl SysVAmd64 {
     let s = &mut self.assmblr;
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
-    match self.integer_params {
+    match self.integral_params {
       // rdi is always V8 receiver
       0 => x64!(s; mov rbx, [rsi + 8]),
       1 => x64!(s; mov rbx, [rdx + 8]),
@@ -479,7 +465,7 @@ impl SysVAmd64 {
         _ => int_params += 1,
       }
     }
-    let mut stack_size = (int_params.saturating_sub(Self::INTEGER_REGISTERS)
+    let mut stack_size = (int_params.saturating_sub(Self::INTEGRAL_REGISTERS)
       + float_params.saturating_sub(Self::FLOAT_REGISTERS))
       * 8;
 
@@ -559,7 +545,7 @@ impl SysVAmd64 {
 
   fn is_recv_arg_overridden(&self) -> bool {
     // V8 receiver is the first parameter of the trampoline function and is a pointer
-    self.integer_params > 0
+    self.integral_params > 0
   }
 
   fn must_cast_return_value(&self, rv: NativeType) -> bool {
@@ -586,7 +572,7 @@ struct Aarch64Apple {
   // Reference https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
   assmblr: dynasmrt::aarch64::Assembler,
   // Parameter counters
-  integer_params: u32,
+  integral_params: u32,
   float_params: u32,
   // Stack offset accumulators
   offset_trampoline: u32,
@@ -599,15 +585,15 @@ struct Aarch64Apple {
   allow(dead_code)
 )]
 impl Aarch64Apple {
-  // Integer arguments go to the first 8 GPR: x0-x7
-  const INTEGER_REGISTERS: u32 = 8;
+  // Integral arguments go to the first 8 GPR: x0-x7
+  const INTEGRAL_REGISTERS: u32 = 8;
   // Floating-point arguments go to the first 8 SIMD & Floating-Point registers: v0-v1
   const FLOAT_REGISTERS: u32 = 8;
 
   fn new() -> Self {
     Self {
       assmblr: dynasmrt::aarch64::Assembler::new().unwrap(),
-      integer_params: 0,
+      integral_params: 0,
       float_params: 0,
       offset_trampoline: 0,
       offset_callee: 0,
@@ -631,7 +617,7 @@ impl Aarch64Apple {
       }
     }
 
-    for param in &sym.parameter_types {
+    for param in sym.parameter_types.iter().copied() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
@@ -660,7 +646,7 @@ impl Aarch64Apple {
     Trampoline(compiler.finalize())
   }
 
-  fn move_left(&mut self, param: &NativeType) {
+  fn move_left(&mut self, param: NativeType) {
     // Section 6.4.2 of the Aarch64 Procedure Call Standard (PCS), on argument classification:
     // - INTEGRAL or POINTER:
     //    > If the argument is an Integral or Pointer Type, the size of the argument is less than or equal to 8 bytes
@@ -669,26 +655,13 @@ impl Aarch64Apple {
     // - Floating-Point or Vector:
     //    > If the argument is a Half-, Single-, Double- or Quad- precision Floating-point or short vector type
     //    > and the NSRN is less than 8, then the argument is allocated to the least significant bits of register v[NSRN]
-    match param {
-      NativeType::Bool => self.move_integer(U(B)),
-      NativeType::F32 => self.move_float(Single),
-      NativeType::F64 => self.move_float(Double),
-      NativeType::U8 => self.move_integer(U(B)),
-      NativeType::U16 => self.move_integer(U(W)),
-      NativeType::U32 | NativeType::Void => self.move_integer(U(DW)),
-      NativeType::U64
-      | NativeType::Pointer
-      | NativeType::USize
-      | NativeType::Function => self.move_integer(U(QW)),
-      NativeType::Buffer => self.move_integer(Buffer),
-      NativeType::I8 => self.move_integer(I(B)),
-      NativeType::I16 => self.move_integer(I(W)),
-      NativeType::I32 => self.move_integer(I(DW)),
-      NativeType::I64 | NativeType::ISize => self.move_integer(I(QW)),
+    match param.into() {
+      Int(integral) => self.move_integral(integral),
+      Float(float) => self.move_float(float),
     }
   }
 
-  fn move_float(&mut self, param: Float) {
+  fn move_float(&mut self, param: Floating) {
     // Section 6.4.2 of the Aarch64 PCS:
     // > If the argument is a Half-, Single-, Double- or Quad- precision Floating-point or short vector type and the NSRN is less than 8, then the
     // > argument is allocated to the least significant bits of register v[NSRN]. The NSRN is incremented by one. The argument has now been allocated.
@@ -707,7 +680,7 @@ impl Aarch64Apple {
         (param.size() - self.offset_callee % param.size()) % param.size();
 
       // floats are only moved to accommodate integer movement in the stack
-      let stack_has_moved = self.integer_params >= Self::INTEGER_REGISTERS;
+      let stack_has_moved = self.integral_params >= Self::INTEGRAL_REGISTERS;
       if stack_has_moved {
         let s = &mut self.assmblr;
         let ot = self.offset_trampoline;
@@ -736,7 +709,7 @@ impl Aarch64Apple {
     self.float_params += 1;
   }
 
-  fn move_integer(&mut self, param: Integer) {
+  fn move_integral(&mut self, param: Integral) {
     let s = &mut self.assmblr;
     // Section 6.4.2 of the Aarch64 PCS:
     // If the argument is an Integral or Pointer Type, the size of the argument is less than or
@@ -746,7 +719,7 @@ impl Aarch64Apple {
     // [if NGRN is equal or more than 8]
     // The argument is copied to memory at the adjusted NSAA. The NSAA is incremented by the size
     // of the argument. The argument has now been allocated.
-    let param_i = self.integer_params;
+    let param_i = self.integral_params;
 
     // move each argument one position to the left. The first argument in the stack moves to the last integer register (x7).
     match (param_i, param) {
@@ -848,17 +821,18 @@ impl Aarch64Apple {
       }
 
       (8.., param) => {
-        let size_original = param.size();
-        // 16 and 8 bit integers are 32 bit integers in v8
-        let size_trampl = max(size_original, 4);
         // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms:
         // > Function arguments may consume slots on the stack that are not multiples of 8 bytes.
         // (i.e. natural alignment instead of eightbyte alignment)
         //
-        // TODO: V8 does not currently follow this Apple's policy, and instead aligns all arguments to 8 Byte boundaries.
-        // A decision needs to be taken:
-        // 1. leave it broken and wait for v8 to fix the bug
-        // 2. Adapt to v8 bug and follow its ABI instead of Apple's. When V8 fixes the implementation, we'll have to fix it here as well
+        // N.B. V8 does not currently follow this Apple's policy, and instead aligns all arguments to 8 Byte boundaries.
+        // The current implementation follows the V8 incorrect calling convention for the sake of a seamless experience
+        // for the Deno users. Whenever upgrading V8 we should make sure that the bug has not been amended, and revert this
+        // workaround once it has been. The bug is being tracked in https://bugs.chromium.org/p/v8/issues/detail?id=13171
+        let size_original = param.size();
+        // 16 and 8 bit integers are 32 bit integers in v8
+        // let size_trampl = max(size_original, 4);  // <-- Apple alignment
+        let size_trampl = 8; // <-- V8 incorrect alignment
         let padding_trampl =
           padding_to_align(size_trampl, self.offset_trampoline);
         let padding_callee =
@@ -868,6 +842,7 @@ impl Aarch64Apple {
         match param {
           I(B) | U(B) => aarch64!(s
             ; ldr w8, [sp, ot + padding_trampl]
+            // TODO: INVESTIGATE IF V8 extends or not
             ; strb w8, [sp, oc + padding_callee]
           ),
           I(W) | U(W) => aarch64!(s
@@ -897,12 +872,12 @@ impl Aarch64Apple {
         );
       }
     };
-    self.integer_params += 1;
+    self.integral_params += 1;
   }
 
   fn zero_first_arg(&mut self) {
     debug_assert!(
-      self.integer_params == 0,
+      self.integral_params == 0,
       "the trampoline would zero the first argument after having overridden it with the second one"
     );
     aarch64!(self.assmblr; mov x0, xzr);
@@ -912,7 +887,7 @@ impl Aarch64Apple {
     let s = &mut self.assmblr;
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
-    match self.integer_params {
+    match self.integral_params {
       // x0 is always V8's receiver
       0 => aarch64!(s; ldr x19, [x1, 8]),
       1 => aarch64!(s; ldr x19, [x2, 8]),
@@ -979,17 +954,28 @@ impl Aarch64Apple {
   }
 
   fn allocate_stack(&mut self, symbol: &Symbol) {
+    // https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms:
+    // > Function arguments may consume slots on the stack that are not multiples of 8 bytes.
+    // (i.e. natural alignment instead of eightbyte alignment)
     let mut int_params = 0u32;
     let mut float_params = 0u32;
-    for param in &symbol.parameter_types {
-      match param {
-        NativeType::F32 | NativeType::F64 => float_params += 1,
-        _ => int_params += 1,
+    let mut stack_size = 0u32;
+    for param in symbol.parameter_types.iter().copied() {
+      match param.into() {
+        Float(float_param) => {
+          float_params += 1;
+          if float_params > Self::FLOAT_REGISTERS {
+            stack_size += float_param.size();
+          }
+        }
+        Int(integral_param) => {
+          int_params += 1;
+          if int_params > Self::INTEGRAL_REGISTERS {
+            stack_size += integral_param.size();
+          }
+        }
       }
     }
-    let mut stack_size = (int_params.saturating_sub(Self::INTEGER_REGISTERS)
-      + float_params.saturating_sub(Self::FLOAT_REGISTERS))
-      * 8;
 
     // Section 6.2.3 of the Aarch64 PCS:
     // > Each frame shall link to the frame of its caller by means of a frame record of two 64-bit values on the stack
@@ -1076,7 +1062,7 @@ impl Aarch64Apple {
 
   fn is_recv_arg_overridden(&self) -> bool {
     // V8 receiver is the first parameter of the trampoline function and is a pointer
-    self.integer_params > 0
+    self.integral_params > 0
   }
 
   fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
@@ -1144,7 +1130,7 @@ impl Win64 {
       compiler.allocate_stack(&sym.parameter_types);
     }
 
-    for param in &sym.parameter_types {
+    for param in sym.parameter_types.iter().copied() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
@@ -1175,26 +1161,11 @@ impl Win64 {
     Trampoline(compiler.finalize())
   }
 
-  fn move_left(&mut self, arg: &NativeType) {
-    match arg {
-      NativeType::Bool => self.move_arg(WInt(B)),
-      NativeType::F32 | NativeType::F64 => self.move_arg(WFloat),
-      NativeType::U8 | NativeType::I8 => self.move_arg(WInt(B)),
-      NativeType::U16 | NativeType::I16 => self.move_arg(WInt(W)),
-      NativeType::U32 | NativeType::I32 | NativeType::Void => {
-        self.move_arg(WInt(DW))
-      }
-      NativeType::U64
-      | NativeType::USize
-      | NativeType::Pointer
-      | NativeType::Function
-      | NativeType::I64
-      | NativeType::ISize => self.move_arg(WInt(QW)),
-      NativeType::Buffer => self.move_arg(WBuffer),
-    }
+  fn move_left(&mut self, param: NativeType) {
+    self.move_arg(param.into());
   }
 
-  fn move_arg(&mut self, param: WinParam) {
+  fn move_arg(&mut self, param: Param) {
     // Section "Parameter Passing" of the Windows x64 calling convention:
     // > By default, the x64 calling convention passes the first four arguments to a function in registers.
     // > The registers used for these arguments depend on the position and type of the argument.
@@ -1214,44 +1185,44 @@ impl Win64 {
       // > All integer arguments in registers are right-justified, so the callee can ignore the upper bits of the register
       // > and access only the portion of the register necessary.
       // (i.e. unlike in SysV or Aarch64-Apple, 8/16 bit integers are not expected to be zero/sign extended)
-      (0, WInt(B | W | DW)) => x64!(s; mov ecx, edx),
-      (0, WInt(QW)) => x64!(s; mov rcx, rdx),
+      (0, Int(U(B | W | DW) | I(B | W | DW))) => x64!(s; mov ecx, edx),
+      (0, Int(U(QW) | I(QW))) => x64!(s; mov rcx, rdx),
       // The fast API expects buffer arguments passed as a pointer to a FastApiTypedArray<Uint8> struct
       // Here we blindly follow the layout of https://github.com/denoland/rusty_v8/blob/main/src/fast_api.rs#L190-L200
       // although that might be problematic: https://discord.com/channels/684898665143206084/956626010248478720/1009450940866252823
-      (0, WBuffer) => x64!(s; mov rcx, [rdx + 8]),
+      (0, Int(Buffer)) => x64!(s; mov rcx, [rdx + 8]),
       // Use movaps for singles and doubles, benefits of smaller encoding outweigh those of using the correct instruction for the type,
       // which for doubles should technically be movapd
-      (0, WFloat) => {
+      (0, Float(_)) => {
         x64!(s; movaps xmm0, xmm1);
         self.zero_first_arg();
       }
 
-      (1, WInt(B | W | DW)) => x64!(s; mov edx, r8d),
-      (1, WInt(QW)) => x64!(s; mov rdx, r8),
-      (1, WBuffer) => x64!(s; mov rdx, [r8 + 8]),
-      (1, WFloat) => x64!(s; movaps xmm1, xmm2),
+      (1, Int(U(B | W | DW) | I(B | W | DW))) => x64!(s; mov edx, r8d),
+      (1, Int(U(QW) | I(QW))) => x64!(s; mov rdx, r8),
+      (1, Int(Buffer)) => x64!(s; mov rdx, [r8 + 8]),
+      (1, Float(_)) => x64!(s; movaps xmm1, xmm2),
 
-      (2, WInt(B | W | DW)) => x64!(s; mov r8d, r9d),
-      (2, WInt(QW)) => x64!(s; mov r8, r9),
-      (2, WBuffer) => x64!(s; mov r8, [r9 + 8]),
-      (2, WFloat) => x64!(s; movaps xmm2, xmm3),
+      (2, Int(U(B | W | DW) | I(B | W | DW))) => x64!(s; mov r8d, r9d),
+      (2, Int(U(QW) | I(QW))) => x64!(s; mov r8, r9),
+      (2, Int(Buffer)) => x64!(s; mov r8, [r9 + 8]),
+      (2, Float(_)) => x64!(s; movaps xmm2, xmm3),
 
       (3, param) => {
         let ot = self.offset_trampoline as i32;
         match param {
-          WInt(B | W | DW) => {
+          Int(U(B | W | DW) | I(B | W | DW)) => {
             x64!(s; mov r9d, [rsp + ot])
           }
-          WInt(QW) => {
+          Int(U(QW) | I(QW)) => {
             x64!(s; mov r9, [rsp + ot])
           }
-          WBuffer => {
+          Int(Buffer) => {
             x64!(s
               ; mov r9, [rsp + ot]
               ; mov r9, [r9 + 8])
           }
-          WFloat => {
+          Float(_) => {
             // parameter 4 is always 16-byte aligned, so we can use movaps instead of movups
             x64!(s; movaps xmm3, [rsp + ot])
           }
@@ -1265,26 +1236,26 @@ impl Win64 {
         let ot = self.offset_trampoline as i32;
         let oc = self.offset_callee as i32;
         match param {
-          WInt(B | W | DW) => {
+          Int(U(B | W | DW) | I(B | W | DW)) => {
             x64!(s
               ; mov eax, [rsp + ot]
               ; mov [rsp + oc], eax
             )
           }
-          WInt(QW) => {
+          Int(U(QW) | I(QW)) => {
             x64!(s
               ; mov rax, [rsp + ot]
               ; mov [rsp + oc], rax
             )
           }
-          WBuffer => {
+          Int(Buffer) => {
             x64!(s
               ; mov rax, [rsp + ot]
               ; mov rax, [rax + 8]
               ; mov [rsp + oc], rax
             )
           }
-          WFloat => {
+          Float(_) => {
             x64!(s
               ; movups xmm4, [rsp + ot]
               ; movups [rsp + oc], xmm4
@@ -1474,27 +1445,27 @@ fn padding_to_align(alignment: u32, size: u32) -> u32 {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Float {
+enum Floating {
   Single = 4,
   Double = 8,
 }
 
-impl Float {
+impl Floating {
   fn size(self) -> u32 {
     self as u32
   }
 }
 
-use Float::*;
+use Floating::*;
 
 #[derive(Clone, Copy, Debug)]
-enum Integer {
+enum Integral {
   I(Size),
   U(Size),
   Buffer,
 }
 
-impl Integer {
+impl Integral {
   fn size(self) -> u32 {
     match self {
       I(size) | U(size) => size as u32,
@@ -1503,7 +1474,7 @@ impl Integer {
   }
 }
 
-use Integer::*;
+use Integral::*;
 
 #[derive(Clone, Copy, Debug)]
 enum Size {
@@ -1516,14 +1487,33 @@ use Size::*;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug)]
-enum WinParam {
-  WInt(Size),
-  WFloat,
-  WBuffer,
+enum Param {
+  Int(Integral),
+  Float(Floating),
 }
 
-use WinParam::*;
+use Param::*;
 
+impl From<NativeType> for Param {
+  fn from(native: NativeType) -> Self {
+    match native {
+      NativeType::F32 => Float(Single),
+      NativeType::F64 => Float(Double),
+      NativeType::Bool | NativeType::U8 => Int(U(B)),
+      NativeType::U16 => Int(U(W)),
+      NativeType::U32 | NativeType::Void => Int(U(DW)),
+      NativeType::U64
+      | NativeType::USize
+      | NativeType::Pointer
+      | NativeType::Function => Int(U(QW)),
+      NativeType::I8 => Int(I(B)),
+      NativeType::I16 => Int(I(W)),
+      NativeType::I32 => Int(I(DW)),
+      NativeType::I64 | NativeType::ISize => Int(I(QW)),
+      NativeType::Buffer => Int(Buffer),
+    }
+  }
+}
 // TODO: on ice. Decide what todo with this
 // trait Abi {
 //   fn compile(sym: &Symbol) -> Trampoline
@@ -1843,13 +1833,13 @@ mod tests {
         ; str x8, [sp]       // ..
         ; ldr w8, [sp, 16]   // i32
         ; str w8, [sp, 8]    // ..
-        ; ldr w8, [sp, 20]   // i16
+        ; ldr w8, [sp, 24]   // i16
         ; strh w8, [sp, 12]  // ..
-        ; ldr w8, [sp, 24]   // i8
+        ; ldr w8, [sp, 32]   // i8
         ; strb w8, [sp, 14]  // ..
-        ; ldr s16, [sp, 28]  // f32
+        ; ldr s16, [sp, 40]  // f32
         ; str s16, [sp, 16]  // ..
-        ; ldr d16, [sp, 32]  // f64
+        ; ldr d16, [sp, 48]  // f64
         ; str d16, [sp, 24]  // ..
         ; movz x8, 0
         ; br x8
@@ -1877,13 +1867,13 @@ mod tests {
         ; and w5, w6, 0xFFFF // u16
         ; sxtb w6, w7        // i8
         ; ldrsh w7, [sp]     // i16
-        ; ldr w8, [sp, 4]    // u8
+        ; ldr w8, [sp, 8]    // u8
         ; strb w8, [sp]      // ..
-        ; ldr w8, [sp, 8]    // u16
+        ; ldr w8, [sp, 16]    // u16
         ; strh w8, [sp, 2]   // ..
-        ; ldr w8, [sp, 12]   // i8
+        ; ldr w8, [sp, 24]   // i8
         ; strb w8, [sp, 4]   // ..
-        ; ldr w8, [sp, 16]   // i16
+        ; ldr w8, [sp, 32]   // i16
         ; strh w8, [sp, 6]   // ..
         ; movz x8, 0
         ; br x8
@@ -1957,7 +1947,7 @@ mod tests {
     #[test]
     fn return_u64_in_stack_typed_array() {
       let trampoline = Aarch64Apple::compile(&symbol(
-        vec![U64, U64, U64, U64, U64, U64, U64, U64, U64],
+        vec![U64, U64, U64, U64, U64, U64, U64, U64, U8, U8],
         U64,
       ));
 
@@ -1977,9 +1967,11 @@ mod tests {
         ; mov x5, x6          // u64
         ; mov x6, x7          // u64
         ; ldr x7, [sp, 32]    // u64
-        ; ldr x8, [sp, 40]    // u64
-        ; str x8, [sp]        // ..
-        ; ldr x19, [sp, 48]   // save data array pointer to non-volatile register
+        ; ldr w8, [sp, 40]    // u8
+        ; strb w8, [sp]        // ..
+        ; ldr w8, [sp, 48]    // u8
+        ; strb w8, [sp, 1]        // ..
+        ; ldr x19, [sp, 56]   // save data array pointer to non-volatile register
         ; ldr x19, [x19, 8]   // ..
         ; movz x8, 0
         ; blr x8
