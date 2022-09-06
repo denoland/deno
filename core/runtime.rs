@@ -2335,60 +2335,6 @@ pub mod tests {
   }
 
   #[test]
-  fn test_ref_unref_ops() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    runtime
-      .execute_script(
-        "filename.js",
-        r#"
-        var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.opAsync("op_test", 42);
-        var p2 = Deno.core.opAsync("op_test", 42);
-        "#,
-      )
-      .unwrap();
-    {
-      let realm = runtime.global_realm();
-      let isolate = runtime.v8_isolate();
-      let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
-      assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
-    }
-    runtime
-      .execute_script(
-        "filename.js",
-        r#"
-        Deno.core.ops.op_unref_op(p1[promiseIdSymbol]);
-        Deno.core.ops.op_unref_op(p2[promiseIdSymbol]);
-        "#,
-      )
-      .unwrap();
-    {
-      let realm = runtime.global_realm();
-      let isolate = runtime.v8_isolate();
-      let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
-      assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 2);
-    }
-    runtime
-      .execute_script(
-        "filename.js",
-        r#"
-        Deno.core.ops.op_ref_op(p1[promiseIdSymbol]);
-        Deno.core.ops.op_ref_op(p2[promiseIdSymbol]);
-        "#,
-      )
-      .unwrap();
-    {
-      let realm = runtime.global_realm();
-      let isolate = runtime.v8_isolate();
-      let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops.len(), 2);
-      assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
-    }
-  }
-
-  #[test]
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
