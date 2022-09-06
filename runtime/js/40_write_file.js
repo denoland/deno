@@ -12,13 +12,13 @@
     options = {},
   ) {
     options.signal?.throwIfAborted();
-    ops.op_write_file_sync({
-      path: pathFromURL(path),
+    ops.op_write_file_sync(
+      pathFromURL(path),
+      options.mode,
+      options.append ?? false,
+      options.create ?? true,
       data,
-      mode: options.mode,
-      append: options.append ?? false,
-      create: options.create ?? true,
-    });
+    );
   }
 
   async function writeFile(
@@ -35,14 +35,15 @@
       options.signal[abortSignal.add](abortHandler);
     }
     try {
-      await core.opAsync("op_write_file_async", {
-        path: pathFromURL(path),
+      await core.opAsync(
+        "op_write_file_async",
+        pathFromURL(path),
+        options.mode,
+        options.append ?? false,
+        options.create ?? true,
         data,
-        mode: options.mode,
-        append: options.append ?? false,
-        create: options.create ?? true,
         cancelRid,
-      });
+      );
     } finally {
       if (options.signal) {
         options.signal[abortSignal.remove](abortHandler);

@@ -11,6 +11,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+pub mod errors;
+mod package_json;
+mod resolution;
+
 pub use package_json::PackageJson;
 pub use resolution::get_closest_package_json;
 pub use resolution::get_package_scope_config;
@@ -41,10 +45,6 @@ pub trait DenoDirNpmResolver {
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 }
-
-mod errors;
-mod package_json;
-mod resolution;
 
 pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
 
