@@ -45,6 +45,12 @@
       this.pointer = pointer;
     }
 
+    getBool(offset = 0) {
+      return ops.op_ffi_read_bool(
+        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+      );
+    }
+
     getUint8(offset = 0) {
       return ops.op_ffi_read_u8(
         offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
