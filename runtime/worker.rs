@@ -109,6 +109,9 @@ impl Default for WorkerOptions {
       web_worker_preload_module_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      web_worker_pre_execute_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
@@ -124,8 +127,8 @@ impl Default for WorkerOptions {
       origin_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
-      startup_snapshot: Default::default(),
       root_cert_store: Default::default(),
+      npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       bootstrap: Default::default(),
