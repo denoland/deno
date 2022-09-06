@@ -1283,11 +1283,7 @@ impl JsRuntime {
       );
       let promise = v8::Local::<v8::Promise>::try_from(value)
         .expect("Expected to get promise as module evaluation result");
-      let empty_fn = |_scope: &mut v8::HandleScope,
-                      _args: v8::FunctionCallbackArguments,
-                      _rv: v8::ReturnValue| {};
-      let empty_fn = v8::FunctionTemplate::new(tc_scope, empty_fn);
-      let empty_fn = empty_fn.get_function(tc_scope).unwrap();
+      let empty_fn = bindings::create_empty_fn(tc_scope).unwrap();
       promise.catch(tc_scope, empty_fn);
       let mut state = state_rc.borrow_mut();
       let promise_global = v8::Global::new(tc_scope, promise);

@@ -19,9 +19,20 @@ pub fn external_references(
   ops: &[OpCtx],
   snapshot_loaded: bool,
 ) -> v8::ExternalReferences {
-  let mut references = vec![v8::ExternalReference {
-    function: call_console.map_fn_to(),
-  }];
+  let mut references = vec![
+    v8::ExternalReference {
+      function: call_console.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: import_meta_resolve.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: catch_dynamic_import_promise_error.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: empty_fn.map_fn_to(),
+    },
+  ];
 
   for ctx in ops {
     let ctx_ptr = ctx as *const OpCtx as _;
@@ -292,47 +303,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   // ones rethrown from this scope, so they include the call stack of the
   // dynamic import site. Error objects without any stack frames are assumed to
   // be module resolution errors, other exception values are left as they are.
-  let map_err = |scope: &mut v8::HandleScope,
-                 args: v8::FunctionCallbackArguments,
-                 _rv: v8::ReturnValue| {
-    let arg = args.get(0);
-    if is_instance_of_error(scope, arg) {
-      let e: crate::error::NativeJsError =
-        serde_v8::from_v8(scope, arg).unwrap();
-      let name = e.name.unwrap_or_else(|| "Error".to_string());
-      let message = v8::Exception::create_message(scope, arg);
-      if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
-        let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
-        let message_key = v8::String::new(scope, "message").unwrap();
-        let message = arg.get(scope, message_key.into()).unwrap();
-        let exception = match name.as_str() {
-          "RangeError" => {
-            v8::Exception::range_error(scope, message.try_into().unwrap())
-          }
-          "TypeError" => {
-            v8::Exception::type_error(scope, message.try_into().unwrap())
-          }
-          "SyntaxError" => {
-            v8::Exception::syntax_error(scope, message.try_into().unwrap())
-          }
-          "ReferenceError" => {
-            v8::Exception::reference_error(scope, message.try_into().unwrap())
-          }
-          _ => v8::Exception::error(scope, message.try_into().unwrap()),
-        };
-        let code_key = v8::String::new(scope, "code").unwrap();
-        let code_value =
-          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
-        let exception_obj = exception.to_object(scope).unwrap();
-        exception_obj.set(scope, code_key.into(), code_value.into());
-        scope.throw_exception(exception);
-        return;
-      }
-    }
-    scope.throw_exception(arg);
-  };
-  let map_err = v8::FunctionTemplate::new(scope, map_err);
-  let map_err = map_err.get_function(scope).unwrap();
+  let builder = v8::FunctionBuilder::new(catch_dynamic_import_promise_error);
+
+  let map_err =
+    v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
+
   let promise = promise.catch(scope, map_err).unwrap();
 
   &*promise as *const _ as *mut _
@@ -401,6 +376,62 @@ fn import_meta_resolve(
       throw_type_error(scope, &err.to_string());
     }
   };
+}
+
+fn empty_fn(
+  _scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  //Do Nothing
+}
+
+//It creates a reference to an empty function which can be mantained after the snapshots
+pub fn create_empty_fn<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Option<v8::Local<'s, v8::Function>> {
+  let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+  empty_fn.get_function(scope)
+}
+
+fn catch_dynamic_import_promise_error(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let arg = args.get(0);
+  if is_instance_of_error(scope, arg) {
+    let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
+    let name = e.name.unwrap_or_else(|| "Error".to_string());
+    let message = v8::Exception::create_message(scope, arg);
+    if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+      let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
+      let message_key = v8::String::new(scope, "message").unwrap();
+      let message = arg.get(scope, message_key.into()).unwrap();
+      let exception = match name.as_str() {
+        "RangeError" => {
+          v8::Exception::range_error(scope, message.try_into().unwrap())
+        }
+        "TypeError" => {
+          v8::Exception::type_error(scope, message.try_into().unwrap())
+        }
+        "SyntaxError" => {
+          v8::Exception::syntax_error(scope, message.try_into().unwrap())
+        }
+        "ReferenceError" => {
+          v8::Exception::reference_error(scope, message.try_into().unwrap())
+        }
+        _ => v8::Exception::error(scope, message.try_into().unwrap()),
+      };
+      let code_key = v8::String::new(scope, "code").unwrap();
+      let code_value = v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+      let exception_obj = exception.to_object(scope).unwrap();
+      exception_obj.set(scope, code_key.into(), code_value.into());
+      scope.throw_exception(exception);
+      return;
+    }
+  }
+  scope.throw_exception(arg);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
