@@ -12,7 +12,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
@@ -345,7 +344,6 @@ pub fn node_resolve(
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<Option<ResolveResponse>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
-
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
   // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
@@ -823,17 +821,6 @@ pub fn translate_cjs_to_esm(
   Ok(translated_source)
 }
 
-fn resolve_package_target_string(
-  target: &str,
-  subpath: Option<String>,
-) -> String {
-  if let Some(subpath) = subpath {
-    target.replace('*', &subpath)
-  } else {
-    target.to_string()
-  }
-}
-
 fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
@@ -855,26 +842,30 @@ fn resolve(
 
   // We've got a bare specifier or maybe bare_specifier/blah.js"
 
-  let (_, package_subpath) = parse_specifier(specifier).unwrap();
+  let (package_specifier, package_subpath) =
+    parse_specifier(specifier).unwrap();
 
   // todo(dsherret): use not_found error on not found here
-  let module_dir =
-    npm_resolver.resolve_package_folder_from_path(&referrer_path)?;
+  let module_dir = npm_resolver.resolve_package_folder_from_package(
+    package_specifier.as_str(),
+    &referrer_path,
+  )?;
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+    let package_json =
+      PackageJson::load(npm_resolver, package_json_path.clone())?;
 
-    if let Some(map) = package_json.exports {
-      if let Some((key, subpath)) = exports_resolve(&map, &package_subpath) {
-        let value = map.get(&key).unwrap();
-        let s = conditions_resolve(value, conditions);
-
-        let t = resolve_package_target_string(&s, subpath);
-        return Ok(module_dir.join(t).clean());
-      } else {
-        todo!()
-      }
+    if let Some(exports) = &package_json.exports {
+      return package_exports_resolve(
+        &package_json_path,
+        package_subpath,
+        exports,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      );
     }
 
     // old school
@@ -894,25 +885,6 @@ fn resolve(
   }
 
   Err(not_found(specifier, &referrer_path))
-}
-
-fn conditions_resolve(value: &Value, conditions: &[&str]) -> String {
-  match value {
-    Value::String(s) => s.to_string(),
-    Value::Object(map) => {
-      for condition in conditions {
-        if let Some(x) = map.get(&condition.to_string()) {
-          if let Value::String(s) = x {
-            return s.to_string();
-          } else {
-            todo!()
-          }
-        }
-      }
-      todo!()
-    }
-    _ => todo!(),
-  }
 }
 
 fn parse_specifier(specifier: &str) -> Option<(String, String)> {
@@ -955,46 +927,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   };
 
   Some((package_name, package_subpath))
-}
-
-fn exports_resolve(
-  map: &Map<String, Value>,
-  subpath: &str,
-) -> Option<(String, Option<String>)> {
-  if map.contains_key(subpath) {
-    return Some((subpath.to_string(), None));
-  }
-
-  // best match
-  let mut best_match = None;
-  for key in map.keys() {
-    if let Some(pattern_index) = key.find('*') {
-      let key_sub = &key[0..pattern_index];
-      if subpath.starts_with(key_sub) {
-        if subpath.ends_with('/') {
-          todo!()
-        }
-        let pattern_trailer = &key[pattern_index + 1..];
-
-        if subpath.len() > key.len()
-          && subpath.ends_with(pattern_trailer)
-          // && pattern_key_compare(best_match, key) == 1
-          && key.rfind('*') == Some(pattern_index)
-        {
-          let rest = subpath
-            [pattern_index..(subpath.len() - pattern_trailer.len())]
-            .to_string();
-          best_match = Some((key, rest));
-        }
-      }
-    }
-  }
-
-  if let Some((key, subpath_)) = best_match {
-    return Some((key.to_string(), Some(subpath_)));
-  }
-
-  None
 }
 
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
@@ -1096,14 +1028,5 @@ mod tests {
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
-  }
-
-  #[test]
-  fn test_resolve_package_target_string() {
-    assert_eq!(resolve_package_target_string("foo", None), "foo");
-    assert_eq!(
-      resolve_package_target_string("*foo", Some("bar".to_string())),
-      "barfoo"
-    );
   }
 }
