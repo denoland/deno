@@ -312,9 +312,6 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  /// If true, a list of Node built-in modules will be injected into
-  /// the import map.
-  pub compat: bool,
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
@@ -1869,7 +1866,6 @@ fn runtime_args(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
-    .arg(compat_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -1941,6 +1937,7 @@ fn reload_arg<'a>() -> Arg<'a> {
   Reloads specific modules",
     )
     .value_hint(ValueHint::FilePath)
+    .validator(reload_arg_validate)
 }
 
 fn ca_file_arg<'a>() -> Arg<'a> {
@@ -2007,21 +2004,6 @@ fn seed_arg<'a>() -> Arg<'a> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
-}
-
-static COMPAT_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "See https://deno.land/manual@v{}/node/compatibility_mode",
-    SHORT_VERSION.as_str()
-  )
-});
-
-fn compat_arg<'a>() -> Arg<'a> {
-  Arg::new("compat")
-    .long("compat")
-    .requires("unstable")
-    .help("UNSTABLE: Node compatibility mode.")
-    .long_help(COMPAT_HELP.as_str())
 }
 
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
@@ -2916,7 +2898,6 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
-  compat_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
 
@@ -3001,12 +2982,6 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   }
 }
 
-fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("compat") {
-    flags.compat = true;
-  }
-}
-
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
@@ -3067,6 +3042,16 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn inspect_arg_validate(val: &str) -> Result<(), String> {
   match val.parse::<SocketAddr>() {
+    Ok(_) => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
+fn reload_arg_validate(urlstr: &str) -> Result<(), String> {
+  if urlstr.is_empty() {
+    return Err(String::from("Missing url. Check for extra commas."));
+  }
+  match Url::from_str(urlstr) {
     Ok(_) => Ok(()),
     Err(e) => Err(e.to_string()),
   }
@@ -4304,6 +4289,78 @@ mod tests {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn reload_validator() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept accept multiple valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=./relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls that start with ./");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls");
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--reload=/absolute", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute urls");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=/", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute root url");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=", "script.ts"]);
+    assert!(r.is_err(), "Should reject when nothing is provided");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=,", "script.ts"]);
+    assert!(r.is_err(), "Should reject when a single comma is provided");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=,http://deno.land/a",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a leading comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a trailing comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject adjacent commas");
   }
 
   #[test]
@@ -5563,23 +5620,6 @@ mod tests {
       .unwrap_err()
       .to_string()
       .contains("Expected protocol \"http\" or \"https\""));
-  }
-
-  #[test]
-  fn compat() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "foo.js".to_string(),
-        }),
-        compat: true,
-        unstable: true,
-        ..Flags::default()
-      }
-    );
   }
 
   #[test]

@@ -147,6 +147,7 @@
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
         await opSanitizerDelay();
+        await opSanitizerDelay();
       }
 
       if (shouldSkipSanitizers(desc)) return;

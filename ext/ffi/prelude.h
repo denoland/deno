@@ -1,5 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+/* Boolean type */
+
+#ifndef _STDBOOL_H
+#define _STDBOOL_H
+
+#define bool _Bool
+#define true 1
+#define false 0
+
+#endif
+
 /* Exact integral types.  */
 
 /* Signed.  */

@@ -39,7 +39,7 @@ fn op_worker_post_message(
   Ok(())
 }
 
-#[op]
+#[op(deferred)]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
 ) -> Result<Option<JsMessageData>, AnyError> {
