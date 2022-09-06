@@ -125,13 +125,18 @@ impl CliMainWorker {
         self.pending_unload = true;
 
         let result = loop {
-          let result = self.inner.worker.run_event_loop(false).await;
-          if !self
+          match self.inner.worker.run_event_loop(false).await {
+            Ok(()) => {}
+            Err(error) => break Err(error),
+          }
+          match self
             .inner
             .worker
-            .dispatch_beforeunload_event(&located_script_name!())?
+            .dispatch_beforeunload_event(&located_script_name!())
           {
-            break result;
+            Ok(default_prevented) if default_prevented => {} // continue loop
+            Ok(_) => break Ok(()),
+            Err(error) => break Err(error),
           }
         };
         self.pending_unload = false;
@@ -152,11 +157,10 @@ impl CliMainWorker {
     impl Drop for FileWatcherModuleExecutor {
       fn drop(&mut self) {
         if self.pending_unload {
-          self
+          let _ = self
             .inner
             .worker
-            .dispatch_unload_event(&located_script_name!())
-            .unwrap();
+            .dispatch_unload_event(&located_script_name!());
         }
       }
     }

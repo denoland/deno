@@ -1038,6 +1038,40 @@ fn test_watch_module_graph_error_referrer() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/15428.
+#[test]
+fn test_watch_unload_handler_error_on_drop() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(
+    &file_to_watch,
+    r#"
+    addEventListener("unload", () => {
+      throw new Error("foo");
+    });
+    setTimeout(() => {
+      throw new Error("bar");
+    });
+    "#,
+  )
+  .unwrap();
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines);
+  wait_contains("Uncaught Error: bar", &mut stderr_lines);
+  wait_contains("Process finished", &mut stderr_lines);
+  check_alive_then_kill(child);
+}
+
 #[test]
 fn run_watch_dynamic_imports() {
   let t = TempDir::new();
