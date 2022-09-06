@@ -1167,11 +1167,11 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // If termination is the result of a `op_dispatch_exception` call, we want
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
-    let mut state = state_rc.borrow_mut();
+    let state = state_rc.borrow();
     exception = state
       .dispatched_exceptions
-      .pop_back()
-      .map(|exception| v8::Local::new(scope, exception))
+      .back()
+      .map(|exception| v8::Local::new(scope, exception.clone()))
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
         if was_terminating_execution && exception.is_null_or_undefined() {
