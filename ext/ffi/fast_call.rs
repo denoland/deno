@@ -35,7 +35,7 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
-  let mut params = once(fast_api::Type::V8Value)
+  let mut params = once(fast_api::Type::V8Value)  // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
@@ -419,7 +419,9 @@ impl SysVAmd64 {
     // functions returning 64 bit integers have the out array appended as their last parameter,
     // and it is a *FastApiTypedArray<Int32>
     match self.integral_params {
-      // rdi is always V8 receiver
+      // Trampoline's signature is (receiver, [param0, param1, ...], *FastApiTypedArray)
+      // self.integral_params account only for the original params [param0, param1, ...]
+      // and the out array has not been moved left
       0 => x64!(s; mov rbx, [rsi + 8]),
       1 => x64!(s; mov rbx, [rdx + 8]),
       2 => x64!(s; mov rbx, [rcx + 8]),

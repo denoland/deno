@@ -826,16 +826,12 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe {
-        Box::from_raw(sym);
-      }
+      let _ = unsafe { Box::from_raw(sym) };
       if let Some(fast_call_ptr) = fast_call_alloc {
         // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
         // SAFETY: This is never called twice. pointer obtained
         // from Box::into_raw, hence, satisfies memory layout requirements.
-        unsafe {
-          Box::from_raw(fast_call_ptr);
-        }
+        let _ = unsafe { Box::from_raw(fast_call_ptr) };
       }
     }),
   );
