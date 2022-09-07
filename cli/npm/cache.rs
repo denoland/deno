@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
@@ -17,6 +18,7 @@ use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 
+use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
 use super::NpmPackageVersionDistInfo;
@@ -40,23 +42,33 @@ impl Default for ReadonlyNpmCache {
     // This only gets used when creating the tsc runtime and for testing, and so
     // it shouldn't ever actually access the DenoDir, so it doesn't support a
     // custom root.
-    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap()).unwrap()
+    Self::from_deno_dir(&crate::deno_dir::DenoDir::new(None).unwrap())
   }
 }
 
 impl ReadonlyNpmCache {
-  pub fn new(root_dir: PathBuf) -> Result<Self, AnyError> {
-    std::fs::create_dir_all(&root_dir)
-      .with_context(|| format!("Error creating {}", root_dir.display()))?;
-    let root_dir = crate::fs_util::canonicalize_path(&root_dir)?;
+  pub fn new(root_dir: PathBuf) -> Self {
+    fn try_get_canonicalized_root_dir(
+      root_dir: &Path,
+    ) -> Result<PathBuf, AnyError> {
+      if !root_dir.exists() {
+        std::fs::create_dir_all(&root_dir)
+          .with_context(|| format!("Error creating {}", root_dir.display()))?;
+      }
+      Ok(crate::fs_util::canonicalize_path(root_dir)?)
+    }
+
+    // this may fail on readonly file systems, so just ignore if so
+    let root_dir =
+      try_get_canonicalized_root_dir(&root_dir).unwrap_or(root_dir);
     let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
-    Ok(Self {
+    Self {
       root_dir,
       root_dir_url,
-    })
+    }
   }
 
-  pub fn from_deno_dir(dir: &DenoDir) -> Result<Self, AnyError> {
+  pub fn from_deno_dir(dir: &DenoDir) -> Self {
     Self::new(dir.root.join("npm"))
   }
 
@@ -147,8 +159,12 @@ impl ReadonlyNpmCache {
 
     Some(NpmPackageId {
       name,
-      version: semver::Version::parse(version).unwrap(),
+      version: NpmVersion::parse(version).unwrap(),
     })
+  }
+
+  pub fn get_cache_location(&self) -> PathBuf {
+    self.root_dir.clone()
   }
 }
 
@@ -160,14 +176,11 @@ pub struct NpmCache {
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
-    cache_setting: CacheSetting,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      readonly: ReadonlyNpmCache::from_deno_dir(dir)?,
+  pub fn from_deno_dir(dir: &DenoDir, cache_setting: CacheSetting) -> Self {
+    Self {
+      readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
-    })
+    }
   }
 
   pub fn as_readonly(&self) -> ReadonlyNpmCache {
@@ -281,12 +294,13 @@ mod test {
   use deno_core::url::Url;
 
   use super::ReadonlyNpmCache;
+  use crate::npm::semver::NpmVersion;
   use crate::npm::NpmPackageId;
 
   #[test]
   fn should_get_lowercase_package_folder() {
     let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
-    let cache = ReadonlyNpmCache::new(root_dir.clone()).unwrap();
+    let cache = ReadonlyNpmCache::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
 
     // all lowercase should be as-is
@@ -294,7 +308,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "json".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),
@@ -309,7 +323,7 @@ mod test {
   fn should_handle_non_all_lowercase_package_names() {
     // it was possible at one point for npm packages to not just be lowercase
     let root_dir = crate::deno_dir::DenoDir::new(None).unwrap().root;
-    let cache = ReadonlyNpmCache::new(root_dir.clone()).unwrap();
+    let cache = ReadonlyNpmCache::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
     let json_uppercase_hash =
       "db1a21a0bc2ef8fbe13ac4cf044e8c9116d29137d5ed8b916ab63dcb2d4290df";
@@ -317,7 +331,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "JSON".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),
@@ -331,7 +345,7 @@ mod test {
       cache.package_folder(
         &NpmPackageId {
           name: "@types/JSON".to_string(),
-          version: semver::Version::parse("1.2.5").unwrap(),
+          version: NpmVersion::parse("1.2.5").unwrap(),
         },
         &registry_url,
       ),

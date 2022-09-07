@@ -122,7 +122,14 @@
   //    CRLF
   //    [ message-body ]
   //
-  function http1Response(method, status, headerList, body, earlyEnd = false) {
+  function http1Response(
+    method,
+    status,
+    headerList,
+    body,
+    bodyLen,
+    earlyEnd = false,
+  ) {
     // HTTP uses a "<major>.<minor>" numbering scheme
     //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
@@ -155,7 +162,7 @@
 
     // null body status is validated by inititalizeAResponse in ext/fetch
     if (body !== null && body !== undefined) {
-      str += `Content-Length: ${body.length}\r\n\r\n`;
+      str += `Content-Length: ${bodyLen}\r\n\r\n`;
     } else {
       str += "Transfer-Encoding: chunked\r\n\r\n";
       return str;
@@ -186,6 +193,45 @@
     // because browsers in Windows don't resolve "0.0.0.0".
     // See the discussion in https://github.com/denoland/deno_std/issues/1165
     return hostname === "0.0.0.0" ? "localhost" : hostname;
+  }
+
+  function writeFixedResponse(
+    server,
+    requestId,
+    response,
+    responseLen,
+    end,
+    respondFast,
+  ) {
+    let nwritten = 0;
+    // TypedArray
+    if (typeof response !== "string") {
+      nwritten = respondFast(requestId, response, end);
+    } else {
+      // string
+      const maybeResponse = stringResources[response];
+      if (maybeResponse === undefined) {
+        stringResources[response] = core.encode(response);
+        nwritten = core.ops.op_flash_respond(
+          server,
+          requestId,
+          stringResources[response],
+          end,
+        );
+      } else {
+        nwritten = respondFast(requestId, maybeResponse, end);
+      }
+    }
+
+    if (nwritten < responseLen) {
+      core.opAsync(
+        "op_flash_respond_async",
+        server,
+        requestId,
+        response.slice(nwritten),
+        end,
+      );
+    }
   }
 
   async function serve(arg1, arg2) {
@@ -320,7 +366,7 @@
             }
             // there might've been an HTTP upgrade.
             if (resp === undefined) {
-              continue;
+              return;
             }
             const innerResp = toInnerResponse(resp);
 
@@ -383,32 +429,22 @@
 
             const ws = resp[_ws];
             if (isStreamingResponseBody === false) {
+              const length = respBody.byteLength || core.byteLength(respBody);
               const responseStr = http1Response(
                 method,
                 innerResp.status ?? 200,
                 innerResp.headerList,
                 respBody,
+                length,
               );
-
-              // TypedArray
-              if (typeof responseStr !== "string") {
-                respondFast(i, responseStr, !ws);
-              } else {
-                // string
-                const maybeResponse = stringResources[responseStr];
-                if (maybeResponse === undefined) {
-                  stringResources[responseStr] = core.encode(responseStr);
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
-                    stringResources[responseStr],
-                    null,
-                    !ws, // Don't close socket if there is a deferred websocket upgrade.
-                  );
-                } else {
-                  respondFast(i, maybeResponse, !ws);
-                }
-              }
+              writeFixedResponse(
+                serverId,
+                i,
+                responseStr,
+                length,
+                !ws, // Don't close socket if there is a deferred websocket upgrade.
+                respondFast,
+              );
             }
 
             (async () => {
@@ -435,6 +471,7 @@
                         method,
                         innerResp.status ?? 200,
                         innerResp.headerList,
+                        0, // Content-Length will be set by the op.
                         null,
                         true,
                       ),
@@ -451,41 +488,28 @@
                   }
                 } else {
                   const reader = respBody.getReader();
-                  let first = true;
-                  a:
+                  writeFixedResponse(
+                    serverId,
+                    i,
+                    http1Response(
+                      method,
+                      innerResp.status ?? 200,
+                      innerResp.headerList,
+                      respBody.byteLength,
+                      null,
+                    ),
+                    respBody.byteLength,
+                    false,
+                    respondFast,
+                  );
                   while (true) {
                     const { value, done } = await reader.read();
-                    if (first) {
-                      first = false;
-                      core.ops.op_flash_respond(
-                        serverId,
-                        i,
-                        http1Response(
-                          method,
-                          innerResp.status ?? 200,
-                          innerResp.headerList,
-                          null,
-                        ),
-                        value ?? new Uint8Array(),
-                        false,
-                      );
-                    } else {
-                      if (value === undefined) {
-                        core.ops.op_flash_respond_chuncked(
-                          serverId,
-                          i,
-                          undefined,
-                          done,
-                        );
-                      } else {
-                        respondChunked(
-                          i,
-                          value,
-                          done,
-                        );
-                      }
-                    }
-                    if (done) break a;
+                    await respondChunked(
+                      i,
+                      value,
+                      done,
+                    );
+                    if (done) break;
                   }
                 }
               }
@@ -528,18 +552,24 @@
       once: true,
     });
 
+    function respondChunked(token, chunk, shutdown) {
+      return core.opAsync(
+        "op_flash_respond_chuncked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+      );
+    }
+
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondChunked = (token, chunk, shutdown) =>
-      fastOp.respondChunked(token, chunk, shutdown);
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondChunked = (token, chunk, shutdown) =>
-        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
       respondFast = (token, response, shutdown) =>
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }

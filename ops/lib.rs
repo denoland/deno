@@ -11,6 +11,7 @@ use quote::format_ident;
 use quote::quote;
 use quote::ToTokens;
 use regex::Regex;
+use std::collections::HashMap;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 use syn::FnArg;
@@ -51,6 +52,7 @@ struct MacroArgs {
   is_unstable: bool,
   is_v8: bool,
   must_be_fast: bool,
+  deferred: bool,
 }
 
 impl syn::parse::Parse for MacroArgs {
@@ -62,7 +64,7 @@ impl syn::parse::Parse for MacroArgs {
     let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
     let vars: Vec<_> = vars.iter().map(String::as_str).collect();
     for var in vars.iter() {
-      if !["unstable", "v8", "fast"].contains(var) {
+      if !["unstable", "v8", "fast", "deferred"].contains(var) {
         return Err(syn::Error::new(
           input.span(),
           "Ops expect #[op] or #[op(unstable)]",
@@ -73,6 +75,7 @@ impl syn::parse::Parse for MacroArgs {
       is_unstable: vars.contains(&"unstable"),
       is_v8: vars.contains(&"v8"),
       must_be_fast: vars.contains(&"fast"),
+      deferred: vars.contains(&"deferred"),
     })
   }
 }
@@ -84,6 +87,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
     is_unstable,
     is_v8,
     must_be_fast,
+    deferred,
   } = margs;
   let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
   let name = &func.sig.ident;
@@ -110,7 +114,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let asyncness = func.sig.asyncness.is_some();
   let is_async = asyncness || is_future(&func.sig.output);
   let v8_body = if is_async {
-    codegen_v8_async(&core, &func, margs, asyncness)
+    codegen_v8_async(&core, &func, margs, asyncness, deferred)
   } else {
     codegen_v8_sync(&core, &func, margs)
   };
@@ -173,6 +177,7 @@ fn codegen_v8_async(
   f: &syn::ItemFn,
   margs: MacroArgs,
   asyncness: bool,
+  deferred: bool,
 ) -> TokenStream2 {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
@@ -256,7 +261,7 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(scope, async move {
+    #core::_ops::queue_async_op(state, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
@@ -304,24 +309,76 @@ fn codegen_fast_impl(
       args,
       ret,
       use_recv,
+      use_fast_cb_opts,
+      v8_values,
+      slices,
     }) = fast_info
     {
-      let inputs = &f
+      let offset = if use_recv { 1 } else { 0 };
+      let mut inputs = f
         .sig
         .inputs
         .iter()
-        .skip(if use_recv { 1 } else { 0 })
+        .skip(offset)
+        .enumerate()
+        .map(|(idx, arg)| {
+          let ident = match arg {
+            FnArg::Receiver(_) => unreachable!(),
+            FnArg::Typed(t) => match &*t.pat {
+              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+              _ => unreachable!(),
+            },
+          };
+          if let Some(ty) = slices.get(&(idx + offset)) {
+            return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
+          }
+          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
+            return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
+          }
+          if v8_values.contains(&idx) {
+            return quote! { #ident: #core::v8::Local < #core::v8::Value > };
+          }
+          quote!(#arg)
+        })
         .collect::<Vec<_>>();
+      if !slices.is_empty() && !use_fast_cb_opts {
+        inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
+      }
       let input_idents = f
         .sig
         .inputs
         .iter()
-        .map(|a| match a {
-          FnArg::Receiver(_) => unreachable!(),
-          FnArg::Typed(t) => match &*t.pat {
-            syn::Pat::Ident(i) => format_ident!("{}", i.ident),
-            _ => unreachable!(),
-          },
+        .enumerate()
+        .map(|(idx, a)| {
+          let ident = match a {
+            FnArg::Receiver(_) => unreachable!(),
+            FnArg::Typed(t) => match &*t.pat {
+              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
+              _ => unreachable!(),
+            },
+          };
+          if slices.get(&idx).is_some() {
+            return quote! {
+              match unsafe { &* #ident }.get_storage_if_aligned() {
+                Some(s) => s,
+                None => {
+                  unsafe { &mut * fast_api_callback_options }.fallback = true;
+                  return Default::default();
+                },
+              }
+            };
+          }
+          if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
+            return quote! { Some(unsafe { &mut * fast_api_callback_options }) };
+          }
+          if v8_values.contains(&idx) {
+            return quote! {
+              #core::serde_v8::Value {
+                v8_value: #ident,
+              }
+            };
+          }
+          quote! { #ident }
         })
         .collect::<Vec<_>>();
       let generics = &f.sig.generics;
@@ -442,7 +499,8 @@ fn codegen_v8_sync(
 
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    let op_state = &*ctx.state.borrow();
+    // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
+    let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
     op_state.tracker.track_sync(ctx.id);
 
     #ret
@@ -453,6 +511,9 @@ struct FastApiSyn {
   args: TokenStream2,
   ret: TokenStream2,
   use_recv: bool,
+  use_fast_cb_opts: bool,
+  v8_values: Vec<usize>,
+  slices: HashMap<usize, TokenStream2>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
@@ -466,8 +527,17 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   };
 
   let mut use_recv = false;
+  let mut use_fast_cb_opts = false;
+  let mut v8_values = Vec::new();
+  let mut slices = HashMap::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
   for (pos, input) in inputs.iter().enumerate() {
+    if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
+      use_fast_cb_opts = true;
+      args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
+      continue;
+    }
+
     if pos == 0 && is_mut_ref_opstate(input) {
       use_recv = true;
       continue;
@@ -478,16 +548,27 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
       _ => unreachable!(),
     };
 
-    match is_fast_scalar(core, ty, false) {
-      None => match is_fast_arg_sequence(core, ty) {
+    if let Some(arg) = is_fast_v8_value(core, ty) {
+      args.push(arg);
+      v8_values.push(pos);
+    } else {
+      match is_fast_scalar(core, ty, false) {
+        None => match is_fast_arg_sequence(core, ty) {
+          Some(arg) => {
+            args.push(arg);
+          }
+          None => match is_ref_slice(&ty) {
+            Some(_) => {
+              args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint8) });
+              slices.insert(pos, quote!(u8));
+            }
+            // early return, this function cannot be a fast call.
+            None => return None,
+          },
+        },
         Some(arg) => {
           args.push(arg);
         }
-        // early return, this function cannot be a fast call.
-        None => return None,
-      },
-      Some(arg) => {
-        args.push(arg);
       }
     }
   }
@@ -501,6 +582,9 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     args: args.parse().unwrap(),
     ret,
     use_recv,
+    slices,
+    v8_values,
+    use_fast_cb_opts,
   })
 }
 
@@ -519,6 +603,16 @@ fn is_fast_arg_sequence(
     return Some(
       quote! { #core::v8::fast_api::Type::Sequence(#core::v8::fast_api::CType::Void) },
     );
+  }
+  None
+}
+
+fn is_fast_v8_value(
+  core: &TokenStream2,
+  arg: impl ToTokens,
+) -> Option<TokenStream2> {
+  if tokens(&arg).contains("serde_v8 :: Value") {
+    return Some(quote! { #core::v8::fast_api::Type::V8Value });
   }
   None
 }
@@ -558,6 +652,7 @@ fn is_fast_scalar(
     "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
+    "bool" => Some(quote! { #core::v8::fast_api::#cty::Bool }),
     _ => None,
   }
 }
@@ -592,13 +687,76 @@ fn codegen_arg(
   idx: usize,
 ) -> TokenStream2 {
   let ident = quote::format_ident!("{name}");
-  let pat = match arg {
-    syn::FnArg::Typed(pat) => &pat.pat,
+  let (pat, ty) = match arg {
+    syn::FnArg::Typed(pat) => {
+      if is_optional_fast_callback_option(&pat.ty) {
+        return quote! { let #ident = None; };
+      }
+      (&pat.pat, &pat.ty)
+    }
     _ => unreachable!(),
   };
   // Fast path if arg should be skipped
   if matches!(**pat, syn::Pat::Wild(_)) {
     return quote! { let #ident = (); };
+  }
+  // Fast path for `String`
+  if is_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => #core::serde_v8::to_utf8(v8_string, scope),
+        Err(_) => {
+          return #core::_ops::throw_type_error(scope, format!("Expected string at position {}", #idx));
+        }
+      };
+    };
+  }
+  // Fast path for `Option<String>`
+  if is_option_string(&**ty) {
+    return quote! {
+      let #ident = match #core::v8::Local::<#core::v8::String>::try_from(args.get(#idx as i32)) {
+        Ok(v8_string) => Some(#core::serde_v8::to_utf8(v8_string, scope)),
+        Err(_) => None
+      };
+    };
+  }
+  // Fast path for &/&mut [u8] and &/&mut [u32]
+  if let Some(ty) = is_ref_slice(&**ty) {
+    let (ptr_ty, mutability) = match ty {
+      SliceType::U8 => (quote!([u8]), quote!(&)),
+      SliceType::U8Mut => (quote!([u8]), quote!(&mut)),
+    };
+    return quote! {
+      let #ident = {
+        let value = args.get(#idx as i32);
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let (offset, len) = (view.byte_offset(), view.byte_length());
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = buffer.get_backing_store();
+          if store.is_shared() {
+            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
+          }
+          unsafe { #mutability *(&store[offset..offset + len] as *const _ as *mut #ptr_ty) }
+        } else {
+          let b: #core::v8::Local<#core::v8::ArrayBuffer> = match value.try_into() {
+            Ok(v) => v,
+            Err(_) => {
+              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBuffer at position {}", #idx));
+            }
+          };
+          let store = b.get_backing_store();
+          if store.is_shared() {
+            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
+          }
+          unsafe { #mutability *(&store[0..b.byte_length()] as *const _ as *mut #ptr_ty) }
+        }
+      };
+    };
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -678,6 +836,41 @@ fn is_result(ty: impl ToTokens) -> bool {
     Some(idx) => !tokens.split_at(idx).0.contains('<'),
     None => false,
   }
+}
+
+fn is_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "String"
+}
+
+fn is_option_string(ty: impl ToTokens) -> bool {
+  tokens(ty) == "Option < String >"
+}
+
+enum SliceType {
+  U8,
+  U8Mut,
+}
+
+fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
+  if is_u8_slice(&ty) {
+    return Some(SliceType::U8);
+  }
+  if is_u8_slice_mut(&ty) {
+    return Some(SliceType::U8Mut);
+  }
+  None
+}
+
+fn is_u8_slice(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& [u8]"
+}
+
+fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [u8]"
+}
+
+fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
+  tokens(&ty).contains("Option < & mut FastApiCallbackOptions")
 }
 
 /// Detects if the type can be set using `rv.set_uint32` fast path

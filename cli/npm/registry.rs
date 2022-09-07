@@ -23,7 +23,7 @@ use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
 
 use super::cache::NpmCache;
-use super::version_req::NpmVersionReq;
+use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -31,6 +31,8 @@ use super::version_req::NpmVersionReq;
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
+  #[serde(rename = "dist-tags")]
+  pub dist_tags: HashMap<String, String>,
 }
 
 pub struct NpmDependencyEntry {
@@ -39,7 +41,7 @@ pub struct NpmDependencyEntry {
   pub version_req: NpmVersionReq,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -89,7 +91,7 @@ impl NpmPackageVersionInfo {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
@@ -231,7 +233,20 @@ impl NpmRegistryApi {
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(err.into()),
     };
-    Ok(serde_json::from_str(&file_text)?)
+    match serde_json::from_str(&file_text) {
+      Ok(package_info) => Ok(Some(package_info)),
+      Err(err) => {
+        // This scenario might mean we need to load more data from the
+        // npm registry than before. So, just debug log while in debug
+        // rather than panic.
+        log::debug!(
+          "error deserializing registry.json for '{}'. Reloading. {:?}",
+          name,
+          err
+        );
+        Ok(None)
+      }
+    }
   }
 
   fn save_package_info_to_file_cache(

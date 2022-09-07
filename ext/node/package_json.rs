@@ -11,7 +11,6 @@ use serde::Serialize;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 
-// TODO(bartlomieju): deduplicate with cli/compat/esm_resolver.rs
 #[derive(Clone, Debug, Serialize)]
 pub struct PackageJson {
   pub exists: bool,
@@ -19,6 +18,7 @@ pub struct PackageJson {
   pub imports: Option<Map<String, Value>>,
   pub bin: Option<Value>,
   pub main: Option<String>,
+  pub module: Option<String>,
   pub name: Option<String>,
   pub path: PathBuf,
   pub typ: String,
@@ -33,6 +33,7 @@ impl PackageJson {
       imports: None,
       bin: None,
       main: None,
+      module: None,
       name: None,
       path,
       typ: "none".to_string(),
@@ -66,6 +67,7 @@ impl PackageJson {
 
     let imports_val = package_json.get("imports");
     let main_val = package_json.get("main");
+    let module_val = package_json.get("module");
     let name_val = package_json.get("name");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
@@ -79,21 +81,12 @@ impl PackageJson {
       }
     });
 
-    let imports = if let Some(imp) = imports_val {
-      imp.as_object().map(|imp| imp.to_owned())
-    } else {
-      None
-    };
-    let main = if let Some(m) = main_val {
-      m.as_str().map(|m| m.to_string())
-    } else {
-      None
-    };
-    let name = if let Some(n) = name_val {
-      n.as_str().map(|n| n.to_string())
-    } else {
-      None
-    };
+    let imports = imports_val
+      .and_then(|imp| imp.as_object())
+      .map(|imp| imp.to_owned());
+    let main = main_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let name = name_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -121,6 +114,7 @@ impl PackageJson {
       path,
       main,
       name,
+      module,
       typ,
       types,
       exports,

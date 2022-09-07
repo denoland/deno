@@ -13,27 +13,30 @@ fn compile() {
   } else {
     dir.path().join("welcome")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./test_util/std/examples/welcome.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(&exe)
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
 }
 
 #[test]

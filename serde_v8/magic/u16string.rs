@@ -8,7 +8,7 @@ impl_magic!(U16String);
 
 impl ToV8 for U16String {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let maybe_v =

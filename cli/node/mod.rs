@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -11,23 +12,23 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
-use deno_graph::source::ResolveResponse;
+use deno_runtime::deno_node::errors;
+use deno_runtime::deno_node::get_closest_package_json;
 use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::DenoDirNpmResolver;
+use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
 
-use crate::compat;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
@@ -37,6 +38,239 @@ use crate::npm::NpmPackageResolver;
 mod analyze;
 
 pub use analyze::esm_code_with_node_globals;
+
+pub enum NodeResolution {
+  Esm(ModuleSpecifier),
+  CommonJs(ModuleSpecifier),
+  BuiltIn(String),
+}
+
+impl NodeResolution {
+  pub fn into_url(self) -> ModuleSpecifier {
+    match self {
+      Self::Esm(u) => u,
+      Self::CommonJs(u) => u,
+      _ => unreachable!(),
+    }
+  }
+}
+
+struct NodeModulePolyfill {
+  /// Name of the module like "assert" or "timers/promises"
+  name: &'static str,
+
+  /// Specifier relative to the root of `deno_std` repo, like "node/asser.ts"
+  specifier: &'static str,
+}
+
+static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
+  NodeModulePolyfill {
+    name: "assert",
+    specifier: "node/assert.ts",
+  },
+  NodeModulePolyfill {
+    name: "assert/strict",
+    specifier: "node/assert/strict.ts",
+  },
+  NodeModulePolyfill {
+    name: "async_hooks",
+    specifier: "node/async_hooks.ts",
+  },
+  NodeModulePolyfill {
+    name: "buffer",
+    specifier: "node/buffer.ts",
+  },
+  NodeModulePolyfill {
+    name: "child_process",
+    specifier: "node/child_process.ts",
+  },
+  NodeModulePolyfill {
+    name: "cluster",
+    specifier: "node/cluster.ts",
+  },
+  NodeModulePolyfill {
+    name: "console",
+    specifier: "node/console.ts",
+  },
+  NodeModulePolyfill {
+    name: "constants",
+    specifier: "node/constants.ts",
+  },
+  NodeModulePolyfill {
+    name: "crypto",
+    specifier: "node/crypto.ts",
+  },
+  NodeModulePolyfill {
+    name: "dgram",
+    specifier: "node/dgram.ts",
+  },
+  NodeModulePolyfill {
+    name: "dns",
+    specifier: "node/dns.ts",
+  },
+  NodeModulePolyfill {
+    name: "domain",
+    specifier: "node/domain.ts",
+  },
+  NodeModulePolyfill {
+    name: "events",
+    specifier: "node/events.ts",
+  },
+  NodeModulePolyfill {
+    name: "fs",
+    specifier: "node/fs.ts",
+  },
+  NodeModulePolyfill {
+    name: "fs/promises",
+    specifier: "node/fs/promises.ts",
+  },
+  NodeModulePolyfill {
+    name: "http",
+    specifier: "node/http.ts",
+  },
+  NodeModulePolyfill {
+    name: "https",
+    specifier: "node/https.ts",
+  },
+  NodeModulePolyfill {
+    name: "module",
+    specifier: "node/module.ts",
+  },
+  NodeModulePolyfill {
+    name: "net",
+    specifier: "node/net.ts",
+  },
+  NodeModulePolyfill {
+    name: "os",
+    specifier: "node/os.ts",
+  },
+  NodeModulePolyfill {
+    name: "path",
+    specifier: "node/path.ts",
+  },
+  NodeModulePolyfill {
+    name: "path/posix",
+    specifier: "node/path/posix.ts",
+  },
+  NodeModulePolyfill {
+    name: "path/win32",
+    specifier: "node/path/win32.ts",
+  },
+  NodeModulePolyfill {
+    name: "perf_hooks",
+    specifier: "node/perf_hooks.ts",
+  },
+  NodeModulePolyfill {
+    name: "process",
+    specifier: "node/process.ts",
+  },
+  NodeModulePolyfill {
+    name: "querystring",
+    specifier: "node/querystring.ts",
+  },
+  NodeModulePolyfill {
+    name: "readline",
+    specifier: "node/readline.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream",
+    specifier: "node/stream.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream/promises",
+    specifier: "node/stream/promises.mjs",
+  },
+  NodeModulePolyfill {
+    name: "stream/web",
+    specifier: "node/stream/web.ts",
+  },
+  NodeModulePolyfill {
+    name: "string_decoder",
+    specifier: "node/string_decoder.ts",
+  },
+  NodeModulePolyfill {
+    name: "sys",
+    specifier: "node/sys.ts",
+  },
+  NodeModulePolyfill {
+    name: "timers",
+    specifier: "node/timers.ts",
+  },
+  NodeModulePolyfill {
+    name: "timers/promises",
+    specifier: "node/timers/promises.ts",
+  },
+  NodeModulePolyfill {
+    name: "tls",
+    specifier: "node/tls.ts",
+  },
+  NodeModulePolyfill {
+    name: "tty",
+    specifier: "node/tty.ts",
+  },
+  NodeModulePolyfill {
+    name: "url",
+    specifier: "node/url.ts",
+  },
+  NodeModulePolyfill {
+    name: "util",
+    specifier: "node/util.ts",
+  },
+  NodeModulePolyfill {
+    name: "util/types",
+    specifier: "node/util/types.ts",
+  },
+  NodeModulePolyfill {
+    name: "v8",
+    specifier: "node/v8.ts",
+  },
+  NodeModulePolyfill {
+    name: "vm",
+    specifier: "node/vm.ts",
+  },
+  NodeModulePolyfill {
+    name: "worker_threads",
+    specifier: "node/worker_threads.ts",
+  },
+  NodeModulePolyfill {
+    name: "zlib",
+    specifier: "node/zlib.ts",
+  },
+];
+
+static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
+  if let Ok(url_str) = std::env::var("DENO_NODE_COMPAT_URL") {
+    let url = Url::parse(&url_str).expect(
+      "Malformed DENO_NODE_COMPAT_URL value, make sure it's a file URL ending with a slash"
+    );
+    return url;
+  }
+
+  CURRENT_STD_URL.clone()
+});
+
+pub static MODULE_ALL_URL: Lazy<Url> =
+  Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
+
+fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
+  SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
+}
+
+fn is_builtin_node_module(specifier: &str) -> bool {
+  find_builtin_node_module(specifier).is_some()
+}
+
+pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(specifier) {
+    let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
+    return Ok(module_url);
+  }
+
+  Err(generic_error(format!(
+    "Unknown built-in Node module: {}",
+    specifier
+  )))
+}
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
@@ -96,7 +330,7 @@ pub async fn initialize_runtime(
       const moduleAll = await import(moduleAllUrl);
       Deno[Deno.internal].node.initialize(moduleAll.default);
     }})('{}');"#,
-    compat::MODULE_ALL_URL.as_str(),
+    MODULE_ALL_URL.as_str(),
   );
 
   let value =
@@ -132,23 +366,17 @@ pub fn node_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<Option<ResolveResponse>, AnyError> {
+) -> Result<Option<NodeResolution>, AnyError> {
+  // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-  // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-  // `module` from `ext/node/`.
-  if specifier == "module" {
-    return Ok(Some(ResolveResponse::Esm(
-      Url::parse("node:module").unwrap(),
-    )));
-  }
-  if let Some(resolved) = compat::try_resolve_builtin_module(specifier) {
-    return Ok(Some(ResolveResponse::Esm(resolved)));
+  if is_builtin_node_module(specifier) {
+    return Ok(Some(NodeResolution::BuiltIn(specifier.to_string())));
   }
 
   if let Ok(url) = Url::parse(specifier) {
     if url.scheme() == "data" {
-      return Ok(Some(ResolveResponse::Specifier(url)));
+      return Ok(Some(NodeResolution::Esm(url)));
     }
 
     let protocol = url.scheme();
@@ -157,29 +385,19 @@ pub fn node_resolve(
       let split_specifier = url.as_str().split(':');
       let specifier = split_specifier.skip(1).collect::<String>();
 
-      // NOTE(bartlomieju): this will force `ProcState` to use Node.js polyfill for
-      // `module` from `ext/node/`.
-      if specifier == "module" {
-        return Ok(Some(ResolveResponse::Esm(
-          Url::parse("node:module").unwrap(),
-        )));
-      }
-
-      if let Some(resolved) = compat::try_resolve_builtin_module(&specifier) {
-        return Ok(Some(ResolveResponse::Esm(resolved)));
-      } else {
-        return Err(generic_error(format!("Unknown module {}", specifier)));
+      if is_builtin_node_module(&specifier) {
+        return Ok(Some(NodeResolution::BuiltIn(specifier)));
       }
     }
 
     if protocol != "file" && protocol != "data" {
-      return Err(compat::errors::err_unsupported_esm_url_scheme(&url));
+      return Err(errors::err_unsupported_esm_url_scheme(&url));
     }
 
-    // todo(THIS PR): I think this is handled upstream so can be removed?
+    // todo(dsherret): this seems wrong
     if referrer.scheme() == "data" {
       let url = referrer.join(specifier).map_err(AnyError::from)?;
-      return Ok(Some(ResolveResponse::Specifier(url)));
+      return Ok(Some(NodeResolution::Esm(url)));
     }
   }
 
@@ -190,7 +408,7 @@ pub fn node_resolve(
     None => return Ok(None),
   };
 
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -199,11 +417,11 @@ pub fn node_resolve(
 pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   npm_resolver: &GlobalNpmPackageResolver,
-) -> Result<Option<ResolveResponse>, AnyError> {
+) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder = npm_resolver
     .resolve_package_from_deno_module(&reference.req)?
     .folder_path;
-  let maybe_url = package_config_resolve(
+  let resolved_path = package_config_resolve(
     &reference
       .sub_path
       .as_ref()
@@ -211,17 +429,14 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     npm_resolver,
+    NodeModuleKind::Esm,
   )
-  .map(Some)
   .with_context(|| {
     format!("Error resolving package config for '{}'.", reference)
   })?;
-  let url = match maybe_url {
-    Some(url) => url,
-    None => return Ok(None),
-  };
 
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -231,7 +446,7 @@ pub fn node_resolve_binary_export(
   pkg_req: &NpmPackageReq,
   bin_name: Option<&str>,
   npm_resolver: &GlobalNpmPackageResolver,
-) -> Result<ResolveResponse, AnyError> {
+) -> Result<NodeResolution, AnyError> {
   let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
   let package_folder = pkg.folder_path;
   let package_json_path = package_folder.join("package.json");
@@ -281,7 +496,7 @@ pub fn node_resolve_binary_export(
   let url =
     ModuleSpecifier::from_file_path(package_folder.join(bin_entry)).unwrap();
 
-  let resolve_response = url_to_resolve_response(url, npm_resolver)?;
+  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(resolve_response)
@@ -312,105 +527,61 @@ fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ModuleSpecifier, AnyError> {
+  referrer_kind: NodeModuleKind,
+) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
-  // todo(dsherret): remove base from this code
-  let base =
+  let referrer =
     ModuleSpecifier::from_directory_path(package_json_path.parent().unwrap())
       .unwrap();
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
-  let package_json_url =
-    ModuleSpecifier::from_file_path(&package_json_path).unwrap();
   if let Some(exports) = &package_config.exports {
     return package_exports_resolve(
-      package_json_url,
+      &package_json_path,
       package_subpath.to_string(),
       exports,
-      &base,
+      &referrer,
+      referrer_kind,
       DEFAULT_CONDITIONS,
       npm_resolver,
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json_url, &package_config, &base);
+    return legacy_main_resolve(&package_config, referrer_kind);
   }
 
-  package_json_url
-    .join(package_subpath)
-    .map_err(AnyError::from)
+  Ok(package_dir.join(package_subpath))
 }
 
-fn url_to_resolve_response(
+fn url_to_node_resolution(
   url: ModuleSpecifier,
   npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<ResolveResponse, AnyError> {
+) -> Result<NodeResolution, AnyError> {
   Ok(if url.as_str().starts_with("http") {
-    ResolveResponse::Esm(url)
+    NodeResolution::Esm(url)
   } else if url.as_str().ends_with(".js") {
     let package_config = get_closest_package_json(&url, npm_resolver)?;
     if package_config.typ == "module" {
-      ResolveResponse::Esm(url)
+      NodeResolution::Esm(url)
     } else {
-      ResolveResponse::CommonJs(url)
+      NodeResolution::CommonJs(url)
     }
   } else if url.as_str().ends_with(".cjs") {
-    ResolveResponse::CommonJs(url)
+    NodeResolution::CommonJs(url)
   } else {
-    ResolveResponse::Esm(url)
+    NodeResolution::Esm(url)
   })
-}
-
-fn get_closest_package_json(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PackageJson, AnyError> {
-  let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
-  PackageJson::load(npm_resolver, package_json_path)
-}
-
-fn get_closest_package_json_path(
-  url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
-) -> Result<PathBuf, AnyError> {
-  let file_path = url.to_file_path().unwrap();
-  let mut current_dir = file_path.parent().unwrap();
-  let package_json_path = current_dir.join("package.json");
-  if package_json_path.exists() {
-    return Ok(package_json_path);
-  }
-  let root_folder = npm_resolver
-    .resolve_package_folder_from_path(&url.to_file_path().unwrap())?;
-  while current_dir.starts_with(&root_folder) {
-    current_dir = current_dir.parent().unwrap();
-    let package_json_path = current_dir.join("./package.json");
-    if package_json_path.exists() {
-      return Ok(package_json_path);
-    }
-  }
-
-  bail!("did not find package.json in {}", root_folder.display())
 }
 
 fn finalize_resolution(
   resolved: ModuleSpecifier,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  // TODO(bartlomieju): this is not part of Node resolution algorithm
-  // (as it doesn't support http/https); but I had to short circuit here
-  // for remote modules because they are mainly used to polyfill `node` built
-  // in modules. Another option would be to leave the resolved URLs
-  // as `node:<module_name>` and do the actual remapping to std's polyfill
-  // in module loader. I'm not sure which approach is better.
-  if resolved.scheme().starts_with("http") {
-    return Ok(resolved);
-  }
-
   // todo(dsherret): cache
   let encoded_sep_re = Regex::new(r"%2F|%2C").unwrap();
 
   if encoded_sep_re.is_match(resolved.path()) {
-    return Err(compat::errors::err_invalid_module_specifier(
+    return Err(errors::err_invalid_module_specifier(
       resolved.path(),
       "must not include encoded \"/\" or \"\\\\\" characters",
       Some(to_file_path_string(base)),
@@ -437,12 +608,12 @@ fn finalize_resolution(
     (false, false)
   };
   if is_dir {
-    return Err(compat::errors::err_unsupported_dir_import(
+    return Err(errors::err_unsupported_dir_import(
       resolved.as_str(),
       base.as_str(),
     ));
   } else if !is_file {
-    return Err(compat::errors::err_module_not_found(
+    return Err(errors::err_module_not_found(
       resolved.as_str(),
       base.as_str(),
       "module",
@@ -458,25 +629,34 @@ fn module_resolve(
   conditions: &[&str],
   npm_resolver: &dyn DenoDirNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
+  // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
     Some(resolved_specifier)
   } else if specifier.starts_with('#') {
-    Some(package_imports_resolve(
-      specifier,
-      referrer,
-      conditions,
-      npm_resolver,
-    )?)
+    Some(
+      package_imports_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      )
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+    )
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    Some(package_resolve(
-      specifier,
-      referrer,
-      conditions,
-      npm_resolver,
-    )?)
+    Some(
+      package_resolve(
+        specifier,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      )
+      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
+    )
   };
   Ok(match url {
     Some(url) => Some(finalize_resolution(url, referrer)?),
@@ -553,7 +733,6 @@ pub fn translate_cjs_to_esm(
   // if there are reexports, handle them first
   for (idx, reexport) in analysis.reexports.iter().enumerate() {
     // Firstly, resolve relate reexport specifier
-    // todo(dsherret): call module_resolve instead?
     let resolved_reexport = resolve(
       reexport,
       specifier,
@@ -639,17 +818,6 @@ pub fn translate_cjs_to_esm(
   Ok(translated_source)
 }
 
-fn resolve_package_target_string(
-  target: &str,
-  subpath: Option<String>,
-) -> String {
-  if let Some(subpath) = subpath {
-    target.replace('*', &subpath)
-  } else {
-    target.to_string()
-  }
-}
-
 fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
@@ -671,26 +839,30 @@ fn resolve(
 
   // We've got a bare specifier or maybe bare_specifier/blah.js"
 
-  let (_, package_subpath) = parse_specifier(specifier).unwrap();
+  let (package_specifier, package_subpath) =
+    parse_specifier(specifier).unwrap();
 
   // todo(dsherret): use not_found error on not found here
-  let module_dir =
-    npm_resolver.resolve_package_folder_from_path(&referrer_path)?;
+  let module_dir = npm_resolver.resolve_package_folder_from_package(
+    package_specifier.as_str(),
+    &referrer_path,
+  )?;
 
   let package_json_path = module_dir.join("package.json");
   if package_json_path.exists() {
-    let package_json = PackageJson::load(npm_resolver, package_json_path)?;
+    let package_json =
+      PackageJson::load(npm_resolver, package_json_path.clone())?;
 
-    if let Some(map) = package_json.exports {
-      if let Some((key, subpath)) = exports_resolve(&map, &package_subpath) {
-        let value = map.get(&key).unwrap();
-        let s = conditions_resolve(value, conditions);
-
-        let t = resolve_package_target_string(&s, subpath);
-        return Ok(module_dir.join(t).clean());
-      } else {
-        todo!()
-      }
+    if let Some(exports) = &package_json.exports {
+      return package_exports_resolve(
+        &package_json_path,
+        package_subpath,
+        exports,
+        referrer,
+        NodeModuleKind::Esm,
+        conditions,
+        npm_resolver,
+      );
     }
 
     // old school
@@ -710,25 +882,6 @@ fn resolve(
   }
 
   Err(not_found(specifier, &referrer_path))
-}
-
-fn conditions_resolve(value: &Value, conditions: &[&str]) -> String {
-  match value {
-    Value::String(s) => s.to_string(),
-    Value::Object(map) => {
-      for condition in conditions {
-        if let Some(x) = map.get(&condition.to_string()) {
-          if let Value::String(s) = x {
-            return s.to_string();
-          } else {
-            todo!()
-          }
-        }
-      }
-      todo!()
-    }
-    _ => todo!(),
-  }
 }
 
 fn parse_specifier(specifier: &str) -> Option<(String, String)> {
@@ -773,46 +926,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   Some((package_name, package_subpath))
 }
 
-fn exports_resolve(
-  map: &Map<String, Value>,
-  subpath: &str,
-) -> Option<(String, Option<String>)> {
-  if map.contains_key(subpath) {
-    return Some((subpath.to_string(), None));
-  }
-
-  // best match
-  let mut best_match = None;
-  for key in map.keys() {
-    if let Some(pattern_index) = key.find('*') {
-      let key_sub = &key[0..pattern_index];
-      if subpath.starts_with(key_sub) {
-        if subpath.ends_with('/') {
-          todo!()
-        }
-        let pattern_trailer = &key[pattern_index + 1..];
-
-        if subpath.len() > key.len()
-          && subpath.ends_with(pattern_trailer)
-          // && pattern_key_compare(best_match, key) == 1
-          && key.rfind('*') == Some(pattern_index)
-        {
-          let rest = subpath
-            [pattern_index..(subpath.len() - pattern_trailer.len())]
-            .to_string();
-          best_match = Some((key, rest));
-        }
-      }
-    }
-  }
-
-  if let Some((key, subpath_)) = best_match {
-    return Some((key.to_string(), Some(subpath_)));
-  }
-
-  None
-}
-
 fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
   url
     .to_file_path()
@@ -854,19 +967,29 @@ fn is_relative_specifier(specifier: &str) -> bool {
 }
 
 fn file_extension_probe(
-  mut p: PathBuf,
+  p: PathBuf,
   referrer: &Path,
 ) -> Result<PathBuf, AnyError> {
-  if p.exists() && !p.is_dir() {
-    Ok(p.clean())
-  } else {
-    p.set_extension("js");
-    if p.exists() && !p.is_dir() {
-      Ok(p)
+  let p = p.clean();
+  if p.exists() {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
+    } else if p.is_dir() {
+      return Ok(p.join("index.js"));
     } else {
-      Err(not_found(&p.clean().to_string_lossy(), referrer))
+      return Ok(p);
+    }
+  } else {
+    let mut p_js = p.clone();
+    p_js.set_extension("js");
+    if p_js.exists() && p_js.is_file() {
+      return Ok(p_js);
     }
   }
+
+  Err(not_found(&p.to_string_lossy(), referrer))
 }
 
 fn not_found(path: &str, referrer: &Path) -> AnyError {
@@ -902,14 +1025,5 @@ mod tests {
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
-  }
-
-  #[test]
-  fn test_resolve_package_target_string() {
-    assert_eq!(resolve_package_target_string("foo", None), "foo");
-    assert_eq!(
-      resolve_package_target_string("*foo", Some("bar".to_string())),
-      "barfoo"
-    );
   }
 }

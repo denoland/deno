@@ -2027,3 +2027,14 @@ Deno.test(function inspectStringAbbreviation() {
     '[ "This is a ..." ]',
   );
 });
+
+Deno.test(async function inspectAggregateError() {
+  try {
+    await Promise.any([]);
+  } catch (err) {
+    assertEquals(
+      Deno.inspect(err).trimEnd(),
+      "AggregateError: All promises were rejected",
+    );
+  }
+});
