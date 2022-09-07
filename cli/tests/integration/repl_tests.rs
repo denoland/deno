@@ -844,3 +844,34 @@ fn pty_tab_handler() {
     assert_not_contains!(output, "atob");
   });
 }
+
+#[test]
+fn repl_report_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      r#"console.log(1); reportError(new Error("foo")); console.log(2);"#,
+    ]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  // TODO(nayeemrmn): The REPL should report event errors and rejections.
+  assert_contains!(out, "1\n2\nundefined\n");
+  assert!(err.is_empty());
+}
+
+#[test]
+fn pty_aggregate_error() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["await Promise.any([])"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  assert_contains!(out, "AggregateError");
+  assert!(err.is_empty());
+}

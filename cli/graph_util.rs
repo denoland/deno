@@ -3,29 +3,25 @@
 use crate::colors;
 use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 
-use deno_ast::ParsedSource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_graph::GraphImport;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleKind;
 use deno_graph::Range;
 use deno_graph::Resolved;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-
-/// Matches the `@ts-check` pragma.
-static TS_CHECK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^\s*@ts-check(?:\s+|$)"#).unwrap());
 
 pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
@@ -39,18 +35,12 @@ pub fn contains_specifier(
 pub enum ModuleEntry {
   Module {
     code: Arc<str>,
-    maybe_parsed_source: Option<ParsedSource>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
-    /// Whether or not this is a JS/JSX module with a `@ts-check` directive.
-    ts_check: bool,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
     checked_libs: HashSet<TsTypeLib>,
     maybe_types: Option<Resolved>,
-  },
-  Configuration {
-    dependencies: BTreeMap<String, Resolved>,
   },
   Error(ModuleGraphError),
   Redirect(ModuleSpecifier),
@@ -60,10 +50,11 @@ pub enum ModuleEntry {
 #[derive(Debug, Default)]
 pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
-  configurations: HashSet<ModuleSpecifier>,
+  graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
@@ -71,28 +62,29 @@ impl GraphData {
   /// Store data from `graph` into `self`.
   pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
     for graph_import in &graph.imports {
-      let mut dependencies = BTreeMap::new();
-      for (specifier, dependency) in &graph_import.dependencies {
-        if !matches!(dependency.maybe_type, Resolved::None) {
-          dependencies.insert(specifier.clone(), dependency.maybe_type.clone());
+      for dep in graph_import.dependencies.values() {
+        for resolved in [&dep.maybe_code, &dep.maybe_type] {
           if let Resolved::Ok {
             specifier, range, ..
-          } = &dependency.maybe_type
+          } = resolved
           {
             let entry = self.referrer_map.entry(specifier.clone());
             entry.or_insert_with(|| range.clone());
           }
         }
       }
-      self.modules.insert(
-        graph_import.referrer.clone(),
-        ModuleEntry::Configuration { dependencies },
-      );
-      self.configurations.insert(graph_import.referrer.clone());
+      self.graph_imports.push(graph_import.clone())
     }
 
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
+        continue;
+      }
+      if specifier.scheme() == "npm" {
+        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
+        let reference =
+          NpmPackageReference::from_specifier(&specifier).unwrap();
+        self.npm_packages.insert(reference.req);
         continue;
       }
       if let Some(found) = graph.redirects.get(&specifier) {
@@ -133,24 +125,9 @@ impl GraphData {
               }
             }
           }
-          let ts_check = match &media_type {
-            MediaType::JavaScript
-            | MediaType::Mjs
-            | MediaType::Cjs
-            | MediaType::Jsx => {
-              let parsed_source = module.maybe_parsed_source.as_ref().unwrap();
-              parsed_source
-                .get_leading_comments()
-                .iter()
-                .any(|c| TS_CHECK_RE.is_match(&c.text))
-            }
-            _ => false,
-          };
           let module_entry = ModuleEntry::Module {
             code,
-            maybe_parsed_source: module.maybe_parsed_source.clone(),
             dependencies: module.dependencies.clone(),
-            ts_check,
             media_type,
             checked_libs: Default::default(),
             maybe_types,
@@ -171,6 +148,11 @@ impl GraphData {
     self.modules.iter()
   }
 
+  /// Gets the unique npm package requirements from all the encountered graphs.
+  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
+    self.npm_packages.iter().cloned().collect()
+  }
+
   /// Walk dependencies from `roots` and return every encountered specifier.
   /// Return `None` if any modules are not known.
   pub fn walk<'a>(
@@ -187,11 +169,26 @@ impl GraphData {
       seen.insert(root);
       visiting.push_back(root);
     }
-    for root in &self.configurations {
-      seen.insert(root);
-      visiting.push_back(root);
+    for (_, dep) in self.graph_imports.iter().flat_map(|i| &i.dependencies) {
+      let mut resolutions = vec![&dep.maybe_code];
+      if follow_type_only {
+        resolutions.push(&dep.maybe_type);
+      }
+      #[allow(clippy::manual_flatten)]
+      for resolved in resolutions {
+        if let Resolved::Ok { specifier, .. } = resolved {
+          if !seen.contains(specifier) {
+            seen.insert(specifier);
+            visiting.push_front(specifier);
+          }
+        }
+      }
     }
     while let Some(specifier) = visiting.pop_front() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        continue; // skip analyzing npm specifiers
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => return None,
@@ -221,7 +218,13 @@ impl GraphData {
               }
             }
           }
-          for (_, dep) in dependencies.iter().rev() {
+          for (dep_specifier, dep) in dependencies.iter().rev() {
+            // todo(dsherret): ideally there would be a way to skip external dependencies
+            // in the graph here rather than specifically npm package references
+            if NpmPackageReference::from_str(dep_specifier).is_ok() {
+              continue;
+            }
+
             if !dep.is_dynamic || follow_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
               if check_types {
@@ -235,16 +238,6 @@ impl GraphData {
                     visiting.push_front(specifier);
                   }
                 }
-              }
-            }
-          }
-        }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved in dependencies.values() {
-            if let Resolved::Ok { specifier, .. } = resolved {
-              if !seen.contains(specifier) {
-                seen.insert(specifier);
-                visiting.push_front(specifier);
               }
             }
           }
@@ -281,8 +274,9 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      npm_packages: self.npm_packages.clone(),
       referrer_map,
-      configurations: self.configurations.clone(),
+      graph_imports: self.graph_imports.to_vec(),
       cjs_esm_translations: Default::default(),
     })
   }
@@ -349,20 +343,6 @@ impl GraphData {
                   return Some(Err(error.clone().into()));
                 }
               }
-            }
-          }
-        }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved_result in dependencies.values() {
-            if let Resolved::Err(error) = resolved_result {
-              let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
             }
           }
         }
@@ -443,18 +423,22 @@ impl GraphData {
     self.modules.get(specifier)
   }
 
-  // TODO(bartlomieju): after saving translated source
-  // it's never removed, potentially leading to excessive
-  // memory consumption
-  pub fn add_cjs_esm_translation(
-    &mut self,
+  /// Get the dependencies of a module or graph import.
+  pub fn get_dependencies<'a>(
+    &'a self,
     specifier: &ModuleSpecifier,
-    source: String,
-  ) {
-    let prev = self
-      .cjs_esm_translations
-      .insert(specifier.to_owned(), source);
-    assert!(prev.is_none());
+  ) -> Option<&'a BTreeMap<String, Dependency>> {
+    let specifier = self.follow_redirect(specifier);
+    if let Some(ModuleEntry::Module { dependencies, .. }) = self.get(&specifier)
+    {
+      return Some(dependencies);
+    }
+    if let Some(graph_import) =
+      self.graph_imports.iter().find(|i| i.referrer == specifier)
+    {
+      return Some(&graph_import.dependencies);
+    }
+    None
   }
 
   pub fn get_cjs_esm_translation<'a>(

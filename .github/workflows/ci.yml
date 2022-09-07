@@ -140,9 +140,6 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
-      - name: Error on warning
-        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
-
       - name: Configure canary build
         if: |
           matrix.job == 'test' &&

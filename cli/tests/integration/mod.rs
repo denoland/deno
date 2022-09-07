@@ -60,8 +60,6 @@ mod bundle;
 mod cache;
 #[path = "check_tests.rs"]
 mod check;
-#[path = "compat_tests.rs"]
-mod compat;
 #[path = "compile_tests.rs"]
 mod compile;
 #[path = "coverage_tests.rs"]
@@ -74,6 +72,8 @@ mod eval;
 mod fmt;
 #[path = "info_tests.rs"]
 mod info;
+#[path = "init_tests.rs"]
+mod init;
 #[path = "inspector_tests.rs"]
 mod inspector;
 #[path = "install_tests.rs"]
@@ -82,6 +82,8 @@ mod install;
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "npm_tests.rs"]
+mod npm;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
@@ -926,7 +928,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 
@@ -948,7 +950,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
     assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
 

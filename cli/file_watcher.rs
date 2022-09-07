@@ -1,12 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::format_js_error;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
+use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
@@ -261,7 +261,7 @@ pub async fn watch_func2<T: Clone, O, F>(
   print_config: PrintConfig,
 ) -> Result<(), AnyError>
 where
-  O: FnMut(T) -> F,
+  O: FnMut(T) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (watcher_sender, mut watcher_receiver) =
@@ -306,7 +306,7 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler(operation(operation_args.clone()));
+    let operation_future = error_handler(operation(operation_args.clone())?);
 
     select! {
       _ = receiver_future => {},

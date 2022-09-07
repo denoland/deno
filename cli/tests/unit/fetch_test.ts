@@ -764,6 +764,68 @@ Deno.test(
   {
     permissions: { net: true },
   },
+  async function fetchUserSetContentLength() {
+    const addr = "127.0.0.1:4501";
+    const bufPromise = bufferServer(addr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Content-Length", "10"],
+      ],
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
+      "accept: */*\r\n",
+      "accept-language: *\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n\r\n`,
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchUserSetTransferEncoding() {
+    const addr = "127.0.0.1:4501";
+    const bufPromise = bufferServer(addr);
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Transfer-Encoding", "chunked"],
+      ],
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "content-length: 0\r\n",
+      `host: ${addr}\r\n`,
+      "accept: */*\r\n",
+      "accept-language: *\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n\r\n",
+    ].join("");
+    assertEquals(actual, expected);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
   async function fetchWithNonAsciiRedirection() {
     const response = await fetch("http://localhost:4545/non_ascii_redirect", {
       redirect: "manual",
@@ -1140,47 +1202,44 @@ Deno.test({}, function fetchWritableRespProps() {
   assertEquals(new_.headers.get("x-deno"), "foo");
 });
 
-function returnHostHeaderServer(addr: string): Deno.Listener {
-  const [hostname, port] = addr.split(":");
-  const listener = Deno.listen({
-    hostname,
-    port: Number(port),
-  }) as Deno.Listener;
-
-  listener.accept().then(async (conn: Deno.Conn) => {
-    const httpConn = Deno.serveHttp(conn);
-
-    await httpConn.nextRequest()
-      .then(async (requestEvent: Deno.RequestEvent | null) => {
-        const hostHeader = requestEvent?.request.headers.get("Host");
-        const headersToReturn = hostHeader ? { "Host": hostHeader } : undefined;
-
-        await requestEvent?.respondWith(
-          new Response("", {
-            status: 200,
-            headers: headersToReturn,
-          }),
-        );
-      });
-
-    httpConn.close();
-  });
-
-  return listener;
-}
-
 Deno.test(
   { permissions: { net: true } },
   async function fetchFilterOutCustomHostHeader(): Promise<
     void
   > {
     const addr = "127.0.0.1:4511";
-    const listener = returnHostHeaderServer(addr);
+    const [hostname, port] = addr.split(":");
+    const listener = Deno.listen({
+      hostname,
+      port: Number(port),
+    }) as Deno.Listener;
+
+    let httpConn: Deno.HttpConn;
+    listener.accept().then(async (conn: Deno.Conn) => {
+      httpConn = Deno.serveHttp(conn);
+
+      await httpConn.nextRequest()
+        .then(async (requestEvent: Deno.RequestEvent | null) => {
+          const hostHeader = requestEvent?.request.headers.get("Host");
+          const headersToReturn = hostHeader
+            ? { "Host": hostHeader }
+            : undefined;
+
+          await requestEvent?.respondWith(
+            new Response("", {
+              status: 200,
+              headers: headersToReturn,
+            }),
+          );
+        });
+    });
+
     const response = await fetch(`http://${addr}/`, {
       headers: { "Host": "example.com" },
     });
     await response.text();
     listener.close();
+    httpConn!.close();
 
     assertEquals(response.headers.get("Host"), addr);
   },

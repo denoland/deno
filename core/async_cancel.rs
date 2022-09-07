@@ -219,7 +219,7 @@ mod internal {
       // Do a cancellation check _before_ polling the inner future. If it has
       // already been canceled the inner future will not be polled.
       let node = match &*registration {
-        Registration::WillRegister { head_node } => &*head_node,
+        Registration::WillRegister { head_node } => head_node,
         Registration::Registered { node } => node,
       };
       if node.is_canceled() {

@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
     Error,
     ObjectFreeze,
@@ -22,7 +23,7 @@
     }
     let result = "";
     if (cse.fileName) {
-      result += core.opSync("op_format_file_name", cse.fileName);
+      result += ops.op_format_file_name(cse.fileName);
     } else {
       if (cse.isEval) {
         if (cse.evalOrigin == null) {
@@ -116,7 +117,7 @@
 
   function sourceMapCallSiteEval(cse) {
     if (cse.fileName && cse.lineNumber != null && cse.columnNumber != null) {
-      return { ...cse, ...core.opSync("op_apply_source_map", cse) };
+      return { ...cse, ...ops.op_apply_source_map(cse) };
     }
     return cse;
   }

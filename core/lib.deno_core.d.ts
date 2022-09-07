@@ -10,15 +10,13 @@ declare namespace Deno {
     /** Call an op in Rust, and synchronously receive the result. */
     function opSync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): any;
 
     /** Call an op in Rust, and asynchronously receive the result. */
     function opAsync(
       opName: string,
-      a?: any,
-      b?: any,
+      ...args: any[]
     ): Promise<any>;
 
     /** Mark following promise as "ref", ie. event loop won't exit
@@ -30,10 +28,10 @@ declare namespace Deno {
     function unrefOps(promiseId: number): void;
 
     /**
-     * Retrieve a list of all registered ops, in the form of a map that maps op
+     * List of all registered ops, in the form of a map that maps op
      * name to internal numerical op id.
      */
-    function ops(): Record<string, number>;
+    const ops: Record<string, (...args: unknown[]) => any>;
 
     /**
      * Retrieve a list of all open resources, in the form of a map that maps

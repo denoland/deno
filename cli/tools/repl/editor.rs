@@ -304,7 +304,10 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in deno_ast::lex(line, deno_ast::MediaType::TypeScript) {
+    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
+      .into_iter()
+      .peekable();
+    while let Some(item) = lexed_items.next() {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
@@ -334,7 +337,17 @@ impl Highlighter for EditorHelper {
                 } else if ident == *"async" || ident == *"of" {
                   colors::cyan(&line[range]).to_string()
                 } else {
-                  line[range].to_string()
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
+                    // We're looking for something that looks like a function
+                    // We use a simple heuristic: 'ident' followed by 'LParen'
+                    colors::intense_blue(&line[range]).to_string()
+                  } else {
+                    line[range].to_string()
+                  }
                 }
               }
             },

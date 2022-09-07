@@ -18,6 +18,11 @@ itest!(stdin_read_all {
   input: Some("01234567890123456789012345678901234567890123456789"),
 });
 
+itest!(stdout_write_sync_async {
+  args: "run --quiet run/stdout_write_sync_async.ts",
+  output: "run/stdout_write_sync_async.out",
+});
+
 itest!(_001_hello {
   args: "run --reload 001_hello.js",
   output: "001_hello.js.out",
@@ -1333,6 +1338,18 @@ itest!(jsx_import_source_import_map {
 
 itest!(jsx_import_source_import_map_dev {
   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map_dev.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_scoped {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
+  output: "jsx_import_source_import_map.out",
+  http_server: true,
+});
+
+itest!(jsx_import_source_import_map_scoped_dev {
+  args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
   output: "jsx_import_source_import_map_dev.out",
   http_server: true,
 });
@@ -2738,6 +2755,24 @@ itest!(report_error_handled {
   output: "report_error_handled.ts.out",
 });
 
+// Regression test for https://github.com/denoland/deno/issues/15513.
+itest!(report_error_end_of_program {
+  args: "run --quiet report_error_end_of_program.ts",
+  output: "report_error_end_of_program.ts.out",
+  exit_code: 1,
+});
+
+itest!(queue_microtask_error {
+  args: "run --quiet queue_microtask_error.ts",
+  output: "queue_microtask_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(queue_microtask_error_handled {
+  args: "run --quiet queue_microtask_error_handled.ts",
+  output: "queue_microtask_error_handled.ts.out",
+});
+
 itest!(spawn_stdout_inherit {
   args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
   output: "spawn_stdout_inherit.ts.out",
@@ -2752,6 +2787,12 @@ itest!(error_name_non_string {
 itest!(custom_inspect_url {
   args: "run custom_inspect_url.js",
   output: "custom_inspect_url.js.out",
+});
+
+itest!(config_json_import {
+  args: "run --quiet -c jsx/deno-jsx.json config_json_import.ts",
+  output: "config_json_import.ts.out",
+  http_server: true,
 });
 
 #[test]

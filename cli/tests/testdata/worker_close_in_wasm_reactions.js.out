@@ -1,1 +1,1 @@
-Error: CompileError: WebAssembly.compile(): expected string length @+10
+Error: CompileError: WebAssembly.compile(): expected  length: @+10

@@ -874,6 +874,41 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   Ok(base64::encode(digest))
 }
 
+struct UpgradedStream(hyper::upgrade::Upgraded);
+impl tokio::io::AsyncRead for UpgradedStream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut tokio::io::ReadBuf,
+  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+  }
+}
+
+impl tokio::io::AsyncWrite for UpgradedStream {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+  }
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_flush(cx)
+  }
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+  }
+}
+
+impl deno_websocket::Upgraded for UpgradedStream {}
+
 #[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
@@ -893,7 +928,9 @@ async fn op_http_upgrade_websocket(
   };
 
   let transport = hyper::upgrade::on(request).await?;
-  let ws_rid = ws_create_server_stream(&state, transport).await?;
+  let ws_rid =
+    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
+      .await?;
   Ok(ws_rid)
 }
 

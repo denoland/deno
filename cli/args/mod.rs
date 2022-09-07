@@ -34,7 +34,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::compat;
+use crate::args::config_file::JsxImportSourceConfig;
 use crate::deno_dir::DenoDir;
 use crate::emit::get_ts_config_for_emit;
 use crate::emit::TsConfigType;
@@ -210,12 +210,14 @@ impl CliOptions {
     }
   }
 
-  /// Return the implied JSX import source module.
-  pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
+  /// Return the JSX import source configuration.
+  pub fn to_maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
     self
       .maybe_config_file
       .as_ref()
-      .and_then(|c| c.to_maybe_jsx_import_source_module())
+      .and_then(|c| c.to_maybe_jsx_import_source_config())
   }
 
   /// Return any imports that should be brought into the scope of the module
@@ -226,9 +228,6 @@ impl CliOptions {
       if let Some(config_imports) = config_file.to_maybe_imports()? {
         imports.extend(config_imports);
       }
-    }
-    if self.flags.compat {
-      imports.extend(compat::get_node_imports());
     }
     if imports.is_empty() {
       Ok(None)
@@ -274,12 +273,25 @@ impl CliOptions {
       .unwrap_or(false)
   }
 
-  pub fn compat(&self) -> bool {
-    self.flags.compat
-  }
+  pub fn coverage_dir(&self) -> Option<String> {
+    fn allow_coverage(sub_command: &DenoSubcommand) -> bool {
+      match sub_command {
+        DenoSubcommand::Test(_) => true,
+        DenoSubcommand::Run(flags) => !flags.is_stdin(),
+        _ => false,
+      }
+    }
 
-  pub fn coverage_dir(&self) -> Option<&String> {
-    self.flags.coverage_dir.as_ref()
+    if allow_coverage(self.sub_command()) {
+      self
+        .flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok())
+    } else {
+      None
+    }
   }
 
   pub fn enable_testing_features(&self) -> bool {
@@ -333,6 +345,20 @@ impl CliOptions {
 
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
+  }
+
+  pub fn trace_ops(&self) -> bool {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.trace_ops,
+      _ => false,
+    }
+  }
+
+  pub fn shuffle_tests(&self) -> Option<u64> {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.shuffle,
+      _ => None,
+    }
   }
 
   pub fn type_check_mode(&self) -> TypeCheckMode {

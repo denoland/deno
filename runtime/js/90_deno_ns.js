@@ -109,7 +109,6 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
-    upgradeHttp: __bootstrap.http.upgradeHttp,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
@@ -153,5 +152,8 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    serve: __bootstrap.flash.serve,
+    upgradeHttp: __bootstrap.http.upgradeHttp,
+    upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
   };
 })(this);

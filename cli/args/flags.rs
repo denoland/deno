@@ -120,6 +120,11 @@ pub struct FmtFlags {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct InitFlags {
+  pub dir: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
@@ -160,6 +165,12 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct RunFlags {
   pub script: String,
+}
+
+impl RunFlags {
+  pub fn is_stdin(&self) -> bool {
+    self.script == "-"
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -211,6 +222,7 @@ pub enum DenoSubcommand {
   Doc(DocFlags),
   Eval(EvalFlags),
   Fmt(FmtFlags),
+  Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
   Uninstall(UninstallFlags),
@@ -300,9 +312,6 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  /// If true, a list of Node built-in modules will be injected into
-  /// the import map.
-  pub compat: bool,
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
@@ -548,6 +557,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
     Some(("doc", m)) => doc_parse(&mut flags, m),
     Some(("eval", m)) => eval_parse(&mut flags, m),
     Some(("fmt", m)) => fmt_parse(&mut flags, m),
+    Some(("init", m)) => init_parse(&mut flags, m),
     Some(("info", m)) => info_parse(&mut flags, m),
     Some(("install", m)) => install_parse(&mut flags, m),
     Some(("lint", m)) => lint_parse(&mut flags, m),
@@ -623,6 +633,7 @@ fn clap_root(version: &str) -> Command {
     .subcommand(doc_subcommand())
     .subcommand(eval_subcommand())
     .subcommand(fmt_subcommand())
+    .subcommand(init_subcommand())
     .subcommand(info_subcommand())
     .subcommand(install_subcommand())
     .subcommand(uninstall_subcommand())
@@ -677,7 +688,7 @@ and report results to standard output:
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
 Directory arguments are expanded to all contained files matching the \
-glob {*_,*.,}bench.{js,mjs,ts,jsx,tsx}:
+glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
     )
@@ -740,6 +751,7 @@ fn check_subcommand<'a>() -> Command<'a> {
     Arg::new("remote")
       .long("remote")
       .help("Type-check all modules, including remote")
+      .conflicts_with("no-remote")
     )
     .arg(
       Arg::new("file")
@@ -1132,6 +1144,15 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .possible_values(&["always", "never", "preserve"])
         .help("Define how prose should be wrapped. Defaults to always."),
     )
+}
+
+fn init_subcommand<'a>() -> Command<'a> {
+  Command::new("init").about("Initialize a new project").arg(
+    Arg::new("dir")
+      .takes_value(true)
+      .required(false)
+      .value_hint(ValueHint::DirPath),
+  )
 }
 
 fn info_subcommand<'a>() -> Command<'a> {
@@ -1593,7 +1614,7 @@ report results to standard output:
   deno test src/fetch_test.ts src/signal_test.ts
 
 Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}test.{js,mjs,ts,jsx,tsx}:
+{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}:
 
   deno test src/",
     )
@@ -1845,7 +1866,6 @@ fn runtime_args(
     .arg(v8_flags_arg())
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
-    .arg(compat_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -1917,6 +1937,7 @@ fn reload_arg<'a>() -> Arg<'a> {
   Reloads specific modules",
     )
     .value_hint(ValueHint::FilePath)
+    .validator(reload_arg_validate)
 }
 
 fn ca_file_arg<'a>() -> Arg<'a> {
@@ -1983,21 +2004,6 @@ fn seed_arg<'a>() -> Arg<'a> {
       Ok(_) => Ok(()),
       Err(_) => Err("Seed should be a number".to_string()),
     })
-}
-
-static COMPAT_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "See https://deno.land/manual@v{}/node/compatibility_mode",
-    SHORT_VERSION.as_str()
-  )
-});
-
-fn compat_arg<'a>() -> Arg<'a> {
-  Arg::new("compat")
-    .long("compat")
-    .requires("unstable")
-    .help("UNSTABLE: Node compatibility mode.")
-    .long_help(COMPAT_HELP.as_str())
 }
 
 fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
@@ -2430,6 +2436,12 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
+fn init_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Init(InitFlags {
+    dir: matches.value_of("dir").map(|f| f.to_string()),
+  });
+}
+
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   config_args_parse(flags, matches);
@@ -2582,7 +2594,8 @@ fn task_parse(
   }
 
   if let Some(mut index) = matches.index_of("task_name_and_args") {
-    index += 1; // skip `task`
+    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
+    let raw_args = &raw_args[task_word_index..];
 
     // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
     while index < raw_args.len() {
@@ -2885,7 +2898,6 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
-  compat_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
 }
 
@@ -2970,12 +2982,6 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   }
 }
 
-fn compat_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("compat") {
-    flags.compat = true;
-  }
-}
-
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if let Some(cache_type) = matches.value_of("no-check") {
     match cache_type {
@@ -3036,6 +3042,16 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn inspect_arg_validate(val: &str) -> Result<(), String> {
   match val.parse::<SocketAddr>() {
+    Ok(_) => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
+fn reload_arg_validate(urlstr: &str) -> Result<(), String> {
+  if urlstr.is_empty() {
+    return Err(String::from("Missing url. Check for extra commas."));
+  }
+  match Url::from_str(urlstr) {
     Ok(_) => Ok(()),
     Err(e) => Err(e.to_string()),
   }
@@ -3805,6 +3821,15 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--remote",
+      "--no-remote",
+      "script.ts"
+    ]);
+    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
   }
 
   #[test]
@@ -4264,6 +4289,78 @@ mod tests {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn reload_validator() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept accept multiple valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=./relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls that start with ./");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls");
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--reload=/absolute", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute urls");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=/", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute root url");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=", "script.ts"]);
+    assert!(r.is_err(), "Should reject when nothing is provided");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=,", "script.ts"]);
+    assert!(r.is_err(), "Should reject when a single comma is provided");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=,http://deno.land/a",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a leading comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a trailing comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject adjacent commas");
   }
 
   #[test]
@@ -5526,23 +5623,6 @@ mod tests {
   }
 
   #[test]
-  fn compat() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--compat", "--unstable", "foo.js"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "foo.js".to_string(),
-        }),
-        compat: true,
-        unstable: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     assert_eq!(
@@ -5765,6 +5845,25 @@ mod tests {
   }
 
   #[test]
+  fn task_with_global_flags() {
+    // can fail if the custom parser in task_parse() starts at the wrong index
+    let r =
+      flags_from_vec(svec!["deno", "--quiet", "--unstable", "task", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: "build".to_string(),
+        }),
+        unstable: true,
+        log_level: Some(log::Level::Error),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_empty() {
     let r = flags_from_vec(svec!["deno", "task"]);
     assert_eq!(
@@ -5924,5 +6023,38 @@ mod tests {
       "script.ts",
     ]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn init() {
+    let r = flags_from_vec(svec!["deno", "init"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: Some(String::from("foo")),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--quiet"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
   }
 }
