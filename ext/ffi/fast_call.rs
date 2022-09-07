@@ -842,7 +842,6 @@ impl Aarch64Apple {
         match param {
           I(B) | U(B) => aarch64!(s
             ; ldr w8, [sp, ot + padding_trampl]
-            // TODO: INVESTIGATE IF V8 extends or not
             ; strb w8, [sp, oc + padding_callee]
           ),
           I(W) | U(W) => aarch64!(s
@@ -1162,10 +1161,6 @@ impl Win64 {
   }
 
   fn move_left(&mut self, param: NativeType) {
-    self.move_arg(param.into());
-  }
-
-  fn move_arg(&mut self, param: Param) {
     // Section "Parameter Passing" of the Windows x64 calling convention:
     // > By default, the x64 calling convention passes the first four arguments to a function in registers.
     // > The registers used for these arguments depend on the position and type of the argument.
@@ -1180,7 +1175,7 @@ impl Win64 {
     // move each argument one position to the left. The first argument in the stack moves to the last register (r9 or xmm3).
     // If the FFI function is called with a new stack frame, the arguments remaining in the stack are copied to the new stack frame.
     // Otherwise, they are copied 8 bytes lower in the same frame
-    match (param_i, param) {
+    match (param_i, param.into()) {
       // Section "Parameter Passing" of the Windows x64 calling convention:
       // > All integer arguments in registers are right-justified, so the callee can ignore the upper bits of the register
       // > and access only the portion of the register necessary.
@@ -1514,90 +1509,9 @@ impl From<NativeType> for Param {
     }
   }
 }
-// TODO: on ice. Decide what todo with this
-// trait Abi {
-//   fn compile(sym: &Symbol) -> Trampoline
-//   where
-//     Self: Default,
-//   {
-//     let mut compiler = Self::new(sym);
-
-//     if !compiler.can_tailcall() {
-//       compiler.allocate_stack(&sym.parameter_types);
-//     }
-
-//     for argument in &sym.parameter_types {
-//       compiler.move_left(argument)
-//     }
-//     if !compiler.is_recv_overridden() {
-//       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
-//       compiler.zero_first_arg();
-//     }
-
-//     if !compiler.can_tailcall() {
-//       compiler.call(sym.ptr.as_ptr());
-//       if compiler.must_cast_return_value(sym.result_type) {
-//         compiler.cast_return_value(sym.result_type);
-//       }
-//       compiler.deallocate_stack();
-//       compiler.ret();
-//     } else {
-//       compiler.tailcall(sym.ptr.as_ptr());
-//     }
-
-//     Trampoline(compiler.finalize())
-//   }
-
-//   fn move_left(&mut self, param: &NativeType) {
-//     match param {
-//       NativeType::F32 => self.process_float(Single),
-//       NativeType::F64 => self.process_float(Double),
-//       NativeType::U8 => self.move_integer(Unsigned(B)),
-//       NativeType::U16 => self.move_integer(Unsigned(W)),
-//       NativeType::U32 | NativeType::Void => self.move_integer(Unsigned(DW)),
-//       NativeType::U64
-//       | NativeType::USize
-//       | NativeType::Function
-//       | NativeType::Pointer => self.move_integer(Unsigned(QW)),
-//       NativeType::I8 => self.move_integer(Signed(B)),
-//       NativeType::I16 => self.move_integer(Signed(W)),
-//       NativeType::I32 => self.move_integer(Signed(DW)),
-//       NativeType::I64 | NativeType::ISize => self.move_integer(Signed(QW)),
-//     }
-//   }
-
-//   fn new(sym: &Symbol) -> Self;
-
-//   fn process_float(&mut self, param: Float);
-
-//   fn move_integer(&mut self, arg: Integer);
-
-//   fn zero_first_arg(&mut self);
-
-//   fn cast_return_value(&mut self, rv: NativeType);
-
-//   fn allocate_stack(&mut self, params: &[NativeType]);
-
-//   fn deallocate_stack(&mut self);
-
-//   fn call(&mut self, ptr: *const c_void);
-
-//   fn tailcall(&mut self, ptr: *const c_void);
-
-//   fn ret(&mut self);
-
-//   fn can_tailcall(&self) -> bool;
-
-//   fn is_recv_overridden(&self) -> bool;
-
-//   fn must_cast_return_value(&self, rv: NativeType) -> bool;
-
-//   fn finalize(self) -> ExecutableBuffer;
-// }
 
 #[cfg(test)]
 mod tests {
-  // TODO: add more test cases
   use std::ptr::null_mut;
 
   use libffi::middle::Type;
