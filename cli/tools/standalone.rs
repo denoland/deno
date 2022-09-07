@@ -279,6 +279,7 @@ pub fn compile_to_runtime_flags(
       .unsafely_ignore_certificate_errors
       .clone(),
     no_remote: false,
+    no_npm: false,
     no_prompt: flags.no_prompt,
     reload: false,
     seed: flags.seed,
