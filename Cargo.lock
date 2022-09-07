@@ -1128,6 +1128,7 @@ name = "deno_napi"
 version = "0.0.1"
 dependencies = [
  "deno_core",
+ "deno_ffi",
  "libloading",
 ]
 

@@ -21,9 +21,9 @@ use std::ffi::CString;
 pub use std::mem::transmute;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::PathBuf;
 pub use std::ptr;
 use std::task::Poll;
-
 use std::thread_local;
 
 #[cfg(unix)]
@@ -390,9 +390,11 @@ impl Env {
   }
 }
 
-pub fn init() -> Extension {
+pub fn init<P: deno_ffi::FfiPermissions + 'static>(
+  unstable: bool,
+) -> Extension {
   Extension::builder()
-    .ops(vec![op_napi_open::decl()])
+    .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
       // `work` can call back into the runtime. It can also schedule an async task
       // but we don't know that now. We need to make the runtime re-poll to make
@@ -457,17 +459,36 @@ pub fn init() -> Extension {
         threadsafe_function_receiver,
         active_threadsafe_functions: 0,
       });
+      state.put(Unstable(unstable));
       Ok(())
     })
     .build()
 }
 
+pub struct Unstable(pub bool);
+
+fn check_unstable(state: &OpState) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!("Unstable API 'node-api'. The --unstable flag must be provided.");
+    std::process::exit(70);
+  }
+}
+
 #[op(v8)]
-fn op_napi_open<'scope>(
+fn op_napi_open<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
-) -> std::result::Result<serde_v8::Value<'scope>, AnyError> {
+) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
+where
+  FP: deno_ffi::FfiPermissions + 'static,
+{
+  check_unstable(op_state);
+  let permissions = op_state.borrow_mut::<FP>();
+  permissions.check(Some(&PathBuf::from(&path)))?;
+
   let (async_work_sender, tsfn_sender, isolate_ptr) = {
     let napi_state = op_state.borrow::<NapiState>();
     let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();

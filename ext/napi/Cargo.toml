@@ -15,4 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.149.0", path = "../../core" }
+# For permissions
+deno_ffi = { version = "0.54.0", path = "../ffi" }
 libloading = { version = "0.7" }
