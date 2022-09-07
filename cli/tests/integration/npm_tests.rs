@@ -96,6 +96,24 @@ itest!(dynamic_import {
   http_server: true,
 });
 
+itest!(env_var_re_export_dev {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("dev\n"),
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(env_var_re_export_prod {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("prod\n"),
+  envs: {
+    let mut vars = env_vars();
+    vars.push(("NODE_ENV".to_string(), "production".to_string()));
+    vars
+  },
+  http_server: true,
+});
+
 itest!(cached_only {
   args: "run --cached-only --unstable npm/cached_only/main.ts",
   output: "npm/cached_only/main.out",

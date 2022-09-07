@@ -729,7 +729,6 @@ pub fn translate_cjs_to_esm(
   }
 
   let mut temp_var_count = 0;
-  let mut export_index = 0;
   let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
@@ -744,23 +743,26 @@ pub fn translate_cjs_to_esm(
     .iter()
     .map(|s| s.as_str())
     .collect::<HashSet<_>>();
+  let mut all_exports = analysis
+    .exports
+    .iter()
+    .map(|s| s.to_string())
+    .collect::<HashSet<_>>();
 
-  // (request, referrer, is_top_level_reexport)
+  // (request, referrer)
   let mut reexports_to_handle = VecDeque::new();
   for reexport in analysis.reexports {
-    reexports_to_handle.push_back((reexport, specifier.clone(), true));
+    reexports_to_handle.push_back((reexport, specifier.clone()));
   }
 
-  while let Some((reexport, referrer, is_top_level_reexport)) =
-    reexports_to_handle.pop_front()
-  {
+  while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
     if handled_reexports.contains(&reexport) {
       continue;
     }
 
     handled_reexports.insert(reexport.to_string());
 
-    // Firstly, resolve relate reexport specifier
+    // First, resolve relate reexport specifier
     let resolved_reexport = resolve(
       &reexport,
       &referrer,
@@ -771,12 +773,7 @@ pub fn translate_cjs_to_esm(
     )?;
     let reexport_specifier =
       ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-    let referrer_filepath_str = referrer
-      .to_file_path()
-      .unwrap()
-      .to_string_lossy()
-      .to_string();
-    // Secondly, read the source code from disk
+    // Second, read the source code from disk
     let reexport_file = file_fetcher.get_source(&reexport_specifier).unwrap();
 
     {
@@ -787,42 +784,16 @@ pub fn translate_cjs_to_esm(
       )?;
 
       for reexport in analysis.reexports {
-        reexports_to_handle.push_back((
-          reexport,
-          reexport_specifier.clone(),
-          false,
-        ));
+        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
       }
 
-      if is_top_level_reexport {
-        source.push(format!(
-          "const reexport{} = require(\"{}\");",
-          export_index, reexport
-        ));
-      } else {
-        source.push(format!(
-          "const reexport{} = require.cache[\"{}\"].require(\"{}\");",
-          export_index, referrer_filepath_str, reexport
-        ));
-      }
-
-      let non_default_exports = analysis.exports.iter().filter(|e| {
-        e.as_str() != "default"
-          && e.as_str() != "__esModule"
-          && !root_exports.contains(e.as_str())
-      });
-
-      for export in non_default_exports {
-        add_export(
-          &mut source,
-          export,
-          &format!("Deno[Deno.internal].require.bindExport(reexport{0}[\"{1}\"], reexport{0})", export_index, export),
-          &mut temp_var_count,
-        );
-      }
+      all_exports.extend(
+        analysis
+          .exports
+          .into_iter()
+          .filter(|e| e.as_str() != "default"),
+      );
     }
-
-    export_index += 1;
   }
 
   source.push(format!(
@@ -838,7 +809,7 @@ pub fn translate_cjs_to_esm(
   ));
 
   let mut had_default = false;
-  for export in analysis.exports.iter() {
+  for export in &all_exports {
     if export.as_str() == "default" {
       if root_exports.contains("__esModule") {
         source.push(format!(
