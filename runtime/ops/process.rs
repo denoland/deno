@@ -334,7 +334,7 @@ pub fn kill(
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
-    } else if expected_raw_handle.map_or(false, |h| h != &handle) {
+    } else if expected_raw_handle.map_or(false, |h| h != handle) {
       Err(type_error("process already terminated"))
     } else {
       // SAFETY: winapi calls
