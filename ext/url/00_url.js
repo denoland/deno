@@ -306,7 +306,7 @@
 
   const _updateUrlSearch = Symbol("updateUrlSearch");
 
-  let componentsBuf = new Uint32Array(8);
+  const componentsBuf = new Uint32Array(8);
   class URL {
     #queryObject = null;
     #serialization;
