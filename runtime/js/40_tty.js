@@ -13,18 +13,8 @@
     return ops.op_isatty(rid);
   }
 
-  const DEFAULT_SET_RAW_OPTIONS = {
-    cbreak: false,
-  };
-
-  function setRaw(rid, mode, options = {}) {
-    const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-    ops.op_set_raw({ rid, mode, options: rOptions });
-  }
-
   window.__bootstrap.tty = {
     consoleSize,
     isatty,
-    setRaw,
   };
 })(this);

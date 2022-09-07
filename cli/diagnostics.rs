@@ -49,7 +49,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "osRelease",
   "ppid",
   "removeSignalListener",
-  "setRaw",
   "shutdown",
   "Signal",
   "startTls",

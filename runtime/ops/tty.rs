@@ -43,7 +43,7 @@ fn get_windows_handle(
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_set_raw::decl(),
+      op_stdin_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
     ])
@@ -58,16 +58,18 @@ pub struct SetRawOptions {
 
 #[derive(Deserialize)]
 pub struct SetRawArgs {
-  rid: ResourceId,
   mode: bool,
   options: SetRawOptions,
 }
 
 #[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
+fn op_stdin_set_raw(
+  state: &mut OpState,
+  args: SetRawArgs,
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
-  let rid = args.rid;
+  let rid = 0; // stdin is always rid=0
   let is_raw = args.mode;
   let cbreak = args.options.cbreak;
 

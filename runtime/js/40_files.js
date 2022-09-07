@@ -153,6 +153,10 @@
     }
   }
 
+  const DEFAULT_SET_RAW_OPTIONS = {
+    cbreak: false,
+  };
+
   class Stdin {
     #readable;
 
@@ -180,6 +184,11 @@
         this.#readable = readableStreamForRid(this.rid);
       }
       return this.#readable;
+    }
+
+    setRaw(mode, options = {}) {
+      const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
+      ops.op_stdin_set_raw({ mode, options: rOptions });
     }
   }
 

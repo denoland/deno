@@ -115,7 +115,6 @@
   };
 
   __bootstrap.denoNsUnstable = {
-    setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     loadavg: __bootstrap.os.loadavg,

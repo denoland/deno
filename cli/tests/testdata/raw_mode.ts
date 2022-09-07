@@ -1,5 +1,5 @@
-Deno.setRaw(0, true);
-Deno.setRaw(0, true); // Can be called multiple times
+Deno.stdin.setRaw(true);
+Deno.stdin.setRaw(true); // Can be called multiple times
 
 Deno.stdout.writeSync(new TextEncoder().encode("S"));
 
@@ -14,5 +14,5 @@ for (let i = 0; i < 3; i++) {
   }
 }
 
-Deno.setRaw(0, false); // restores old mode.
-Deno.setRaw(0, false); // Can be safely called multiple times
+Deno.stdin.setRaw(false); // restores old mode.
+Deno.stdin.setRaw(false); // Can be safely called multiple times
