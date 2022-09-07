@@ -14,5 +14,5 @@ description = "NAPI implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.146.0", path = "../../core" }
+deno_core = { version = "0.149.0", path = "../../core" }
 libloading = { version = "0.7" }

@@ -28,7 +28,6 @@ fn napi_tests() {
     .current_dir(test_util::napi_tests_path())
     .arg("test")
     .arg("-A")
-    .arg("--ignore=third_party_tests/")
     .spawn()
     .unwrap()
     .wait_with_output()
@@ -39,43 +38,5 @@ fn napi_tests() {
     println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
-  assert!(output.status.success());
-}
-
-#[test]
-fn third_party_tests() {
-  build();
-
-  let yarn_cmd = Command::new("yarn")
-    .current_dir(test_util::napi_tests_path().join("third_party_tests/"))
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-
-  assert!(yarn_cmd.status.success());
-
-  let output = deno_cmd()
-    .current_dir(test_util::napi_tests_path().join("third_party_tests/"))
-    .arg("test")
-    .arg("--compat")
-    .arg("-A")
-    .arg("--unstable")
-    .arg("--no-check")
-    .arg("--ignore=node_modules/")
-    .arg("test.js")
-    .env("DENO_NODE_COMPAT_URL", "https://raw.githubusercontent.com/littledivy/deno_std/load_native_module/")
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-
-  let stdout = std::str::from_utf8(&output.stdout).unwrap();
-  let stderr = std::str::from_utf8(&output.stderr).unwrap();
-  if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
-  }
-
   assert!(output.status.success());
 }

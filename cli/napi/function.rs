@@ -21,7 +21,7 @@ pub fn create_function<'a>(
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
   let method_ptr = v8::External::new(scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
+  let cb_info_ext = v8::External::new(scope, cb_info);
 
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
@@ -48,8 +48,7 @@ pub fn create_function<'a>(
         data_array.get_index(scope, 1).unwrap(),
       )
       .unwrap();
-      let cb_info: napi_callback_info =
-        unsafe { std::mem::transmute(cb_info_ptr.value()) };
+      let cb_info: napi_callback_info = cb_info_ptr.value();
 
       let env_ptr = v8::Local::<v8::External>::try_from(
         data_array.get_index(scope, 2).unwrap(),
@@ -93,7 +92,7 @@ pub fn create_function_template<'a>(
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
   let method_ptr = v8::External::new(scope, cb as *mut c_void);
-  let cb_info_ext = v8::External::new(scope, unsafe { transmute(cb_info) });
+  let cb_info_ext = v8::External::new(scope, cb_info);
 
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
 
@@ -120,8 +119,7 @@ pub fn create_function_template<'a>(
         data_array.get_index(scope, 1).unwrap(),
       )
       .unwrap();
-      let cb_info: napi_callback_info =
-        unsafe { std::mem::transmute(cb_info_ptr.value()) };
+      let cb_info: napi_callback_info = cb_info_ptr.value();
 
       let env_ptr = v8::Local::<v8::External>::try_from(
         data_array.get_index(scope, 2).unwrap(),

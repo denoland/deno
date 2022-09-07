@@ -14,6 +14,7 @@ use deno_core::op;
 use deno_core::serde_v8;
 pub use deno_core::v8;
 use deno_core::Extension;
+use deno_core::OpState;
 use std::cell::RefCell;
 pub use std::ffi::CStr;
 use std::ffi::CString;
@@ -21,7 +22,6 @@ pub use std::mem::transmute;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
 pub use std::ptr;
-use std::rc::Rc;
 use std::task::Poll;
 
 use std::thread_local;
@@ -465,11 +465,10 @@ pub fn init() -> Extension {
 #[op(v8)]
 fn op_napi_open<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  op_state: Rc<RefCell<deno_core::OpState>>,
+  op_state: &mut OpState,
   path: String,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError> {
   let (async_work_sender, tsfn_sender, isolate_ptr) = {
-    let op_state = op_state.borrow();
     let napi_state = op_state.borrow::<NapiState>();
     let isolate_ptr = op_state.borrow::<*mut v8::OwnedIsolate>();
     (
@@ -481,35 +480,16 @@ fn op_napi_open<'scope>(
 
   let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
   let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-  let napi_wrap = v8::Local::new(scope, napi_wrap);
   let napi_wrap = v8::Global::new(scope, napi_wrap);
 
+  // The `module.exports` object.
   let exports = v8::Object::new(scope);
 
-  // We need complete control over the env object's lifetime
-  // so we'll use explicit allocation for it, so that it doesn't
-  // die before the module itself. Using struct & their pointers
-  // resulted in a use-after-free situation which turned out to be
-  // unfixable, so here we are.
-  // SAFETY: EnvShared is non-zero size, the memory is initialized later when we
-  // write to the pointer.
-  let env_shared_ptr = unsafe {
-    std::alloc::alloc(std::alloc::Layout::new::<EnvShared>()) as *mut EnvShared
-  };
   let mut env_shared = EnvShared::new(napi_wrap);
   let cstr = CString::new(path.clone()).unwrap();
   env_shared.filename = cstr.as_ptr();
   std::mem::forget(cstr);
-  // SAFETY: we have ensured that the layout of the data the pointer points
-  // to is the same as `EnvShared`
-  unsafe {
-    env_shared_ptr.write(env_shared);
-  }
 
-  // SAFETY: Env is non-zero size, the memory is initialized later when we write
-  // to the pointer.
-  let env_ptr =
-    unsafe { std::alloc::alloc(std::alloc::Layout::new::<Env>()) as napi_env };
   let ctx = scope.get_current_context();
   let mut env = Env::new(
     isolate_ptr,
@@ -517,12 +497,8 @@ fn op_napi_open<'scope>(
     async_work_sender,
     tsfn_sender,
   );
-  env.shared = env_shared_ptr;
-  // SAFETY: we have ensured that the layout of the data the pointer points
-  // to is the same as `Env`
-  unsafe {
-    (env_ptr as *mut Env).write(env);
-  }
+  env.shared = Box::into_raw(Box::new(env_shared));
+  let env_ptr = Box::into_raw(Box::new(env)) as _;
 
   #[cfg(unix)]
   let flags = RTLD_LAZY;
@@ -547,10 +523,10 @@ fn op_napi_open<'scope>(
     let slot = *cell.borrow();
     match slot {
       Some(nm) => {
-        // SAFETY: dereferencing a pointer is unsafe
+        // SAFETY: napi_register_module guarantees that `nm` is valid.
         let nm = unsafe { &*nm };
         assert_eq!(nm.nm_version, 1);
-        // SAFETY: calling a function across FFI boundary
+        // SAFETY: we are going blind, calling the register function on the other side.
         let exports = unsafe {
           (nm.nm_register_func)(
             env_ptr,
@@ -569,7 +545,7 @@ fn op_napi_open<'scope>(
       }
       None => {
         // Initializer callback.
-        // SAFETY: calling a function across FFI boundary is always unsafe
+        // SAFETY: we are going blind, calling the register function on the other side.
         unsafe {
           let init = library
             .get::<unsafe extern "C" fn(

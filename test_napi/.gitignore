@@ -2,4 +2,3 @@ package-lock.json
 
 # Test generated artifacts
 .swc
-prisma_client_test.db
