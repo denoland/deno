@@ -174,6 +174,10 @@ impl NpmVersionMatcher for NpmVersionReq {
     self.satisfies(version)
   }
 
+  fn is_latest(&self) -> bool {
+    false
+  }
+
   fn version_text(&self) -> String {
     self.raw_text.clone()
   }
@@ -313,9 +317,7 @@ fn simple(input: &str) -> ParseResult<VersionRange> {
         }
       }
     }),
-    map(partial, |partial| {
-      partial.as_greater_range(VersionBoundKind::Inclusive)
-    }),
+    map(partial, |partial| partial.as_equal_range()),
   )(input)
 }
 
@@ -842,6 +844,8 @@ mod tests {
       ("1.0.0 - x", "1.9.7"),
       ("1.x - x", "1.9.7"),
       ("<=7.x", "7.9.9"),
+      // additional tests
+      ("1.0.0-alpha.13", "1.0.0-alpha.13"),
     ];
     for (req_text, version_text) in fixtures {
       let req = NpmVersionReq::parse(req_text).unwrap();

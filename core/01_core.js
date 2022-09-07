@@ -160,10 +160,11 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
+    let p = setPromise(promiseId);
     const maybeError = ops[opName](promiseId, ...args);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.
@@ -314,7 +315,6 @@
       error,
     ) => ops.op_abort_wasm_streaming(rid, error),
     destructureError: (error) => ops.op_destructure_error(error),
-    terminate: (exception) => ops.op_terminate(exception),
     opNames: () => ops.op_op_names(),
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),

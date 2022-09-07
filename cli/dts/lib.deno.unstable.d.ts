@@ -393,6 +393,8 @@ declare namespace Deno {
     | "usize"
     | "isize";
 
+  type NativeBooleanType = "bool";
+
   type NativePointerType = "pointer";
 
   type NativeBufferType = "buffer";
@@ -408,6 +410,7 @@ declare namespace Deno {
   export type NativeType =
     | NativeNumberType
     | NativeBigIntType
+    | NativeBooleanType
     | NativePointerType
     | NativeBufferType
     | NativeFunctionType;
@@ -419,9 +422,10 @@ declare namespace Deno {
   type ToNativeTypeMap =
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
-    & Record<NativeBufferType, TypedArray>;
+    & Record<NativeBufferType, TypedArray | null>;
 
   /** Type conversion for foreign symbol parameters and unsafe callback return
    * types.
@@ -455,6 +459,7 @@ declare namespace Deno {
   type FromNativeTypeMap =
     & Record<NativeNumberType, number>
     & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue>
     & Record<NativeBufferType, PointerValue>
     & Record<NativeFunctionType, PointerValue>;
@@ -610,6 +615,8 @@ declare namespace Deno {
 
     pointer: bigint;
 
+    /** Gets a boolean at the specified byte offset from the pointer. */
+    getBool(offset?: number): boolean;
     /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
     getUint8(offset?: number): number;
     /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
@@ -633,12 +640,12 @@ declare namespace Deno {
     /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (null terminated string) at the specified byte offset from the specified pointer. */
-    static getCString(pointer: BigInt, offset?: number): string;
+    static getCString(pointer: PointerValue, offset?: number): string;
     /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
     /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: BigInt,
+      pointer: PointerValue,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -646,7 +653,7 @@ declare namespace Deno {
     copyInto(destination: TypedArray, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: BigInt,
+      pointer: PointerValue,
       destination: TypedArray,
       offset?: number,
     ): void;

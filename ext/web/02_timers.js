@@ -22,6 +22,7 @@
     SafeArrayIterator,
     SymbolFor,
     TypeError,
+    indirectEval,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
   const { reportException } = window.__bootstrap.event;
@@ -153,9 +154,7 @@
             reportException(error);
           }
         } else {
-          // TODO(@andreubotella): eval doesn't seem to have a primordial, but
-          // it can be redefined in the global scope.
-          (0, eval)(callback);
+          indirectEval(callback);
         }
 
         if (repeat) {

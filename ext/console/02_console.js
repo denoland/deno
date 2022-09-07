@@ -959,6 +959,8 @@
         if (RegExpPrototypeTest(/\s+at/, line)) {
           ArrayPrototypeUnshift(stackLines, line);
           break;
+        } else if (typeof line === "undefined") {
+          break;
         }
 
         finalMessage += line;
