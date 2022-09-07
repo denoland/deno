@@ -38,7 +38,7 @@ deno_webgpu = { version = "0.68.0", path = "../ext/webgpu" }
 deno_websocket = { version = "0.72.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.62.0", path = "../ext/webstorage" }
 regex = "=1.6.0"
-serde = { version = "=1.0.141", features = ["derive"] }
+serde = { version = "=1.0.144", features = ["derive"] }
 zstd = '=0.11.1'
 
 [target.'cfg(windows)'.build-dependencies]
@@ -46,12 +46,12 @@ winapi = "=0.3.9"
 winres = "=0.1.12"
 
 [dependencies]
-deno_ast = { version = "0.17.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
+deno_ast = { version = "0.19.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.149.0", path = "../core" }
-deno_doc = "0.44.0"
-deno_emit = "0.8.0"
-deno_graph = "0.33.0"
-deno_lint = { version = "0.32.0", features = ["docs"] }
+deno_doc = "0.45.0"
+deno_emit = "0.9.0"
+deno_graph = "0.34.0"
+deno_lint = { version = "0.33.0", features = ["docs"] }
 deno_runtime = { version = "0.75.0", path = "../runtime" }
 deno_task_shell = "0.5.2"
 
@@ -64,12 +64,12 @@ clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
 data-url = "=0.1.1"
 dissimilar = "=1.0.3"
-dprint-plugin-json = "=0.15.5"
-dprint-plugin-markdown = "=0.14.0"
-dprint-plugin-typescript = "=0.71.2"
+dprint-plugin-json = "=0.15.6"
+dprint-plugin-markdown = "=0.14.1"
+dprint-plugin-typescript = "=0.73.1"
 encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
-eszip = "=0.26.0"
+eszip = "=0.27.0"
 fancy-regex = "=0.10.0"
 flate2 = "=1.0.24"
 http = "=0.2.6"
@@ -93,7 +93,7 @@ rustyline = { version = "=10.0.0", default-features = false, features = ["custom
 rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 semver = "=1.0.13"
-serde = { version = "=1.0.141", features = ["derive"] }
+serde = { version = "=1.0.144", features = ["derive"] }
 serde_repr = "=0.1.8"
 shell-escape = "=0.1.5"
 tar = "=0.4.38"
