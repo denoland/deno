@@ -50,7 +50,6 @@ pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
 use crate::timers::op_now;
-use crate::timers::op_now_set_buf;
 use crate::timers::op_sleep;
 use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
@@ -106,7 +105,6 @@ pub fn init<P: TimersPermission + 'static>(
       compression::op_compression_new::decl(),
       compression::op_compression_write::decl(),
       compression::op_compression_finish::decl(),
-      op_now_set_buf::decl(),
       op_now::decl::<P>(),
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
@@ -149,8 +147,8 @@ fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(s: ZeroCopyBuf) -> String {
-  forgiving_base64_encode(s.as_ref())
+fn op_base64_encode(s: &[u8]) -> String {
+  forgiving_base64_encode(s)
 }
 
 #[op]
@@ -179,7 +177,7 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
 
 #[op]
 fn op_encoding_decode_single(
-  data: ZeroCopyBuf,
+  data: &[u8],
   label: String,
   fatal: bool,
   ignore_bom: bool,
@@ -205,7 +203,7 @@ fn op_encoding_decode_single(
 
   if fatal {
     let (result, _, written) =
-      decoder.decode_to_utf16_without_replacement(&data, &mut output, true);
+      decoder.decode_to_utf16_without_replacement(data, &mut output, true);
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
@@ -220,7 +218,7 @@ fn op_encoding_decode_single(
     }
   } else {
     let (result, _, written, _) =
-      decoder.decode_to_utf16(&data, &mut output, true);
+      decoder.decode_to_utf16(data, &mut output, true);
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
@@ -262,7 +260,7 @@ fn op_encoding_new_decoder(
 #[op]
 fn op_encoding_decode(
   state: &mut OpState,
-  data: ZeroCopyBuf,
+  data: &[u8],
   rid: ResourceId,
   stream: bool,
 ) -> Result<U16String, AnyError> {
@@ -279,7 +277,7 @@ fn op_encoding_decode(
 
   if fatal {
     let (result, _, written) =
-      decoder.decode_to_utf16_without_replacement(&data, &mut output, !stream);
+      decoder.decode_to_utf16_without_replacement(data, &mut output, !stream);
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
@@ -294,7 +292,7 @@ fn op_encoding_decode(
     }
   } else {
     let (result, _, written, _) =
-      decoder.decode_to_utf16(&data, &mut output, !stream);
+      decoder.decode_to_utf16(data, &mut output, !stream);
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
@@ -326,7 +324,7 @@ struct EncodeIntoResult {
 #[op]
 fn op_encoding_encode_into(
   input: String,
-  mut buffer: ZeroCopyBuf,
+  buffer: &mut [u8],
 ) -> EncodeIntoResult {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
