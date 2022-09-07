@@ -14,12 +14,10 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
-use deno_core::v8::fast_api;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
@@ -39,15 +37,11 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
 
-#[cfg(not(target_os = "windows"))]
-mod jit_trampoline;
-#[cfg(not(target_os = "windows"))]
-mod tcc;
+mod fast_call;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
 
-// Assert assumptions made in `prelude.h`
 const _: () = {
   assert!(size_of::<c_char>() == 1);
   assert!(size_of::<c_short>() == 2);
@@ -90,8 +84,6 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
-  // This is dead code only on Windows
-  #[allow(dead_code)]
   can_callback: bool,
 }
 
@@ -729,50 +721,6 @@ where
   ))
 }
 
-pub struct FfiFastCallTemplate {
-  args: Box<[fast_api::Type]>,
-  ret: fast_api::CType,
-  symbol_ptr: *const c_void,
-}
-
-impl fast_api::FastFunction for FfiFastCallTemplate {
-  fn function(&self) -> *const c_void {
-    self.symbol_ptr
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    Box::leak(self.args.clone())
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    self.ret
-  }
-}
-
-impl From<&NativeType> for fast_api::Type {
-  fn from(native_type: &NativeType) -> Self {
-    match native_type {
-      NativeType::Bool => fast_api::Type::Bool,
-      NativeType::U8 | NativeType::U16 | NativeType::U32 => {
-        fast_api::Type::Uint32
-      }
-      NativeType::I8 | NativeType::I16 | NativeType::I32 => {
-        fast_api::Type::Int32
-      }
-      NativeType::F32 => fast_api::Type::Float32,
-      NativeType::F64 => fast_api::Type::Float64,
-      NativeType::Void => fast_api::Type::Void,
-      NativeType::I64 => fast_api::Type::Int64,
-      NativeType::U64 => fast_api::Type::Uint64,
-      NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Pointer | NativeType::Function => {
-        fast_api::Type::Uint64
-      }
-      NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
-    }
-  }
-}
-
 fn needs_unwrap(rv: NativeType) -> bool {
   matches!(
     rv,
@@ -796,42 +744,6 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  #[cfg(not(target_os = "windows"))]
-  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(target_os = "windows")]
-  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(not(target_os = "windows"))]
-  let mut fast_allocations: Option<*mut ()> = None;
-  #[cfg(not(target_os = "windows"))]
-  if !sym.can_callback {
-    let needs_unwrap = needs_unwrap(sym.result_type);
-    let ret = match needs_unwrap {
-      true => fast_api::Type::Void,
-      false => fast_api::Type::from(&sym.result_type),
-    };
-
-    let mut args = sym
-      .parameter_types
-      .iter()
-      .map(|t| t.into())
-      .collect::<Vec<_>>();
-    // recv
-    args.insert(0, fast_api::Type::V8Value);
-    if needs_unwrap {
-      args.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    }
-    let symbol_trampoline =
-      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
-    fast_ffi_templ = Some(FfiFastCallTemplate {
-      args: args.into_boxed_slice(),
-      ret: (&ret).into(),
-      symbol_ptr: symbol_trampoline.addr,
-    });
-    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
-  }
-
   let sym = Box::leak(sym);
   let builder = v8::FunctionTemplate::builder(
     |scope: &mut v8::HandleScope,
@@ -891,8 +803,17 @@ fn make_sync_fn<'s>(
   )
   .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
 
-  let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
-    builder.build_fast(scope, &fast_ffi_templ, None)
+  let mut fast_call_alloc = None;
+
+  let func = if fast_call::is_compatible(sym) {
+    let trampoline = fast_call::compile_trampoline(sym);
+    let func = builder.build_fast(
+      scope,
+      &fast_call::make_template(sym, &trampoline),
+      None,
+    );
+    fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
+    func
   } else {
     builder.build(scope)
   };
@@ -904,12 +825,12 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe {
-        Box::from_raw(sym);
-        #[cfg(not(target_os = "windows"))]
-        if let Some(fast_allocations) = fast_allocations {
-          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
-        }
+      let _ = unsafe { Box::from_raw(sym) };
+      if let Some(fast_call_ptr) = fast_call_alloc {
+        // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
+        // SAFETY: This is never called twice. pointer obtained
+        // from Box::into_raw, hence, satisfies memory layout requirements.
+        let _ = unsafe { Box::from_raw(fast_call_ptr) };
       }
     }),
   );
@@ -2232,7 +2153,7 @@ where
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   src: usize,
-  mut dst: ZeroCopyBuf,
+  dst: &mut [u8],
   len: usize,
 ) -> Result<(), AnyError>
 where

@@ -258,6 +258,60 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
   });
 }
 
+#[no_mangle]
+pub extern "C" fn log_many_parameters(
+  a: u8,
+  b: u16,
+  c: u32,
+  d: u64,
+  e: f64,
+  f: f32,
+  g: i64,
+  h: i32,
+  i: i16,
+  j: i8,
+  k: isize,
+  l: usize,
+  m: f64,
+  n: f32,
+  o: f64,
+  p: f32,
+  q: f64,
+  r: f32,
+  s: f64,
+) {
+  println!("{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}");
+}
+
+#[no_mangle]
+pub extern "C" fn cast_u8_u32(x: u8) -> u32 {
+  x as u32
+}
+
+#[no_mangle]
+pub extern "C" fn cast_u32_u8(x: u32) -> u8 {
+  x as u8
+}
+
+#[no_mangle]
+pub extern "C" fn add_many_u16(
+  a: u16,
+  b: u16,
+  c: u16,
+  d: u16,
+  e: u16,
+  f: u16,
+  g: u16,
+  h: u16,
+  i: u16,
+  j: u16,
+  k: u16,
+  l: u16,
+  m: u16,
+) -> u16 {
+  a + b + c + d + e + f + g + h + i + j + k + l + m
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}

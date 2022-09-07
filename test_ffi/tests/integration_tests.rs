@@ -80,6 +80,10 @@ fn basic() {
     579.912\n\
     true\n\
     false\n\
+    579.9119873046875\n\
+    579.9119873046875\n\
+    579.912\n\
+    579.912\n\
     579\n\
     8589934590\n\
     -8589934590\n\
@@ -105,6 +109,14 @@ fn basic() {
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\
     30\n\
+    255 65535 4294967295 4294967296 123.456 789.876 -1 -2 -3 -4 -1000 1000 12345.67891 12345.679 12345.67891 12345.679 12345.67891 12345.679 12345.67891\n\
+    255 65535 4294967295 4294967296 123.456 789.876 -1 -2 -3 -4 -1000 1000 12345.67891 12345.679 12345.67891 12345.679 12345.67891 12345.679 12345.67891\n\
+    0\n\
+    0\n\
+    0\n\
+    0\n\
+    78\n\
+    78\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
     Thread safe call counter: 0\n\
@@ -120,6 +132,8 @@ fn basic() {
     uint32Array[0]: 42\n\
     uint32Array[0] after mutation: 55\n\
     Static ptr value after mutation: 55\n\
+    2264956937\n\
+    2264956937\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
