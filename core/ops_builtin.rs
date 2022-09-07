@@ -134,12 +134,12 @@ impl Resource for WasmStreamingResource {
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
-  bytes: ZeroCopyBuf,
+  bytes: &[u8],
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(bytes);
 
   Ok(())
 }

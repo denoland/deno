@@ -231,7 +231,7 @@ fn op_encode<'a>(
 #[op(v8)]
 fn op_decode<'a>(
   scope: &mut v8::HandleScope<'a>,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: &[u8],
 ) -> Result<serde_v8::Value<'a>, Error> {
   let buf = &zero_copy;
 
