@@ -223,6 +223,7 @@ impl ProcState {
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+      cli_options.no_npm(),
     );
 
     Ok(ProcState(Arc::new(Inner {
