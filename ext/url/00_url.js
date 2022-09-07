@@ -44,26 +44,25 @@
 
   // Helper functions
   function opUrlReparse(href, setter, value) {
-    if (!componentsBuf) {
-      componentsBuf = new Uint32Array(8);
-      core.ops.op_url_set_buf(componentsBuf.buffer);
-    }
-
-    const status = ops.op_url_reparse(href, setter, value);
+    const status = ops.op_url_reparse(
+      href,
+      setter,
+      value,
+      componentsBuf.buffer,
+    );
     return getSerialization(status, href);
   }
 
   function opUrlParse(href, maybeBase) {
-    if (!componentsBuf) {
-      componentsBuf = new Uint32Array(8);
-      core.ops.op_url_set_buf(componentsBuf.buffer);
-    }
-
     let status;
     if (maybeBase === undefined) {
-      status = ops.op_url_parse(href);
+      status = ops.op_url_parse(href, componentsBuf.buffer);
     } else {
-      status = core.ops.op_url_parse_with_base(href, maybeBase);
+      status = core.ops.op_url_parse_with_base(
+        href,
+        maybeBase,
+        componentsBuf.buffer,
+      );
     }
     return getSerialization(status, href);
   }
@@ -307,7 +306,7 @@
 
   const _updateUrlSearch = Symbol("updateUrlSearch");
 
-  let componentsBuf;
+  let componentsBuf = new Uint32Array(8);
   class URL {
     #queryObject = null;
     #serialization;

@@ -15,7 +15,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::mem::transmute;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -61,41 +60,6 @@ pub fn op_url_set_buf(
   Ok(())
 }
 
-#[allow(dead_code)]
-enum HostInternal {
-  None,
-  Domain,
-  Ipv4(Ipv4Addr),
-  Ipv6(Ipv6Addr),
-}
-
-pub struct InnerUrl {
-  /// Syntax in pseudo-BNF:
-  ///
-  ///   url = scheme ":" [ hierarchical | non-hierarchical ] [ "?" query ]? [ "#" fragment ]?
-  ///   non-hierarchical = non-hierarchical-path
-  ///   non-hierarchical-path = /* Does not start with "/" */
-  ///   hierarchical = authority? hierarchical-path
-  ///   authority = "//" userinfo? host [ ":" port ]?
-  ///   userinfo = username [ ":" password ]? "@"
-  ///   hierarchical-path = [ "/" path-segment ]+
-  serialization: String,
-  // Components
-  scheme_end: u32,   // Before ':'
-  username_end: u32, // Before ':' (if a password is given) or '@' (if not)
-  host_start: u32,
-  host_end: u32,
-  _host: HostInternal,
-  port: Option<u16>,
-  path_start: u32,             // Before initial '/', if any
-  query_start: Option<u32>,    // Before '?', unlike Position::QueryStart
-  fragment_start: Option<u32>, // Before '#', unlike Position::FragmentStart
-}
-
-const _: () = {
-  assert!(std::mem::size_of::<InnerUrl>() == std::mem::size_of::<Url>());
-};
-
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
 #[op]
@@ -103,12 +67,13 @@ pub fn op_url_parse_with_base(
   state: &mut OpState,
   href: String,
   base_href: String,
+  buf: &mut [u8],
 ) -> u32 {
   let base_url = match Url::parse(&base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
   };
-  parse_url(state, href, Some(&base_url))
+  parse_url(state, href, Some(&base_url), buf)
 }
 
 #[repr(u32)]
@@ -126,8 +91,8 @@ pub fn op_url_get_serialization(state: &mut OpState) -> String {
 }
 
 #[op]
-pub fn op_url_parse(state: &mut OpState, href: String) -> u32 {
-  parse_url(state, href, None)
+pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
+  parse_url(state, href, None, buf)
 }
 
 #[inline]
@@ -135,19 +100,17 @@ fn parse_url(
   state: &mut OpState,
   href: String,
   base_href: Option<&Url>,
+  buf: &mut [u8],
 ) -> u32 {
-  let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   match Url::options().base_url(base_href).parse(&href) {
     Ok(url) => {
-      // SAFETY: Layout of `Url` and `InnerUrl` are the same.
-      // TODO(@littledivy): Safer way to get internal components from rust-url.
-      let inner_url: InnerUrl = unsafe { transmute(url) };
+      let inner_url = quirks::internal_components(&url);
 
       // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer
       // otherwise.
       // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
       unsafe {
-        let buf = std::slice::from_raw_parts_mut(url_offset_buf, 8);
+        let buf: &mut [u32] = transmute(buf);
         buf[0] = inner_url.scheme_end;
         buf[1] = inner_url.username_end;
         buf[2] = inner_url.host_start;
@@ -156,8 +119,9 @@ fn parse_url(
         buf[5] = inner_url.path_start;
         buf[6] = inner_url.query_start.unwrap_or(0);
         buf[7] = inner_url.fragment_start.unwrap_or(0);
-        if inner_url.serialization != href {
-          state.put(UrlSerialization(inner_url.serialization));
+        let serialization: String = url.into();
+        if serialization != href {
+          state.put(UrlSerialization(serialization));
           ParseStatus::OkSerialization as u32
         } else {
           ParseStatus::Ok as u32
@@ -228,9 +192,7 @@ pub fn op_url_reparse(
 
   match e {
     Ok(_) => {
-      // SAFETY: Layout of `Url` and `InnerUrl` are the same.
-      // TODO(@littledivy): Safer way to get internal components from rust-url.
-      let inner_url: InnerUrl = unsafe { transmute(url) };
+      let inner_url = quirks::internal_components(&url);
 
       // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer
       // otherwise.
@@ -245,8 +207,9 @@ pub fn op_url_reparse(
         buf[5] = inner_url.path_start;
         buf[6] = inner_url.query_start.unwrap_or(0);
         buf[7] = inner_url.fragment_start.unwrap_or(0);
-        if inner_url.serialization != href {
-          state.put(UrlSerialization(inner_url.serialization));
+        let serialization: String = url.into();
+        if serialization != href {
+          state.put(UrlSerialization(serialization));
           ParseStatus::OkSerialization as u32
         } else {
           ParseStatus::Ok as u32
