@@ -21,6 +21,7 @@ use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
+use crate::node::NodeResolution;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
@@ -461,17 +462,19 @@ impl ProcState {
 
   fn handle_node_resolve_result(
     &self,
-    result: Result<Option<ResolveResponse>, AnyError>,
+    result: Result<Option<node::NodeResolution>, AnyError>,
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
       None => bail!("Not found."),
     };
-    if let ResolveResponse::CommonJs(specifier) = &response {
+    if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
       self.cjs_resolutions.lock().insert(specifier.clone());
+    } else if let NodeResolution::BuiltIn(specifier) = &response {
+      return node::resolve_builtin_node_module(specifier);
     }
-    response.to_result()
+    Ok(response.into_url())
   }
 
   pub fn resolve(

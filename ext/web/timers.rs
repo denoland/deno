@@ -93,7 +93,7 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
-#[op]
+#[op(deferred)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
