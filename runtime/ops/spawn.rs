@@ -26,8 +26,6 @@ use std::rc::Rc;
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-#[cfg(windows)]
-use std::os::windows::io::RawHandle;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -42,12 +40,7 @@ pub fn init() -> Extension {
 
 /// Second member stores the pid separately from the RefCell. It's needed for
 /// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
-struct ChildResource {
-  child: RefCell<tokio::process::Child>,
-  pid: u32,
-  #[cfg(windows)]
-  raw_handle: RawHandle,
-}
+struct ChildResource(RefCell<tokio::process::Child>, u32);
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
@@ -222,15 +215,9 @@ fn op_spawn_child(
     .take()
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  #[cfg(windows)]
-  let raw_handle = child.raw_handle().expect("Process handle should be set.");
-
-  let child_rid = state.resource_table.add(ChildResource {
-    child: RefCell::new(child),
-    pid,
-    #[cfg(windows)]
-    raw_handle,
-  });
+  let child_rid = state
+    .resource_table
+    .add(ChildResource(RefCell::new(child), pid));
 
   Ok(Child {
     rid: child_rid,
@@ -251,7 +238,7 @@ async fn op_spawn_wait(
     .borrow_mut()
     .resource_table
     .get::<ChildResource>(rid)?;
-  let result = resource.child.try_borrow_mut()?.wait().await?.try_into();
+  let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
   state
     .borrow_mut()
     .resource_table
@@ -291,14 +278,7 @@ fn op_spawn_kill(
   signal: String,
 ) -> Result<(), AnyError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    #[cfg(unix)]
-    kill(child_resource.pid as i32, &signal)?;
-    #[cfg(windows)]
-    kill(
-      child_resource.pid as i32,
-      &signal,
-      Some(child_resource.raw_handle),
-    );
+    kill(child_resource.1 as i32, &signal)?;
     return Ok(());
   }
   Err(type_error("Child process has already terminated."))
