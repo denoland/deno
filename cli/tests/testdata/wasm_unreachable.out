@@ -1,3 +1,3 @@
-error: Uncaught [WILDCARD] RuntimeError: unreachable
+error: Uncaught[WILDCARD] RuntimeError: unreachable
     at <anonymous> (wasm://wasm/d1c677ea:1:41)
     at [WILDCARD]/wasm_unreachable.js:[WILDCARD]
