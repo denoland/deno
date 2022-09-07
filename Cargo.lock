@@ -895,7 +895,7 @@ dependencies = [
  "swc_ecma_utils",
  "swc_ecma_visit",
  "text_lines 0.4.1",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -944,7 +944,7 @@ dependencies = [
  "serde_v8",
  "sourcemap",
  "tokio",
- "url 2.2.2",
+ "url 2.3.0",
  "v8",
 ]
 
@@ -1078,7 +1078,7 @@ dependencies = [
  "serde_json",
  "sourcemap",
  "termcolor",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -1617,7 +1617,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -2238,7 +2238,7 @@ dependencies = [
  "log 0.4.17",
  "serde",
  "serde_json",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -2618,7 +2618,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -3477,7 +3477,7 @@ dependencies = [
  "tokio-socks",
  "tokio-util",
  "tower-service",
- "url 2.2.2",
+ "url 2.3.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3999,7 +3999,7 @@ dependencies = [
  "rustc_version 0.2.3",
  "serde",
  "serde_json",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -4161,7 +4161,7 @@ dependencies = [
  "swc_visit",
  "tracing",
  "unicode-width",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -4947,7 +4947,7 @@ dependencies = [
  "thiserror",
  "tinyvec",
  "tokio",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -5031,7 +5031,7 @@ dependencies = [
  "rustls",
  "sha-1 0.9.8",
  "thiserror",
- "url 2.2.2",
+ "url 2.3.0",
  "utf-8",
  "webpki",
 ]
@@ -5198,13 +5198,12 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.2.2"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507c383b2d33b5fc35d1861e77e6b383d158b2da5e14fe51b83dfedf6fd578c"
+checksum = "22fe195a4f217c25b25cb5058ced57059824a678474874038dc88d211bf508d3"
 dependencies = [
  "form_urlencoded",
  "idna 0.2.3",
- "matches",
  "percent-encoding 2.1.0",
  "serde",
 ]
@@ -5219,7 +5218,7 @@ dependencies = [
  "regex",
  "serde",
  "unic-ucd-ident",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -5684,7 +5683,7 @@ dependencies = [
  "serde_json",
  "time 0.3.9",
  "tokio",
- "url 2.2.2",
+ "url 2.3.0",
 ]
 
 [[package]]
