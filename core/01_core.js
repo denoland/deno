@@ -161,9 +161,14 @@
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
     let p = setPromise(promiseId);
-    const maybeError = ops[opName](promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
+    try {
+      ops[opName](promiseId, ...args);
+    } catch (err) {
+      // Cleanup the just-created promise
+      getPromise(promiseId);
+      // Rethrow the error
+      throw err;
+    }
     p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
@@ -318,6 +323,7 @@
     opNames: () => ops.op_op_names(),
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
+    byteLength: (str) => ops.op_str_byte_length(str),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

@@ -4,7 +4,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ZeroCopyBuf;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -24,24 +23,12 @@ pub trait TimersPermission {
 
 pub type StartTime = Instant;
 
-static mut NOW_BUF: *mut u32 = std::ptr::null_mut();
-
-#[op]
-pub fn op_now_set_buf(buf: ZeroCopyBuf) {
-  assert_eq!(buf.len(), 8);
-  // SAFETY: This is safe because this is the only place where we initialize
-  // NOW_BUF.
-  unsafe {
-    NOW_BUF = buf.as_ptr() as *mut u32;
-  }
-}
-
 // Returns a milliseconds and nanoseconds subsec
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
 #[op(fast)]
-pub fn op_now<TP>(state: &mut OpState)
+pub fn op_now<TP>(state: &mut OpState, buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
 {
@@ -57,17 +44,14 @@ where
     let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
-
-  // SAFETY: This is safe because we initialize NOW_BUF in op_now_set_buf, its a null pointer
-  // otherwise.
-  // op_now_set_buf guarantees that the buffer is 8 bytes long.
-  unsafe {
-    if !NOW_BUF.is_null() {
-      let buf = std::slice::from_raw_parts_mut(NOW_BUF, 2);
-      buf[0] = seconds as u32;
-      buf[1] = subsec_nanos as u32;
-    }
+  if buf.len() < 8 {
+    return;
   }
+  let buf: &mut [u32] =
+    // SAFETY: buffer is at least 8 bytes long.
+    unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as _, 2) };
+  buf[0] = seconds as u32;
+  buf[1] = subsec_nanos as u32;
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);

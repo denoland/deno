@@ -232,6 +232,81 @@ fn cached_only_after_first_run() {
 }
 
 #[test]
+fn no_npm_after_first_run() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-npm")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(
+    stderr,
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+  );
+  assert!(stdout.is_empty());
+  assert!(!output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-npm")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(
+    stderr,
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+  );
+  assert!(stdout.is_empty());
+  assert!(!output.status.success());
+}
+
+#[test]
 fn deno_run_cjs_module() {
   let _server = http_server();
 
