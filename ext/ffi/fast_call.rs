@@ -35,7 +35,7 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
-  let mut params = once(fast_api::Type::V8Value)  // Receiver
+  let mut params = once(fast_api::Type::V8Value) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
