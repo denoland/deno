@@ -122,7 +122,14 @@
   //    CRLF
   //    [ message-body ]
   //
-  function http1Response(method, status, headerList, body, earlyEnd = false) {
+  function http1Response(
+    method,
+    status,
+    headerList,
+    body,
+    bodyLen,
+    earlyEnd = false,
+  ) {
     // HTTP uses a "<major>.<minor>" numbering scheme
     //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
@@ -155,7 +162,7 @@
 
     // null body status is validated by inititalizeAResponse in ext/fetch
     if (body !== null && body !== undefined) {
-      str += `Content-Length: ${body.length}\r\n\r\n`;
+      str += `Content-Length: ${bodyLen}\r\n\r\n`;
     } else {
       str += "Transfer-Encoding: chunked\r\n\r\n";
       return str;
@@ -192,6 +199,7 @@
     server,
     requestId,
     response,
+    responseLen,
     end,
     respondFast,
   ) {
@@ -215,7 +223,7 @@
       }
     }
 
-    if (nwritten < response.length) {
+    if (nwritten < responseLen) {
       core.opAsync(
         "op_flash_respond_async",
         server,
@@ -421,16 +429,19 @@
 
             const ws = resp[_ws];
             if (isStreamingResponseBody === false) {
+              const length = respBody.byteLength || core.byteLength(respBody);
               const responseStr = http1Response(
                 method,
                 innerResp.status ?? 200,
                 innerResp.headerList,
                 respBody,
+                length,
               );
               writeFixedResponse(
                 serverId,
                 i,
                 responseStr,
+                length,
                 !ws, // Don't close socket if there is a deferred websocket upgrade.
                 respondFast,
               );
@@ -460,6 +471,7 @@
                         method,
                         innerResp.status ?? 200,
                         innerResp.headerList,
+                        0, // Content-Length will be set by the op.
                         null,
                         true,
                       ),
@@ -483,8 +495,10 @@
                       method,
                       innerResp.status ?? 200,
                       innerResp.headerList,
+                      respBody.byteLength,
                       null,
                     ),
+                    respBody.byteLength,
                     false,
                     respondFast,
                   );

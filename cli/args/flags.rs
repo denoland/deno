@@ -1937,6 +1937,7 @@ fn reload_arg<'a>() -> Arg<'a> {
   Reloads specific modules",
     )
     .value_hint(ValueHint::FilePath)
+    .validator(reload_arg_validate)
 }
 
 fn ca_file_arg<'a>() -> Arg<'a> {
@@ -3041,6 +3042,16 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn inspect_arg_validate(val: &str) -> Result<(), String> {
   match val.parse::<SocketAddr>() {
+    Ok(_) => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
+fn reload_arg_validate(urlstr: &str) -> Result<(), String> {
+  if urlstr.is_empty() {
+    return Err(String::from("Missing url. Check for extra commas."));
+  }
+  match Url::from_str(urlstr) {
     Ok(_) => Ok(()),
     Err(e) => Err(e.to_string()),
   }
@@ -4278,6 +4289,78 @@ mod tests {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn reload_validator() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept accept multiple valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=./relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls that start with ./");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls");
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--reload=/absolute", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute urls");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=/", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute root url");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=", "script.ts"]);
+    assert!(r.is_err(), "Should reject when nothing is provided");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=,", "script.ts"]);
+    assert!(r.is_err(), "Should reject when a single comma is provided");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=,http://deno.land/a",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a leading comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a trailing comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject adjacent commas");
   }
 
   #[test]

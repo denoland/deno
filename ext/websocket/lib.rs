@@ -420,7 +420,7 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[op]
+#[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
