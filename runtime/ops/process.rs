@@ -25,6 +25,8 @@ use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(windows)]
+use std::os::windows::io::RawHandle;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -298,8 +300,12 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   unix_kill(Pid::from_raw(pid), Option::Some(sig)).map_err(AnyError::from)
 }
 
-#[cfg(not(unix))]
-pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
+#[cfg(windows)]
+pub fn kill(
+  pid: i32,
+  signal: &str,
+  expected_raw_handle: Option<RawHandle>,
+) -> Result<(), AnyError> {
   use deno_core::error::type_error;
   use std::io::Error;
   use std::io::ErrorKind::NotFound;
@@ -328,6 +334,8 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
+    } else if expected_raw_handle.map_or(false, |h| h != &handle) {
+      Err(type_error("process already terminated"))
     } else {
       // SAFETY: winapi calls
       unsafe {
@@ -350,6 +358,9 @@ fn op_kill(
   signal: String,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().run.check_all()?;
+  #[cfg(unix)]
   kill(pid, &signal)?;
+  #[cfg(windows)]
+  kill(pid, &signal, None)?;
   Ok(())
 }
