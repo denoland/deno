@@ -18,7 +18,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
@@ -2154,7 +2153,7 @@ where
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   src: usize,
-  mut dst: ZeroCopyBuf,
+  dst: &mut [u8],
   len: usize,
 ) -> Result<(), AnyError>
 where
