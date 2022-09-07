@@ -27,6 +27,7 @@ use deno_runtime::deno_node::DenoDirNpmResolver;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
+use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
@@ -328,11 +329,12 @@ pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
       const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default);
-    }})('{}');"#,
+      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
+    }})('{}', '{}');"#,
     MODULE_ALL_URL.as_str(),
+    NODE_GLOBAL_THIS_NAME.as_str(),
   );
 
   let value =
