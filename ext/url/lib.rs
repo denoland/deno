@@ -6,11 +6,9 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::serde_v8;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -31,7 +29,6 @@ pub fn init() -> Extension {
       op_url_parse::decl(),
       op_url_reparse::decl(),
       op_url_parse::decl(),
-      op_url_set_buf::decl(),
       op_url_get_serialization::decl(),
       op_url_parse_with_base::decl(),
       op_url_parse_search_params::decl(),
@@ -40,24 +37,6 @@ pub fn init() -> Extension {
       op_urlpattern_process_match_input::decl(),
     ])
     .build()
-}
-
-struct UrlOffsetBuf(*mut u32);
-
-#[op(v8)]
-pub fn op_url_set_buf(
-  scope: &mut v8::HandleScope,
-  state: &mut OpState,
-  value: serde_v8::Value,
-) -> Result<(), AnyError> {
-  let ab: v8::Local<v8::ArrayBuffer> = value.v8_value.try_into()?;
-  let len = ab.byte_length();
-  assert_eq!(len, 32);
-  let store = ab.get_backing_store();
-
-  state.put(v8::Global::new(scope, ab)); // Prevent GC from collecting the ArrayBuffer.
-  state.put(UrlOffsetBuf(&store as *const _ as *mut u32));
-  Ok(())
 }
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
@@ -152,8 +131,8 @@ pub fn op_url_reparse(
   href: String,
   setter: u8,
   setter_value: String,
+  buf: &mut [u8],
 ) -> u32 {
-  let url_offset_buf = state.borrow::<UrlOffsetBuf>().0;
   let mut url = match Url::options().parse(&href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
@@ -198,7 +177,7 @@ pub fn op_url_reparse(
       // otherwise.
       // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
       unsafe {
-        let buf = std::slice::from_raw_parts_mut(url_offset_buf, 8);
+        let buf: &mut [u32] = transmute(buf);
         buf[0] = inner_url.scheme_end;
         buf[1] = inner_url.username_end;
         buf[2] = inner_url.host_start;
