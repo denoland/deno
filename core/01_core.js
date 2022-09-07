@@ -161,9 +161,14 @@
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
     let p = setPromise(promiseId);
-    const maybeError = ops[opName](promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
+    try {
+      ops[opName](promiseId, ...args);
+    } catch (err) {
+      // Cleanup the just-created promise
+      getPromise(promiseId);
+      // Rethrow the error
+      throw err;
+    }
     p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
