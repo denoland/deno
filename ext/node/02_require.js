@@ -658,7 +658,7 @@
   Module.wrapper = [
     // We provide the non-standard APIs in the CommonJS wrapper
     // to avoid exposing them in global namespace.
-    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; (function () {",
+    "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
     "\n}).call(this); })",
   ];
   Module.wrap = function (script) {
