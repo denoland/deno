@@ -7,6 +7,7 @@ use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
+use crate::proc_state::ProgressBar;
 use crate::text_encoding;
 use crate::version::get_user_agent;
 
@@ -30,7 +31,6 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
-use indicatif::ProgressBar;
 use log::debug;
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -319,7 +319,7 @@ pub struct FileFetcher {
   http_client: reqwest::Client,
   blob_store: BlobStore,
   download_log_level: log::Level,
-  progress_bar: Arc<Mutex<Option<ProgressBar>>>,
+  progress_bar: Option<ProgressBar>,
 }
 
 impl FileFetcher {
@@ -330,7 +330,7 @@ impl FileFetcher {
     root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
-    progress_bar: Arc<Mutex<Option<ProgressBar>>>,
+    progress_bar: Option<ProgressBar>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
@@ -588,19 +588,16 @@ impl FileFetcher {
       .boxed();
     }
 
-    // TODO(bartlomieju): fix me if there's no progress bar
-    // log::log!(
-    //   self.download_log_level,
-    //   "{} {}",
-    //   colors::green("Download"),
-    //   specifier
-    // );
-    {
-      let progress_bar = self.progress_bar.lock();
-      if let Some(progress_bar) = progress_bar.as_ref() {
-        let msg = format!("{} {}", crate::colors::green("Download"), specifier).to_string();
-        progress_bar.set_message(msg);
-      }
+    if let Some(pb) = self.progress_bar.as_ref() {
+      let msg = format!("{} {}", crate::colors::green("Download"), specifier);
+      pb.update(msg);
+    } else {
+      log::log!(
+        self.download_log_level,
+        "{} {}",
+        colors::green("Download"),
+        specifier
+      );
     }
 
     let maybe_etag = match self.http_cache.get(specifier) {
@@ -781,6 +778,7 @@ mod tests {
       true,
       None,
       blob_store.clone(),
+      None,
       None,
     )
     .unwrap();
@@ -1220,6 +1218,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let result = file_fetcher
@@ -1245,6 +1244,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1272,6 +1272,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1416,6 +1417,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let specifier =
@@ -1444,6 +1446,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1545,6 +1548,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
@@ -1570,6 +1574,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let file_fetcher_02 = FileFetcher::new(
@@ -1578,6 +1583,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();

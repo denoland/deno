@@ -17,6 +17,7 @@ use deno_runtime::deno_fetch::reqwest;
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
+use crate::proc_state::ProgressBar;
 
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
@@ -173,13 +174,19 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(dir: &DenoDir, cache_setting: CacheSetting) -> Self {
+  pub fn from_deno_dir(
+    dir: &DenoDir,
+    cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
+  ) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
+      progress_bar,
     }
   }
 
@@ -211,12 +218,10 @@ impl NpmCache {
       );
     }
 
-    log::log!(
-      log::Level::Info,
-      "{} {}",
-      colors::green("Download"),
-      dist.tarball,
-    );
+    {
+      let msg = format!("{} {}", colors::green("Download"), dist.tarball);
+      self.progress_bar.update(msg);
+    }
 
     let response = reqwest::get(&dist.tarball).await?;
 

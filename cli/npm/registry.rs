@@ -21,6 +21,7 @@ use serde::Serialize;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
+use crate::proc_state::ProgressBar;
 
 use super::cache::NpmCache;
 use super::semver::NpmVersionReq;
@@ -106,6 +107,7 @@ pub struct NpmRegistryApi {
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
   cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
 }
 
 impl NpmRegistryApi {
@@ -132,8 +134,15 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
   ) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, cache_setting)
+    Self::from_base(
+      Self::default_url(),
+      cache,
+      reload,
+      cache_setting,
+      progress_bar,
+    )
   }
 
   pub fn from_base(
@@ -141,6 +150,7 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       base_url,
@@ -148,6 +158,7 @@ impl NpmRegistryApi {
       mem_cache: Default::default(),
       reload,
       cache_setting,
+      progress_bar,
     }
   }
 
@@ -295,12 +306,10 @@ impl NpmRegistryApi {
 
     let package_url = self.get_package_url(name);
 
-    log::log!(
-      log::Level::Info,
-      "{} {}",
-      colors::green("Download"),
-      package_url,
-    );
+    {
+      let msg = format!("{} {}", colors::green("Download"), package_url);
+      self.progress_bar.update(msg);
+    }
 
     let response = match reqwest::get(package_url).await {
       Ok(response) => response,

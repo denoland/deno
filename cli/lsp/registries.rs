@@ -448,8 +448,6 @@ impl ModuleRegistry {
       options.maybe_ca_stores,
       options.maybe_ca_file,
     )?);
-    use std::sync::Arc;
-    use deno_core::parking_lot::Mutex;
     let mut file_fetcher = FileFetcher::new(
       http_cache,
       CacheSetting::RespectHeaders,
@@ -457,7 +455,7 @@ impl ModuleRegistry {
       root_cert_store,
       BlobStore::default(),
       options.unsafely_ignore_certificate_errors,
-      Arc::new(Mutex::new(None)),
+      None,
     )?;
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
