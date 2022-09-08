@@ -7,6 +7,7 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
+use once_cell::sync::Lazy;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -47,6 +48,16 @@ pub trait DenoDirNpmResolver {
 }
 
 pub const MODULE_ES_SHIM: &str = include_str!("./module_es_shim.js");
+
+pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
+  let now = std::time::SystemTime::now();
+  let seconds = now
+    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    .unwrap()
+    .as_secs();
+  // use a changing variable name to make it hard to depend on this
+  format!("__DENO_NODE_GLOBAL_THIS_{}__", seconds)
+});
 
 struct Unstable(pub bool);
 
