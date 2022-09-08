@@ -25,6 +25,7 @@ use crate::node::NodeResolution;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::check;
@@ -60,7 +61,6 @@ use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -702,52 +702,5 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
     if modules_done == modules_total {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
     }
-  }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ProgressBar(Arc<Mutex<Option<indicatif::ProgressBar>>>);
-
-impl ProgressBar {
-  fn create() -> indicatif::ProgressBar {
-    let pb = indicatif::ProgressBar::new_spinner();
-    pb.enable_steady_tick(Duration::from_millis(120));
-    pb.set_style(
-      indicatif::ProgressStyle::with_template("{spinner:.green} {msg}")
-        .unwrap()
-        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    pb
-  }
-
-  pub fn update(&self, msg: String) {
-    let mut inner = self.0.lock();
-
-    let progress_bar = match inner.as_ref() {
-      Some(pb) => pb,
-      None => {
-        let pb = Self::create();
-        *inner = Some(pb);
-        inner.as_ref().unwrap()
-      }
-    };
-    progress_bar.set_message(msg);
-  }
-
-  pub fn finish(&self) {
-    let mut inner = self.0.lock();
-
-    match inner.as_ref() {
-      Some(pb) => {
-        pb.finish();
-        *inner = None;
-        log::log!(
-          log::Level::Info,
-          "{}",
-          crate::colors::green("  Download complete")
-        );
-      }
-      None => {}
-    };
   }
 }

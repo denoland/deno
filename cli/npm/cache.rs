@@ -11,13 +11,12 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
-use crate::proc_state::ProgressBar;
+use crate::progress_bar::ProgressBar;
 
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
@@ -219,8 +218,7 @@ impl NpmCache {
     }
 
     {
-      let msg = format!("{} {}", colors::green("Download"), dist.tarball);
-      self.progress_bar.update(msg);
+      self.progress_bar.update(&dist.tarball);
     }
 
     let response = reqwest::get(&dist.tarball).await?;

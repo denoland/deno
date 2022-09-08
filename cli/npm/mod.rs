@@ -31,7 +31,7 @@ use resolution::NpmResolution;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
-use crate::proc_state::ProgressBar;
+use crate::progress_bar::ProgressBar;
 
 use self::cache::ReadonlyNpmCache;
 use self::resolution::NpmResolutionSnapshot;

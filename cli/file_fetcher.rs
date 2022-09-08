@@ -7,7 +7,7 @@ use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
-use crate::proc_state::ProgressBar;
+use crate::progress_bar::ProgressBar;
 use crate::text_encoding;
 use crate::version::get_user_agent;
 
@@ -589,8 +589,7 @@ impl FileFetcher {
     }
 
     if let Some(pb) = self.progress_bar.as_ref() {
-      let msg = format!("{} {}", crate::colors::green("Download"), specifier);
-      pb.update(msg);
+      pb.update(specifier.as_str());
     } else {
       log::log!(
         self.download_log_level,
