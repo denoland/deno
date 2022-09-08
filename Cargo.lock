@@ -835,7 +835,7 @@ dependencies = [
  "once_cell",
  "os_pipe",
  "path-clean",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "pin-project",
  "pretty_assertions",
  "rand",
@@ -895,7 +895,7 @@ dependencies = [
  "swc_ecma_utils",
  "swc_ecma_visit",
  "text_lines",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -944,7 +944,7 @@ dependencies = [
  "serde_v8",
  "sourcemap",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
  "v8",
 ]
 
@@ -1079,7 +1079,7 @@ dependencies = [
  "serde_json",
  "sourcemap",
  "termcolor",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -1098,7 +1098,7 @@ dependencies = [
  "fly-accept-encoding",
  "hyper",
  "mime 0.3.16",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "phf",
  "ring",
  "serde",
@@ -1644,7 +1644,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -1772,12 +1772,11 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fc25a87fa4fd2094bffb06925852034d90a17f0d1e05197d4956d3555752191"
+checksum = "a9c384f161156f5260c24a097c56119f9be8c798586aecc13afbcbe7b7e26bf8"
 dependencies = [
- "matches",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
 ]
 
 [[package]]
@@ -2250,6 +2249,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "idna"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e14ddfc70884202db2244c223200c204c2bda1bc6e0998d11b5e024d657209e6"
+dependencies = [
+ "unicode-bidi",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "if_chain"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2265,7 +2274,7 @@ dependencies = [
  "log 0.4.17",
  "serde",
  "serde_json",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -2645,7 +2654,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -3092,9 +3101,9 @@ checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 
 [[package]]
 name = "percent-encoding"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
 
 [[package]]
 name = "petgraph"
@@ -3501,7 +3510,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.17",
  "mime 0.3.16",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "pin-project-lite",
  "rustls",
  "rustls-pemfile 1.0.0",
@@ -3513,7 +3522,7 @@ dependencies = [
  "tokio-socks",
  "tokio-util",
  "tower-service",
- "url 2.3.0",
+ "url 2.3.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4035,7 +4044,7 @@ dependencies = [
  "rustc_version 0.2.3",
  "serde",
  "serde_json",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -4197,7 +4206,7 @@ dependencies = [
  "swc_visit",
  "tracing",
  "unicode-width",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -4981,7 +4990,7 @@ dependencies = [
  "thiserror",
  "tinyvec",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -5065,7 +5074,7 @@ dependencies = [
  "rustls",
  "sha-1 0.9.8",
  "thiserror",
- "url 2.3.0",
+ "url 2.3.1",
  "utf-8",
  "webpki",
 ]
@@ -5232,13 +5241,13 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22fe195a4f217c25b25cb5058ced57059824a678474874038dc88d211bf508d3"
+checksum = "0d68c799ae75762b8c3fe375feb6600ef5602c883c5d21eb51c09f22b83c4643"
 dependencies = [
  "form_urlencoded",
- "idna 0.2.3",
- "percent-encoding 2.1.0",
+ "idna 0.3.0",
+ "percent-encoding 2.2.0",
  "serde",
 ]
 
@@ -5252,7 +5261,7 @@ dependencies = [
  "regex",
  "serde",
  "unic-ucd-ident",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -5709,7 +5718,7 @@ dependencies = [
  "hyper-rustls",
  "itertools",
  "log 0.4.17",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "rustls",
  "rustls-pemfile 0.3.0",
  "seahash",
@@ -5717,7 +5726,7 @@ dependencies = [
  "serde_json",
  "time 0.3.9",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
