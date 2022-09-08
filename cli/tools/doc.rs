@@ -27,10 +27,8 @@ pub async fn print_docs(
     .unwrap_or_else(|| "--builtin".to_string());
 
   let mut doc_nodes = if source_file == "--builtin" {
-    // todo(dsherret): change this back to deno://lib.deno.d.ts once
-    // https://github.com/denoland/deno_ast/issues/109 is fixed
     let source_file_specifier =
-      ModuleSpecifier::parse("deno://dts/lib.deno.d.ts").unwrap();
+      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
     let content = get_types(ps.options.unstable());
     let mut loader = deno_graph::source::MemoryLoader::new(
       vec![(

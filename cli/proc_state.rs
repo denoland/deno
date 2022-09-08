@@ -223,17 +223,18 @@ impl ProcState {
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+      cli_options.no_npm(),
     );
 
+    let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
-        // todo(dsherret): use hash of emit options instead as it's more specific
-        .write(&ts_config_result.ts_config.as_bytes())
+        .write_hashable(&emit_options)
         .finish(),
-      emit_options: ts_config_result.ts_config.into(),
+      emit_options,
       file_fetcher,
       graph_data: Default::default(),
       lockfile,

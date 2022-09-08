@@ -11,6 +11,7 @@ FNF:4
 FNH:2
 BRF:0
 BRH:0
+DA:1,1
 DA:13,1
 DA:14,1
 DA:15,1
@@ -67,6 +68,6 @@ DA:70,1
 DA:71,0
 DA:73,1
 DA:74,1
-LH:39
-LF:56
+LH:40
+LF:57
 end_of_record
