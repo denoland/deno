@@ -449,7 +449,7 @@ impl ProcState {
       graph_data.set_type_checked(&roots, lib);
     }
 
-    self.progress_bar.finish();
+    self.progress_bar.clear();
 
     // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {

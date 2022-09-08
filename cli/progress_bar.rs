@@ -2,6 +2,7 @@
 
 use crate::colors;
 use deno_core::parking_lot::Mutex;
+use indexmap::IndexSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ pub struct ProgressBar(Arc<Mutex<ProgressBarInner>>);
 struct ProgressBarInner {
   pb: Option<indicatif::ProgressBar>,
   is_tty: bool,
+  in_flight: IndexSet<String>,
 }
 
 impl Default for ProgressBarInner {
@@ -19,6 +21,58 @@ impl Default for ProgressBarInner {
     Self {
       pb: None,
       is_tty: colors::is_tty(),
+      in_flight: IndexSet::default(),
+    }
+  }
+}
+
+impl ProgressBarInner {
+  fn get_or_create_pb(&mut self) -> indicatif::ProgressBar {
+    if let Some(pb) = self.pb.as_ref() {
+      return pb.clone();
+    }
+
+    let pb = indicatif::ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.set_prefix("Download");
+    pb.set_style(
+      indicatif::ProgressStyle::with_template(
+        "{prefix:.green} {spinner:.green} {msg}",
+      )
+      .unwrap()
+      .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    self.pb = Some(pb);
+    self.pb.as_ref().unwrap().clone()
+  }
+
+  fn add_in_flight(&mut self, msg: &str) {
+    if self.in_flight.contains(msg) {
+      return;
+    }
+
+    self.in_flight.insert(msg.to_string());
+  }
+
+  /// Returns if removed "in-flight" was last entry and progress
+  /// bar needs to be updated.
+  fn remove_in_flight(&mut self, msg: &str) -> bool {
+    if !self.in_flight.contains(msg) {
+      return false;
+    }
+
+    let mut is_last = false;
+    if let Some(last) = self.in_flight.last() {
+      is_last = last == msg;
+    }
+    self.in_flight.remove(msg);
+    is_last
+  }
+
+  fn update_progress_bar(&mut self) {
+    let pb = self.get_or_create_pb();
+    if let Some(msg) = self.in_flight.last() {
+      pb.set_message(msg.clone());
     }
   }
 }
@@ -48,18 +102,11 @@ impl ProgressBar {
       return;
     }
 
-    let progress_bar = match inner.pb.as_ref() {
-      Some(pb) => pb,
-      None => {
-        let pb = Self::create();
-        inner.pb = Some(pb);
-        inner.pb.as_ref().unwrap()
-      }
-    };
-    progress_bar.set_message(msg.to_string());
+    inner.add_in_flight(msg);
+    inner.update_progress_bar();
   }
 
-  pub fn finish(&self) {
+  pub fn clear(&self) {
     let mut inner = self.0.lock();
 
     match inner.pb.as_ref() {
