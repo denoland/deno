@@ -588,8 +588,9 @@ impl FileFetcher {
       .boxed();
     }
 
+    let mut _maybe_guard = None;
     if let Some(pb) = self.progress_bar.as_ref() {
-      pb.update(specifier.as_str());
+      _maybe_guard = Some(pb.update(specifier.as_str()));
     } else {
       log::log!(
         self.download_log_level,

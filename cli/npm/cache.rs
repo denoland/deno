@@ -217,10 +217,7 @@ impl NpmCache {
       );
     }
 
-    {
-      self.progress_bar.update(&dist.tarball);
-    }
-
+    let _guard = self.progress_bar.update(&dist.tarball);
     let response = reqwest::get(&dist.tarball).await?;
 
     if response.status() == 404 {

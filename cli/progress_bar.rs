@@ -77,33 +77,45 @@ impl ProgressBarInner {
   }
 }
 
-impl ProgressBar {
-  fn create() -> indicatif::ProgressBar {
-    let pb = indicatif::ProgressBar::new_spinner();
-    pb.enable_steady_tick(Duration::from_millis(120));
-    pb.set_prefix("Download");
-    pb.set_style(
-      indicatif::ProgressStyle::with_template(
-        "{prefix:.green} {spinner:.green} {msg}",
-      )
-      .unwrap()
-      .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    pb
-  }
+pub struct UpdateGuard {
+  pb: ProgressBar,
+  msg: String,
+  noop: bool,
+}
 
-  pub fn update(&self, msg: &str) {
+impl Drop for UpdateGuard {
+  fn drop(&mut self) {
+    if self.noop {
+      return;
+    }
+
+    let mut inner = self.pb.0.lock();
+    if inner.remove_in_flight(&self.msg) {
+      inner.update_progress_bar();
+    }
+  }
+}
+
+impl ProgressBar {
+  pub fn update(&self, msg: &str) -> UpdateGuard {
+    let mut guard = UpdateGuard {
+      pb: self.clone(),
+      msg: msg.to_string(),
+      noop: false,
+    };
     let mut inner = self.0.lock();
 
     // If we're not running in TTY we're just gonna fallback
     // to using logger crate.
     if !inner.is_tty {
       log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
-      return;
+      guard.noop = true;
+      return guard;
     }
 
     inner.add_in_flight(msg);
     inner.update_progress_bar();
+    guard
   }
 
   pub fn clear(&self) {

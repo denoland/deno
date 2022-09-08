@@ -305,10 +305,7 @@ impl NpmRegistryApi {
     }
 
     let package_url = self.get_package_url(name);
-
-    {
-      self.progress_bar.update(package_url.as_str());
-    }
+    let _guard = self.progress_bar.update(package_url.as_str());
 
     let response = match reqwest::get(package_url).await {
       Ok(response) => response,
