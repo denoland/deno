@@ -1068,7 +1068,7 @@ fn napi_define_class(
 ) -> Result {
   let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
   check_arg!(result);
-  check_arg!(constructor as *const c_void);
+  // check_arg!(constructor as *const c_void);
 
   if property_count > 0 {
     check_arg!(properties);
@@ -1098,17 +1098,18 @@ fn napi_define_class(
       transmute::<napi_value, v8::Local<v8::String>>(p.name)
     };
 
-    let method = p.method as *const c_void;
-    let getter = p.getter as *const c_void;
-    let setter = p.setter as *const c_void;
-    if !getter.is_null() || !setter.is_null() {
-      let getter: Option<v8::Local<v8::FunctionTemplate>> = if !getter.is_null()
+    let method = p.method;
+    let getter = p.getter;
+    let setter = p.setter;
+    
+    if !getter.is_none() || !setter.is_none() {
+      let getter: Option<v8::Local<v8::FunctionTemplate>> = if !getter.is_none()
       {
         Some(create_function_template(env_ptr, None, p.getter, p.data))
       } else {
         None
       };
-      let setter: Option<v8::Local<v8::FunctionTemplate>> = if !setter.is_null()
+      let setter: Option<v8::Local<v8::FunctionTemplate>> = if !setter.is_none()
       {
         Some(create_function_template(env_ptr, None, p.setter, p.data))
       } else {
@@ -1151,7 +1152,7 @@ fn napi_define_class(
       //   }
       //   (None, None) => unreachable!(),
       // }
-    } else if !method.is_null() {
+    } else if !method.is_none() {
       let function = create_function_template(env_ptr, None, p.method, p.data);
       let proto = tpl.prototype_template(scope);
       proto.set(name.into(), function.into());
@@ -1189,9 +1190,9 @@ fn napi_define_properties(
       transmute::<napi_value, v8::Local<v8::String>>(property.name)
     };
 
-    let method_ptr = property.method as *mut c_void;
+    let method_ptr = property.method;
 
-    if !method_ptr.is_null() {
+    if !method_ptr.is_none() {
       let function: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);

@@ -207,7 +207,7 @@ pub struct napi_type_tag {
 }
 
 pub type napi_callback =
-  unsafe extern "C" fn(env: napi_env, info: napi_callback_info) -> napi_value;
+  Option<unsafe extern "C" fn(env: napi_env, info: napi_callback_info) -> napi_value>;
 
 pub type napi_finalize = unsafe extern "C" fn(
   env: napi_env,

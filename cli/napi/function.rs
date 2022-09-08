@@ -20,7 +20,7 @@ pub fn create_function<'a>(
 ) -> v8::Local<'a, v8::Function> {
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
-  let method_ptr = v8::External::new(scope, cb as *mut c_void);
+  let method_ptr = v8::External::new(scope, cb.map_or_else(ptr::null_mut, |v| v as *mut c_void));
   let cb_info_ext = v8::External::new(scope, cb_info);
 
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
@@ -64,7 +64,7 @@ pub fn create_function<'a>(
 
       let info_ptr = &mut info as *mut _ as *mut c_void;
 
-      let value = unsafe { cb(env_ptr, info_ptr) };
+      let value = unsafe { (cb.unwrap())(env_ptr, info_ptr) };
       let value =
         unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
       rv.set(value);
@@ -91,7 +91,7 @@ pub fn create_function_template<'a>(
 ) -> v8::Local<'a, v8::FunctionTemplate> {
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
-  let method_ptr = v8::External::new(scope, cb as *mut c_void);
+  let method_ptr = v8::External::new(scope, cb.map_or_else(ptr::null_mut, |v| v as *mut c_void));
   let cb_info_ext = v8::External::new(scope, cb_info);
 
   let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
@@ -135,7 +135,7 @@ pub fn create_function_template<'a>(
 
       let info_ptr = &mut info as *mut _ as *mut c_void;
 
-      let value = unsafe { cb(env_ptr, info_ptr) };
+      let value = unsafe {(cb.unwrap())(env_ptr, info_ptr) };
       let value =
         unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
       rv.set(value);
