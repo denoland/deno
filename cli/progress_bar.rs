@@ -49,7 +49,7 @@ impl ProgressBar {
 
     match inner.as_ref() {
       Some(pb) => {
-        pb.finish_with_message("finished");
+        pb.finish_and_clear();
         *inner = None;
       }
       None => {}
