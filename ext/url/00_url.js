@@ -319,7 +319,7 @@
      * @param {string} base
      */
     constructor(url, base = undefined) {
-      if (url instanceof URL && base === undefined) {
+      if (url?.[_url] && base === undefined) {
         this[webidl.brand] = webidl.brand;
         this[_url] = { ...url[_url] };
       } else {
