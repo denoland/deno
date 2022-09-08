@@ -319,16 +319,21 @@
      * @param {string} base
      */
     constructor(url, base = undefined) {
-      const prefix = "Failed to construct 'URL'";
-      url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
-      if (base !== undefined) {
-        base = webidl.converters.DOMString(base, {
-          prefix,
-          context: "Argument 2",
-        });
+      if (url instanceof URL && base === undefined) {
+        this[webidl.brand] = webidl.brand;
+        this[_url] = { ...url[_url] };
+      } else {
+        const prefix = "Failed to construct 'URL'";
+        url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
+        if (base !== undefined) {
+          base = webidl.converters.DOMString(base, {
+            prefix,
+            context: "Argument 2",
+          });
+        }
+        this[webidl.brand] = webidl.brand;
+        this[_url] = opUrlParse(url, base);
       }
-      this[webidl.brand] = webidl.brand;
-      this[_url] = opUrlParse(url, base);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
