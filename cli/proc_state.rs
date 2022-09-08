@@ -29,6 +29,9 @@ use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::check;
 
+use std::time::Duration;
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -88,6 +91,8 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub npm_resolver: GlobalNpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
+
+  maybe_progress_bar: Arc<Mutex<Option<ProgressBar>>>,
 }
 
 impl Deref for ProcState {
@@ -147,6 +152,7 @@ impl ProcState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
+    let maybe_progress_bar = Arc::new(Mutex::new(None));
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -156,6 +162,7 @@ impl ProcState {
       cli_options
         .unsafely_ignore_certificate_errors()
         .map(ToOwned::to_owned),
+      maybe_progress_bar.clone(),
     )?;
 
     let lockfile = cli_options
@@ -250,6 +257,7 @@ impl ProcState {
       maybe_file_watcher_reporter,
       npm_resolver,
       cjs_resolutions: Default::default(),
+      maybe_progress_bar,
     })))
   }
 
@@ -266,6 +274,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    self.create_progress_bar();
     let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
       if let Some(resolver) = &self.maybe_resolver {
         Some(resolver.as_ref())
@@ -442,6 +451,8 @@ impl ProcState {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, lib);
     }
+
+    self.finish_progress_bar();
 
     // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {
@@ -646,6 +657,44 @@ impl ProcState {
     }
 
     Ok(graph)
+  }
+
+  fn create_progress_bar(&self) {
+    let mut maybe_progress_bar = self.maybe_progress_bar.lock();
+    assert!(maybe_progress_bar.is_none());
+
+    let pb = ProgressBar::new_spinner();
+    pb.enable_steady_tick(Duration::from_millis(120));
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.green} {msg}")
+            .unwrap()
+            .tick_strings(&[
+                "⠋",
+                "⠙",
+                "⠹",
+                "⠸",
+                "⠼",
+                "⠴",
+                "⠦",
+                "⠧",
+                "⠇",
+                "⠏"
+            ]),
+    );
+    *maybe_progress_bar = Some(pb);
+  }
+
+  fn finish_progress_bar(&self) {
+    let mut maybe_progress_bar = self.maybe_progress_bar.lock();
+    assert!(maybe_progress_bar.is_some());
+    let pb = maybe_progress_bar.as_ref().unwrap();
+    pb.finish();
+    *maybe_progress_bar = None;
+    log::log!(
+      log::Level::Info,
+      "{}",
+      crate::colors::green("  Download complete")
+    );
   }
 }
 

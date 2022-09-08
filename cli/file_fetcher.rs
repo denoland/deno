@@ -30,6 +30,7 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
+use indicatif::ProgressBar;
 use log::debug;
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -318,6 +319,7 @@ pub struct FileFetcher {
   http_client: reqwest::Client,
   blob_store: BlobStore,
   download_log_level: log::Level,
+  progress_bar: Arc<Mutex<Option<ProgressBar>>>,
 }
 
 impl FileFetcher {
@@ -328,6 +330,7 @@ impl FileFetcher {
     root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
+    progress_bar: Arc<Mutex<Option<ProgressBar>>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
@@ -345,6 +348,7 @@ impl FileFetcher {
       )?,
       blob_store,
       download_log_level: log::Level::Info,
+      progress_bar,
     })
   }
 
@@ -584,12 +588,20 @@ impl FileFetcher {
       .boxed();
     }
 
-    log::log!(
-      self.download_log_level,
-      "{} {}",
-      colors::green("Download"),
-      specifier
-    );
+    // TODO(bartlomieju): fix me if there's no progress bar
+    // log::log!(
+    //   self.download_log_level,
+    //   "{} {}",
+    //   colors::green("Download"),
+    //   specifier
+    // );
+    {
+      let progress_bar = self.progress_bar.lock();
+      if let Some(progress_bar) = progress_bar.as_ref() {
+        let msg = format!("{} {}", crate::colors::green("Download"), specifier).to_string();
+        progress_bar.set_message(msg);
+      }
+    }
 
     let maybe_etag = match self.http_cache.get(specifier) {
       Ok((_, headers, _)) => headers.get("etag").cloned(),
