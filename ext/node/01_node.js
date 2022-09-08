@@ -10,6 +10,7 @@
     ArrayPrototypeFilter,
     ObjectEntries,
     ObjectCreate,
+    ObjectDefineProperty,
   } = window.__bootstrap.primordials;
 
   function assert(cond) {
@@ -82,7 +83,7 @@
   const nativeModuleExports = ObjectCreate(null);
   const builtinModules = [];
 
-  function initialize(nodeModules) {
+  function initialize(nodeModules, nodeGlobalThisName) {
     assert(!initialized);
     initialized = true;
     for (const [name, exports] of ObjectEntries(nodeModules)) {
@@ -98,6 +99,14 @@
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
     nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
     nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+
+    // add a hidden global for the esm code to use in order to reliably
+    // get node's globalThis
+    ObjectDefineProperty(globalThis, nodeGlobalThisName, {
+      enumerable: false,
+      writable: false,
+      value: nodeGlobalThis,
+    });
   }
 
   window.__bootstrap.internals = {
