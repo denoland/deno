@@ -89,12 +89,14 @@ itest!(dual_cjs_esm {
   http_server: true,
 });
 
-itest!(dynamic_import {
-  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
-  output: "npm/dynamic_import/main.out",
-  envs: env_vars(),
-  http_server: true,
-});
+// FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
+// at the moment
+// itest!(dynamic_import {
+//   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
+//   output: "npm/dynamic_import/main.out",
+//   envs: env_vars(),
+//   http_server: true,
+// });
 
 itest!(env_var_re_export_dev {
   args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
