@@ -1,73 +1,110 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-#![allow(clippy::all)]
-#![allow(clippy::undocumented_unsafe_blocks)]
 
-use napi_sys::*;
+use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{
+  ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode,
+};
+use napi_derive::napi;
 
-pub mod array;
-pub mod r#async;
-pub mod callback;
-pub mod coerce;
-pub mod numbers;
-pub mod object_wrap;
-pub mod promise;
-pub mod properties;
-pub mod strings;
-pub mod typedarray;
+#[napi]
+pub fn test_undefined() -> Undefined {}
 
-#[macro_export]
-macro_rules! get_callback_info {
-  ($env: expr, $callback_info: expr, $size: literal) => {{
-    let mut args = [ptr::null_mut(); $size];
-    let mut argc = $size;
-    let mut this = ptr::null_mut();
-    unsafe {
-      assert!(
-        napi_get_cb_info(
-          $env,
-          $callback_info,
-          &mut argc,
-          args.as_mut_ptr(),
-          &mut this,
-          ptr::null_mut(),
-        ) == napi_ok,
-      )
-    };
-    (args, argc, this)
-  }};
+#[napi]
+pub fn test_null() -> Null {
+  Null
 }
 
-#[macro_export]
-macro_rules! new_property {
-  ($env: expr, $name: expr, $value: expr) => {
-    napi_property_descriptor {
-      utf8name: $name.as_ptr() as *const i8,
-      name: ptr::null_mut(),
-      method: Some($value),
-      getter: None,
-      setter: None,
-      data: ptr::null_mut(),
-      attributes: 0,
-      value: ptr::null_mut(),
-    }
-  };
+#[napi]
+pub fn test_int32() -> i32 {
+  69
 }
 
-#[no_mangle]
-unsafe extern "C" fn napi_register_module_v1(
-  env: napi_env,
-  exports: napi_value,
-) -> napi_value {
-  strings::init(env, exports);
-  numbers::init(env, exports);
-  typedarray::init(env, exports);
-  array::init(env, exports);
-  properties::init(env, exports);
-  promise::init(env, exports);
-  coerce::init(env, exports);
-  object_wrap::init(env, exports);
-  callback::init(env, exports);
-  r#async::init(env, exports);
+#[napi]
+pub fn test_int64() -> i64 {
+  i64::MAX
+}
 
-  exports
+#[napi]
+pub fn test_string(name: String) -> String {
+  format!("Hello, {}!", name)
+}
+
+#[napi]
+pub fn test_bool() -> bool {
+  true
+}
+
+#[napi]
+pub fn test_typedarray(input: Uint8Array) -> Uint8Array {
+  let mut input: Vec<u8> = input.to_vec();
+  input.reverse();
+  Uint8Array::new(input)
+}
+
+#[napi]
+pub fn test_create_obj(env: Env) -> Object {
+  let mut obj = env.create_object().unwrap();
+  obj.set("test", 1).unwrap();
+  obj
+}
+
+#[napi]
+pub fn test_get_field(obj: Object, field: String) -> String {
+  obj.get::<&str, String>(&field).unwrap().unwrap()
+}
+
+#[napi]
+pub fn test_arr_len(arr: Array) -> u32 {
+  arr.len()
+}
+
+#[napi(js_name = "ObjectWrap")]
+pub struct ObjectWrap {
+  value: i32,
+}
+
+#[napi]
+impl ObjectWrap {
+  #[napi(constructor)]
+  pub fn new(count: i32) -> Self {
+    Self { value: count }
+  }
+
+  #[napi(getter)]
+  pub fn get_value(&self) -> i32 {
+    self.value
+  }
+
+  #[napi]
+  pub fn set_value(&mut self, value: i32) {
+    self.value = value;
+  }
+}
+
+#[napi]
+pub fn call_threadsafe_function(callback: JsFunction) -> Result<()> {
+  let tsfn: ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled> = callback
+    .create_threadsafe_function(0, |ctx| {
+      ctx.env.create_uint32(ctx.value + 1).map(|v| vec![v])
+    })?;
+  for n in 0..100 {
+    let tsfn = tsfn.clone();
+    std::thread::spawn(move || {
+      tsfn.call(Ok(n), ThreadsafeFunctionCallMode::NonBlocking);
+    });
+  }
+  Ok(())
+}
+
+#[napi]
+pub async fn read_file_async(path: String) -> Result<Buffer> {
+  let r = tokio::fs::read(path).await;
+
+  match r {
+    Ok(content) => Ok(content.into()),
+    Err(e) => Err(Error::new(
+      Status::GenericFailure,
+      format!("failed to read file, {}", e),
+    )),
+  }
 }

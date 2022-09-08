@@ -1101,7 +1101,7 @@ fn napi_define_class(
     let method = p.method;
     let getter = p.getter;
     let setter = p.setter;
-    
+
     if !getter.is_none() || !setter.is_none() {
       let getter: Option<v8::Local<v8::FunctionTemplate>> = if !getter.is_none()
       {
