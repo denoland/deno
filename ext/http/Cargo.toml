@@ -29,7 +29,7 @@ flate2 = "1.0.23"
 fly-accept-encoding = "0.2.0"
 hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
 mime = "0.3.16"
-percent-encoding = "2.1.0"
+percent-encoding = "2.2.0"
 phf = { version = "0.10", features = ["macros"] }
 ring = "0.16.20"
 serde = { version = "1.0.136", features = ["derive"] }
