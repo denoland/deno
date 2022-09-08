@@ -417,6 +417,8 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
+    self.progress_bar.clear();
+
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
@@ -448,8 +450,6 @@ impl ProcState {
       let mut graph_data = self.graph_data.write();
       graph_data.set_type_checked(&roots, lib);
     }
-
-    self.progress_bar.clear();
 
     // any updates to the lockfile should be updated now
     if let Some(ref lockfile) = self.lockfile {
