@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod cache;
+mod local;
 mod registry;
 mod resolution;
 mod semver;
