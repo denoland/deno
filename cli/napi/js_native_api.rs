@@ -1102,14 +1102,14 @@ fn napi_define_class(
     let getter = p.getter;
     let setter = p.setter;
 
-    if !getter.is_none() || !setter.is_none() {
-      let getter: Option<v8::Local<v8::FunctionTemplate>> = if !getter.is_none()
+    if getter.is_some() || setter.is_some() {
+      let getter: Option<v8::Local<v8::FunctionTemplate>> = if getter.is_some()
       {
         Some(create_function_template(env_ptr, None, p.getter, p.data))
       } else {
         None
       };
-      let setter: Option<v8::Local<v8::FunctionTemplate>> = if !setter.is_none()
+      let setter: Option<v8::Local<v8::FunctionTemplate>> = if setter.is_some()
       {
         Some(create_function_template(env_ptr, None, p.setter, p.data))
       } else {
@@ -1152,7 +1152,7 @@ fn napi_define_class(
       //   }
       //   (None, None) => unreachable!(),
       // }
-    } else if !method.is_none() {
+    } else if method.is_some() {
       let function = create_function_template(env_ptr, None, p.method, p.data);
       let proto = tpl.prototype_template(scope);
       proto.set(name.into(), function.into());
@@ -1192,7 +1192,7 @@ fn napi_define_properties(
 
     let method_ptr = property.method;
 
-    if !method_ptr.is_none() {
+    if method_ptr.is_some() {
       let function: v8::Local<v8::Value> = {
         let function =
           create_function(env_ptr, None, property.method, property.data);
