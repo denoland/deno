@@ -32,7 +32,7 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { version = "1.0.79", features = ["preserve_order"] }
 serde_v8 = { version = "0.60.0", path = "../serde_v8" }
 sourcemap = "=6.0.1"
-url = { version = "2.2.2", features = ["serde"] }
+url = { version = "2.3.1", features = ["serde"] }
 v8 = { version = "0.49.0", default-features = false }
 
 [[example]]
@@ -41,5 +41,5 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-deno_ast = { version = "0.17.0", features = ["transpiling"] }
+deno_ast = { version = "0.19.0", features = ["transpiling"] }
 tokio = { version = "1.19", features = ["full"] }

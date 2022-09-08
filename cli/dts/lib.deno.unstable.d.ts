@@ -282,6 +282,7 @@ declare namespace Deno {
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
 
+  /** @category Runtime Environment */
   export interface SystemMemoryInfo {
     /** Total installed memory */
     total: number;
@@ -393,14 +394,19 @@ declare namespace Deno {
     | "usize"
     | "isize";
 
+  /** @category FFI */
   type NativeBooleanType = "bool";
 
+  /** @category FFI */
   type NativePointerType = "pointer";
 
+  /** @category FFI */
   type NativeBufferType = "buffer";
 
+  /** @category FFI */
   type NativeFunctionType = "function";
 
+  /** @category FFI */
   type NativeVoidType = "void";
 
   /** All possible types for interfacing with foreign functions.
@@ -676,6 +682,7 @@ declare namespace Deno {
     call: FromForeignFunction<Fn>;
   }
 
+  /** @category FFI */
   export interface UnsafeCallbackDefinition<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
@@ -684,6 +691,7 @@ declare namespace Deno {
     result: Result;
   }
 
+  /** @category FFI */
   type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
@@ -749,7 +757,11 @@ declare namespace Deno {
     close(): void;
   }
 
-  /** A dynamic library resource */
+  /**
+   * A dynamic library resource
+   *
+   * @category FFI
+   */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them */
     symbols: StaticForeignLibraryInterface<S>;
@@ -1065,6 +1077,7 @@ declare namespace Deno {
     options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
+  /** @category Network */
   export interface UnixConnectOptions {
     transport: "unix";
     path: string;
@@ -1096,6 +1109,7 @@ declare namespace Deno {
     options: UnixConnectOptions,
   ): Promise<UnixConn>;
 
+  /** @category Network */
   export interface ConnectTlsOptions {
     /** PEM formatted client certificate chain. */
     certChain?: string;
@@ -1542,12 +1556,14 @@ declare namespace Deno {
     options?: SpawnOptions,
   ): SpawnOutput;
 
+  /** @category Sub Process */
   export interface ChildStatus {
     success: boolean;
     code: number;
     signal: Signal | null;
   }
 
+  /** @category Sub Process */
   export interface SpawnOutput extends ChildStatus {
     get stdout(): Uint8Array;
     get stderr(): Uint8Array;
