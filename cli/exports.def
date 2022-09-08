@@ -1,7 +1,9 @@
 LIBRARY
 EXPORTS
   node_api_create_syntax_error
+  napi_make_callback
   napi_has_named_property
+  napi_async_destroy
   napi_coerce_to_object
   napi_get_arraybuffer_info
   napi_detach_arraybuffer
@@ -139,3 +141,4 @@ EXPORTS
   napi_create_type_error
   napi_fatal_exception
   napi_create_async_work
+  napi_async_init
