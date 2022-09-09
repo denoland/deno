@@ -322,10 +322,7 @@
      */
     constructor(url, base = undefined) {
       const prefix = "Failed to construct 'URL'";
-      url = webidl.converters.DOMString(url, {
-        prefix,
-        context: "Argument 1",
-      });
+      url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
       if (base !== undefined) {
         base = webidl.converters.DOMString(base, {
           prefix,
