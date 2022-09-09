@@ -12,7 +12,6 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use std::mem::transmute;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -84,26 +83,21 @@ fn parse_url(
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 
-      // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer
-      // otherwise.
-      // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
-      unsafe {
-        let buf: &mut [u32] = transmute(buf);
-        buf[0] = inner_url.scheme_end;
-        buf[1] = inner_url.username_end;
-        buf[2] = inner_url.host_start;
-        buf[3] = inner_url.host_end;
-        buf[4] = inner_url.port.unwrap_or(0) as u32;
-        buf[5] = inner_url.path_start;
-        buf[6] = inner_url.query_start.unwrap_or(0);
-        buf[7] = inner_url.fragment_start.unwrap_or(0);
-        let serialization: String = url.into();
-        if serialization != href {
-          state.put(UrlSerialization(serialization));
-          ParseStatus::OkSerialization as u32
-        } else {
-          ParseStatus::Ok as u32
-        }
+      let buf: &mut [u32] = as_u32_slice(buf);
+      buf[0] = inner_url.scheme_end;
+      buf[1] = inner_url.username_end;
+      buf[2] = inner_url.host_start;
+      buf[3] = inner_url.host_end;
+      buf[4] = inner_url.port.unwrap_or(0) as u32;
+      buf[5] = inner_url.path_start;
+      buf[6] = inner_url.query_start.unwrap_or(0);
+      buf[7] = inner_url.fragment_start.unwrap_or(0);
+      let serialization: String = url.into();
+      if serialization != href {
+        state.put(UrlSerialization(serialization));
+        ParseStatus::OkSerialization as u32
+      } else {
+        ParseStatus::Ok as u32
       }
     }
     Err(_) => ParseStatus::Err as u32,
@@ -125,6 +119,17 @@ pub enum UrlSetter {
 }
 
 const NO_PORT: u32 = 65536;
+
+fn as_u32_slice(slice: &mut [u8]) -> &mut [u32] {
+  assert_eq!(slice.len() % std::mem::size_of::<u32>(), 0);
+  // SAFETY: size is multiple of 4
+  unsafe {
+    std::slice::from_raw_parts_mut(
+      slice.as_mut_ptr() as *mut u32,
+      slice.len() / std::mem::size_of::<u32>(),
+    )
+  }
+}
 
 #[op]
 pub fn op_url_reparse(
@@ -174,26 +179,21 @@ pub fn op_url_reparse(
     Ok(_) => {
       let inner_url = quirks::internal_components(&url);
 
-      // SAFETY: This is safe because we initialize URL_OFFSET_BUF in op_url_set_buf, its a null pointer
-      // otherwise.
-      // op_url_set_buf guarantees that the buffer is 4 * 8 bytes long.
-      unsafe {
-        let buf: &mut [u32] = transmute(buf);
-        buf[0] = inner_url.scheme_end;
-        buf[1] = inner_url.username_end;
-        buf[2] = inner_url.host_start;
-        buf[3] = inner_url.host_end;
-        buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
-        buf[5] = inner_url.path_start;
-        buf[6] = inner_url.query_start.unwrap_or(0);
-        buf[7] = inner_url.fragment_start.unwrap_or(0);
-        let serialization: String = url.into();
-        if serialization != href {
-          state.put(UrlSerialization(serialization));
-          ParseStatus::OkSerialization as u32
-        } else {
-          ParseStatus::Ok as u32
-        }
+      let buf: &mut [u32] = as_u32_slice(buf);
+      buf[0] = inner_url.scheme_end;
+      buf[1] = inner_url.username_end;
+      buf[2] = inner_url.host_start;
+      buf[3] = inner_url.host_end;
+      buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
+      buf[5] = inner_url.path_start;
+      buf[6] = inner_url.query_start.unwrap_or(0);
+      buf[7] = inner_url.fragment_start.unwrap_or(0);
+      let serialization: String = url.into();
+      if serialization != href {
+        state.put(UrlSerialization(serialization));
+        ParseStatus::OkSerialization as u32
+      } else {
+        ParseStatus::Ok as u32
       }
     }
     Err(_) => ParseStatus::Err as u32,
