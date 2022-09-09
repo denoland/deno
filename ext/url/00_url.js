@@ -18,6 +18,7 @@
     ArrayPrototypeSome,
     ArrayPrototypeSort,
     ArrayPrototypeSplice,
+    Map,
     ObjectKeys,
     SafeArrayIterator,
     StringPrototypeSlice,
