@@ -455,6 +455,7 @@ impl ModuleRegistry {
       root_cert_store,
       BlobStore::default(),
       options.unsafely_ignore_certificate_errors,
+      None,
     )?;
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
