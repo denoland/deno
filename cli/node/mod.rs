@@ -843,20 +843,14 @@ pub fn translate_cjs_to_esm(
       if translate_kind == CjsToEsmTranslateKind::Deno
         && root_exports.contains("__esModule")
       {
-        source.push(format!(
-          "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-          export,
-        ));
+        source.push(format!("export default mod[\"{}\"];", export,));
         had_default = true;
       }
     } else {
       add_export(
         &mut source,
         export,
-        &format!(
-          "Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod)",
-          export
-        ),
+        &format!("mod[\"{}\"]", export),
         &mut temp_var_count,
       );
     }
