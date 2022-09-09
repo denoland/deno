@@ -6,10 +6,10 @@ version = "1.25.1"
 authors = ["the Deno authors"]
 default-run = "deno"
 edition = "2021"
+exclude = ["tests/testdata/npm/registry/*"]
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "Provides the deno executable"
-exclude = ["tests/testdata/npm/registry/*"]
 
 [[bin]]
 name = "deno"
