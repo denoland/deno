@@ -152,6 +152,7 @@ impl CliModuleLoader {
           specifier.set_path(new_path);
           (Some(CjsToEsmTranslateKind::Deno), Cow::Owned(specifier))
         } else {
+          // all cjs code that goes through the loader should have been given a suffix
           bail!("Unknown cjs specifier: {}", specifier);
         }
       } else {
