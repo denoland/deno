@@ -33,6 +33,13 @@ itest!(esm_module_deno_test {
   http_server: true,
 });
 
+itest!(esm_import_cjs_default {
+  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  output: "npm/esm_import_cjs_default/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
