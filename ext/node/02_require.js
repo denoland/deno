@@ -13,7 +13,6 @@
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    FunctionPrototypeBind,
     ObjectGetOwnPropertyDescriptor,
     ObjectGetPrototypeOf,
     ObjectPrototypeHasOwnProperty,
@@ -864,15 +863,6 @@
     throw new Error("not implemented");
   }
 
-  function bindExport(value, mod) {
-    // ensure exported functions are bound to their module object
-    if (typeof value === "function") {
-      return FunctionPrototypeBind(value, mod);
-    } else {
-      return value;
-    }
-  }
-
   /** @param specifier {string} */
   function packageSpecifierSubPath(specifier) {
     let parts = specifier.split("/");
@@ -892,7 +882,6 @@
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      bindExport,
       moduleExports: m,
     },
   };
