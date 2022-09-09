@@ -335,6 +335,9 @@
         this[_url] = { ...components };
       } else {
         this[_url] = opUrlParse(url, base);
+        if (hrefComponentsMap.size > 30) {
+          hrefComponentsMap.clear();
+        }
         hrefComponentsMap.set(this[_url].href, this[_url]);
       }
       this[webidl.brand] = webidl.brand;
