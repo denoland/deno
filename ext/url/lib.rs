@@ -26,7 +26,6 @@ pub fn init() -> Extension {
       "01_urlpattern.js",
     ))
     .ops(vec![
-      op_url_parse::decl(),
       op_url_reparse::decl(),
       op_url_parse::decl(),
       op_url_get_serialization::decl(),

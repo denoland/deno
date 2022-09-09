@@ -127,7 +127,7 @@
       if (url === null) {
         return;
       }
-      url[updateUrlSearch](this.toString());
+      url[_updateUrlSearch](this.toString());
     }
 
     /**
@@ -306,6 +306,11 @@
 
   const _updateUrlSearch = Symbol("updateUrlSearch");
 
+  function trim(s) {
+    if (s.length === 1) return "";
+    return s;
+  }
+
   const componentsBuf = new Uint32Array(8);
   class URL {
     #queryObject = null;
@@ -320,7 +325,11 @@
     #fragmentStart;
 
     [_updateUrlSearch](value) {
-      opUrlReparse(this.#serialization, SET_SEARCH, value);
+      this.#serialization = opUrlReparse(
+        this.#serialization,
+        SET_SEARCH,
+        value,
+      );
       this.#updateComponents();
     }
 
@@ -411,7 +420,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_HASH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HASH,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -435,7 +448,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_HOST, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOST,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -459,7 +476,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_HOSTNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOSTNAME,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -495,11 +516,7 @@
         scheme === "http" || scheme === "https" || scheme === "ftp" ||
         scheme === "ws" || scheme === "wss"
       ) {
-        if (this.port) {
-          return `${scheme}://${this.host}:${this.port}`;
-        } else {
-          return `${scheme}://${this.host}`;
-        }
+        return `${scheme}://${this.host}`;
       }
 
       if (scheme === "blob") {
@@ -541,7 +558,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_PASSWORD, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PASSWORD,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -570,7 +591,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_PATHNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PATHNAME,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -601,7 +626,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_PORT, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PORT,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -625,7 +654,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_PROTOCOL, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PROTOCOL,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
@@ -639,7 +672,7 @@
       const afterPath = this.#queryStart || this.#fragmentStart ||
         this.#serialization.length;
       const afterQuery = this.#fragmentStart || this.#serialization.length;
-      return this.#serialization.slice(afterPath, afterQuery);
+      return trim(this.#serialization.slice(afterPath, afterQuery));
     }
 
     /** @param {string} value */
@@ -652,7 +685,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_SEARCH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_SEARCH,
+          value,
+        );
         this.#updateComponents();
         this.#updateSearchParams();
       } catch {
@@ -688,7 +725,11 @@
         context: "Argument 1",
       });
       try {
-        opUrlReparse(this.#serialization, SET_USERNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_USERNAME,
+          value,
+        );
         this.#updateComponents();
       } catch {
         /* pass */
