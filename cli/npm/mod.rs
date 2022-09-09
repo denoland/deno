@@ -14,8 +14,8 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+
 use deno_core::futures;
 use deno_core::url::Url;
 use deno_runtime::deno_node::DenoDirNpmResolver;
@@ -77,7 +77,6 @@ pub struct GlobalNpmPackageResolver {
   resolution: Arc<NpmResolution>,
   registry_url: Url,
   unstable: bool,
-  no_npm: bool,
 }
 
 impl GlobalNpmPackageResolver {
@@ -86,14 +85,12 @@ impl GlobalNpmPackageResolver {
     reload: bool,
     cache_setting: CacheSetting,
     unstable: bool,
-    no_npm: bool,
   ) -> Self {
     Self::from_cache(
       NpmCache::from_deno_dir(dir, cache_setting.clone()),
       reload,
       cache_setting,
       unstable,
-      no_npm,
     )
   }
 
@@ -102,7 +99,6 @@ impl GlobalNpmPackageResolver {
     reload: bool,
     cache_setting: CacheSetting,
     unstable: bool,
-    no_npm: bool,
   ) -> Self {
     let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
     let registry_url = api.base_url().to_owned();
@@ -113,7 +109,6 @@ impl GlobalNpmPackageResolver {
       resolution,
       registry_url,
       unstable,
-      no_npm,
     }
   }
 
@@ -127,27 +122,10 @@ impl GlobalNpmPackageResolver {
     &self,
     packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    assert!(!packages.is_empty());
-
-    if !self.unstable {
+    if !self.unstable && !packages.is_empty() {
       bail!(
         "Unstable use of npm specifiers. The --unstable flag must be provided."
       )
-    }
-
-    if self.no_npm {
-      let fmt_reqs = packages
-        .iter()
-        .map(|p| format!("\"{}\"", p))
-        .collect::<Vec<_>>()
-        .join(", ");
-      return Err(custom_error(
-        "NoNpm",
-        format!(
-          "Following npm specifiers were requested: {}; but --no-npm is specified.",
-          fmt_reqs
-        ),
-      ));
     }
     self.resolution.add_package_reqs(packages).await
   }
@@ -205,10 +183,6 @@ impl GlobalNpmPackageResolver {
       snapshot: self.resolution.snapshot(),
       registry_url: self.registry_url.clone(),
     }
-  }
-
-  pub fn get_cache_location(&self) -> PathBuf {
-    self.cache.as_readonly().get_cache_location()
   }
 }
 

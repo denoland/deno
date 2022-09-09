@@ -162,10 +162,6 @@ impl ReadonlyNpmCache {
       version: NpmVersion::parse(version).unwrap(),
     })
   }
-
-  pub fn get_cache_location(&self) -> PathBuf {
-    self.root_dir.clone()
-  }
 }
 
 /// Stores a single copy of npm packages in a cache.

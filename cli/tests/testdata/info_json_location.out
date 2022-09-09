@@ -1,7 +1,6 @@
 {
   "denoDir": "[WILDCARD]",
   "modulesCache": "[WILDCARD]deps",
-  "npmCache": "[WILDCARD]npm",
   "typescriptCache": "[WILDCARD]gen",
   "registryCache": "[WILDCARD]registries",
   "originStorage": "[WILDCARD]location_data[WILDCARD]",
