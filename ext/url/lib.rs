@@ -124,6 +124,8 @@ pub enum UrlSetter {
   Username = 8,
 }
 
+const NO_PORT: u32 = 65536;
+
 #[op]
 pub fn op_url_reparse(
   state: &mut OpState,
@@ -181,7 +183,7 @@ pub fn op_url_reparse(
         buf[1] = inner_url.username_end;
         buf[2] = inner_url.host_start;
         buf[3] = inner_url.host_end;
-        buf[4] = inner_url.port.unwrap_or(0) as u32;
+        buf[4] = inner_url.port.map(|p| p as u32).unwrap_or(NO_PORT);
         buf[5] = inner_url.path_start;
         buf[6] = inner_url.query_start.unwrap_or(0);
         buf[7] = inner_url.fragment_start.unwrap_or(0);

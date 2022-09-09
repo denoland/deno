@@ -311,6 +311,9 @@
     return s;
   }
 
+  // Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+  const NO_PORT = 65536;
+
   const componentsBuf = new Uint32Array(8);
   class URL {
     #queryObject = null;
@@ -406,7 +409,7 @@
       webidl.assertBranded(this, URLPrototype);
       // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
       return this.#fragmentStart
-        ? this.#serialization.slice(this.#fragmentStart)
+        ? trim(this.#serialization.slice(this.#fragmentStart))
         : "";
     }
 
@@ -606,13 +609,13 @@
     get port() {
       webidl.assertBranded(this, URLPrototype);
       // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
-      if (this.#port) {
+      if (this.#port === NO_PORT) {
+        return this.#serialization.slice(this.#hostEnd, this.#pathStart);
+      } else {
         return this.#serialization.slice(
           this.#hostEnd + 1, /* : */
           this.#pathStart,
         );
-      } else {
-        return this.#serialization.slice(this.#hostEnd, this.#pathStart);
       }
     }
 
