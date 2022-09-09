@@ -223,6 +223,7 @@ impl ProcState {
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+      cli_options.no_npm(),
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
