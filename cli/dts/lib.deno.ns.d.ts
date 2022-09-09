@@ -2628,7 +2628,7 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** @category Runtime Environment */
+  /** @category Sub Process */
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;

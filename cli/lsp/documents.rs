@@ -1149,7 +1149,7 @@ fn lsp_deno_graph_analyze(
   let parsed_source_result = analyzer.parse_module(
     specifier,
     content.clone(),
-    get_media_type(specifier, maybe_headers),
+    MediaType::from_specifier_and_headers(specifier, maybe_headers),
   );
   let module_result = match &parsed_source_result {
     Ok(_) => deno_graph::parse_module(
@@ -1167,23 +1167,6 @@ fn lsp_deno_graph_analyze(
   };
 
   (Some(module_result), Some(parsed_source_result))
-}
-
-// todo(dsherret): use `MediaType::from_specifier_and_headers` once
-// https://github.com/denoland/deno_ast/pull/108 is merged
-fn get_media_type(
-  specifier: &ModuleSpecifier,
-  maybe_headers: Option<&HashMap<String, String>>,
-) -> MediaType {
-  if let Some(headers) = maybe_headers {
-    if let Some(content_type) = headers.get("content-type") {
-      MediaType::from_content_type(specifier, content_type)
-    } else {
-      MediaType::from(specifier)
-    }
-  } else {
-    MediaType::from(specifier)
-  }
 }
 
 #[cfg(test)]

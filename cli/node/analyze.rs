@@ -9,6 +9,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
+use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use std::fmt::Write;
 
 static NODE_GLOBALS: &[&str] = &[
@@ -52,18 +53,7 @@ pub fn esm_code_with_node_globals(
   }
 
   let mut result = String::new();
-  let has_deno_decl = top_level_decls.contains("Deno");
-  let global_this_expr = if has_deno_decl {
-    if top_level_decls.contains("window") {
-      // Will probably never happen, but if it does then we should consider
-      // creating an obscure global name to get this from.
-      panic!("The node esm module had a local `Deno` declaration and `window` declaration.");
-    }
-    // fallback to using `window.Deno`
-    "window.Deno[Deno.internal].node.globalThis"
-  } else {
-    "Deno[Deno.internal].node.globalThis"
-  };
+  let global_this_expr = NODE_GLOBAL_THIS_NAME.as_str();
   let global_this_expr = if has_global_this {
     global_this_expr
   } else {
@@ -162,7 +152,10 @@ mod tests {
       "export const x = 1;".to_string(),
     )
     .unwrap();
-    assert!(r.contains("var globalThis = Deno[Deno.internal].node.globalThis;"));
+    assert!(r.contains(&format!(
+      "var globalThis = {};",
+      NODE_GLOBAL_THIS_NAME.as_str()
+    )));
     assert!(r.contains("var process = globalThis.process;"));
     assert!(r.contains("export const x = 1;"));
   }
@@ -176,14 +169,18 @@ mod tests {
     .unwrap();
     assert_eq!(
       r,
-      concat!(
-        "var globalThis = Deno[Deno.internal].node.globalThis;var Buffer = globalThis.Buffer;",
-        "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
-        "var clearTimeout = globalThis.clearTimeout;var global = globalThis.global;",
-        "var process = globalThis.process;var setImmediate = globalThis.setImmediate;",
-        "var setInterval = globalThis.setInterval;var setTimeout = globalThis.setTimeout;\n",
-        "export const x = 1;"
-      ),
+      format!(
+        concat!(
+          "var globalThis = {}",
+          ";var Buffer = globalThis.Buffer;",
+          "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
+          "var clearTimeout = globalThis.clearTimeout;var global = globalThis.global;",
+          "var process = globalThis.process;var setImmediate = globalThis.setImmediate;",
+          "var setInterval = globalThis.setInterval;var setTimeout = globalThis.setTimeout;\n",
+          "export const x = 1;"
+        ),
+        NODE_GLOBAL_THIS_NAME.as_str(),
+      )
     );
   }
 }
