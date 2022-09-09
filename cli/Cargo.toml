@@ -9,6 +9,7 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "Provides the deno executable"
+exclude = ["tests/testdata/npm/registry/*"]
 
 [[bin]]
 name = "deno"
