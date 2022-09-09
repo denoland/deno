@@ -61,7 +61,7 @@ itest!(cjs_reexport_collision {
   http_server: true,
 });
 
-itest!(cjs_this_on_exports {
+itest!(cjs_this_in_exports {
   args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
   output: "npm/cjs_this_in_exports/main.out",
   envs: env_vars(),
