@@ -309,6 +309,8 @@
   );
 
   const _url = Symbol("url");
+  /** @type Map<string, unknown> */
+  const hrefComponentsMap = new Map();
 
   class URL {
     [_url];
@@ -319,24 +321,25 @@
      * @param {string} base
      */
     constructor(url, base = undefined) {
-      if (url?.[_url] && base === undefined) {
-        this[webidl.brand] = webidl.brand;
-        this[_url] = { ...url[_url] };
-      } else {
-        const prefix = "Failed to construct 'URL'";
-        url = webidl.converters.DOMString(url, {
+      const prefix = "Failed to construct 'URL'";
+      url = webidl.converters.DOMString(url, {
+        prefix,
+        context: "Argument 1",
+      });
+      if (base !== undefined) {
+        base = webidl.converters.DOMString(base, {
           prefix,
-          context: "Argument 1",
+          context: "Argument 2",
         });
-        if (base !== undefined) {
-          base = webidl.converters.DOMString(base, {
-            prefix,
-            context: "Argument 2",
-          });
-        }
-        this[webidl.brand] = webidl.brand;
-        this[_url] = opUrlParse(url, base);
       }
+      const components = hrefComponentsMap.get(url);
+      if (base === undefined && components) {
+        this[_url] = { ...components };
+      } else {
+        this[_url] = opUrlParse(url, base);
+        hrefComponentsMap.set(this[_url].href, this[_url]);
+      }
+      this[webidl.brand] = webidl.brand;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
