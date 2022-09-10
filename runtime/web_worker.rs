@@ -378,9 +378,6 @@ impl WebWorker {
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
-      deno_cache::init(SqliteBackedCache::new(
-        std::env::current_dir().unwrap(),
-      )),
       deno_console::init(),
       deno_url::init(),
       deno_web::init::<Permissions>(
@@ -396,6 +393,9 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init(SqliteBackedCache::new(
+        std::env::current_dir().unwrap(),
+      )),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

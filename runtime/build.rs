@@ -161,9 +161,6 @@ mod not_docs {
   fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     let extensions: Vec<Extension> = vec![
       deno_webidl::init(),
-      deno_cache::init(SqliteBackedCache::new(
-        std::env::current_dir().unwrap(),
-      )),
       deno_console::init(),
       deno_url::init(),
       deno_tls::init(),
@@ -172,6 +169,9 @@ mod not_docs {
         Default::default(),
       ),
       deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init(SqliteBackedCache::new(
+        std::env::current_dir().unwrap(),
+      )),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),

@@ -10,6 +10,10 @@
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
+  const {
+    toInnerResponse,
+    toInnerRequest,
+  } = window.__bootstrap.fetch;
 
   class CacheStorage {
     constructor() {
@@ -56,17 +60,17 @@
       let innerRequest = null;
       // Step 2.
       if (request instanceof Request) {
-        innerRequest = request;
+        innerRequest = toInnerRequest(request);
       } else {
         // Step 3.
         try {
-          innerRequest = new Request(request);
+          innerRequest = toInnerRequest(new Request(request));
         } catch (error) {
           return PromiseReject(error);
         }
       }
       // Step 4.
-      const url = new URL(innerRequest.url);
+      const url = new URL(innerRequest.url());
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         return PromiseReject(
           new TypeError("Request url protocol must be http or https"),
@@ -76,7 +80,7 @@
         return PromiseReject(new TypeError("Request method must be GET"));
       }
       // Step 5.
-      const innerResponse = response;
+      const innerResponse = toInnerResponse(response);
       // Step 6.
       if (innerResponse.status === 206) {
         return PromiseReject(
@@ -84,7 +88,7 @@
         );
       }
       // Step 7.
-      const varyHeader = innerResponse.headers.get("Vary");
+      const varyHeader = response.headers.get("Vary");
       if (varyHeader) {
         const fieldValues = varyHeader.split(",").map((field) => field.trim());
         for (const fieldValue of fieldValues) {
@@ -99,9 +103,7 @@
       }
 
       // Step 8.
-      // TODO(@satyarohith): step 8 mentions innerResponse body is disturbed.
-      // How to check body is disturbed? I'm using bodyUsed flag.
-      if (innerResponse.bodyUsed) {
+      if (innerResponse.body.unusable()) {
         return PromiseReject(
           new TypeError("Response body must not already used"),
         );
@@ -114,16 +116,16 @@
         "op_cache_put",
         {
           cacheId: this.#id,
-          requestUrl: innerRequest.url,
-          responseHeaders: ArrayPrototypeFrom(innerResponse.headers.entries()),
-          requestHeaders: ArrayPrototypeFrom(innerRequest.headers.entries()),
+          requestUrl: innerRequest.url(),
+          responseHeaders: innerResponse.headerList,
+          requestHeaders: innerRequest.headerList,
           responseHasBody: innerResponse.body !== null,
           responseStatus: innerResponse.status,
-          responseStatusText: innerResponse.statusText,
+          responseStatusText: innerResponse.statusMessage,
         },
       );
       if (innerResponse.body) {
-        const reader = innerResponse.body.getReader();
+        const reader = innerResponse.body.stream.getReader();
         while (true) {
           const { value, done } = await reader.read();
           if (done) {

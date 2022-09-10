@@ -2,9 +2,12 @@
 
 use async_trait::async_trait;
 use deno_core::parking_lot::Mutex;
+use deno_core::OpState;
 use deno_core::{error::AnyError, ResourceId};
 use rusqlite::params;
 use rusqlite::Connection;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::{path::PathBuf, sync::Arc};
 
 use crate::{
