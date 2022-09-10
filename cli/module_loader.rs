@@ -12,7 +12,6 @@ use crate::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -139,21 +138,20 @@ impl CliModuleLoader {
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
       let is_cjs = self.ps.cjs_resolutions.lock().contains(specifier);
       let (maybe_translate_kind, load_specifier) = if is_cjs {
-        let mut specifier = specifier.clone();
         let path = specifier.path();
-        if let Some(new_path) =
-          path.strip_suffix(node::CJS_TO_ESM_NODE_SUFFIX)
+        let mut specifier = specifier.clone();
+        if let Some(new_path) = path.strip_suffix(node::CJS_TO_ESM_NODE_SUFFIX)
         {
           specifier.set_path(new_path);
           (Some(CjsToEsmTranslateKind::Node), Cow::Owned(specifier))
         } else if let Some(new_path) =
-         path.strip_suffix(node::CJS_TO_ESM_DENO_SUFFIX)
+          path.strip_suffix(node::CJS_TO_ESM_DENO_SUFFIX)
         {
           specifier.set_path(new_path);
           (Some(CjsToEsmTranslateKind::Deno), Cow::Owned(specifier))
         } else {
           // all cjs code that goes through the loader should have been given a suffix
-          bail!("Unknown cjs specifier: {}", specifier);
+          unreachable!("Unknown cjs specifier: {}", specifier);
         }
       } else {
         (None, Cow::Borrowed(specifier))
