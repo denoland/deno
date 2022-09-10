@@ -111,7 +111,6 @@
 
   let dateInterval;
   let date;
-  let stringResources = {};
 
   // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
@@ -209,18 +208,12 @@
       nwritten = respondFast(requestId, response, end);
     } else {
       // string
-      const maybeResponse = stringResources[response];
-      if (maybeResponse === undefined) {
-        stringResources[response] = core.encode(response);
-        nwritten = core.ops.op_flash_respond(
-          server,
-          requestId,
-          stringResources[response],
-          end,
-        );
-      } else {
-        nwritten = respondFast(requestId, maybeResponse, end);
-      }
+      nwritten = core.ops.op_flash_respond(
+        server,
+        requestId,
+        response,
+        end,
+      );
     }
 
     if (nwritten < responseLen) {
@@ -578,7 +571,6 @@
       date = new Date().toUTCString();
       dateInterval = setInterval(() => {
         date = new Date().toUTCString();
-        stringResources = {};
       }, 1000);
     }
 
