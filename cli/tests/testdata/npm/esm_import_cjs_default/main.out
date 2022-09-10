@@ -1,0 +1,35 @@
+Node esm importing node cjs
+===========================
+{ default: [Function], named: [Function], MyClass: [Function: MyClass] }
+{ default: [Function], named: [Function] }
+Module {
+  MyClass: [Function: MyClass],
+  __esModule: true,
+  default: { default: [Function], named: [Function], MyClass: [Function: MyClass] },
+  named: [Function]
+}
+Module {
+  __esModule: true,
+  default: { default: [Function], named: [Function] },
+  named: [Function]
+}
+===========================
+static method
+Deno esm importing node cjs
+===========================
+[Function]
+Module {
+  MyClass: [Function: MyClass],
+  __esModule: true,
+  default: [Function],
+  named: [Function]
+}
+===========================
+Deno esm importing node esm
+===========================
+[Function: default]
+Module { default: [Function: default] }
+===========================
+1
+5
+static method
