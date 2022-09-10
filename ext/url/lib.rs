@@ -37,8 +37,7 @@ pub fn init() -> Extension {
     .build()
 }
 
-/// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
-/// optional part to "set" after parsing. Return `UrlParts`.
+/// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
 #[op]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
@@ -67,11 +66,36 @@ pub fn op_url_get_serialization(state: &mut OpState) -> String {
   state.take::<UrlSerialization>().0
 }
 
+/// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
 #[op]
 pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
   parse_url(state, href, None, buf)
 }
 
+/// `op_url_parse` and `op_url_parse_with_base` share the same implementation.
+///
+/// This function is used to parse the URL and fill the `buf` with internal
+/// offset values of the URL components.
+///
+/// If the serialized URL is the same as the input URL, then `UrlSerialization` is
+/// not set and returns `ParseStatus::Ok`.
+///
+/// If the serialized URL is different from the input URL, then `UrlSerialization` is
+/// set and returns `ParseStatus::OkSerialization`. JS side should check status and
+/// use `op_url_get_serialization` to get the serialized URL.
+///
+/// If the URL is invalid, then `UrlSerialization` is not set and returns `ParseStatus::Err`.
+///
+/// ```js
+/// const buf = new Uint32Array(8);
+/// const status = op_url_parse("http://example.com", buf.buffer);
+/// let serializedUrl = "";
+/// if (status === ParseStatus.Ok) {
+///   serializedUrl = "http://example.com";
+/// } else if (status === ParseStatus.OkSerialization) {
+///   serializedUrl = op_url_get_serialization();
+/// }
+/// ```
 #[inline]
 fn parse_url(
   state: &mut OpState,
