@@ -25,7 +25,6 @@
     Error,
     MathMax,
     ObjectDefineProperty,
-    ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     PromiseAll,
