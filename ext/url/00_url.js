@@ -92,6 +92,11 @@
           { prefix, context: "Argument 1" },
         );
       this[webidl.brand] = webidl.brand;
+      if (!init) {
+        // if there is no query string, return early
+        this[_list] = [];
+        return;
+      }
 
       if (typeof init === "string") {
         // Overload: USVString
