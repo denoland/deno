@@ -38,6 +38,8 @@ pub unsafe extern "C" fn napi_fatal_error(
   );
 }
 
+// napi-3
+
 #[napi_sym::napi_sym]
 fn napi_fatal_exception(env: *mut Env, value: napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
@@ -60,7 +62,6 @@ fn napi_add_env_cleanup_hook(
   Ok(())
 }
 
-// TODO: properly implement
 #[napi_sym::napi_sym]
 fn napi_remove_env_cleanup_hook(
   _env: *mut Env,
@@ -68,6 +69,26 @@ fn napi_remove_env_cleanup_hook(
   _data: *const c_void,
 ) -> Result {
   eprintln!("napi_remove_env_cleanup_hook is currently not supported");
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_open_callback_scope(
+  _env: *mut Env,
+  _resource_object: napi_value,
+  _context: napi_value,
+  _result: *mut napi_callback_scope,
+) -> Result {
+  // we open scope automatically when it's needed
+  Ok(())
+}
+
+#[napi_sym::napi_sym]
+fn napi_close_callback_scope(
+  _env: *mut Env,
+  _scope: napi_callback_scope,
+) -> Result {
+  // we close scope automatically when it's needed
   Ok(())
 }
 

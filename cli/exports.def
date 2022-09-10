@@ -10,6 +10,8 @@ EXPORTS
   napi_get_undefined
   napi_reference_unref
   napi_fatal_error
+  napi_open_callback_scope
+  napi_close_callback_scope
   napi_get_value_uint32
   napi_create_function
   napi_create_arraybuffer
