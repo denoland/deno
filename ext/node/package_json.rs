@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::NodeModuleKind;
+
 use super::DenoDirNpmResolver;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
@@ -17,8 +19,8 @@ pub struct PackageJson {
   pub exports: Option<Map<String, Value>>,
   pub imports: Option<Map<String, Value>>,
   pub bin: Option<Value>,
-  pub main: Option<String>,
-  pub module: Option<String>,
+  main: Option<String>,   // use .main(...)
+  module: Option<String>, // use .main(...)
   pub name: Option<String>,
   pub path: PathBuf,
   pub typ: String,
@@ -122,6 +124,14 @@ impl PackageJson {
       bin,
     };
     Ok(package_json)
+  }
+
+  pub fn main(&self, referrer_kind: NodeModuleKind) -> Option<&String> {
+    if referrer_kind == NodeModuleKind::Esm && self.typ == "module" {
+      self.module.as_ref().or(self.main.as_ref())
+    } else {
+      self.main.as_ref()
+    }
   }
 }
 

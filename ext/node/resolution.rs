@@ -707,12 +707,7 @@ pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
 ) -> Result<PathBuf, AnyError> {
-  let maybe_main =
-    if referrer_kind == NodeModuleKind::Esm && package_json.typ == "module" {
-      package_json.module.as_ref().or(package_json.main.as_ref())
-    } else {
-      package_json.main.as_ref()
-    };
+  let maybe_main = package_json.main(referrer_kind);
   let mut guess;
 
   if let Some(main) = maybe_main {
