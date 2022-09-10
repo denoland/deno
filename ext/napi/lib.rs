@@ -40,6 +40,7 @@ pub type napi_deferred = *mut c_void;
 pub type napi_ref = *mut c_void;
 pub type napi_threadsafe_function = *mut c_void;
 pub type napi_handle_scope = *mut c_void;
+pub type napi_callback_scope = *mut c_void;
 pub type napi_escapable_handle_scope = *mut c_void;
 pub type napi_async_cleanup_hook_handle = *mut c_void;
 pub type napi_async_work = *mut c_void;
