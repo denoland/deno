@@ -68,6 +68,14 @@ itest!(cjs_reexport_collision {
   http_server: true,
 });
 
+itest!(cjs_this_in_exports {
+  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  output: "npm/cjs_this_in_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
@@ -429,6 +437,7 @@ fn env_vars_no_sync_download() -> Vec<(String, String)> {
       "DENO_NPM_REGISTRY".to_string(),
       "http://localhost:4545/npm/registry/".to_string(),
     ),
+    ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 

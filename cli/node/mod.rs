@@ -843,7 +843,7 @@ pub fn translate_cjs_to_esm(
       if translate_kind == CjsToEsmTranslateKind::Deno
         && root_exports.contains("__esModule")
       {
-        source.push(format!("export default mod[\"{}\"];", export,));
+        source.push(format!("export default mod[\"{}\"];", export));
         had_default = true;
       }
     } else {
