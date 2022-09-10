@@ -928,7 +928,7 @@ fn resolve(
           let package_json_path = d.join("package.json");
           if package_json_path.exists() {
             let package_json =
-              PackageJson::load(npm_resolver, package_json_path.clone())?;
+              PackageJson::load(npm_resolver, package_json_path)?;
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(d.join(main).clean());
             }
