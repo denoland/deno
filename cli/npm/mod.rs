@@ -31,6 +31,7 @@ use resolution::NpmResolution;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
+use crate::progress_bar::ProgressBar;
 
 use self::cache::ReadonlyNpmCache;
 use self::resolution::NpmResolutionSnapshot;
@@ -87,13 +88,15 @@ impl GlobalNpmPackageResolver {
     cache_setting: CacheSetting,
     unstable: bool,
     no_npm: bool,
+    progress_bar: ProgressBar,
   ) -> Self {
     Self::from_cache(
-      NpmCache::from_deno_dir(dir, cache_setting.clone()),
+      NpmCache::from_deno_dir(dir, cache_setting.clone(), progress_bar.clone()),
       reload,
       cache_setting,
       unstable,
       no_npm,
+      progress_bar,
     )
   }
 
@@ -103,8 +106,10 @@ impl GlobalNpmPackageResolver {
     cache_setting: CacheSetting,
     unstable: bool,
     no_npm: bool,
+    progress_bar: ProgressBar,
   ) -> Self {
-    let api = NpmRegistryApi::new(cache.clone(), reload, cache_setting);
+    let api =
+      NpmRegistryApi::new(cache.clone(), reload, cache_setting, progress_bar);
     let registry_url = api.base_url().to_owned();
     let resolution = Arc::new(NpmResolution::new(api));
 
