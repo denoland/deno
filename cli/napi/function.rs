@@ -11,6 +11,46 @@ pub struct CallbackInfo {
   pub args: *const c_void,
 }
 
+impl CallbackInfo {
+  #[inline]
+  pub fn new_raw(
+    env: napi_env,
+    cb: napi_callback,
+    cb_info: napi_callback_info,
+  ) -> *mut Self {
+    Box::into_raw(Box::new(Self {
+      env,
+      cb,
+      cb_info,
+      args: std::ptr::null(),
+    }))
+  }
+}
+
+fn call_fn(
+  _: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  // SAFETY: create_function guarantees that the data is a CallbackInfo external.
+  let info_ptr: *mut CallbackInfo = unsafe {
+    let external_value =
+      v8::Local::<v8::External>::cast(args.data().unwrap_unchecked());
+    external_value.value() as _
+  };
+
+  // SAFETY: pointer from Box::into_raw.
+  let mut info = unsafe { &mut *info_ptr };
+  info.args = &args as *const _ as *const c_void;
+
+  if let Some(f) = info.cb {
+    // SAFETY: calling user provided function pointer.
+    let value = unsafe { f(info.env, info_ptr as *mut _) };
+    // SAFETY: napi_value is reprsented as v8::Local<v8::Value> internally.
+    rv.set(unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) });
+  }
+}
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn create_function<'a>(
   env_ptr: *mut Env,
@@ -20,62 +60,15 @@ pub fn create_function<'a>(
 ) -> v8::Local<'a, v8::Function> {
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
-  let method_ptr = v8::External::new(
+
+  let external = v8::External::new(
     scope,
-    cb.map_or_else(ptr::null_mut, |v| v as *mut c_void),
+    CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
   );
-  let cb_info_ext = v8::External::new(scope, cb_info);
-
-  let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
-
-  let data_array = v8::Array::new_with_elements(
-    scope,
-    &[method_ptr.into(), cb_info_ext.into(), env_ext.into()],
-  );
-
-  let function = v8::Function::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let data = args.data().unwrap();
-      let data_array = v8::Local::<v8::Array>::try_from(data).unwrap();
-
-      let method_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 0).unwrap(),
-      )
-      .unwrap();
-      let cb: napi_callback =
-        unsafe { std::mem::transmute(method_ptr.value()) };
-
-      let cb_info_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 1).unwrap(),
-      )
-      .unwrap();
-      let cb_info: napi_callback_info = cb_info_ptr.value();
-
-      let env_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 2).unwrap(),
-      )
-      .unwrap();
-      let env_ptr = env_ptr.value();
-      let mut info = CallbackInfo {
-        env: env_ptr,
-        cb,
-        cb_info,
-        args: &args as *const _ as *const c_void,
-      };
-
-      let info_ptr = &mut info as *mut _ as *mut c_void;
-
-      let value = unsafe { (cb.unwrap())(env_ptr, info_ptr) };
-      let value =
-        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
-      rv.set(value);
-    },
-  )
-  .data(data_array.into())
-  .build(scope)
-  .unwrap();
+  let function = v8::Function::builder(call_fn)
+    .data(external.into())
+    .build(scope)
+    .unwrap();
 
   if let Some(name) = name {
     let v8str = v8::String::new(scope, name).unwrap();
@@ -94,61 +87,14 @@ pub fn create_function_template<'a>(
 ) -> v8::Local<'a, v8::FunctionTemplate> {
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
-  let method_ptr = v8::External::new(
+
+  let external = v8::External::new(
     scope,
-    cb.map_or_else(ptr::null_mut, |v| v as *mut c_void),
+    CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
   );
-  let cb_info_ext = v8::External::new(scope, cb_info);
-
-  let env_ext = v8::External::new(scope, env_ptr as *mut c_void);
-
-  let data_array = v8::Array::new_with_elements(
-    scope,
-    &[method_ptr.into(), cb_info_ext.into(), env_ext.into()],
-  );
-
-  let function = v8::FunctionTemplate::builder(
-    |scope: &mut v8::HandleScope,
-     args: v8::FunctionCallbackArguments,
-     mut rv: v8::ReturnValue| {
-      let data = args.data().unwrap();
-      let data_array = v8::Local::<v8::Array>::try_from(data).unwrap();
-
-      let method_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 0).unwrap(),
-      )
-      .unwrap();
-      let cb: napi_callback =
-        unsafe { std::mem::transmute(method_ptr.value()) };
-
-      let cb_info_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 1).unwrap(),
-      )
-      .unwrap();
-      let cb_info: napi_callback_info = cb_info_ptr.value();
-
-      let env_ptr = v8::Local::<v8::External>::try_from(
-        data_array.get_index(scope, 2).unwrap(),
-      )
-      .unwrap();
-      let env_ptr = env_ptr.value();
-      let mut info = CallbackInfo {
-        env: env_ptr,
-        cb,
-        cb_info,
-        args: &args as *const _ as *const c_void,
-      };
-
-      let info_ptr = &mut info as *mut _ as *mut c_void;
-
-      let value = unsafe { (cb.unwrap())(env_ptr, info_ptr) };
-      let value =
-        unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) };
-      rv.set(value);
-    },
-  )
-  .data(data_array.into())
-  .build(scope);
+  let function = v8::FunctionTemplate::builder(call_fn)
+    .data(external.into())
+    .build(scope);
 
   if let Some(name) = name {
     let v8str = v8::String::new(scope, name).unwrap();
