@@ -2,7 +2,8 @@
 
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new_current_thread()
-    .enable_all()
+    .enable_io()
+    .enable_time()
     .thread_keep_alive(std::time::Duration::from_millis(250))
     .build()
     .unwrap()
