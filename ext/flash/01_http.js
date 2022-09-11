@@ -228,7 +228,17 @@
   }
 
   // TODO(@littledivy): Woah woah, cut down the number of arguments.
-  async function handleResponse(req, resp, body, hasBody, method, serverId, i, respondFast, respondChunked) {
+  async function handleResponse(
+    req,
+    resp,
+    body,
+    hasBody,
+    method,
+    serverId,
+    i,
+    respondFast,
+    respondChunked,
+  ) {
     // there might've been an HTTP upgrade.
     if (resp === undefined) {
       return;
@@ -289,7 +299,7 @@
       }
     } else {
       respBody = new Uint8Array(0);
-    }            
+    }
 
     const ws = resp[_ws];
     if (isStreamingResponseBody === false) {
@@ -400,7 +410,7 @@
         }
         ws[_serverHandleIdleTimeout]();
       }
-    })();
+    })().catch(console.error);
   }
 
   async function serve(arg1, arg2) {
@@ -531,12 +541,35 @@
             try {
               resp = handler(req);
               if (resp instanceof Promise || resp.then) {
-                resp.then((resp) => handleResponse(req, resp, body, hasBody, method, serverId, i, respondFast, respondChunked)).catch(onError);
+                resp.then((resp) =>
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                  )
+                ).catch(onError);
+                continue;
               }
             } catch (e) {
               resp = await onError(e);
             }
-            handleResponse(req, resp, body, hasBody, method, serverId, i, respondFast, respondChunked);
+            handleResponse(
+              req,
+              resp,
+              body,
+              hasBody,
+              method,
+              serverId,
+              i,
+              respondFast,
+              respondChunked,
+            );
           }
 
           offset += tokens;
