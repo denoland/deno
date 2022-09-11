@@ -2,7 +2,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 const blocksize = parseInt(Deno.args[0] || 65536);
-const buf = new ArrayBuffer(blocksize);
+const buf = new Uint8Array(blocksize);
 let size = 0;
 let reads = 0;
 
