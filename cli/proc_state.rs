@@ -554,7 +554,7 @@ impl ProcState {
     {
       deno_core::resolve_url_or_path("./$deno$repl.ts").unwrap()
     } else {
-      deno_core::resolve_url_or_path(referrer).unwrap()
+      deno_core::resolve_url_or_path(referrer)?
     };
 
     let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
