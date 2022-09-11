@@ -674,11 +674,7 @@ pub fn op_print(
 }
 
 #[op(fast)]
-fn op_read_sync(
-  state: &mut OpState,
-  rid: u32,
-  buf: &mut [u8],
-) -> u32 {
+fn op_read_sync(state: &mut OpState, rid: u32, buf: &mut [u8]) -> u32 {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
@@ -686,15 +682,12 @@ fn op_read_sync(
         .map(|n: usize| n as u32)
         .map_err(AnyError::from)
     })
-  }).unwrap()
+  })
+  .unwrap()
 }
 
 #[op(fast)]
-fn op_write_sync(
-  state: &mut OpState,
-  rid: u32,
-  buf: &mut [u8],
-) -> u32 {
+fn op_write_sync(state: &mut OpState, rid: u32, buf: &mut [u8]) -> u32 {
   StdFileResource::with_resource(state, rid, move |resource| {
     resource.with_inner_and_metadata(|inner, _| {
       inner
@@ -702,5 +695,6 @@ fn op_write_sync(
         .map(|nwritten: usize| nwritten as u32)
         .map_err(AnyError::from)
     })
-  }).unwrap()
+  })
+  .unwrap()
 }
