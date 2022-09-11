@@ -2200,6 +2200,33 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/15858
+Deno.test(async function httpServerCanCloneRequest() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (req) => {
+      req.clone();
+      return new Response("ok")
+    },
+    hostname: "localhost",
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningPromise;
+  const resp = await fetch("http://localhost:4501/", {
+    headers: { "connection": "close" },
+  });
+  const text = await resp.text();
+  assertEquals(text, "ok");
+  ac.abort();
+  await server;
+});
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
