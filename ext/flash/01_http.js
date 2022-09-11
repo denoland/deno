@@ -32,6 +32,7 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Promise,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
