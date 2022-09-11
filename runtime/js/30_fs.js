@@ -178,6 +178,48 @@
     });
   }
 
+  const infoBuf = new Uint32Array(24);
+  function parseFileInfoFromBuf() {
+    const unix = build.os === "darwin" || build.os === "linux";
+    const [
+      isFile,
+      isDirectory,
+      isSymlink,
+      size,
+      mtime,
+      atime,
+      birthtime,
+      dev,
+      ino,
+      mode,
+      nlink,
+      uid,
+      gid,
+      rdev,
+      blksize,
+      blocks,
+    ] = infoBuf;
+    return {
+      isFile: isFile === 1,
+      isDirectory: isDirectory === 1,
+      isSymlink: isSymlink === 1,
+      size: size,
+      mtime: mtime !== 0 ? new Date(mtime) : null,
+      atime: atime !== 0 ? new Date(atime) : null,
+      birthtime: birthtime !== 0 ? new Date(birthtime) : null,
+      // Only non-null if on Unix
+      dev: unix ? dev : null,
+      ino: unix ? ino : null,
+      mode: unix ? mode : null,
+      nlink: unix ? nlink : null,
+      uid: unix ? uid : null,
+      gid: unix ? gid : null,
+      rdev: unix ? rdev : null,
+      blksize: unix ? blksize : null,
+      blocks: unix ? blocks : null,
+    };
+  }
+
   function parseFileInfo(response) {
     const unix = build.os === "darwin" || build.os === "linux";
     return {
@@ -220,11 +262,12 @@
   }
 
   function lstatSync(path) {
-    const res = ops.op_stat_sync({
-      path: pathFromURL(path),
-      lstat: true,
-    });
-    return parseFileInfo(res);
+    ops.op_stat_sync(
+      pathFromURL(path),
+      true,
+      infoBuf.buffer,
+    );
+    return parseFileInfoFromBuf();
   }
 
   async function stat(path) {

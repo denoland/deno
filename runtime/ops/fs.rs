@@ -996,12 +996,12 @@ pub struct StatArgs {
 #[op]
 fn op_stat_sync(
   state: &mut OpState,
-  args: StatArgs,
-) -> Result<FsStat, AnyError> {
-  let path = PathBuf::from(&args.path);
-  let lstat = args.lstat;
+  path: String,
+  lstat: bool,
+  out_buf: &mut [u8],
+) -> Result<(), AnyError> {
+  let path = PathBuf::from(&path);
   state.borrow_mut::<Permissions>().read.check(&path)?;
-  debug!("op_stat_sync {} {}", path.display(), lstat);
   let err_mapper = |err: Error| {
     Error::new(err.kind(), format!("{}, stat '{}'", err, path.display()))
   };
@@ -1010,7 +1010,38 @@ fn op_stat_sync(
   } else {
     std::fs::metadata(&path).map_err(err_mapper)?
   };
-  Ok(get_stat(metadata))
+
+  let stat = get_stat(metadata);
+  let buf: &mut [u32] = unsafe { std::mem::transmute(out_buf) };
+  buf[0] = stat.is_file as u32;
+  buf[1] = stat.is_directory as u32;
+  buf[2] = stat.is_symlink as u32;
+  buf[3] = stat.size as u32;
+  buf[4] = stat.mtime.unwrap_or(0) as u32;
+  buf[5] = (stat.mtime.unwrap_or(0) >> 32) as u32;
+
+  buf[6] = stat.atime.unwrap_or(0) as u32;
+  buf[7] = (stat.atime.unwrap_or(0) >> 32) as u32;
+
+  buf[8] = stat.birthtime.unwrap_or(0) as u32;
+  buf[9] = (stat.birthtime.unwrap_or(0) >> 32) as u32;
+
+  buf[10] = stat.dev as u32;
+  buf[11] = (stat.dev >> 32) as u32;
+  buf[12] = stat.ino as u32;
+  buf[13] = (stat.ino >> 32) as u32;
+  buf[14] = stat.mode as u32;
+  buf[15] = stat.nlink as u32;
+  buf[16] = stat.uid as u32;
+  buf[17] = stat.gid as u32;
+  buf[18] = stat.rdev as u32;
+  buf[19] = (stat.rdev >> 32) as u32;
+  buf[20] = stat.blksize as u32;
+  buf[21] = (stat.blksize >> 32) as u32;
+  buf[22] = stat.blocks as u32;
+  buf[23] = (stat.blocks >> 32) as u32;
+
+  Ok(())
 }
 
 #[op]
