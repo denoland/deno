@@ -161,7 +161,7 @@
   function cloneInnerRequest(request) {
     const headerList = [
       ...new SafeArrayIterator(
-        ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+        ArrayPrototypeMap(request.headerList || [], (x) => [x[0], x[1]]),
       ),
     ];
     let body = null;
@@ -491,7 +491,9 @@
         newReq = cloneInnerRequest(this[_request]);
       }
       const newSignal = abortSignal.newSignal();
-      abortSignal.follow(newSignal, this[_signal]);
+      if (this[_signal]) {
+        abortSignal.follow(newSignal, this[_signal]);
+      }
       return fromInnerRequest(
         newReq,
         newSignal,
