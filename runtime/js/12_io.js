@@ -92,7 +92,7 @@
       return 0;
     }
 
-    const nread = ops.op_read_sync(rid, buffer);
+    const nread = ops.op_read_sync.fast(rid, buffer);
 
     return nread === 0 ? null : nread;
   }
@@ -108,7 +108,7 @@
   }
 
   function writeSync(rid, data) {
-    return ops.op_write_sync(rid, data);
+    return ops.op_write_sync.fast(rid, data);
   }
 
   function write(rid, data) {
