@@ -205,9 +205,7 @@
             }] * 2**32),`;
         }
       } else {
-        str += `${name}: ${type === "bool" ? "!!" : ""}view[${offset}] + view[${
-          offset + 1
-        }] * 2**32,`;
+        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
       }
       offset += 2;
     }
