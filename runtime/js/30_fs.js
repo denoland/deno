@@ -200,7 +200,7 @@
         } else {
           str += `${name}: (view[${offset}] + view[${
             offset + 1
-          }] * 2**32) || 0 ,`;
+          }] * 2**32) || null ,`;
         }
       } else if (type == "date") {
         str +=
