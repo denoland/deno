@@ -857,7 +857,7 @@ pub fn translate_cjs_to_esm(
 
   if had_es_module_default {
     source.push(
-      "export default mod.__esModule ? mod[\"default\"] : mod;".to_string(),
+      "export default mod.__esModule && mod[\"default\"] != null ? mod[\"default\"] : mod;".to_string(),
     );
   } else {
     source.push("export default mod;".to_string());
