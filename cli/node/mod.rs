@@ -255,6 +255,11 @@ static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
 pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
+/// Suffix used for the CJS to ESM translation for Node code
+pub const CJS_TO_ESM_NODE_SUFFIX: &str = ".node_cjs_to_esm.mjs";
+/// Suffix used for the CJS to ESM translation for Deno code
+pub const CJS_TO_ESM_DENO_SUFFIX: &str = ".deno_cjs_to_esm.mjs";
+
 fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
   SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
 }
@@ -412,7 +417,15 @@ pub fn node_resolve(
     None => return Ok(None),
   };
 
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  let resolve_response = match url_to_node_resolution(url, npm_resolver)? {
+    NodeResolution::CommonJs(mut url) => {
+      // Use a suffix to say this cjs specifier should be translated from
+      // cjs to esm for consumption by Node ESM code
+      url.set_path(&format!("{}{}", url.path(), CJS_TO_ESM_NODE_SUFFIX));
+      NodeResolution::CommonJs(url)
+    }
+    val => val,
+  };
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -440,7 +453,15 @@ pub fn node_resolve_npm_reference(
   })?;
 
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  let resolve_response = match url_to_node_resolution(url, npm_resolver)? {
+    NodeResolution::CommonJs(mut url) => {
+      // Use a suffix to say this cjs specifier should be translated from
+      // cjs to esm for consumption by Deno ESM code
+      url.set_path(&format!("{}{}", url.path(), CJS_TO_ESM_DENO_SUFFIX));
+      NodeResolution::CommonJs(url)
+    }
+    val => val,
+  };
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -701,6 +722,12 @@ fn add_export(
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CjsToEsmTranslateKind {
+  Node,
+  Deno,
+}
+
 /// Translates given CJS module into ESM. This function will perform static
 /// analysis on the file to find defined exports and reexports.
 ///
@@ -713,6 +740,7 @@ pub fn translate_cjs_to_esm(
   code: String,
   media_type: MediaType,
   npm_resolver: &GlobalNpmPackageResolver,
+  translate_kind: CjsToEsmTranslateKind,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     specifier: &str,
@@ -734,7 +762,6 @@ pub fn translate_cjs_to_esm(
   let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
-    r#"var window = undefined;"#.to_string(),
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
@@ -813,21 +840,17 @@ pub fn translate_cjs_to_esm(
   let mut had_default = false;
   for export in &all_exports {
     if export.as_str() == "default" {
-      if root_exports.contains("__esModule") {
-        source.push(format!(
-          "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-          export,
-        ));
+      if translate_kind == CjsToEsmTranslateKind::Deno
+        && root_exports.contains("__esModule")
+      {
+        source.push(format!("export default mod[\"{}\"];", export));
         had_default = true;
       }
     } else {
       add_export(
         &mut source,
         export,
-        &format!(
-          "Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod)",
-          export
-        ),
+        &format!("mod[\"{}\"]", export),
         &mut temp_var_count,
       );
     }

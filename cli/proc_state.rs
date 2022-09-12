@@ -25,6 +25,7 @@ use crate::node::NodeResolution;
 use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::check;
@@ -88,6 +89,7 @@ pub struct Inner {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub npm_resolver: GlobalNpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
+  progress_bar: ProgressBar,
 }
 
 impl Deref for ProcState {
@@ -147,6 +149,7 @@ impl ProcState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
+    let progress_bar = ProgressBar::default();
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -156,6 +159,7 @@ impl ProcState {
       cli_options
         .unsafely_ignore_certificate_errors()
         .map(ToOwned::to_owned),
+      Some(progress_bar.clone()),
     )?;
 
     let lockfile = cli_options
@@ -224,6 +228,7 @@ impl ProcState {
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
+      progress_bar.clone(),
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
@@ -250,6 +255,7 @@ impl ProcState {
       maybe_file_watcher_reporter,
       npm_resolver,
       cjs_resolutions: Default::default(),
+      progress_bar,
     })))
   }
 
@@ -410,6 +416,8 @@ impl ProcState {
       self.npm_resolver.cache_packages().await?;
       self.prepare_node_std_graph().await?;
     }
+
+    self.progress_bar.clear();
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {

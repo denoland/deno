@@ -33,6 +33,13 @@ itest!(esm_module_deno_test {
   http_server: true,
 });
 
+itest!(esm_import_cjs_default {
+  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  output: "npm/esm_import_cjs_default/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
@@ -59,6 +66,14 @@ itest!(cjs_reexport_collision {
   output: "npm/cjs_reexport_collision/main.out",
   envs: env_vars(),
   http_server: true,
+});
+
+itest!(cjs_this_in_exports {
+  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  output: "npm/cjs_this_in_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(translate_cjs_to_esm {
@@ -422,6 +437,7 @@ fn env_vars_no_sync_download() -> Vec<(String, String)> {
       "DENO_NPM_REGISTRY".to_string(),
       "http://localhost:4545/npm/registry/".to_string(),
     ),
+    ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 
