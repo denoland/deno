@@ -4,7 +4,6 @@ use crate::emit::emit_parsed_source;
 use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::node;
-use crate::node::CjsToEsmTranslateKind;
 use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::text_encoding::code_without_source_map;
@@ -24,7 +23,6 @@ use deno_core::ModuleType;
 use deno_core::OpState;
 use deno_core::SourceMapGetter;
 use deno_runtime::permissions::Permissions;
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -136,28 +134,7 @@ impl CliModuleLoader {
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
-      let is_cjs = self.ps.cjs_resolutions.lock().contains(specifier);
-      let (maybe_translate_kind, load_specifier) = if is_cjs {
-        let path = specifier.path();
-        let mut specifier = specifier.clone();
-        if let Some(new_path) = path.strip_suffix(node::CJS_TO_ESM_NODE_SUFFIX)
-        {
-          specifier.set_path(new_path);
-          (Some(CjsToEsmTranslateKind::Node), Cow::Owned(specifier))
-        } else if let Some(new_path) =
-          path.strip_suffix(node::CJS_TO_ESM_DENO_SUFFIX)
-        {
-          specifier.set_path(new_path);
-          (Some(CjsToEsmTranslateKind::Deno), Cow::Owned(specifier))
-        } else {
-          // all cjs code that goes through the loader should have been given a suffix
-          unreachable!("Unknown cjs specifier: {}", specifier);
-        }
-      } else {
-        (None, Cow::Borrowed(specifier))
-      };
-
-      let file_path = load_specifier.to_file_path().unwrap();
+      let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path).with_context(|| {
         let mut msg = "Unable to load ".to_string();
         msg.push_str(&*file_path.to_string_lossy());
@@ -168,19 +145,18 @@ impl CliModuleLoader {
         msg
       })?;
 
-      let code = if let Some(translate_kind) = maybe_translate_kind {
+      let code = if self.ps.cjs_resolutions.lock().contains(specifier) {
         // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
-          &load_specifier,
+          specifier,
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
-          translate_kind,
         )?
       } else {
         // only inject node globals for esm
-        node::esm_code_with_node_globals(&load_specifier, code)?
+        node::esm_code_with_node_globals(specifier, code)?
       };
       ModuleCodeSource {
         code,
