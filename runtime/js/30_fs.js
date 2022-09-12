@@ -187,8 +187,7 @@
   }
 
   function createByteStruct(types) {
-    // types can be "bool" or "u64"
-    // "?u64" is an optional Date.
+    // types can be "date", "bool" or "u64"
     let offset = 0;
     let str = "return {";
     for (let [name, type] of ObjectEntries(types)) {
@@ -199,11 +198,15 @@
         if (!optional) {
           str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
         } else {
-          str +=
-            `${name}: view[${offset}] === 0 ? null : new Date(view[${offset}] + view[${
-              offset + 1
-            }] * 2**32),`;
+          str += `${name}: (view[${offset}] + view[${
+            offset + 1
+          }] * 2**32) || 0 ,`;
         }
+      } else if (type == "date") {
+        str +=
+          `${name}: view[${offset}] === 0 ? null : new Date(view[${offset}] + view[${
+            offset + 1
+          }] * 2**32),`;
       } else {
         str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
       }
@@ -218,9 +221,9 @@
     isDirectory: "bool",
     isSymlink: "bool",
     size: "u64",
-    mtime: "?u64",
-    atime: "?u64",
-    birthtime: "?u64",
+    mtime: "date",
+    atime: "date",
+    birthtime: "date",
     dev: "?u64",
     ino: "?u64",
     mode: "?u64",
