@@ -149,14 +149,14 @@ impl CliModuleLoader {
         // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
-          &specifier,
+          specifier,
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
         )?
       } else {
         // only inject node globals for esm
-        node::esm_code_with_node_globals(&specifier, code)?
+        node::esm_code_with_node_globals(specifier, code)?
       };
       ModuleCodeSource {
         code,
