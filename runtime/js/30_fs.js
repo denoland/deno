@@ -199,7 +199,7 @@
           str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
         } else {
           str += `${name}: (view[${offset}] + view[${offset + 1}] * 2**32) ${
-            build.os === "windows" ? "|| null" : ""
+            !unix ? "|| null" : ""
           },`;
         }
       } else if (type == "date") {
@@ -216,6 +216,7 @@
     return [new Function("view", str), new Uint32Array(offset)];
   }
 
+  const unix = build.os === "darwin" || build.os === "linux";
   const [statStruct, statBuf] = createByteStruct({
     isFile: "bool",
     isDirectory: "bool",
@@ -236,7 +237,6 @@
   });
 
   function parseFileInfo(response) {
-    const unix = build.os === "darwin" || build.os === "linux";
     return {
       isFile: response.isFile,
       isDirectory: response.isDirectory,
