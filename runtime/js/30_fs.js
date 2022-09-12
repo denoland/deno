@@ -199,7 +199,7 @@
           str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
         } else {
           str += `${name}: (view[${offset}] + view[${offset + 1}] * 2**32) ${
-            Deno.build.os === "windows" ? "|| null" : ""
+            build.os === "windows" ? "|| null" : ""
           },`;
         }
       } else if (type == "date") {
