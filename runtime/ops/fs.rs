@@ -698,20 +698,13 @@ async fn op_chown_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoveArgs {
-  path: String,
-  recursive: bool,
-}
-
 #[op]
 fn op_remove_sync(
   state: &mut OpState,
-  args: RemoveArgs,
+  path: String,
+  recursive: bool,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&args.path);
-  let recursive = args.recursive;
+  let path = PathBuf::from(&path);
 
   state.borrow_mut::<Permissions>().write.check(&path)?;
 
@@ -723,7 +716,6 @@ fn op_remove_sync(
   };
   let metadata = std::fs::symlink_metadata(&path).map_err(err_mapper)?;
 
-  debug!("op_remove_sync {} {}", path.display(), recursive);
   let file_type = metadata.file_type();
   if file_type.is_file() {
     std::fs::remove_file(&path).map_err(err_mapper)?;
@@ -753,10 +745,10 @@ fn op_remove_sync(
 #[op]
 async fn op_remove_async(
   state: Rc<RefCell<OpState>>,
-  args: RemoveArgs,
+  path: String,
+  recursive: bool,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&args.path);
-  let recursive = args.recursive;
+  let path = PathBuf::from(&path);
 
   {
     let mut state = state.borrow_mut();
@@ -1246,26 +1238,20 @@ async fn op_read_dir_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RenameArgs {
-  oldpath: String,
-  newpath: String,
-}
-
 #[op]
 fn op_rename_sync(
   state: &mut OpState,
-  args: RenameArgs,
+  oldpath: String,
+  newpath: String,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
 
   let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&oldpath)?;
   permissions.write.check(&oldpath)?;
   permissions.write.check(&newpath)?;
-  debug!("op_rename_sync {} {}", oldpath.display(), newpath.display());
+
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),
@@ -1284,10 +1270,11 @@ fn op_rename_sync(
 #[op]
 async fn op_rename_async(
   state: Rc<RefCell<OpState>>,
-  args: RenameArgs,
+  oldpath: String,
+  newpath: String,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<Permissions>();
@@ -1296,11 +1283,6 @@ async fn op_rename_async(
     permissions.write.check(&newpath)?;
   }
   tokio::task::spawn_blocking(move || {
-    debug!(
-      "op_rename_async {} {}",
-      oldpath.display(),
-      newpath.display()
-    );
     let err_mapper = |err: Error| {
       Error::new(
         err.kind(),
@@ -1319,17 +1301,10 @@ async fn op_rename_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LinkArgs {
-  oldpath: String,
-  newpath: String,
-}
-
 #[op]
-fn op_link_sync(state: &mut OpState, args: LinkArgs) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+fn op_link_sync(state: &mut OpState, oldpath: String, newpath: String) -> Result<(), AnyError> {
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
 
   let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&oldpath)?;
@@ -1337,7 +1312,6 @@ fn op_link_sync(state: &mut OpState, args: LinkArgs) -> Result<(), AnyError> {
   permissions.read.check(&newpath)?;
   permissions.write.check(&newpath)?;
 
-  debug!("op_link_sync {} {}", oldpath.display(), newpath.display());
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),
@@ -1356,10 +1330,11 @@ fn op_link_sync(state: &mut OpState, args: LinkArgs) -> Result<(), AnyError> {
 #[op]
 async fn op_link_async(
   state: Rc<RefCell<OpState>>,
-  args: LinkArgs,
+  oldpath: String,
+  newpath: String,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
 
   {
     let mut state = state.borrow_mut();
@@ -1371,7 +1346,6 @@ async fn op_link_async(
   }
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_link_async {} {}", oldpath.display(), newpath.display());
     let err_mapper = |err: Error| {
       Error::new(
         err.kind(),
@@ -1390,38 +1364,19 @@ async fn op_link_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SymlinkArgs {
-  oldpath: String,
-  newpath: String,
-  #[cfg(not(unix))]
-  options: Option<SymlinkOptions>,
-}
-
-#[cfg(not(unix))]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SymlinkOptions {
-  _type: String,
-}
-
 #[op]
 fn op_symlink_sync(
   state: &mut OpState,
-  args: SymlinkArgs,
+  oldpath: String,
+  newpath: String,
+  _type: Option<String>,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
 
   state.borrow_mut::<Permissions>().write.check_all()?;
   state.borrow_mut::<Permissions>().read.check_all()?;
 
-  debug!(
-    "op_symlink_sync {} {}",
-    oldpath.display(),
-    newpath.display()
-  );
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),
@@ -1443,8 +1398,8 @@ fn op_symlink_sync(
   {
     use std::os::windows::fs::{symlink_dir, symlink_file};
 
-    match args.options {
-      Some(options) => match options._type.as_ref() {
+    match _type {
+      Some(ty) => match ty.as_ref() {
         "file" => symlink_file(&oldpath, &newpath).map_err(err_mapper)?,
         "dir" => symlink_dir(&oldpath, &newpath).map_err(err_mapper)?,
         _ => return Err(type_error("unsupported type")),
@@ -1470,10 +1425,12 @@ fn op_symlink_sync(
 #[op]
 async fn op_symlink_async(
   state: Rc<RefCell<OpState>>,
-  args: SymlinkArgs,
+  oldpath: String,
+  newpath: String,
+  _type: Option<String>,
 ) -> Result<(), AnyError> {
-  let oldpath = PathBuf::from(&args.oldpath);
-  let newpath = PathBuf::from(&args.newpath);
+  let oldpath = PathBuf::from(&oldpath);
+  let newpath = PathBuf::from(&newpath);
 
   {
     let mut state = state.borrow_mut();
@@ -1482,7 +1439,6 @@ async fn op_symlink_async(
   }
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
     let err_mapper = |err: Error| {
       Error::new(
         err.kind(),
@@ -1504,8 +1460,8 @@ async fn op_symlink_async(
     {
       use std::os::windows::fs::{symlink_dir, symlink_file};
 
-      match args.options {
-        Some(options) => match options._type.as_ref() {
+      match _type {
+        Some(ty) => match ty.as_ref() {
           "file" => symlink_file(&oldpath, &newpath).map_err(err_mapper)?,
           "dir" => symlink_dir(&oldpath, &newpath).map_err(err_mapper)?,
           _ => return Err(type_error("unsupported type")),
@@ -1582,16 +1538,17 @@ async fn op_read_link_async(
   .unwrap()
 }
 
-#[op(fast)]
+#[op]
 fn op_ftruncate_sync(
   state: &mut OpState,
   rid: u32,
   len: i32,
-) -> u32 {
+) -> Result<(), AnyError> {
   let len = len as u64;
   StdFileResource::with_file(state, rid, |std_file| {
     std_file.set_len(len).map_err(AnyError::from)
-  }).is_ok() as u32
+  })?;
+  Ok(())
 }
 
 #[op]
@@ -1844,23 +1801,18 @@ async fn op_make_temp_file_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FutimeArgs {
-  rid: ResourceId,
-  atime: (i64, u32),
-  mtime: (i64, u32),
-}
-
 #[op]
 fn op_futime_sync(
   state: &mut OpState,
-  args: FutimeArgs,
+  rid: ResourceId,
+  atime_secs: i64, 
+  atime_nanos: u32,
+  mtime_secs: i64,
+  mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.futimeSync");
-  let rid = args.rid;
-  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
+  let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+  let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   StdFileResource::with_file(state, rid, |std_file| {
     filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))
@@ -1873,12 +1825,15 @@ fn op_futime_sync(
 #[op]
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
-  args: FutimeArgs,
+  rid: ResourceId,
+  atime_secs: i64, 
+  atime_nanos: u32,
+  mtime_secs: i64,
+  mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   super::check_unstable2(&state, "Deno.futime");
-  let rid = args.rid;
-  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
+  let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+  let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     filetime::set_file_handle_times(std_file, Some(atime), Some(mtime))?;
@@ -1887,21 +1842,20 @@ async fn op_futime_async(
   .await
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UtimeArgs {
-  path: String,
-  atime: (i64, u32),
-  mtime: (i64, u32),
-}
-
 #[op]
-fn op_utime_sync(state: &mut OpState, args: UtimeArgs) -> Result<(), AnyError> {
+fn op_utime_sync(
+  state: &mut OpState, 
+  path: String,
+  atime_secs: i64, 
+  atime_nanos: u32,
+  mtime_secs: i64,
+  mtime_nanos: u32
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.utime");
 
-  let path = PathBuf::from(&args.path);
-  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
+  let path = PathBuf::from(&path);
+  let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+  let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   state.borrow_mut::<Permissions>().write.check(&path)?;
   filetime::set_file_times(&path, atime, mtime).map_err(|err| {
@@ -1913,13 +1867,17 @@ fn op_utime_sync(state: &mut OpState, args: UtimeArgs) -> Result<(), AnyError> {
 #[op]
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
-  args: UtimeArgs,
+  path: String,
+  atime_secs: i64, 
+  atime_nanos: u32,
+  mtime_secs: i64,
+  mtime_nanos: u32
 ) -> Result<(), AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
-  let path = PathBuf::from(&args.path);
-  let atime = filetime::FileTime::from_unix_time(args.atime.0, args.atime.1);
-  let mtime = filetime::FileTime::from_unix_time(args.mtime.0, args.mtime.1);
+  let path = PathBuf::from(&path);
+  let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+  let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
   state
     .borrow_mut()

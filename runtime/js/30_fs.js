@@ -151,34 +151,34 @@
     path,
     options = {},
   ) {
-    ops.op_remove_sync({
-      path: pathFromURL(path),
-      recursive: !!options.recursive,
-    });
+    ops.op_remove_sync(
+      pathFromURL(path),
+      !!options.recursive,
+    );
   }
 
   async function remove(
     path,
     options = {},
   ) {
-    await core.opAsync("op_remove_async", {
-      path: pathFromURL(path),
-      recursive: !!options.recursive,
-    });
+    await core.opAsync("op_remove_async",
+      pathFromURL(path),
+      !!options.recursive,
+    );
   }
 
   function renameSync(oldpath, newpath) {
-    ops.op_rename_sync({
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-    });
+    ops.op_rename_sync(
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+    );
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync("op_rename_async", {
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-    });
+    await core.opAsync("op_rename_async",
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+    );
   }
 
   const infoBuf = new Uint32Array(24);
@@ -298,9 +298,7 @@
   }
 
   function ftruncateSync(rid, len) {
-    if (!ops.op_ftruncate_sync.fast(rid, coerceLen(len))) {
-      
-    }
+    ops.op_ftruncate_sync(rid, coerceLen(len));
   }
 
   async function ftruncate(rid, len) {
@@ -320,11 +318,11 @@
   }
 
   function linkSync(oldpath, newpath) {
-    ops.op_link_sync({ oldpath, newpath });
+    ops.op_link_sync(oldpath, newpath);
   }
 
   async function link(oldpath, newpath) {
-    await core.opAsync("op_link_async", { oldpath, newpath });
+    await core.opAsync("op_link_async", oldpath, newpath);
   }
 
   function toUnixTimeFromEpoch(value) {
@@ -353,11 +351,9 @@
     atime,
     mtime,
   ) {
-    ops.op_futime_sync({
-      rid,
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    ops.op_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   async function futime(
@@ -365,11 +361,9 @@
     atime,
     mtime,
   ) {
-    await core.opAsync("op_futime_async", {
-      rid,
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    await core.opAsync("op_futime_async", rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   function utimeSync(
@@ -377,11 +371,9 @@
     atime,
     mtime,
   ) {
-    ops.op_utime_sync({
-      path: pathFromURL(path),
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    ops.op_utime_sync(pathFromURL(path), atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   async function utime(
@@ -389,11 +381,9 @@
     atime,
     mtime,
   ) {
-    await core.opAsync("op_utime_async", {
-      path: pathFromURL(path),
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    await core.opAsync("op_utime_async", pathFromURL(path), atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   function symlinkSync(
@@ -401,11 +391,7 @@
     newpath,
     options,
   ) {
-    ops.op_symlink_sync({
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-      options,
-    });
+    ops.op_symlink_sync(pathFromURL(oldpath), pathFromURL(newpath), options?.type);
   }
 
   async function symlink(
@@ -413,11 +399,7 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", {
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-      options,
-    });
+    await core.opAsync("op_symlink_async", pathFromURL(oldpath), pathFromURL(newpath), options?.type);
   }
 
   function fdatasyncSync(rid) {
