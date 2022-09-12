@@ -604,15 +604,12 @@ where
 #[op]
 fn op_require_read_package_scope(
   state: &mut OpState,
-  filename: String,
+  package_json_path: String,
 ) -> Option<PackageJson> {
   check_unstable(state);
   let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
-  resolution::get_package_scope_config(
-    &Url::from_file_path(filename).unwrap(),
-    &*resolver,
-  )
-  .ok()
+  let package_json_path = PathBuf::from(package_json_path);
+  PackageJson::load(&*resolver, package_json_path).ok()
 }
 
 #[op]
