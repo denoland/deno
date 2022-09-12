@@ -204,11 +204,12 @@
         if (!optional) {
           str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32 ,`;
         } else {
-          str += `${name}: view[${offset}] === 0 && view[${
-            offset + 1
-          }] === 0 ? null : new Date(view[${offset}] + view[${
-            offset + 1
-          }] * 2**32),`;
+          str +=
+            `${name}: view[${offset}] === 0 && view[${offset} + 1] === 0 && view[${
+              offset + 1
+            }] === 0 ? null : new Date(view[${offset}] + view[${
+              offset + 1
+            }] * 2**32),`;
         }
       } else {
         str += `${name}: ${type === "bool" ? "!!" : ""}view[${offset}],`;
