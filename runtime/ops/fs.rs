@@ -579,42 +579,36 @@ async fn op_mkdir_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChmodArgs {
+#[op]
+fn op_chmod_sync(
+  state: &mut OpState,
   path: String,
   mode: u32,
-}
-
-#[op]
-fn op_chmod_sync(state: &mut OpState, args: ChmodArgs) -> Result<(), AnyError> {
-  let path = Path::new(&args.path);
-  let mode = args.mode & 0o777;
+) -> Result<(), AnyError> {
+  let path = Path::new(&path);
+  let mode = mode & 0o777;
 
   state.borrow_mut::<Permissions>().write.check(path)?;
-  debug!("op_chmod_sync {} {:o}", path.display(), mode);
   raw_chmod(path, mode)
 }
 
 #[op]
 async fn op_chmod_async(
   state: Rc<RefCell<OpState>>,
-  args: ChmodArgs,
+  path: String,
+  mode: u32,
 ) -> Result<(), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
-  let mode = args.mode & 0o777;
+  let path = Path::new(&path).to_path_buf();
+  let mode = mode & 0o777;
 
   {
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().write.check(&path)?;
   }
 
-  tokio::task::spawn_blocking(move || {
-    debug!("op_chmod_async {} {:o}", path.display(), mode);
-    raw_chmod(&path, mode)
-  })
-  .await
-  .unwrap()
+  tokio::task::spawn_blocking(move || raw_chmod(&path, mode))
+    .await
+    .unwrap()
 }
 
 fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
@@ -637,30 +631,21 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ChownArgs {
+#[op]
+fn op_chown_sync(
+  state: &mut OpState,
   path: String,
   uid: Option<u32>,
   gid: Option<u32>,
-}
-
-#[op]
-fn op_chown_sync(state: &mut OpState, args: ChownArgs) -> Result<(), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
+) -> Result<(), AnyError> {
+  let path = Path::new(&path).to_path_buf();
   state.borrow_mut::<Permissions>().write.check(&path)?;
-  debug!(
-    "op_chown_sync {} {:?} {:?}",
-    path.display(),
-    args.uid,
-    args.gid,
-  );
   #[cfg(unix)]
   {
     use crate::errors::get_nix_error_class;
     use nix::unistd::{chown, Gid, Uid};
-    let nix_uid = args.uid.map(Uid::from_raw);
-    let nix_gid = args.gid.map(Gid::from_raw);
+    let nix_uid = uid.map(Uid::from_raw);
+    let nix_gid = gid.map(Gid::from_raw);
     chown(&path, nix_uid, nix_gid).map_err(|err| {
       custom_error(
         get_nix_error_class(&err),
@@ -679,9 +664,11 @@ fn op_chown_sync(state: &mut OpState, args: ChownArgs) -> Result<(), AnyError> {
 #[op]
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
-  args: ChownArgs,
+  path: String,
+  uid: Option<u32>,
+  gid: Option<u32>,
 ) -> Result<(), AnyError> {
-  let path = Path::new(&args.path).to_path_buf();
+  let path = Path::new(&path).to_path_buf();
 
   {
     let mut state = state.borrow_mut();
@@ -689,18 +676,12 @@ async fn op_chown_async(
   }
 
   tokio::task::spawn_blocking(move || {
-    debug!(
-      "op_chown_async {} {:?} {:?}",
-      path.display(),
-      args.uid,
-      args.gid,
-    );
     #[cfg(unix)]
     {
       use crate::errors::get_nix_error_class;
       use nix::unistd::{chown, Gid, Uid};
-      let nix_uid = args.uid.map(Uid::from_raw);
-      let nix_gid = args.gid.map(Gid::from_raw);
+      let nix_uid = uid.map(Uid::from_raw);
+      let nix_gid = gid.map(Gid::from_raw);
       chown(&path, nix_uid, nix_gid).map_err(|err| {
         custom_error(
           get_nix_error_class(&err),
@@ -820,36 +801,29 @@ async fn op_remove_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CopyFileArgs {
-  from: String,
-  to: String,
-}
-
 #[op]
 fn op_copy_file_sync(
   state: &mut OpState,
-  args: CopyFileArgs,
+  from: String,
+  to: String,
 ) -> Result<(), AnyError> {
-  let from = PathBuf::from(&args.from);
-  let to = PathBuf::from(&args.to);
+  let from_path = PathBuf::from(&from);
+  let to_path = PathBuf::from(&to);
 
   let permissions = state.borrow_mut::<Permissions>();
-  permissions.read.check(&from)?;
-  permissions.write.check(&to)?;
+  permissions.read.check(&from_path)?;
+  permissions.write.check(&to_path)?;
 
-  debug!("op_copy_file_sync {} {}", from.display(), to.display());
   // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
   // See https://github.com/rust-lang/rust/issues/54800
   // Once the issue is resolved, we should remove this workaround.
-  if cfg!(unix) && !from.is_file() {
+  if cfg!(unix) && !from_path.is_file() {
     return Err(custom_error(
       "NotFound",
       format!(
         "File not found, copy '{}' -> '{}'",
-        from.display(),
-        to.display()
+        from_path.display(),
+        to_path.display()
       ),
     ));
   }
@@ -857,21 +831,77 @@ fn op_copy_file_sync(
   let err_mapper = |err: Error| {
     Error::new(
       err.kind(),
-      format!("{}, copy '{}' -> '{}'", err, from.display(), to.display()),
+      format!(
+        "{}, copy '{}' -> '{}'",
+        err,
+        from_path.display(),
+        to_path.display()
+      ),
     )
   };
+
+  #[cfg(target_os = "macos")]
+  {
+    // std::fs::copy does open() + fcopyfile() on macOS. We try to use
+    // clonefile() instead, which is more efficient.
+    use libc::chmod;
+    use libc::clonefile;
+    use libc::unlink;
+    use libc::stat;
+    use std::ffi::CString;
+    use std::io::Read;
+
+    unsafe {
+      let from = CString::new(from).unwrap();
+      let to = CString::new(to).unwrap();
+
+      let mut st = std::mem::zeroed();
+      let ret = stat(from.as_ptr(), &mut st);
+      if ret != 0 {
+        return Err(err_mapper(Error::last_os_error()).into());
+      }
+
+      if st.st_size > 128 * 1024 {
+        // Try unlink.
+        let _ = unlink(to.as_ptr());
+        if clonefile(from.as_ptr(), to.as_ptr(), 0) == 0 {
+          // Preserve mode bits.
+          let _ = chmod(to.as_ptr(), st.st_mode);
+          return Ok(());
+        }
+      } else {
+        // Do a regular copy. fcopyfile() is an overkill for < 128KB
+        // files.
+        let mut buf = [0u8; 128 * 1024];
+        let mut from_file = std::fs::File::open(&from_path).map_err(err_mapper)?;
+        let mut to_file = std::fs::File::create(&to_path).map_err(err_mapper)?;
+        loop {
+          let nread = from_file.read(&mut buf).map_err(err_mapper)?;
+          if nread == 0 {
+            break;
+          }
+          to_file.write_all(&buf[..nread]).map_err(err_mapper)?;
+        }
+        return Ok(());
+      }
+    }
+
+    // clonefile() failed, fall back to std::fs::copy().
+  }
+
   // returns size of from as u64 (we ignore)
-  std::fs::copy(&from, &to).map_err(err_mapper)?;
+  std::fs::copy(&from_path, &to_path).map_err(err_mapper)?;
   Ok(())
 }
 
 #[op]
 async fn op_copy_file_async(
   state: Rc<RefCell<OpState>>,
-  args: CopyFileArgs,
+  from: String,
+  to: String,
 ) -> Result<(), AnyError> {
-  let from = PathBuf::from(&args.from);
-  let to = PathBuf::from(&args.to);
+  let from = PathBuf::from(&from);
+  let to = PathBuf::from(&to);
 
   {
     let mut state = state.borrow_mut();
@@ -1552,33 +1582,25 @@ async fn op_read_link_async(
   .unwrap()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FtruncateArgs {
-  rid: ResourceId,
-  len: i32,
-}
-
-#[op]
+#[op(fast)]
 fn op_ftruncate_sync(
   state: &mut OpState,
-  args: FtruncateArgs,
-) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let len = args.len as u64;
+  rid: u32,
+  len: i32,
+) -> u32 {
+  let len = len as u64;
   StdFileResource::with_file(state, rid, |std_file| {
     std_file.set_len(len).map_err(AnyError::from)
-  })?;
-  Ok(())
+  }).is_ok() as u32
 }
 
 #[op]
 async fn op_ftruncate_async(
   state: Rc<RefCell<OpState>>,
-  args: FtruncateArgs,
+  rid: ResourceId,
+  len: i32,
 ) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let len = args.len as u64;
+  let len = len as u64;
 
   StdFileResource::with_file_blocking_task(state, rid, move |std_file| {
     std_file.set_len(len)?;
@@ -1587,20 +1609,13 @@ async fn op_ftruncate_async(
   .await
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TruncateArgs {
-  path: String,
-  len: u64,
-}
-
 #[op]
 fn op_truncate_sync(
   state: &mut OpState,
-  args: TruncateArgs,
+  path: String,
+  len: u64,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&args.path);
-  let len = args.len;
+  let path = PathBuf::from(&path);
 
   state.borrow_mut::<Permissions>().write.check(&path)?;
 
@@ -1622,10 +1637,11 @@ fn op_truncate_sync(
 #[op]
 async fn op_truncate_async(
   state: Rc<RefCell<OpState>>,
-  args: TruncateArgs,
+  path: String,
+  len: u64,
 ) -> Result<(), AnyError> {
-  let path = PathBuf::from(&args.path);
-  let len = args.len;
+  let path = PathBuf::from(&path);
+  
   {
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().write.check(&path)?;

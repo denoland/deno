@@ -16,11 +16,11 @@
   const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
-    ops.op_chmod_sync({ path: pathFromURL(path), mode });
+    ops.op_chmod_sync(pathFromURL(path), mode);
   }
 
   async function chmod(path, mode) {
-    await core.opAsync("op_chmod_async", { path: pathFromURL(path), mode });
+    await core.opAsync("op_chmod_async", pathFromURL(path), mode);
   }
 
   function chownSync(
@@ -28,7 +28,7 @@
     uid,
     gid,
   ) {
-    ops.op_chown_sync({ path: pathFromURL(path), uid, gid });
+    ops.op_chown_sync(pathFromURL(path), uid, gid);
   }
 
   async function chown(
@@ -38,7 +38,9 @@
   ) {
     await core.opAsync(
       "op_chown_async",
-      { path: pathFromURL(path), uid, gid },
+      pathFromURL(path),
+      uid,
+      gid,
     );
   }
 
@@ -46,20 +48,21 @@
     fromPath,
     toPath,
   ) {
-    ops.op_copy_file_sync({
-      from: pathFromURL(fromPath),
-      to: pathFromURL(toPath),
-    });
+    ops.op_copy_file_sync(
+      pathFromURL(fromPath),
+      pathFromURL(toPath),
+    );
   }
 
   async function copyFile(
     fromPath,
     toPath,
   ) {
-    await core.opAsync("op_copy_file_async", {
-      from: pathFromURL(fromPath),
-      to: pathFromURL(toPath),
-    });
+    await core.opAsync(
+      "op_copy_file_async",
+      pathFromURL(fromPath),
+      pathFromURL(toPath),
+    );
   }
 
   function cwd() {
@@ -295,19 +298,21 @@
   }
 
   function ftruncateSync(rid, len) {
-    ops.op_ftruncate_sync({ rid, len: coerceLen(len) });
+    if (!ops.op_ftruncate_sync.fast(rid, coerceLen(len))) {
+      
+    }
   }
 
   async function ftruncate(rid, len) {
-    await core.opAsync("op_ftruncate_async", { rid, len: coerceLen(len) });
+    await core.opAsync("op_ftruncate_async", rid, coerceLen(len));
   }
 
   function truncateSync(path, len) {
-    ops.op_truncate_sync({ path, len: coerceLen(len) });
+    ops.op_truncate_sync(path, coerceLen(len));
   }
 
   async function truncate(path, len) {
-    await core.opAsync("op_truncate_async", { path, len: coerceLen(len) });
+    await core.opAsync("op_truncate_async", path, coerceLen(len));
   }
 
   function umask(mask) {

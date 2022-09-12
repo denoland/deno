@@ -7,7 +7,7 @@ const copyFileSync = getFunction("copyFileSync");
 bench(() => copyFileSync("test", "test2"));
 
 // For functions with side-effects, clean up after `bench` like so:
-const removeSync = getFunction("removeSync")
+const removeSync = getFunction("removeSync");
 removeSync("test2");
 ```
 

@@ -34,7 +34,7 @@ const getFunction = runtime === "deno"
   };
 
 const writeFileSync = getFunction("writeFileSync");
-writeFileSync("test", new Uint8Array(1024), { truncate: true });
+writeFileSync("test", new Uint8Array(1024 * 1024), { truncate: true });
 
 const copyFileSync = getFunction("copyFileSync");
 bench(() => copyFileSync("test", "test2"), 10000);
