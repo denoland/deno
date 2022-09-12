@@ -76,6 +76,14 @@ itest!(cjs_this_in_exports {
   exit_code: 1,
 });
 
+itest!(cjs_esmodule_export_not_exported {
+  args:
+    "run --allow-read --unstable --quiet npm/cjs_esmodule_export_not_exported/main.js",
+  output: "npm/cjs_esmodule_export_not_exported/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run --unstable -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",

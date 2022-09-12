@@ -837,14 +837,13 @@ pub fn translate_cjs_to_esm(
       .replace('\"', "\\\"")
   ));
 
-  let mut had_default = false;
+  let mut had_es_module_default = false;
   for export in &all_exports {
     if export.as_str() == "default" {
       if translate_kind == CjsToEsmTranslateKind::Deno
         && root_exports.contains("__esModule")
       {
-        source.push(format!("export default mod[\"{}\"];", export));
-        had_default = true;
+        had_es_module_default = true;
       }
     } else {
       add_export(
@@ -856,7 +855,11 @@ pub fn translate_cjs_to_esm(
     }
   }
 
-  if !had_default {
+  if had_es_module_default {
+    source.push(
+      "export default mod.__esModule ? mod[\"default\"] : mod;".to_string(),
+    );
+  } else {
     source.push("export default mod;".to_string());
   }
 
