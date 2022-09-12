@@ -26,6 +26,7 @@ mod node;
 mod npm;
 mod ops;
 mod proc_state;
+mod progress_bar;
 mod resolver;
 mod standalone;
 mod text_encoding;

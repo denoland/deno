@@ -1,10 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
 use crate::deno_std::CURRENT_STD_URL;
+use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -25,6 +27,7 @@ use deno_runtime::deno_node::DenoDirNpmResolver;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
+use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
 use path_clean::PathClean;
 use regex::Regex;
@@ -252,6 +255,11 @@ static NODE_COMPAT_URL: Lazy<Url> = Lazy::new(|| {
 pub static MODULE_ALL_URL: Lazy<Url> =
   Lazy::new(|| NODE_COMPAT_URL.join("node/module_all.ts").unwrap());
 
+/// Suffix used for the CJS to ESM translation for Node code
+pub const CJS_TO_ESM_NODE_SUFFIX: &str = ".node_cjs_to_esm.mjs";
+/// Suffix used for the CJS to ESM translation for Deno code
+pub const CJS_TO_ESM_DENO_SUFFIX: &str = ".deno_cjs_to_esm.mjs";
+
 fn find_builtin_node_module(specifier: &str) -> Option<&NodeModulePolyfill> {
   SUPPORTED_MODULES.iter().find(|m| m.name == specifier)
 }
@@ -326,11 +334,12 @@ pub async fn initialize_runtime(
   js_runtime: &mut JsRuntime,
 ) -> Result<(), AnyError> {
   let source_code = &format!(
-    r#"(async function loadBuiltinNodeModules(moduleAllUrl) {{
+    r#"(async function loadBuiltinNodeModules(moduleAllUrl, nodeGlobalThisName) {{
       const moduleAll = await import(moduleAllUrl);
-      Deno[Deno.internal].node.initialize(moduleAll.default);
-    }})('{}');"#,
+      Deno[Deno.internal].node.initialize(moduleAll.default, nodeGlobalThisName);
+    }})('{}', '{}');"#,
     MODULE_ALL_URL.as_str(),
+    NODE_GLOBAL_THIS_NAME.as_str(),
   );
 
   let value =
@@ -408,7 +417,15 @@ pub fn node_resolve(
     None => return Ok(None),
   };
 
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  let resolve_response = match url_to_node_resolution(url, npm_resolver)? {
+    NodeResolution::CommonJs(mut url) => {
+      // Use a suffix to say this cjs specifier should be translated from
+      // cjs to esm for consumption by Node ESM code
+      url.set_path(&format!("{}{}", url.path(), CJS_TO_ESM_NODE_SUFFIX));
+      NodeResolution::CommonJs(url)
+    }
+    val => val,
+  };
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -436,7 +453,15 @@ pub fn node_resolve_npm_reference(
   })?;
 
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
-  let resolve_response = url_to_node_resolution(url, npm_resolver)?;
+  let resolve_response = match url_to_node_resolution(url, npm_resolver)? {
+    NodeResolution::CommonJs(mut url) => {
+      // Use a suffix to say this cjs specifier should be translated from
+      // cjs to esm for consumption by Deno ESM code
+      url.set_path(&format!("{}{}", url.path(), CJS_TO_ESM_DENO_SUFFIX));
+      NodeResolution::CommonJs(url)
+    }
+    val => val,
+  };
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
@@ -697,6 +722,12 @@ fn add_export(
   }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CjsToEsmTranslateKind {
+  Node,
+  Deno,
+}
+
 /// Translates given CJS module into ESM. This function will perform static
 /// analysis on the file to find defined exports and reexports.
 ///
@@ -709,33 +740,61 @@ pub fn translate_cjs_to_esm(
   code: String,
   media_type: MediaType,
   npm_resolver: &GlobalNpmPackageResolver,
+  translate_kind: CjsToEsmTranslateKind,
 ) -> Result<String, AnyError> {
-  let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::new(code.into()),
-    media_type,
-    capture_tokens: true,
-    scope_analysis: false,
-    maybe_syntax: None,
-  })?;
-  let analysis = parsed_source.analyze_cjs();
-  let root_exports = analysis
-    .exports
-    .iter()
-    .map(|s| s.as_str())
-    .collect::<HashSet<_>>();
+  fn perform_cjs_analysis(
+    specifier: &str,
+    media_type: MediaType,
+    code: String,
+  ) -> Result<CjsAnalysis, AnyError> {
+    let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      text_info: deno_ast::SourceTextInfo::new(code.into()),
+      media_type,
+      capture_tokens: true,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })?;
+    Ok(parsed_source.analyze_cjs())
+  }
+
   let mut temp_var_count = 0;
+  let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
-  // if there are reexports, handle them first
-  for (idx, reexport) in analysis.reexports.iter().enumerate() {
-    // Firstly, resolve relate reexport specifier
+  let analysis = perform_cjs_analysis(specifier.as_str(), media_type, code)?;
+
+  let root_exports = analysis
+    .exports
+    .iter()
+    .map(|s| s.as_str())
+    .collect::<HashSet<_>>();
+  let mut all_exports = analysis
+    .exports
+    .iter()
+    .map(|s| s.to_string())
+    .collect::<HashSet<_>>();
+
+  // (request, referrer)
+  let mut reexports_to_handle = VecDeque::new();
+  for reexport in analysis.reexports {
+    reexports_to_handle.push_back((reexport, specifier.clone()));
+  }
+
+  while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
+    if handled_reexports.contains(&reexport) {
+      continue;
+    }
+
+    handled_reexports.insert(reexport.to_string());
+
+    // First, resolve relate reexport specifier
     let resolved_reexport = resolve(
-      reexport,
-      specifier,
+      &reexport,
+      &referrer,
       // FIXME(bartlomieju): check if these conditions are okay, probably
       // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
       &["deno", "require", "default"],
@@ -743,35 +802,26 @@ pub fn translate_cjs_to_esm(
     )?;
     let reexport_specifier =
       ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-    // Secondly, read the source code from disk
+    // Second, read the source code from disk
     let reexport_file = file_fetcher.get_source(&reexport_specifier).unwrap();
-    // Now perform analysis again
+
     {
-      let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
-        specifier: reexport_specifier.to_string(),
-        text_info: deno_ast::SourceTextInfo::new(reexport_file.source),
-        media_type: reexport_file.media_type,
-        capture_tokens: true,
-        scope_analysis: false,
-        maybe_syntax: None,
-      })?;
-      let analysis = parsed_source.analyze_cjs();
+      let analysis = perform_cjs_analysis(
+        reexport_specifier.as_str(),
+        reexport_file.media_type,
+        reexport_file.source.to_string(),
+      )?;
 
-      source.push(format!(
-        "const reexport{} = require(\"{}\");",
-        idx, reexport
-      ));
-
-      for export in analysis.exports.iter().filter(|e| {
-        e.as_str() != "default" && !root_exports.contains(e.as_str())
-      }) {
-        add_export(
-          &mut source,
-          export,
-          &format!("Deno[Deno.internal].require.bindExport(reexport{0}[\"{1}\"], reexport{0})", idx, export),
-          &mut temp_var_count,
-        );
+      for reexport in analysis.reexports {
+        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
       }
+
+      all_exports.extend(
+        analysis
+          .exports
+          .into_iter()
+          .filter(|e| e.as_str() != "default"),
+      );
     }
   }
 
@@ -788,23 +838,19 @@ pub fn translate_cjs_to_esm(
   ));
 
   let mut had_default = false;
-  for export in analysis.exports.iter() {
+  for export in &all_exports {
     if export.as_str() == "default" {
-      if root_exports.contains("__esModule") {
-        source.push(format!(
-          "export default Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod);",
-          export,
-        ));
+      if translate_kind == CjsToEsmTranslateKind::Deno
+        && root_exports.contains("__esModule")
+      {
+        source.push(format!("export default mod[\"{}\"];", export));
         had_default = true;
       }
     } else {
       add_export(
         &mut source,
         export,
-        &format!(
-          "Deno[Deno.internal].require.bindExport(mod[\"{}\"], mod)",
-          export
-        ),
+        &format!("mod[\"{}\"]", export),
         &mut temp_var_count,
       );
     }
@@ -880,7 +926,6 @@ fn resolve(
       return Ok(module_dir.join("index.js").clean());
     }
   }
-
   Err(not_found(specifier, &referrer_path))
 }
 
@@ -988,7 +1033,6 @@ fn file_extension_probe(
       return Ok(p_js);
     }
   }
-
   Err(not_found(&p.to_string_lossy(), referrer))
 }
 

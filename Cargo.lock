@@ -527,6 +527,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89eab4d20ce20cea182308bca13088fecea9c05f6776cf287205d41a0ed3c847"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "terminal_size",
+ "unicode-width",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -778,7 +792,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.25.1"
+version = "1.25.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -825,6 +839,7 @@ dependencies = [
  "http",
  "import_map",
  "indexmap",
+ "indicatif",
  "jsonc-parser",
  "libc",
  "log 0.4.17",
@@ -835,7 +850,7 @@ dependencies = [
  "once_cell",
  "os_pipe",
  "path-clean",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "pin-project",
  "pretty_assertions",
  "rand",
@@ -895,12 +910,12 @@ dependencies = [
  "swc_ecma_utils",
  "swc_ecma_visit",
  "text_lines",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
 name = "deno_bench_util"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -910,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -920,14 +935,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.149.0"
+version = "0.150.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -944,13 +959,13 @@ dependencies = [
  "serde_v8",
  "sourcemap",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
  "v8",
 ]
 
 [[package]]
 name = "deno_crypto"
-version = "0.81.0"
+version = "0.82.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1014,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.90.0"
+version = "0.91.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -1031,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1044,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "deno_flash"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1079,12 +1094,12 @@ dependencies = [
  "serde_json",
  "sourcemap",
  "termcolor",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
 name = "deno_http"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "async-compression",
  "base64 0.13.0",
@@ -1098,7 +1113,7 @@ dependencies = [
  "fly-accept-encoding",
  "hyper",
  "mime 0.3.16",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "phf",
  "ring",
  "serde",
@@ -1125,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1139,9 +1154,10 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "deno_core",
+ "once_cell",
  "path-clean",
  "regex",
  "serde",
@@ -1149,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1163,7 +1179,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.75.0"
+version = "0.76.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -1226,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1240,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1252,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.98.0"
+version = "0.99.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1269,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.68.0"
+version = "0.69.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -1280,14 +1296,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.72.0"
+version = "0.73.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1301,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -1535,6 +1551,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "encode_unicode"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
+
+[[package]]
 name = "encoding_rs"
 version = "0.8.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1644,7 +1666,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -1772,12 +1794,11 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fc25a87fa4fd2094bffb06925852034d90a17f0d1e05197d4956d3555752191"
+checksum = "a9c384f161156f5260c24a097c56119f9be8c798586aecc13afbcbe7b7e26bf8"
 dependencies = [
- "matches",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
 ]
 
 [[package]]
@@ -2250,6 +2271,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "idna"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e14ddfc70884202db2244c223200c204c2bda1bc6e0998d11b5e024d657209e6"
+dependencies = [
+ "unicode-bidi",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "if_chain"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2265,7 +2296,7 @@ dependencies = [
  "log 0.4.17",
  "serde",
  "serde_json",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -2277,6 +2308,17 @@ dependencies = [
  "autocfg",
  "hashbrown 0.12.1",
  "serde",
+]
+
+[[package]]
+name = "indicatif"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc42b206e70d86ec03285b123e65a5458c92027d1fb2ae3555878b8113b3ddf"
+dependencies = [
+ "console",
+ "number_prefix",
+ "unicode-width",
 ]
 
 [[package]]
@@ -2645,7 +2687,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -2923,6 +2965,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "number_prefix"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3092,9 +3140,9 @@ checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 
 [[package]]
 name = "percent-encoding"
-version = "2.1.0"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+checksum = "478c572c3d73181ff3c2539045f6eb99e5491218eae919370993b890cdbdd98e"
 
 [[package]]
 name = "petgraph"
@@ -3501,7 +3549,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.17",
  "mime 0.3.16",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "pin-project-lite",
  "rustls",
  "rustls-pemfile 1.0.0",
@@ -3513,7 +3561,7 @@ dependencies = [
  "tokio-socks",
  "tokio-util",
  "tower-service",
- "url 2.3.0",
+ "url 2.3.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3907,7 +3955,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.60.0"
+version = "0.61.0"
 dependencies = [
  "bencher",
  "bytes",
@@ -4035,7 +4083,7 @@ dependencies = [
  "rustc_version 0.2.3",
  "serde",
  "serde_json",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -4197,7 +4245,7 @@ dependencies = [
  "swc_visit",
  "tracing",
  "unicode-width",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -4626,6 +4674,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "633c1a546cee861a1a6d0dc69ebeca693bf4296661ba7852b9d21d159e0506df"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "test_ffi"
 version = "0.1.0"
 dependencies = [
@@ -4981,7 +5039,7 @@ dependencies = [
  "thiserror",
  "tinyvec",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -5065,7 +5123,7 @@ dependencies = [
  "rustls",
  "sha-1 0.9.8",
  "thiserror",
- "url 2.3.0",
+ "url 2.3.1",
  "utf-8",
  "webpki",
 ]
@@ -5232,13 +5290,13 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22fe195a4f217c25b25cb5058ced57059824a678474874038dc88d211bf508d3"
+checksum = "0d68c799ae75762b8c3fe375feb6600ef5602c883c5d21eb51c09f22b83c4643"
 dependencies = [
  "form_urlencoded",
- "idna 0.2.3",
- "percent-encoding 2.1.0",
+ "idna 0.3.0",
+ "percent-encoding 2.2.0",
  "serde",
 ]
 
@@ -5252,7 +5310,7 @@ dependencies = [
  "regex",
  "serde",
  "unic-ucd-ident",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
@@ -5709,7 +5767,7 @@ dependencies = [
  "hyper-rustls",
  "itertools",
  "log 0.4.17",
- "percent-encoding 2.1.0",
+ "percent-encoding 2.2.0",
  "rustls",
  "rustls-pemfile 0.3.0",
  "seahash",
@@ -5717,7 +5775,7 @@ dependencies = [
  "serde_json",
  "time 0.3.9",
  "tokio",
- "url 2.3.0",
+ "url 2.3.1",
 ]
 
 [[package]]
