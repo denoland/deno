@@ -63,6 +63,7 @@ impl CliModuleLoader {
   fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.as_str() == "node:module" {
       return Ok(ModuleCodeSource {
@@ -121,10 +122,13 @@ impl CliModuleLoader {
           media_type: *media_type,
         })
       }
-      _ => Err(anyhow!(
-        "Loading unprepared module: {}",
-        specifier.to_string()
-      )),
+      _ => {
+        let mut msg = format!("Loading unprepared module: {}", specifier);
+        if let Some(referrer) = maybe_referrer {
+          msg = format!("{}, imported from: {}", msg, referrer.as_str());
+        }
+        Err(anyhow!(msg))
+      }
     }
   }
 
@@ -164,7 +168,7 @@ impl CliModuleLoader {
         media_type: MediaType::from(specifier),
       }
     } else {
-      self.load_prepared_module(specifier)?
+      self.load_prepared_module(specifier, maybe_referrer)?
     };
     let code = if self.ps.options.is_inspecting() {
       // we need the code with the source map in order for
@@ -261,7 +265,7 @@ impl SourceMapGetter for CliModuleLoader {
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self.load_prepared_module(&specifier).ok()?;
+    let source = self.load_prepared_module(&specifier, None).ok()?;
     source_map_from_code(&source.code)
   }
 

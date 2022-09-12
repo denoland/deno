@@ -138,7 +138,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   },
   NodeModulePolyfill {
     name: "module",
-    specifier: "node/module.ts",
+    // NOTE(bartlomieju): `module` is special, because we don't want to use
+    // `deno_std/node/module.ts`, but instead use a special shim that we
+    // provide in `ext/node`.
+    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
   },
   NodeModulePolyfill {
     name: "net",
@@ -265,6 +268,13 @@ fn is_builtin_node_module(specifier: &str) -> bool {
 }
 
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
+  // NOTE(bartlomieju): `module` is special, because we don't want to use
+  // `deno_std/node/module.ts`, but instead use a special shim that we
+  // provide in `ext/node`.
+  if specifier == "module" {
+    return Ok(Url::parse("node:module").unwrap());
+  }
+
   if let Some(module) = find_builtin_node_module(specifier) {
     let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
     return Ok(module_url);
