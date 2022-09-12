@@ -942,6 +942,7 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "pin-project",
+ "polloi",
  "serde",
  "serde_json",
  "serde_v8",
@@ -3292,6 +3293,14 @@ dependencies = [
  "proc-macro2 1.0.43",
  "quote 1.0.21",
  "syn 1.0.99",
+]
+
+[[package]]
+name = "polloi"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "mio",
 ]
 
 [[package]]

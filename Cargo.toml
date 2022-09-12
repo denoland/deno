@@ -8,6 +8,7 @@ members = [
   "cli/napi_sym",
   "core",
   "ops",
+  "polloi",
   "runtime",
   "serde_v8",
   "test_ffi",
