@@ -394,11 +394,14 @@ async fn op_fsync_async(
 fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<FsStat, AnyError> {
+  out_buf: &mut [u8],
+) -> Result<(), AnyError> {
   let metadata = StdFileResource::with_file(state, rid, |std_file| {
     std_file.metadata().map_err(AnyError::from)
   })?;
-  Ok(get_stat(metadata))
+  let stat = get_stat(metadata);
+  stat.write(out_buf);
+  Ok(())
 }
 
 #[op]
@@ -834,19 +837,20 @@ fn op_copy_file_sync(
 
   #[cfg(target_os = "macos")]
   {
-    // std::fs::copy does open() + fcopyfile() on macOS. We try to use
-    // clonefile() instead, which is more efficient.
     use libc::chmod;
     use libc::clonefile;
-    use libc::unlink;
     use libc::stat;
+    use libc::unlink;
     use std::ffi::CString;
     use std::io::Read;
 
-    unsafe {
-      let from = CString::new(from).unwrap();
-      let to = CString::new(to).unwrap();
+    let from = CString::new(from).unwrap();
+    let to = CString::new(to).unwrap();
 
+    // SAFETY: `from` and `to` are valid C strings.
+    // std::fs::copy does open() + fcopyfile() on macOS. We try to use
+    // clonefile() instead, which is more efficient.
+    unsafe {
       let mut st = std::mem::zeroed();
       let ret = stat(from.as_ptr(), &mut st);
       if ret != 0 {
@@ -865,8 +869,10 @@ fn op_copy_file_sync(
         // Do a regular copy. fcopyfile() is an overkill for < 128KB
         // files.
         let mut buf = [0u8; 128 * 1024];
-        let mut from_file = std::fs::File::open(&from_path).map_err(err_mapper)?;
-        let mut to_file = std::fs::File::create(&to_path).map_err(err_mapper)?;
+        let mut from_file =
+          std::fs::File::open(&from_path).map_err(err_mapper)?;
+        let mut to_file =
+          std::fs::File::create(&to_path).map_err(err_mapper)?;
         loop {
           let nread = from_file.read(&mut buf).map_err(err_mapper)?;
           if nread == 0 {
@@ -902,7 +908,6 @@ async fn op_copy_file_async(
     permissions.write.check(&to)?;
   }
 
-  debug!("op_copy_file_async {} {}", from.display(), to.display());
   tokio::task::spawn_blocking(move || {
     // On *nix, Rust reports non-existent `from` as ErrorKind::InvalidInput
     // See https://github.com/rust-lang/rust/issues/54800
@@ -932,40 +937,70 @@ async fn op_copy_file_async(
   .unwrap()
 }
 
-fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> u64 {
   match maybe_time {
-    Ok(time) => {
-      let msec = time
-        .duration_since(UNIX_EPOCH)
-        .map(|t| t.as_millis() as u64)
-        .unwrap_or_else(|err| err.duration().as_millis() as u64);
-      Some(msec)
-    }
-    Err(_) => None,
+    Ok(time) => time
+      .duration_since(UNIX_EPOCH)
+      .map(|t| t.as_millis() as u64)
+      .unwrap_or_else(|err| err.duration().as_millis() as u64),
+    Err(_) => 0,
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FsStat {
-  is_file: bool,
-  is_directory: bool,
-  is_symlink: bool,
-  size: u64,
-  // In milliseconds, like JavaScript. Available on both Unix or Windows.
-  mtime: Option<u64>,
-  atime: Option<u64>,
-  birthtime: Option<u64>,
-  // Following are only valid under Unix.
-  dev: u64,
-  ino: u64,
-  mode: u32,
-  nlink: u64,
-  uid: u32,
-  gid: u32,
-  rdev: u64,
-  blksize: u64,
-  blocks: u64,
+macro_rules! create_struct_writer {
+  (pub struct $name:ident { $($field:ident: $type:ty),* $(,)? }) => {
+    impl $name {
+      fn write(self, buf: &mut [u8]) {
+        assert_eq!(buf.len() % std::mem::size_of::<u32>(), 0);
+        // SAFETY: size is multiple of 4
+        let buf = unsafe {
+          std::slice::from_raw_parts_mut(
+            buf.as_mut_ptr() as *mut u32,
+            buf.len() / std::mem::size_of::<u32>(),
+          )
+        };
+        let mut offset = 0;
+        $(
+          let value = self.$field as u64;
+          buf[offset] = value as u32;
+          buf[offset + 1] = (value >> 32) as u32;
+          #[allow(unused_assignments)]
+          {
+            offset += 2;
+          }
+        )*
+      }
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct $name {
+      $($field: $type),*
+    }
+  };
+}
+
+create_struct_writer! {
+  pub struct FsStat {
+    is_file: bool,
+    is_directory: bool,
+    is_symlink: bool,
+    size: u64,
+    // In milliseconds, like JavaScript. Available on both Unix or Windows.
+    mtime: u64,
+    atime: u64,
+    birthtime: u64,
+    // Following are only valid under Unix.
+    dev: u64,
+    ino: u64,
+    mode: u32,
+    nlink: u64,
+    uid: u32,
+    gid: u32,
+    rdev: u64,
+    blksize: u64,
+    blocks: u64,
+  }
 }
 
 #[inline(always)]
@@ -1034,34 +1069,7 @@ fn op_stat_sync(
   };
 
   let stat = get_stat(metadata);
-  let buf: &mut [u32] = unsafe { std::mem::transmute(out_buf) };
-  buf[0] = stat.is_file as u32;
-  buf[1] = stat.is_directory as u32;
-  buf[2] = stat.is_symlink as u32;
-  buf[3] = stat.size as u32;
-  buf[4] = stat.mtime.unwrap_or(0) as u32;
-  buf[5] = (stat.mtime.unwrap_or(0) >> 32) as u32;
-
-  buf[6] = stat.atime.unwrap_or(0) as u32;
-  buf[7] = (stat.atime.unwrap_or(0) >> 32) as u32;
-
-  buf[8] = stat.birthtime.unwrap_or(0) as u32;
-  buf[9] = (stat.birthtime.unwrap_or(0) >> 32) as u32;
-
-  buf[10] = stat.dev as u32;
-  buf[11] = (stat.dev >> 32) as u32;
-  buf[12] = stat.ino as u32;
-  buf[13] = (stat.ino >> 32) as u32;
-  buf[14] = stat.mode as u32;
-  buf[15] = stat.nlink as u32;
-  buf[16] = stat.uid as u32;
-  buf[17] = stat.gid as u32;
-  buf[18] = stat.rdev as u32;
-  buf[19] = (stat.rdev >> 32) as u32;
-  buf[20] = stat.blksize as u32;
-  buf[21] = (stat.blksize >> 32) as u32;
-  buf[22] = stat.blocks as u32;
-  buf[23] = (stat.blocks >> 32) as u32;
+  stat.write(out_buf);
 
   Ok(())
 }
@@ -1302,7 +1310,11 @@ async fn op_rename_async(
 }
 
 #[op]
-fn op_link_sync(state: &mut OpState, oldpath: String, newpath: String) -> Result<(), AnyError> {
+fn op_link_sync(
+  state: &mut OpState,
+  oldpath: String,
+  newpath: String,
+) -> Result<(), AnyError> {
   let oldpath = PathBuf::from(&oldpath);
   let newpath = PathBuf::from(&newpath);
 
@@ -1598,7 +1610,7 @@ async fn op_truncate_async(
   len: u64,
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&path);
-  
+
   {
     let mut state = state.borrow_mut();
     state.borrow_mut::<Permissions>().write.check(&path)?;
@@ -1805,7 +1817,7 @@ async fn op_make_temp_file_async(
 fn op_futime_sync(
   state: &mut OpState,
   rid: ResourceId,
-  atime_secs: i64, 
+  atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
@@ -1826,7 +1838,7 @@ fn op_futime_sync(
 async fn op_futime_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  atime_secs: i64, 
+  atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
   mtime_nanos: u32,
@@ -1844,12 +1856,12 @@ async fn op_futime_async(
 
 #[op]
 fn op_utime_sync(
-  state: &mut OpState, 
+  state: &mut OpState,
   path: String,
-  atime_secs: i64, 
+  atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
-  mtime_nanos: u32
+  mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.utime");
 
@@ -1868,10 +1880,10 @@ fn op_utime_sync(
 async fn op_utime_async(
   state: Rc<RefCell<OpState>>,
   path: String,
-  atime_secs: i64, 
+  atime_secs: i64,
   atime_nanos: u32,
   mtime_secs: i64,
-  mtime_nanos: u32
+  mtime_nanos: u32,
 ) -> Result<(), AnyError> {
   super::check_unstable(&state.borrow(), "Deno.utime");
 
