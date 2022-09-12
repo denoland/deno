@@ -187,13 +187,8 @@
   }
 
   function createByteStruct(types) {
-    // types can be "bool", "u32" or "u64"
+    // types can be "bool" or "u64"
     // "?u64" is an optional Date.
-    const typeSizes = {
-      u32: 1,
-      u64: 2,
-      bool: 1,
-    };
     let offset = 0;
     let str = "return {";
     for (let [name, type] of ObjectEntries(types)) {
@@ -202,7 +197,7 @@
 
       if (type == "u64") {
         if (!optional) {
-          str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32 ,`;
+          str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
         } else {
           str +=
             `${name}: view[${offset}] === 0 ? null : new Date(view[${offset}] + view[${
@@ -210,18 +205,20 @@
             }] * 2**32),`;
         }
       } else {
-        str += `${name}: ${type === "bool" ? "!!" : ""}view[${offset}],`;
+        str += `${name}: ${type === "bool" ? "!!" : ""}view[${offset}] + view[${
+          offset + 1
+        }] * 2**32,`;
       }
-      offset += typeSizes[type];
+      offset += 2;
     }
     str += "};";
     return [new Function("view", str), new Uint32Array(offset)];
   }
 
   const [statStruct, statBuf] = createByteStruct({
-    isFile: "u64",
-    isDirectory: "u64",
-    isSymlink: "u64",
+    isFile: "bool",
+    isDirectory: "bool",
+    isSymlink: "bool",
     size: "u64",
     mtime: "?u64",
     atime: "?u64",
