@@ -98,7 +98,11 @@
   }
 
   function tryPackage(requestPath, exts, isMain, originalPath) {
-    const pkg = core.ops.op_require_read_package_scope(requestPath).main;
+    const packageJsonPath = pathResolve(
+      requestPath,
+      "package.json",
+    );
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -135,12 +139,8 @@
         err.requestPath = originalPath;
         throw err;
       } else {
-        const jsonPath = pathResolve(
-          requestPath,
-          "package.json",
-        );
         node.globalThis.process.emitWarning(
-          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+          `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
             "Please either fix that or report it to the module author",
           "DeprecationWarning",
           "DEP0128",
