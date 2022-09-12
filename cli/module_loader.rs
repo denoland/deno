@@ -4,7 +4,6 @@ use crate::emit::emit_parsed_source;
 use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::node;
-use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::text_encoding::code_without_source_map;
 use crate::text_encoding::source_map_from_code;
