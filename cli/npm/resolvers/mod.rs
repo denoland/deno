@@ -27,7 +27,8 @@ use super::NpmRegistryApi;
 
 pub use self::common::LocalNpmPackageInfo;
 
-const FORK_STATE_ENV_VAR_NAME: &str = "DENO_INTERNAL_NODE_COMPAT_FORK_STATE";
+const FORK_STATE_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
 static IS_CHILD_PROCESS_FORK: Lazy<bool> =
   Lazy::new(|| std::env::var(FORK_STATE_ENV_VAR_NAME).is_ok());
