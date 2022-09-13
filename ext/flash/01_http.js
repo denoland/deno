@@ -541,7 +541,7 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || resp.then) {
+              if (resp instanceof Promise || typeof resp.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,
@@ -558,7 +558,19 @@
                 continue;
               }
             } catch (e) {
-              resp = await onError(e);
+              onError(e).then((resp) =>
+                handleResponse(
+                  req,
+                  resp,
+                  body,
+                  hasBody,
+                  method,
+                  serverId,
+                  i,
+                  respondFast,
+                  respondChunked,
+                )
+              );
             }
             handleResponse(
               req,
