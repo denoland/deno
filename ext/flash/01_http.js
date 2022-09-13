@@ -411,7 +411,7 @@
         }
         ws[_serverHandleIdleTimeout]();
       }
-    })().catch(console.error);
+    })();
   }
 
   async function serve(arg1, arg2) {
