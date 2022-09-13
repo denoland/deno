@@ -557,6 +557,18 @@
                 ).catch(onError);
                 continue;
               }
+
+              handleResponse(
+                req,
+                resp,
+                body,
+                hasBody,
+                method,
+                serverId,
+                i,
+                respondFast,
+                respondChunked,
+              );
             } catch (e) {
               onError(e).then((resp) =>
                 handleResponse(
@@ -572,17 +584,6 @@
                 )
               );
             }
-            handleResponse(
-              req,
-              resp,
-              body,
-              hasBody,
-              method,
-              serverId,
-              i,
-              respondFast,
-              respondChunked,
-            );
           }
 
           offset += tokens;
