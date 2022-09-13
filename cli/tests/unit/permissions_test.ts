@@ -86,3 +86,12 @@ Deno.test(async function permissionDescriptorValidation() {
     }
   }
 });
+
+// Regression test for https://github.com/denoland/deno/issues/15894.
+
+Deno.test(async function permissionDescriptorValidation() {
+  assert(
+    await Deno.permissions.query({ name: "env", variable: "A" }) !=
+      await Deno.permissions.query({ name: "env", variable: "B" }),
+  );
+});

@@ -2819,12 +2819,6 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
-// Regression test for https://github.com/denoland/deno/issues/15894.
-itest!(permission_status_env_cache_key {
-  args: "run permission_status_env_cache_key.ts",
-  output_str: Some(""),
-});
-
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
   output: "followup_dyn_import_resolves/main.ts.out",
