@@ -9,6 +9,7 @@ use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -137,7 +138,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   },
   NodeModulePolyfill {
     name: "module",
-    specifier: "node/module.ts",
+    // NOTE(bartlomieju): `module` is special, because we don't want to use
+    // `deno_std/node/module.ts`, but instead use a special shim that we
+    // provide in `ext/node`.
+    specifier: "[USE `deno_node::MODULE_ES_SHIM` to get this module]",
   },
   NodeModulePolyfill {
     name: "net",
@@ -264,6 +268,13 @@ fn is_builtin_node_module(specifier: &str) -> bool {
 }
 
 pub fn resolve_builtin_node_module(specifier: &str) -> Result<Url, AnyError> {
+  // NOTE(bartlomieju): `module` is special, because we don't want to use
+  // `deno_std/node/module.ts`, but instead use a special shim that we
+  // provide in `ext/node`.
+  if specifier == "module" {
+    return Ok(Url::parse("node:module").unwrap());
+  }
+
   if let Some(module) = find_builtin_node_module(specifier) {
     let module_url = NODE_COMPAT_URL.join(module.specifier).unwrap();
     return Ok(module_url);
@@ -534,9 +545,7 @@ fn package_config_resolve(
   referrer_kind: NodeModuleKind,
 ) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
-  let referrer =
-    ModuleSpecifier::from_directory_path(package_json_path.parent().unwrap())
-      .unwrap();
+  let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
@@ -734,17 +743,11 @@ pub fn translate_cjs_to_esm(
   let mut handled_reexports: HashSet<String> = HashSet::default();
 
   let mut source = vec![
-    r#"var window = undefined;"#.to_string(),
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
   let analysis = perform_cjs_analysis(specifier.as_str(), media_type, code)?;
 
-  let root_exports = analysis
-    .exports
-    .iter()
-    .map(|s| s.as_str())
-    .collect::<HashSet<_>>();
   let mut all_exports = analysis
     .exports
     .iter()
@@ -776,7 +779,16 @@ pub fn translate_cjs_to_esm(
     let reexport_specifier =
       ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
     // Second, read the source code from disk
-    let reexport_file = file_fetcher.get_source(&reexport_specifier).unwrap();
+    let reexport_file = file_fetcher
+      .get_source(&reexport_specifier)
+      .ok_or_else(|| {
+        anyhow!(
+          "Could not find '{}' ({}) referenced from {}",
+          reexport,
+          reexport_specifier,
+          referrer
+        )
+      })?;
 
     {
       let analysis = perform_cjs_analysis(
@@ -810,14 +822,8 @@ pub fn translate_cjs_to_esm(
       .replace('\"', "\\\"")
   ));
 
-  let mut had_default = false;
   for export in &all_exports {
-    if export.as_str() == "default" {
-      if root_exports.contains("__esModule") {
-        source.push(format!("export default mod[\"{}\"];", export));
-        had_default = true;
-      }
-    } else {
+    if export.as_str() != "default" {
       add_export(
         &mut source,
         export,
@@ -827,9 +833,7 @@ pub fn translate_cjs_to_esm(
     }
   }
 
-  if !had_default {
-    source.push("export default mod;".to_string());
-  }
+  source.push("export default mod;".to_string());
 
   let translated_source = source.join("\n");
   Ok(translated_source)
@@ -887,11 +891,21 @@ fn resolve(
       let d = module_dir.join(package_subpath);
       if let Ok(m) = d.metadata() {
         if m.is_dir() {
+          // subdir might have a package.json that specifies the entrypoint
+          let package_json_path = d.join("package.json");
+          if package_json_path.exists() {
+            let package_json =
+              PackageJson::load(npm_resolver, package_json_path)?;
+            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
+              return Ok(d.join(main).clean());
+            }
+          }
+
           return Ok(d.join("index.js").clean());
         }
       }
       return file_extension_probe(d, &referrer_path);
-    } else if let Some(main) = package_json.main {
+    } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
       return Ok(module_dir.join(main).clean());
     } else {
       return Ok(module_dir.join("index.js").clean());
@@ -909,7 +923,7 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   } else if specifier.starts_with('@') {
     // is_scoped = true;
     if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/');
+      separator_index = specifier[index + 1..].find('/').map(|i| i + index + 1);
     } else {
       valid_package_name = false;
     }
@@ -1040,5 +1054,13 @@ mod tests {
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
       ]
     )
+  }
+
+  #[test]
+  fn test_parse_specifier() {
+    assert_eq!(
+      parse_specifier("@some-package/core/actions"),
+      Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
   }
 }
