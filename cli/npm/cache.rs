@@ -18,10 +18,10 @@ use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::progress_bar::ProgressBar;
 
+use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
-use super::NpmPackageVersionDistInfo;
 
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
