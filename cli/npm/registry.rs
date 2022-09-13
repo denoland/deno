@@ -129,14 +129,6 @@ impl NpmRegistryApi {
   }
 
   pub fn new(
-    cache: NpmCache,
-    reload: bool,
-    cache_setting: CacheSetting,
-  ) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, cache_setting)
-  }
-
-  pub fn from_base(
     base_url: Url,
     cache: NpmCache,
     reload: bool,

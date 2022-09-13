@@ -471,6 +471,8 @@ impl NpmResolution {
     !self.snapshot.read().packages.is_empty()
   }
 
+  // todo(dsherret): for use in the lsp
+  #[allow(dead_code)]
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
   }

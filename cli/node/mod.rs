@@ -24,9 +24,9 @@ use deno_runtime::deno_node::legacy_main_resolve;
 use deno_runtime::deno_node::package_exports_resolve;
 use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
-use deno_runtime::deno_node::DenoDirNpmResolver;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
@@ -34,7 +34,6 @@ use path_clean::PathClean;
 use regex::Regex;
 
 use crate::file_fetcher::FileFetcher;
-use crate::npm::GlobalNpmPackageResolver;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
@@ -380,7 +379,7 @@ pub async fn initialize_binary_command(
 pub fn node_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
@@ -431,7 +430,7 @@ pub fn node_resolve(
 
 pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
-  npm_resolver: &GlobalNpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder = npm_resolver
     .resolve_package_from_deno_module(&reference.req)?
@@ -460,7 +459,7 @@ pub fn node_resolve_npm_reference(
 pub fn node_resolve_binary_export(
   pkg_req: &NpmPackageReq,
   bin_name: Option<&str>,
-  npm_resolver: &GlobalNpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
 ) -> Result<NodeResolution, AnyError> {
   let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
   let package_folder = pkg.folder_path;
@@ -541,7 +540,7 @@ pub fn load_cjs_module_from_ext_node(
 fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
   referrer_kind: NodeModuleKind,
 ) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
@@ -568,7 +567,7 @@ fn package_config_resolve(
 
 fn url_to_node_resolution(
   url: ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {
   Ok(if url.as_str().starts_with("http") {
     NodeResolution::Esm(url)
@@ -640,7 +639,7 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -721,7 +720,7 @@ pub fn translate_cjs_to_esm(
   specifier: &ModuleSpecifier,
   code: String,
   media_type: MediaType,
-  npm_resolver: &GlobalNpmPackageResolver,
+  npm_resolver: &NpmPackageResolver,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     specifier: &str,
@@ -843,7 +842,7 @@ fn resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if specifier.starts_with('/') {
     todo!();

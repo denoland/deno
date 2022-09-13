@@ -15,7 +15,7 @@ use regex::Regex;
 
 use crate::errors;
 use crate::package_json::PackageJson;
-use crate::DenoDirNpmResolver;
+use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
@@ -93,7 +93,7 @@ pub fn package_imports_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if name == "#" || name.starts_with("#/") || name.ends_with('/') {
     let reason = "is not a valid internal imports specifier name";
@@ -224,7 +224,7 @@ fn resolve_package_target_string(
   pattern: bool,
   internal: bool,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if !subpath.is_empty() && !pattern && !target.ends_with('/') {
     return Err(throw_invalid_package_target(
@@ -326,7 +326,7 @@ fn resolve_package_target(
   pattern: bool,
   internal: bool,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<PathBuf>, AnyError> {
   if let Some(target) = target.as_str() {
     return Ok(Some(resolve_package_target_string(
@@ -441,7 +441,7 @@ pub fn package_exports_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   if package_exports.contains_key(&package_subpath)
     && package_subpath.find('*').is_none()
@@ -592,7 +592,7 @@ pub fn package_resolve(
   referrer: &ModuleSpecifier,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
@@ -656,7 +656,7 @@ pub fn package_resolve(
 
 pub fn get_package_scope_config(
   referrer: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PackageJson, AnyError> {
   let root_folder = npm_resolver
     .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?;
@@ -666,7 +666,7 @@ pub fn get_package_scope_config(
 
 pub fn get_closest_package_json(
   url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PackageJson, AnyError> {
   let package_json_path = get_closest_package_json_path(url, npm_resolver)?;
   PackageJson::load(npm_resolver, package_json_path)
@@ -674,7 +674,7 @@ pub fn get_closest_package_json(
 
 fn get_closest_package_json_path(
   url: &ModuleSpecifier,
-  npm_resolver: &dyn DenoDirNpmResolver,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let file_path = url.to_file_path().unwrap();
   let mut current_dir = file_path.parent().unwrap();
