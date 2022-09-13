@@ -61,32 +61,11 @@ pub static NODE_GLOBAL_THIS_NAME: Lazy<String> = Lazy::new(|| {
 });
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
-  // List at https://nodejs.org/api/cli.html#environment-variables
+  // The full list of environment variables supported by Node.js is available
+  // at https://nodejs.org/api/cli.html#environment-variables
   let mut set = HashSet::new();
-  set.insert("FORCE_COLOR".to_string());
   set.insert("NODE_DEBUG".to_string());
-  set.insert("NODE_DEBUG_NATIVE".to_string());
-  set.insert("NODE_DISABLE_COLORS".to_string());
-  set.insert("NODE_EXTRA_CA_CERTS".to_string());
-  set.insert("NODE_ICU_DATA".to_string());
-  set.insert("NODE_NO_WARNINGS".to_string());
   set.insert("NODE_OPTIONS".to_string());
-  set.insert("NODE_PATH".to_string());
-  set.insert("NODE_PENDING_DEPRECATION".to_string());
-  set.insert("NODE_PENDING_PIPE_INSTANCES".to_string());
-  set.insert("NODE_PRESERVE_SYMLINKS".to_string());
-  set.insert("NODE_REDIRECT_WARNINGS".to_string());
-  set.insert("NODE_REPL_HISTORY".to_string());
-  set.insert("NODE_REPL_EXTERNAL_MODULE".to_string());
-  set.insert("NODE_SKIP_PLATFORM_CHECK".to_string());
-  set.insert("NODE_TLS_REJECT_UNAUTHORIZED".to_string());
-  set.insert("NODE_V8_COVERAGE".to_string());
-  set.insert("NO_COLOR".to_string());
-  set.insert("OPENSSL_CONF".to_string());
-  set.insert("SSL_CERT_DIR".to_string());
-  set.insert("SSL_CERT_FILE".to_string());
-  set.insert("TZ".to_string());
-  set.insert("UV_THREADPOOL_SIZE".to_string());
   set
 });
 
