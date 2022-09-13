@@ -30,7 +30,7 @@ pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
 }
 
-pub trait DenoDirNpmResolver {
+pub trait RequireNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
@@ -63,7 +63,7 @@ struct Unstable(pub bool);
 
 pub fn init<P: NodePermissions + 'static>(
   unstable: bool,
-  maybe_npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
+  maybe_npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -121,7 +121,7 @@ where
   P: NodePermissions + 'static,
 {
   let resolver = {
-    let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+    let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
     resolver.clone()
   };
   if resolver.ensure_read_permission(file_path).is_ok() {
@@ -287,7 +287,7 @@ fn op_require_resolve_deno_dir(
   parent_filename: String,
 ) -> Option<String> {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
   resolver
     .resolve_package_folder_from_package(
       &request,
@@ -300,7 +300,7 @@ fn op_require_resolve_deno_dir(
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>();
   resolver.in_npm_package(&PathBuf::from(path))
 }
 
@@ -470,7 +470,7 @@ fn op_require_try_self(
     return Ok(None);
   }
 
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let pkg = resolution::get_package_scope_config(
     &Url::from_file_path(parent_path.unwrap()).unwrap(),
     &*resolver,
@@ -552,7 +552,7 @@ fn op_require_resolve_exports(
   parent_path: String,
 ) -> Result<Option<String>, AnyError> {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
 
   let pkg_path = if resolver.in_npm_package(&PathBuf::from(&modules_path)) {
     modules_path
@@ -594,7 +594,7 @@ where
     state,
     PathBuf::from(&filename).parent().unwrap(),
   )?;
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   resolution::get_closest_package_json(
     &Url::from_file_path(filename).unwrap(),
     &*resolver,
@@ -607,7 +607,7 @@ fn op_require_read_package_scope(
   package_json_path: String,
 ) -> Option<PackageJson> {
   check_unstable(state);
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let package_json_path = PathBuf::from(package_json_path);
   PackageJson::load(&*resolver, package_json_path).ok()
 }
@@ -624,7 +624,7 @@ where
   check_unstable(state);
   let parent_path = PathBuf::from(&parent_filename);
   ensure_read_permission::<P>(state, &parent_path)?;
-  let resolver = state.borrow::<Rc<dyn DenoDirNpmResolver>>().clone();
+  let resolver = state.borrow::<Rc<dyn RequireNpmResolver>>().clone();
   let pkg = PackageJson::load(&*resolver, parent_path.join("package.json"))?;
 
   if pkg.imports.is_some() {
