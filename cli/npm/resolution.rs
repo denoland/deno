@@ -166,9 +166,50 @@ pub struct NpmResolutionPackage {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
+  #[serde(with = "map_to_vec")]
   package_reqs: HashMap<NpmPackageReq, NpmVersion>,
   packages_by_name: HashMap<String, Vec<NpmVersion>>,
+  #[serde(with = "map_to_vec")]
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+}
+
+// This is done so the maps with non-string keys get serialized and deserialized as vectors.
+// Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
+mod map_to_vec {
+  use std::collections::HashMap;
+
+  use serde::de::Deserialize;
+  use serde::de::Deserializer;
+  use serde::ser::Serializer;
+  use serde::Serialize;
+
+  pub fn serialize<S, K: Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.collect_seq(map.iter())
+  }
+
+  pub fn deserialize<
+    'de,
+    D,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+  >(
+    deserializer: D,
+  ) -> Result<HashMap<K, V>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let mut map = HashMap::new();
+    for (key, value) in Vec::<(K, V)>::deserialize(deserializer)? {
+      map.insert(key, value);
+    }
+    Ok(map)
+  }
 }
 
 impl NpmResolutionSnapshot {

@@ -104,6 +104,13 @@ itest!(dual_cjs_esm {
   http_server: true,
 });
 
+itest!(child_process_fork_test {
+  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  output: "npm/child_process_fork_test/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
