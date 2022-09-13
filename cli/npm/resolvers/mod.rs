@@ -5,8 +5,12 @@ mod global;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
+use deno_core::serde_json;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
+use once_cell::sync::Lazy;
+use serde::Deserialize;
+use serde::Serialize;
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -16,11 +20,43 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 
 use self::common::InnerNpmPackageResolver;
+use super::resolution::NpmResolutionSnapshot;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
 
 pub use self::common::LocalNpmPackageInfo;
+
+const FORK_STATE_ENV_VAR_NAME: &str = "DENO_NODE_COMPAT_FORK_STATE";
+
+static IS_CHILD_PROCESS_FORK: Lazy<bool> =
+  Lazy::new(|| std::env::var(FORK_STATE_ENV_VAR_NAME).is_ok());
+
+/// State used for child_process.fork
+#[derive(Debug, Serialize, Deserialize)]
+struct ForkNpmState {
+  snapshot: NpmResolutionSnapshot,
+}
+
+impl ForkNpmState {
+  pub fn was_set() -> bool {
+    *IS_CHILD_PROCESS_FORK
+  }
+
+  pub fn take() -> Option<ForkNpmState> {
+    // initialize the lazy before we remove the env var below
+    if !Self::was_set() {
+      return None;
+    }
+
+    let state = std::env::var(FORK_STATE_ENV_VAR_NAME).ok()?;
+    let state = serde_json::from_str(&state).ok()?;
+    // remove the environment variable so that sub processes
+    // that are spawned do not also use this.
+    std::env::remove_var(FORK_STATE_ENV_VAR_NAME);
+    Some(state)
+  }
+}
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
@@ -38,7 +74,11 @@ impl NpmPackageResolver {
   ) -> Self {
     // For now, always create a GlobalNpmPackageResolver, but in the future
     // this might be a local node_modules folder
-    let inner = Arc::new(GlobalNpmPackageResolver::new(cache, api));
+    let inner = Arc::new(GlobalNpmPackageResolver::new(
+      cache,
+      api,
+      ForkNpmState::take().map(|s| s.snapshot),
+    ));
     Self {
       unstable,
       no_npm,
@@ -112,6 +152,18 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await
+  }
+
+  pub fn is_child_process_fork(&self) -> bool {
+    ForkNpmState::was_set()
+  }
+
+  /// Gets the state to use when doing a child_process.fork
+  pub fn get_fork_state(&self) -> String {
+    serde_json::to_string(&ForkNpmState {
+      snapshot: self.inner.snapshot(),
+    })
+    .unwrap()
   }
 }
 

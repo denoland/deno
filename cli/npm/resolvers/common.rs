@@ -8,6 +8,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
+use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
@@ -46,6 +47,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+
+  fn snapshot(&self) -> NpmResolutionSnapshot;
 }
 
 /// Caches all the packages in parallel.
