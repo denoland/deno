@@ -842,6 +842,23 @@ impl UnaryPermission<EnvDescriptor> {
     result
   }
 
+  pub fn check_with_api(&mut self, env: &str, _api: &'static str) -> Result<(), AnyError> {
+    let (result, prompted) = self.query(Some(env)).check(
+      self.name,
+      Some(&format!("\"{}\"", env)),
+      self.prompt,
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(EnvDescriptor::new(env));
+      } else {
+        self.denied_list.insert(EnvDescriptor::new(env));
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     let (result, prompted) =
       self.query(None).check(self.name, Some("all"), self.prompt);
@@ -2067,13 +2084,21 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     return false; // don't grant permission if this fails
   }
 
-  let opts = "[y/n (y = yes allow, n = no deny)] ";
-  let msg = format!(
-    "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
-    PERMISSION_EMOJI, message, name, opts
-  );
   // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", colors::bold(&msg));
+  const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
+  eprint!("{}  ", PERMISSION_EMOJI);
+  eprint!("{}", colors::bold("Deno requests "));
+  eprint!("{}", colors::bold(message));
+  eprintln!("{}", colors::bold(". "));
+  eprintln!(" {}", colors::italic("  ├ Requested by `Deno.env.get()` API."));
+  let msg = format!("   ├ Run again with --allow-{} to bypass this prompt.", name);
+  eprintln!("{}", colors::italic(&msg));
+  // eprint!("   {}Run again with --allow-");
+  // eprint!("{}", name);
+  // eprintln!("");
+  // eprintln!("  ├{}", colors::italic("Run again with --trace-ops to see where this request is coming from."));
+  eprint!("   └ {}", colors::bold("Allow?"));
+  eprint!(" {} > ", OPTS);
   loop {
     let mut input = String::new();
     let stdin = std::io::stdin();
@@ -2086,11 +2111,19 @@ fn permission_prompt(message: &str, name: &str) -> bool {
       Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
-      'y' => return true,
-      'n' => return false,
+      'y' => {
+        eprint!("\x1B[4A\x1B[0J");
+        eprintln!("✅ {}", colors::bold("Granted env access to \"FOO\"."));
+        return true;
+      },
+      'n' => {
+        eprint!("\x1B[4A\x1B[0J");
+        eprintln!("❌ {}", colors::bold("Denied env access to \"FOO\"."));
+        return false;
+      },
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
+        let msg_again = format!("Unrecognized option '{}' {}", ch, OPTS);
         eprint!("{}", colors::bold(&msg_again));
       }
     };

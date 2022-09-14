@@ -105,7 +105,7 @@ fn op_get_env(
       && NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<Permissions>().env.check(&key)?;
+    state.borrow_mut::<Permissions>().env.check_with_api(&key, "Deno.env.get()")?;
   }
 
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
