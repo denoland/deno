@@ -1901,13 +1901,12 @@ Deno.test(
       onError: createOnErrorCb(ac),
     });
 
-    await listeningPromise;
-    const resp = await fetch("http://127.0.0.1:4501/", {
-      method: "GET",
-      headers: { "connection": "close" },
-    });
-
     try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
       assertEquals(resp.headers.get("Content-Length"), undefined);
     } finally {
       ac.abort();
