@@ -1910,7 +1910,7 @@ Deno.test(
         method: "GET",
         headers: { "connection": "close" },
       });
-      assertEquals(resp.headers.get("Content-Length"), undefined);
+      assertEquals(resp.headers.get("Content-Length"), null);
     } finally {
       ac.abort();
       await server;
