@@ -153,6 +153,7 @@
 
     // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
     if (status === 204 || status < 200) {
+      str += "\r\n";
       return str;
     }
 
