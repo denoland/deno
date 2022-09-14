@@ -17,6 +17,6 @@ console.log(esmDefault);
 console.log(esmNamespace);
 console.log("===========================");
 
-console.log(cjsDefault());
+console.log(cjsDefault.default());
 console.log(esmDefault());
 console.log(MyCjsClass.someStaticMethod());

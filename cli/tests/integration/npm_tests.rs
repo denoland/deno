@@ -402,6 +402,13 @@ itest!(deno_run_non_existent {
   exit_code: 1,
 });
 
+itest!(builtin_module_module {
+  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  output: "npm/builtin_module_module/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
