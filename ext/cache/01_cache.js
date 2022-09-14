@@ -4,7 +4,6 @@
 ((window) => {
   const core = window.__bootstrap.core;
   const {
-    ArrayPrototypeFrom,
     PromiseResolve,
     PromiseReject,
     TypeError,
@@ -194,14 +193,17 @@
         // as we don't expose matchAll() API.
         return responses;
       } else {
-        const result = await core.opAsync("op_cache_match", {
-          cacheId: this.#id,
-          requestUrl: r.url,
-          requestHeaders: ArrayPrototypeFrom(r.headers.entries()),
-        });
-        if (result) {
+        const matchResult = await core.opAsync(
+          "op_cache_match",
+          {
+            cacheId: this.#id,
+            requestUrl: r.url,
+          },
+        );
+        if (matchResult) {
+          const [responseMeta, responseBodyRid] = matchResult;
           let body = null;
-          if (result.responseBodyRid !== null) {
+          if (responseBodyRid !== null) {
             body = new ReadableStream({
               type: "bytes",
               async pull(controller) {
@@ -209,7 +211,7 @@
                   // This is the largest possible size for a single packet on a TLS
                   // stream.
                   const chunk = new Uint8Array(16 * 1024 + 256);
-                  const read = await core.read(result.responseBodyRid, chunk);
+                  const read = await core.read(responseBodyRid, chunk);
                   if (read > 0) {
                     // We read some data. Enqueue it onto the stream.
                     controller.enqueue(chunk.subarray(0, read));
@@ -230,9 +232,9 @@
           const response = new Response(
             body,
             {
-              headers: result.responseHeaders,
-              status: result.responseStatus,
-              statusText: result.responseStatusText,
+              headers: responseMeta.responseHeaders,
+              status: responseMeta.responseStatus,
+              statusText: responseMeta.responseStatusText,
             },
           );
           responses.push(response);

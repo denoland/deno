@@ -1,21 +1,21 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-mod sqlite_cache;
-
-pub use sqlite_cache::SqliteBackedCache;
+mod sqlite;
+pub use sqlite::SqliteBackedCache;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::Extension;
-use std::path::PathBuf;
-
-use deno_core::op;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
+
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 #[async_trait]
@@ -27,11 +27,14 @@ pub trait Cache: Clone {
   async fn put(
     &self,
     request_response: CachePutRequest,
-  ) -> Result<Option<ResourceId>, AnyError>;
+  ) -> Result<Option<Rc<dyn Resource>>, AnyError>;
   async fn r#match(
     &self,
     request: CacheMatchRequest,
-  ) -> Result<Option<CacheMatchResponse>, AnyError>;
+  ) -> Result<
+    Option<(CacheMatchResponseMeta, Option<Rc<dyn Resource>>)>,
+    AnyError,
+  >;
   async fn delete(&self, request: CacheDeleteRequest)
     -> Result<bool, AnyError>;
 }
@@ -89,17 +92,18 @@ pub struct CachePutRequest {
 pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
-  pub response_headers: Vec<(String, String)>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CacheMatchResponse {
+pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheMatchResponseMeta {
   pub response_status: u16,
   pub response_status_text: String,
   pub response_headers: Vec<(String, String)>,
-  pub response_body_key: Option<String>,
-  pub response_body_rid: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -118,7 +122,13 @@ where
   CA: Cache + 'static,
 {
   let cache = state.borrow().borrow::<CA>().clone();
-  cache.put(request_response).await
+  match cache.put(request_response).await? {
+    Some(resource) => {
+      let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
+      Ok(Some(rid))
+    }
+    None => Ok(None),
+  }
 }
 
 #[op]
@@ -130,7 +140,14 @@ where
   CA: Cache + 'static,
 {
   let cache = state.borrow().borrow::<CA>().clone();
-  cache.r#match(request).await
+  match cache.r#match(request).await? {
+    Some((meta, None)) => Ok(Some(CacheMatchResponse(meta, None))),
+    Some((meta, Some(resource))) => {
+      let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
+      Ok(Some(CacheMatchResponse(meta, Some(rid))))
+    }
+    None => Ok(None),
+  }
 }
 
 #[op]
