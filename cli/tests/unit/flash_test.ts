@@ -554,20 +554,17 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
     onError: createOnErrorCb(ac),
   });
 
-  try {
-    await listeningPromise;
-    const def = deferred();
-    const ws = new WebSocket("ws://localhost:4501");
-    ws.onmessage = (m) => assertEquals(m.data, "foo");
-    ws.onerror = () => fail();
-    ws.onclose = () => def.resolve();
-    ws.onopen = () => ws.send("foo");
+  await listeningPromise;
+  const def = deferred();
+  const ws = new WebSocket("ws://localhost:4501");
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = () => fail();
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
 
-    await def;
-  } finally {
-    ac.abort();
-    await server;
-  }
+  await def;
+  ac.abort();
+  await server;
 });
 
 Deno.test(
