@@ -2,7 +2,7 @@
 
 use crate::NodeModuleKind;
 
-use super::DenoDirNpmResolver;
+use super::RequireNpmResolver;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -44,7 +44,7 @@ impl PackageJson {
   }
 
   pub fn load(
-    resolver: &dyn DenoDirNpmResolver,
+    resolver: &dyn RequireNpmResolver,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(&path)?;

@@ -133,7 +133,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_resolver.get_cache_location();
+  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
