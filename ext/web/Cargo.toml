@@ -20,7 +20,7 @@ deno_core = { version = "0.150.0", path = "../../core" }
 encoding_rs = "0.8.31"
 flate2 = "1"
 serde = "1.0.136"
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 
 [dev-dependencies]

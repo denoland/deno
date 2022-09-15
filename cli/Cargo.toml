@@ -101,8 +101,8 @@ shell-escape = "=0.1.5"
 tar = "=0.4.38"
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
-tokio = { version = "=1.19", features = ["full"] }
-tokio-util = "=0.7.2"
+tokio = { version = "1.21", features = ["full"] }
+tokio-util = "0.7"
 tower-lsp = "=0.17.0"
 twox-hash = "=1.6.2"
 typed-arena = "2.0.1"

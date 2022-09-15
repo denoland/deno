@@ -33,8 +33,8 @@ percent-encoding = "2.2.0"
 phf = { version = "0.10", features = ["macros"] }
 ring = "0.16.20"
 serde = { version = "1.0.136", features = ["derive"] }
-tokio = { version = "1.17", features = ["full"] }
-tokio-util = { version = "0.7.1", features = ["io"] }
+tokio = { version = "1.21", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 
 [dev-dependencies]
 bencher = "0.1"
