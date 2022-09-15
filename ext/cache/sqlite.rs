@@ -58,82 +58,108 @@ impl SqliteBackedCache {
 
 #[async_trait]
 impl Cache for SqliteBackedCache {
+  /// Open a cache storage. Internally, this creates a row in the sqlite if the
+  /// cache doesn't exist and returns the internal id of the cache.
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
-    let db = self.0.lock();
-    db.execute(
-      "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
-      params![cache_name],
-    )?;
-    let cache_id = db.query_row(
-      "SELECT id FROM cache_storage WHERE cache_name = ?1",
-      params![cache_name],
-      |row| {
-        let id: i64 = row.get(0)?;
-        Ok(id)
-      },
-    )?;
-    Ok(cache_id)
+    let db = self.0.clone();
+    tokio::task::spawn_blocking(move || {
+      let db = db.lock();
+      db.execute(
+        "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
+        params![cache_name],
+      )?;
+      let cache_id = db.query_row(
+        "SELECT id FROM cache_storage WHERE cache_name = ?1",
+        params![cache_name],
+        |row| {
+          let id: i64 = row.get(0)?;
+          Ok(id)
+        },
+      )?;
+      Ok::<i64, AnyError>(cache_id)
+    })
+    .await?
   }
 
+  /// Check if a cache with the provided name exists. Note: this doesn't check
+  /// the disk, it only checks the sqlite db.
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError> {
-    let db = self.0.lock();
-    let cache_exists = db.query_row(
-      "SELECT count(cache_name) FROM cache_storage WHERE cache_name = ?1",
-      params![cache_name],
-      |row| {
-        let count: i64 = row.get(0)?;
-        Ok(count > 0)
-      },
-    )?;
-    Ok(cache_exists)
+    let db = self.0.clone();
+    tokio::task::spawn_blocking(move || {
+      let db = db.lock();
+      let cache_exists = db.query_row(
+        "SELECT count(cache_name) FROM cache_storage WHERE cache_name = ?1",
+        params![cache_name],
+        |row| {
+          let count: i64 = row.get(0)?;
+          Ok(count > 0)
+        },
+      )?;
+      // TODO(@satyarohith): check if cache exists on disk.
+      Ok::<bool, AnyError>(cache_exists)
+    })
+    .await?
   }
 
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
-    let db = self.0.lock();
-    let mut stmt =
-      db.prepare("DELETE FROM cache_storage WHERE cache_name = ?1")?;
-    let rows_effected = stmt.execute([cache_name])?;
-    let deleted = rows_effected > 0;
-    Ok(deleted)
+    let db = self.0.clone();
+    tokio::task::spawn_blocking(move || {
+      let db = db.lock();
+      let rows_effected = db.execute(
+        "DELETE FROM cache_storage WHERE cache_name = ?1",
+        params![cache_name],
+      )?;
+      // TODO(@satyarohith): delete assets related to cache from disk.
+      Ok::<bool, AnyError>(rows_effected > 0)
+    })
+    .await?
   }
 
   async fn put(
     &self,
     request_response: CachePutRequest,
   ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
-    let response_body_key = if request_response.response_has_body {
-      Some(format!("responses/{}", hash(&request_response.request_url)))
-    } else {
-      None
-    };
-    let maybe_response_body = {
-      let db = self.0.lock();
-      db.query_row(
-        "INSERT OR REPLACE INTO request_response_list
-             (cache_id, request_url, request_headers, response_headers, response_body_key, response_status, response_status_text)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             RETURNING response_body_key",
-        (
-          request_response.cache_id,
-          &request_response.request_url,
-          serde_json::to_string(&request_response.request_headers)?,
-          serde_json::to_string(&request_response.response_headers)?,
-          response_body_key,
-          &request_response.response_status,
-          &request_response.response_status_text,
-        ),
-        |row| {
-          let response_body_key: Option<String> = row.get(0)?;
-          Ok(response_body_key)
-        },
-      )?
-    };
-    if let Some(body_key) = maybe_response_body {
-      let path = std::env::current_dir().unwrap().join(body_key);
-      let parent = path.parent().unwrap();
-      if !parent.exists() {
-        std::fs::create_dir_all(&parent)?;
+    let db = self.0.clone();
+    let maybe_body_path = tokio::task::spawn_blocking(move || {
+      let response_body_key = if request_response.response_has_body {
+        Some(format!("responses/{}", hash(&request_response.request_url)))
+      } else {
+        None
+      };
+      let maybe_response_body = {
+        let db = db.lock();
+        db.query_row(
+          "INSERT OR REPLACE INTO request_response_list
+               (cache_id, request_url, request_headers, response_headers, response_body_key, response_status, response_status_text)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+               RETURNING response_body_key",
+          (
+            request_response.cache_id,
+            &request_response.request_url,
+            serde_json::to_string(&request_response.request_headers)?,
+            serde_json::to_string(&request_response.response_headers)?,
+            response_body_key,
+            &request_response.response_status,
+            &request_response.response_status_text,
+          ),
+          |row| {
+            let response_body_key: Option<String> = row.get(0)?;
+            Ok(response_body_key)
+          },
+        )?
+      };
+      if let Some(body_key) = maybe_response_body {
+        let path = std::env::current_dir()?.join(body_key);
+        let parent = path.parent().unwrap();
+        if !parent.exists() {
+          std::fs::create_dir_all(&parent)?;
+        }
+        Ok::<Option<PathBuf>, AnyError>(Some(path))
+      } else {
+        Ok::<Option<PathBuf>, AnyError>(None)
       }
+    }).await??;
+    if let Some(path) = maybe_body_path {
       let file = tokio::fs::File::create(path).await?;
       Ok(Some(Rc::new(CachePutResource::new(file))))
     } else {
@@ -148,34 +174,28 @@ impl Cache for SqliteBackedCache {
     Option<(CacheMatchResponseMeta, Option<Rc<dyn Resource>>)>,
     AnyError,
   > {
-    let (cache_meta, response_body_key) = {
-      let db = self.0.lock();
-      db.query_row(
-      "SELECT response_body_key, response_headers, response_status, response_status_text
-           FROM request_response_list
-           WHERE cache_id = ?1 AND request_url = ?2",
-      (request.cache_id, &request.request_url),
-      |row| {
-        let response_body_key: Option<String> = row.get(0)?;
-        let response_headers: String = row.get(1)?;
-        let response_status: u16 = row.get(2)?;
-        let response_status_text: String = row.get(3)?;
-        let response_headers: Vec<(String, String)> = serde_json::from_str(&response_headers).expect("malformed response headers from db");
+    let db = self.0.clone();
+    let (cache_meta, response_body_key) = tokio::task::spawn_blocking(move || {
+      let db = db.lock();
+      let result = db.query_row(
+        "SELECT response_body_key, response_headers, response_status, response_status_text
+             FROM request_response_list
+             WHERE cache_id = ?1 AND request_url = ?2",
+        (request.cache_id, &request.request_url),
+        |row| {
+          let response_body_key: Option<String> = row.get(0)?;
+          let response_headers: String = row.get(1)?;
+          let response_status: u16 = row.get(2)?;
+          let response_status_text: String = row.get(3)?;
+          let response_headers: Vec<(String, String)> = serde_json::from_str(&response_headers).expect("malformed response headers from db");
+          Ok((CacheMatchResponseMeta {response_headers,response_status,response_status_text}, response_body_key))
+        },
+      )?;
+      Ok::<(CacheMatchResponseMeta, Option<String>), AnyError>(result)
+    })
+    .await??;
 
-        Ok((
-          CacheMatchResponseMeta {
-            response_headers,
-            response_status,
-            response_status_text,
-          },
-          response_body_key,
-        ))
-      },
-    )?
-    };
-
-    if let Some(body) = response_body_key {
-      let path = std::env::current_dir().unwrap().join(body);
+    if let Some(path) = response_body_key {
       let file = tokio::fs::File::open(path).await?;
       return Ok(Some((
         cache_meta,
@@ -190,15 +210,17 @@ impl Cache for SqliteBackedCache {
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, AnyError> {
-    // TODO(@satyarohith): remove the response body from disk if one exists
-    let db = self.0.lock();
-    let rows_effected = db.execute(
-      "DELETE FROM request_response_list
-         WHERE cache_id = ?1 AND request_url = ?2",
-      (request.cache_id, &request.request_url),
-    )?;
-    let deleted = rows_effected > 0;
-    Ok(deleted)
+    let db = self.0.clone();
+    tokio::task::spawn_blocking(move || {
+      // TODO(@satyarohith): remove the response body from disk if one exists
+      let db = db.lock();
+      let rows_effected = db.execute(
+        "DELETE FROM request_response_list WHERE cache_id = ?1 AND request_url = ?2",
+        (request.cache_id, &request.request_url),
+      )?;
+      Ok::<bool, AnyError>(rows_effected > 0)
+    })
+    .await?
   }
 }
 
