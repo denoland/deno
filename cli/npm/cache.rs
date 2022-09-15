@@ -179,10 +179,6 @@ impl NpmCache {
     }
   }
 
-  pub fn as_readonly(&self) -> ReadonlyNpmCache {
-    self.readonly.clone()
-  }
-
   pub async fn ensure_package(
     &self,
     id: &NpmPackageId,

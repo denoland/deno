@@ -219,10 +219,7 @@ impl ProcState {
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
     let registry_url = NpmRegistryApi::default_url();
-    let npm_cache = NpmCache::from_deno_dir(
-      &dir,
-      cli_options.cache_setting(),
-    );
+    let npm_cache = NpmCache::from_deno_dir(&dir, cli_options.cache_setting());
     let api = NpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
@@ -235,7 +232,7 @@ impl ProcState {
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
-      cli_options.no_npm(),
+      false,
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
