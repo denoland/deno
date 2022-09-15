@@ -96,7 +96,7 @@ rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 semver = "1.0"
 serde = { version = "=1.0.144", features = ["derive"] }
-serde_repr = "=0.1.8"
+serde_repr = "=0.1.9"
 shell-escape = "=0.1.5"
 tar = "=0.4.38"
 text-size = "=1.1.0"
