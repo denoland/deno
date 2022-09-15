@@ -937,13 +937,16 @@ async fn op_copy_file_async(
   .unwrap()
 }
 
-fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> u64 {
+fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> (u64, bool) {
   match maybe_time {
-    Ok(time) => time
-      .duration_since(UNIX_EPOCH)
-      .map(|t| t.as_millis() as u64)
-      .unwrap_or_else(|err| err.duration().as_millis() as u64),
-    Err(_) => 0,
+    Ok(time) => (
+      time
+        .duration_since(UNIX_EPOCH)
+        .map(|t| t.as_millis() as u64)
+        .unwrap_or_else(|err| err.duration().as_millis() as u64),
+      true,
+    ),
+    Err(_) => (0, false),
   }
 }
 
@@ -987,8 +990,11 @@ create_struct_writer! {
     is_symlink: bool,
     size: u64,
     // In milliseconds, like JavaScript. Available on both Unix or Windows.
+    mtime_set: bool,
     mtime: u64,
+    atime_set: bool,
     atime: u64,
+    birthtime_set: bool,
     birthtime: u64,
     // Following are only valid under Unix.
     dev: u64,
@@ -1021,15 +1027,22 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
 
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
+  let (mtime, mtime_set) = to_msec(metadata.modified());
+  let (atime, atime_set) = to_msec(metadata.accessed());
+  let (birthtime, birthtime_set) = to_msec(metadata.created());
+
   FsStat {
     is_file: metadata.is_file(),
     is_directory: metadata.is_dir(),
     is_symlink: metadata.file_type().is_symlink(),
     size: metadata.len(),
     // In milliseconds, like JavaScript. Available on both Unix or Windows.
-    mtime: to_msec(metadata.modified()),
-    atime: to_msec(metadata.accessed()),
-    birthtime: to_msec(metadata.created()),
+    mtime_set,
+    mtime,
+    atime_set,
+    atime,
+    birthtime_set,
+    birthtime,
     // Following are only valid under Unix.
     dev: usm!(dev),
     ino: usm!(ino),

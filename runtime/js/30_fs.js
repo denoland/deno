@@ -186,6 +186,25 @@
     );
   }
 
+  // Extract the FsStat object from the encoded buffer.
+  // See `runtime/ops/fs.rs` for the encoder.
+  //
+  // This is not a general purpose decoder. There are 4 types:
+  //
+  // 1. date
+  //  offset += 4
+  //  1/0 | extra padding | high u32 | low u32
+  //  if date[0] == 1, new Date(u64) else null
+  //
+  // 2. bool
+  //  offset += 2
+  //  1/0 | extra padding
+  //
+  // 3. u64
+  //  offset += 2
+  //  high u32 | low u32
+  //
+  // 4. ?u64 converts a zero u64 value to JS null on Windows.
   function createByteStruct(types) {
     // types can be "date", "bool" or "u64".
     // `?` prefix means optional on windows.
@@ -207,10 +226,10 @@
           }] * 2**32) || null),`;
         }
       } else if (type == "date") {
-        str +=
-          `${name}: view[${offset}] === 0 ? null : new Date(view[${offset}] + view[${
-            offset + 1
-          }] * 2**32),`;
+        str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
+          offset + 2
+        }] + view[${offset + 3}] * 2**32),`;
+        offset += 2;
       } else {
         str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
       }
@@ -246,9 +265,11 @@
       isDirectory: response.isDirectory,
       isSymlink: response.isSymlink,
       size: response.size,
-      mtime: response.mtime != 0 ? new Date(response.mtime) : null,
-      atime: response.atime != 0 ? new Date(response.atime) : null,
-      birthtime: response.birthtime != 0 ? new Date(response.birthtime) : null,
+      mtime: response.mtimeSet != null ? new Date(response.mtime) : null,
+      atime: response.atimeSet != 0 ? new Date(response.atime) : null,
+      birthtime: response.birthtimeSet != 0
+        ? new Date(response.birthtime)
+        : null,
       // Only non-null if on Unix
       dev: unix ? response.dev : null,
       ino: unix ? response.ino : null,
