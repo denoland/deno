@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.25.3 / 2022.09.15
 
-- Revert "docs: remove unstable messages" (#15886)
 - doc(unstable): mention that `signal` input isn't supported in `spawnSync`
   (#15889)
 - fix(ext/flash): don't block requests (#15852)
