@@ -849,7 +849,7 @@ dependencies = [
  "ring",
  "rustyline",
  "rustyline-derive",
- "semver 1.0.13",
+ "semver 1.0.14",
  "serde",
  "serde_repr",
  "shell-escape",
@@ -3665,7 +3665,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver 1.0.13",
+ "semver 1.0.14",
 ]
 
 [[package]]
@@ -3858,9 +3858,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.13"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93f6841e709003d68bb2deee8c343572bf446003ec20a583e76f7b15cebf3711"
+checksum = "e25dfac463d778e353db5be2449d1cce89bd6fd23c9f1ea21310ce6e5a1b29c4"
 
 [[package]]
 name = "semver-parser"
@@ -4697,7 +4697,7 @@ dependencies = [
  "reqwest",
  "ring",
  "rustls-pemfile 1.0.1",
- "semver 1.0.13",
+ "semver 1.0.14",
  "serde",
  "serde_json",
  "tar",
