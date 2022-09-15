@@ -37,6 +37,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required.
@@ -73,6 +74,7 @@ declare namespace Deno {
   export function bench(t: BenchDefinition): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required.
@@ -99,6 +101,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required. Declared function must have a name.
@@ -122,6 +125,7 @@ declare namespace Deno {
   export function bench(fn: () => void | Promise<void>): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required.
@@ -149,6 +153,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required.
@@ -175,6 +180,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Register a bench which will be run when `deno bench` is used on the command
    * line and the containing module looks like a bench module.
    * `fn` can be async if required. Declared function must have a name.
@@ -201,6 +207,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
    * This call always returns what the umask was before the call.
    *
@@ -220,6 +227,7 @@ declare namespace Deno {
   export function umask(mask?: number): number;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Gets the size of the console as columns/rows.
    *
    * ```ts
@@ -236,6 +244,7 @@ declare namespace Deno {
   };
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there
@@ -256,6 +265,7 @@ declare namespace Deno {
   export function loadavg(): number[];
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Returns the release version of the Operating System.
    *
    * ```ts
@@ -272,6 +282,7 @@ declare namespace Deno {
   export function osRelease(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
    *
@@ -314,6 +325,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * The information of the network interface.
    *
    * @category Network
@@ -336,6 +348,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Returns an array of the network interface information.
    *
    * ```ts
@@ -350,6 +363,7 @@ declare namespace Deno {
   export function networkInterfaces(): NetworkInterfaceInfo[];
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.
    *
    * ```ts
@@ -364,6 +378,7 @@ declare namespace Deno {
   export function getUid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Returns the group id of the process on POSIX platforms. Returns null on windows.
    *
    * ```ts
@@ -378,6 +393,7 @@ declare namespace Deno {
   export function getGid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * All plain number types for interfacing with foreign functions.
    *
    * @category FFI
@@ -393,6 +409,7 @@ declare namespace Deno {
     | "f64";
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * All BigInt number types for interfacing with foreign functions.
    *
    * @category FFI
@@ -434,6 +451,7 @@ declare namespace Deno {
   type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * All possible types for interfacing with foreign functions.
    *
    * @category FFI
@@ -465,6 +483,7 @@ declare namespace Deno {
     & Record<NativeBufferType, TypedArray | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Type conversion for foreign symbol parameters and unsafe callback return
    * types.
    *
@@ -479,6 +498,7 @@ declare namespace Deno {
   type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Type conversion for unsafe callback return types.
    *
    * @category FFI
@@ -513,6 +533,7 @@ declare namespace Deno {
     & Record<NativeFunctionType, PointerValue>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Type conversion for foreign symbol return types and unsafe callback
    * parameters.
    *
@@ -529,6 +550,7 @@ declare namespace Deno {
     & Record<NativeVoidType, void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Type conversion for foreign symbol return types.
    *
    * @category FFI
@@ -553,6 +575,7 @@ declare namespace Deno {
       : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A foreign function as defined by its parameter and result types.
    *
    * @category FFI
@@ -583,6 +606,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A foreign library interface descriptor.
    *
    * @category FFI
@@ -592,6 +616,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Infers a foreign symbol.
    *
    * @category FFI
@@ -626,6 +651,7 @@ declare namespace Deno {
     IsAsync extends true ? Promise<T> : T;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Infers a foreign library interface.
    *
    * @category FFI
@@ -652,6 +678,7 @@ declare namespace Deno {
     | BigUint64Array;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Pointer type depends on the architecture and actual pointer value.
    *
    * On a 32 bit system all pointer values are plain numbers. On a 64 bit
@@ -663,6 +690,7 @@ declare namespace Deno {
   export type PointerValue = number | bigint;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * An unsafe pointer to a memory location for passing and returning pointers
    * to and from the FFI.
    *
@@ -676,6 +704,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * An unsafe pointer view to a memory location as specified by the `pointer`
    * value. The `UnsafePointerView` API mimics the standard built in interface
    * `DataView` for accessing the underlying types at an memory location
@@ -733,6 +762,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * An unsafe pointer to a function, for calling functions that are not
    * present as symbols.
    *
@@ -771,6 +801,7 @@ declare namespace Deno {
   ) => ToNativeResultType<Result>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * An unsafe function pointer for passing JavaScript functions
    * as C function pointers to ffi calls.
    *
@@ -827,6 +858,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A dynamic library resource
    *
    * @category FFI
@@ -838,6 +870,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Opens a dynamic library and registers symbols
    *
    * @category FFI
@@ -856,6 +889,7 @@ declare namespace Deno {
   };
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Set TTY to be under raw mode or not. In raw mode, characters are read and
    * returned as is, without being processed. All special processing of
    * characters by the terminal is disabled, including echoing input characters.
@@ -879,6 +913,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
    * seconds (UNIX epoch time) or as `Date` objects.
@@ -900,6 +935,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
    * system object referenced by `path`. Given times are either in seconds
    * (UNIX epoch time) or as `Date` objects.
@@ -937,6 +973,7 @@ declare namespace Deno {
   >(opt: T): Process<T>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Get the `hostname` of the machine the Deno process is running on.
    *
    * ```ts
@@ -953,6 +990,7 @@ declare namespace Deno {
   export function hostname(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
@@ -969,6 +1007,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * The options used when creating a [HttpClient].
    *
    * @category Fetch API
@@ -1006,6 +1045,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
@@ -1026,6 +1066,7 @@ declare namespace Deno {
   ): HttpClient;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file stream resource referenced by `rid`. Given times are either in
    * seconds (UNIX epoch time) or as `Date` objects.
@@ -1046,6 +1087,7 @@ declare namespace Deno {
   ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
    * stream resource referenced by `rid`. Given times are either in seconds
    * (UNIX epoch time) or as `Date` objects.
@@ -1066,6 +1108,7 @@ declare namespace Deno {
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
@@ -1093,6 +1136,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1109,6 +1153,7 @@ declare namespace Deno {
   ): Listener;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1133,6 +1178,7 @@ declare namespace Deno {
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1161,6 +1207,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
    *
@@ -1190,14 +1237,17 @@ declare namespace Deno {
    */
   export interface ConnectTlsOptions {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * PEM formatted client certificate chain.
      */
     certChain?: string;
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * PEM formatted (RSA or PKCS8) private key of client certificate.
      */
     privateKey?: string;
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Application-Layer Protocol Negotiation (ALPN) protocols supported by
      * the client. If not specified, no ALPN extension will be included in the
      * TLS handshake.
@@ -1211,6 +1261,7 @@ declare namespace Deno {
    */
   export interface TlsHandshakeInfo {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Contains the ALPN protocol selected during negotiation with the server.
      * If no ALPN protocol selected, returns `null`.
      */
@@ -1223,6 +1274,7 @@ declare namespace Deno {
    */
   export interface TlsConn extends Conn {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
      * will be completed automatically as soon as data is sent or received.
@@ -1231,6 +1283,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Create a TLS connection with an attached client certificate.
    *
    * ```ts
@@ -1255,6 +1308,7 @@ declare namespace Deno {
    */
   export interface ListenTlsOptions {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
      * the client. If not specified, no ALPN extension will be included in the
      * TLS handshake.
@@ -1268,6 +1322,7 @@ declare namespace Deno {
    */
   export interface StartTlsOptions {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
      * the client. If not specified, no ALPN extension will be included in the
      * TLS handshake.
@@ -1278,6 +1333,7 @@ declare namespace Deno {
   /** @category Network */
   export interface Listener extends AsyncIterable<Conn> {
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Make the listener block the event loop from finishing.
      *
      * Note: the listener blocks the event loop from finishing by default.
@@ -1285,12 +1341,14 @@ declare namespace Deno {
      */
     ref(): void;
     /** **UNSTABLE**: New API, yet to be vetted.
+     *
      * Make the listener not block the event loop from finishing.
      */
     unref(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
    *
@@ -1299,6 +1357,7 @@ declare namespace Deno {
   export function flock(rid: number, exclusive?: boolean): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
    *
@@ -1307,6 +1366,7 @@ declare namespace Deno {
   export function flockSync(rid: number, exclusive?: boolean): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
@@ -1314,6 +1374,7 @@ declare namespace Deno {
   export function funlock(rid: number): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
@@ -1321,6 +1382,7 @@ declare namespace Deno {
   export function funlockSync(rid: number): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Make the timer of the given id blocking the event loop from finishing.
    *
    * @category Timers
@@ -1328,6 +1390,7 @@ declare namespace Deno {
   export function refTimer(id: number): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Make the timer of the given id not blocking the event loop from finishing.
    *
    * @category Timers
@@ -1335,6 +1398,7 @@ declare namespace Deno {
   export function unrefTimer(id: number): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact
@@ -1382,6 +1446,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -1452,6 +1517,7 @@ declare namespace Deno {
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Allows "hijacking" the connection that the request is associated with.
    * This can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
@@ -1479,6 +1545,7 @@ declare namespace Deno {
   ): Promise<[Deno.Conn, Uint8Array]>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Allows "hijacking" the connection that the request is associated with.
    * This can be used to implement protocols that build on top of HTTP (eg.
    * WebSockets).
@@ -1538,6 +1605,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Spawns a child process.
    *
    * If any stdio options are not set to `"piped"`, accessing the corresponding
@@ -1592,6 +1660,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
@@ -1619,6 +1688,7 @@ declare namespace Deno {
   ): Promise<SpawnOutput>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
    * Will throw an error if `stdin: "piped"` is passed.
@@ -1646,6 +1716,7 @@ declare namespace Deno {
   ): SpawnOutput;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * @category Sub Process
    */
   export interface ChildStatus {
@@ -1655,6 +1726,7 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * @category Sub Process
    */
   export interface SpawnOutput extends ChildStatus {
@@ -1679,6 +1751,7 @@ declare function fetch(
  */
 declare interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Configure permissions options to change the level of access the worker will
    * have. By default it will have no permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
