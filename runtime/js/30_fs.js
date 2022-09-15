@@ -187,9 +187,11 @@
   }
 
   function createByteStruct(types) {
-    // types can be "date", "bool" or "u64"
+    // types can be "date", "bool" or "u64".
+    // `?` prefix means optional on windows.
     let offset = 0;
-    let str = "return {";
+    let str =
+      'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
     for (let [name, type] of ObjectEntries(types)) {
       const optional = type.startsWith("?");
       if (optional) type = type.slice(1);
@@ -198,9 +200,11 @@
         if (!optional) {
           str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
         } else {
-          str += `${name}: (view[${offset}] + view[${offset + 1}] * 2**32) ${
-            !unix ? "|| null" : ""
-          },`;
+          str += `${name}: (unix ? (view[${offset}] + view[${
+            offset + 1
+          }] * 2**32) : (view[${offset}] + view[${
+            offset + 1
+          }] * 2**32) || null),`;
         }
       } else if (type == "date") {
         str +=
@@ -216,7 +220,6 @@
     return [new Function("view", str), new Uint32Array(offset)];
   }
 
-  const unix = build.os === "darwin" || build.os === "linux";
   const [statStruct, statBuf] = createByteStruct({
     isFile: "bool",
     isDirectory: "bool",
@@ -237,6 +240,7 @@
   });
 
   function parseFileInfo(response) {
+    const unix = build.os === "darwin" || build.os === "linux";
     return {
       isFile: response.isFile,
       isDirectory: response.isDirectory,
