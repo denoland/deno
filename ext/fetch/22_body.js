@@ -64,10 +64,12 @@
   }
 
   class InnerBody {
+    #contentLength = null;
+
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream) {
+    constructor(stream, { contentLength } = {}) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -75,6 +77,8 @@
       this.source = null;
       /** @type {null | number} */
       this.length = null;
+
+      this.#contentLength = contentLength;
     }
 
     get stream() {
@@ -147,14 +151,27 @@
         const reader = this.stream.getReader();
         /** @type {Uint8Array[]} */
         const chunks = [];
+
+        let finalBuffer = this.#contentLength
+          ? new Uint8Array(this.#contentLength)
+          : null;
+
         let totalLength = 0;
         while (true) {
           const { value: chunk, done } = await reader.read();
           if (done) break;
-          ArrayPrototypePush(chunks, chunk);
+
+          if (finalBuffer) {
+            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
+          } else ArrayPrototypePush(chunks, chunk);
           totalLength += chunk.byteLength;
         }
-        const finalBuffer = new Uint8Array(totalLength);
+
+        if (finalBuffer) {
+          return finalBuffer;
+        }
+
+        finalBuffer = new Uint8Array(totalLength);
         let i = 0;
         for (const chunk of chunks) {
           TypedArrayPrototypeSet(finalBuffer, chunk, i);

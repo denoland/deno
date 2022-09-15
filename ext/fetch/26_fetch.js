@@ -35,7 +35,9 @@
     ArrayPrototypePush,
     ArrayPrototypeSplice,
     ArrayPrototypeFilter,
+    ArrayPrototypeFind,
     ArrayPrototypeIncludes,
+    Number,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     PromisePrototypeThen,
@@ -333,8 +335,18 @@
         response.body = null;
         core.close(resp.responseRid);
       } else {
+        const contentLengthHeader = ArrayPrototypeFind(
+          resp.headers,
+          (entry) => byteLowerCase(entry[0]) === "content-length",
+        );
+
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
+          {
+            contentLength: contentLengthHeader
+              ? Number(contentLengthHeader[1])
+              : null,
+          },
         );
       }
     }
