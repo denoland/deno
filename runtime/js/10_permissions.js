@@ -125,13 +125,13 @@
       (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
       ReflectHas(desc, "path")
     ) {
-      key += `-${desc.path}`;
+      key += `-${desc.path}&`;
     } else if (desc.name === "net" && desc.host) {
-      key += `-${desc.host}`;
+      key += `-${desc.host}&`;
     } else if (desc.name === "run" && desc.command) {
-      key += `-${desc.command}`;
+      key += `-${desc.command}&`;
     } else if (desc.name === "env" && desc.variable) {
-      key += `-${desc.variable}`;
+      key += `-${desc.variable}&`;
     } else {
       key += "$";
     }
