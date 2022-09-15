@@ -150,6 +150,7 @@
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-matchall
+     *
      * Note: the function is private as we don't want to expose
      * this API to the public yet.
      *
@@ -191,7 +192,7 @@
           },
         );
         if (matchResult) {
-          const [responseMeta, responseBodyRid] = matchResult;
+          const [meta, responseBodyRid] = matchResult;
           let body = null;
           if (responseBodyRid !== null) {
             body = new ReadableStream({
@@ -222,9 +223,9 @@
           const response = new Response(
             body,
             {
-              headers: responseMeta.responseHeaders,
-              status: responseMeta.responseStatus,
-              statusText: responseMeta.responseStatusText,
+              headers: meta.responseHeaders,
+              status: meta.responseStatus,
+              statusText: meta.responseStatusText,
             },
           );
           responses.push(response);
@@ -235,112 +236,7 @@
 
       return PromiseResolve(responses);
     }
-
-    // /** Query cache for the provided request.
-    //  * See https://w3c.github.io/ServiceWorker/#query-cache-algorithm. */
-    // #queryCache(requestQuery, options = {
-    //   ignoreMethod: false,
-    //   ignoreSearch: false,
-    //   ignoreVary: false,
-    // }, targetStorage) {
-    //   // Step 1.
-    //   const resultList = new Map();
-    //   // Step 2.
-    //   let storage = null;
-    //   if (!targetStorage) {
-    //     // Step 3.
-    //     // storage = this.#storage;
-    //     storage = new Map();
-    //   } else {
-    //     // Step 4.
-    //     storage = targetStorage;
-    //   }
-
-    //   // Step 5.
-    //   for (const [request, response] of storage.entries()) {
-    //     const cachedRequest = request;
-    //     const cachedResponse = response;
-    //     const matchesCachedItem = requestMatchesCatchedItem(
-    //       requestQuery,
-    //       cachedRequest,
-    //       cachedResponse,
-    //       options,
-    //     );
-    //     if (matchesCachedItem) {
-    //       resultList.set(request, response);
-    //     }
-    //   }
-    //   return resultList;
-    // }
   }
-
-  // /** See https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm */
-  // function requestMatchesCatchedItem(
-  //   requestQuery,
-  //   request,
-  //   response = null,
-  //   options = {
-  //     ignoreMethod: false,
-  //     ignoreSearch: false,
-  //     ignoreVary: false,
-  //   },
-  // ) {
-  //   // Step 1.
-  //   if (options["ignoreMethod"] === false && request.method !== "GET") {
-  //     return false;
-  //   }
-
-  //   // Step 2.
-  //   const queryURL = new URL(requestQuery.url);
-  //   // Step 3.
-  //   const cachedURL = new URL(request.url);
-  //   // Step 4.
-  //   if (options["ignoreSearch"] === true) {
-  //     queryURL.search = "";
-  //     cachedURL.search = "";
-  //   }
-
-  //   // Step 5.
-  //   {
-  //     const a = new URL(queryURL);
-  //     const b = new URL(cachedURL);
-  //     // Note: interpreting `exclude fragment flag` from spec as don't
-  //     // compare a.hash !== b.hash.
-  //     if (
-  //       a.origin !== b.origin ||
-  //       a.pathname !== b.pathname ||
-  //       a.search !== b.search
-  //     ) {
-  //       return false;
-  //     }
-  //   }
-
-  //   // Step 6.
-  //   if (
-  //     response === null || options["ignoreVary"] === true ||
-  //     !response.headers.has("Vary")
-  //   ) {
-  //     return true;
-  //   }
-
-  //   // Step 7.
-  //   const varyHeader = response.headers.get("Vary");
-  //   const fieldValues = varyHeader.split(",").map((field) => field.trim());
-  //   // TODO(@satyarohith):
-  //   // If fieldValue matches "*", or the combined value given fieldValue
-  //   // and request’s header list does not match the combined value given
-  //   // fieldValue and requestQuery’s header list, then return false.
-  //   for (const fieldValue of fieldValues) {
-  //     if (
-  //       fieldValue === "*" ||
-  //       request.headers.get("Vary") !== requestQuery.headers.get("Vary")
-  //     ) {
-  //       return false;
-  //     }
-  //   }
-
-  //   return true;
-  // }
 
   window.__bootstrap.caches = {
     CacheStorage,

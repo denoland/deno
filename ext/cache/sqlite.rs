@@ -58,8 +58,9 @@ impl SqliteBackedCache {
 
 #[async_trait]
 impl Cache for SqliteBackedCache {
-  /// Open a cache storage. Internally, this creates a row in the sqlite if the
-  /// cache doesn't exist and returns the internal id of the cache.
+  /// Open a cache storage. Internally, this creates a row in the
+  /// sqlite db if the cache doesn't exist and returns the internal id
+  /// of the cache.
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
     let db = self.0.clone();
     tokio::task::spawn_blocking(move || {
@@ -81,8 +82,8 @@ impl Cache for SqliteBackedCache {
     .await?
   }
 
-  /// Check if a cache with the provided name exists. Note: this doesn't check
-  /// the disk, it only checks the sqlite db.
+  /// Check if a cache with the provided name exists.
+  /// Note: this doesn't check the disk, it only checks the sqlite db.
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError> {
     let db = self.0.clone();
     tokio::task::spawn_blocking(move || {
@@ -101,6 +102,7 @@ impl Cache for SqliteBackedCache {
     .await?
   }
 
+  /// Delete a cache storage. Internally, this deletes the row in the sqlite db.
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
     let db = self.0.clone();
     tokio::task::spawn_blocking(move || {
@@ -241,20 +243,18 @@ impl CachePutResource {
     }
   }
 
-  async fn write(
-    self: Rc<Self>,
-    data: ZeroCopyBuf,
-    _end_of_stream: bool,
-  ) -> Result<usize, AnyError> {
-    println!("write() called (len: {} bytes)", data.len());
+  async fn write(self: Rc<Self>, data: ZeroCopyBuf) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
     file.write_all(&data).await?;
     Ok(data.len())
   }
 
-  async fn end_of_stream(self: Rc<Self>) -> Result<(), AnyError> {
-    println!("end of strema called!");
+  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+    let resource = deno_core::RcRef::map(&self, |r| &r.file);
+    let mut file = resource.borrow_mut().await;
+    file.flush().await?;
+    file.sync_all().await?;
     Ok(())
   }
 }
@@ -265,11 +265,11 @@ impl Resource for CachePutResource {
   }
 
   fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf, false))
+    Box::pin(self.write(buf))
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.end_of_stream())
+    Box::pin(self.shutdown())
   }
 }
 
