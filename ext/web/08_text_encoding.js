@@ -16,7 +16,6 @@
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
-    ArrayBufferIsView,
     ObjectPrototypeIsPrototypeOf,
     PromiseReject,
     PromiseResolve,
@@ -34,6 +33,8 @@
     #fatal;
     /** @type {boolean} */
     #ignoreBOM;
+    /** @type {boolean} */
+    #utf8;
 
     /** @type {number | null} */
     #rid = null;
@@ -54,6 +55,7 @@
       });
       const encoding = ops.op_encoding_normalize_label(label);
       this.#encoding = encoding;
+      this.#utf8 = encoding === "utf-8";
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
       this[webidl.brand] = webidl.brand;
@@ -81,7 +83,7 @@
      * @param {BufferSource} [input]
      * @param {TextDecodeOptions} options
      */
-    decode(input = new Uint8Array(), options = {}) {
+    decode(input = new Uint8Array(), options) {
       webidl.assertBranded(this, TextDecoderPrototype);
       const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       if (input !== undefined) {
@@ -91,40 +93,41 @@
           allowShared: true,
         });
       }
-      options = webidl.converters.TextDecodeOptions(options, {
-        prefix,
-        context: "Argument 2",
-      });
+      let stream = false;
+      if (options !== undefined) {
+        options = webidl.converters.TextDecodeOptions(options, {
+          prefix,
+          context: "Argument 2",
+        });
+        stream = options.stream;
+      }
 
       try {
-        try {
-          if (ArrayBufferIsView(input)) {
-            input = new Uint8Array(
-              input.buffer,
-              input.byteOffset,
-              input.byteLength,
-            );
-          } else {
-            input = new Uint8Array(input);
-          }
-        } catch {
-          // If the buffer is detached, just create a new empty Uint8Array.
+        // Note from spec: implementations are strongly encouraged to use an implementation strategy that avoids this copy.
+        // When doing so they will have to make sure that changes to input do not affect future calls to decode().
+        if (input.byteLength === 0) {
           input = new Uint8Array();
-        }
-        if (
+        } else if (
           ObjectPrototypeIsPrototypeOf(
             SharedArrayBuffer.prototype,
-            input.buffer,
+            input.buffer || input,
           )
         ) {
           // We clone the data into a non-shared ArrayBuffer so we can pass it
           // to Rust.
           // `input` is now a Uint8Array, and calling the TypedArray constructor
           // with a TypedArray argument copies the data.
-          input = new Uint8Array(input);
+          input = new Uint8Array(input.buffer ? input : new Uint8Array(input));
         }
 
-        if (!options.stream && this.#rid === null) {
+        if (!stream && this.#rid === null) {
+          if (this.#utf8) {
+            return ops.op_encoding_utf8_decode_single(
+              input,
+              this.#fatal,
+              this.#ignoreBOM,
+            );
+          }
           return ops.op_encoding_decode_single(
             input,
             this.#encoding,
@@ -140,9 +143,9 @@
             this.#ignoreBOM,
           );
         }
-        return ops.op_encoding_decode(input, this.#rid, options.stream);
+        return ops.op_encoding_decode(input, this.#rid, stream);
       } finally {
-        if (!options.stream && this.#rid !== null) {
+        if (!stream && this.#rid !== null) {
           core.close(this.#rid);
           this.#rid = null;
         }

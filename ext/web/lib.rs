@@ -89,6 +89,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_base64_btoa::decl(),
       op_encoding_normalize_label::decl(),
       op_encoding_decode_single::decl(),
+      op_encoding_utf8_decode_single::decl(),
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
@@ -175,6 +176,16 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
   Ok(encoding.name().to_lowercase())
 }
 
+// Fast path for the common case. Avoids label deserialization.
+#[op]
+fn op_encoding_utf8_decode_single(
+  data: &[u8],
+  fatal: bool,
+  ignore_bom: bool,
+) -> Result<U16String, AnyError> {
+  decode_single(data, encoding_rs::UTF_8, fatal, ignore_bom)
+}
+
 #[op]
 fn op_encoding_decode_single(
   data: &[u8],
@@ -188,7 +199,15 @@ fn op_encoding_decode_single(
       label
     ))
   })?;
+  decode_single(data, encoding, fatal, ignore_bom)
+}
 
+fn decode_single(
+  data: &[u8],
+  encoding: &'static Encoding,
+  fatal: bool,
+  ignore_bom: bool,
+) -> Result<U16String, AnyError> {
   let mut decoder = if ignore_bom {
     encoding.new_decoder_without_bom_handling()
   } else {
