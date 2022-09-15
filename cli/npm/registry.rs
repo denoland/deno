@@ -21,7 +21,6 @@ use serde::Serialize;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
-use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::semver::NpmVersionReq;
@@ -107,7 +106,6 @@ pub struct NpmRegistryApi {
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
   reload: bool,
   cache_setting: CacheSetting,
-  progress_bar: ProgressBar,
 }
 
 impl NpmRegistryApi {
@@ -135,7 +133,6 @@ impl NpmRegistryApi {
     cache: NpmCache,
     reload: bool,
     cache_setting: CacheSetting,
-    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       base_url,
@@ -143,7 +140,6 @@ impl NpmRegistryApi {
       mem_cache: Default::default(),
       reload,
       cache_setting,
-      progress_bar,
     }
   }
 
@@ -290,7 +286,13 @@ impl NpmRegistryApi {
     }
 
     let package_url = self.get_package_url(name);
-    let _guard = self.progress_bar.update(package_url.as_str());
+
+    log::log!(
+      log::Level::Info,
+      "{} {}",
+      colors::green("Download"),
+      package_url,
+    );
 
     let response = match reqwest::get(package_url).await {
       Ok(response) => response,
