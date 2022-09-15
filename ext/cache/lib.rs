@@ -18,6 +18,44 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CachePutRequest {
+  pub cache_id: i64,
+  pub request_url: String,
+  pub request_headers: Vec<(String, String)>,
+  pub response_headers: Vec<(String, String)>,
+  pub response_has_body: bool,
+  pub response_status: u16,
+  pub response_status_text: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheMatchRequest {
+  pub cache_id: i64,
+  pub request_url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheMatchResponseMeta {
+  pub response_status: u16,
+  pub response_headers: Vec<(String, String)>,
+  pub response_status_text: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheDeleteRequest {
+  pub cache_id: i64,
+  pub request_url: String,
+}
+
 #[async_trait]
 pub trait Cache: Clone {
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
@@ -73,44 +111,6 @@ where
 {
   let cache = state.borrow().borrow::<CA>().clone();
   cache.storage_delete(cache_name).await
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CachePutRequest {
-  pub cache_id: i64,
-  pub request_url: String,
-  pub response_headers: Vec<(String, String)>,
-  pub request_headers: Vec<(String, String)>,
-  pub response_has_body: bool,
-  pub response_status: u16,
-  pub response_status_text: String,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheMatchRequest {
-  pub cache_id: i64,
-  pub request_url: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheMatchResponseMeta {
-  pub response_status: u16,
-  pub response_status_text: String,
-  pub response_headers: Vec<(String, String)>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheDeleteRequest {
-  pub cache_id: i64,
-  pub request_url: String,
 }
 
 #[op]
