@@ -266,8 +266,8 @@
       isSymlink: response.isSymlink,
       size: response.size,
       mtime: response.mtimeSet != null ? new Date(response.mtime) : null,
-      atime: response.atimeSet != 0 ? new Date(response.atime) : null,
-      birthtime: response.birthtimeSet != 0
+      atime: response.atimeSet != null ? new Date(response.atime) : null,
+      birthtime: response.birthtimeSet != null
         ? new Date(response.birthtime)
         : null,
       // Only non-null if on Unix
