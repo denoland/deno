@@ -5,9 +5,9 @@ use deno_core::parking_lot::Mutex;
 use deno_core::{error::AnyError, ZeroCopyBuf};
 use deno_core::{serde_json, AsyncRefCell, AsyncResult, Resource};
 use rusqlite::params;
-use std::borrow::{BorrowMut, Cow};
+use std::borrow::Cow;
 use std::rc::Rc;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Arc};
@@ -130,8 +130,11 @@ impl Cache for SqliteBackedCache {
     };
     if let Some(body_key) = maybe_response_body {
       let path = std::env::current_dir().unwrap().join(body_key);
-      let file = tokio::fs::File::open(path).await?;
-      // TODO(@satyarohith): store the body somewhere.
+      let parent = path.parent().unwrap();
+      if !parent.exists() {
+        std::fs::create_dir_all(&parent)?;
+      }
+      let file = tokio::fs::File::create(path).await?;
       Ok(Some(Rc::new(CachePutResource::new(file))))
     } else {
       Ok(None)
@@ -145,8 +148,9 @@ impl Cache for SqliteBackedCache {
     Option<(CacheMatchResponseMeta, Option<Rc<dyn Resource>>)>,
     AnyError,
   > {
-    let db = self.0.lock();
-    let (cache_meta, _response_body_key) = db.query_row(
+    let (cache_meta, response_body_key) = {
+      let db = self.0.lock();
+      db.query_row(
       "SELECT response_body_key, response_headers, response_status, response_status_text
            FROM request_response_list
            WHERE cache_id = ?1 AND request_url = ?2",
@@ -167,10 +171,19 @@ impl Cache for SqliteBackedCache {
           response_body_key,
         ))
       },
-    )?;
+    )?
+    };
 
-    // TODO(@satyarohith): read the body from somewhere.
-    Ok(Some((cache_meta, Some(Rc::new(CacheResponseResource {})))))
+    if let Some(body) = response_body_key {
+      let path = std::env::current_dir().unwrap().join(body);
+      let file = tokio::fs::File::open(path).await?;
+      return Ok(Some((
+        cache_meta,
+        Some(Rc::new(CacheResponseResource::new(file))),
+      )));
+    } else {
+      Ok(Some((cache_meta, None)))
+    }
   }
 
   async fn delete(
@@ -209,7 +222,7 @@ impl CachePutResource {
   async fn write(
     self: Rc<Self>,
     data: ZeroCopyBuf,
-    end_of_stream: bool,
+    _end_of_stream: bool,
   ) -> Result<usize, AnyError> {
     println!("write() called (len: {} bytes)", data.len());
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
@@ -238,16 +251,25 @@ impl Resource for CachePutResource {
   }
 }
 
-pub struct CacheResponseResource {}
+pub struct CacheResponseResource {
+  file: AsyncRefCell<tokio::fs::File>,
+}
 
 impl CacheResponseResource {
+  fn new(file: tokio::fs::File) -> Self {
+    Self {
+      file: AsyncRefCell::new(file),
+    }
+  }
+
   async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
-    println!("read():");
-    buf.fill_with(|| b'a');
-    Ok((0, buf))
+    let resource = deno_core::RcRef::map(&self, |r| &r.file);
+    let mut file = resource.borrow_mut().await;
+    let nread = file.read(&mut buf).await?;
+    Ok((nread, buf))
   }
 }
 
