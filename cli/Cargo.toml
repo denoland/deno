@@ -76,7 +76,7 @@ flate2 = "=1.0.24"
 http = "0.2"
 import_map = "=0.12.1"
 indexmap = "1.8.1"
-indicatif = "=0.17.0"
+indicatif = "0.17"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
