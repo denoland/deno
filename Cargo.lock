@@ -1567,9 +1567,9 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "enum-as-inner"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21cdad81446a7f7dc43f6a77409efeb9733d2fa65553efef6018ef257c959b73"
+checksum = "c9720bba047d567ffc8a3cba48bf19126600e249ab7f128e9233e6376976a116"
 dependencies = [
  "heck",
  "proc-macro2 1.0.43",
@@ -4985,29 +4985,29 @@ dependencies = [
 
 [[package]]
 name = "trust-dns-client"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6d9ba1c6079f6f9b4664e482db1700bd53d2ee77b1c9752c1d7a66c0c8bda99"
+checksum = "6c408c32e6a9dbb38037cece35740f2cf23c875d8ca134d33631cec83f74d3fe"
 dependencies = [
  "cfg-if",
  "data-encoding",
  "futures-channel",
  "futures-util",
  "lazy_static",
- "log 0.4.17",
  "radix_trie",
  "rand",
  "thiserror",
  "time 0.3.14",
  "tokio",
+ "tracing",
  "trust-dns-proto",
 ]
 
 [[package]]
 name = "trust-dns-proto"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c31f240f59877c3d4bb3b3ea0ec5a6a0cff07323580ff8c7a605cd7d08b255d"
+checksum = "4f7f83d1e4a0e4358ac54c5c3681e5d7da5efc5a7a632c90bb6d6669ddd9bc26"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -5019,27 +5019,26 @@ dependencies = [
  "idna 0.2.3",
  "ipnet",
  "lazy_static",
- "log 0.4.17",
  "rand",
  "serde",
  "smallvec",
  "thiserror",
  "tinyvec",
  "tokio",
+ "tracing",
  "url 2.3.1",
 ]
 
 [[package]]
 name = "trust-dns-resolver"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4ba72c2ea84515690c9fcef4c6c660bb9df3036ed1051686de84605b74fd558"
+checksum = "aff21aa4dcefb0a1afbfac26deb0adc93888c7d295fb63ab273ef276ba2b7cfe"
 dependencies = [
  "cfg-if",
  "futures-util",
  "ipconfig",
  "lazy_static",
- "log 0.4.17",
  "lru-cache",
  "parking_lot 0.12.1",
  "resolv-conf",
@@ -5047,28 +5046,28 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tokio",
+ "tracing",
  "trust-dns-proto",
 ]
 
 [[package]]
 name = "trust-dns-server"
-version = "0.21.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a395a2e0fd8aac9b4613767a5b4ba4b2040de1b767fa03ace8c9d6f351d60b2d"
+checksum = "1583cf9f8a359c9f16fdf760b79cb2be3f261b98db8027f81959c7a4f6645e2c"
 dependencies = [
  "async-trait",
  "bytes",
  "cfg-if",
  "enum-as-inner",
- "env_logger",
  "futures-executor",
  "futures-util",
- "log 0.4.17",
  "serde",
  "thiserror",
  "time 0.3.14",
  "tokio",
  "toml",
+ "tracing",
  "trust-dns-client",
  "trust-dns-proto",
 ]
