@@ -1439,7 +1439,7 @@ declare namespace Deno {
     /**
      * An AbortSignal that allows closing the process using the corresponding
      * AbortController by sending the process a SIGTERM signal.
-     * Not Supported by execSync.
+     * Not supported in spawnSync.
      */
     signal?: AbortSignal;
 

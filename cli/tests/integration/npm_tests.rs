@@ -387,9 +387,23 @@ itest!(deno_run_cowthink {
   http_server: true,
 });
 
-itest!(deno_run_esm_module {
-  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+itest!(deno_run_bin_esm {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-esm this is a test",
   output: "npm/deno_run_esm.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_no_ext {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  output: "npm/deno_run_no_ext.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  output: "npm/deno_run_cjs.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -400,6 +414,13 @@ itest!(deno_run_non_existent {
   envs: env_vars(),
   http_server: true,
   exit_code: 1,
+});
+
+itest!(builtin_module_module {
+  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  output: "npm/builtin_module_module/main.out",
+  envs: env_vars(),
+  http_server: true,
 });
 
 #[test]
