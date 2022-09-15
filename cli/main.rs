@@ -252,7 +252,9 @@ async fn compile_command(
     generic_error("There should only be one reference to ModuleGraph")
   })?;
 
-  graph.valid().unwrap();
+  if let Err(module_graph_error) = graph.valid() {
+    return Err(generic_error(format!("{}", module_graph_error)));
+  }
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
