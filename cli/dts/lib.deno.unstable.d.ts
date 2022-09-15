@@ -7,6 +7,7 @@ declare namespace Deno {
   export {}; // stop default export type behavior
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * @category Testing
    */
   export interface BenchDefinition {
