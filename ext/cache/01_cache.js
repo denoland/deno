@@ -13,6 +13,7 @@
     toInnerResponse,
     toInnerRequest,
   } = window.__bootstrap.fetch;
+  const { getHeader } = window.__bootstrap.headers;
 
   class CacheStorage {
     constructor() {
@@ -20,28 +21,16 @@
     }
 
     async open(cacheName) {
-      try {
-        const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-        return PromiseResolve(new Cache(cacheId));
-      } catch (error) {
-        return PromiseReject(error);
-      }
-    }
-
-    async delete(cacheName) {
-      try {
-        return await core.opAsync("op_cache_storage_delete", cacheName);
-      } catch (error) {
-        return PromiseReject(error);
-      }
+      const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
+      return PromiseResolve(new Cache(cacheId));
     }
 
     async has(cacheName) {
-      try {
-        return await core.opAsync("op_cache_storage_has", cacheName);
-      } catch (error) {
-        return PromiseReject(error);
-      }
+      return await core.opAsync("op_cache_storage_has", cacheName);
+    }
+
+    async delete(cacheName) {
+      return await core.opAsync("op_cache_storage_delete", cacheName);
     }
   }
 
@@ -69,11 +58,14 @@
         }
       }
       // Step 4.
-      const url = new URL(innerRequest.url());
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return PromiseReject(
-          new TypeError("Request url protocol must be http or https"),
-        );
+      const reqUrl = innerRequest.url();
+      if (!reqUrl.startsWith("http:") && !reqUrl.startsWith("https:")) {
+        const url = new URL(reqUrl);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          return PromiseReject(
+            new TypeError("Request url protocol must be http or https"),
+          );
+        }
       }
       if (innerRequest.method !== "GET") {
         return PromiseReject(new TypeError("Request method must be GET"));
@@ -87,7 +79,7 @@
         );
       }
       // Step 7.
-      const varyHeader = response.headers.get("Vary");
+      const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
         const fieldValues = varyHeader.split(",").map((field) => field.trim());
         for (const fieldValue of fieldValues) {
@@ -108,9 +100,7 @@
         );
       }
 
-      // Step 9.
-      // Step 10.
-      // Step 11.
+      // Step 9-11.
       const rid = await core.opAsync(
         "op_cache_put",
         {
@@ -135,7 +125,7 @@
           }
         }
       }
-      // TODO(@satyarohith): step 12-19.
+      // Step 12-19: TODO(@satyarohith): do the insertion in background.
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
