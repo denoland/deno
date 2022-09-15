@@ -236,12 +236,6 @@ checksum = "349a06037c7bf932dd7e7d1f653678b2038b9ad46a74102f1fc7bd7872678cce"
 
 [[package]]
 name = "base64"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
-
-[[package]]
-name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
@@ -791,7 +785,7 @@ name = "deno"
 version = "1.25.2"
 dependencies = [
  "atty",
- "base64 0.13.0",
+ "base64",
  "cache_control",
  "chrono",
  "clap",
@@ -884,7 +878,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5cf170fd04887b88d88c9951c2c2cb0e1feb1681636987fb3202384db962950"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
+ "base64",
  "data-url",
  "dprint-swc-ext",
  "serde",
@@ -966,7 +960,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "aes-kw",
- "base64 0.13.0",
+ "base64",
  "block-modes",
  "cbc",
  "const-oid",
@@ -1016,7 +1010,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66d4279eb4772b17283f0aea3ba108872ef07a0174530e87a1e642aaa97d5ccc"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
+ "base64",
  "deno_ast",
  "deno_graph",
  "futures",
@@ -1098,7 +1092,7 @@ name = "deno_http"
 version = "0.62.0"
 dependencies = [
  "async-compression",
- "base64 0.13.0",
+ "base64",
  "bencher",
  "brotli",
  "bytes",
@@ -1653,7 +1647,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5332beee98150f70618017a2bfbd0d830652140015285e6d73a07a8f849a4008"
 dependencies = [
  "anyhow",
- "base64 0.13.0",
+ "base64",
  "deno_ast",
  "deno_graph",
  "futures",
@@ -3526,7 +3520,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b75aa69a3f06bbcc66ede33af2af253c6f7a86b1ca0033f60c580a27074fbf92"
 dependencies = [
  "async-compression",
- "base64 0.13.0",
+ "base64",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3609,7 +3603,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88073939a61e5b7680558e6be56b419e208420c2adb92be54921fa6b72283f1a"
 dependencies = [
- "base64 0.13.0",
+ "base64",
  "bitflags",
  "serde",
 ]
@@ -3716,7 +3710,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ee86d63972a7c661d1536fefe8c3c8407321c3df668891286de28abcd087360"
 dependencies = [
- "base64 0.13.0",
+ "base64",
 ]
 
 [[package]]
@@ -3725,7 +3719,7 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0864aeff53f8c05aa08d86e5ef839d3dfcf07aeba2db32f12db0ef716e87bd55"
 dependencies = [
- "base64 0.13.0",
+ "base64",
 ]
 
 [[package]]
@@ -4061,11 +4055,11 @@ dependencies = [
 
 [[package]]
 name = "sourcemap"
-version = "6.0.1"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e031f2463ecbdd5f34c950f89f5c1e1032f22c0f8e3dc4bdb2e8b6658cf61eb"
+checksum = "58ad6f449ac2dc2eaa01e766408b76b55fc0a20c842b63aa11a8448caa72f50b"
 dependencies = [
- "base64 0.11.0",
+ "base64",
  "if_chain",
  "lazy_static",
  "regex",
@@ -4457,7 +4451,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb912b97e944a4bcf7088823efb068e037f5c64db9e75c94a3138bd8c202578f"
 dependencies = [
  "ahash",
- "base64 0.13.0",
+ "base64",
  "dashmap",
  "indexmap",
  "once_cell",
@@ -4687,7 +4681,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "atty",
- "base64 0.13.0",
+ "base64",
  "flate2",
  "futures",
  "hyper",
@@ -5101,7 +5095,7 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ad3713a14ae247f22a728a0456a545df14acf3867f905adff84be99e23b3ad1"
 dependencies = [
- "base64 0.13.0",
+ "base64",
  "byteorder",
  "bytes",
  "http",
@@ -5705,7 +5699,7 @@ checksum = "22978c3967bbb8ba0c100106d83e652cf640b55d64b7e7d93d943fc0738d9453"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.0",
+ "base64",
  "futures",
  "http",
  "hyper",
