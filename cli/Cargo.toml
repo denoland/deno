@@ -106,7 +106,7 @@ tokio-util = "=0.7.2"
 tower-lsp = "=0.17.0"
 twox-hash = "=1.6.2"
 typed-arena = "2.0.1"
-uuid = { version = "=1.0.0", features = ["v4", "serde"] }
+uuid = { version = "1.1", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
 zstd = '=0.11.1'
 
