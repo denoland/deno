@@ -42,6 +42,7 @@ mod analyze;
 
 pub use analyze::esm_code_with_node_globals;
 
+#[derive(Debug)]
 pub enum NodeResolution {
   Esm(ModuleSpecifier),
   CommonJs(ModuleSpecifier),
@@ -578,10 +579,10 @@ fn url_to_node_resolution(
     } else {
       NodeResolution::CommonJs(url)
     }
-  } else if url.as_str().ends_with(".cjs") {
-    NodeResolution::CommonJs(url)
-  } else {
+  } else if url.as_str().ends_with(".mjs") {
     NodeResolution::Esm(url)
+  } else {
+    NodeResolution::CommonJs(url)
   })
 }
 
