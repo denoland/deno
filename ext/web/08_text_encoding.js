@@ -25,6 +25,7 @@
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   class TextDecoder {

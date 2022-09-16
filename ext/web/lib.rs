@@ -324,21 +324,21 @@ fn op_encoding_encode_into(
   out_buf: &mut [u8],
 ) {
   let s = v8::Local::<v8::String>::try_from(input.v8_value).unwrap();
-  assert!(out_buf.len() % 4 == 0);
-  // SAFETY: `out_buf` is guaranteed to be aligned to 4 bytes.
+  assert!(out_buf.len() == std::mem::size_of::<u32>() * 2);
+  // SAFETY: `out_buf` is guaranteed to be large enough to hold result.
   let out_buf: &mut [u32] = unsafe {
-    std::slice::from_raw_parts_mut(
-      out_buf.as_mut_ptr() as *mut u32,
-      out_buf.len() / std::mem::size_of::<u32>(),
-    )
+    std::slice::from_raw_parts_mut(out_buf.as_mut_ptr() as *mut u32, 2)
   };
+
+  let mut nchars = 0;
   out_buf[1] = s.write_utf8(
     scope,
     buffer,
-    Some(&mut (out_buf[0] as usize)),
+    Some(&mut nchars),
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   ) as u32;
+  out_buf[0] = nchars as u32;
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.

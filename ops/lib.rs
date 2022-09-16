@@ -721,11 +721,7 @@ fn codegen_arg(
     };
   }
   // Fast path for &/&mut [u8] and &/&mut [u32]
-  if let Some(ty) = is_ref_slice(&**ty) {
-    let (ptr_ty, mutability) = match ty {
-      SliceType::U8 => (quote!([u8]), quote!(&)),
-      SliceType::U8Mut => (quote!([u8]), quote!(&mut)),
-    };
+  if is_ref_slice(&**ty).is_some() {
     return quote! {
       let #ident = {
         let value = args.get(#idx as i32);
