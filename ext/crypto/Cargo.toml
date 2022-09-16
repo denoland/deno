@@ -31,7 +31,7 @@ p256 = { version = "0.11.1", features = ["ecdh"] }
 p384 = "0.11.1"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
-rsa = { version = "0.7.0-pre", default-features = false, features = ["std"] }
+rsa = { version = "=0.7.0-pre", default-features = false, features = ["std"] }
 sec1 = "0.3.0"
 serde = { version = "1.0.129", features = ["derive"] }
 serde_bytes = "0.11"
