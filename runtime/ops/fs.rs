@@ -858,11 +858,11 @@ fn op_copy_file_sync(
       }
 
       if st.st_size > 128 * 1024 {
-        // Try unlink.
+        // Try unlink. If it fails, we are going to try clonefile() anyway.
         let _ = unlink(to.as_ptr());
+        // Matches rust stdlib behavior for io::copy.
+        // https://github.com/rust-lang/rust/blob/3fdd578d72a24d4efc2fe2ad18eec3b6ba72271e/library/std/src/sys/unix/fs.rs#L1613-L1616
         if clonefile(from.as_ptr(), to.as_ptr(), 0) == 0 {
-          // Preserve mode bits.
-          let _ = chmod(to.as_ptr(), st.st_mode);
           return Ok(());
         }
       } else {
