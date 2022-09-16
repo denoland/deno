@@ -165,7 +165,7 @@
         if (request.method !== "GET" && !options["ignoreMethod"]) {
           return PromiseResolve([]);
         }
-      } else if (request instanceof string) {
+      } else if (typeof request === "string" || request instanceof URL) {
         try {
           r = new Request(request);
         } catch (error) {
