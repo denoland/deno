@@ -45,6 +45,7 @@ pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
 pub static DENO_WEBSTORAGE_LIB: &str =
   include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
+pub static DENO_CACHE_LIB: &str = include_str!(env!("DENO_CACHE_LIB_PATH"));
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static DENO_BROADCAST_CHANNEL_LIB: &str =
   include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));

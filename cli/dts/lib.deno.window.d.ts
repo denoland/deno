@@ -36,6 +36,7 @@ declare class Window extends EventTarget {
   location: Location;
   localStorage: Storage;
   sessionStorage: Storage;
+  caches: CacheStorage;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
