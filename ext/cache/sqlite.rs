@@ -1,68 +1,82 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use async_trait::async_trait;
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::{error::AnyError, ZeroCopyBuf};
-use deno_core::{serde_json, AsyncRefCell, AsyncResult, Resource};
+use deno_core::serde_json;
+use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
+use deno_core::Resource;
+use deno_core::ZeroCopyBuf;
 use rusqlite::params;
-use std::borrow::Cow;
-use std::rc::Rc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use rusqlite::Connection;
-use std::{path::PathBuf, sync::Arc};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
-use crate::{
-  Cache, CacheDeleteRequest, CacheMatchRequest, CacheMatchResponseMeta,
-  CachePutRequest,
-};
+use std::borrow::Cow;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use crate::Cache;
+use crate::CacheDeleteRequest;
+use crate::CacheMatchRequest;
+use crate::CacheMatchResponseMeta;
+use crate::CachePutRequest;
 
 #[derive(Clone)]
-pub struct SqliteBackedCache(Arc<Mutex<Connection>>);
-
-impl SqliteBackedCache {
-  pub fn new(db_dir: PathBuf) -> Self {
-    std::fs::create_dir_all(&db_dir).expect("failed to create cache dir");
-    let path = db_dir.join("cache.db");
-    let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
-      panic!("failed to open cache db at {}", path.display())
-    });
-    connection
-      .execute(
-        "CREATE TABLE IF NOT EXISTS cache_storage (
-                  id              INTEGER PRIMARY KEY,
-                  cache_name      TEXT NOT NULL UNIQUE
-              )",
-        (),
-      )
-      .expect("failed to create cache_storage table");
-    connection
-      .execute(
-        "CREATE TABLE IF NOT EXISTS request_response_list (
-                  id                     INTEGER PRIMARY KEY,
-                  cache_id               INTEGER NOT NULL,
-                  request_url            TEXT NOT NULL,
-                  request_headers        TEXT NOT NULL,
-                  response_headers       TEXT NOT NULL,
-                  response_status        INTEGER NOT NULL,
-                  response_status_text   TEXT,
-                  response_body_key      TEXT,
-                  FOREIGN KEY (cache_id) REFERENCES cache_storage(id) ON DELETE CASCADE
-              )",
-        (),
-      )
-      .expect("failed to create request_response_list table");
-    SqliteBackedCache(Arc::new(Mutex::new(connection)))
-  }
+pub struct SqliteBackedCache {
+  pub connection: Arc<Mutex<Connection>>,
+  pub cache_storage_dir: PathBuf,
 }
 
 #[async_trait]
 impl Cache for SqliteBackedCache {
+  fn new(cache_storage_dir: PathBuf) -> Self {
+    {
+      std::fs::create_dir_all(&cache_storage_dir)
+        .expect("failed to create cache dir");
+      let path = cache_storage_dir.join("cache_metadata.db");
+      let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
+        panic!("failed to open cache db at {}", path.display())
+      });
+      connection
+        .execute(
+          "CREATE TABLE IF NOT EXISTS cache_storage (
+                    id              INTEGER PRIMARY KEY,
+                    cache_name      TEXT NOT NULL UNIQUE
+                )",
+          (),
+        )
+        .expect("failed to create cache_storage table");
+      connection
+        .execute(
+          "CREATE TABLE IF NOT EXISTS request_response_list (
+                    id                     INTEGER PRIMARY KEY,
+                    cache_id               INTEGER NOT NULL,
+                    request_url            TEXT NOT NULL,
+                    request_headers        TEXT NOT NULL,
+                    response_headers       TEXT NOT NULL,
+                    response_status        INTEGER NOT NULL,
+                    response_status_text   TEXT,
+                    response_body_key      TEXT,
+                    FOREIGN KEY (cache_id) REFERENCES cache_storage(id) ON DELETE CASCADE
+                )",
+          (),
+        )
+        .expect("failed to create request_response_list table");
+      SqliteBackedCache {
+        connection: Arc::new(Mutex::new(connection)),
+        cache_storage_dir,
+      }
+    }
+  }
+
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
-    let db = self.0.clone();
+    let db = self.connection.clone();
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       db.execute(
@@ -85,7 +99,7 @@ impl Cache for SqliteBackedCache {
   /// Check if a cache with the provided name exists.
   /// Note: this doesn't check the disk, it only checks the sqlite db.
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError> {
-    let db = self.0.clone();
+    let db = self.connection.clone();
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
@@ -104,7 +118,7 @@ impl Cache for SqliteBackedCache {
 
   /// Delete a cache storage. Internally, this deletes the row in the sqlite db.
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
-    let db = self.0.clone();
+    let db = self.connection.clone();
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let rows_effected = db.execute(
@@ -121,10 +135,11 @@ impl Cache for SqliteBackedCache {
     &self,
     request_response: CachePutRequest,
   ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
-    let db = self.0.clone();
+    let db = self.connection.clone();
+    let cache_storage_dir = self.cache_storage_dir.clone();
     let maybe_body_path = tokio::task::spawn_blocking(move || {
       let response_body_key = if request_response.response_has_body {
-        Some(format!("responses/{}", hash(&request_response.request_url)))
+        Some(hash(&request_response.request_url))
       } else {
         None
       };
@@ -151,17 +166,16 @@ impl Cache for SqliteBackedCache {
         )?
       };
       if let Some(body_key) = maybe_response_body {
-        let path = std::env::current_dir()?.join(body_key);
-        let parent = path.parent().unwrap();
-        if !parent.exists() {
-          std::fs::create_dir_all(&parent)?;
-        }
-        Ok::<Option<PathBuf>, AnyError>(Some(path))
+        let responses_dir  = cache_storage_dir.join("responses");
+          std::fs::create_dir_all(&responses_dir)?;
+        let response_path = responses_dir.join(body_key);
+        Ok::<Option<PathBuf>, AnyError>(Some(response_path))
       } else {
         Ok::<Option<PathBuf>, AnyError>(None)
       }
     }).await??;
     if let Some(path) = maybe_body_path {
+      // TODO(@satyarohith): can we create the file in the blocking task above?
       let file = tokio::fs::File::create(path).await?;
       Ok(Some(Rc::new(CachePutResource::new(file))))
     } else {
@@ -176,7 +190,8 @@ impl Cache for SqliteBackedCache {
     Option<(CacheMatchResponseMeta, Option<Rc<dyn Resource>>)>,
     AnyError,
   > {
-    let db = self.0.clone();
+    let db = self.connection.clone();
+    let cache_storage_dir = self.cache_storage_dir.clone();
     let (cache_meta, response_body_key) = tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
@@ -198,7 +213,8 @@ impl Cache for SqliteBackedCache {
     .await??;
 
     if let Some(path) = response_body_key {
-      let file = tokio::fs::File::open(path).await?;
+      let response_path = cache_storage_dir.join("responses").join(path);
+      let file = tokio::fs::File::open(response_path).await?;
       return Ok(Some((
         cache_meta,
         Some(Rc::new(CacheResponseResource::new(file))),
@@ -212,7 +228,7 @@ impl Cache for SqliteBackedCache {
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, AnyError> {
-    let db = self.0.clone();
+    let db = self.connection.clone();
     tokio::task::spawn_blocking(move || {
       // TODO(@satyarohith): remove the response body from disk if one exists
       let db = db.lock();

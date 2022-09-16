@@ -381,11 +381,16 @@ pub async fn create_main_worker(
     create_web_worker_pre_execute_module_callback(ps.clone());
 
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
-  let origin_storage_dir = maybe_storage_key.map(|key| {
+  let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
       .root
       // TODO(@crowlKats): change to origin_data for 2.0
       .join("location_data")
+      .join(checksum::gen(&[key.as_bytes()]))
+  });
+  let cache_storage_dir = maybe_storage_key.map(|key| {
+    std::env::temp_dir()
+      .join("deno_cache")
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
@@ -428,6 +433,7 @@ pub async fn create_main_worker(
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
+    cache_storage_dir,
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),

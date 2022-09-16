@@ -4,6 +4,7 @@ mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
 use async_trait::async_trait;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
@@ -58,6 +59,7 @@ pub struct CacheDeleteRequest {
 
 #[async_trait]
 pub trait Cache: Clone {
+  fn new(cache_storage_dir: PathBuf) -> Self;
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError>;
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError>;
@@ -85,7 +87,7 @@ pub async fn op_cache_storage_open<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   cache.storage_open(cache_name).await
 }
 
@@ -97,7 +99,7 @@ pub async fn op_cache_storage_has<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   cache.storage_has(cache_name).await
 }
 
@@ -109,7 +111,7 @@ pub async fn op_cache_storage_delete<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   cache.storage_delete(cache_name).await
 }
 
@@ -121,7 +123,7 @@ pub async fn op_cache_put<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   match cache.put(request_response).await? {
     Some(resource) => {
       let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
@@ -139,7 +141,7 @@ pub async fn op_cache_match<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   match cache.r#match(request).await? {
     Some((meta, None)) => Ok(Some(CacheMatchResponse(meta, None))),
     Some((meta, Some(resource))) => {
@@ -158,11 +160,27 @@ pub async fn op_cache_delete<CA>(
 where
   CA: Cache + 'static,
 {
-  let cache = state.borrow().borrow::<CA>().clone();
+  let cache = get_cache::<CA>(&state)?;
   cache.delete(request).await
 }
 
-pub fn init<CA: Cache + 'static>(cache: CA) -> Extension {
+pub fn get_cache<CA>(state: &Rc<RefCell<OpState>>) -> Result<CA, AnyError>
+where
+  CA: Cache + 'static,
+{
+  let state = state.borrow();
+  let cache = state.try_borrow::<CA>().ok_or_else(|| {
+    custom_error(
+      "NotSupported",
+      "Cache API is not supported in this context.",
+    )
+  })?;
+  Ok(cache.clone())
+}
+
+pub fn init<CA: Cache + 'static>(
+  cache_storage_dir: Option<PathBuf>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/cache",
@@ -177,7 +195,9 @@ pub fn init<CA: Cache + 'static>(cache: CA) -> Extension {
       op_cache_delete::decl::<CA>(),
     ])
     .state(move |state| {
-      state.put(cache.clone());
+      if let Some(cache_storage) = &cache_storage_dir {
+        state.put(CA::new(cache_storage.clone()));
+      }
       Ok(())
     })
     .build()

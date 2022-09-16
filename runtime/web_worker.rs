@@ -393,9 +393,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init(SqliteBackedCache::new(
-        std::env::current_dir().unwrap(),
-      )),
+      deno_cache::init::<SqliteBackedCache>(None).disable(),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

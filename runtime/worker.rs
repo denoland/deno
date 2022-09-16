@@ -86,6 +86,7 @@ pub struct WorkerOptions {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -152,9 +153,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init(SqliteBackedCache::new(
-        std::env::current_dir().unwrap(),
-      )),
+      deno_cache::init::<SqliteBackedCache>(options.cache_storage_dir.clone()),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -530,6 +529,7 @@ mod tests {
       module_loader: Rc::new(deno_core::FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
+      cache_storage_dir: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
