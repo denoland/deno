@@ -119,6 +119,7 @@
           const { value, done } = await reader.read();
           if (done) {
             await core.shutdown(rid);
+            core.close(rid);
             break;
           } else {
             await core.write(rid, value);
@@ -142,10 +143,24 @@
       }
     }
 
-    async delete(request, _options) {
+    async delete(request, options) {
+      let r = null;
+      // Step 2.
+      if (request instanceof Request) {
+        r = request;
+        if (request.method !== "GET" && !options["ignoreMethod"]) {
+          return PromiseResolve([]);
+        }
+      } else if (typeof request === "string" || request instanceof URL) {
+        try {
+          r = new Request(request);
+        } catch (error) {
+          return PromiseReject(error);
+        }
+      }
       return await core.opAsync("op_cache_delete", {
         cacheId: this.#id,
-        requestUrl: request.url,
+        requestUrl: r.url,
       });
     }
 
@@ -208,6 +223,7 @@
                     controller.enqueue(chunk.subarray(0, read));
                   } else {
                     // We have reached the end of the body, so we close the stream.
+                    core.close(responseBodyRid);
                     controller.close();
                   }
                 } catch (err) {
@@ -215,6 +231,7 @@
                   // error.
                   controller.error(err);
                   controller.close();
+                  core.close(responseBodyRid);
                 }
               },
             });
