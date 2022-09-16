@@ -13,6 +13,6 @@ description = "WebGPU implementation for Deno"
 [dependencies]
 deno_core = { version = "0.151.0", path = "../../core" }
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 wgpu-core = { version = "0.13", features = ["trace", "replay", "serde"] }
 wgpu-types = { version = "0.13", features = ["trace", "replay", "serde"] }

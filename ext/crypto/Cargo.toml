@@ -15,9 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 aes = "0.8.1"
-# TODO(@littledivy): Move to stable release
-# https://github.com/RustCrypto/AEADs/issues/411
-aes-gcm = "=0.10.0-pre"
+aes-gcm = "0.10"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64 = "0.13.0"
 block-modes = "0.9.1"
@@ -33,12 +31,12 @@ p256 = { version = "0.11.1", features = ["ecdh"] }
 p384 = "0.11.1"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
-rsa = { version = "0.7.0-pre", default-features = false, features = ["std"] }
+rsa = { version = "=0.7.0-pre", default-features = false, features = ["std"] }
 sec1 = "0.3.0"
 serde = { version = "1.0.129", features = ["derive"] }
 serde_bytes = "0.11"
 sha-1 = "0.10.0"
 sha2 = "0.10.2"
 spki = "0.6.0"
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 uuid = { version = "1.0.0", features = ["v4"] }

@@ -17,7 +17,7 @@ path = "lib.rs"
 bencher = "0.1"
 deno_core = { version = "0.151.0", path = "../core" }
 once_cell = "1.10.0"
-tokio = { version = "1.19", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 
 [[bench]]
 name = "op_baseline"
