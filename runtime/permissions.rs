@@ -2104,8 +2104,9 @@ fn permission_prompt(message: &str, name: &str) -> bool {
       }
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' {}", ch, OPTS);
-        eprint!("{}", colors::bold(&msg_again));
+        eprint!("\x1B[1A\x1B[0J");
+        eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
+        eprint!(" {} > ", OPTS);
       }
     };
   }
