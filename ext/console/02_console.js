@@ -390,19 +390,23 @@
     const entries = [];
     let iter;
     let valueIsTypedArray = false;
+    let entriesLength;
 
     switch (options.typeName) {
       case "Map":
         iter = MapPrototypeEntries(value);
+        entriesLength = value.size;
         break;
       case "Set":
         iter = SetPrototypeEntries(value);
+        entriesLength = value.size;
         break;
       case "Array":
-        iter = ArrayPrototypeEntries(value);
+        entriesLength = value.length;
         break;
       default:
         if (isTypedArray(value)) {
+          entriesLength = value.length;
           iter = ArrayPrototypeEntries(value);
           valueIsTypedArray = true;
         } else {
@@ -410,41 +414,61 @@
         }
     }
 
-    let entriesLength = 0;
-    const next = () => {
-      return iter.next();
-    };
-    while (true) {
-      let el;
-      try {
-        const res = iter.next();
-        if (res.done) {
-          break;
-        }
-        el = res.value;
-      } catch (err) {
-        if (valueIsTypedArray) {
-          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
-          // is detached. We don't want to show the exception in that case, so
-          // we catch it here and pretend the ArrayBuffer has no entries (like
-          // Chrome DevTools does).
-          break;
-        }
-        throw err;
-      }
-      if (entriesLength < inspectOptions.iterableLimit) {
+    if (options.typeName === "Array") {
+      for (
+        let i = 0, j = 0;
+        i < value.length && j < inspectOptions.iterableLimit;
+        i++, j++
+      ) {
         inspectOptions.indentLevel++;
-        ArrayPrototypePush(
-          entries,
-          options.entryHandler(
-            el,
-            inspectOptions,
-            FunctionPrototypeBind(next, iter),
-          ),
+        const { entry, skipTo } = options.entryHandler(
+          [i, value[i]],
+          inspectOptions,
         );
+        ArrayPrototypePush(entries, entry);
         inspectOptions.indentLevel--;
+
+        if (skipTo) {
+          // substract skipped (empty) items
+          entriesLength -= skipTo - i;
+          i = skipTo;
+        }
       }
-      entriesLength++;
+    } else {
+      let i = 0;
+      while (true) {
+        let el;
+        try {
+          const res = iter.next();
+          if (res.done) {
+            break;
+          }
+          el = res.value;
+        } catch (err) {
+          if (valueIsTypedArray) {
+            // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
+            // is detached. We don't want to show the exception in that case, so
+            // we catch it here and pretend the ArrayBuffer has no entries (like
+            // Chrome DevTools does).
+            break;
+          }
+          throw err;
+        }
+        if (i < inspectOptions.iterableLimit) {
+          inspectOptions.indentLevel++;
+          ArrayPrototypePush(
+            entries,
+            options.entryHandler(
+              el,
+              inspectOptions,
+            ),
+          );
+          inspectOptions.indentLevel--;
+        } else {
+          break;
+        }
+        i++;
+      }
     }
 
     if (options.sort) {
@@ -805,6 +829,8 @@
     inspectOptions,
   ) {
     const gray = maybeColor(colors.gray, inspectOptions);
+    let lastValidIndex = 0;
+    let keys;
     const options = {
       typeName: "Array",
       displayName: "",
@@ -812,17 +838,37 @@
       entryHandler: (entry, inspectOptions, next) => {
         const [index, val] = entry;
         let i = index;
+        lastValidIndex = index;
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
-          i++;
-          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
-            next();
-            i++;
+          let skipTo;
+          keys = keys || ObjectKeys(value);
+          if (keys.length === 0) {
+            // fast path, all items are empty
+            i = value.length;
+            skipTo = i;
+          } else {
+            // Not all indexes are empty or there's a non-index property
+            // Find first non-empty array index
+            i = value.length;
+            while (keys.length) {
+              const key = keys.shift();
+              // check if it's a valid array index
+              if (key > lastValidIndex && key < 2 ** 32 - 1) {
+                i = Number(key);
+                break;
+              }
+            }
+
+            skipTo = i - 1;
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return gray(`<${emptyItems} empty item${ending}>`);
+          return {
+            entry: gray(`<${emptyItems} empty item${ending}>`),
+            skipTo,
+          };
         } else {
-          return inspectValueWithQuotes(val, inspectOptions);
+          return { entry: inspectValueWithQuotes(val, inspectOptions) };
         }
       },
       group: inspectOptions.compact,
