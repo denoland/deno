@@ -729,31 +729,26 @@ fn codegen_arg(
     return quote! {
       let #ident = {
         let value = args.get(#idx as i32);
-        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-          let (offset, len) = (view.byte_offset(), view.byte_length());
-          let buffer = match view.buffer(scope) {
-              Some(v) => v,
-              None => {
-                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
-              }
-          };
-          let store = buffer.get_backing_store();
-          if store.is_shared() {
-            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
-          }
-          unsafe { #mutability *(&store[offset..offset + len] as *const _ as *mut #ptr_ty) }
-        } else {
-          let b: #core::v8::Local<#core::v8::ArrayBuffer> = match value.try_into() {
-            Ok(v) => v,
-            Err(_) => {
-              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBuffer at position {}", #idx));
+        match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+          Ok(b) => {
+            let store = b.data() as *mut u8;
+            unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
+          },
+          Err(_) => {
+            if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+              let (offset, len) = (view.byte_offset(), view.byte_length());
+              let buffer = match view.buffer(scope) {
+                  Some(v) => v,
+                  None => {
+                    return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+                  }
+              };
+              let store = buffer.data() as *mut u8;
+              unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+            } else {
+              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
             }
-          };
-          let store = b.get_backing_store();
-          if store.is_shared() {
-            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
           }
-          unsafe { #mutability *(&store[0..b.byte_length()] as *const _ as *mut #ptr_ty) }
         }
       };
     };

@@ -19,7 +19,5 @@ function bench(fun) {
 const encoder = new TextEncoder();
 const data = "hello world";
 const out = new Uint8Array(100);
-console.log(encoder.encodeInto(data, out));
-bench(() => {
-  encoder.encodeInto(data, out);
-});
+
+bench(() => encoder.encodeInto(data, out));

@@ -10,7 +10,9 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -19,8 +21,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
-use deno_core::serde_v8;
-use deno_core::v8;
 
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -332,16 +332,13 @@ fn op_encoding_encode_into(
       out_buf.len() / std::mem::size_of::<u32>(),
     )
   };
-  let mut nchars = 0;
-  let written = s.write_utf8(
+  out_buf[1] = s.write_utf8(
     scope,
     buffer,
-    Some(&mut nchars),
+    Some(&mut (out_buf[0] as usize)),
     v8::WriteOptions::NO_NULL_TERMINATION
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
-  );
-  out_buf[0] = nchars as u32;
-  out_buf[1] = written as u32;
+  ) as u32;
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
