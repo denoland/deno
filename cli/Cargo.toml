@@ -59,7 +59,7 @@ deno_task_shell = "0.5.2"
 atty = "=0.2.14"
 base64 = "=0.13.0"
 cache_control = "=0.2.0"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
 clap = "=3.1.12"
 clap_complete = "=3.1.2"
 clap_complete_fig = "=3.1.5"
@@ -73,17 +73,17 @@ env_logger = "=0.9.0"
 eszip = "=0.28.0"
 fancy-regex = "=0.10.0"
 flate2 = "=1.0.24"
-http = "0.2"
+http = "=0.2.8"
 import_map = "=0.12.1"
-indexmap = "1.8.1"
-indicatif = "0.17"
+indexmap = "=1.9.1"
+indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
 mitata = "=0.0.7"
 monch = "=0.2.0"
-notify = "5.0"
-once_cell = "1.14"
+notify = "=5.0.0"
+once_cell = "=1.14.0"
 os_pipe = "=1.0.1"
 path-clean = "=0.1.0"
 percent-encoding = "=2.2.0"
@@ -94,19 +94,19 @@ ring = "=0.16.20"
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
 secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
-semver = "1.0"
+semver = "=1.0.14"
 serde = { version = "=1.0.144", features = ["derive"] }
 serde_repr = "=0.1.9"
 shell-escape = "=0.1.5"
 tar = "=0.4.38"
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
-tokio = { version = "1.21", features = ["full"] }
-tokio-util = "0.7"
+tokio = { version = "=1.21.1", features = ["full"] }
+tokio-util = "=0.7.4"
 tower-lsp = "=0.17.0"
 twox-hash = "=1.6.3"
-typed-arena = "2.0.1"
-uuid = { version = "1.1", features = ["v4", "serde"] }
+typed-arena = "=2.0.1"
+uuid = { version = "=1.1.2", features = ["v4", "serde"] }
 walkdir = "=2.3.2"
 zstd = '=0.11.2'
 
