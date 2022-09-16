@@ -19,11 +19,13 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
+use deno_core::serde_v8;
+use deno_core::v8;
+
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
@@ -314,46 +316,32 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct EncodeIntoResult {
-  read: usize,
-  written: usize,
-}
-
-#[op]
+#[op(v8)]
 fn op_encoding_encode_into(
-  input: String,
+  scope: &mut v8::HandleScope,
+  input: serde_v8::Value,
   buffer: &mut [u8],
-) -> EncodeIntoResult {
-  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
-  // point boundary from input that fits in `buffer`, and copy the bytes up to
-  // that point.
-  let boundary = if buffer.len() >= input.len() {
-    input.len()
-  } else {
-    let mut boundary = buffer.len();
-
-    // The maximum length of a UTF-8 code point is 4 bytes.
-    for _ in 0..4 {
-      if input.is_char_boundary(boundary) {
-        break;
-      }
-      debug_assert!(boundary > 0);
-      boundary -= 1;
-    }
-
-    debug_assert!(input.is_char_boundary(boundary));
-    boundary
+  out_buf: &mut [u8],
+) {
+  let s = v8::Local::<v8::String>::try_from(input.v8_value).unwrap();
+  assert!(out_buf.len() % 4 == 0);
+  // SAFETY: `out_buf` is guaranteed to be aligned to 4 bytes.
+  let out_buf: &mut [u32] = unsafe {
+    std::slice::from_raw_parts_mut(
+      out_buf.as_mut_ptr() as *mut u32,
+      out_buf.len() / std::mem::size_of::<u32>(),
+    )
   };
-
-  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
-
-  EncodeIntoResult {
-    // The `read` output parameter is measured in UTF-16 code units.
-    read: input[..boundary].encode_utf16().count(),
-    written: boundary,
-  }
+  let mut nchars = 0;
+  let written = s.write_utf8(
+    scope,
+    buffer,
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  );
+  out_buf[0] = nchars as u32;
+  out_buf[1] = written as u32;
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
