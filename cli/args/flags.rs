@@ -154,6 +154,7 @@ pub struct LintFlags {
   pub maybe_rules_include: Option<Vec<String>>,
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
+  pub compact: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -1387,6 +1388,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .takes_value(false),
     )
     .arg(
+      Arg::new("compact")
+        .long("compact")
+        .help("Output lint result in compact format")
+        .takes_value(false),
+    )
+    .arg(
       Arg::new("files")
         .takes_value(true)
         .multiple_values(true)
@@ -2535,6 +2542,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .map(|f| f.map(String::from).collect());
 
   let json = matches.is_present("json");
+  let compact = matches.is_present("compact");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files,
     rules,
@@ -2543,6 +2551,7 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     maybe_rules_exclude,
     ignore,
     json,
+    compact,
   });
 }
 
@@ -3621,6 +3630,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3647,6 +3657,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         watch: Some(vec![]),
@@ -3675,6 +3686,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         watch: Some(vec![]),
@@ -3695,6 +3707,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
@@ -3715,6 +3728,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3738,6 +3752,7 @@ mod tests {
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3755,6 +3770,7 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
+          compact: false,
           ignore: vec![],
         }),
         ..Flags::default()
@@ -3779,6 +3795,33 @@ mod tests {
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: true,
+          compact: false,
+          ignore: vec![],
+        }),
+        config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--config",
+      "Deno.jsonc",
+      "--compact",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: vec![PathBuf::from("script_1.ts")],
+          rules: false,
+          maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: true,
           ignore: vec![],
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
