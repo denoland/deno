@@ -17,9 +17,9 @@ declare interface CacheStorage {
 
 /** @category Cache API */
 declare interface Cache {
-  put(request: Request | URL, response: Response): Promise<void>;
-  match(request: Request | URL): Promise<Response | undefined>;
-  delete(request: Request | URL): Promise<boolean>;
+  put(request: RequestInfo | URL, response: Response): Promise<void>;
+  match(request: RequestInfo | URL): Promise<Response | undefined>;
+  delete(request: RequestInfo | URL): Promise<boolean>;
 }
 
 /** @category Cache API */
