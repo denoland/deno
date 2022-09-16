@@ -6,6 +6,7 @@ import { resolve } from "../../../test_util/std/path/mod.ts";
 export {
   assert,
   assertEquals,
+  assertFalse,
   assertMatch,
   assertNotEquals,
   assertRejects,
