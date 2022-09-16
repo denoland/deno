@@ -53,7 +53,7 @@ pub async fn op_crypto_generate_key(
       generate_key_hmac(hash, length)
     }
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = tokio_rayon::spawn(fun).await?;
   Ok(buf.into())
 }
 

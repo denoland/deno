@@ -863,13 +863,13 @@ pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let output = tokio::task::spawn_blocking(move || {
+  let output = tokio_rayon::spawn(move || -> ZeroCopyBuf {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
       .into()
   })
-  .await?;
+  .await;
 
   Ok(output)
 }

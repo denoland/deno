@@ -95,7 +95,7 @@ pub async fn op_crypto_decrypt(
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = tokio_rayon::spawn(fun).await?;
   Ok(buf.into())
 }
 
