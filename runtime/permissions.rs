@@ -155,7 +155,7 @@ impl UnitPermission {
       if permission_prompt(
         &format!("access to {}", self.description),
         self.name,
-        None,
+        Some("Deno.permissions.query()"),
       ) {
         self.state = PermissionState::Granted;
       } else {
@@ -340,7 +340,7 @@ impl UnaryPermission<ReadDescriptor> {
         if permission_prompt(
           &format!("read access to \"{}\"", display_path.display()),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self.granted_list.insert(ReadDescriptor(resolved_path));
           PermissionState::Granted
@@ -358,7 +358,11 @@ impl UnaryPermission<ReadDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("read access", self.name, None) {
+        if permission_prompt(
+          "read access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -413,11 +417,12 @@ impl UnaryPermission<ReadDescriptor> {
     &mut self,
     path: &Path,
     display: &str,
+    api_name: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
     let (result, prompted) = self.query(Some(&resolved_path)).check(
       self.name,
-      None,
+      Some(api_name),
       Some(&format!("<{}>", display)),
       self.prompt,
     );
@@ -497,7 +502,7 @@ impl UnaryPermission<WriteDescriptor> {
         if permission_prompt(
           &format!("write access to \"{}\"", display_path.display()),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self.granted_list.insert(WriteDescriptor(resolved_path));
           PermissionState::Granted
@@ -515,7 +520,11 @@ impl UnaryPermission<WriteDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("write access", self.name, None) {
+        if permission_prompt(
+          "write access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -640,7 +649,7 @@ impl UnaryPermission<NetDescriptor> {
         if permission_prompt(
           &format!("network access to \"{}\"", host),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self.granted_list.insert(host);
           PermissionState::Granted
@@ -658,7 +667,11 @@ impl UnaryPermission<NetDescriptor> {
     } else {
       let state = self.query::<&str>(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("network access", self.name, None) {
+        if permission_prompt(
+          "network access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -801,7 +814,7 @@ impl UnaryPermission<EnvDescriptor> {
         if permission_prompt(
           &format!("env access to \"{}\"", env),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self.granted_list.insert(EnvDescriptor::new(env));
           PermissionState::Granted
@@ -819,7 +832,11 @@ impl UnaryPermission<EnvDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("env access", self.name, None) {
+        if permission_prompt(
+          "env access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -924,7 +941,7 @@ impl UnaryPermission<RunDescriptor> {
         if permission_prompt(
           &format!("run access to \"{}\"", cmd),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self
             .granted_list
@@ -948,7 +965,11 @@ impl UnaryPermission<RunDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("run access", self.name, None) {
+        if permission_prompt(
+          "run access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1057,7 +1078,7 @@ impl UnaryPermission<FfiDescriptor> {
         if permission_prompt(
           &format!("ffi access to \"{}\"", display_path.display()),
           self.name,
-          None,
+          Some("Deno.permissions.query()"),
         ) {
           self.granted_list.insert(FfiDescriptor(resolved_path));
           PermissionState::Granted
@@ -1075,7 +1096,11 @@ impl UnaryPermission<FfiDescriptor> {
     } else {
       let state = self.query(None);
       if state == PermissionState::Prompt {
-        if permission_prompt("ffi access", self.name, None) {
+        if permission_prompt(
+          "ffi access",
+          self.name,
+          Some("Deno.permissions.query()"),
+        ) {
           self.granted_list.clear();
           self.global_state = PermissionState::Granted;
           PermissionState::Granted
@@ -1981,7 +2006,7 @@ pub fn create_child_permissions(
 fn permission_prompt(
   message: &str,
   name: &str,
-  _api_name: Option<&str>,
+  api_name: Option<&str>,
 ) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
@@ -2111,6 +2136,9 @@ fn permission_prompt(
   eprint!("{}", colors::bold("Deno requests "));
   eprint!("{}", colors::bold(message));
   eprintln!("{}", colors::bold("."));
+  if let Some(api_name) = api_name {
+    eprintln!("   ├ Requested by `{}` API", api_name);
+  }
   let msg = format!(
     "   ├ Run again with --allow-{} to bypass this prompt.",
     name

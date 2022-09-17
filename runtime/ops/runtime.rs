@@ -29,7 +29,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
     state
       .borrow_mut::<Permissions>()
       .read
-      .check_blind(&main_path, "main_module")?;
+      .check_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
   Ok(main)
 }

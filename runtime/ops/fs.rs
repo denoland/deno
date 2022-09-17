@@ -1052,7 +1052,7 @@ fn op_realpath_sync(
   let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&path)?;
   if path.is_relative() {
-    permissions.read.check_blind(&current_dir()?, "CWD")?;
+    permissions.read.check_blind(&current_dir()?, "CWD", "Deno.realPathSync()")?;
   }
 
   debug!("op_realpath_sync {}", path.display());
@@ -1075,7 +1075,7 @@ async fn op_realpath_async(
     let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&path)?;
     if path.is_relative() {
-      permissions.read.check_blind(&current_dir()?, "CWD")?;
+      permissions.read.check_blind(&current_dir()?, "CWD", "Deno.realPath()")?;
     }
   }
 
@@ -1896,7 +1896,7 @@ fn op_cwd(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<Permissions>()
     .read
-    .check_blind(&path, "CWD")?;
+    .check_blind(&path, "CWD", "Deno.cwd()")?;
   let path_str = into_string(path.into_os_string())?;
   Ok(path_str)
 }

@@ -64,7 +64,7 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<Permissions>()
     .read
-    .check_blind(&current_exe, "exec_path")?;
+    .check_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
