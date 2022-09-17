@@ -22,9 +22,11 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::GlobalNpmPackageResolver;
+use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
+use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::check;
@@ -86,8 +88,10 @@ pub struct Inner {
   pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  pub npm_resolver: GlobalNpmPackageResolver,
+  pub npm_cache: NpmCache,
+  pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
+  progress_bar: ProgressBar,
 }
 
 impl Deref for ProcState {
@@ -147,6 +151,7 @@ impl ProcState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
+    let progress_bar = ProgressBar::default();
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -156,6 +161,7 @@ impl ProcState {
       cli_options
         .unsafely_ignore_certificate_errors()
         .map(ToOwned::to_owned),
+      Some(progress_bar.clone()),
     )?;
 
     let lockfile = cli_options
@@ -216,24 +222,37 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+    let registry_url = NpmRegistryApi::default_url();
+    let npm_cache = NpmCache::from_deno_dir(
       &dir,
+      cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
       cli_options.reload_flag(),
       cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let npm_resolver = NpmPackageResolver::new(
+      npm_cache.clone(),
+      api,
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+      cli_options.no_npm(),
     );
 
+    let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
-        // todo(dsherret): use hash of emit options instead as it's more specific
-        .write(&ts_config_result.ts_config.as_bytes())
+        .write_hashable(&emit_options)
         .finish(),
-      emit_options: ts_config_result.ts_config.into(),
+      emit_options,
       file_fetcher,
       graph_data: Default::default(),
       lockfile,
@@ -247,8 +266,10 @@ impl ProcState {
       parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
+      progress_bar,
     })))
   }
 
@@ -406,9 +427,10 @@ impl ProcState {
         .npm_resolver
         .add_package_reqs(npm_package_references)
         .await?;
-      self.npm_resolver.cache_packages().await?;
       self.prepare_node_std_graph().await?;
     }
+
+    self.progress_bar.clear();
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -641,7 +663,6 @@ impl ProcState {
     }
     if !package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(package_reqs).await?;
-      self.npm_resolver.cache_packages().await?;
     }
 
     Ok(graph)
