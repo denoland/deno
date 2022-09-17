@@ -392,10 +392,14 @@ impl UnaryPermission<ReadDescriptor> {
   }
 
   #[inline]
-  pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
+  pub fn check(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     let (result, prompted) = self.query(Some(path)).check2(
       self.name,
-      None,
+      api_name,
       || Some(format!("\"{}\"", path.to_path_buf().display())),
       self.prompt,
     );
@@ -437,11 +441,11 @@ impl UnaryPermission<ReadDescriptor> {
     result
   }
 
-  pub fn check_all(&mut self) -> Result<(), AnyError> {
+  pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, None, Some("all"), self.prompt);
+        .check(self.name, api_name, Some("all"), self.prompt);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -554,10 +558,14 @@ impl UnaryPermission<WriteDescriptor> {
   }
 
   #[inline]
-  pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
+  pub fn check(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     let (result, prompted) = self.query(Some(path)).check2(
       self.name,
-      None,
+      api_name,
       || Some(format!("\"{}\"", path.to_path_buf().display())),
       self.prompt,
     );
@@ -573,11 +581,11 @@ impl UnaryPermission<WriteDescriptor> {
     result
   }
 
-  pub fn check_all(&mut self) -> Result<(), AnyError> {
+  pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, None, Some("all"), self.prompt);
+        .check(self.name, api_name, Some("all"), self.prompt);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -710,11 +718,12 @@ impl UnaryPermission<NetDescriptor> {
   pub fn check<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
+    api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     let new_host = NetDescriptor::new(&host);
     let (result, prompted) = self.query(Some(host)).check(
       self.name,
-      None,
+      api_name,
       Some(&format!("\"{}\"", new_host)),
       self.prompt,
     );
@@ -729,7 +738,11 @@ impl UnaryPermission<NetDescriptor> {
     result
   }
 
-  pub fn check_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
+  pub fn check_url(
+    &mut self,
+    url: &url::Url,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     let hostname = url
       .host_str()
       .ok_or_else(|| uri_error("Missing host"))?
@@ -741,7 +754,7 @@ impl UnaryPermission<NetDescriptor> {
     let host = &(&hostname, url.port_or_known_default());
     let (result, prompted) = self.query(Some(host)).check(
       self.name,
-      None,
+      api_name,
       Some(&format!("\"{}\"", display_host)),
       self.prompt,
     );
@@ -1376,7 +1389,7 @@ impl Permissions {
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
       "file" => match specifier.to_file_path() {
-        Ok(path) => self.read.check(&path),
+        Ok(path) => self.read.check(&path, None),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {}",
           specifier
@@ -1384,7 +1397,7 @@ impl Permissions {
       },
       "data" => Ok(()),
       "blob" => Ok(()),
-      _ => self.net.check_url(specifier),
+      _ => self.net.check_url(specifier, None),
     }
   }
 }
@@ -1393,14 +1406,15 @@ impl deno_flash::FlashPermissions for Permissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
+    api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host)
+    self.net.check(host, Some(api_name))
   }
 }
 
 impl deno_node::NodePermissions for Permissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.read.check(path)
+    self.read.check(path, None)
   }
 }
 
@@ -1408,26 +1422,43 @@ impl deno_net::NetPermissions for Permissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
+    api_name: &str,
   ) -> Result<(), AnyError> {
-    self.net.check(host)
+    self.net.check(host, Some(api_name))
   }
 
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.read.check(path)
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.read.check(path, Some(api_name))
   }
 
-  fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.write.check(path)
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.write.check(path, Some(api_name))
   }
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
-  fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
-    self.net.check_url(url)
+  fn check_net_url(
+    &mut self,
+    url: &url::Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.net.check_url(url, Some(api_name))
   }
 
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.read.check(path)
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.read.check(path, Some(api_name))
   }
 }
 
@@ -1442,8 +1473,12 @@ impl deno_web::TimersPermission for Permissions {
 }
 
 impl deno_websocket::WebSocketPermissions for Permissions {
-  fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
-    self.net.check_url(url)
+  fn check_net_url(
+    &mut self,
+    url: &url::Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.net.check_url(url, Some(api_name))
   }
 }
 
@@ -1861,7 +1896,7 @@ pub fn create_child_permissions(
         .net
         .granted_list
         .iter()
-        .all(|desc| main_perms.net.check(&(&desc.0, desc.1)).is_ok())
+        .all(|desc| main_perms.net.check(&(&desc.0, desc.1), None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -1909,7 +1944,7 @@ pub fn create_child_permissions(
       worker_perms.read = main_perms.read.clone();
     }
     ChildUnaryPermissionArg::Granted => {
-      if main_perms.read.check_all().is_err() {
+      if main_perms.read.check_all(None).is_err() {
         return Err(escalation_error());
       }
       worker_perms.read.global_state = PermissionState::Granted;
@@ -1925,7 +1960,7 @@ pub fn create_child_permissions(
         .read
         .granted_list
         .iter()
-        .all(|desc| main_perms.read.check(&desc.0).is_ok())
+        .all(|desc| main_perms.read.check(&desc.0, None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -1970,7 +2005,7 @@ pub fn create_child_permissions(
       worker_perms.write = main_perms.write.clone();
     }
     ChildUnaryPermissionArg::Granted => {
-      if main_perms.write.check_all().is_err() {
+      if main_perms.write.check_all(None).is_err() {
         return Err(escalation_error());
       }
       worker_perms.write.global_state = PermissionState::Granted;
@@ -1986,7 +2021,7 @@ pub fn create_child_permissions(
         .write
         .granted_list
         .iter()
-        .all(|desc| main_perms.write.check(&desc.0).is_ok())
+        .all(|desc| main_perms.write.check(&desc.0, None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -2236,55 +2271,67 @@ mod tests {
     .unwrap();
 
     // Inside of /a/specific and /a/specific/dir/name
-    assert!(perms.read.check(Path::new("/a/specific/dir/name")).is_ok());
-    assert!(perms.write.check(Path::new("/a/specific/dir/name")).is_ok());
+    assert!(perms
+      .read
+      .check(Path::new("/a/specific/dir/name"), None)
+      .is_ok());
+    assert!(perms
+      .write
+      .check(Path::new("/a/specific/dir/name"), None)
+      .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    assert!(perms.read.check(Path::new("/a/specific/dir")).is_ok());
-    assert!(perms.write.check(Path::new("/a/specific/dir")).is_ok());
+    assert!(perms.read.check(Path::new("/a/specific/dir"), None).is_ok());
+    assert!(perms
+      .write
+      .check(Path::new("/a/specific/dir"), None)
+      .is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
     assert!(perms
       .read
-      .check(Path::new("/a/specific/dir/name/inner"))
+      .check(Path::new("/a/specific/dir/name/inner"), None)
       .is_ok());
     assert!(perms
       .write
-      .check(Path::new("/a/specific/dir/name/inner"))
+      .check(Path::new("/a/specific/dir/name/inner"), None)
       .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
-    assert!(perms.read.check(Path::new("/a/specific/other/dir")).is_ok());
+    assert!(perms
+      .read
+      .check(Path::new("/a/specific/other/dir"), None)
+      .is_ok());
     assert!(perms
       .write
-      .check(Path::new("/a/specific/other/dir"))
+      .check(Path::new("/a/specific/other/dir"), None)
       .is_ok());
 
     // Exact match with /b/c
-    assert!(perms.read.check(Path::new("/b/c")).is_ok());
-    assert!(perms.write.check(Path::new("/b/c")).is_ok());
+    assert!(perms.read.check(Path::new("/b/c"), None).is_ok());
+    assert!(perms.write.check(Path::new("/b/c"), None).is_ok());
 
     // Sub path within /b/c
-    assert!(perms.read.check(Path::new("/b/c/sub/path")).is_ok());
-    assert!(perms.write.check(Path::new("/b/c/sub/path")).is_ok());
+    assert!(perms.read.check(Path::new("/b/c/sub/path"), None).is_ok());
+    assert!(perms.write.check(Path::new("/b/c/sub/path"), None).is_ok());
 
     // Sub path within /b/c, needs normalizing
     assert!(perms
       .read
-      .check(Path::new("/b/c/sub/path/../path/."))
+      .check(Path::new("/b/c/sub/path/../path/."), None)
       .is_ok());
     assert!(perms
       .write
-      .check(Path::new("/b/c/sub/path/../path/."))
+      .check(Path::new("/b/c/sub/path/../path/."), None)
       .is_ok());
 
     // Inside of /b but outside of /b/c
-    assert!(perms.read.check(Path::new("/b/e")).is_err());
-    assert!(perms.write.check(Path::new("/b/e")).is_err());
+    assert!(perms.read.check(Path::new("/b/e"), None).is_err());
+    assert!(perms.write.check(Path::new("/b/e"), None).is_err());
 
     // Inside of /a but outside of /a/specific
-    assert!(perms.read.check(Path::new("/a/b")).is_err());
-    assert!(perms.write.check(Path::new("/a/b")).is_err());
+    assert!(perms.read.check(Path::new("/a/b"), None).is_err());
+    assert!(perms.write.check(Path::new("/a/b"), None).is_err());
   }
 
   #[test]
@@ -2326,7 +2373,7 @@ mod tests {
     ];
 
     for (host, port, is_ok) in domain_tests {
-      assert_eq!(is_ok, perms.net.check(&(host, Some(port))).is_ok());
+      assert_eq!(is_ok, perms.net.check(&(host, Some(port)), None).is_ok());
     }
   }
 
@@ -2361,7 +2408,7 @@ mod tests {
     ];
 
     for (host, port) in domain_tests {
-      assert!(perms.net.check(&(host, Some(port))).is_ok());
+      assert!(perms.net.check(&(host, Some(port)), None).is_ok());
     }
   }
 
@@ -2396,7 +2443,7 @@ mod tests {
     ];
 
     for (host, port) in domain_tests {
-      assert!(perms.net.check(&(host, Some(port))).is_err());
+      assert!(perms.net.check(&(host, Some(port)), None).is_err());
     }
   }
 
@@ -2456,7 +2503,7 @@ mod tests {
 
     for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.net.check_url(&u).is_ok());
+      assert_eq!(is_ok, perms.net.check_url(&u, None).is_ok());
     }
   }
 
@@ -2713,25 +2760,25 @@ mod tests {
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
     prompt_value.set(true);
-    assert!(perms.read.check(Path::new("/foo")).is_ok());
+    assert!(perms.read.check(Path::new("/foo"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.read.check(Path::new("/foo")).is_ok());
-    assert!(perms.read.check(Path::new("/bar")).is_err());
+    assert!(perms.read.check(Path::new("/foo"), None).is_ok());
+    assert!(perms.read.check(Path::new("/bar"), None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.write.check(Path::new("/foo")).is_ok());
+    assert!(perms.write.check(Path::new("/foo"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.write.check(Path::new("/foo")).is_ok());
-    assert!(perms.write.check(Path::new("/bar")).is_err());
+    assert!(perms.write.check(Path::new("/foo"), None).is_ok());
+    assert!(perms.write.check(Path::new("/bar"), None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
-    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_err());
-    assert!(perms.net.check(&("127.0.0.1", None)).is_err());
-    assert!(perms.net.check(&("deno.land", Some(8000))).is_err());
-    assert!(perms.net.check(&("deno.land", None)).is_err());
+    assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", Some(8001)), None).is_err());
+    assert!(perms.net.check(&("127.0.0.1", None), None).is_err());
+    assert!(perms.net.check(&("deno.land", Some(8000)), None).is_err());
+    assert!(perms.net.check(&("deno.land", None), None).is_err());
 
     prompt_value.set(true);
     assert!(perms.run.check("cat").is_ok());
@@ -2763,30 +2810,30 @@ mod tests {
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
     prompt_value.set(false);
-    assert!(perms.read.check(Path::new("/foo")).is_err());
+    assert!(perms.read.check(Path::new("/foo"), None).is_err());
     prompt_value.set(true);
-    assert!(perms.read.check(Path::new("/foo")).is_err());
-    assert!(perms.read.check(Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/foo"), None).is_err());
+    assert!(perms.read.check(Path::new("/bar"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.read.check(Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/bar"), None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.write.check(Path::new("/foo")).is_err());
+    assert!(perms.write.check(Path::new("/foo"), None).is_err());
     prompt_value.set(true);
-    assert!(perms.write.check(Path::new("/foo")).is_err());
-    assert!(perms.write.check(Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/foo"), None).is_err());
+    assert!(perms.write.check(Path::new("/bar"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.write.check(Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/bar"), None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
+    assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_err());
     prompt_value.set(true);
-    assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());
-    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
-    assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_err());
+    assert!(perms.net.check(&("127.0.0.1", Some(8001)), None).is_ok());
+    assert!(perms.net.check(&("deno.land", Some(8000)), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.net.check(&("127.0.0.1", Some(8001))).is_ok());
-    assert!(perms.net.check(&("deno.land", Some(8000))).is_ok());
+    assert!(perms.net.check(&("127.0.0.1", Some(8001)), None).is_ok());
+    assert!(perms.net.check(&("deno.land", Some(8000)), None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.run.check("cat").is_err());
@@ -3054,7 +3101,7 @@ mod tests {
     })
     .unwrap();
     prompt_value.set(false);
-    assert!(main_perms.write.check(&PathBuf::from("foo")).is_err());
+    assert!(main_perms.write.check(&PathBuf::from("foo"), None).is_err());
     let worker_perms = create_child_permissions(
       &mut main_perms.clone(),
       ChildPermissionsArg::none(),
