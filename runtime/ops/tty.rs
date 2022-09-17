@@ -6,7 +6,6 @@ use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use serde::Deserialize;
 use serde::Serialize;
 use std::io::Error;
 
@@ -50,28 +49,15 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetRawOptions {
-  cbreak: bool,
-}
-
-#[derive(Deserialize)]
-pub struct SetRawArgs {
-  mode: bool,
-  options: SetRawOptions,
-}
-
 #[op]
 fn op_stdin_set_raw(
   state: &mut OpState,
-  args: SetRawArgs,
+  is_raw: bool,
+  cbreak: bool,
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   let rid = 0; // stdin is always rid=0
-  let is_raw = args.mode;
-  let cbreak = args.options.cbreak;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs

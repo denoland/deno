@@ -153,10 +153,6 @@
     }
   }
 
-  const DEFAULT_SET_RAW_OPTIONS = {
-    cbreak: false,
-  };
-
   class Stdin {
     #readable;
 
@@ -187,8 +183,8 @@
     }
 
     setRaw(mode, options = {}) {
-      const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-      ops.op_stdin_set_raw({ mode, options: rOptions });
+      const cbreak = !!(options.cbreak ?? false);
+      ops.op_stdin_set_raw(mode, cbreak);
     }
   }
 
