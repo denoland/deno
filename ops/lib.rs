@@ -721,42 +721,20 @@ fn codegen_arg(
     };
   }
   // Fast path for &/&mut [u8] and &/&mut [u32]
-  if let Some(ty) = is_ref_slice(&**ty) {
-    let (ptr_ty, mutability) = match ty {
-      SliceType::U8 => (quote!([u8]), quote!(&)),
-      SliceType::U8Mut => (quote!([u8]), quote!(&mut)),
-    };
-    return quote! {
-      let #ident = {
-        let value = args.get(#idx as i32);
-        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-          let (offset, len) = (view.byte_offset(), view.byte_length());
-          let buffer = match view.buffer(scope) {
-              Some(v) => v,
-              None => {
-                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
-              }
-          };
-          let store = buffer.get_backing_store();
-          if store.is_shared() {
-            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
-          }
-          unsafe { #mutability *(&store[offset..offset + len] as *const _ as *mut #ptr_ty) }
-        } else {
-          let b: #core::v8::Local<#core::v8::ArrayBuffer> = match value.try_into() {
-            Ok(v) => v,
-            Err(_) => {
-              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBuffer at position {}", #idx));
-            }
-          };
-          let store = b.get_backing_store();
-          if store.is_shared() {
-            return #core::_ops::throw_type_error(scope, format!("Expected non-shared ArrayBufferView at position {}", #idx));
-          }
-          unsafe { #mutability *(&store[0..b.byte_length()] as *const _ as *mut #ptr_ty) }
-        }
+  match is_ref_slice(&**ty) {
+    None => {}
+    Some(SliceType::U32Mut) => {
+      let blck = codegen_u32_mut_slice(core, idx);
+      return quote! {
+        let #ident = #blck;
       };
-    };
+    }
+    Some(_) => {
+      let blck = codegen_u8_slice(core, idx);
+      return quote! {
+        let #ident = #blck;
+      };
+    }
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -768,6 +746,54 @@ fn codegen_arg(
         return #core::_ops::throw_type_error(scope, msg);
       }
     };
+  }
+}
+
+fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {{
+    let value = args.get(#idx as i32);
+    match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+      Ok(b) => {
+        let store = b.data() as *mut u8;
+        // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+        unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
+      },
+      Err(_) => {
+        if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+          let (offset, len) = (view.byte_offset(), view.byte_length());
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
+          };
+          let store = buffer.data() as *mut u8;
+          // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+        } else {
+          return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+        }
+      }
+    }}
+  }
+}
+
+fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
+  quote! {
+    if let Ok(view) = #core::v8::Local::<#core::v8::Uint32Array>::try_from(args.get(#idx as i32)) {
+      let (offset, len) = (view.byte_offset(), view.byte_length());
+      let buffer = match view.buffer(scope) {
+          Some(v) => v,
+          None => {
+            return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
+          }
+      };
+      let store = buffer.data() as *mut u8;
+      // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
+      unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+    } else {
+      return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
+    }
   }
 }
 
@@ -849,6 +875,7 @@ fn is_option_string(ty: impl ToTokens) -> bool {
 enum SliceType {
   U8,
   U8Mut,
+  U32Mut,
 }
 
 fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
@@ -857,6 +884,9 @@ fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
   }
   if is_u8_slice_mut(&ty) {
     return Some(SliceType::U8Mut);
+  }
+  if is_u32_slice_mut(&ty) {
+    return Some(SliceType::U32Mut);
   }
   None
 }
@@ -867,6 +897,10 @@ fn is_u8_slice(ty: impl ToTokens) -> bool {
 
 fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u8]"
+}
+
+fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [u32]"
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
