@@ -433,7 +433,7 @@ impl LintReporter for CompactLintReporter {
     self.lint_count += 1;
 
     eprintln!(
-      "{}: line {}, col {}, Error - {} ({})",
+      "{}: line {}, col {} - {} ({})",
       d.filename,
       d.range.start.line_index + 1,
       d.range.start.column_index + 1,
