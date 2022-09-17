@@ -750,7 +750,7 @@ fn codegen_arg(
 }
 
 fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
-  return quote! {{
+  quote! {{
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
