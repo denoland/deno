@@ -828,25 +828,7 @@
 
   Module.Module = Module;
 
-  const m = {
-    _cache: Module._cache,
-    _extensions: Module._extensions,
-    _findPath: Module._findPath,
-    _initPaths: Module._initPaths,
-    _load: Module._load,
-    _nodeModulePaths: Module._nodeModulePaths,
-    _pathCache: Module._pathCache,
-    _preloadModules: Module._preloadModules,
-    _resolveFilename: Module._resolveFilename,
-    _resolveLookupPaths: Module._resolveLookupPaths,
-    builtinModules: Module.builtinModules,
-    createRequire: Module.createRequire,
-    globalPaths: Module.globalPaths,
-    Module,
-    wrap: Module.wrap,
-  };
-
-  node.nativeModuleExports.module = m;
+  node.nativeModuleExports.module = Module;
 
   function loadNativeModule(_id, request) {
     if (nativeModulePolyfill.has(request)) {
@@ -890,7 +872,6 @@
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      moduleExports: m,
     },
   };
 })(globalThis);
