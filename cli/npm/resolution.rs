@@ -5,11 +5,14 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+
+use crate::lockfile::Lockfile;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
@@ -475,6 +478,24 @@ impl NpmResolution {
   #[allow(dead_code)]
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
+  }
+
+  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    for package in self.all_packages() {
+      let specifier =
+        format!("npm:{}@{}", package.id.name, package.id.version);
+      let valid = lockfile.check_or_insert_npm_package(
+        specifier.clone(),
+        package.dist.integrity.unwrap(),
+      );
+      if !valid {
+        return Err(anyhow!(
+          "Integrity check failed for package: {}",
+          specifier
+        ));
+      }
+    }
+    Ok(())
   }
 }
 

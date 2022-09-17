@@ -19,6 +19,7 @@ use self::common::InnerNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
+use crate::lockfile::Lockfile;
 
 pub use self::common::LocalNpmPackageInfo;
 
@@ -112,6 +113,10 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await
+  }
+
+  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.inner.lock(lockfile)
   }
 }
 

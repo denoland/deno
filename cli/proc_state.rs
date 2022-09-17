@@ -9,6 +9,7 @@ use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
+use crate::colors;
 use crate::deno_dir;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
@@ -429,6 +430,14 @@ impl ProcState {
         .await?;
       self.prepare_node_std_graph().await?;
     }
+    // If there's a lock file, update it with all discovered npm packages
+    if let Some(lockfile_mutex) = &self.lockfile {
+      let mut lockfile = lockfile_mutex.lock();
+      if let Err(err) = self.npm_resolver.lock(&mut lockfile) {
+        log::error!("{} {}", colors::red("error:"), err);
+        std::process::exit(10);
+      }
+    }
 
     self.progress_bar.clear();
 
@@ -474,6 +483,8 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
+  // FIXME(bartlomieju): appears this function can be called more than once
+  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])

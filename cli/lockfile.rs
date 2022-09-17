@@ -70,6 +70,20 @@ impl Lockfile {
     }
   }
 
+  pub fn check_or_insert_npm_package(
+    &mut self,
+    specifier: String,
+    integrity: String,
+  ) -> bool {
+    if self.write {
+      // In case --lock-write is specified check always passes
+      self.insert_npm_package(specifier, integrity);
+      true
+    } else {
+      self.check_npm_package(specifier, integrity)
+    }
+  }
+
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check(&mut self, specifier: &str, code: &str) -> bool {
@@ -90,6 +104,20 @@ impl Lockfile {
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.map.insert(specifier.to_string(), checksum);
+  }
+
+  /// Checks the given module is included.
+  /// Returns Ok(true) if check passed.
+  fn check_npm_package(&mut self, specifier: String, checksum: String) -> bool {
+    if let Some(lockfile_checksum) = self.map.get(&specifier) {
+      lockfile_checksum == &checksum
+    } else {
+      false
+    }
+  }
+
+  fn insert_npm_package(&mut self, specifier: String, checksum: String) {
+    self.map.insert(specifier, checksum);
   }
 }
 

@@ -10,6 +10,7 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 
+use crate::lockfile::Lockfile;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
@@ -104,6 +105,10 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
     ensure_read_permission(&registry_path, path)
+  }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.resolution.lock(lockfile)
   }
 }
 
