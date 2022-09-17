@@ -161,6 +161,20 @@ declare namespace Deno {
    */
   export function memoryUsage(): MemoryUsage;
 
+  /**
+   * Get the `hostname` of the machine the Deno process is running on.
+   *
+   * ```ts
+   * console.log(Deno.hostname());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
+   */
+  export function hostname(): string;
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/
