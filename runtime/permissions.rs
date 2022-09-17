@@ -2160,12 +2160,14 @@ fn permission_prompt(
     match ch.to_ascii_lowercase() {
       'y' => {
         eprint!("\x1B[4A\x1B[0J");
-        eprintln!("✅ {}", colors::bold("Granted env access to \"FOO\"."));
+        let msg = format!("Granted {}.", message);
+        eprintln!("✅ {}", colors::bold(&msg));
         return true;
       }
       'n' => {
         eprint!("\x1B[4A\x1B[0J");
-        eprintln!("❌ {}", colors::bold("Denied env access to \"FOO\"."));
+        let msg = format!("Denied {}.", message);
+        eprintln!("❌ {}", colors::bold(&msg));
         return false;
       }
       _ => {
