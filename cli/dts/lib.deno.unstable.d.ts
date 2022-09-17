@@ -228,23 +228,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Gets the size of the console as columns/rows.
-   *
-   * ```ts
-   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
-   * ```
-   *
-   * @category I/O
-   */
-  export function consoleSize(
-    rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there

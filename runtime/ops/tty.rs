@@ -206,8 +206,6 @@ fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
 ) -> Result<ConsoleSize, AnyError> {
-  super::check_unstable(state, "Deno.consoleSize");
-
   let size = StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {

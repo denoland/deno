@@ -1347,6 +1347,22 @@ declare namespace Deno {
     readonly writable: WritableStream<Uint8Array>;
   };
 
+  /**
+   * Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
+   * ```
+   *
+   * @category I/O
+   */
+  export function consoleSize(
+    rid: number,
+  ): {
+    columns: number;
+    rows: number;
+  };
+
   /** @category File System */
   export interface OpenOptions {
     /** Sets the option for read access. This option, when `true`, means that the
