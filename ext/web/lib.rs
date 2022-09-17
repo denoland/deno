@@ -321,14 +321,9 @@ fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
   input: serde_v8::Value,
   buffer: &mut [u8],
-  out_buf: &mut [u8],
+  out_buf: &mut [u32],
 ) {
   let s = v8::Local::<v8::String>::try_from(input.v8_value).unwrap();
-  assert!(out_buf.len() == std::mem::size_of::<u32>() * 2);
-  // SAFETY: `out_buf` is guaranteed to be large enough to hold result.
-  let out_buf: &mut [u32] = unsafe {
-    std::slice::from_raw_parts_mut(out_buf.as_mut_ptr() as *mut u32, 2)
-  };
 
   let mut nchars = 0;
   out_buf[1] = s.write_utf8(

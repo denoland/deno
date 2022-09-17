@@ -721,33 +721,54 @@ fn codegen_arg(
     };
   }
   // Fast path for &/&mut [u8] and &/&mut [u32]
-  if is_ref_slice(&**ty).is_some() {
-    return quote! {
-      let #ident = {
-        let value = args.get(#idx as i32);
-        match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
-          Ok(b) => {
-            let store = b.data() as *mut u8;
-            unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
-          },
-          Err(_) => {
-            if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-              let (offset, len) = (view.byte_offset(), view.byte_length());
-              let buffer = match view.buffer(scope) {
-                  Some(v) => v,
-                  None => {
-                    return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
-                  }
-              };
-              let store = buffer.data() as *mut u8;
-              unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
-            } else {
-              return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+  match is_ref_slice(&**ty) {
+    None => {}
+    Some(SliceType::U32Mut) => {
+      return quote! {
+        let #ident = if let Ok(view) = #core::v8::Local::<#core::v8::Uint32Array>::try_from(args.get(#idx as i32)) {
+          let (offset, len) = (view.byte_offset(), view.byte_length());
+          let buffer = match view.buffer(scope) {
+              Some(v) => v,
+              None => {
+                return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
+              }
+          };
+          let store = buffer.data() as *mut u8;
+          // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
+          unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+        } else {
+          return #core::_ops::throw_type_error(scope, format!("Expected Uint32Array at position {}", #idx));
+        };
+      };
+    }
+    Some(_) => {
+      return quote! {
+        let #ident = {
+          let value = args.get(#idx as i32);
+          match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
+            Ok(b) => {
+              let store = b.data() as *mut u8;
+              unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
+            },
+            Err(_) => {
+              if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
+                let (offset, len) = (view.byte_offset(), view.byte_length());
+                let buffer = match view.buffer(scope) {
+                    Some(v) => v,
+                    None => {
+                      return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+                    }
+                };
+                let store = buffer.data() as *mut u8;
+                unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+              } else {
+                return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
+              }
             }
           }
-        }
-      };
-    };
+        };
+      }
+    }
   }
   // Otherwise deserialize it via serde_v8
   quote! {
@@ -840,6 +861,7 @@ fn is_option_string(ty: impl ToTokens) -> bool {
 enum SliceType {
   U8,
   U8Mut,
+  U32Mut,
 }
 
 fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
@@ -848,6 +870,9 @@ fn is_ref_slice(ty: impl ToTokens) -> Option<SliceType> {
   }
   if is_u8_slice_mut(&ty) {
     return Some(SliceType::U8Mut);
+  }
+  if is_u32_slice_mut(&ty) {
+    return Some(SliceType::U32Mut);
   }
   None
 }
@@ -858,6 +883,10 @@ fn is_u8_slice(ty: impl ToTokens) -> bool {
 
 fn is_u8_slice_mut(ty: impl ToTokens) -> bool {
   tokens(ty) == "& mut [u8]"
+}
+
+fn is_u32_slice_mut(ty: impl ToTokens) -> bool {
+  tokens(ty) == "& mut [u32]"
 }
 
 fn is_optional_fast_callback_option(ty: impl ToTokens) -> bool {
