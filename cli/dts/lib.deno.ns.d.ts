@@ -1325,9 +1325,9 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    *  @category I/O */
-  export type SetRawOptions = {
+  export interface SetRawOptions {
     cbreak: boolean;
-  };
+  }
 
   /** A handle for `stdin`.
    *
