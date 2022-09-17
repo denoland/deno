@@ -353,7 +353,10 @@ fn op_kill(
   signal: String,
   api_name: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().run.check_all(Some(&api_name))?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
 }

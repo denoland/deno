@@ -21,7 +21,7 @@
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChildInner(command, {
+  function spawnChildInner(command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -44,7 +44,7 @@
       stdin,
       stdout,
       stderr,
-    });
+    }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
       signal,
@@ -52,7 +52,7 @@
   }
 
   function spawnChild(command, options = {}) {
-    return spawnChildInner(command, options, "Deno.spawnChild()");
+    return spawnChildInner(command, "Deno.spawnChild()", options);
   }
 
   async function collectOutput(readableStream) {
@@ -232,7 +232,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    return spawnChildInner(command, options, "Deno.spawn()").output();
+    return spawnChildInner(command, "Deno.spawn()", options).output();
   }
 
   function spawnSync(command, {
