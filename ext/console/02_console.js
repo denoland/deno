@@ -835,7 +835,7 @@
       typeName: "Array",
       displayName: "",
       delims: ["[", "]"],
-      entryHandler: (entry, inspectOptions, next) => {
+      entryHandler: (entry, inspectOptions) => {
         const [index, val] = entry;
         let i = index;
         lastValidIndex = index;
