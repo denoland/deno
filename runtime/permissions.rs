@@ -1010,10 +1010,14 @@ impl UnaryPermission<RunDescriptor> {
     self.query(cmd)
   }
 
-  pub fn check(&mut self, cmd: &str) -> Result<(), AnyError> {
+  pub fn check(
+    &mut self,
+    cmd: &str,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     let (result, prompted) = self.query(Some(cmd)).check(
       self.name,
-      None,
+      api_name,
       Some(&format!("\"{}\"", cmd)),
       self.prompt,
     );
@@ -1032,11 +1036,11 @@ impl UnaryPermission<RunDescriptor> {
     result
   }
 
-  pub fn check_all(&mut self) -> Result<(), AnyError> {
+  pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
     let (result, prompted) =
       self
         .query(None)
-        .check(self.name, None, Some("all"), self.prompt);
+        .check(self.name, api_name, Some("all"), self.prompt);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -1976,7 +1980,7 @@ pub fn create_child_permissions(
       worker_perms.run = main_perms.run.clone();
     }
     ChildUnaryPermissionArg::Granted => {
-      if main_perms.run.check_all().is_err() {
+      if main_perms.run.check_all(None).is_err() {
         return Err(escalation_error());
       }
       worker_perms.run.global_state = PermissionState::Granted;
@@ -1989,7 +1993,7 @@ pub fn create_child_permissions(
         .run
         .granted_list
         .iter()
-        .all(|desc| main_perms.run.check(&desc.to_string()).is_ok())
+        .all(|desc| main_perms.run.check(&desc.to_string(), None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -2781,10 +2785,10 @@ mod tests {
     assert!(perms.net.check(&("deno.land", None), None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.run.check("cat").is_ok());
+    assert!(perms.run.check("cat", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check("cat").is_ok());
-    assert!(perms.run.check("ls").is_err());
+    assert!(perms.run.check("cat", None).is_ok());
+    assert!(perms.run.check("ls", None).is_err());
 
     prompt_value.set(true);
     assert!(perms.env.check("HOME").is_ok());
@@ -2836,12 +2840,12 @@ mod tests {
     assert!(perms.net.check(&("deno.land", Some(8000)), None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.run.check("cat").is_err());
+    assert!(perms.run.check("cat", None).is_err());
     prompt_value.set(true);
-    assert!(perms.run.check("cat").is_err());
-    assert!(perms.run.check("ls").is_ok());
+    assert!(perms.run.check("cat", None).is_err());
+    assert!(perms.run.check("ls", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.run.check("ls").is_ok());
+    assert!(perms.run.check("ls", None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.env.check("HOME").is_err());
