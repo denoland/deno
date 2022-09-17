@@ -482,8 +482,7 @@ impl NpmResolution {
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     for package in self.all_packages() {
-      let specifier =
-        format!("npm:{}@{}", package.id.name, package.id.version);
+      let specifier = format!("npm:{}@{}", package.id.name, package.id.version);
       let valid = lockfile.check_or_insert_npm_package(
         specifier.clone(),
         package.dist.integrity.unwrap(),
