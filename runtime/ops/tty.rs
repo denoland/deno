@@ -7,7 +7,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use serde::Serialize;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -195,7 +194,7 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
   Ok(isatty)
 }
 
-#[op]
+#[op(v8)]
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
