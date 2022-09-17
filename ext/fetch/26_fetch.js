@@ -342,11 +342,7 @@
 
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
-          {
-            contentLength: contentLengthHeader
-              ? Number(contentLengthHeader[1])
-              : null,
-          },
+          contentLengthHeader ? Number(contentLengthHeader[1]) : null,
         );
       }
     }

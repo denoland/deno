@@ -69,7 +69,7 @@
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, { contentLength } = {}) {
+    constructor(stream, contentLength) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
