@@ -1,0 +1,5 @@
+[WILDCARD]file1.js: line 1, col 1, Error - Ignore directive requires lint rule name(s) (ban-untagged-ignore)
+[WILDCARD]file1.js: line 2, col 15, Error - Empty block statement (no-empty)
+[WILDCARD]file2.ts: line 3, col 14, Error - Empty block statement (no-empty)
+Found 3 problems
+Checked 2 files

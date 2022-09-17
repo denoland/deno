@@ -1391,7 +1391,8 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::new("compact")
         .long("compact")
         .help("Output lint result in compact format")
-        .takes_value(false),
+        .takes_value(false)
+        .conflicts_with("json"),
     )
     .arg(
       Arg::new("files")
