@@ -511,6 +511,7 @@ mod tests {
         ts_version: "x".to_string(),
         unstable: false,
         user_agent: "x".to_string(),
+        inspect: false,
       },
       extensions: vec![],
       unsafely_ignore_certificate_errors: None,
