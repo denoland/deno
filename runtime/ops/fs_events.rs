@@ -101,14 +101,16 @@ fn op_fs_events_open(
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
-  let mut watcher: RecommendedWatcher =
-    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+  let mut watcher: RecommendedWatcher = Watcher::new(
+    move |res: Result<NotifyEvent, NotifyError>| {
       let res2 = res.map(FsEvent::from).map_err(AnyError::from);
       let sender = sender.lock();
       // Ignore result, if send failed it means that watcher was already closed,
       // but not all messages have been flushed.
       let _ = sender.try_send(res2);
-    })?;
+    },
+    Default::default(),
+  )?;
   let recursive_mode = if args.recursive {
     RecursiveMode::Recursive
   } else {
