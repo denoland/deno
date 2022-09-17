@@ -682,7 +682,7 @@ delete Intl.v8BreakIterator;
 
     if (inspectFlag) {
       const consoleFromDeno = globalThis.console;
-      wrapConsole(consoleFromDeno, consoleFromV8);      
+      wrapConsole(consoleFromDeno, consoleFromV8);
     }
 
     eventTarget.setEventTargetData(globalThis);
