@@ -775,7 +775,7 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
         }
       }
     }}
-  };
+  }
 }
 
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
