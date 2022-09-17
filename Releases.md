@@ -6,6 +6,58 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.25.3 / 2022.09.15
+
+- doc(unstable): mention that `signal` input isn't supported in `spawnSync`
+  (#15889)
+- fix(ext/flash): don't block requests (#15852)
+- fix(npm): align Deno importing Node cjs with Node esm importing cjs (#15879)
+- fix(npm): align Node esm code importing cjs with Node (#15838)
+- fix(npm): binary entrypoint for .js or no extension (#15900)
+- fix(npm): remove export binding to match node (#15837)
+- fix(npm): support cjs resolution of package subpath with package.json (#15855)
+- fix(npm): use shim from deno_node crate for 'module' built-in module (#15881)
+- fix(ops): add node.js env variable allowlist (#15893)
+- perf(ext/flash): remove string->buffer cache (#15850)
+- perf(serde_v8): remove Mutex from ZeroCopyBuf (#15888)
+- perf(url): return early if url has no query string (#15856)
+- perf: optimize URL serialization (#15663)
+
+### 1.25.2 / 2022.09.09
+
+- BREAKING(unstable): remove --compat mode (#15678)
+- feat(ext/ffi): Implement FFI fast-call trampoline with Dynasmrt (#15305)
+- feat(ext/ffi): Support bool FFI type (#15754)
+- feat(serde_v8): Support StringObject as unit enum variant (#15715)
+- fix(bench): make sure bytes/response is equal (#15763)
+- fix(cli): Fix panic when providing invalid urls to --reload (#15784)
+- fix(cli): allow using file resource synchronously while being used async
+  (#15747)
+- fix(cli/repl): await Promise.any([])... (#15623)
+- fix(core): Register external references for imports to the SnapshotCreator
+  (#15621)
+- fix(core): make errors more resistant to tampering (#15789)
+- fix(core): opAsync leaks a promise on type error (#15795)
+- fix(docs): add missing categories for unstable (#15807)
+- fix(docs): change category for Deno.Process to "Sub Process" (#15812)
+- fix(ext/flash): use utf8 length as Content-Length (#15793)
+- fix(ext/timers): create primordial `eval` (#15110)
+- fix(init): suppress info logs when using quiet mode (#15741)
+- fix(npm): add more context to errors when file doesn't exist (#15749)
+- fix(npm): conditional exports in npm: specifiers (#15778)
+- fix(npm): correct exact matching of pre-release versions (#15745)
+- fix(npm): recursive translation of reexports, remove window global in node
+  code (#15806)
+- fix(npm): respect `latest` dist tag for getting current version (#15746)
+- fix(ops): use qualified borrow in op macro (#15769)
+- fix(repl): don't terminate on unhandled error events (#15548)
+- fix(test): unflake wasm_unreachable test (#15794)
+- fix(watch): ignore unload errors on drop (#15782)
+- fix: upgrade deno_ast to 0.19 (#15808)
+- perf(ops): inline &[u8] arguments and enable fast API (#15731)
+- perf(runtime): flatten arguments for write_file ops (#15776)
+- perf(runtime): short-circuit `queue_async_op` for Poll::Ready (#15773)
+
 ### 1.25.1 / 2022.09.01
 
 - feat(ops): support `v8::FastApiCallbackOptions` (#15721)

@@ -442,7 +442,7 @@ declare function queueMicrotask(func: VoidFunction): void;
  */
 declare function dispatchEvent(event: Event): boolean;
 
-/** @category DOM */
+/** @category DOM APIs */
 interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;

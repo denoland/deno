@@ -34,6 +34,14 @@ impl FastInsecureHasher {
     self
   }
 
+  pub fn write_hashable(
+    &mut self,
+    hashable: &impl std::hash::Hash,
+  ) -> &mut Self {
+    hashable.hash(&mut self.0);
+    self
+  }
+
   pub fn finish(&self) -> u64 {
     self.0.finish()
   }

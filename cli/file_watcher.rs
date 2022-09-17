@@ -10,7 +10,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
-use notify::Config;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -344,8 +343,8 @@ where
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let mut watcher: RecommendedWatcher =
-    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+  let watcher = Watcher::new(
+    move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
         if matches!(
           event.kind,
@@ -359,9 +358,9 @@ fn new_watcher(
           sender.send(paths).unwrap();
         }
       }
-    })?;
-
-  watcher.configure(Config::PreciseEvents(true)).unwrap();
+    },
+    Default::default(),
+  )?;
 
   Ok(watcher)
 }

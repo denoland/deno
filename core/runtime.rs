@@ -1167,11 +1167,11 @@ pub(crate) fn exception_to_err_result<'s, T>(
     // If termination is the result of a `op_dispatch_exception` call, we want
     // to use the exception that was passed to it rather than the exception that
     // was passed to this function.
-    let mut state = state_rc.borrow_mut();
+    let state = state_rc.borrow();
     exception = state
       .dispatched_exceptions
-      .pop_back()
-      .map(|exception| v8::Local::new(scope, exception))
+      .back()
+      .map(|exception| v8::Local::new(scope, exception.clone()))
       .unwrap_or_else(|| {
         // Maybe make a new exception object.
         if was_terminating_execution && exception.is_null_or_undefined() {
@@ -1283,11 +1283,7 @@ impl JsRuntime {
       );
       let promise = v8::Local::<v8::Promise>::try_from(value)
         .expect("Expected to get promise as module evaluation result");
-      let empty_fn = |_scope: &mut v8::HandleScope,
-                      _args: v8::FunctionCallbackArguments,
-                      _rv: v8::ReturnValue| {};
-      let empty_fn = v8::FunctionTemplate::new(tc_scope, empty_fn);
-      let empty_fn = empty_fn.get_function(tc_scope).unwrap();
+      let empty_fn = bindings::create_empty_fn(tc_scope).unwrap();
       promise.catch(tc_scope, empty_fn);
       let mut state = state_rc.borrow_mut();
       let promise_global = v8::Global::new(tc_scope, promise);
@@ -2149,14 +2145,54 @@ impl JsRealm {
 
 #[inline]
 pub fn queue_async_op(
-  scope: &v8::Isolate,
+  state: Rc<RefCell<OpState>>,
+  scope: &mut v8::HandleScope,
+  deferred: bool,
   op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
     + 'static,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  state.pending_ops.push(OpCall::eager(op));
-  state.have_unpolled_ops = true;
+  match OpCall::eager(op) {
+    // This calls promise.resolve() before the control goes back to userland JS. It works something
+    // along the lines of:
+    //
+    // function opresolve(promiseId, ...) {
+    //   getPromise(promiseId).resolve(...);
+    // }
+    // const p = setPromise();
+    // op.op_async(promiseId, ...); // Calls `opresolve`
+    // return p;
+    EagerPollResult::Ready((context, promise_id, op_id, mut resp))
+      if !deferred =>
+    {
+      let args = &[
+        v8::Integer::new(scope, promise_id).into(),
+        resp.to_v8(scope).unwrap(),
+      ];
+
+      let realm = JsRealm::new(context);
+      let js_recv_cb_handle =
+        realm.state(scope).borrow().js_recv_cb.clone().unwrap();
+      state.borrow().tracker.track_async_completed(op_id);
+
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let this = v8::undefined(tc_scope).into();
+      js_recv_cb.call(tc_scope, this, args);
+    }
+    EagerPollResult::Ready(op) => {
+      let ready = OpCall::ready(op);
+      let state_rc = JsRuntime::state(scope);
+      let mut state = state_rc.borrow_mut();
+      state.pending_ops.push(ready);
+      state.have_unpolled_ops = true;
+    }
+    EagerPollResult::Pending(op) => {
+      let state_rc = JsRuntime::state(scope);
+      let mut state = state_rc.borrow_mut();
+      state.pending_ops.push(op);
+      state.have_unpolled_ops = true;
+    }
+  }
 }
 
 #[cfg(test)]
@@ -2198,7 +2234,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  #[op]
+  #[op(deferred)]
   async fn op_test(
     rc_op_state: Rc<RefCell<OpState>>,
     control: u8,
@@ -2260,41 +2296,6 @@ pub mod tests {
   }
 
   #[test]
-  fn test_dispatch() {
-    let (mut runtime, dispatch_count) = setup(Mode::Async);
-    runtime
-      .execute_script(
-        "filename.js",
-        r#"
-        let control = 42;
-        Deno.core.opAsync("op_test", control);
-        async function main() {
-          Deno.core.opAsync("op_test", control);
-        }
-        main();
-        "#,
-      )
-      .unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-  }
-
-  #[test]
-  fn test_op_async_promise_id() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
-    runtime
-      .execute_script(
-        "filename.js",
-        r#"
-        const p = Deno.core.opAsync("op_test", 42);
-        if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
-          throw new Error("missing id on returned promise");
-        }
-        "#,
-      )
-      .unwrap();
-  }
-
-  #[test]
   fn test_ref_unref_ops() {
     let (mut runtime, _dispatch_count) = setup(Mode::Async);
     runtime
@@ -2346,6 +2347,41 @@ pub mod tests {
       assert_eq!(state_rc.borrow().pending_ops.len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
     }
+  }
+
+  #[test]
+  fn test_dispatch() {
+    let (mut runtime, dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        let control = 42;
+        Deno.core.opAsync("op_test", control);
+        async function main() {
+          Deno.core.opAsync("op_test", control);
+        }
+        main();
+        "#,
+      )
+      .unwrap();
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
+  }
+
+  #[test]
+  fn test_op_async_promise_id() {
+    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    runtime
+      .execute_script(
+        "filename.js",
+        r#"
+        const p = Deno.core.opAsync("op_test", 42);
+        if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
+          throw new Error("missing id on returned promise");
+        }
+        "#,
+      )
+      .unwrap();
   }
 
   #[test]

@@ -14,16 +14,13 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
-use deno_core::v8::fast_api;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
-use libffi::raw::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -40,15 +37,11 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
 
-#[cfg(not(target_os = "windows"))]
-mod jit_trampoline;
-#[cfg(not(target_os = "windows"))]
-mod tcc;
+mod fast_call;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
 
-// Assert assumptions made in `prelude.h`
 const _: () = {
   assert!(size_of::<c_char>() == 1);
   assert!(size_of::<c_short>() == 2);
@@ -91,8 +84,6 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
-  // This is dead code only on Windows
-  #[allow(dead_code)]
   can_callback: bool,
 }
 
@@ -186,6 +177,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
       op_ffi_get_buf::decl::<P>(),
       op_ffi_buf_copy_into::decl::<P>(),
       op_ffi_cstr_read::decl::<P>(),
+      op_ffi_read_bool::decl::<P>(),
       op_ffi_read_u8::decl::<P>(),
       op_ffi_read_i8::decl::<P>(),
       op_ffi_read_u16::decl::<P>(),
@@ -253,6 +245,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
 #[serde(rename_all = "lowercase")]
 enum NativeType {
   Void,
+  Bool,
   U8,
   I8,
   U16,
@@ -274,7 +267,7 @@ impl From<NativeType> for libffi::middle::Type {
   fn from(native_type: NativeType) -> Self {
     match native_type {
       NativeType::Void => libffi::middle::Type::void(),
-      NativeType::U8 => libffi::middle::Type::u8(),
+      NativeType::U8 | NativeType::Bool => libffi::middle::Type::u8(),
       NativeType::I8 => libffi::middle::Type::i8(),
       NativeType::U16 => libffi::middle::Type::u16(),
       NativeType::I16 => libffi::middle::Type::i16(),
@@ -298,6 +291,7 @@ impl From<NativeType> for libffi::middle::Type {
 #[repr(C)]
 union NativeValue {
   void_value: (),
+  bool_value: bool,
   u8_value: u8,
   i8_value: i8,
   u16_value: u16,
@@ -317,6 +311,7 @@ impl NativeValue {
   unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
     match native_type {
       NativeType::Void => unreachable!(),
+      NativeType::Bool => Arg::new(&self.bool_value),
       NativeType::U8 => Arg::new(&self.u8_value),
       NativeType::I8 => Arg::new(&self.i8_value),
       NativeType::U16 => Arg::new(&self.u16_value),
@@ -339,6 +334,7 @@ impl NativeValue {
   unsafe fn to_value(&self, native_type: NativeType) -> Value {
     match native_type {
       NativeType::Void => Value::Null,
+      NativeType::Bool => Value::from(self.bool_value),
       NativeType::U8 => Value::from(self.u8_value),
       NativeType::I8 => Value::from(self.i8_value),
       NativeType::U16 => Value::from(self.u16_value),
@@ -400,6 +396,11 @@ impl NativeValue {
     match native_type {
       NativeType::Void => {
         let local_value: v8::Local<v8::Value> = v8::undefined(scope).into();
+        local_value.into()
+      }
+      NativeType::Bool => {
+        let local_value: v8::Local<v8::Value> =
+          v8::Boolean::new(scope, self.bool_value).into();
         local_value.into()
       }
       NativeType::U8 => {
@@ -720,49 +721,6 @@ where
   ))
 }
 
-pub struct FfiFastCallTemplate {
-  args: Box<[fast_api::Type]>,
-  ret: fast_api::CType,
-  symbol_ptr: *const c_void,
-}
-
-impl fast_api::FastFunction for FfiFastCallTemplate {
-  fn function(&self) -> *const c_void {
-    self.symbol_ptr
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    Box::leak(self.args.clone())
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    self.ret
-  }
-}
-
-impl From<&NativeType> for fast_api::Type {
-  fn from(native_type: &NativeType) -> Self {
-    match native_type {
-      NativeType::U8 | NativeType::U16 | NativeType::U32 => {
-        fast_api::Type::Uint32
-      }
-      NativeType::I8 | NativeType::I16 | NativeType::I32 => {
-        fast_api::Type::Int32
-      }
-      NativeType::F32 => fast_api::Type::Float32,
-      NativeType::F64 => fast_api::Type::Float64,
-      NativeType::Void => fast_api::Type::Void,
-      NativeType::I64 => fast_api::Type::Int64,
-      NativeType::U64 => fast_api::Type::Uint64,
-      NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Pointer | NativeType::Function => {
-        fast_api::Type::Uint64
-      }
-      NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
-    }
-  }
-}
-
 fn needs_unwrap(rv: NativeType) -> bool {
   matches!(
     rv,
@@ -786,42 +744,6 @@ fn make_sync_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
   sym: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  #[cfg(not(target_os = "windows"))]
-  let mut fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(target_os = "windows")]
-  let fast_ffi_templ: Option<FfiFastCallTemplate> = None;
-
-  #[cfg(not(target_os = "windows"))]
-  let mut fast_allocations: Option<*mut ()> = None;
-  #[cfg(not(target_os = "windows"))]
-  if !sym.can_callback {
-    let needs_unwrap = needs_unwrap(sym.result_type);
-    let ret = match needs_unwrap {
-      true => fast_api::Type::Void,
-      false => fast_api::Type::from(&sym.result_type),
-    };
-
-    let mut args = sym
-      .parameter_types
-      .iter()
-      .map(|t| t.into())
-      .collect::<Vec<_>>();
-    // recv
-    args.insert(0, fast_api::Type::V8Value);
-    if needs_unwrap {
-      args.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    }
-    let symbol_trampoline =
-      jit_trampoline::gen_trampoline(sym.clone()).expect("gen_trampoline");
-    fast_ffi_templ = Some(FfiFastCallTemplate {
-      args: args.into_boxed_slice(),
-      ret: (&ret).into(),
-      symbol_ptr: symbol_trampoline.addr,
-    });
-    fast_allocations = Some(Box::into_raw(symbol_trampoline) as *mut ());
-  }
-
   let sym = Box::leak(sym);
   let builder = v8::FunctionTemplate::builder(
     |scope: &mut v8::HandleScope,
@@ -881,8 +803,17 @@ fn make_sync_fn<'s>(
   )
   .data(v8::External::new(scope, sym as *mut Symbol as *mut _).into());
 
-  let func = if let Some(fast_ffi_templ) = fast_ffi_templ {
-    builder.build_fast(scope, &fast_ffi_templ, None)
+  let mut fast_call_alloc = None;
+
+  let func = if fast_call::is_compatible(sym) {
+    let trampoline = fast_call::compile_trampoline(sym);
+    let func = builder.build_fast(
+      scope,
+      &fast_call::make_template(sym, &trampoline),
+      None,
+    );
+    fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
+    func
   } else {
     builder.build(scope)
   };
@@ -894,17 +825,27 @@ fn make_sync_fn<'s>(
     Box::new(move |_| {
       // SAFETY: This is never called twice. pointer obtained
       // from Box::into_raw, hence, satisfies memory layout requirements.
-      unsafe {
-        Box::from_raw(sym);
-        #[cfg(not(target_os = "windows"))]
-        if let Some(fast_allocations) = fast_allocations {
-          Box::from_raw(fast_allocations as *mut jit_trampoline::Allocation);
-        }
+      let _ = unsafe { Box::from_raw(sym) };
+      if let Some(fast_call_ptr) = fast_call_alloc {
+        // fast-call compiled trampoline is unmapped when the MMAP handle is dropped
+        // SAFETY: This is never called twice. pointer obtained
+        // from Box::into_raw, hence, satisfies memory layout requirements.
+        let _ = unsafe { Box::from_raw(fast_call_ptr) };
       }
     }),
   );
 
   weak.to_local(scope).unwrap()
+}
+
+#[inline]
+fn ffi_parse_bool_arg(
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  let bool_value = v8::Local::<v8::Boolean>::try_from(arg)
+    .map_err(|_| type_error("Invalid FFI u8 type, expected boolean"))?
+    .is_true();
+  Ok(NativeValue { bool_value })
 }
 
 #[inline]
@@ -1163,6 +1104,9 @@ where
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get_index(scope, index as u32).unwrap();
     match native_type {
+      NativeType::Bool => {
+        ffi_args.push(ffi_parse_bool_arg(value)?);
+      }
       NativeType::U8 => {
         ffi_args.push(ffi_parse_u8_arg(value)?);
       }
@@ -1239,6 +1183,9 @@ where
   for (index, native_type) in parameter_types.iter().enumerate() {
     let value = args.get(index as i32);
     match native_type {
+      NativeType::Bool => {
+        ffi_args.push(ffi_parse_bool_arg(value)?);
+      }
       NativeType::U8 => {
         ffi_args.push(ffi_parse_u8_arg(value)?);
       }
@@ -1296,6 +1243,9 @@ where
     Ok(match result_type {
       NativeType::Void => NativeValue {
         void_value: cif.call::<()>(*fun_ptr, &call_args),
+      },
+      NativeType::Bool => NativeValue {
+        bool_value: cif.call::<bool>(*fun_ptr, &call_args),
       },
       NativeType::U8 => NativeValue {
         u8_value: cif.call::<u8>(*fun_ptr, &call_args),
@@ -1364,6 +1314,9 @@ fn ffi_call(
     Ok(match result_type {
       NativeType::Void => NativeValue {
         void_value: cif.call::<()>(fun_ptr, &call_args),
+      },
+      NativeType::Bool => NativeValue {
+        bool_value: cif.call::<bool>(fun_ptr, &call_args),
       },
       NativeType::U8 => NativeValue {
         u8_value: cif.call::<u8>(fun_ptr, &call_args),
@@ -1438,6 +1391,8 @@ impl Resource for UnsafeCallbackResource {
 }
 
 struct CallbackInfo {
+  pub parameters: Vec<NativeType>,
+  pub result: NativeType,
   pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
@@ -1445,7 +1400,7 @@ struct CallbackInfo {
 }
 
 unsafe extern "C" fn deno_ffi_callback(
-  cif: &libffi::low::ffi_cif,
+  _cif: &libffi::low::ffi_cif,
   result: &mut c_void,
   args: *const *const c_void,
   info: &CallbackInfo,
@@ -1453,30 +1408,15 @@ unsafe extern "C" fn deno_ffi_callback(
   LOCAL_ISOLATE_POINTER.with(|s| {
     if ptr::eq(*s.borrow(), info.isolate) {
       // Own isolate thread, okay to call directly
-      do_ffi_callback(
-        cif,
-        result,
-        args,
-        info.callback,
-        info.context,
-        info.isolate,
-      );
+      do_ffi_callback(info, result, args);
     } else {
       let async_work_sender = &info.async_work_sender;
       // SAFETY: Safe as this function blocks until `do_ffi_callback` completes and a response message is received.
-      let cif: &'static libffi::low::ffi_cif = std::mem::transmute(cif);
       let result: &'static mut c_void = std::mem::transmute(result);
       let info: &'static CallbackInfo = std::mem::transmute(info);
       let (response_sender, response_receiver) = sync_channel::<()>(0);
       let fut = Box::new(move || {
-        do_ffi_callback(
-          cif,
-          result,
-          args,
-          info.callback,
-          info.context,
-          info.isolate,
-        );
+        do_ffi_callback(info, result, args);
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
@@ -1486,13 +1426,13 @@ unsafe extern "C" fn deno_ffi_callback(
 }
 
 unsafe fn do_ffi_callback(
-  cif: &libffi::low::ffi_cif,
+  info: &CallbackInfo,
   result: &mut c_void,
   args: *const *const c_void,
-  callback: NonNull<v8::Function>,
-  context: NonNull<v8::Context>,
-  isolate: *mut v8::Isolate,
 ) {
+  let callback: NonNull<v8::Function> = info.callback;
+  let context: NonNull<v8::Context> = info.context;
+  let isolate: *mut v8::Isolate = info.isolate;
   let isolate = &mut *isolate;
   let callback = v8::Global::from_raw(isolate, callback);
   let context = std::mem::transmute::<
@@ -1513,47 +1453,49 @@ unsafe fn do_ffi_callback(
   let scope = &mut v8::HandleScope::new(&mut cb_scope);
   let func = callback.open(scope);
   let result = result as *mut c_void;
-  let repr: &[*mut ffi_type] =
-    std::slice::from_raw_parts(cif.arg_types, cif.nargs as usize);
   let vals: &[*const c_void] =
-    std::slice::from_raw_parts(args, cif.nargs as usize);
+    std::slice::from_raw_parts(args, info.parameters.len() as usize);
 
   let mut params: Vec<v8::Local<v8::Value>> = vec![];
-  for (repr, val) in repr.iter().zip(vals) {
-    let value: v8::Local<v8::Value> = match (*(*repr)).type_ as _ {
-      FFI_TYPE_FLOAT => {
+  for (native_type, val) in info.parameters.iter().zip(vals) {
+    let value: v8::Local<v8::Value> = match native_type {
+      NativeType::Bool => {
+        let value = *((*val) as *const bool);
+        v8::Boolean::new(scope, value).into()
+      }
+      NativeType::F32 => {
         let value = *((*val) as *const f32);
         v8::Number::new(scope, value as f64).into()
       }
-      FFI_TYPE_DOUBLE => {
+      NativeType::F64 => {
         let value = *((*val) as *const f64);
         v8::Number::new(scope, value).into()
       }
-      FFI_TYPE_SINT8 => {
+      NativeType::I8 => {
         let value = *((*val) as *const i8);
         v8::Integer::new(scope, value as i32).into()
       }
-      FFI_TYPE_UINT8 => {
+      NativeType::U8 => {
         let value = *((*val) as *const u8);
         v8::Integer::new_from_unsigned(scope, value as u32).into()
       }
-      FFI_TYPE_SINT16 => {
+      NativeType::I16 => {
         let value = *((*val) as *const i16);
         v8::Integer::new(scope, value as i32).into()
       }
-      FFI_TYPE_UINT16 => {
+      NativeType::U16 => {
         let value = *((*val) as *const u16);
         v8::Integer::new_from_unsigned(scope, value as u32).into()
       }
-      FFI_TYPE_INT | FFI_TYPE_SINT32 => {
+      NativeType::I32 => {
         let value = *((*val) as *const i32);
         v8::Integer::new(scope, value).into()
       }
-      FFI_TYPE_UINT32 => {
+      NativeType::U32 => {
         let value = *((*val) as *const u32);
         v8::Integer::new_from_unsigned(scope, value).into()
       }
-      FFI_TYPE_SINT64 => {
+      NativeType::I64 => {
         let result = *((*val) as *const i64);
         if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
         {
@@ -1562,7 +1504,7 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      FFI_TYPE_UINT64 => {
+      NativeType::U64 => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
           v8::BigInt::new_from_u64(scope, result).into()
@@ -1570,15 +1512,14 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
-        let result = *((*val) as *const u64);
-        if result > MAX_SAFE_INTEGER as u64 {
-          v8::BigInt::new_from_u64(scope, result).into()
+      NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
+        let result = *((*val) as *const usize);
+        if result > MAX_SAFE_INTEGER as usize {
+          v8::BigInt::new_from_u64(scope, result as u64).into()
         } else {
           v8::Number::new(scope, result as f64).into()
         }
       }
-      FFI_TYPE_VOID => v8::undefined(scope).into(),
       _ => {
         unreachable!()
       }
@@ -1594,30 +1535,36 @@ unsafe fn do_ffi_callback(
     // JS function threw an exception. Set the return value to zero and return.
     // The exception continue propagating up the call chain when the event loop
     // resumes.
-    match (*cif.rtype).type_ as _ {
-      FFI_TYPE_INT | FFI_TYPE_SINT32 | FFI_TYPE_UINT32 => {
+    match info.result {
+      NativeType::Bool => {
+        *(result as *mut bool) = false;
+      }
+      NativeType::U32 | NativeType::I32 => {
         // zero is equal for signed and unsigned alike
         *(result as *mut u32) = 0;
       }
-      FFI_TYPE_FLOAT => {
+      NativeType::F32 => {
         *(result as *mut f32) = 0.0;
       }
-      FFI_TYPE_DOUBLE => {
+      NativeType::F64 => {
         *(result as *mut f64) = 0.0;
       }
-      FFI_TYPE_SINT8 | FFI_TYPE_UINT8 => {
+      NativeType::U8 | NativeType::I8 => {
         // zero is equal for signed and unsigned alike
         *(result as *mut u8) = 0;
       }
-      FFI_TYPE_SINT16 | FFI_TYPE_UINT16 => {
+      NativeType::U16 | NativeType::I16 => {
         // zero is equal for signed and unsigned alike
         *(result as *mut u16) = 0;
       }
-      FFI_TYPE_POINTER | FFI_TYPE_STRUCT | FFI_TYPE_UINT64
-      | FFI_TYPE_SINT64 => {
+      NativeType::Pointer
+      | NativeType::Buffer
+      | NativeType::Function
+      | NativeType::U64
+      | NativeType::I64 => {
         *(result as *mut usize) = 0;
       }
-      FFI_TYPE_VOID => {
+      NativeType::Void => {
         // nop
       }
       _ => {
@@ -1629,8 +1576,16 @@ unsafe fn do_ffi_callback(
   }
   let value = call_result.unwrap();
 
-  match (*cif.rtype).type_ as _ {
-    FFI_TYPE_INT | FFI_TYPE_SINT32 => {
+  match info.result {
+    NativeType::Bool => {
+      let value = if let Ok(value) = v8::Local::<v8::Boolean>::try_from(value) {
+        value.is_true()
+      } else {
+        value.boolean_value(scope)
+      };
+      *(result as *mut bool) = value;
+    }
+    NativeType::I32 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as i32
       } else {
@@ -1641,7 +1596,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut i32) = value;
     }
-    FFI_TYPE_FLOAT => {
+    NativeType::F32 => {
       let value = if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
         value.value() as f32
       } else {
@@ -1652,7 +1607,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut f32) = value;
     }
-    FFI_TYPE_DOUBLE => {
+    NativeType::F64 => {
       let value = if let Ok(value) = v8::Local::<v8::Number>::try_from(value) {
         value.value()
       } else {
@@ -1663,7 +1618,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut f64) = value;
     }
-    FFI_TYPE_POINTER | FFI_TYPE_STRUCT => {
+    NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
       let pointer = if let Ok(value) =
         v8::Local::<v8::ArrayBufferView>::try_from(value)
       {
@@ -1692,7 +1647,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut *const u8) = pointer;
     }
-    FFI_TYPE_SINT8 => {
+    NativeType::I8 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as i8
       } else {
@@ -1703,7 +1658,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut i8) = value;
     }
-    FFI_TYPE_UINT8 => {
+    NativeType::U8 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as u8
       } else {
@@ -1714,7 +1669,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u8) = value;
     }
-    FFI_TYPE_SINT16 => {
+    NativeType::I16 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as i16
       } else {
@@ -1725,7 +1680,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut i16) = value;
     }
-    FFI_TYPE_UINT16 => {
+    NativeType::U16 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as u16
       } else {
@@ -1736,7 +1691,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u16) = value;
     }
-    FFI_TYPE_UINT32 => {
+    NativeType::U32 => {
       let value = if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
         value.value() as u32
       } else {
@@ -1747,7 +1702,7 @@ unsafe fn do_ffi_callback(
       };
       *(result as *mut u32) = value;
     }
-    FFI_TYPE_SINT64 => {
+    NativeType::I64 => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut i64) = value.i64_value().0;
       } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
@@ -1759,7 +1714,7 @@ unsafe fn do_ffi_callback(
           as i64;
       }
     }
-    FFI_TYPE_UINT64 => {
+    NativeType::U64 => {
       if let Ok(value) = v8::Local::<v8::BigInt>::try_from(value) {
         *(result as *mut u64) = value.u64_value().0;
       } else if let Ok(value) = v8::Local::<v8::Integer>::try_from(value) {
@@ -1771,7 +1726,7 @@ unsafe fn do_ffi_callback(
           as u64;
       }
     }
-    FFI_TYPE_VOID => {
+    NativeType::Void => {
       // nop
     }
     _ => {
@@ -1817,6 +1772,8 @@ where
   let context = v8::Global::new(scope, current_context).into_raw();
 
   let info = Box::leak(Box::new(CallbackInfo {
+    parameters: args.parameters.clone(),
+    result: args.result,
     async_work_sender,
     callback,
     context,
@@ -1940,6 +1897,13 @@ fn op_ffi_get_static<'scope>(
   Ok(match static_type {
     NativeType::Void => {
       return Err(type_error("Invalid FFI static type 'void'"));
+    }
+    NativeType::Bool => {
+      // SAFETY: ptr is user provided
+      let result = unsafe { ptr::read_unaligned(data_ptr as *const bool) };
+      let boolean: v8::Local<v8::Value> =
+        v8::Boolean::new(scope, result).into();
+      boolean.into()
     }
     NativeType::U8 => {
       // SAFETY: ptr is user provided
@@ -2189,7 +2153,7 @@ where
 fn op_ffi_buf_copy_into<FP>(
   state: &mut deno_core::OpState,
   src: usize,
-  mut dst: ZeroCopyBuf,
+  dst: &mut [u8],
   len: usize,
 ) -> Result<(), AnyError>
 where
@@ -2237,6 +2201,23 @@ where
     })?
     .into();
   Ok(value.into())
+}
+
+#[op]
+fn op_ffi_read_bool<FP>(
+  state: &mut deno_core::OpState,
+  ptr: usize,
+) -> Result<bool, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.UnsafePointerView#getBool");
+
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
+
+  // SAFETY: ptr is user provided.
+  Ok(unsafe { ptr::read_unaligned(ptr as *const bool) })
 }
 
 #[op]

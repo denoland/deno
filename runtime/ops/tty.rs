@@ -123,16 +123,18 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       rid,
       move |std_file, meta_data| {
         let raw_fd = std_file.as_raw_fd();
-        let maybe_tty_mode = &mut meta_data.tty.mode;
 
         if is_raw {
-          if maybe_tty_mode.is_none() {
-            // Save original mode.
-            let original_mode = termios::tcgetattr(raw_fd)?;
-            maybe_tty_mode.replace(original_mode);
-          }
-
-          let mut raw = maybe_tty_mode.clone().unwrap();
+          let mut raw = {
+            let mut meta_data = meta_data.lock();
+            let maybe_tty_mode = &mut meta_data.tty.mode;
+            if maybe_tty_mode.is_none() {
+              // Save original mode.
+              let original_mode = termios::tcgetattr(raw_fd)?;
+              maybe_tty_mode.replace(original_mode);
+            }
+            maybe_tty_mode.clone().unwrap()
+          };
 
           raw.input_flags &= !(termios::InputFlags::BRKINT
             | termios::InputFlags::ICRNL
@@ -155,7 +157,7 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
           termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
         } else {
           // Try restore saved mode.
-          if let Some(mode) = maybe_tty_mode.take() {
+          if let Some(mode) = meta_data.lock().tty.mode.take() {
             termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
           }
         }

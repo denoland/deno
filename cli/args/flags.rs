@@ -312,6 +312,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
+  pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
@@ -1732,6 +1733,7 @@ fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
+    .arg(no_npm_arg())
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(no_check_arg())
@@ -1746,6 +1748,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
+    .arg(no_npm_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -1937,6 +1940,7 @@ fn reload_arg<'a>() -> Arg<'a> {
   Reloads specific modules",
     )
     .value_hint(ValueHint::FilePath)
+    .validator(reload_arg_validate)
 }
 
 fn ca_file_arg<'a>() -> Arg<'a> {
@@ -2137,6 +2141,12 @@ fn no_remote_arg<'a>() -> Arg<'a> {
   Arg::new("no-remote")
     .long("no-remote")
     .help("Do not resolve remote modules")
+}
+
+fn no_npm_arg<'a>() -> Arg<'a> {
+  Arg::new("no-npm")
+    .long("no-npm")
+    .help("Do not resolve npm modules")
 }
 
 fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
@@ -2784,6 +2794,7 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
@@ -2798,6 +2809,7 @@ fn compile_args_without_no_check_parse(
 ) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3039,8 +3051,24 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
+fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-npm") {
+    flags.no_npm = true;
+  }
+}
+
 fn inspect_arg_validate(val: &str) -> Result<(), String> {
   match val.parse::<SocketAddr>() {
+    Ok(_) => Ok(()),
+    Err(e) => Err(e.to_string()),
+  }
+}
+
+fn reload_arg_validate(urlstr: &str) -> Result<(), String> {
+  if urlstr.is_empty() {
+    return Err(String::from("Missing url. Check for extra commas."));
+  }
+  match Url::from_str(urlstr) {
     Ok(_) => Ok(()),
     Err(e) => Err(e.to_string()),
   }
@@ -4281,6 +4309,78 @@ mod tests {
   }
 
   #[test]
+  fn reload_validator() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_ok(), "should accept accept multiple valid urls");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=./relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls that start with ./");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=relativeurl/",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject relative urls");
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--reload=/absolute", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute urls");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=/", "script.ts"]);
+    assert!(r.is_err(), "Should reject absolute root url");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=", "script.ts"]);
+    assert!(r.is_err(), "Should reject when nothing is provided");
+
+    let r = flags_from_vec(svec!["deno", "run", "--reload=,", "script.ts"]);
+    assert!(r.is_err(), "Should reject when a single comma is provided");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=,http://deno.land/a",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a leading comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject a trailing comma");
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--reload=http://deno.land/a,,http://deno.land/b",
+      "script.ts"
+    ]);
+    assert!(r.is_err(), "Should reject adjacent commas");
+  }
+
+  #[test]
   fn bundle() {
     let r = flags_from_vec(svec!["deno", "bundle", "source.ts"]);
     assert_eq!(
@@ -4910,6 +5010,21 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         no_remote: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_npm() {
+    let r = flags_from_vec(svec!["deno", "run", "--no-npm", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        no_npm: true,
         ..Flags::default()
       }
     );
