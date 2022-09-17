@@ -356,7 +356,6 @@ pub async fn create_main_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    ps.npm_resolver.cache_packages().await?;
     ps.prepare_node_std_graph().await?;
     let node_resolution = node::node_resolve_binary_export(
       &package_ref.req,

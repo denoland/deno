@@ -20,16 +20,23 @@
     ObjectKeys,
     ObjectPrototype,
     ObjectCreate,
+    Proxy,
     SafeMap,
     SafeWeakMap,
+    SafeArrayIterator,
     JSONParse,
+    String,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
+    StringPrototypeIncludes,
     StringPrototypeMatch,
     StringPrototypeSlice,
+    StringPrototypeSplit,
     StringPrototypeStartsWith,
     StringPrototypeCharCodeAt,
     RegExpPrototypeTest,
+    Error,
+    TypeError,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
@@ -98,7 +105,11 @@
   }
 
   function tryPackage(requestPath, exts, isMain, originalPath) {
-    const pkg = core.ops.op_require_read_package_scope(requestPath).main;
+    const packageJsonPath = pathResolve(
+      requestPath,
+      "package.json",
+    );
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -135,12 +146,8 @@
         err.requestPath = originalPath;
         throw err;
       } else {
-        const jsonPath = pathResolve(
-          requestPath,
-          "package.json",
-        );
         node.globalThis.process.emitWarning(
-          `Invalid 'main' field in '${jsonPath}' of '${pkg}'. ` +
+          `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
             "Please either fix that or report it to the module author",
           "DeprecationWarning",
           "DEP0128",
@@ -254,9 +261,9 @@
 
   Module.builtinModules = node.builtinModules;
 
-  Module._extensions = Object.create(null);
-  Module._cache = Object.create(null);
-  Module._pathCache = Object.create(null);
+  Module._extensions = ObjectCreate(null);
+  Module._cache = ObjectCreate(null);
+  Module._pathCache = ObjectCreate(null);
   let modulePaths = [];
   Module.globalPaths = modulePaths;
 
@@ -402,7 +409,7 @@
         parent.filename,
       );
       if (denoDirPath) {
-        paths.push(denoDirPath);
+        ArrayPrototypePush(paths, denoDirPath);
       }
     }
     const lookupPathsResult = ops.op_require_resolve_lookup_paths(
@@ -411,7 +418,7 @@
       parent?.filename ?? "",
     );
     if (lookupPathsResult) {
-      paths.push(...lookupPathsResult);
+      ArrayPrototypePush(paths, ...new SafeArrayIterator(lookupPathsResult));
     }
     return paths;
   };
@@ -668,10 +675,11 @@
   function enrichCJSError(error) {
     if (error instanceof SyntaxError) {
       if (
-        error.message.includes(
+        StringPrototypeIncludes(
+          error.message,
           "Cannot use import statement outside a module",
         ) ||
-        error.message.includes("Unexpected token 'export'")
+        StringPrototypeIncludes(error.message, "Unexpected token 'export'")
       ) {
         console.error(
           'To load an ES module, set "type": "module" in the package.json or use ' +
@@ -745,8 +753,8 @@
   };
 
   function stripBOM(content) {
-    if (content.charCodeAt(0) === 0xfeff) {
-      content = content.slice(1);
+    if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
+      content = StringPrototypeSlice(content, 1);
     }
     return content;
   }
@@ -865,13 +873,13 @@
 
   /** @param specifier {string} */
   function packageSpecifierSubPath(specifier) {
-    let parts = specifier.split("/");
-    if (parts[0].startsWith("@")) {
-      parts = parts.slice(2);
+    let parts = StringPrototypeSplit(specifier, "/");
+    if (StringPrototypeStartsWith(parts[0], "@")) {
+      parts = ArrayPrototypeSlice(parts, 2);
     } else {
-      parts = parts.slice(1);
+      parts = ArrayPrototypeSlice(parts, 1);
     }
-    return parts.join("/");
+    return ArrayPrototypeJoin(parts, "/");
   }
 
   window.__bootstrap.internals = {

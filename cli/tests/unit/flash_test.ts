@@ -1417,11 +1417,12 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
   expects_con_len: true,
 });
 
-createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
-  body: stream(""),
-  expects_chunked: true,
-  expects_con_len: false,
-});
+// FIXME: https://github.com/denoland/deno/issues/15892
+// createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
+//   body: stream(""),
+//   expects_chunked: true,
+//   expects_con_len: false,
+// });
 
 Deno.test(
   {
