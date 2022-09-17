@@ -59,6 +59,7 @@
     SafeSet,
     SetPrototype,
     SetPrototypeEntries,
+    SetPrototypeGetSize,
     Symbol,
     SymbolPrototype,
     SymbolPrototypeToString,
@@ -90,6 +91,7 @@
     MapPrototypeDelete,
     MapPrototypeEntries,
     MapPrototypeForEach,
+    MapPrototypeGetSize,
     Error,
     ErrorPrototype,
     ErrorCaptureStackTrace,
@@ -110,6 +112,7 @@
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
     ReflectHas,
+    TypedArrayPrototypeGetLength,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -395,18 +398,18 @@
     switch (options.typeName) {
       case "Map":
         iter = MapPrototypeEntries(value);
-        entriesLength = value.size;
+        entriesLength = MapPrototypeGetSize(value);
         break;
       case "Set":
         iter = SetPrototypeEntries(value);
-        entriesLength = value.size;
+        entriesLength = SetPrototypeGetSize(value);
         break;
       case "Array":
         entriesLength = value.length;
         break;
       default:
         if (isTypedArray(value)) {
-          entriesLength = value.length;
+          entriesLength = TypedArrayPrototypeGetLength(value);
           iter = ArrayPrototypeEntries(value);
           valueIsTypedArray = true;
         } else {
@@ -417,7 +420,7 @@
     if (options.typeName === "Array") {
       for (
         let i = 0, j = 0;
-        i < value.length && j < inspectOptions.iterableLimit;
+        i < entriesLength && j < inspectOptions.iterableLimit;
         i++, j++
       ) {
         inspectOptions.indentLevel++;
@@ -842,14 +845,13 @@
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
           let skipTo;
           keys = keys || ObjectKeys(value);
+          i = value.length;
           if (keys.length === 0) {
             // fast path, all items are empty
-            i = value.length;
             skipTo = i;
           } else {
             // Not all indexes are empty or there's a non-index property
             // Find first non-empty array index
-            i = value.length;
             while (keys.length) {
               const key = keys.shift();
               // check if it's a valid array index
