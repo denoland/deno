@@ -39,6 +39,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_metrics::decl(),
       op_format_file_name::decl(),
       op_is_proxy::decl(),
+      op_str_byte_length::decl(),
     ])
     .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
@@ -133,12 +134,12 @@ impl Resource for WasmStreamingResource {
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
-  bytes: ZeroCopyBuf,
+  bytes: &[u8],
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(bytes);
 
   Ok(())
 }
@@ -194,4 +195,16 @@ fn op_format_file_name(file_name: String) -> String {
 #[op(fast)]
 fn op_is_proxy(value: serde_v8::Value) -> bool {
   value.v8_value.is_proxy()
+}
+
+#[op(v8)]
+fn op_str_byte_length(
+  scope: &mut v8::HandleScope,
+  value: serde_v8::Value,
+) -> u32 {
+  if let Ok(string) = v8::Local::<v8::String>::try_from(value.v8_value) {
+    string.utf8_length(scope) as u32
+  } else {
+    0
+  }
 }

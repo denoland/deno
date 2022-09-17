@@ -495,6 +495,43 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCorrectLengthForUnicodeString() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: () => new Response("韓國".repeat(10)),
+      port: 4503,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const conn = await Deno.connect({ port: 4503 });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const body =
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+
+    const buf = new Uint8Array(1024);
+    const readResult = await conn.read(buf);
+    assert(readResult);
+    const msg = decoder.decode(buf.subarray(0, readResult));
+
+    conn.close();
+
+    ac.abort();
+    await server;
+    assert(msg.includes("Content-Length: 60"));
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const ac = new AbortController();
   const listeningPromise = deferred();
@@ -1380,11 +1417,12 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
   expects_con_len: true,
 });
 
-createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
-  body: stream(""),
-  expects_chunked: true,
-  expects_con_len: false,
-});
+// FIXME: https://github.com/denoland/deno/issues/15892
+// createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
+//   body: stream(""),
+//   expects_chunked: true,
+//   expects_con_len: false,
+// });
 
 Deno.test(
   {

@@ -33,6 +33,13 @@ itest!(esm_module_deno_test {
   http_server: true,
 });
 
+itest!(esm_import_cjs_default {
+  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  output: "npm/esm_import_cjs_default/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
@@ -59,6 +66,14 @@ itest!(cjs_reexport_collision {
   output: "npm/cjs_reexport_collision/main.out",
   envs: env_vars(),
   http_server: true,
+});
+
+itest!(cjs_this_in_exports {
+  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  output: "npm/cjs_this_in_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(translate_cjs_to_esm {
@@ -89,10 +104,30 @@ itest!(dual_cjs_esm {
   http_server: true,
 });
 
-itest!(dynamic_import {
-  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
-  output: "npm/dynamic_import/main.out",
+// FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
+// at the moment
+// itest!(dynamic_import {
+//   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
+//   output: "npm/dynamic_import/main.out",
+//   envs: env_vars(),
+//   http_server: true,
+// });
+
+itest!(env_var_re_export_dev {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("dev\n"),
   envs: env_vars(),
+  http_server: true,
+});
+
+itest!(env_var_re_export_prod {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("prod\n"),
+  envs: {
+    let mut vars = env_vars();
+    vars.push(("NODE_ENV".to_string(), "production".to_string()));
+    vars
+  },
   http_server: true,
 });
 
@@ -232,6 +267,81 @@ fn cached_only_after_first_run() {
 }
 
 #[test]
+fn no_npm_after_first_run() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-npm")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(
+    stderr,
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+  );
+  assert!(stdout.is_empty());
+  assert!(!output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--no-npm")
+    .arg("npm/no_npm_after_first_run/main1.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(
+    stderr,
+    "Following npm specifiers were requested: \"chalk@5\"; but --no-npm is specified."
+  );
+  assert!(stdout.is_empty());
+  assert!(!output.status.success());
+}
+
+#[test]
 fn deno_run_cjs_module() {
   let _server = http_server();
 
@@ -277,9 +387,23 @@ itest!(deno_run_cowthink {
   http_server: true,
 });
 
-itest!(deno_run_esm_module {
-  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+itest!(deno_run_bin_esm {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-esm this is a test",
   output: "npm/deno_run_esm.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_no_ext {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  output: "npm/deno_run_no_ext.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  output: "npm/deno_run_cjs.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -290,6 +414,13 @@ itest!(deno_run_non_existent {
   envs: env_vars(),
   http_server: true,
   exit_code: 1,
+});
+
+itest!(builtin_module_module {
+  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  output: "npm/builtin_module_module/main.out",
+  envs: env_vars(),
+  http_server: true,
 });
 
 #[test]
@@ -327,6 +458,7 @@ fn env_vars_no_sync_download() -> Vec<(String, String)> {
       "DENO_NPM_REGISTRY".to_string(),
       "http://localhost:4545/npm/registry/".to_string(),
     ),
+    ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 
