@@ -195,18 +195,13 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
   Ok(isatty)
 }
 
-#[derive(Serialize)]
-struct ConsoleSize {
-  columns: u32,
-  rows: u32,
-}
-
 #[op]
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<ConsoleSize, AnyError> {
-  let size = StdFileResource::with_file(state, rid, move |std_file| {
+  out_buf: &mut [u32],
+) -> Result<(), AnyError> {
+  StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use std::os::windows::io::AsRawHandle;
@@ -223,10 +218,9 @@ fn op_console_size(
           return Err(Error::last_os_error().into());
         }
 
-        Ok(ConsoleSize {
-          columns: bufinfo.dwSize.X as u32,
-          rows: bufinfo.dwSize.Y as u32,
-        })
+        out_buf[0] = bufinfo.dwSize.X as u32;
+        out_buf[1] = bufinfo.dwSize.Y as u32;
+        Ok(())
       }
     }
 
@@ -243,14 +237,12 @@ fn op_console_size(
           return Err(Error::last_os_error().into());
         }
 
-        // TODO (caspervonb) return a tuple instead
-        Ok(ConsoleSize {
-          columns: size.ws_col as u32,
-          rows: size.ws_row as u32,
-        })
+        out_buf[0] = size.ws_col as u32;
+        out_buf[1] = size.ws_row as u32;
+        Ok(())
       }
     }
   })?;
 
-  Ok(size)
+  Ok(())
 }

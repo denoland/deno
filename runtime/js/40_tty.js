@@ -5,8 +5,14 @@
   const core = window.Deno.core;
   const ops = core.ops;
 
+  const consoleSizeBuf = new Uint32Array(2);
+
   function consoleSize(rid) {
-    return ops.op_console_size(rid);
+    ops.op_console_size(rid, consoleSizeBuf);
+    return {
+      columns: consoleSizeBuf[0],
+      rows: consoleSizeBuf[1],
+    };
   }
 
   function isatty(rid) {
