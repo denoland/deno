@@ -322,8 +322,8 @@ fn op_encoding_encode_into(
   input: serde_v8::Value,
   buffer: &mut [u8],
   out_buf: &mut [u32],
-) {
-  let s = v8::Local::<v8::String>::try_from(input.v8_value).unwrap();
+) -> Result<(), AnyError> {
+  let s = v8::Local::<v8::String>::try_from(input.v8_value)?;
 
   let mut nchars = 0;
   out_buf[1] = s.write_utf8(
@@ -334,6 +334,7 @@ fn op_encoding_encode_into(
       | v8::WriteOptions::REPLACE_INVALID_UTF8,
   ) as u32;
   out_buf[0] = nchars as u32;
+  Ok(())
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
