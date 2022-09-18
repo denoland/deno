@@ -1408,110 +1408,122 @@ itest!(jsx_import_source_error {
 // });
 
 itest!(proto_exploit {
-  args: "run proto_exploit.js",
-  output: "proto_exploit.js.out",
+  args: "run run/proto_exploit.js",
+  output: "run/proto_exploit.js.out",
 });
 
 itest!(reference_types {
-  args: "run --reload --quiet reference_types.ts",
-  output: "reference_types.ts.out",
+  args: "run --reload --quiet run/reference_types.ts",
+  output: "run/reference_types.ts.out",
 });
 
 itest!(references_types_remote {
   http_server: true,
-  args: "run --reload --quiet reference_types_remote.ts",
-  output: "reference_types_remote.ts.out",
+  args: "run --reload --quiet run/reference_types_remote.ts",
+  output: "run/reference_types_remote.ts.out",
+});
+
+itest!(reference_types_error {
+  args:
+    "run --config checkjs.tsconfig.json --check run/reference_types_error.js",
+  output: "run/reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_no_check {
+  args: "run --no-check run/reference_types_error.js",
+  output_str: Some(""),
 });
 
 itest!(import_data_url_error_stack {
-  args: "run --quiet --reload import_data_url_error_stack.ts",
-  output: "import_data_url_error_stack.ts.out",
+  args: "run --quiet --reload run/import_data_url_error_stack.ts",
+  output: "run/import_data_url_error_stack.ts.out",
   exit_code: 1,
 });
 
 itest!(import_data_url_import_relative {
-  args: "run --quiet --reload import_data_url_import_relative.ts",
-  output: "import_data_url_import_relative.ts.out",
+  args: "run --quiet --reload run/import_data_url_import_relative.ts",
+  output: "run/import_data_url_import_relative.ts.out",
   exit_code: 1,
 });
 
 itest!(import_data_url_import_map {
-    args: "run --quiet --reload --import-map import_maps/import_map.json import_data_url.ts",
-    output: "import_data_url.ts.out",
+    args: "run --quiet --reload --import-map import_maps/import_map.json run/import_data_url.ts",
+    output: "run/import_data_url.ts.out",
   });
 
 itest!(import_data_url_imports {
-  args: "run --quiet --reload import_data_url_imports.ts",
-  output: "import_data_url_imports.ts.out",
+  args: "run --quiet --reload run/import_data_url_imports.ts",
+  output: "run/import_data_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(import_data_url_jsx {
-  args: "run --quiet --reload import_data_url_jsx.ts",
-  output: "import_data_url_jsx.ts.out",
+  args: "run --quiet --reload run/import_data_url_jsx.ts",
+  output: "run/import_data_url_jsx.ts.out",
 });
 
 itest!(import_data_url {
-  args: "run --quiet --reload import_data_url.ts",
-  output: "import_data_url.ts.out",
+  args: "run --quiet --reload run/import_data_url.ts",
+  output: "run/import_data_url.ts.out",
 });
 
 itest!(import_dynamic_data_url {
-  args: "run --quiet --reload import_dynamic_data_url.ts",
-  output: "import_dynamic_data_url.ts.out",
+  args: "run --quiet --reload run/import_dynamic_data_url.ts",
+  output: "run/import_dynamic_data_url.ts.out",
 });
 
 itest!(import_blob_url_error_stack {
-  args: "run --quiet --reload import_blob_url_error_stack.ts",
-  output: "import_blob_url_error_stack.ts.out",
+  args: "run --quiet --reload run/import_blob_url_error_stack.ts",
+  output: "run/import_blob_url_error_stack.ts.out",
   exit_code: 1,
 });
 
 itest!(import_blob_url_import_relative {
-  args: "run --quiet --reload import_blob_url_import_relative.ts",
-  output: "import_blob_url_import_relative.ts.out",
+  args: "run --quiet --reload run/import_blob_url_import_relative.ts",
+  output: "run/import_blob_url_import_relative.ts.out",
   exit_code: 1,
 });
 
 itest!(import_blob_url_imports {
   args:
-    "run --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
-  output: "import_blob_url_imports.ts.out",
+    "run --quiet --reload --allow-net=localhost:4545 run/import_blob_url_imports.ts",
+  output: "run/import_blob_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(import_blob_url_jsx {
-  args: "run --quiet --reload import_blob_url_jsx.ts",
-  output: "import_blob_url_jsx.ts.out",
+  args: "run --quiet --reload run/import_blob_url_jsx.ts",
+  output: "run/import_blob_url_jsx.ts.out",
 });
 
 itest!(import_blob_url {
-  args: "run --quiet --reload import_blob_url.ts",
-  output: "import_blob_url.ts.out",
+  args: "run --quiet --reload run/import_blob_url.ts",
+  output: "run/import_blob_url.ts.out",
 });
 
 itest!(import_file_with_colon {
-  args: "run --quiet --reload import_file_with_colon.ts",
-  output: "import_file_with_colon.ts.out",
+  args: "run --quiet --reload run/import_file_with_colon.ts",
+  output: "run/import_file_with_colon.ts.out",
   http_server: true,
 });
 
 itest!(import_extensionless {
-  args: "run --quiet --reload import_extensionless.ts",
-  output: "import_extensionless.ts.out",
+  args: "run --quiet --reload run/import_extensionless.ts",
+  output: "run/import_extensionless.ts.out",
   http_server: true,
 });
 
 itest!(classic_workers_event_loop {
   args:
-    "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
-  output: "classic_workers_event_loop.js.out",
+    "run --enable-testing-features-do-not-use run/classic_workers_event_loop.js",
+  output: "run/classic_workers_event_loop.js.out",
 });
 
 // FIXME(bartlomieju): disabled, because this test is very flaky on CI
 // itest!(local_sources_not_cached_in_memory {
-//   args: "run --allow-read --allow-write no_mem_cache.js",
-//   output: "no_mem_cache.js.out",
+//   args: "run --allow-read --allow-write run/no_mem_cache.js",
+//   output: "run/no_mem_cache.js.out",
 // });
 
 // This test checks that inline source map data is used. It uses a hand crafted
@@ -1520,8 +1532,8 @@ itest!(classic_workers_event_loop {
 // Source line is not remapped because no inline source contents are included in
 // the sourcemap and the file is not present in the dependency graph.
 itest!(inline_js_source_map_2 {
-  args: "run --quiet inline_js_source_map_2.js",
-  output: "inline_js_source_map_2.js.out",
+  args: "run --quiet run/inline_js_source_map_2.js",
+  output: "run/inline_js_source_map_2.js.out",
   exit_code: 1,
 });
 
@@ -1531,8 +1543,8 @@ itest!(inline_js_source_map_2 {
 // Source line remapped using th inline source contents that are included in the
 // inline source map.
 itest!(inline_js_source_map_2_with_inline_contents {
-  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
-  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  args: "run --quiet run/inline_js_source_map_2_with_inline_contents.js",
+  output: "run/inline_js_source_map_2_with_inline_contents.js.out",
   exit_code: 1,
 });
 
@@ -1543,8 +1555,8 @@ itest!(inline_js_source_map_2_with_inline_contents {
 // was not commented out. The source line is remapped using source contents that
 // from the module graph.
 itest!(inline_js_source_map_with_contents_from_graph {
-  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
-  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  args: "run --quiet run/inline_js_source_map_with_contents_from_graph.js",
+  output: "run/inline_js_source_map_with_contents_from_graph.js.out",
   exit_code: 1,
   http_server: true,
 });
@@ -1555,72 +1567,62 @@ itest!(inline_js_source_map_with_contents_from_graph {
 // `program_state.maybe_import_map` to access the import map underneath.
 itest!(error_import_map_unable_to_load {
   args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
-  output: "error_import_map_unable_to_load.out",
+  output: "run/error_import_map_unable_to_load.out",
   exit_code: 1,
 });
 
 // Test that setting `self` in the main thread to some other value doesn't break
 // the world.
 itest!(replace_self {
-  args: "run replace_self.js",
-  output: "replace_self.js.out",
+  args: "run run/replace_self.js",
+  output: "run/replace_self.js.out",
 });
 
 itest!(worker_event_handler_test {
-  args: "run --quiet --reload --allow-read worker_event_handler_test.js",
-  output: "worker_event_handler_test.js.out",
+  args: "run --quiet --reload --allow-read run/worker_event_handler_test.js",
+  output: "run/worker_event_handler_test.js.out",
 });
 
 itest!(worker_close_race {
-  args: "run --quiet --reload --allow-read worker_close_race.js",
-  output: "worker_close_race.js.out",
+  args: "run --quiet --reload --allow-read run/worker_close_race.js",
+  output: "run/worker_close_race.js.out",
 });
 
 itest!(worker_drop_handle_race {
-  args: "run --quiet --reload --allow-read worker_drop_handle_race.js",
-  output: "worker_drop_handle_race.js.out",
+  args: "run --quiet --reload --allow-read run/worker_drop_handle_race.js",
+  output: "run/worker_drop_handle_race.js.out",
   exit_code: 1,
 });
 
 itest!(worker_drop_handle_race_terminate {
-  args: "run --unstable worker_drop_handle_race_terminate.js",
-  output: "worker_drop_handle_race_terminate.js.out",
+  args: "run --unstable run/worker_drop_handle_race_terminate.js",
+  output: "run/worker_drop_handle_race_terminate.js.out",
 });
 
 itest!(worker_close_nested {
-  args: "run --quiet --reload --allow-read worker_close_nested.js",
-  output: "worker_close_nested.js.out",
+  args: "run --quiet --reload --allow-read run/worker_close_nested.js",
+  output: "run/worker_close_nested.js.out",
 });
 
 itest!(worker_message_before_close {
-  args: "run --quiet --reload --allow-read worker_message_before_close.js",
-  output: "worker_message_before_close.js.out",
+  args: "run --quiet --reload --allow-read run/worker_message_before_close.js",
+  output: "run/worker_message_before_close.js.out",
 });
 
 itest!(worker_close_in_wasm_reactions {
-  args: "run --quiet --reload --allow-read worker_close_in_wasm_reactions.js",
-  output: "worker_close_in_wasm_reactions.js.out",
-});
-
-itest!(reference_types_error {
-  args: "run --config checkjs.tsconfig.json --check reference_types_error.js",
-  output: "reference_types_error.js.out",
-  exit_code: 1,
-});
-
-itest!(reference_types_error_no_check {
-  args: "run --no-check reference_types_error.js",
-  output_str: Some(""),
+  args:
+    "run --quiet --reload --allow-read run/worker_close_in_wasm_reactions.js",
+  output: "run/worker_close_in_wasm_reactions.js.out",
 });
 
 itest!(shebang_tsc {
-  args: "run --quiet shebang.ts",
-  output: "shebang.ts.out",
+  args: "run --quiet --check run/shebang.ts",
+  output: "run/shebang.ts.out",
 });
 
 itest!(shebang_swc {
-  args: "run --quiet --no-check shebang.ts",
-  output: "shebang.ts.out",
+  args: "run --quiet run/shebang.ts",
+  output: "run/shebang.ts.out",
 });
 
 itest!(shebang_with_json_imports_tsc {

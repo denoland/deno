@@ -2,7 +2,7 @@ const messagesReceived = new Set();
 
 for (let i = 0; i < 4; i++) {
   const worker = new Worker(
-    import.meta.resolve("./workers/message_before_close.js"),
+    import.meta.resolve("../workers/message_before_close.js"),
     { type: "module", name: String(i) },
   );
 

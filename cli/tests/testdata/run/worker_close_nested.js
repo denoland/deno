@@ -6,7 +6,7 @@
 console.log("Starting the main thread");
 
 const worker = new Worker(
-  import.meta.resolve("./workers/close_nested_parent.js"),
+  import.meta.resolve("../workers/close_nested_parent.js"),
   { type: "module" },
 );
 

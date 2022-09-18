@@ -5,6 +5,6 @@
 // WASM async operation.
 
 new Worker(
-  import.meta.resolve("./workers/close_in_wasm_reactions.js"),
+  import.meta.resolve("../workers/close_in_wasm_reactions.js"),
   { type: "module" },
 );

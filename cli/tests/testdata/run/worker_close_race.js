@@ -5,7 +5,7 @@
 // `Worker.prototype.terminate()`.
 
 const worker = new Worker(
-  import.meta.resolve("./workers/close_race_worker.js"),
+  import.meta.resolve("../workers/close_race_worker.js"),
   { type: "module" },
 );
 
