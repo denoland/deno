@@ -374,7 +374,7 @@ Deno.test(
   },
   async function fetchWithRelativeRedirection() {
     const response = await fetch(
-      "http://localhost:4545/001_hello.js",
+      "http://localhost:4545/run/001_hello.js",
     );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
@@ -449,7 +449,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchSeparateInit() {
     // related to: https://github.com/denoland/deno/issues/10396
-    const req = new Request("http://localhost:4545/001_hello.js");
+    const req = new Request("http://localhost:4545/run/001_hello.js");
     const init = {
       method: "GET",
     };

@@ -1214,22 +1214,22 @@ itest!(import_compression {
 });
 
 itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.js",
-  output: "disallow_http_from_https_js.out",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
+  output: "run/disallow_http_from_https_js.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.ts",
-  output: "disallow_http_from_https_ts.out",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
+  output: "run/disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(dynamic_import_conditional {
-  args: "run --quiet --reload dynamic_import_conditional.js",
-  output: "dynamic_import_conditional.js.out",
+  args: "run --quiet --reload run/dynamic_import_conditional.js",
+  output: "run/dynamic_import_conditional.js.out",
 });
 
 itest!(tsx_imports {
