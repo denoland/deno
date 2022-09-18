@@ -3,7 +3,7 @@ const name = Deno.args[0];
 // deno-lint-ignore no-explicit-any
 const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
   readRequired() {
-    Deno.readFileSync("hello.txt");
+    Deno.readFileSync("assets/hello.txt");
     return Promise.resolve();
   },
   writeRequired() {

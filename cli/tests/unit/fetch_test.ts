@@ -359,10 +359,10 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchWithRedirection() {
-    const response = await fetch("http://localhost:4546/hello.txt");
+    const response = await fetch("http://localhost:4546/assets/hello.txt");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/hello.txt");
+    assertEquals(response.url, "http://localhost:4545/assets/hello.txt");
     const body = await response.text();
     assert(body.includes("Hello world!"));
   },

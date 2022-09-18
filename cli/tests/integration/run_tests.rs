@@ -1065,148 +1065,148 @@ itest!(ts_type_only_import {
 });
 
 itest!(swc_syntax_error {
-  args: "run --reload --check swc_syntax_error.ts",
-  output: "swc_syntax_error.ts.out",
+  args: "run --reload --check run/swc_syntax_error.ts",
+  output: "run/swc_syntax_error.ts.out",
   exit_code: 1,
 });
 
 itest!(unbuffered_stderr {
-  args: "run --reload unbuffered_stderr.ts",
-  output: "unbuffered_stderr.ts.out",
+  args: "run --reload run/unbuffered_stderr.ts",
+  output: "run/unbuffered_stderr.ts.out",
 });
 
 itest!(unbuffered_stdout {
-  args: "run --quiet --reload unbuffered_stdout.ts",
-  output: "unbuffered_stdout.ts.out",
+  args: "run --quiet --reload run/unbuffered_stdout.ts",
+  output: "run/unbuffered_stdout.ts.out",
 });
 
 itest!(v8_flags_run {
-  args: "run --v8-flags=--expose-gc v8_flags.js",
-  output: "v8_flags.js.out",
+  args: "run --v8-flags=--expose-gc run/v8_flags.js",
+  output: "run/v8_flags.js.out",
 });
 
 itest!(v8_flags_unrecognized {
   args: "repl --v8-flags=--foo,bar,--trace-gc,-baz",
-  output: "v8_flags_unrecognized.out",
+  output: "run/v8_flags_unrecognized.out",
   exit_code: 1,
 });
 
 itest!(v8_help {
   args: "repl --v8-flags=--help",
-  output: "v8_help.out",
+  output: "run/v8_help.out",
 });
 
 itest!(unsupported_dynamic_import_scheme {
   args: "eval import('xxx:')",
-  output: "unsupported_dynamic_import_scheme.out",
+  output: "run/unsupported_dynamic_import_scheme.out",
   exit_code: 1,
 });
 
 itest!(wasm {
-  args: "run --quiet wasm.ts",
-  output: "wasm.ts.out",
+  args: "run --quiet run/wasm.ts",
+  output: "run/wasm.ts.out",
 });
 
 itest!(wasm_shared {
-  args: "run --quiet wasm_shared.ts",
-  output: "wasm_shared.out",
+  args: "run --quiet run/wasm_shared.ts",
+  output: "run/wasm_shared.out",
 });
 
 itest!(wasm_async {
-  args: "run wasm_async.js",
-  output: "wasm_async.out",
+  args: "run run/wasm_async.js",
+  output: "run/wasm_async.out",
 });
 
 itest!(wasm_unreachable {
-  args: "run --allow-read wasm_unreachable.js",
-  output: "wasm_unreachable.out",
+  args: "run --allow-read run/wasm_unreachable.js",
+  output: "run/wasm_unreachable.out",
   exit_code: 1,
 });
 
 itest!(wasm_url {
-  args: "run --quiet --allow-net=localhost:4545 wasm_url.js",
-  output: "wasm_url.out",
+  args: "run --quiet --allow-net=localhost:4545 run/wasm_url.js",
+  output: "run/wasm_url.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(weakref {
-  args: "run --quiet --reload weakref.ts",
-  output: "weakref.ts.out",
+  args: "run --quiet --reload run/weakref.ts",
+  output: "run/weakref.ts.out",
 });
 
 itest!(top_level_await_order {
-  args: "run --allow-read top_level_await_order.js",
-  output: "top_level_await_order.out",
+  args: "run --allow-read run/top_level_await/order.js",
+  output: "run/top_level_await/order.out",
 });
 
 itest!(top_level_await_loop {
-  args: "run --allow-read top_level_await_loop.js",
-  output: "top_level_await_loop.out",
+  args: "run --allow-read run/top_level_await/loop.js",
+  output: "run/top_level_await/loop.out",
 });
 
 itest!(top_level_await_circular {
-  args: "run --allow-read top_level_await_circular.js",
-  output: "top_level_await_circular.out",
+  args: "run --allow-read run/top_level_await/circular.js",
+  output: "run/top_level_await/circular.out",
   exit_code: 1,
 });
 
 // Regression test for https://github.com/denoland/deno/issues/11238.
 itest!(top_level_await_nested {
-  args: "run --allow-read top_level_await_nested/main.js",
-  output: "top_level_await_nested.out",
+  args: "run --allow-read run/top_level_await/nested/main.js",
+  output: "run/top_level_await/nested.out",
 });
 
 itest!(top_level_await_unresolved {
-  args: "run top_level_await_unresolved.js",
-  output: "top_level_await_unresolved.out",
+  args: "run run/top_level_await/unresolved.js",
+  output: "run/top_level_await/unresolved.out",
   exit_code: 1,
 });
 
 itest!(top_level_await {
-  args: "run --allow-read top_level_await.js",
-  output: "top_level_await.out",
+  args: "run --allow-read run/top_level_await/top_level_await.js",
+  output: "run/top_level_await/top_level_await.out",
 });
 
 itest!(top_level_await_ts {
-  args: "run --quiet --allow-read top_level_await.ts",
-  output: "top_level_await.out",
+  args: "run --quiet --allow-read run/top_level_await/top_level_await.ts",
+  output: "run/top_level_await/top_level_await.out",
 });
 
 itest!(top_level_for_await {
-  args: "run --quiet top_level_for_await.js",
-  output: "top_level_for_await.out",
+  args: "run --quiet run/top_level_await/top_level_for_await.js",
+  output: "run/top_level_await/top_level_for_await.out",
 });
 
 itest!(top_level_for_await_ts {
-  args: "run --quiet top_level_for_await.ts",
-  output: "top_level_for_await.out",
+  args: "run --quiet run/top_level_await/top_level_for_await.ts",
+  output: "run/top_level_await/top_level_for_await.out",
 });
 
 itest!(unstable_disabled {
-  args: "run --reload --check unstable.ts",
+  args: "run --reload --check run/unstable.ts",
   exit_code: 1,
-  output: "unstable_disabled.out",
+  output: "run/unstable_disabled.out",
 });
 
 itest!(unstable_enabled {
-  args: "run --quiet --reload --unstable unstable.ts",
-  output: "unstable_enabled.out",
+  args: "run --quiet --reload --unstable run/unstable.ts",
+  output: "run/unstable_enabled.out",
 });
 
 itest!(unstable_disabled_js {
-  args: "run --reload unstable.js",
-  output: "unstable_disabled_js.out",
+  args: "run --reload run/unstable.js",
+  output: "run/unstable_disabled_js.out",
 });
 
 itest!(unstable_enabled_js {
-  args: "run --quiet --reload --unstable unstable.ts",
-  output: "unstable_enabled_js.out",
+  args: "run --quiet --reload --unstable run/unstable.ts",
+  output: "run/unstable_enabled_js.out",
 });
 
 itest!(unstable_worker {
-  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
-  output: "unstable_worker.ts.out",
+  args: "run --reload --unstable --quiet --allow-read run/unstable_worker.ts",
+  output: "run/unstable_worker.ts.out",
 });
 
 itest!(import_compression {
@@ -1240,48 +1240,48 @@ itest!(tsx_imports {
 });
 
 itest!(fix_dynamic_import_errors {
-  args: "run --reload fix_dynamic_import_errors.js",
-  output: "fix_dynamic_import_errors.js.out",
+  args: "run --reload run/fix_dynamic_import_errors.js",
+  output: "run/fix_dynamic_import_errors.js.out",
 });
 
 itest!(fix_emittable_skipped {
-  args: "run --reload fix_emittable_skipped.js",
-  output: "fix_emittable_skipped.ts.out",
+  args: "run --reload run/fix_emittable_skipped.js",
+  output: "run/fix_emittable_skipped.ts.out",
 });
 
 itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload fix_exotic_specifiers.ts",
-  output: "fix_exotic_specifiers.ts.out",
+  args: "run --quiet --reload run/fix_exotic_specifiers.ts",
+  output: "run/fix_exotic_specifiers.ts.out",
 });
 
 itest!(fix_js_import_js {
-  args: "run --quiet --reload fix_js_import_js.ts",
-  output: "fix_js_import_js.ts.out",
+  args: "run --quiet --reload run/fix_js_import_js.ts",
+  output: "run/fix_js_import_js.ts.out",
 });
 
 itest!(fix_js_imports {
-  args: "run --quiet --reload fix_js_imports.ts",
-  output: "fix_js_imports.ts.out",
+  args: "run --quiet --reload run/fix_js_imports.ts",
+  output: "run/fix_js_imports.ts.out",
 });
 
 itest!(fix_tsc_file_exists {
   args: "run --quiet --reload tsc/test.js",
-  output: "fix_tsc_file_exists.out",
+  output: "run/fix_tsc_file_exists.out",
 });
 
 itest!(fix_worker_dispatchevent {
-  args: "run --quiet --reload fix_worker_dispatchevent.ts",
-  output: "fix_worker_dispatchevent.ts.out",
+  args: "run --quiet --reload run/fix_worker_dispatchevent.ts",
+  output: "run/fix_worker_dispatchevent.ts.out",
 });
 
 itest!(es_private_fields {
-  args: "run --quiet --reload es_private_fields.js",
-  output: "es_private_fields.js.out",
+  args: "run --quiet --reload run/es_private_fields.js",
+  output: "run/es_private_fields.js.out",
 });
 
 itest!(cjs_imports {
-  args: "run --quiet --reload cjs_imports.ts",
-  output: "cjs_imports.ts.out",
+  args: "run --quiet --reload run/cjs_imports/main.ts",
+  output: "run/cjs_imports/main.out",
 });
 
 itest!(ts_import_from_js {
@@ -1291,133 +1291,115 @@ itest!(ts_import_from_js {
 });
 
 itest!(jsx_import_from_ts {
-  args: "run --quiet --reload jsx_import_from_ts.ts",
-  output: "jsx_import_from_ts.ts.out",
+  args: "run --quiet --reload run/jsx_import_from_ts.ts",
+  output: "run/jsx_import_from_ts.ts.out",
 });
 
 itest!(jsx_import_source_pragma {
-  args: "run --reload jsx_import_source_pragma.tsx",
-  output: "jsx_import_source.out",
+  args: "run --reload run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_config {
-  args: "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_pragma.tsx",
-  output: "jsx_import_source.out",
+  args:
+    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_dev_config {
   args:
-    "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_pragma.tsx",
-  output: "jsx_import_source_dev.out",
+    "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source.out",
+    "run --reload --config jsx/deno-jsx.jsonc run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_no_pragma_dev {
-  args: "run --reload --config jsx/deno-jsxdev.jsonc jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_dev.out",
+  args: "run --reload --config jsx/deno-jsxdev.jsonc run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_import_map {
-  args: "run --reload --import-map jsx/import-map.json jsx_import_source_pragma_import_map.tsx",
-  output: "jsx_import_source_import_map.out",
+  args: "run --reload --import-map jsx/import-map.json run/jsx_import_source_pragma_import_map.tsx",
+  output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_pragma_import_map.tsx",
-  output: "jsx_import_source_import_map_dev.out",
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_pragma_import_map.tsx",
+  output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_import_map.out",
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_dev {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_import_map_dev.out",
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped {
   args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_import_map.out",
+  output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_import_map_scoped_dev {
   args: "run --reload --import-map jsx/import-map-scoped.json --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_import_map_dev.out",
+  output: "run/jsx_import_source_import_map_dev.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_no_check {
-  args: "run --reload --no-check jsx_import_source_pragma.tsx",
-  output: "jsx_import_source.out",
+  args: "run --reload --no-check run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
 
 itest!(jsx_import_source_pragma_with_config_no_check {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_pragma.tsx",
-  output: "jsx_import_source.out",
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
-
-// itest!(jsx_import_source_pragma_with_dev_config_no_check {
-//   args:
-//     "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_pragma.tsx",
-//   output: "jsx_import_source_dev.out",
-//   http_server: true,
-// });
 
 itest!(jsx_import_source_no_pragma_no_check {
   args:
-    "run --reload --config jsx/deno-jsx.jsonc --no-check jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source.out",
+    "run --reload --config jsx/deno-jsx.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source.out",
   http_server: true,
 });
-
-// itest!(jsx_import_source_no_pragma_dev_no_check {
-//   args: "run --reload --config jsx/deno-jsxdev.jsonc --no-check jsx_import_source_no_pragma.tsx",
-//   output: "jsx_import_source_dev.out",
-//   http_server: true,
-// });
 
 itest!(jsx_import_source_pragma_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --no-check jsx_import_source_pragma_import_map.tsx",
-  output: "jsx_import_source_import_map.out",
+  args: "run --reload --import-map jsx/import-map.json --no-check run/jsx_import_source_pragma_import_map.tsx",
+  output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
-
-// itest!(jsx_import_source_pragma_import_map_dev_no_check {
-//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_pragma_import_map.tsx",
-//   output: "jsx_import_source_import_map_dev.out",
-//   http_server: true,
-// });
 
 itest!(jsx_import_source_import_map_no_check {
-  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_import_map.out",
+  args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsx-import-map.jsonc --no-check run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source_import_map.out",
   http_server: true,
 });
 
-// itest!(jsx_import_source_import_map_dev_no_check {
-//   args: "run --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
-//   output: "jsx_import_source_import_map_dev.out",
-//   http_server: true,
-// });
+itest!(jsx_import_source_error {
+  args: "run --config jsx/deno-jsx-error.jsonc --check run/jsx_import_source_no_pragma.tsx",
+  output: "run/jsx_import_source_error.out",
+  exit_code: 1,
+});
 
 // TODO(#11128): Flaky. Re-enable later.
 // itest!(single_compile_with_reload {
@@ -1629,12 +1611,6 @@ itest!(reference_types_error {
 itest!(reference_types_error_no_check {
   args: "run --no-check reference_types_error.js",
   output_str: Some(""),
-});
-
-itest!(jsx_import_source_error {
-  args: "run --config jsx/deno-jsx-error.jsonc --check jsx_import_source_no_pragma.tsx",
-  output: "jsx_import_source_error.out",
-  exit_code: 1,
 });
 
 itest!(shebang_tsc {
@@ -1878,7 +1854,7 @@ mod permissions {
         .arg("run")
         .arg("--unstable")
         .arg(format!("--allow-{0}", permission))
-        .arg("permission_test.ts")
+        .arg("run/permission_test.ts")
         .arg(format!("{0}Required", permission))
         .spawn()
         .unwrap()
@@ -1894,7 +1870,10 @@ mod permissions {
     for permission in &util::PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
-        &format!("run --unstable permission_test.ts {0}Required", permission),
+        &format!(
+          "run --unstable run/permission_test.ts {0}Required",
+          permission
+        ),
         None,
         None,
         false,
