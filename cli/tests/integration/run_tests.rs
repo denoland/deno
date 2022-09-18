@@ -24,44 +24,44 @@ itest!(stdout_write_sync_async {
 });
 
 itest!(_001_hello {
-  args: "run --reload 001_hello.js",
-  output: "001_hello.js.out",
+  args: "run --reload run/001_hello.js",
+  output: "run/001_hello.js.out",
 });
 
 itest!(_002_hello {
-  args: "run --quiet --reload 002_hello.ts",
-  output: "002_hello.ts.out",
+  args: "run --quiet --reload run/002_hello.ts",
+  output: "run/002_hello.ts.out",
 });
 
 itest!(_003_relative_import {
-  args: "run --quiet --reload 003_relative_import.ts",
-  output: "003_relative_import.ts.out",
+  args: "run --quiet --reload run/003_relative_import.ts",
+  output: "run/003_relative_import.ts.out",
 });
 
 itest!(_004_set_timeout {
-  args: "run --quiet --reload 004_set_timeout.ts",
-  output: "004_set_timeout.ts.out",
+  args: "run --quiet --reload run/004_set_timeout.ts",
+  output: "run/004_set_timeout.ts.out",
 });
 
 itest!(_005_more_imports {
-  args: "run --quiet --reload 005_more_imports.ts",
-  output: "005_more_imports.ts.out",
+  args: "run --quiet --reload run/005_more_imports.ts",
+  output: "run/005_more_imports.ts.out",
 });
 
 itest!(_006_url_imports {
-  args: "run --quiet --reload 006_url_imports.ts",
-  output: "006_url_imports.ts.out",
+  args: "run --quiet --reload run/006_url_imports.ts",
+  output: "run/006_url_imports.ts.out",
   http_server: true,
 });
 
 itest!(_012_async {
-  args: "run --quiet --reload 012_async.ts",
-  output: "012_async.ts.out",
+  args: "run --quiet --reload run/012_async.ts",
+  output: "run/012_async.ts.out",
 });
 
 itest!(_013_dynamic_import {
-  args: "run --quiet --reload --allow-read 013_dynamic_import.ts",
-  output: "013_dynamic_import.ts.out",
+  args: "run --quiet --reload --allow-read run/013_dynamic_import.ts",
+  output: "run/013_dynamic_import.ts.out",
 });
 
 itest!(_014_duplicate_import {
@@ -614,8 +614,8 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=lock_check_ok.json http://127.0.0.1:4545/003_relative_import.ts",
-  output: "003_relative_import.ts.out",
+    "run --lock=lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/003_relative_import.ts.out",
   http_server: true,
 });
 
@@ -626,14 +626,14 @@ itest!(lock_check_ok2 {
 });
 
 itest!(lock_dynamic_imports {
-  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/013_dynamic_import.ts",
-  output: "lock_dynamic_imports.out",
+  args: "run --lock=run/lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
+  output: "run/lock_dynamic_imports.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(lock_check_err {
-  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/003_relative_import.ts",
+  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "lock_check_err.out",
   exit_code: 10,
   http_server: true,
@@ -1276,8 +1276,8 @@ itest!(cjs_imports {
 });
 
 itest!(ts_import_from_js {
-  args: "run --quiet --reload ts_import_from_js.js",
-  output: "ts_import_from_js.js.out",
+  args: "run --quiet --reload run/ts_import_from_js/main.js",
+  output: "run/ts_import_from_js/main.out",
   http_server: true,
 });
 
@@ -1799,7 +1799,7 @@ fn rust_log() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("001_hello.js")
+    .arg("run/001_hello.js")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap()
@@ -1812,7 +1812,7 @@ fn rust_log() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("001_hello.js")
+    .arg("run/001_hello.js")
     .env("RUST_LOG", "debug")
     .stderr(Stdio::piped())
     .spawn()

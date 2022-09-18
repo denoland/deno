@@ -35,7 +35,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -43,14 +43,18 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/003_relative_import.ts",
+      "cli/tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
+  (
+    "hello",
+    &["run", "cli/tests/testdata/run/002_hello.ts"],
+    None,
+  ),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
@@ -64,7 +68,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/002_hello.ts",
+      "cli/tests/testdata/run/002_hello.ts",
     ],
     None,
   ),

@@ -461,7 +461,7 @@ fn skip_rebundle() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./001_hello.js")
+    .arg("./run/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -470,7 +470,7 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
 
-  //no "Bundle testdata_path/001_hello.js" in output
+  //no "Bundle testdata_path/run/001_hello.js" in output
   assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
 
   let output = Command::new(exe)

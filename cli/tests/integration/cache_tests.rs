@@ -34,7 +34,7 @@ itest!(cache_random_extension {
 });
 
 itest!(performance_stats {
-  args: "cache --reload --check=all --log-level debug 002_hello.ts",
+  args: "cache --reload --check=all --log-level debug run/002_hello.ts",
   output: "performance_stats.out",
 });
 
@@ -71,7 +71,7 @@ fn relative_home_dir() {
     .arg("cache")
     .arg("--reload")
     .arg("--no-check")
-    .arg("002_hello.ts")
+    .arg("run/002_hello.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()

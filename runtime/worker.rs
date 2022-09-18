@@ -583,7 +583,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = test_util::testdata_path().join("001_hello.js");
+    let p = test_util::testdata_path().join("run/001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());

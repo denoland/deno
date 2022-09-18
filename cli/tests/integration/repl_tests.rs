@@ -750,7 +750,7 @@ fn eval_flag_runtime_error() {
 fn eval_file_flag_valid_input() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
-    vec!["repl", "--eval-file=./001_hello.js"],
+    vec!["repl", "--eval-file=./run/001_hello.js"],
     None,
     None,
     false,

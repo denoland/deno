@@ -74,9 +74,9 @@ itest!(_049_info_flag_script_jsx {
   http_server: true,
 });
 
-itest!(_055_info_file_json {
-  args: "info --quiet --json --unstable 005_more_imports.ts",
-  output: "055_info_file_json.out",
+itest!(json_file {
+  args: "info --quiet --json --unstable info/json_output/main.ts",
+  output: "info/json_output/main.out",
   exit_code: 0,
 });
 
@@ -108,7 +108,7 @@ itest!(info_type_import {
 });
 
 itest!(_054_info_local_imports {
-  args: "info --quiet 005_more_imports.ts",
+  args: "info --quiet run/005_more_imports.ts",
   output: "054_info_local_imports.out",
   exit_code: 0,
 });

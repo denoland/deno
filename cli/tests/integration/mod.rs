@@ -147,7 +147,7 @@ fn cache_test() {
   let _g = util::http_server();
   let deno_dir = TempDir::new();
   let module_url =
-    url::Url::parse("http://localhost:4545/006_url_imports.ts").unwrap();
+    url::Url::parse("http://localhost:4545/run/006_url_imports.ts").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
@@ -173,7 +173,8 @@ fn cache_test() {
 
   let str_output = std::str::from_utf8(&output.stdout).unwrap();
 
-  let module_output_path = util::testdata_path().join("006_url_imports.ts.out");
+  let module_output_path =
+    util::testdata_path().join("run/006_url_imports.ts.out");
   let mut module_output = String::new();
   let mut module_output_file = fs::File::open(module_output_path).unwrap();
   module_output_file
@@ -1055,7 +1056,7 @@ fn basic_auth_tokens() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("http://127.0.0.1:4554/001_hello.js")
+    .arg("http://127.0.0.1:4554/run/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1072,12 +1073,12 @@ fn basic_auth_tokens() {
   eprintln!("{}", stderr_str);
 
   assert!(stderr_str
-    .contains("Module not found \"http://127.0.0.1:4554/001_hello.js\"."));
+    .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\"."));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("http://127.0.0.1:4554/001_hello.js")
+    .arg("http://127.0.0.1:4554/run/001_hello.js")
     .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())

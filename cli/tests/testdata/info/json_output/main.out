@@ -1,12 +1,12 @@
 {
   "roots": [
-    "file://[WILDCARD]/005_more_imports.ts"
+    "file://[WILDCARD]/info/json_output/main.ts"
   ],
   "modules": [
     {
       "dependencies": [
         {
-          "specifier": "./subdir/mod1.ts",
+          "specifier": "../../subdir/mod1.ts",
           "code": {
             "specifier": "file://[WILDCARD]/subdir/mod1.ts",
             "span": {
@@ -16,17 +16,17 @@
               },
               "end": {
                 "line": 0,
-                "character": 70
+                "character": 74
               }
             }
           }
         }
       ],
       "kind": "esm",
-      "local": "[WILDCARD]005_more_imports.ts",
+      "local": "[WILDCARD]main.ts",
       [WILDCARD]
       "mediaType": "TypeScript",
-      "specifier": "file://[WILDCARD]/005_more_imports.ts"
+      "specifier": "file://[WILDCARD]/json_output/main.ts"
     },
     {
       "dependencies": [
