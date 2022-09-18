@@ -185,7 +185,10 @@
         }
 
         if (finalBuffer) {
-          return finalBuffer;
+          return totalLength < finalBuffer.buffer.byteLength
+            // future proofing: this condition is always false right now
+            ? finalBuffer.slice(0, totalLength)
+            : finalBuffer;
         }
 
         finalBuffer = new Uint8Array(totalLength);
