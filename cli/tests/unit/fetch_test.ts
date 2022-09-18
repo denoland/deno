@@ -1645,3 +1645,64 @@ Deno.test(async function staticResponseJson() {
   const res = await resp.json();
   assertEquals(res, data);
 });
+
+Deno.test(
+  { permissions: { net: true }, ignore: true },
+  async function fetchWithContentLengthNotEqualToBodyLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4512";
+    const [hostname, port] = addr.split(":");
+    const listener = Deno.listen({
+      hostname,
+      port: Number(port),
+    }) as Deno.Listener;
+
+    let httpConn: Deno.HttpConn;
+    listener.accept().then(async (conn: Deno.Conn) => {
+      httpConn = Deno.serveHttp(conn);
+
+      await httpConn.nextRequest()
+        .then(async (requestEvent: Deno.RequestEvent | null) => {
+          const body = await requestEvent?.request.arrayBuffer();
+          await requestEvent?.respondWith(
+            new Response(body, {
+              status: 200,
+              headers: {
+                "Content-Length": requestEvent?.request.headers.get(
+                  "x-content-length",
+                ) || "",
+              },
+            }),
+          );
+        });
+    });
+
+    const data = new TextEncoder().encode("a".repeat(10 << 10)); // 10mb
+
+    // it's not possible right now to test this behavior since it seems that Hyper
+    // stops reading after `content-length` bytes. If I send more data than `content-length`
+    // that extra data is clipped.
+    // If `content-length` is greater, the request never ends, it keeps waiting for
+    // the extra data that will never be sent.
+    const contentLength = [
+      String(Math.round(data.byteLength * 2)),
+      String(Math.round(data.byteLength / 2)),
+    ];
+
+    for (const cl of contentLength) {
+      const response = await fetch(`http://${addr}/`, {
+        method: "POST",
+        body: data,
+        headers: { "X-Content-Length": cl },
+      });
+
+      const res = await response.arrayBuffer();
+      assertEquals(res.byteLength, data.byteLength);
+      assertEquals(new Uint8Array(res), data);
+    }
+
+    listener.close();
+    httpConn!.close();
+  },
+);
