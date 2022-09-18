@@ -220,55 +220,55 @@ itest!(_048_media_types_jsx {
 
 itest!(_052_no_remote_flag {
   args:
-    "run --reload --check --no-remote http://127.0.0.1:4545/019_media_types.ts",
-  output: "052_no_remote_flag.out",
+    "run --reload --check --no-remote http://127.0.0.1:4545/run/019_media_types.ts",
+  output: "run/052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(_056_make_temp_file_write_perm {
   args:
-    "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
-  output: "056_make_temp_file_write_perm.out",
+    "run --quiet --allow-read --allow-write=./subdir/ run/056_make_temp_file_write_perm.ts",
+  output: "run/056_make_temp_file_write_perm.out",
 });
 
 itest!(_058_tasks_microtasks_close {
-  args: "run --quiet 058_tasks_microtasks_close.ts",
-  output: "058_tasks_microtasks_close.ts.out",
+  args: "run --quiet run/058_tasks_microtasks_close.ts",
+  output: "run/058_tasks_microtasks_close.ts.out",
 });
 
 itest!(_059_fs_relative_path_perm {
-  args: "run 059_fs_relative_path_perm.ts",
-  output: "059_fs_relative_path_perm.ts.out",
+  args: "run run/059_fs_relative_path_perm.ts",
+  output: "run/059_fs_relative_path_perm.ts.out",
   exit_code: 1,
 });
 
 itest!(_070_location {
-  args: "run --location https://foo/bar?baz#bat 070_location.ts",
-  output: "070_location.ts.out",
+  args: "run --location https://foo/bar?baz#bat run/070_location.ts",
+  output: "run/070_location.ts.out",
 });
 
 itest!(_071_location_unset {
-  args: "run 071_location_unset.ts",
-  output: "071_location_unset.ts.out",
+  args: "run run/071_location_unset.ts",
+  output: "run/071_location_unset.ts.out",
 });
 
 itest!(_072_location_relative_fetch {
-  args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
-  output: "072_location_relative_fetch.ts.out",
+  args: "run --location http://127.0.0.1:4545/ --allow-net run/072_location_relative_fetch.ts",
+  output: "run/072_location_relative_fetch.ts.out",
   http_server: true,
-});
-
-// tests the serialization of webstorage (both localStorage and sessionStorage)
-itest!(webstorage_serialization {
-  args: "run webstorage/serialization.ts",
-  output: "webstorage/serialization.ts.out",
 });
 
 // tests the beforeunload event
 itest!(beforeunload_event {
-  args: "run before_unload.js",
-  output: "before_unload.js.out",
+  args: "run run/before_unload.js",
+  output: "run/before_unload.js.out",
+});
+
+// tests the serialization of webstorage (both localStorage and sessionStorage)
+itest!(webstorage_serialization {
+  args: "run run/webstorage/serialization.ts",
+  output: "run/webstorage/serialization.ts.out",
 });
 
 // tests to ensure that when `--location` is set, all code shares the same
@@ -283,7 +283,7 @@ fn webstorage_location_shares_origin() {
     .arg("run")
     .arg("--location")
     .arg("https://example.com/a.ts")
-    .arg("webstorage/fixture.ts")
+    .arg("run/webstorage/fixture.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -298,7 +298,7 @@ fn webstorage_location_shares_origin() {
     .arg("run")
     .arg("--location")
     .arg("https://example.com/b.ts")
-    .arg("webstorage/logger.ts")
+    .arg("run/webstorage/logger.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -319,8 +319,8 @@ fn webstorage_config_file() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--config")
-    .arg("webstorage/config_a.jsonc")
-    .arg("webstorage/fixture.ts")
+    .arg("run/webstorage/config_a.jsonc")
+    .arg("run/webstorage/fixture.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -334,8 +334,8 @@ fn webstorage_config_file() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--config")
-    .arg("webstorage/config_b.jsonc")
-    .arg("webstorage/logger.ts")
+    .arg("run/webstorage/config_b.jsonc")
+    .arg("run/webstorage/logger.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -349,8 +349,8 @@ fn webstorage_config_file() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--config")
-    .arg("webstorage/config_a.jsonc")
-    .arg("webstorage/logger.ts")
+    .arg("run/webstorage/config_a.jsonc")
+    .arg("run/webstorage/logger.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -373,8 +373,8 @@ fn webstorage_location_precedes_config() {
     .arg("--location")
     .arg("https://example.com/a.ts")
     .arg("--config")
-    .arg("webstorage/config_a.jsonc")
-    .arg("webstorage/fixture.ts")
+    .arg("run/webstorage/config_a.jsonc")
+    .arg("run/webstorage/fixture.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -390,8 +390,8 @@ fn webstorage_location_precedes_config() {
     .arg("--location")
     .arg("https://example.com/b.ts")
     .arg("--config")
-    .arg("webstorage/config_b.jsonc")
-    .arg("webstorage/logger.ts")
+    .arg("run/webstorage/config_b.jsonc")
+    .arg("run/webstorage/logger.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -411,7 +411,7 @@ fn webstorage_main_module() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("webstorage/fixture.ts")
+    .arg("run/webstorage/fixture.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -424,7 +424,7 @@ fn webstorage_main_module() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("webstorage/logger.ts")
+    .arg("run/webstorage/logger.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -437,7 +437,7 @@ fn webstorage_main_module() {
   let output = deno_cmd
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("webstorage/fixture.ts")
+    .arg("run/webstorage/fixture.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -453,31 +453,32 @@ itest!(_075_import_local_query_hash {
 });
 
 itest!(_077_fetch_empty {
-  args: "run -A 077_fetch_empty.ts",
-  output: "077_fetch_empty.ts.out",
+  args: "run -A run/077_fetch_empty.ts",
+  output: "run/077_fetch_empty.ts.out",
   exit_code: 1,
 });
 
 itest!(_078_unload_on_exit {
-  args: "run 078_unload_on_exit.ts",
-  output: "078_unload_on_exit.ts.out",
+  args: "run run/078_unload_on_exit.ts",
+  output: "run/078_unload_on_exit.ts.out",
   exit_code: 1,
 });
 
 itest!(_079_location_authentication {
-  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
-  output: "079_location_authentication.ts.out",
+  args:
+    "run --location https://foo:bar@baz/qux run/079_location_authentication.ts",
+  output: "run/079_location_authentication.ts.out",
 });
 
 itest!(_081_location_relative_fetch_redirect {
-    args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
-    output: "081_location_relative_fetch_redirect.ts.out",
+    args: "run --location http://127.0.0.1:4546/ --allow-net run/081_location_relative_fetch_redirect.ts",
+    output: "run/081_location_relative_fetch_redirect.ts.out",
     http_server: true,
   });
 
 itest!(_082_prepare_stack_trace_throw {
-  args: "run 082_prepare_stack_trace_throw.js",
-  output: "082_prepare_stack_trace_throw.js.out",
+  args: "run run/082_prepare_stack_trace_throw.js",
+  output: "run/082_prepare_stack_trace_throw.js.out",
   exit_code: 1,
 });
 
@@ -485,9 +486,10 @@ itest!(_082_prepare_stack_trace_throw {
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
   let deno_dir = TempDir::new();
-  let module_url =
-    url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
-      .unwrap();
+  let module_url = url::Url::parse(
+    "http://localhost:4545/run/083_legacy_external_source_map.ts",
+  )
+  .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
   std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
@@ -508,35 +510,35 @@ fn _083_legacy_external_source_map() {
   assert_eq!(out, "");
 }
 
-itest!(_085_dynamic_import_async_error {
-  args: "run --allow-read 085_dynamic_import_async_error.ts",
-  output: "085_dynamic_import_async_error.ts.out",
+itest!(dynamic_import_async_error {
+  args: "run --allow-read run/dynamic_import_async_error/main.ts",
+  output: "run/dynamic_import_async_error/main.out",
 });
 
-itest!(_086_dynamic_import_already_rejected {
-  args: "run --allow-read 086_dynamic_import_already_rejected.ts",
-  output: "086_dynamic_import_already_rejected.ts.out",
+itest!(dynamic_import_already_rejected {
+  args: "run --allow-read run/dynamic_import_already_rejected/main.ts",
+  output: "run/dynamic_import_already_rejected/main.out",
 });
 
-itest!(_087_no_check_imports_not_used_as_values {
-    args: "run --config preserve_imports.tsconfig.json --no-check 087_no_check_imports_not_used_as_values.ts",
-    output: "087_no_check_imports_not_used_as_values.ts.out",
+itest!(no_check_imports_not_used_as_values {
+    args: "run --config run/no_check_imports_not_used_as_values/preserve_imports.tsconfig.json --no-check run/no_check_imports_not_used_as_values/main.ts",
+    output: "run/no_check_imports_not_used_as_values/main.out",
   });
 
 itest!(_088_dynamic_import_already_evaluating {
-  args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
-  output: "088_dynamic_import_already_evaluating.ts.out",
+  args: "run --allow-read run/088_dynamic_import_already_evaluating.ts",
+  output: "run/088_dynamic_import_already_evaluating.ts.out",
 });
 
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_089_run_allow_list {
-  args: "run --unstable --allow-run=curl 089_run_allow_list.ts",
-  output: "089_run_allow_list.ts.out",
+  args: "run --unstable --allow-run=curl run/089_run_allow_list.ts",
+  output: "run/089_run_allow_list.ts.out",
 });
 
 #[test]
 fn _090_run_permissions_request() {
-  let args = "run --quiet 090_run_permissions_request.ts";
+  let args = "run --quiet run/090_run_permissions_request.ts";
   use util::PtyData::*;
   util::test_pty2(args, vec![
     Output("⚠️  ️Deno requests run access to \"ls\". Run again with --allow-run to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)]"),
@@ -550,14 +552,14 @@ fn _090_run_permissions_request() {
 }
 
 itest!(_091_use_define_for_class_fields {
-  args: "run --check 091_use_define_for_class_fields.ts",
-  output: "091_use_define_for_class_fields.ts.out",
+  args: "run --check run/091_use_define_for_class_fields.ts",
+  output: "run/091_use_define_for_class_fields.ts.out",
   exit_code: 1,
 });
 
 itest!(_092_import_map_unmapped_bare_specifier {
-  args: "run --import-map import_maps/import_map.json 092_import_map_unmapped_bare_specifier.ts",
-  output: "092_import_map_unmapped_bare_specifier.ts.out",
+  args: "run --import-map import_maps/import_map.json run/092_import_map_unmapped_bare_specifier.ts",
+  output: "run/092_import_map_unmapped_bare_specifier.ts.out",
   exit_code: 1,
 });
 

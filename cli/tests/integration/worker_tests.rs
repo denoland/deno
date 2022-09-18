@@ -41,8 +41,8 @@ itest!(nonexistent_worker {
 });
 
 itest!(_084_worker_custom_inspect {
-  args: "run --allow-read 084_worker_custom_inspect.ts",
-  output: "084_worker_custom_inspect.ts.out",
+  args: "run --allow-read workers/custom_inspect/main.ts",
+  output: "workers/custom_inspect/main.out",
 });
 
 itest!(error_worker_permissions_local {
