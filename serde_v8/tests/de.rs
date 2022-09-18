@@ -185,6 +185,29 @@ fn de_map() {
 }
 
 #[test]
+fn de_obj_with_numeric_keys() {
+  dedo(
+    r#"({
+  lines: {
+    100: {
+      unit: "m"
+    },
+    200: {
+      unit: "cm"
+    }
+  }
+})"#,
+    |scope, v| {
+      let json: serde_json::Value = serde_v8::from_v8(scope, v).unwrap();
+      assert_eq!(
+        json.to_string(),
+        r#"{"lines":{"100":{"unit":"m"},"200":{"unit":"cm"}}}"#
+      );
+    },
+  )
+}
+
+#[test]
 fn de_string_or_buffer() {
   dedo("'hello'", |scope, v| {
     let sob: serde_v8::StringOrBuffer = serde_v8::from_v8(scope, v).unwrap();
