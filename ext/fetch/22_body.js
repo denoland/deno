@@ -165,7 +165,7 @@
           if (finalBuffer) {
             // fast path, content-length is present
             if (
-              totalLength + chunk.byteLength < finalBuffer.buffer.byteLength
+              totalLength + chunk.byteLength <= finalBuffer.buffer.byteLength
             ) {
               TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
             } else {
