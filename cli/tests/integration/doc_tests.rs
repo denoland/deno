@@ -34,8 +34,9 @@ itest!(deno_doc_types_header {
 });
 
 itest!(_060_deno_doc_displays_all_overloads_in_details_view {
-  args: "doc 060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
-  output: "060_deno_doc_displays_all_overloads_in_details_view.ts.out",
+  args:
+    "doc doc/060_deno_doc_displays_all_overloads_in_details_view.ts NS.test",
+  output: "doc/060_deno_doc_displays_all_overloads_in_details_view.ts.out",
 });
 
 itest!(deno_doc_types_header_direct {

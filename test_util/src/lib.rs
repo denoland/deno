@@ -1458,7 +1458,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/053_import_compression/brotli") {
+  if p.ends_with("/run/import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -1471,7 +1471,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("/053_import_compression/gziped") {
+  if p.ends_with("/run/import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));

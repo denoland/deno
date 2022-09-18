@@ -164,9 +164,9 @@ itest!(_033_import_map_remote {
   http_server: true,
 });
 
-itest!(_034_onload {
-  args: "run --quiet --reload run/034_onload/main.ts",
-  output: "run/034_onload.out",
+itest!(onload {
+  args: "run --quiet --reload run/onload/main.ts",
+  output: "run/onload/main.out",
 });
 
 itest!(_035_cached_only_flag {
@@ -564,42 +564,43 @@ itest!(_092_import_map_unmapped_bare_specifier {
 });
 
 itest!(js_import_detect {
-  args: "run --quiet --reload js_import_detect.ts",
-  output: "js_import_detect.ts.out",
+  args: "run --quiet --reload run/js_import_detect.ts",
+  output: "run/js_import_detect.ts.out",
   exit_code: 0,
 });
 
 itest!(blob_gc_finalization {
-  args: "run blob_gc_finalization.js",
-  output: "blob_gc_finalization.js.out",
+  args: "run run/blob_gc_finalization.js",
+  output: "run/blob_gc_finalization.js.out",
   exit_code: 0,
 });
 
 itest!(fetch_response_finalization {
-  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
-  output: "fetch_response_finalization.js.out",
+  args:
+    "run --v8-flags=--expose-gc --allow-net run/fetch_response_finalization.js",
+  output: "run/fetch_response_finalization.js.out",
   http_server: true,
   exit_code: 0,
 });
 
 itest!(import_type {
-  args: "run --reload import_type.ts",
-  output: "import_type.ts.out",
+  args: "run --reload run/import_type.ts",
+  output: "run/import_type.ts.out",
 });
 
 itest!(import_type_no_check {
-  args: "run --reload --no-check import_type.ts",
-  output: "import_type.ts.out",
+  args: "run --reload --no-check run/import_type.ts",
+  output: "run/import_type.ts.out",
 });
 
 itest!(private_field_presence {
-  args: "run --reload private_field_presence.ts",
-  output: "private_field_presence.ts.out",
+  args: "run --reload run/private_field_presence.ts",
+  output: "run/private_field_presence.ts.out",
 });
 
 itest!(private_field_presence_no_check {
-  args: "run --reload --no-check private_field_presence.ts",
-  output: "private_field_presence.ts.out",
+  args: "run --reload --no-check run/private_field_presence.ts",
+  output: "run/private_field_presence.ts.out",
 });
 
 itest!(lock_write_requires_lock {
@@ -653,40 +654,41 @@ itest!(lock_check_err2 {
 
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
-  output: "mts_dmts_mjs.out",
+  output: "run/mts_dmts_mjs.out",
 });
 
 itest!(mts_dmts_mjs_no_check {
   args: "run --no-check subdir/import.mts",
-  output: "mts_dmts_mjs.out",
+  output: "run/mts_dmts_mjs.out",
 });
 
 itest!(async_error {
   exit_code: 1,
-  args: "run --reload async_error.ts",
-  output: "async_error.ts.out",
+  args: "run --reload run/async_error.ts",
+  output: "run/async_error.ts.out",
 });
 
 itest!(config {
-  args: "run --reload --config config.tsconfig.json --check config.ts",
-  output: "config.ts.out",
+  args:
+    "run --reload --config run/config/tsconfig.json --check run/config/main.ts",
+  output: "run/config/main.out",
 });
 
 itest!(config_types {
   args:
-    "run --reload --quiet --config config_types.tsconfig.json config_types.ts",
-  output: "config_types.ts.out",
+    "run --reload --quiet --config run/config_types/tsconfig.json run/config_types/main.ts",
+  output: "run/config_types/main.out",
 });
 
 itest!(config_types_remote {
     http_server: true,
-    args: "run --reload --quiet --config config_types_remote.tsconfig.json config_types.ts",
-    output: "config_types.ts.out",
+    args: "run --reload --quiet --config run/config_types/remote.tsconfig.json run/config_types/main.ts",
+    output: "run/config_types/main.out",
   });
 
 itest!(empty_typescript {
-  args: "run --reload --check subdir/empty.ts",
-  output_str: Some("Check file:[WILDCARD]/subdir/empty.ts\n"),
+  args: "run --reload --check run/empty.ts",
+  output_str: Some("Check file:[WILDCARD]/run/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -1205,9 +1207,9 @@ itest!(unstable_worker {
   output: "unstable_worker.ts.out",
 });
 
-itest!(_053_import_compression {
-  args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
-  output: "053_import_compression.out",
+itest!(import_compression {
+  args: "run --quiet --reload --allow-net run/import_compression/main.ts",
+  output: "run/import_compression/main.out",
   http_server: true,
 });
 
@@ -2226,7 +2228,7 @@ mod permissions {
 
   #[test]
   fn _061_permissions_request() {
-    let args = "run --quiet 061_permissions_request.ts";
+    let args = "run --quiet run/061_permissions_request.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
       Output("⚠️  ️Deno requests read access to \"foo\". Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
@@ -2241,7 +2243,7 @@ mod permissions {
 
   #[test]
   fn _062_permissions_request_global() {
-    let args = "run --quiet 062_permissions_request_global.ts";
+    let args = "run --quiet run/062_permissions_request_global.ts";
     use util::PtyData::*;
     util::test_pty2(args, vec![
       Output("⚠️  ️Deno requests read access. Run again with --allow-read to bypass this prompt.\r\n   Allow? [y/n (y = yes allow, n = no deny)] "),
@@ -2253,18 +2255,18 @@ mod permissions {
   }
 
   itest!(_063_permissions_revoke {
-    args: "run --allow-read=foo,bar 063_permissions_revoke.ts",
-    output: "063_permissions_revoke.ts.out",
+    args: "run --allow-read=foo,bar run/063_permissions_revoke.ts",
+    output: "run/063_permissions_revoke.ts.out",
   });
 
   itest!(_064_permissions_revoke_global {
-    args: "run --allow-read=foo,bar 064_permissions_revoke_global.ts",
-    output: "064_permissions_revoke_global.ts.out",
+    args: "run --allow-read=foo,bar run/064_permissions_revoke_global.ts",
+    output: "run/064_permissions_revoke_global.ts.out",
   });
 
   #[test]
   fn _066_prompt() {
-    let args = "run --quiet --unstable 066_prompt.ts";
+    let args = "run --quiet --unstable run/066_prompt.ts";
     use util::PtyData::*;
     util::test_pty2(
       args,

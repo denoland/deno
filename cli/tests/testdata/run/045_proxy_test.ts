@@ -37,7 +37,7 @@ async function testFetch() {
       "--quiet",
       "--reload",
       "--allow-net",
-      "045_proxy_client.ts",
+      "run/045_proxy_client.ts",
     ],
     env: {
       HTTP_PROXY: `http://${addr}`,
@@ -53,7 +53,7 @@ async function testModuleDownload() {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/045_mod.ts",
+      "http://localhost:4545/run/045_mod.ts",
     ],
     env: {
       HTTP_PROXY: `http://${addr}`,
@@ -70,7 +70,7 @@ async function testFetchNoProxy() {
       "--quiet",
       "--reload",
       "--allow-net",
-      "045_proxy_client.ts",
+      "run/045_proxy_client.ts",
     ],
     env: {
       HTTP_PROXY: "http://not.exising.proxy.server",
@@ -87,7 +87,7 @@ async function testModuleDownloadNoProxy() {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/045_mod.ts",
+      "http://localhost:4545/run/045_mod.ts",
     ],
     env: {
       HTTP_PROXY: "http://not.exising.proxy.server",
@@ -106,7 +106,7 @@ async function testFetchProgrammaticProxy() {
       "--reload",
       "--allow-net=localhost:4545,localhost:4555",
       "--unstable",
-      "045_programmatic_proxy_client.ts",
+      "run/045_programmatic_proxy_client.ts",
     ],
   });
   assertEquals(code, 0);

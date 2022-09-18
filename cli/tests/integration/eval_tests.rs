@@ -44,20 +44,20 @@ fn eval_randomness() {
   assert!(numbers.len() > 1);
 }
 
-itest!(_029_eval {
+itest!(eval_basic {
   args: "eval console.log(\"hello\")",
-  output: "029_eval.out",
+  output_str: Some("hello\n"),
 });
 
 // Ugly parentheses due to whitespace delimiting problem.
-itest!(_030_eval_ts {
+itest!(eval_ts {
   args: "eval --quiet --ext=ts console.log((123)as(number))", // 'as' is a TS keyword only
-  output: "030_eval_ts.out",
+  output_str: Some("123\n"),
 });
 
-itest!(_041_dyn_import_eval {
+itest!(dyn_import_eval {
   args: "eval import('./subdir/mod4.js').then(console.log)",
-  output: "041_dyn_import_eval.out",
+  output: "eval/dyn_import_eval.out",
 });
 
 // Cannot write the expression to evaluate as "console.log(typeof gc)"

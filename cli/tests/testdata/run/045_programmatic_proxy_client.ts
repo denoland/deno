@@ -8,7 +8,7 @@ const client = Deno.createHttpClient({
 });
 
 const res = await fetch(
-  "http://localhost:4545/045_mod.ts",
+  "http://localhost:4545/run/045_mod.ts",
   { client },
 );
 console.log(`Response http: ${await res.text()}`);

@@ -5,31 +5,31 @@ use crate::itest;
 itest!(_036_import_map_fetch {
   args:
     "cache --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "036_import_map_fetch.out",
+  output: "cache/036_import_map_fetch.out",
 });
 
 itest!(_037_fetch_multiple {
-  args: "cache --reload --check=all fetch/test.ts fetch/other.ts",
+  args: "cache --reload --check=all run/fetch/test.ts run/fetch/other.ts",
   http_server: true,
-  output: "037_fetch_multiple.out",
+  output: "cache/037_fetch_multiple.out",
 });
 
 itest!(_095_cache_with_bare_import {
-  args: "cache 095_cache_with_bare_import.ts",
-  output: "095_cache_with_bare_import.ts.out",
+  args: "cache cache/095_cache_with_bare_import.ts",
+  output: "cache/095_cache_with_bare_import.ts.out",
   exit_code: 1,
 });
 
 itest!(cache_extensionless {
   args: "cache --reload --check=all http://localhost:4545/subdir/no_js_ext",
-  output: "cache_extensionless.out",
+  output: "cache/cache_extensionless.out",
   http_server: true,
 });
 
 itest!(cache_random_extension {
   args:
     "cache --reload --check=all http://localhost:4545/subdir/no_js_ext@1.0.0",
-  output: "cache_random_extension.out",
+  output: "cache/cache_random_extension.out",
   http_server: true,
 });
 

@@ -348,7 +348,7 @@ mod tests {
   async fn test_fetch_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/gziped")
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
@@ -412,7 +412,7 @@ mod tests {
   async fn test_fetch_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/brotli")
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
@@ -630,7 +630,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("https://localhost:5545/053_import_compression/gziped")
+      Url::parse("https://localhost:5545/run/import_compression/gziped")
         .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
@@ -724,7 +724,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("https://localhost:5545/053_import_compression/brotli")
+      Url::parse("https://localhost:5545/run/import_compression/brotli")
         .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
