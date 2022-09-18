@@ -42,6 +42,7 @@
     PromiseResolve,
     TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
+    TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -162,8 +163,24 @@
           if (done) break;
 
           if (finalBuffer) {
-            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
-          } else ArrayPrototypePush(chunks, chunk);
+            // fast path, content-length is present
+            if (
+              totalLength + chunk.byteLength < finalBuffer.buffer.byteLength
+            ) {
+              TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
+            } else {
+              ArrayPrototypePush(
+                chunks,
+                TypedArrayPrototypeSubarray(finalBuffer, 0, totalLength),
+              );
+              ArrayPrototypePush(chunks, chunk);
+              finalBuffer = null;
+            }
+          } else {
+            // slow path, content-length is not present
+            // or totalLength > content-length
+            ArrayPrototypePush(chunks, chunk);
+          }
           totalLength += chunk.byteLength;
         }
 
