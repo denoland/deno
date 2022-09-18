@@ -65,153 +65,156 @@ itest!(_013_dynamic_import {
 });
 
 itest!(_014_duplicate_import {
-  args: "run --quiet --reload --allow-read 014_duplicate_import.ts ",
-  output: "014_duplicate_import.ts.out",
+  args: "run --quiet --reload --allow-read run/014_duplicate_import.ts ",
+  output: "run/014_duplicate_import.ts.out",
 });
 
 itest!(_015_duplicate_parallel_import {
-  args: "run --quiet --reload --allow-read 015_duplicate_parallel_import.js",
-  output: "015_duplicate_parallel_import.js.out",
+  args:
+    "run --quiet --reload --allow-read run/015_duplicate_parallel_import.js",
+  output: "run/015_duplicate_parallel_import.js.out",
 });
 
 itest!(_016_double_await {
-  args: "run --quiet --allow-read --reload 016_double_await.ts",
-  output: "016_double_await.ts.out",
+  args: "run --quiet --allow-read --reload run/016_double_await.ts",
+  output: "run/016_double_await.ts.out",
 });
 
 itest!(_017_import_redirect {
-  args: "run --quiet --reload 017_import_redirect.ts",
-  output: "017_import_redirect.ts.out",
+  args: "run --quiet --reload run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check 017_import_redirect.ts",
-  output: "017_import_redirect.ts.out",
+  args: "run --quiet --reload --no-check run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
 });
 
 itest!(_017_import_redirect_info {
-  args: "info --quiet --reload 017_import_redirect.ts",
-  output: "017_import_redirect_info.out",
+  args: "info --quiet --reload run/017_import_redirect.ts",
+  output: "run/017_import_redirect_info.out",
 });
 
 itest!(_018_async_catch {
-  args: "run --quiet --reload 018_async_catch.ts",
-  output: "018_async_catch.ts.out",
+  args: "run --quiet --reload run/018_async_catch.ts",
+  output: "run/018_async_catch.ts.out",
 });
 
 itest!(_019_media_types {
-  args: "run --reload 019_media_types.ts",
-  output: "019_media_types.ts.out",
+  args: "run --reload run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
   http_server: true,
 });
 
 itest!(_020_json_modules {
-  args: "run --reload 020_json_modules.ts",
-  output: "020_json_modules.ts.out",
+  args: "run --reload run/020_json_modules.ts",
+  output: "run/020_json_modules.ts.out",
   exit_code: 1,
 });
 
 itest!(_021_mjs_modules {
-  args: "run --quiet --reload 021_mjs_modules.ts",
-  output: "021_mjs_modules.ts.out",
+  args: "run --quiet --reload run/021_mjs_modules.ts",
+  output: "run/021_mjs_modules.ts.out",
 });
 
 itest!(_023_no_ext {
-  args: "run --reload --check 023_no_ext",
-  output: "023_no_ext.out",
+  args: "run --reload --check run/023_no_ext",
+  output: "run/023_no_ext.out",
 });
 
 // TODO(lucacasonato): remove --unstable when permissions goes stable
 itest!(_025_hrtime {
-  args: "run --quiet --allow-hrtime --unstable --reload 025_hrtime.ts",
-  output: "025_hrtime.ts.out",
+  args: "run --quiet --allow-hrtime --unstable --reload run/025_hrtime.ts",
+  output: "run/025_hrtime.ts.out",
 });
 
 itest!(_025_reload_js_type_error {
-  args: "run --quiet --reload 025_reload_js_type_error.js",
-  output: "025_reload_js_type_error.js.out",
+  args: "run --quiet --reload run/025_reload_js_type_error.js",
+  output: "run/025_reload_js_type_error.js.out",
 });
 
 itest!(_026_redirect_javascript {
-  args: "run --quiet --reload 026_redirect_javascript.js",
-  output: "026_redirect_javascript.js.out",
+  args: "run --quiet --reload run/026_redirect_javascript.js",
+  output: "run/026_redirect_javascript.js.out",
   http_server: true,
 });
 
 itest!(_027_redirect_typescript {
-  args: "run --quiet --reload 027_redirect_typescript.ts",
-  output: "027_redirect_typescript.ts.out",
+  args: "run --quiet --reload run/027_redirect_typescript.ts",
+  output: "run/027_redirect_typescript.ts.out",
   http_server: true,
 });
 
 itest!(_028_args {
-  args: "run --quiet --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
-  output: "028_args.ts.out",
+  args:
+    "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
+  output: "run/028_args.ts.out",
 });
 
 itest!(_033_import_map {
   args:
     "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "033_import_map.out",
+  output: "run/033_import_map.out",
 });
 
 itest!(_033_import_map_remote {
   args:
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
-  output: "033_import_map_remote.out",
+  output: "run/033_import_map_remote.out",
   http_server: true,
 });
 
 itest!(_034_onload {
-  args: "run --quiet --reload 034_onload/main.ts",
-  output: "034_onload.out",
+  args: "run --quiet --reload run/034_onload/main.ts",
+  output: "run/034_onload.out",
 });
 
 itest!(_035_cached_only_flag {
-  args: "run --reload --check --cached-only http://127.0.0.1:4545/019_media_types.ts",
-  output: "035_cached_only_flag.out",
+  args: "run --reload --check --cached-only http://127.0.0.1:4545/run/019_media_types.ts",
+  output: "run/035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
-  args: "run --reload --config checkjs.tsconfig.json --check 038_checkjs.js",
+  args:
+    "run --reload --config checkjs.tsconfig.json --check run/038_checkjs.js",
   exit_code: 1,
-  output: "038_checkjs.js.out",
+  output: "run/038_checkjs.js.out",
 });
 
 itest!(_042_dyn_import_evalcontext {
-  args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
-  output: "042_dyn_import_evalcontext.ts.out",
+  args: "run --quiet --allow-read --reload run/042_dyn_import_evalcontext.ts",
+  output: "run/042_dyn_import_evalcontext.ts.out",
 });
 
 itest!(_044_bad_resource {
-  args: "run --quiet --reload --allow-read 044_bad_resource.ts",
-  output: "044_bad_resource.ts.out",
+  args: "run --quiet --reload --allow-read run/044_bad_resource.ts",
+  output: "run/044_bad_resource.ts.out",
   exit_code: 1,
 });
 
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(_045_proxy {
-  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
-  output: "045_proxy_test.ts.out",
+  args: "run -L debug --unstable --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
+  output: "run/045_proxy_test.ts.out",
   http_server: true,
 });
 
 itest!(_046_tsx {
-  args: "run --quiet --reload 046_jsx_test.tsx",
-  output: "046_jsx_test.tsx.out",
+  args: "run --quiet --reload run/046_jsx_test.tsx",
+  output: "run/046_jsx_test.tsx.out",
 });
 
 itest!(_047_jsx {
-  args: "run --quiet --reload 047_jsx_test.jsx",
-  output: "047_jsx_test.jsx.out",
+  args: "run --quiet --reload run/047_jsx_test.jsx",
+  output: "run/047_jsx_test.jsx.out",
 });
 
 itest!(_048_media_types_jsx {
-  args: "run  --reload 048_media_types_jsx.ts",
-  output: "048_media_types_jsx.ts.out",
+  args: "run  --reload run/048_media_types_jsx.ts",
+  output: "run/048_media_types_jsx.ts.out",
   http_server: true,
 });
 
@@ -445,8 +448,8 @@ fn webstorage_main_module() {
 }
 
 itest!(_075_import_local_query_hash {
-  args: "run 075_import_local_query_hash.ts",
-  output: "075_import_local_query_hash.ts.out",
+  args: "run run/075_import_local_query_hash.ts",
+  output: "run/075_import_local_query_hash.ts.out",
 });
 
 itest!(_077_fetch_empty {
@@ -599,29 +602,29 @@ itest!(private_field_presence_no_check {
 
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
-  output: "lock_write_requires_lock.out",
+  output: "run/lock_write_requires_lock.out",
   exit_code: 1,
 });
 
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable lock_write_fetch.ts",
-  output: "lock_write_fetch.ts.out",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch.ts",
+  output: "run/lock_write_fetch.ts.out",
   http_server: true,
   exit_code: 0,
 });
 
 itest!(lock_check_ok {
   args:
-    "run --lock=lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
 
 itest!(lock_check_ok2 {
-  args: "run --lock=lock_check_ok2.json 019_media_types.ts",
-  output: "019_media_types.ts.out",
+  args: "run --lock=run/lock_check_ok2.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
   http_server: true,
 });
 
@@ -633,15 +636,15 @@ itest!(lock_dynamic_imports {
 });
 
 itest!(lock_check_err {
-  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "lock_check_err.out",
+  args: "run --lock=run/lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/lock_check_err.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(lock_check_err2 {
-  args: "run --lock=lock_check_err2.json 019_media_types.ts",
-  output: "lock_check_err2.out",
+  args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
+  output: "run/lock_check_err2.out",
   exit_code: 10,
   http_server: true,
 });
@@ -966,8 +969,8 @@ itest!(main_module {
 });
 
 itest!(no_check {
-  args: "run --quiet --reload --no-check 006_url_imports.ts",
-  output: "006_url_imports.ts.out",
+  args: "run --quiet --reload --no-check run/006_url_imports.ts",
+  output: "run/006_url_imports.ts.out",
   http_server: true,
 });
 
@@ -1226,8 +1229,8 @@ itest!(dynamic_import_conditional {
 });
 
 itest!(tsx_imports {
-  args: "run --reload --check tsx_imports.ts",
-  output: "tsx_imports.ts.out",
+  args: "run --reload --check run/tsx_imports/tsx_imports.ts",
+  output: "run/tsx_imports/tsx_imports.ts.out",
 });
 
 itest!(fix_dynamic_import_errors {
@@ -2347,8 +2350,8 @@ itest!(tls_connecttls {
 });
 
 itest!(byte_order_mark {
-  args: "run --no-check byte_order_mark.ts",
-  output: "byte_order_mark.out",
+  args: "run --no-check run/byte_order_mark.ts",
+  output: "run/byte_order_mark.out",
 });
 
 #[test]
@@ -2835,8 +2838,8 @@ itest!(unhandled_rejection_sync_error {
 });
 
 itest!(nested_error {
-  args: "run nested_error.ts",
-  output: "nested_error.ts.out",
+  args: "run run/nested_error.ts",
+  output: "run/nested_error.ts.out",
   exit_code: 1,
 });
 

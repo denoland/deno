@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-window-prefix
-import { assert } from "../../../../test_util/std/testing/asserts.ts";
+import { assert } from "../../../../../test_util/std/testing/asserts.ts";
 
 const handler = (e: Event) => {
   assert(!e.cancelable);

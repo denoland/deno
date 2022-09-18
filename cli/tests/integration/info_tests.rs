@@ -37,9 +37,9 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr, b"");
 }
 
-itest!(_022_info_flag_script {
-  args: "info http://127.0.0.1:4545/019_media_types.ts",
-  output: "022_info_flag_script.out",
+itest!(multiple_imports {
+  args: "info http://127.0.0.1:4545/run/019_media_types.ts",
+  output: "info/multiple_imports.out",
   http_server: true,
 });
 
