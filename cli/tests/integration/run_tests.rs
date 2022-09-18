@@ -692,21 +692,21 @@ itest!(empty_typescript {
 });
 
 itest!(error_001 {
-  args: "run --reload error_001.ts",
+  args: "run --reload run/error_001.ts",
   exit_code: 1,
-  output: "error_001.ts.out",
+  output: "run/error_001.ts.out",
 });
 
 itest!(error_002 {
-  args: "run --reload error_002.ts",
+  args: "run --reload run/error_002.ts",
   exit_code: 1,
-  output: "error_002.ts.out",
+  output: "run/error_002.ts.out",
 });
 
 itest!(error_003_typescript {
-  args: "run --reload --check error_003_typescript.ts",
+  args: "run --reload --check run/error_003_typescript.ts",
   exit_code: 1,
-  output: "error_003_typescript.ts.out",
+  output: "run/error_003_typescript.ts.out",
 });
 
 // Supposing that we've already attempted to run error_003_typescript.ts
@@ -714,142 +714,144 @@ itest!(error_003_typescript {
 // should result in the same output.
 // https://github.com/denoland/deno/issues/2436
 itest!(error_003_typescript2 {
-  args: "run --check error_003_typescript.ts",
+  args: "run --check run/error_003_typescript.ts",
   exit_code: 1,
-  output: "error_003_typescript.ts.out",
+  output: "run/error_003_typescript.ts.out",
 });
 
 itest!(error_004_missing_module {
-  args: "run --reload error_004_missing_module.ts",
+  args: "run --reload run/error_004_missing_module.ts",
   exit_code: 1,
-  output: "error_004_missing_module.ts.out",
+  output: "run/error_004_missing_module.ts.out",
 });
 
 itest!(error_005_missing_dynamic_import {
-  args: "run --reload --allow-read --quiet error_005_missing_dynamic_import.ts",
+  args:
+    "run --reload --allow-read --quiet run/error_005_missing_dynamic_import.ts",
   exit_code: 1,
-  output: "error_005_missing_dynamic_import.ts.out",
+  output: "run/error_005_missing_dynamic_import.ts.out",
 });
 
 itest!(error_006_import_ext_failure {
-  args: "run --reload error_006_import_ext_failure.ts",
+  args: "run --reload run/error_006_import_ext_failure.ts",
   exit_code: 1,
-  output: "error_006_import_ext_failure.ts.out",
+  output: "run/error_006_import_ext_failure.ts.out",
 });
 
 itest!(error_007_any {
-  args: "run --reload error_007_any.ts",
+  args: "run --reload run/error_007_any.ts",
   exit_code: 1,
-  output: "error_007_any.ts.out",
+  output: "run/error_007_any.ts.out",
 });
 
 itest!(error_008_checkjs {
-  args: "run --reload error_008_checkjs.js",
+  args: "run --reload run/error_008_checkjs.js",
   exit_code: 1,
-  output: "error_008_checkjs.js.out",
+  output: "run/error_008_checkjs.js.out",
 });
 
 itest!(error_009_extensions_error {
-  args: "run error_009_extensions_error.js",
-  output: "error_009_extensions_error.js.out",
+  args: "run run/error_009_extensions_error.js",
+  output: "run/error_009_extensions_error.js.out",
   exit_code: 1,
 });
 
 itest!(error_011_bad_module_specifier {
-  args: "run --reload error_011_bad_module_specifier.ts",
+  args: "run --reload run/error_011_bad_module_specifier.ts",
   exit_code: 1,
-  output: "error_011_bad_module_specifier.ts.out",
+  output: "run/error_011_bad_module_specifier.ts.out",
 });
 
 itest!(error_012_bad_dynamic_import_specifier {
-  args: "run --reload --check error_012_bad_dynamic_import_specifier.ts",
+  args: "run --reload --check run/error_012_bad_dynamic_import_specifier.ts",
   exit_code: 1,
-  output: "error_012_bad_dynamic_import_specifier.ts.out",
+  output: "run/error_012_bad_dynamic_import_specifier.ts.out",
 });
 
 itest!(error_013_missing_script {
   args: "run --reload missing_file_name",
   exit_code: 1,
-  output: "error_013_missing_script.out",
+  output: "run/error_013_missing_script.out",
 });
 
 itest!(error_014_catch_dynamic_import_error {
-  args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
-  output: "error_014_catch_dynamic_import_error.js.out",
+  args:
+    "run  --reload --allow-read run/error_014_catch_dynamic_import_error.js",
+  output: "run/error_014_catch_dynamic_import_error.js.out",
 });
 
 itest!(error_015_dynamic_import_permissions {
-  args: "run --reload --quiet error_015_dynamic_import_permissions.js",
-  output: "error_015_dynamic_import_permissions.out",
+  args: "run --reload --quiet run/error_015_dynamic_import_permissions.js",
+  output: "run/error_015_dynamic_import_permissions.out",
   exit_code: 1,
   http_server: true,
 });
 
 // We have an allow-net flag but not allow-read, it should still result in error.
 itest!(error_016_dynamic_import_permissions2 {
-  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
-  output: "error_016_dynamic_import_permissions2.out",
+  args: "run --reload --allow-net run/error_016_dynamic_import_permissions2.js",
+  output: "run/error_016_dynamic_import_permissions2.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(error_017_hide_long_source_ts {
-  args: "run --reload --check error_017_hide_long_source_ts.ts",
-  output: "error_017_hide_long_source_ts.ts.out",
+  args: "run --reload --check run/error_017_hide_long_source_ts.ts",
+  output: "run/error_017_hide_long_source_ts.ts.out",
   exit_code: 1,
 });
 
 itest!(error_018_hide_long_source_js {
-  args: "run error_018_hide_long_source_js.js",
-  output: "error_018_hide_long_source_js.js.out",
+  args: "run run/error_018_hide_long_source_js.js",
+  output: "run/error_018_hide_long_source_js.js.out",
   exit_code: 1,
 });
 
 itest!(error_019_stack_function {
-  args: "run error_019_stack_function.ts",
-  output: "error_019_stack_function.ts.out",
+  args: "run run/error_019_stack_function.ts",
+  output: "run/error_019_stack_function.ts.out",
   exit_code: 1,
 });
 
 itest!(error_020_stack_constructor {
-  args: "run error_020_stack_constructor.ts",
-  output: "error_020_stack_constructor.ts.out",
+  args: "run run/error_020_stack_constructor.ts",
+  output: "run/error_020_stack_constructor.ts.out",
   exit_code: 1,
 });
 
 itest!(error_021_stack_method {
-  args: "run error_021_stack_method.ts",
-  output: "error_021_stack_method.ts.out",
+  args: "run run/error_021_stack_method.ts",
+  output: "run/error_021_stack_method.ts.out",
   exit_code: 1,
 });
 
 itest!(error_022_stack_custom_error {
-  args: "run error_022_stack_custom_error.ts",
-  output: "error_022_stack_custom_error.ts.out",
+  args: "run run/error_022_stack_custom_error.ts",
+  output: "run/error_022_stack_custom_error.ts.out",
   exit_code: 1,
 });
 
 itest!(error_023_stack_async {
-  args: "run error_023_stack_async.ts",
-  output: "error_023_stack_async.ts.out",
+  args: "run run/error_023_stack_async.ts",
+  output: "run/error_023_stack_async.ts.out",
   exit_code: 1,
 });
 
 itest!(error_024_stack_promise_all {
-  args: "run error_024_stack_promise_all.ts",
-  output: "error_024_stack_promise_all.ts.out",
+  args: "run run/error_024_stack_promise_all.ts",
+  output: "run/error_024_stack_promise_all.ts.out",
   exit_code: 1,
 });
 
 itest!(error_025_tab_indent {
-  args: "run error_025_tab_indent",
-  output: "error_025_tab_indent.out",
+  args: "run run/error_025_tab_indent",
+  output: "run/error_025_tab_indent.out",
   exit_code: 1,
 });
 
 itest!(error_026_remote_import_error {
-  args: "run error_026_remote_import_error.ts",
-  output: "error_026_remote_import_error.ts.out",
+  args: "run run/error_026_remote_import_error.ts",
+  output: "run/error_026_remote_import_error.ts.out",
   exit_code: 1,
   http_server: true,
 });
@@ -2676,21 +2678,21 @@ itest!(set_timeout_error_handled {
 });
 
 itest!(aggregate_error {
-  args: "run --quiet aggregate_error.ts",
-  output: "aggregate_error.out",
+  args: "run --quiet run/aggregate_error.ts",
+  output: "run/aggregate_error.out",
   exit_code: 1,
 });
 
 itest!(complex_error {
-  args: "run --quiet complex_error.ts",
-  output: "complex_error.ts.out",
+  args: "run --quiet run/complex_error.ts",
+  output: "run/complex_error.ts.out",
   exit_code: 1,
 });
 
 // Regression test for https://github.com/denoland/deno/issues/12143.
 itest!(js_root_with_ts_check {
-  args: "run --quiet --check js_root_with_ts_check.js",
-  output: "js_root_with_ts_check.js.out",
+  args: "run --quiet --check run/js_root_with_ts_check.js",
+  output: "run/js_root_with_ts_check.js.out",
   exit_code: 1,
 });
 
@@ -2752,53 +2754,53 @@ fn deno_no_prompt_environment_variable() {
 }
 
 itest!(report_error {
-  args: "run --quiet report_error.ts",
-  output: "report_error.ts.out",
+  args: "run --quiet run/report_error.ts",
+  output: "run/report_error.ts.out",
   exit_code: 1,
 });
 
 itest!(report_error_handled {
-  args: "run --quiet report_error_handled.ts",
-  output: "report_error_handled.ts.out",
+  args: "run --quiet run/report_error_handled.ts",
+  output: "run/report_error_handled.ts.out",
 });
 
 // Regression test for https://github.com/denoland/deno/issues/15513.
 itest!(report_error_end_of_program {
-  args: "run --quiet report_error_end_of_program.ts",
-  output: "report_error_end_of_program.ts.out",
+  args: "run --quiet run/report_error_end_of_program.ts",
+  output: "run/report_error_end_of_program.ts.out",
   exit_code: 1,
 });
 
 itest!(queue_microtask_error {
-  args: "run --quiet queue_microtask_error.ts",
-  output: "queue_microtask_error.ts.out",
+  args: "run --quiet run/queue_microtask_error.ts",
+  output: "run/queue_microtask_error.ts.out",
   exit_code: 1,
 });
 
 itest!(queue_microtask_error_handled {
-  args: "run --quiet queue_microtask_error_handled.ts",
-  output: "queue_microtask_error_handled.ts.out",
+  args: "run --quiet run/queue_microtask_error_handled.ts",
+  output: "run/queue_microtask_error_handled.ts.out",
 });
 
 itest!(spawn_stdout_inherit {
-  args: "run --quiet --unstable -A spawn_stdout_inherit.ts",
-  output: "spawn_stdout_inherit.ts.out",
+  args: "run --quiet --unstable -A run/spawn_stdout_inherit.ts",
+  output: "run/spawn_stdout_inherit.ts.out",
 });
 
 itest!(error_name_non_string {
-  args: "run --quiet error_name_non_string.js",
-  output: "error_name_non_string.js.out",
+  args: "run --quiet run/error_name_non_string.js",
+  output: "run/error_name_non_string.js.out",
   exit_code: 1,
 });
 
 itest!(custom_inspect_url {
-  args: "run custom_inspect_url.js",
-  output: "custom_inspect_url.js.out",
+  args: "run run/custom_inspect_url.js",
+  output: "run/custom_inspect_url.js.out",
 });
 
 itest!(config_json_import {
-  args: "run --quiet -c jsx/deno-jsx.json config_json_import.ts",
-  output: "config_json_import.ts.out",
+  args: "run --quiet -c jsx/deno-jsx.json run/config_json_import.ts",
+  output: "run/config_json_import.ts.out",
   http_server: true,
 });
 
@@ -2822,23 +2824,23 @@ fn running_declaration_files() {
 }
 
 itest!(test_and_bench_are_noops_in_run {
-  args: "run test_and_bench_in_run.js",
+  args: "run run/test_and_bench_in_run.js",
   output_str: Some(""),
 });
 
 itest!(followup_dyn_import_resolved {
-  args: "run --unstable --allow-read followup_dyn_import_resolves/main.ts",
-  output: "followup_dyn_import_resolves/main.ts.out",
+  args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
+  output: "run/followup_dyn_import_resolves/main.ts.out",
 });
 
 itest!(unhandled_rejection {
-  args: "run --check unhandled_rejection.ts",
-  output: "unhandled_rejection.ts.out",
+  args: "run --check run/unhandled_rejection.ts",
+  output: "run/unhandled_rejection.ts.out",
 });
 
 itest!(unhandled_rejection_sync_error {
-  args: "run --check unhandled_rejection_sync_error.ts",
-  output: "unhandled_rejection_sync_error.ts.out",
+  args: "run --check run/unhandled_rejection_sync_error.ts",
+  output: "run/unhandled_rejection_sync_error.ts.out",
 });
 
 itest!(nested_error {
@@ -2848,13 +2850,13 @@ itest!(nested_error {
 });
 
 itest!(node_env_var_allowlist_with_unstable_flag {
-  args: "run --unstable --no-prompt node_env_var_allowlist.ts",
-  output: "node_env_var_allowlist_with_unstable_flag.ts.out",
+  args: "run --unstable --no-prompt run/node_env_var_allowlist.ts",
+  output: "run/node_env_var_allowlist_with_unstable_flag.ts.out",
   exit_code: 1,
 });
 
 itest!(node_env_var_allowlist_without_unstable_flag {
-  args: "run --no-prompt node_env_var_allowlist.ts",
-  output: "node_env_var_allowlist_without_unstable_flag.ts.out",
+  args: "run --no-prompt run/node_env_var_allowlist.ts",
+  output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
   exit_code: 1,
 });
