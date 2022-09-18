@@ -19,7 +19,7 @@ fn install_basic() {
     .arg("--check")
     .arg("--name")
     .arg("echo_test")
-    .arg("http://localhost:4545/run/echo.ts")
+    .arg("http://localhost:4545/echo.ts")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -46,13 +46,10 @@ fn install_basic() {
   if cfg!(windows) {
     assert_contains!(
       content,
-      r#""run" "--check" "http://localhost:4545/run/echo.ts""#
+      r#""run" "--check" "http://localhost:4545/echo.ts""#
     );
   } else {
-    assert_contains!(
-      content,
-      r#"run --check 'http://localhost:4545/run/echo.ts'"#
-    );
+    assert_contains!(content, r#"run --check 'http://localhost:4545/echo.ts'"#);
   }
 }
 
@@ -68,7 +65,7 @@ fn install_custom_dir_env_var() {
     .arg("--check")
     .arg("--name")
     .arg("echo_test")
-    .arg("http://localhost:4545/run/echo.ts")
+    .arg("http://localhost:4545/echo.ts")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -91,13 +88,10 @@ fn install_custom_dir_env_var() {
   if cfg!(windows) {
     assert_contains!(
       content,
-      r#""run" "--check" "http://localhost:4545/run/echo.ts""#
+      r#""run" "--check" "http://localhost:4545/echo.ts""#
     );
   } else {
-    assert_contains!(
-      content,
-      r#"run --check 'http://localhost:4545/run/echo.ts'"#
-    );
+    assert_contains!(content, r#"run --check 'http://localhost:4545/echo.ts'"#);
   }
 }
 
@@ -113,7 +107,7 @@ fn installer_test_local_module_run() {
     .arg("echo_test")
     .arg("--root")
     .arg(temp_dir.path())
-    .arg(util::testdata_path().join("run/echo.ts"))
+    .arg(util::testdata_path().join("echo.ts"))
     .arg("hello")
     .spawn()
     .unwrap()
@@ -150,7 +144,7 @@ fn installer_test_remote_module_run() {
     .arg("echo_test")
     .arg("--root")
     .arg(temp_dir.path())
-    .arg("http://localhost:4545/run/echo.ts")
+    .arg("http://localhost:4545/echo.ts")
     .arg("hello")
     .spawn()
     .unwrap()

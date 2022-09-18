@@ -120,13 +120,13 @@ itest!(data_null_error {
   output: "info/data_null_error/data_null_error.out",
 });
 
-itest!(deno_info_types_header_direct {
-  args: "info --reload type_directives_01.ts",
+itest!(types_header_direct {
+  args: "info --reload run/type_directives_01.ts",
   output: "info/types_header.out",
   http_server: true,
 });
 
-itest!(deno_info_with_config_override {
+itest!(with_config_override {
   args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
   output: "info/with_config/with_config.out",
 });

@@ -1,10 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url;
+use deno_runtime::deno_fetch::reqwest;
+use std::io::Read;
+use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
+use tokio::task::LocalSet;
+use trust_dns_client::serialize::txt::Lexer;
+use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 
 itest!(stdout_write_all {
@@ -1709,7 +1715,7 @@ fn run_deno_script_constrained(
 #[test]
 fn should_not_panic_on_no_stdin() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("run/echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdIn,
   );
   output.unwrap();
@@ -1719,7 +1725,7 @@ fn should_not_panic_on_no_stdin() {
 #[test]
 fn should_not_panic_on_no_stdout() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("run/echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdOut,
   );
   output.unwrap();
@@ -1729,7 +1735,7 @@ fn should_not_panic_on_no_stdout() {
 #[test]
 fn should_not_panic_on_no_stderr() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("run/echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdErr,
   );
   output.unwrap();
@@ -1741,7 +1747,7 @@ fn should_not_panic_on_undefined_home_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("run/echo.ts")
+    .arg("echo.ts")
     .env_remove("HOME")
     .spawn()
     .unwrap()
@@ -1755,7 +1761,7 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("run/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .spawn()
     .unwrap()
@@ -1770,7 +1776,7 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("run/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
     .spawn()
@@ -2617,45 +2623,45 @@ itest!(unstable_ffi_15 {
 });
 
 itest!(future_check2 {
-  args: "run --check future_check.ts",
-  output: "future_check2.out",
+  args: "run --check run/future_check.ts",
+  output: "run/future_check2.out",
 });
 
 itest!(event_listener_error {
-  args: "run --quiet event_listener_error.ts",
-  output: "event_listener_error.ts.out",
+  args: "run --quiet run/event_listener_error.ts",
+  output: "run/event_listener_error.ts.out",
   exit_code: 1,
 });
 
 itest!(event_listener_error_handled {
-  args: "run --quiet event_listener_error_handled.ts",
-  output: "event_listener_error_handled.ts.out",
+  args: "run --quiet run/event_listener_error_handled.ts",
+  output: "run/event_listener_error_handled.ts.out",
 });
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit {
-  args: "run --quiet event_listener_error_immediate_exit.ts",
-  output: "event_listener_error_immediate_exit.ts.out",
+  args: "run --quiet run/event_listener_error_immediate_exit.ts",
+  output: "run/event_listener_error_immediate_exit.ts.out",
   exit_code: 1,
 });
 
 // https://github.com/denoland/deno/pull/14159#issuecomment-1092285446
 itest!(event_listener_error_immediate_exit_worker {
   args:
-    "run --quiet --unstable -A event_listener_error_immediate_exit_worker.ts",
-  output: "event_listener_error_immediate_exit_worker.ts.out",
+    "run --quiet --unstable -A run/event_listener_error_immediate_exit_worker.ts",
+  output: "run/event_listener_error_immediate_exit_worker.ts.out",
   exit_code: 1,
 });
 
 itest!(set_timeout_error {
-  args: "run --quiet set_timeout_error.ts",
-  output: "set_timeout_error.ts.out",
+  args: "run --quiet run/set_timeout_error.ts",
+  output: "run/set_timeout_error.ts.out",
   exit_code: 1,
 });
 
 itest!(set_timeout_error_handled {
-  args: "run --quiet set_timeout_error_handled.ts",
-  output: "set_timeout_error_handled.ts.out",
+  args: "run --quiet run/set_timeout_error_handled.ts",
+  output: "run/set_timeout_error_handled.ts.out",
 });
 
 itest!(aggregate_error {
@@ -2715,7 +2721,7 @@ itest!(check_js_points_to_ts {
 });
 
 itest!(no_prompt_flag {
-  args: "run --quiet --unstable --no-prompt no_prompt.ts",
+  args: "run --quiet --unstable --no-prompt run/no_prompt.ts",
   output_str: Some(""),
 });
 
@@ -2725,7 +2731,7 @@ fn deno_no_prompt_environment_variable() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
-    .arg("no_prompt.ts")
+    .arg("run/no_prompt.ts")
     .env("DENO_NO_PROMPT", "1")
     .spawn()
     .unwrap()
@@ -2841,3 +2847,693 @@ itest!(node_env_var_allowlist_without_unstable_flag {
   output: "run/node_env_var_allowlist_without_unstable_flag.ts.out",
   exit_code: 1,
 });
+
+#[test]
+fn cache_test() {
+  let _g = util::http_server();
+  let deno_dir = TempDir::new();
+  let module_url =
+    url::Url::parse("http://localhost:4545/run/006_url_imports.ts").unwrap();
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::testdata_path())
+    .arg("cache")
+    .arg("--check=all")
+    .arg("-L")
+    .arg("debug")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+
+  let prg = util::deno_exe_path();
+  let output = Command::new(&prg)
+    .env("DENO_DIR", deno_dir.path())
+    .env("HTTP_PROXY", "http://nil")
+    .env("NO_COLOR", "1")
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+
+  let str_output = std::str::from_utf8(&output.stdout).unwrap();
+
+  let module_output_path =
+    util::testdata_path().join("run/006_url_imports.ts.out");
+  let mut module_output = String::new();
+  let mut module_output_file = std::fs::File::open(module_output_path).unwrap();
+  module_output_file
+    .read_to_string(&mut module_output)
+    .unwrap();
+
+  assert_eq!(module_output, str_output);
+}
+
+#[test]
+fn cache_invalidation_test() {
+  let deno_dir = TempDir::new();
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
+fn cache_invalidation_test_no_check() {
+  let deno_dir = TempDir::new();
+  let fixture_path = deno_dir.path().join("fixture.ts");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"42\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "42\n");
+  {
+    let mut file = std::fs::File::create(fixture_path.clone())
+      .expect("could not create fixture");
+    file
+      .write_all(b"console.log(\"43\");")
+      .expect("could not write fixture");
+  }
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--no-check")
+    .arg(fixture_path.to_str().unwrap())
+    .output()
+    .expect("Failed to spawn script");
+  assert!(output.status.success());
+  let actual = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(actual, "43\n");
+}
+
+#[test]
+fn ts_dependency_recompilation() {
+  let t = TempDir::new();
+  let ats = t.path().join("a.ts");
+
+  std::fs::write(
+    &ats,
+    "
+    import { foo } from \"./b.ts\";
+
+    function print(str: string): void {
+        console.log(str);
+    }
+
+    print(foo);",
+  )
+  .unwrap();
+
+  let bts = t.path().join("b.ts");
+  std::fs::write(
+    &bts,
+    "
+    export const foo = \"foo\";",
+  )
+  .unwrap();
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg("--check")
+    .arg(&ats)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
+
+  assert!(stdout_output.ends_with("foo"));
+  assert!(stderr_output.starts_with("Check"));
+
+  // Overwrite contents of b.ts and run again
+  std::fs::write(
+    &bts,
+    "
+    export const foo = 5;",
+  )
+  .expect("error writing file");
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .env("NO_COLOR", "1")
+    .arg("run")
+    .arg("--check")
+    .arg(&ats)
+    .output()
+    .expect("failed to spawn script");
+
+  let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
+
+  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  assert!(stderr_output.contains("TS2345"));
+  assert!(!output.status.success());
+  assert!(stdout_output.is_empty());
+}
+
+#[test]
+fn basic_auth_tokens() {
+  let _g = util::http_server();
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/run/001_hello.js")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert!(stdout_str.is_empty());
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(stderr_str
+    .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\"."));
+
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("http://127.0.0.1:4554/run/001_hello.js")
+    .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("{}", stderr_str);
+
+  assert!(output.status.success());
+
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_resolve_dns() {
+  use std::net::SocketAddr;
+  use std::str::FromStr;
+  use std::sync::Arc;
+  use std::time::Duration;
+  use tokio::net::TcpListener;
+  use tokio::net::UdpSocket;
+  use tokio::sync::oneshot;
+  use trust_dns_server::authority::Catalog;
+  use trust_dns_server::authority::ZoneType;
+  use trust_dns_server::proto::rr::Name;
+  use trust_dns_server::store::in_memory::InMemoryAuthority;
+  use trust_dns_server::ServerFuture;
+
+  const DNS_PORT: u16 = 4553;
+
+  // Setup DNS server for testing
+  async fn run_dns_server(tx: oneshot::Sender<()>) {
+    let zone_file = std::fs::read_to_string(
+      util::testdata_path().join("resolve_dns.zone.in"),
+    )
+    .unwrap();
+    let lexer = Lexer::new(&zone_file);
+    let records = Parser::new().parse(
+      lexer,
+      Some(Name::from_str("example.com").unwrap()),
+      None,
+    );
+    if records.is_err() {
+      panic!("failed to parse: {:?}", records.err())
+    }
+    let (origin, records) = records.unwrap();
+    let authority = Box::new(Arc::new(
+      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
+        .unwrap(),
+    ));
+    let mut catalog: Catalog = Catalog::new();
+    catalog.upsert(Name::root().into(), authority);
+
+    let mut server_fut = ServerFuture::new(catalog);
+    let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
+    let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
+    let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
+    server_fut.register_socket(udp_socket);
+    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+
+    // Notifies that the DNS server is ready
+    tx.send(()).unwrap();
+
+    server_fut.block_until_done().await.unwrap();
+  }
+
+  let (ready_tx, ready_rx) = oneshot::channel();
+  let dns_server_fut = run_dns_server(ready_tx);
+  let handle = tokio::spawn(dns_server_fut);
+
+  // Waits for the DNS server to be ready
+  ready_rx.await.unwrap();
+
+  // Pass: `--allow-net`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::testdata_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--check")
+      .arg("--allow-net")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    println!("{}", err);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Pass: `--allow-net=127.0.0.1:4553`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::testdata_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--check")
+      .arg("--allow-net=127.0.0.1:4553")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(err.starts_with("Check file"));
+
+    let expected =
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
+        .unwrap();
+    assert_eq!(expected, out);
+  }
+
+  // Permission error: `--allow-net=deno.land`
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::testdata_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--check")
+      .arg("--allow-net=deno.land")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  // Permission error: no permission specified
+  {
+    let output = util::deno_cmd()
+      .current_dir(util::testdata_path())
+      .env("NO_COLOR", "1")
+      .arg("run")
+      .arg("--check")
+      .arg("resolve_dns.ts")
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    let out = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success());
+    assert!(err.starts_with("Check file"));
+    assert!(err.contains(r#"error: Uncaught PermissionDenied: Requires net access to "127.0.0.1:4553""#));
+    assert!(out.is_empty());
+  }
+
+  handle.abort();
+}
+
+#[tokio::test]
+async fn http2_request_url() {
+  // TLS streams require the presence of an ambient local task set to gracefully
+  // close dropped connections in the background.
+  LocalSet::new()
+    .run_until(async {
+      let mut child = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .arg("run")
+        .arg("--unstable")
+        .arg("--quiet")
+        .arg("--allow-net")
+        .arg("--allow-read")
+        .arg("./http2_request_url.ts")
+        .arg("4506")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut buffer = [0; 5];
+      let read = stdout.read(&mut buffer).unwrap();
+      assert_eq!(read, 5);
+      let msg = std::str::from_utf8(&buffer).unwrap();
+      assert_eq!(msg, "READY");
+
+      let cert = reqwest::Certificate::from_pem(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      ))
+      .unwrap();
+
+      let client = reqwest::Client::builder()
+        .add_root_certificate(cert)
+        .http2_prior_knowledge()
+        .build()
+        .unwrap();
+
+      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+      assert_eq!(200, res.status());
+
+      let body = res.text().await.unwrap();
+      assert_eq!(body, "http://127.0.0.1:4506/");
+
+      child.kill().unwrap();
+      child.wait().unwrap();
+    })
+    .await;
+}
+
+#[cfg(not(windows))]
+#[test]
+fn set_raw_should_not_panic_on_no_tty() {
+  let output = util::deno_cmd()
+    .arg("eval")
+    .arg("--unstable")
+    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    // stdin set to piped so it certainly does not refer to TTY
+    .stdin(std::process::Stdio::piped())
+    // stderr is piped so we can capture output.
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+  assert!(stderr.contains("BadResource"));
+}
+
+#[test]
+fn timeout_clear() {
+  // https://github.com/denoland/deno/issues/7599
+
+  use std::time::Duration;
+  use std::time::Instant;
+
+  let source_code = r#"
+const handle = setTimeout(() => {
+  console.log("timeout finish");
+}, 10000);
+clearTimeout(handle);
+console.log("finish");
+"#;
+
+  let mut p = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("-")
+    .stdin(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdin = p.stdin.as_mut().unwrap();
+  stdin.write_all(source_code.as_bytes()).unwrap();
+  let start = Instant::now();
+  let status = p.wait().unwrap();
+  let end = Instant::now();
+  assert!(status.success());
+  // check that program did not run for 10 seconds
+  // for timeout to clear
+  assert!(end - start < Duration::new(10, 0));
+}
+
+#[test]
+fn broken_stdout() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("eval")
+    .arg("console.log(3.14)")
+    .stdout(writer)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  assert!(!output.status.success());
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+  assert!(stderr.contains("Uncaught BrokenPipe"));
+  assert!(!stderr.contains("panic"));
+}
+
+itest!(error_cause {
+  args: "run error_cause.ts",
+  output: "error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive {
+  args: "run error_cause_recursive.ts",
+  output: "error_cause_recursive.ts.out",
+  exit_code: 1,
+});
+
+#[test]
+fn websocket() {
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocket_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
+#[test]
+fn websocketstream() {
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
+#[test]
+fn websocketstream_ping() {
+  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_ping_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
+  let (stream, _) = server.accept().unwrap();
+  let mut socket = tungstenite::accept(stream).unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("A")))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Ping(vec![]))
+    .unwrap();
+  socket
+    .write_message(tungstenite::Message::Text(String::from("B")))
+    .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, tungstenite::Message::Pong(vec![]));
+  socket
+    .write_message(tungstenite::Message::Text(String::from("C")))
+    .unwrap();
+  socket.close(None).unwrap();
+
+  assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn websocket_server_multi_field_connection_header() {
+  let script = util::testdata_path()
+    .join("websocket_server_multi_field_connection_header_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .uri("ws://localhost:4319")
+    .body(())
+    .unwrap();
+  let (mut socket, _) =
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .unwrap();
+  let message = socket.read_message().unwrap();
+  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
+  socket.close(None).unwrap();
+  assert!(child.wait().unwrap().success());
+}
+
+// TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
+// test hangs then. https://github.com/denoland/deno/issues/14283
+#[test]
+#[ignore]
+fn websocket_server_idletimeout() {
+  let script = util::testdata_path().join("websocket_server_idletimeout.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .uri("ws://localhost:4509")
+    .body(())
+    .unwrap();
+  let (_ws, _request) =
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .unwrap();
+
+  assert!(child.wait().unwrap().success());
+}

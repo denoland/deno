@@ -2,7 +2,7 @@ local: [WILDCARD]https[WILDCARD]localhost_PORT5545[WILDCARD]
 type: TypeScript
 dependencies: 8 unique (total [WILDCARD])
 
-https://localhost:5545/cafile_info.ts ([WILDCARD])
+https://localhost:5545/cert/cafile_info.ts ([WILDCARD])
 ├── https://localhost:5545/subdir/mt_application_ecmascript.j2.js ([WILDCARD])
 ├── https://localhost:5545/subdir/mt_application_x_javascript.j4.js ([WILDCARD])
 ├── https://localhost:5545/subdir/mt_application_x_typescript.t4.ts ([WILDCARD])
