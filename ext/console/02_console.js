@@ -853,7 +853,7 @@
             // Not all indexes are empty or there's a non-index property
             // Find first non-empty array index
             while (keys.length) {
-              const key = keys.shift();
+              const key = ArrayPrototypeShift(keys);
               // check if it's a valid array index
               if (key > lastValidIndex && key < 2 ** 32 - 1) {
                 i = Number(key);
