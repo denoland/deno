@@ -1,6 +1,6 @@
 // deno-lint-ignore-file
 
-import { B } from "./subdir/more_decorators.ts";
+import { B } from "../../subdir/more_decorators.ts";
 
 function Decorator() {
   return function (
