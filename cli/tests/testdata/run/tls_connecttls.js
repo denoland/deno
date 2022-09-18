@@ -1,17 +1,17 @@
-import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { deferred } from "../../../../test_util/std/async/deferred.ts";
 import {
   assert,
   assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
+import { BufReader, BufWriter } from "../../../../test_util/std/io/bufio.ts";
+import { TextProtoReader } from "../../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const resolvable = deferred();
 const hostname = "localhost";
-const port = 3504;
+const port = 3505;
 
 const listener = Deno.listenTls({
   hostname,
@@ -37,8 +37,10 @@ listener.accept().then(
   },
 );
 
-let conn = await Deno.connect({ hostname, port });
-conn = await Deno.startTls(conn, { hostname });
+const conn = await Deno.connectTls({
+  hostname,
+  port,
+});
 assert(conn.rid > 0);
 const w = new BufWriter(conn);
 const r = new BufReader(conn);

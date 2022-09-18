@@ -1642,7 +1642,7 @@ fn no_validate_asm() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("no_validate_asm.js")
+    .arg("run/no_validate_asm.js")
     .stderr(Stdio::piped())
     .stdout(Stdio::piped())
     .spawn()
@@ -1660,7 +1660,7 @@ fn exec_path() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--allow-read")
-    .arg("exec_path.ts")
+    .arg("run/exec_path.ts")
     .stdout(Stdio::piped())
     .spawn()
     .unwrap()
@@ -1688,7 +1688,7 @@ fn run_deno_script_constrained(
   script_path: std::path::PathBuf,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
-  let file_path = "DenoWinRunner.ps1";
+  let file_path = "assets/DenoWinRunner.ps1";
   let constraints = match constraints {
     WinProcConstraints::NoStdIn => "1",
     WinProcConstraints::NoStdOut => "2",
@@ -1709,7 +1709,7 @@ fn run_deno_script_constrained(
 #[test]
 fn should_not_panic_on_no_stdin() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("echo.ts"),
+    util::testdata_path().join("run/echo.ts"),
     WinProcConstraints::NoStdIn,
   );
   output.unwrap();
@@ -1719,7 +1719,7 @@ fn should_not_panic_on_no_stdin() {
 #[test]
 fn should_not_panic_on_no_stdout() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("echo.ts"),
+    util::testdata_path().join("run/echo.ts"),
     WinProcConstraints::NoStdOut,
   );
   output.unwrap();
@@ -1729,7 +1729,7 @@ fn should_not_panic_on_no_stdout() {
 #[test]
 fn should_not_panic_on_no_stderr() {
   let output = run_deno_script_constrained(
-    util::testdata_path().join("echo.ts"),
+    util::testdata_path().join("run/echo.ts"),
     WinProcConstraints::NoStdErr,
   );
   output.unwrap();
@@ -1741,7 +1741,7 @@ fn should_not_panic_on_undefined_home_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("echo.ts")
+    .arg("run/echo.ts")
     .env_remove("HOME")
     .spawn()
     .unwrap()
@@ -1755,7 +1755,7 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("echo.ts")
+    .arg("run/echo.ts")
     .env_remove("DENO_DIR")
     .spawn()
     .unwrap()
@@ -1770,7 +1770,7 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("echo.ts")
+    .arg("run/echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
     .spawn()
@@ -1820,7 +1820,7 @@ fn dont_cache_on_check_fail() {
     .arg("run")
     .arg("--check=all")
     .arg("--reload")
-    .arg("error_003_typescript.ts")
+    .arg("run/error_003_typescript.ts")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap()
@@ -1834,7 +1834,7 @@ fn dont_cache_on_check_fail() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--check=all")
-    .arg("error_003_typescript.ts")
+    .arg("run/error_003_typescript.ts")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap()
@@ -1899,9 +1899,9 @@ mod permissions {
             .into_string()
             .unwrap()
         ))
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .arg(permission)
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .spawn()
         .unwrap()
         .wait()
@@ -1917,7 +1917,7 @@ mod permissions {
       let (_, err) = util::run_and_collect_output(
         false,
         &format!(
-          "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+          "run --allow-{0}={1} run/complex_permissions_test.ts {0} {2}",
           permission,
           util::testdata_path()
             .into_os_string()
@@ -1952,9 +1952,9 @@ mod permissions {
             .into_string()
             .unwrap()
         ))
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .arg(permission)
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .spawn()
         .unwrap()
         .wait()
@@ -1979,7 +1979,7 @@ mod permissions {
       let (_, err) = util::run_and_collect_output(
         false,
         &format!(
-          "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+          "run --allow-{0}={1},{2} run/complex_permissions_test.ts {0} {3}",
           permission,
           test_dir,
           js_dir,
@@ -2014,9 +2014,9 @@ mod permissions {
         .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .arg(permission)
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .spawn()
         .unwrap()
         .wait()
@@ -2033,9 +2033,9 @@ mod permissions {
         .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=.", permission))
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .arg(permission)
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .spawn()
         .unwrap()
         .wait()
@@ -2052,9 +2052,9 @@ mod permissions {
         .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=tls/../", permission))
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .arg(permission)
-        .arg("complex_permissions_test.ts")
+        .arg("run/complex_permissions_test.ts")
         .spawn()
         .unwrap()
         .wait()
@@ -2067,7 +2067,7 @@ mod permissions {
   fn net_fetch_allow_localhost_4545() {
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
+        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
         None,
         None,
         true,
@@ -2079,7 +2079,7 @@ mod permissions {
   fn net_fetch_allow_deno_land() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
+        "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
         None,
         None,
         true,
@@ -2091,7 +2091,7 @@ mod permissions {
   fn net_fetch_localhost_4545_fail() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
+        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
         None,
         None,
         true,
@@ -2103,7 +2103,7 @@ mod permissions {
   fn net_fetch_localhost() {
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
         None,
         None,
         true,
@@ -2115,7 +2115,7 @@ mod permissions {
   fn net_connect_allow_localhost_ip_4555() {
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
+        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
         None,
         None,
         true,
@@ -2127,7 +2127,7 @@ mod permissions {
   fn net_connect_allow_deno_land() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
+        "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
         None,
         None,
         true,
@@ -2139,7 +2139,7 @@ mod permissions {
   fn net_connect_allow_localhost_ip_4545_fail() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
+        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
         None,
         None,
         true,
@@ -2151,7 +2151,7 @@ mod permissions {
   fn net_connect_allow_localhost_ip() {
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+        "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
         None,
         None,
         true,
@@ -2163,7 +2163,7 @@ mod permissions {
   fn net_listen_allow_localhost_4555() {
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
+        "run --allow-net=localhost:4558 run/complex_permissions_test.ts netListen localhost:4558",
         None,
         None,
         false,
@@ -2175,7 +2175,7 @@ mod permissions {
   fn net_listen_allow_deno_land() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
+        "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
         None,
         None,
         false,
@@ -2187,7 +2187,7 @@ mod permissions {
   fn net_listen_allow_localhost_4555_fail() {
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
+        "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
         None,
         None,
         false,
@@ -2201,7 +2201,7 @@ mod permissions {
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
+        "run --allow-net=localhost run/complex_permissions_test.ts netListen localhost:4600",
         None,
         None,
         false,
@@ -2327,13 +2327,13 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem tls_starttls.js",
-  output: "tls.out",
+  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem run/tls_starttls.js",
+  output: "run/tls.out",
 });
 
 itest!(tls_connecttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
-  output: "tls.out",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_connecttls.js",
+  output: "run/tls.out",
 });
 
 itest!(byte_order_mark {
@@ -2345,7 +2345,7 @@ itest!(byte_order_mark {
 fn issue9750() {
   use util::PtyData::*;
   util::test_pty2(
-    "run --prompt issue9750.js",
+    "run --prompt run/issue9750.js",
     vec![
       Output("Enter 'yy':\r\n"),
       Input("yy\n"),
@@ -2360,20 +2360,20 @@ fn issue9750() {
 
 // Regression test for https://github.com/denoland/deno/issues/11451.
 itest!(dom_exception_formatting {
-  args: "run dom_exception_formatting.ts",
-  output: "dom_exception_formatting.ts.out",
+  args: "run run/dom_exception_formatting.ts",
+  output: "run/dom_exception_formatting.ts.out",
   exit_code: 1,
 });
 
 itest!(long_data_url_formatting {
-  args: "run long_data_url_formatting.ts",
-  output: "long_data_url_formatting.ts.out",
+  args: "run run/long_data_url_formatting.ts",
+  output: "run/long_data_url_formatting.ts.out",
   exit_code: 1,
 });
 
 itest!(eval_context_throw_dom_exception {
-  args: "run eval_context_throw_dom_exception.js",
-  output: "eval_context_throw_dom_exception.js.out",
+  args: "run run/eval_context_throw_dom_exception.js",
+  output: "run/eval_context_throw_dom_exception.js.out",
 });
 
 /// Regression test for https://github.com/denoland/deno/issues/12740.
@@ -2449,8 +2449,8 @@ fn issue12807() {
 }
 
 itest!(issue_13562 {
-  args: "run issue13562.ts",
-  output: "issue13562.ts.out",
+  args: "run run/issue13562.ts",
+  output: "run/issue13562.ts.out",
 });
 
 itest!(import_assertions_static_import {
@@ -2487,12 +2487,12 @@ itest!(import_assertions_type_check {
 });
 
 itest!(delete_window {
-  args: "run delete_window.js",
+  args: "run run/delete_window.js",
   output_str: Some("true\n"),
 });
 
 itest!(colors_without_global_this {
-  args: "run colors_without_globalThis.js",
+  args: "run run/colors_without_globalThis.js",
   output_str: Some("true\n"),
 });
 
@@ -2514,105 +2514,105 @@ itest!(config_not_auto_discovered_for_remote_script {
 });
 
 itest!(wasm_streaming_panic_test {
-  args: "run wasm_streaming_panic_test.js",
-  output: "wasm_streaming_panic_test.js.out",
+  args: "run run/wasm_streaming_panic_test.js",
+  output: "run/wasm_streaming_panic_test.js.out",
   exit_code: 1,
 });
 
 // Regression test for https://github.com/denoland/deno/issues/13897.
 itest!(fetch_async_error_stack {
-  args: "run --quiet -A fetch_async_error_stack.ts",
-  output: "fetch_async_error_stack.ts.out",
+  args: "run --quiet -A run/fetch_async_error_stack.ts",
+  output: "run/fetch_async_error_stack.ts.out",
   exit_code: 1,
 });
 
 itest!(unstable_ffi_1 {
-  args: "run unstable_ffi_1.js",
-  output: "unstable_ffi_1.js.out",
+  args: "run run/ffi/unstable_ffi_1.js",
+  output: "run/ffi/unstable_ffi_1.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_2 {
-  args: "run unstable_ffi_2.js",
-  output: "unstable_ffi_2.js.out",
+  args: "run run/ffi/unstable_ffi_2.js",
+  output: "run/ffi/unstable_ffi_2.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_3 {
-  args: "run unstable_ffi_3.js",
-  output: "unstable_ffi_3.js.out",
+  args: "run run/ffi/unstable_ffi_3.js",
+  output: "run/ffi/unstable_ffi_3.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_4 {
-  args: "run unstable_ffi_4.js",
-  output: "unstable_ffi_4.js.out",
+  args: "run run/ffi/unstable_ffi_4.js",
+  output: "run/ffi/unstable_ffi_4.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_5 {
-  args: "run unstable_ffi_5.js",
-  output: "unstable_ffi_5.js.out",
+  args: "run run/ffi/unstable_ffi_5.js",
+  output: "run/ffi/unstable_ffi_5.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_6 {
-  args: "run unstable_ffi_6.js",
-  output: "unstable_ffi_6.js.out",
+  args: "run run/ffi/unstable_ffi_6.js",
+  output: "run/ffi/unstable_ffi_6.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_7 {
-  args: "run unstable_ffi_7.js",
-  output: "unstable_ffi_7.js.out",
+  args: "run run/ffi/unstable_ffi_7.js",
+  output: "run/ffi/unstable_ffi_7.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_8 {
-  args: "run unstable_ffi_8.js",
-  output: "unstable_ffi_8.js.out",
+  args: "run run/ffi/unstable_ffi_8.js",
+  output: "run/ffi/unstable_ffi_8.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_9 {
-  args: "run unstable_ffi_9.js",
-  output: "unstable_ffi_9.js.out",
+  args: "run run/ffi/unstable_ffi_9.js",
+  output: "run/ffi/unstable_ffi_9.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_10 {
-  args: "run unstable_ffi_10.js",
-  output: "unstable_ffi_10.js.out",
+  args: "run run/ffi/unstable_ffi_10.js",
+  output: "run/ffi/unstable_ffi_10.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_11 {
-  args: "run unstable_ffi_11.js",
-  output: "unstable_ffi_11.js.out",
+  args: "run run/ffi/unstable_ffi_11.js",
+  output: "run/ffi/unstable_ffi_11.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_12 {
-  args: "run unstable_ffi_12.js",
-  output: "unstable_ffi_12.js.out",
+  args: "run run/ffi/unstable_ffi_12.js",
+  output: "run/ffi/unstable_ffi_12.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_13 {
-  args: "run unstable_ffi_13.js",
-  output: "unstable_ffi_13.js.out",
+  args: "run run/ffi/unstable_ffi_13.js",
+  output: "run/ffi/unstable_ffi_13.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_14 {
-  args: "run unstable_ffi_14.js",
-  output: "unstable_ffi_14.js.out",
+  args: "run run/ffi/unstable_ffi_14.js",
+  output: "run/ffi/unstable_ffi_14.js.out",
   exit_code: 70,
 });
 
 itest!(unstable_ffi_15 {
-  args: "run unstable_ffi_15.js",
-  output: "unstable_ffi_15.js.out",
+  args: "run run/ffi/unstable_ffi_15.js",
+  output: "run/ffi/unstable_ffi_15.js.out",
   exit_code: 70,
 });
 
