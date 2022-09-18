@@ -338,7 +338,7 @@ fn ts_no_recheck_on_redirect() {
   let deno_dir = util::new_deno_dir();
   let e = util::deno_exe_path();
 
-  let redirect_ts = util::testdata_path().join("017_import_redirect.ts");
+  let redirect_ts = util::testdata_path().join("run/017_import_redirect.ts");
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());

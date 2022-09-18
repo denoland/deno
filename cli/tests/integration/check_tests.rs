@@ -7,38 +7,38 @@ use crate::itest;
 use test_util as util;
 
 itest!(_095_check_with_bare_import {
-  args: "check 095_cache_with_bare_import.ts",
-  output: "095_cache_with_bare_import.ts.out",
+  args: "check cache/095_cache_with_bare_import.ts",
+  output: "cache/095_cache_with_bare_import.ts.out",
   exit_code: 1,
 });
 
 itest!(check_extensionless {
   args: "check --reload http://localhost:4545/subdir/no_js_ext",
-  output: "cache_extensionless.out",
+  output: "cache/cache_extensionless.out",
   http_server: true,
 });
 
 itest!(check_random_extension {
   args: "check --reload http://localhost:4545/subdir/no_js_ext@1.0.0",
-  output: "cache_random_extension.out",
+  output: "cache/cache_random_extension.out",
   http_server: true,
 });
 
 itest!(check_all {
-  args: "check --quiet --remote check_all.ts",
-  output: "check_all.out",
+  args: "check --quiet --remote check/check_all.ts",
+  output: "check/check_all.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(check_all_local {
-  args: "check --quiet check_all.ts",
+  args: "check --quiet check/check_all.ts",
   output_str: Some(""),
   http_server: true,
 });
 
 itest!(module_detection_force {
-  args: "check --quiet module_detection_force.ts",
+  args: "check --quiet check/module_detection_force/main.ts",
   output_str: Some(""),
 });
 
