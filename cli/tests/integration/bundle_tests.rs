@@ -429,7 +429,7 @@ itest!(bundle {
 });
 
 itest!(bundle_jsx {
-  args: "bundle jsx_import_from_ts.ts",
+  args: "bundle run/jsx_import_from_ts.ts",
   output: "bundle/jsx.out",
 });
 

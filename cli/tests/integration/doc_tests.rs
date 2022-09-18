@@ -8,7 +8,7 @@ use crate::itest;
 
 itest!(deno_doc_builtin {
   args: "doc",
-  output: "deno_doc_builtin.out",
+  output: "doc/deno_doc_builtin.out",
 });
 
 #[test]
@@ -19,7 +19,7 @@ fn deno_doc() {
     let output = util::deno_cmd_with_deno_dir(&dir)
       .current_dir(util::testdata_path())
       .arg("doc")
-      .arg("deno_doc.ts")
+      .arg("doc/deno_doc.ts")
       .env("NO_COLOR", "1")
       .stdout(std::process::Stdio::piped())
       .spawn()

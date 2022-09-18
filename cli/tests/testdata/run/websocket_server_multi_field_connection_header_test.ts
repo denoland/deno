@@ -1,4 +1,4 @@
-import { deferred } from "../unit/test_util.ts";
+import { deferred } from "../../unit/test_util.ts";
 
 const promise = deferred();
 const listener = Deno.listen({ port: 4319 });

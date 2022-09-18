@@ -690,7 +690,7 @@ async fn main_server(
         .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
       res.headers_mut().insert(
         "location",
-        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+        HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js").unwrap(),
       );
       Ok(res)
     }

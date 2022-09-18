@@ -1,5 +1,5 @@
 // WebAssembly module containing a single function with an unreachable instruction
-const binary = await Deno.readFile("./unreachable.wasm");
+const binary = await Deno.readFile("./assets/unreachable.wasm");
 
 const module = new WebAssembly.Module(binary);
 const instance = new WebAssembly.Instance(module);

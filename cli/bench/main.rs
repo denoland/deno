@@ -59,7 +59,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/error_001.ts"],
+    &["run", "cli/tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -101,22 +101,25 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    &[
+      "run",
+      "cli/tests/testdata/benches/text_encoder_into_perf.js",
+    ],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/response_string_perf.js"],
+    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (

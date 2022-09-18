@@ -185,7 +185,7 @@ itest!(_035_cached_only_flag {
 itest!(_038_checkjs {
   // checking if JS file is run through TS compiler
   args:
-    "run --reload --config checkjs.tsconfig.json --check run/038_checkjs.js",
+    "run --reload --config run/checkjs.tsconfig.json --check run/038_checkjs.js",
   exit_code: 1,
   output: "run/038_checkjs.js.out",
 });
@@ -920,31 +920,31 @@ itest!(exit_error42 {
 
 itest!(set_exit_code_0 {
   args: "run --no-check --unstable run/set_exit_code_0.ts",
-  output: "empty.out",
+  output_str: Some(""),
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
   args: "run --no-check --unstable run/set_exit_code_1.ts",
-  output: "empty.out",
+  output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
   args: "run --no-check --unstable run/set_exit_code_2.ts",
-  output: "empty.out",
+  output_str: Some(""),
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
   args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
-  output: "empty.out",
+  output_str: Some(""),
 });
 
 itest!(deno_exit_tampering {
   args: "run --no-check --unstable run/deno_exit_tampering.ts",
-  output: "empty.out",
+  output_str: Some(""),
   exit_code: 42,
 });
 
@@ -1409,8 +1409,8 @@ itest!(jsx_import_source_error {
 
 // TODO(#11128): Flaky. Re-enable later.
 // itest!(single_compile_with_reload {
-//   args: "run --reload --allow-read single_compile_with_reload.ts",
-//   output: "single_compile_with_reload.ts.out",
+//   args: "run --relcert/oad --allow-read run/single_compile_with_reload.ts",
+//   output: "run/single_compile_with_reload.ts.out",
 // });
 
 itest!(proto_exploit {
@@ -1431,7 +1431,7 @@ itest!(references_types_remote {
 
 itest!(reference_types_error {
   args:
-    "run --config checkjs.tsconfig.json --check run/reference_types_error.js",
+    "run --config run/checkjs.tsconfig.json --check run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
@@ -2715,7 +2715,7 @@ fn check_local_then_remote() {
 
 // Regression test for https://github.com/denoland/deno/issues/15163
 itest!(check_js_points_to_ts {
-  args: "run --quiet --check --config checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
+  args: "run --quiet --check --config run/checkjs.tsconfig.json run/check_js_points_to_ts/test.js",
   output: "run/check_js_points_to_ts/test.js.out",
   exit_code: 1,
 });
@@ -3106,7 +3106,7 @@ async fn test_resolve_dns() {
   // Setup DNS server for testing
   async fn run_dns_server(tx: oneshot::Sender<()>) {
     let zone_file = std::fs::read_to_string(
-      util::testdata_path().join("resolve_dns.zone.in"),
+      util::testdata_path().join("run/resolve_dns.zone.in"),
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
@@ -3154,7 +3154,7 @@ async fn test_resolve_dns() {
       .arg("run")
       .arg("--check")
       .arg("--allow-net")
-      .arg("resolve_dns.ts")
+      .arg("run/resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
@@ -3167,9 +3167,10 @@ async fn test_resolve_dns() {
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
-    let expected =
-      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
-        .unwrap();
+    let expected = std::fs::read_to_string(
+      util::testdata_path().join("run/resolve_dns.ts.out"),
+    )
+    .unwrap();
     assert_eq!(expected, out);
   }
 
@@ -3181,7 +3182,7 @@ async fn test_resolve_dns() {
       .arg("run")
       .arg("--check")
       .arg("--allow-net=127.0.0.1:4553")
-      .arg("resolve_dns.ts")
+      .arg("run/resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
@@ -3193,9 +3194,10 @@ async fn test_resolve_dns() {
     assert!(output.status.success());
     assert!(err.starts_with("Check file"));
 
-    let expected =
-      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
-        .unwrap();
+    let expected = std::fs::read_to_string(
+      util::testdata_path().join("run/resolve_dns.ts.out"),
+    )
+    .unwrap();
     assert_eq!(expected, out);
   }
 
@@ -3207,7 +3209,7 @@ async fn test_resolve_dns() {
       .arg("run")
       .arg("--check")
       .arg("--allow-net=deno.land")
-      .arg("resolve_dns.ts")
+      .arg("run/resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
@@ -3229,7 +3231,7 @@ async fn test_resolve_dns() {
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--check")
-      .arg("resolve_dns.ts")
+      .arg("run/resolve_dns.ts")
       .stdout(std::process::Stdio::piped())
       .stderr(std::process::Stdio::piped())
       .spawn()
@@ -3260,7 +3262,7 @@ async fn http2_request_url() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./http2_request_url.ts")
+        .arg("./run/http2_request_url.ts")
         .arg("4506")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -3372,14 +3374,14 @@ fn broken_stdout() {
 }
 
 itest!(error_cause {
-  args: "run error_cause.ts",
-  output: "error_cause.ts.out",
+  args: "run run/error_cause.ts",
+  output: "run/error_cause.ts.out",
   exit_code: 1,
 });
 
 itest!(error_cause_recursive {
-  args: "run error_cause_recursive.ts",
-  output: "error_cause_recursive.ts.out",
+  args: "run run/error_cause_recursive.ts",
+  output: "run/error_cause_recursive.ts.out",
   exit_code: 1,
 });
 
@@ -3387,7 +3389,7 @@ itest!(error_cause_recursive {
 fn websocket() {
   let _g = util::http_server();
 
-  let script = util::testdata_path().join("websocket_test.ts");
+  let script = util::testdata_path().join("run/websocket_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
@@ -3408,7 +3410,7 @@ fn websocket() {
 fn websocketstream() {
   let _g = util::http_server();
 
-  let script = util::testdata_path().join("websocketstream_test.ts");
+  let script = util::testdata_path().join("run/websocketstream_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
@@ -3430,7 +3432,7 @@ fn websocketstream_ping() {
   use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
   let _g = util::http_server();
 
-  let script = util::testdata_path().join("websocketstream_ping_test.ts");
+  let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("test")
@@ -3468,7 +3470,7 @@ fn websocketstream_ping() {
 #[test]
 fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
-    .join("websocket_server_multi_field_connection_header_test.ts");
+    .join("run/websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
@@ -3507,7 +3509,8 @@ fn websocket_server_multi_field_connection_header() {
 #[test]
 #[ignore]
 fn websocket_server_idletimeout() {
-  let script = util::testdata_path().join("websocket_server_idletimeout.ts");
+  let script =
+    util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("test")

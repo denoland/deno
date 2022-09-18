@@ -46,15 +46,15 @@ itest!(_084_worker_custom_inspect {
 });
 
 itest!(error_worker_permissions_local {
-  args: "run --reload error_worker_permissions_local.ts",
-  output: "error_worker_permissions_local.ts.out",
+  args: "run --reload workers/error_worker_permissions_local.ts",
+  output: "workers/error_worker_permissions_local.ts.out",
   exit_code: 1,
 });
 
 itest!(error_worker_permissions_remote {
-  args: "run --reload error_worker_permissions_remote.ts",
+  args: "run --reload workers/error_worker_permissions_remote.ts",
   http_server: true,
-  output: "error_worker_permissions_remote.ts.out",
+  output: "workers/error_worker_permissions_remote.ts.out",
   exit_code: 1,
 });
 

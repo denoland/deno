@@ -1,5 +1,5 @@
 const module = await WebAssembly.compileStreaming(
-  fetch("http://localhost:4545/unreachable.wasm"),
+  fetch("http://localhost:4545/assets/unreachable.wasm"),
 );
 const instance = new WebAssembly.Instance(module);
 

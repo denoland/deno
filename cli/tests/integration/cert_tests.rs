@@ -54,20 +54,20 @@ itest_flaky!(cafile_ts_fetch_unsafe_ssl {
 
 itest!(deno_land_unsafe_ssl {
   args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
-  output: "deno_land_unsafe_ssl.ts.out",
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/deno_land_unsafe_ssl.ts",
+  output: "cert/deno_land_unsafe_ssl.ts.out",
 });
 
 itest!(ip_address_unsafe_ssl {
   args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 ip_address_unsafe_ssl.ts",
-  output: "ip_address_unsafe_ssl.ts.out",
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=1.1.1.1 cert/ip_address_unsafe_ssl.ts",
+  output: "cert/ip_address_unsafe_ssl.ts.out",
 });
 
 itest!(localhost_unsafe_ssl {
   args:
-    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",
-  output: "localhost_unsafe_ssl.ts.out",
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cert/cafile_url_imports.ts",
+  output: "cert/localhost_unsafe_ssl.ts.out",
   http_server: true,
   exit_code: 1,
 });
@@ -215,7 +215,7 @@ async fn listen_tls_alpn() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn.ts")
+        .arg("./cert/listen_tls_alpn.ts")
         .arg("4504")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -272,7 +272,7 @@ async fn listen_tls_alpn_fail() {
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./listen_tls_alpn_fail.ts")
+        .arg("./cert/listen_tls_alpn_fail.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()

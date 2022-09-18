@@ -41,5 +41,5 @@ fn version_long_flag() {
 
 itest!(types {
   args: "types",
-  output: "types.out",
+  output: "types/types.out",
 });

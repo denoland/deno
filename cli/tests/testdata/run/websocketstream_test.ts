@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
   unreachable,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 
 Deno.test("fragment", () => {
   assertThrows(() => new WebSocketStream("ws://localhost:4242/#"));

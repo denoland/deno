@@ -35,18 +35,18 @@ itest!(cache_random_extension {
 
 itest!(performance_stats {
   args: "cache --reload --check=all --log-level debug run/002_hello.ts",
-  output: "performance_stats.out",
+  output: "cache/performance_stats.out",
 });
 
 itest!(redirect_cache {
   http_server: true,
   args:
     "cache --reload --check=all http://localhost:4548/subdir/redirects/a.ts",
-  output: "redirect_cache.out",
+  output: "cache/redirect_cache.out",
 });
 
 itest!(ignore_require {
-  args: "cache --reload --no-check ignore_require.js",
+  args: "cache --reload --no-check cache/ignore_require.js",
   output_str: Some(""),
   exit_code: 0,
 });

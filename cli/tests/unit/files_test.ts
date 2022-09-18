@@ -17,7 +17,7 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
@@ -264,7 +264,7 @@ Deno.test(
 );
 
 Deno.test(async function openOptions() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
