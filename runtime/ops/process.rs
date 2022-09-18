@@ -32,7 +32,7 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[derive(Copy, Clone, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stdio {
   Inherit,
@@ -50,7 +50,7 @@ impl Stdio {
   }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum StdioOrRid {
   Stdio(Stdio),
   Rid(ResourceId),

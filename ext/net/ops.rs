@@ -569,7 +569,7 @@ where
   }
 }
 
-#[derive(Serialize, PartialEq, Debug)]
+#[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
   A(String),
