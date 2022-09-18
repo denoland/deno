@@ -1,5 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use test_util as util;
+use test_util::TempDir;
+use util::assert_contains;
+
 use crate::itest;
 
 itest!(deno_doc_builtin {
@@ -7,10 +11,28 @@ itest!(deno_doc_builtin {
   output: "deno_doc_builtin.out",
 });
 
-itest!(deno_doc {
-  args: "doc deno_doc.ts",
-  output: "deno_doc.out",
-});
+#[test]
+fn deno_doc() {
+  let dir = TempDir::new();
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::testdata_path())
+      .arg("doc")
+      .arg("deno_doc.ts")
+      .env("NO_COLOR", "1")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_contains!(
+      std::str::from_utf8(&output.stdout).unwrap(),
+      "function foo"
+    );
+  }
+}
 
 itest!(deno_doc_import_map {
   args: "doc --unstable --import-map=doc/import_map.json doc/use_import_map.js",
