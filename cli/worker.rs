@@ -503,6 +503,14 @@ fn create_web_worker_callback(
 
     let extensions = ops::cli_exts(ps.clone());
 
+    let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
+    let cache_storage_dir = maybe_storage_key.map(|key| {
+      std::env::temp_dir()
+        .join("deno_cache")
+        .join(checksum::gen(&[key.as_bytes()]))
+        .join(format!("{}", args.worker_id))
+    });
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.options.argv().clone(),
@@ -544,6 +552,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
+      cache_storage_dir,
     };
 
     WebWorker::bootstrap_from_options(

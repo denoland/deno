@@ -2,4 +2,4 @@
 
 This crate implements the Cache API.
 
-Spec: https://console.spec.whatwg.org/
+Spec: https://w3c.github.io/ServiceWorker/#cache-interface

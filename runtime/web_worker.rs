@@ -338,6 +338,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
 }
 
@@ -393,7 +394,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(None).disable(),
+      deno_cache::init::<SqliteBackedCache>(options.cache_storage_dir),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

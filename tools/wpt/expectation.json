@@ -4642,10 +4642,7 @@
       "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "WorkerGlobalScope interface: attribute caches",
       "WorkerNavigator interface: attribute serviceWorker",
-      "CacheStorage interface: calling has(DOMString) on caches with too few arguments must throw TypeError",
-      "CacheStorage interface: calling delete(DOMString) on caches with too few arguments must throw TypeError",
-      "Cache interface: calling match(RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
-      "CacheStorage interface: calling open(DOMString) on caches with too few arguments must throw TypeError"
+      "Cache interface: calling match(RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError"
     ]
   }
 }
