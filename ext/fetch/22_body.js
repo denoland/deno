@@ -163,10 +163,8 @@
           if (done) break;
 
           if (finalBuffer) {
-            // fast path, content-length is present
-            if (
-              totalLength + chunk.byteLength <= finalBuffer.buffer.byteLength
-            ) {
+            if (totalLength + chunk.byteLength <= finalBuffer.byteLength) {
+              // fast path, content-length is present
               TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
             } else {
               // downgrade to slow path, this could only happen if
@@ -187,7 +185,7 @@
         }
 
         if (finalBuffer) {
-          return totalLength < finalBuffer.buffer.byteLength
+          return totalLength < finalBuffer.byteLength
             // future proofing: this condition is always false right now
             ? finalBuffer.slice(0, totalLength)
             : finalBuffer;
