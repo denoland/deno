@@ -169,6 +169,8 @@
             ) {
               TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
             } else {
+              // downgrade to slow path, this could only happen if
+              // totalLength > content-length
               ArrayPrototypePush(
                 chunks,
                 TypedArrayPrototypeSubarray(finalBuffer, 0, totalLength),
