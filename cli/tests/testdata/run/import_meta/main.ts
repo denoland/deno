@@ -1,8 +1,8 @@
-import { assertThrows } from "../../../test_util/std/testing/asserts.ts";
+import { assertThrows } from "../../../../../test_util/std/testing/asserts.ts";
 
-console.log("import_meta", import.meta.url, import.meta.main);
+console.log("main", import.meta.url, import.meta.main);
 
-import "./import_meta2.ts";
+import "./other.ts";
 
 console.log("Resolving ./foo.js", import.meta.resolve("./foo.js"));
 console.log("Resolving bare from import map", import.meta.resolve("bare"));

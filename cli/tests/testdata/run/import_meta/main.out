@@ -1,5 +1,5 @@
-import_meta2 [WILDCARD]import_meta2.ts false
-import_meta [WILDCARD]import_meta.ts true
+other [WILDCARD]other.ts false
+main [WILDCARD]main.ts true
 Resolving ./foo.js file:///[WILDCARD]/foo.js
 Resolving bare from import map https://example.com/
 Resolving https://example.com/rewrite from import map https://example.com/rewritten

@@ -774,7 +774,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_directives_redirect.js") => {
+    (_, "/run/type_directives_redirect.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -788,7 +788,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.js") => {
+    (_, "/run/type_headers_deno_types.foo.js") => {
       let mut res = Response::new(Body::from(
         "export function foo(text) { console.log(text); }",
       ));
@@ -799,12 +799,12 @@ async fn main_server(
       res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
-          "http://localhost:4545/type_headers_deno_types.d.ts",
+          "http://localhost:4545/run/type_headers_deno_types.d.ts",
         ),
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.d.ts") => {
+    (_, "/run/type_headers_deno_types.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: number): void;"));
       res.headers_mut().insert(
@@ -813,7 +813,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.d.ts") => {
+    (_, "/run/type_headers_deno_types.foo.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: string): void;"));
       res.headers_mut().insert(

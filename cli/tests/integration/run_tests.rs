@@ -612,8 +612,8 @@ itest!(lock_write_requires_lock {
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch.ts",
-  output: "run/lock_write_fetch.ts.out",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch/main.ts",
+  output: "run/lock_write_fetch/main.out",
   http_server: true,
   exit_code: 0,
 });
@@ -857,121 +857,121 @@ itest!(error_026_remote_import_error {
 });
 
 itest!(error_for_await {
-  args: "run --reload --check error_for_await.ts",
-  output: "error_for_await.ts.out",
+  args: "run --reload --check run/error_for_await.ts",
+  output: "run/error_for_await.ts.out",
   exit_code: 1,
 });
 
 itest!(error_missing_module_named_import {
-  args: "run --reload error_missing_module_named_import.ts",
-  output: "error_missing_module_named_import.ts.out",
+  args: "run --reload run/error_missing_module_named_import.ts",
+  output: "run/error_missing_module_named_import.ts.out",
   exit_code: 1,
 });
 
 itest!(error_no_check {
-  args: "run --reload --no-check error_no_check.ts",
-  output: "error_no_check.ts.out",
+  args: "run --reload --no-check run/error_no_check.ts",
+  output: "run/error_no_check.ts.out",
   exit_code: 1,
 });
 
 itest!(error_syntax {
-  args: "run --reload error_syntax.js",
+  args: "run --reload run/error_syntax.js",
   exit_code: 1,
-  output: "error_syntax.js.out",
+  output: "run/error_syntax.js.out",
 });
 
 itest!(error_syntax_empty_trailing_line {
-  args: "run --reload error_syntax_empty_trailing_line.mjs",
+  args: "run --reload run/error_syntax_empty_trailing_line.mjs",
   exit_code: 1,
-  output: "error_syntax_empty_trailing_line.mjs.out",
+  output: "run/error_syntax_empty_trailing_line.mjs.out",
 });
 
 itest!(error_type_definitions {
-  args: "run --reload --check error_type_definitions.ts",
+  args: "run --reload --check run/error_type_definitions.ts",
   exit_code: 1,
-  output: "error_type_definitions.ts.out",
+  output: "run/error_type_definitions.ts.out",
 });
 
 itest!(error_local_static_import_from_remote_ts {
-    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.ts",
+    args: "run --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
     exit_code: 1,
     http_server: true,
-    output: "error_local_static_import_from_remote.ts.out",
+    output: "run/error_local_static_import_from_remote.ts.out",
   });
 
 itest!(error_local_static_import_from_remote_js {
-    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.js",
+    args: "run --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
     exit_code: 1,
     http_server: true,
-    output: "error_local_static_import_from_remote.js.out",
+    output: "run/error_local_static_import_from_remote.js.out",
   });
 
 itest!(exit_error42 {
   exit_code: 42,
-  args: "run --quiet --reload exit_error42.ts",
-  output: "exit_error42.ts.out",
+  args: "run --quiet --reload run/exit_error42.ts",
+  output: "run/exit_error42.ts.out",
 });
 
 itest!(set_exit_code_0 {
-  args: "run --no-check --unstable set_exit_code_0.ts",
+  args: "run --no-check --unstable run/set_exit_code_0.ts",
   output: "empty.out",
   exit_code: 0,
 });
 
 itest!(set_exit_code_1 {
-  args: "run --no-check --unstable set_exit_code_1.ts",
+  args: "run --no-check --unstable run/set_exit_code_1.ts",
   output: "empty.out",
   exit_code: 42,
 });
 
 itest!(set_exit_code_2 {
-  args: "run --no-check --unstable set_exit_code_2.ts",
+  args: "run --no-check --unstable run/set_exit_code_2.ts",
   output: "empty.out",
   exit_code: 42,
 });
 
 itest!(op_exit_op_set_exit_code_in_worker {
-  args: "run --no-check --unstable --allow-read op_exit_op_set_exit_code_in_worker.ts",
+  args: "run --no-check --unstable --allow-read run/op_exit_op_set_exit_code_in_worker.ts",
   exit_code: 21,
   output: "empty.out",
 });
 
 itest!(deno_exit_tampering {
-  args: "run --no-check --unstable deno_exit_tampering.ts",
+  args: "run --no-check --unstable run/deno_exit_tampering.ts",
   output: "empty.out",
   exit_code: 42,
 });
 
 itest!(heapstats {
-  args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
-  output: "heapstats.js.out",
+  args: "run --quiet --unstable --v8-flags=--expose-gc run/heapstats.js",
+  output: "run/heapstats.js.out",
 });
 
 itest!(finalization_registry {
   args:
-    "run --quiet --unstable --v8-flags=--expose-gc finalization_registry.js",
-  output: "finalization_registry.js.out",
+    "run --quiet --unstable --v8-flags=--expose-gc run/finalization_registry.js",
+  output: "run/finalization_registry.js.out",
 });
 
 itest!(https_import {
-  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
-  output: "https_import.ts.out",
+  args: "run --quiet --reload --cert tls/RootCA.pem run/https_import.ts",
+  output: "run/https_import.ts.out",
   http_server: true,
 });
 
 itest!(if_main {
-  args: "run --quiet --reload if_main.ts",
-  output: "if_main.ts.out",
+  args: "run --quiet --reload run/if_main.ts",
+  output: "run/if_main.ts.out",
 });
 
 itest!(import_meta {
-  args: "run --quiet --reload --import-map=import_meta.importmap.json import_meta.ts",
-  output: "import_meta.ts.out",
+  args: "run --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
+  output: "run/import_meta/main.out",
 });
 
 itest!(main_module {
-  args: "run --quiet --allow-read --reload main_module.ts",
-  output: "main_module.ts.out",
+  args: "run --quiet --allow-read --reload run/main_module/main.ts",
+  output: "run/main_module/main.out",
 });
 
 itest!(no_check {
@@ -981,87 +981,87 @@ itest!(no_check {
 });
 
 itest!(no_check_decorators {
-  args: "run --quiet --reload --no-check no_check_decorators.ts",
-  output: "no_check_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/no_check_decorators.ts",
+  output: "run/no_check_decorators.ts.out",
 });
 
 itest!(check_remote {
-  args: "run --quiet --reload --check=all no_check_remote.ts",
-  output: "no_check_remote.ts.disabled.out",
+  args: "run --quiet --reload --check=all run/no_check_remote.ts",
+  output: "run/no_check_remote.ts.disabled.out",
   exit_code: 1,
   http_server: true,
 });
 
 itest!(no_check_remote {
-  args: "run --quiet --reload --no-check=remote no_check_remote.ts",
-  output: "no_check_remote.ts.enabled.out",
+  args: "run --quiet --reload --no-check=remote run/no_check_remote.ts",
+  output: "run/no_check_remote.ts.enabled.out",
   http_server: true,
 });
 
 itest!(runtime_decorators {
-  args: "run --quiet --reload --no-check runtime_decorators.ts",
-  output: "runtime_decorators.ts.out",
+  args: "run --quiet --reload --no-check run/runtime_decorators.ts",
+  output: "run/runtime_decorators.ts.out",
 });
 
 itest!(seed_random {
-  args: "run --seed=100 seed_random.js",
-  output: "seed_random.js.out",
+  args: "run --seed=100 run/seed_random.js",
+  output: "run/seed_random.js.out",
 });
 
 itest!(type_definitions {
-  args: "run --reload type_definitions.ts",
-  output: "type_definitions.ts.out",
+  args: "run --reload run/type_definitions.ts",
+  output: "run/type_definitions.ts.out",
 });
 
 itest!(type_definitions_for_export {
-  args: "run --reload --check type_definitions_for_export.ts",
-  output: "type_definitions_for_export.ts.out",
+  args: "run --reload --check run/type_definitions_for_export.ts",
+  output: "run/type_definitions_for_export.ts.out",
   exit_code: 1,
 });
 
 itest!(type_directives_01 {
-  args: "run --reload --check=all -L debug type_directives_01.ts",
-  output: "type_directives_01.ts.out",
+  args: "run --reload --check=all -L debug run/type_directives_01.ts",
+  output: "run/type_directives_01.ts.out",
   http_server: true,
 });
 
 itest!(type_directives_02 {
-  args: "run --reload --check=all -L debug type_directives_02.ts",
-  output: "type_directives_02.ts.out",
+  args: "run --reload --check=all -L debug run/type_directives_02.ts",
+  output: "run/type_directives_02.ts.out",
 });
 
 itest!(type_directives_js_main {
-  args: "run --reload -L debug type_directives_js_main.js",
-  output: "type_directives_js_main.js.out",
+  args: "run --reload -L debug run/type_directives_js_main.js",
+  output: "run/type_directives_js_main.js.out",
   exit_code: 0,
 });
 
 itest!(type_directives_redirect {
-  args: "run --reload --check type_directives_redirect.ts",
-  output: "type_directives_redirect.ts.out",
+  args: "run --reload --check run/type_directives_redirect.ts",
+  output: "run/type_directives_redirect.ts.out",
   http_server: true,
 });
 
 itest!(type_headers_deno_types {
-  args: "run --reload --check type_headers_deno_types.ts",
-  output: "type_headers_deno_types.ts.out",
+  args: "run --reload --check run/type_headers_deno_types.ts",
+  output: "run/type_headers_deno_types.ts.out",
   http_server: true,
 });
 
 itest!(ts_type_imports {
-  args: "run --reload --check ts_type_imports.ts",
-  output: "ts_type_imports.ts.out",
+  args: "run --reload --check run/ts_type_imports.ts",
+  output: "run/ts_type_imports.ts.out",
   exit_code: 1,
 });
 
 itest!(ts_decorators {
-  args: "run --reload --check ts_decorators.ts",
-  output: "ts_decorators.ts.out",
+  args: "run --reload --check run/ts_decorators.ts",
+  output: "run/ts_decorators.ts.out",
 });
 
 itest!(ts_type_only_import {
-  args: "run --reload --check ts_type_only_import.ts",
-  output: "ts_type_only_import.ts.out",
+  args: "run --reload --check run/ts_type_only_import.ts",
+  output: "run/ts_type_only_import.ts.out",
 });
 
 itest!(swc_syntax_error {

@@ -13,7 +13,7 @@ const fetchProc = await Deno.spawn(Deno.execPath(), {
     "--lock=lock_write_fetch.json",
     "--lock-write",
     "--cert=tls/RootCA.pem",
-    "https_import.ts",
+    "run/https_import.ts",
   ],
 });
 
@@ -26,7 +26,7 @@ const fetchCheckProc = await Deno.spawn(Deno.execPath(), {
     "cache",
     "--lock=lock_write_fetch.json",
     "--cert=tls/RootCA.pem",
-    "https_import.ts",
+    "run/https_import.ts",
   ],
 });
 
@@ -42,7 +42,7 @@ const runProc = await Deno.spawn(Deno.execPath(), {
     "--lock=lock_write_fetch.json",
     "--lock-write",
     "--allow-read",
-    "file_exists.ts",
+    "run/lock_write_fetch/file_exists.ts",
     "lock_write_fetch.json",
   ],
 });
