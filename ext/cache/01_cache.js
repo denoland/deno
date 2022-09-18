@@ -4,10 +4,11 @@
 ((window) => {
   const core = window.__bootstrap.core;
   const {
-    PromiseResolve,
-    PromiseReject,
     TypeError,
     Uint8Array,
+    ObjectPrototypeIsPrototypeOf,
+    RequestPrototype,
+    URLPrototype,
   } = window.__bootstrap.primordials;
   const {
     toInnerResponse,
@@ -22,7 +23,7 @@
 
     async open(cacheName) {
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return PromiseResolve(new Cache(cacheId));
+      return new Cache(cacheId);
     }
 
     async has(cacheName) {
@@ -47,36 +48,30 @@
       // Step 1.
       let innerRequest = null;
       // Step 2.
-      if (request instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
         innerRequest = toInnerRequest(request);
       } else {
         // Step 3.
-        try {
-          innerRequest = toInnerRequest(new Request(request));
-        } catch (error) {
-          return PromiseReject(error);
-        }
+        innerRequest = toInnerRequest(new Request(request));
       }
       // Step 4.
       const reqUrl = innerRequest.url();
       if (!reqUrl.startsWith("http:") && !reqUrl.startsWith("https:")) {
         const url = new URL(reqUrl);
         if (url.protocol !== "http:" && url.protocol !== "https:") {
-          return PromiseReject(
-            new TypeError("Request url protocol must be http or https"),
+          throw new TypeError(
+            "Request url protocol must be 'http:' or 'https:'",
           );
         }
       }
       if (innerRequest.method !== "GET") {
-        return PromiseReject(new TypeError("Request method must be GET"));
+        throw new TypeError("Request method must be GET");
       }
       // Step 5.
       const innerResponse = toInnerResponse(response);
       // Step 6.
       if (innerResponse.status === 206) {
-        return PromiseReject(
-          new TypeError("Response status must not be 206"),
-        );
+        throw new TypeError("Response status must not be 206");
       }
       // Step 7.
       const varyHeader = getHeader(innerResponse.headerList, "vary");
@@ -86,18 +81,14 @@
           if (
             fieldValue === "*"
           ) {
-            return PromiseReject(
-              new TypeError("Vary header must not contain '*'"),
-            );
+            throw new TypeError("Vary header must not contain '*'");
           }
         }
       }
 
       // Step 8.
       if (innerResponse.body.unusable()) {
-        return PromiseReject(
-          new TypeError("Response body must not already used"),
-        );
+        throw new TypeError("Response body must not already used");
       }
 
       // Step 9-11.
@@ -131,32 +122,29 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
-      try {
-        const p = await this.#matchAll(request, options);
-        if (p.length > 0) {
-          return PromiseResolve(p[0]);
-        } else {
-          return PromiseResolve(undefined);
-        }
-      } catch (error) {
-        return PromiseReject(error);
+      const p = await this.#matchAll(request, options);
+      if (p.length > 0) {
+        return p[0];
+      } else {
+        return undefined;
       }
     }
 
+    /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, options) {
+      // Step 1.
       let r = null;
       // Step 2.
-      if (request instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
         r = request;
         if (request.method !== "GET" && !options["ignoreMethod"]) {
-          return PromiseResolve([]);
+          return [];
         }
-      } else if (typeof request === "string" || request instanceof URL) {
-        try {
-          r = new Request(request);
-        } catch (error) {
-          return PromiseReject(error);
-        }
+      } else if (
+        typeof request === "string" ||
+        ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+      ) {
+        r = new Request(request);
       }
       return await core.opAsync("op_cache_delete", {
         cacheId: this.#id,
@@ -175,17 +163,16 @@
       // Step 1.
       let r = null;
       // Step 2.
-      if (request instanceof Request) {
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
         r = request;
         if (request.method !== "GET" && !options["ignoreMethod"]) {
-          return PromiseResolve([]);
+          return [];
         }
-      } else if (typeof request === "string" || request instanceof URL) {
-        try {
-          r = new Request(request);
-        } catch (error) {
-          return PromiseReject(error);
-        }
+      } else if (
+        typeof request === "string" ||
+        ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+      ) {
+        r = new Request(request);
       }
 
       // Step 5.
@@ -251,7 +238,7 @@
       // TODO(@satyarohith): Step 5.4.
       // TODO(@satyarohith): Step 5.5.
 
-      return PromiseResolve(responses);
+      return responses;
     }
   }
 
