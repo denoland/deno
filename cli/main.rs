@@ -828,7 +828,8 @@ async fn run_command(
   .await?;
 
   let exit_code = worker.run().await?;
-  Ok(exit_code)
+  // Early exit to avoid running the Drop handler for the worker.
+  std::process::exit(exit_code);
 }
 
 async fn task_command(
