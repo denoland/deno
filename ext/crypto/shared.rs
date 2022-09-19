@@ -46,7 +46,7 @@ pub const ID_SECP384R1_OID: const_oid::ObjectIdentifier =
 pub const ID_SECP521R1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.35");
 
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum ShaHash {
   #[serde(rename = "SHA-1")]
   Sha1,
@@ -58,7 +58,7 @@ pub enum ShaHash {
   Sha512,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum EcNamedCurve {
   #[serde(rename = "P-256")]
   P256,
