@@ -2,6 +2,7 @@
 
 mod common;
 mod global;
+mod local;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -16,6 +17,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 
 use self::common::InnerNpmPackageResolver;
+use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
@@ -35,10 +37,18 @@ impl NpmPackageResolver {
     api: NpmRegistryApi,
     unstable: bool,
     no_npm: bool,
+    local_node_modules: Option<PathBuf>,
   ) -> Self {
     // For now, always create a GlobalNpmPackageResolver, but in the future
     // this might be a local node_modules folder
-    let inner = Arc::new(GlobalNpmPackageResolver::new(cache, api));
+    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules {
+      Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+        cache,
+        api,
+        node_modules_folder,
+      )),
+      None => Arc::new(GlobalNpmPackageResolver::new(cache, api)),
+    };
     Self {
       unstable,
       no_npm,

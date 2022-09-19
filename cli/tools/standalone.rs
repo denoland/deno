@@ -270,6 +270,7 @@ pub fn compile_to_runtime_flags(
     import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
     inspect: None,
+    local_npm: false,
     location: flags.location.clone(),
     lock_write: false,
     lock: None,

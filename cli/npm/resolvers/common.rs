@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -86,4 +87,34 @@ pub async fn cache_packages(
     }
   }
   Ok(())
+}
+
+pub fn ensure_registry_read_permission(
+  registry_path: &Path,
+  path: &Path,
+) -> Result<(), AnyError> {
+  // allow reading if it's in the node_modules
+  if path.starts_with(&registry_path)
+    && path
+      .components()
+      .all(|c| !matches!(c, std::path::Component::ParentDir))
+  {
+    // todo(dsherret): cache this?
+    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
+      match std::fs::canonicalize(path) {
+        Ok(path) if path.starts_with(registry_path) => {
+          return Ok(());
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+          return Ok(());
+        }
+        _ => {} // ignore
+      }
+    }
+  }
+
+  Err(deno_core::error::custom_error(
+    "PermissionDenied",
+    format!("Reading {} is not allowed", path.display()),
+  ))
 }

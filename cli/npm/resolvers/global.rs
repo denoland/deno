@@ -17,6 +17,7 @@ use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
 
+use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
 use super::common::LocalNpmPackageInfo;
 
@@ -103,36 +104,6 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_read_permission(&registry_path, path)
+    ensure_registry_read_permission(&registry_path, path)
   }
-}
-
-fn ensure_read_permission(
-  registry_path: &Path,
-  path: &Path,
-) -> Result<(), AnyError> {
-  // allow reading if it's in the deno_dir node modules
-  if path.starts_with(&registry_path)
-    && path
-      .components()
-      .all(|c| !matches!(c, std::path::Component::ParentDir))
-  {
-    // todo(dsherret): cache this?
-    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
-      match std::fs::canonicalize(path) {
-        Ok(path) if path.starts_with(registry_path) => {
-          return Ok(());
-        }
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-          return Ok(());
-        }
-        _ => {} // ignore
-      }
-    }
-  }
-
-  Err(deno_core::error::custom_error(
-    "PermissionDenied",
-    format!("Reading {} is not allowed", path.display()),
-  ))
 }
