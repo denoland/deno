@@ -2067,7 +2067,7 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     return false; // don't grant permission if this fails
   }
 
-  // print to stderr so that if deno is > to a file this is still displayed.
+  // print to stderr so that if stdout is piped this is still displayed.
   const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
   eprint!("{}  ┌ ", PERMISSION_EMOJI);
   eprint!("{}", colors::bold("Deno requests "));
