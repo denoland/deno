@@ -53,7 +53,11 @@ pub async fn print_docs(
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &analyzer);
+    let doc_parser = doc::DocParser::new(
+      graph,
+      doc_flags.private,
+      analyzer.as_capturing_parser(),
+    );
     doc_parser.parse_module(&source_file_specifier)?.definitions
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -76,8 +80,11 @@ pub async fn print_docs(
     let graph = ps
       .create_graph(vec![(root_specifier.clone(), ModuleKind::Esm)])
       .await?;
-    let store = ps.parsed_source_cache.as_store();
-    let doc_parser = doc::DocParser::new(graph, doc_flags.private, &*store);
+    let doc_parser = doc::DocParser::new(
+      graph,
+      doc_flags.private,
+      ps.parsed_source_cache.as_capturing_parser(),
+    );
     doc_parser.parse_with_reexports(&root_specifier)?
   };
 

@@ -325,7 +325,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       };
       visitor.visit_map(map)
     } else {
-      let prop_names = obj.get_own_property_names(self.scope);
+      let prop_names =
+        obj.get_own_property_names(self.scope, Default::default());
       let keys: Vec<magic::Value> = match prop_names {
         Some(names) => from_v8(self.scope, names.into()).unwrap(),
         None => vec![],
@@ -410,7 +411,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
       // Unpack single-key
       let tag = {
-        let prop_names = obj.get_own_property_names(self.scope);
+        let prop_names =
+          obj.get_own_property_names(self.scope, Default::default());
         let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
         if prop_names.length() != 1 {
           return Err(Error::LengthMismatch);

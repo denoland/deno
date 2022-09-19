@@ -11,6 +11,12 @@
     ObjectEntries,
     ObjectCreate,
     ObjectDefineProperty,
+    Proxy,
+    ReflectDefineProperty,
+    ReflectGetOwnPropertyDescriptor,
+    ReflectOwnKeys,
+    Set,
+    SetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   function assert(cond) {
@@ -50,29 +56,29 @@
       return success;
     },
     ownKeys(_target) {
-      const globalThisKeys = Reflect.ownKeys(globalThis);
-      const nodeGlobalsKeys = Reflect.ownKeys(nodeGlobals);
+      const globalThisKeys = ReflectOwnKeys(globalThis);
+      const nodeGlobalsKeys = ReflectOwnKeys(nodeGlobals);
       const nodeGlobalsKeySet = new Set(nodeGlobalsKeys);
       return [
         ...ArrayPrototypeFilter(
           globalThisKeys,
-          (k) => !nodeGlobalsKeySet.has(k),
+          (k) => !SetPrototypeHas(nodeGlobalsKeySet, k),
         ),
         ...nodeGlobalsKeys,
       ];
     },
     defineProperty(_target, prop, desc) {
       if (prop in nodeGlobals) {
-        return Reflect.defineProperty(nodeGlobals, prop, desc);
+        return ReflectDefineProperty(nodeGlobals, prop, desc);
       } else {
-        return Reflect.defineProperty(globalThis, prop, desc);
+        return ReflectDefineProperty(globalThis, prop, desc);
       }
     },
     getOwnPropertyDescriptor(_target, prop) {
       if (prop in nodeGlobals) {
-        return Reflect.getOwnPropertyDescriptor(nodeGlobals, prop);
+        return ReflectGetOwnPropertyDescriptor(nodeGlobals, prop);
       } else {
-        return Reflect.getOwnPropertyDescriptor(globalThis, prop);
+        return ReflectGetOwnPropertyDescriptor(globalThis, prop);
       }
     },
     has(_target, prop) {
