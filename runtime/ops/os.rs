@@ -8,6 +8,7 @@ use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::{op, ExtensionBuilder};
+use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
@@ -99,7 +100,14 @@ fn op_get_env(
   state: &mut OpState,
   key: String,
 ) -> Result<Option<String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check(&key)?;
+  let skip_permission_check =
+    state.borrow::<crate::ops::UnstableChecker>().unstable
+      && NODE_ENV_VAR_ALLOWLIST.contains(&key);
+
+  if !skip_permission_check {
+    state.borrow_mut::<Permissions>().env.check(&key)?;
+  }
+
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }

@@ -1,5 +1,0 @@
-{
-  "name": "@deno/esm-bin",
-  "version": "1.0.0",
-  "bin": "./cli.mjs"
-}

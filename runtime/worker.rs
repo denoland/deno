@@ -25,7 +25,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
-use deno_node::DenoDirNpmResolver;
+use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
@@ -75,7 +75,7 @@ pub struct WorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
+  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -511,6 +511,7 @@ mod tests {
         ts_version: "x".to_string(),
         unstable: false,
         user_agent: "x".to_string(),
+        inspect: false,
       },
       extensions: vec![],
       unsafely_ignore_certificate_errors: None,
@@ -539,7 +540,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = test_util::testdata_path().join("esm_imports_a.js");
+    let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
@@ -582,7 +583,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = test_util::testdata_path().join("001_hello.js");
+    let p = test_util::testdata_path().join("run/001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
