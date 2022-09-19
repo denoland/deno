@@ -199,7 +199,7 @@ impl CacheSemantics {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum FetchOnceResult {
   Code(Vec<u8>, HeadersMap),
   NotModified,
