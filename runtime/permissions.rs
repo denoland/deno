@@ -2060,6 +2060,11 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     }
   }
 
+  // Clear n-lines in terminal and move cursor to the beginning of the line.
+  fn clear_n_lines(n: usize) {
+    eprint!("\x1B[{}A\x1B[0J", n);
+  }
+
   // For security reasons we must consume everything in stdin so that previously
   // buffered data cannot effect the prompt.
   if let Err(err) = clear_stdin() {
@@ -2093,20 +2098,20 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     };
     match ch.to_ascii_lowercase() {
       'y' => {
-        eprint!("\x1B[4A\x1B[0J");
+        clear_n_lines(4);
         let msg = format!("Granted {}.", message);
         eprintln!("✅ {}", colors::bold(&msg));
         return true;
       }
       'n' => {
-        eprint!("\x1B[4A\x1B[0J");
+        clear_n_lines(4);
         let msg = format!("Denied {}.", message);
         eprintln!("❌ {}", colors::bold(&msg));
         return false;
       }
       _ => {
         // If we don't get a recognized option try again.
-        eprint!("\x1B[1A\x1B[0J");
+        clear_n_lines(1);
         eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
         eprint!(" {} > ", OPTS);
       }
