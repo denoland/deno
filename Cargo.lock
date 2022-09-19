@@ -2817,9 +2817,9 @@ dependencies = [
 
 [[package]]
 name = "netif"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a96c14078e0dae0c847c413b31304d5563daeb2494a61ebb01cb66f19b8ba99f"
+checksum = "d29a01b9f018d6b7b277fef6c79fdbd9bf17bb2d1e298238055cafab49baa5ee"
 dependencies = [
  "libc",
  "winapi 0.3.9",
