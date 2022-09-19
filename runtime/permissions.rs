@@ -34,7 +34,7 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
 pub enum PermissionState {
   Granted = 0,
   Prompt = 1,
@@ -135,7 +135,7 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
   pub description: &'static str,
@@ -207,7 +207,7 @@ impl AsRef<str> for EnvVarName {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   pub name: &'static str,
   pub description: &'static str,
@@ -1133,7 +1133,7 @@ impl Default for UnaryPermission<FfiDescriptor> {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
   pub write: UnaryPermission<WriteDescriptor>,
@@ -1158,7 +1158,7 @@ impl Default for Permissions {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
@@ -1490,7 +1490,7 @@ fn escalation_error() -> AnyError {
   )
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ChildUnitPermissionArg {
   Inherit,
   Granted,
@@ -1542,7 +1542,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ChildUnaryPermissionArg {
   Inherit,
   Granted,
@@ -1610,7 +1610,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 }
 
 /// Directly deserializable from JS worker and test permission options.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   hrtime: ChildUnitPermissionArg,

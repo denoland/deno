@@ -63,7 +63,7 @@ pub struct CompilerOptions {
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct IgnoredCompilerOptions {
   pub items: Vec<String>,
   pub maybe_specifier: Option<ModuleSpecifier>,
