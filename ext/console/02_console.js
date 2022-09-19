@@ -432,7 +432,7 @@
         inspectOptions.indentLevel--;
 
         if (skipTo) {
-          // substract skipped (empty) items
+          // subtract skipped (empty) items
           entriesLength -= skipTo - i;
           i = skipTo;
         }
