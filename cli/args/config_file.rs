@@ -525,6 +525,7 @@ impl ConfigFile {
       std::env::current_dir()?.join(path_ref)
     };
 
+    // perf: Check if the config file exists before canonicalizing path.
     if !config_file.exists() {
       return Err(
         std::io::Error::new(
