@@ -3,48 +3,67 @@
 
 ((window) => {
   const core = window.__bootstrap.core;
+  const webidl = window.__bootstrap.webidl;
   const {
+    Symbol,
     TypeError,
     Uint8Array,
     ObjectPrototypeIsPrototypeOf,
-    RequestPrototype,
-    URLPrototype,
   } = window.__bootstrap.primordials;
   const {
+    Request,
     toInnerResponse,
     toInnerRequest,
   } = window.__bootstrap.fetch;
+  const { URLPrototype } = window.__bootstrap.url;
+  const RequestPrototype = Request.prototype;
   const { getHeader } = window.__bootstrap.headers;
 
   class CacheStorage {
     constructor() {
-      return this;
+      webidl.illegalConstructor();
     }
 
     async open(cacheName) {
+      webidl.assertBranded(this, CacheStoragePrototype);
+      const prefix = "Failed to execute 'open' on 'CacheStorage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return new Cache(cacheId);
+      const cacheInstance = webidl.createBranded(Cache);
+      cacheInstance[_id] = cacheId;
+      return cacheInstance;
     }
 
     async has(cacheName) {
+      webidl.assertBranded(this, CacheStoragePrototype);
+      const prefix = "Failed to execute 'has' on 'CacheStorage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       return await core.opAsync("op_cache_storage_has", cacheName);
     }
 
     async delete(cacheName) {
+      webidl.assertBranded(this, CacheStoragePrototype);
+      const prefix = "Failed to execute 'delete' on 'CacheStorage'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       return await core.opAsync("op_cache_storage_delete", cacheName);
     }
   }
 
-  class Cache {
-    #id;
+  const _id = Symbol("id");
 
-    constructor(cacheId) {
-      this.#id = cacheId;
-      return this;
+  class Cache {
+    /** @type {number} */
+    [_id];
+
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
     async put(request, response) {
+      webidl.assertBranded(this, CachePrototype);
+      const prefix = "Failed to execute 'put' on 'Cache'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
       // Step 1.
       let innerRequest = null;
       // Step 2.
@@ -95,7 +114,7 @@
       const rid = await core.opAsync(
         "op_cache_put",
         {
-          cacheId: this.#id,
+          cacheId: this[_id],
           requestUrl: innerRequest.url(),
           responseHeaders: innerResponse.headerList,
           requestHeaders: innerRequest.headerList,
@@ -122,6 +141,9 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
+      webidl.assertBranded(this, CachePrototype);
+      const prefix = "Failed to execute 'match' on 'Cache'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       const p = await this.#matchAll(request, options);
       if (p.length > 0) {
         return p[0];
@@ -132,6 +154,9 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, options) {
+      webidl.assertBranded(this, CachePrototype);
+      const prefix = "Failed to execute 'delete' on 'Cache'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       // Step 1.
       let r = null;
       // Step 2.
@@ -147,7 +172,7 @@
         r = new Request(request);
       }
       return await core.opAsync("op_cache_delete", {
-        cacheId: this.#id,
+        cacheId: this[_id],
         requestUrl: r.url,
       });
     }
@@ -189,7 +214,7 @@
         const matchResult = await core.opAsync(
           "op_cache_match",
           {
-            cacheId: this.#id,
+            cacheId: this[_id],
             requestUrl: r.url,
           },
         );
@@ -242,7 +267,16 @@
     }
   }
 
+  const CacheStoragePrototype = CacheStorage.prototype;
+  const CachePrototype = Cache.prototype;
+
+  let cacheStorage;
   window.__bootstrap.caches = {
-    CacheStorage,
+    cacheStorage() {
+      if (!cacheStorage) {
+        cacheStorage = webidl.createBranded(CacheStorage);
+      }
+      return cacheStorage;
+    },
   };
 })(this);
