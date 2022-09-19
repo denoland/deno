@@ -1,4 +1,4 @@
-import { assert } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 Deno.test(
   { name: "Deno.networkInterfaces", permissions: { env: true } },
@@ -21,5 +21,19 @@ Deno.test(
       assert(typeof cidr === "string");
       assert(typeof mac === "string");
     }
+  },
+);
+
+Deno.test(
+  {
+    name: "Deno.networkInterfaces has an ipv4 loopback",
+    permissions: { env: true },
+  },
+  () => {
+    const networkInterfaces = Deno.networkInterfaces();
+    assertEquals(
+      networkInterfaces.filter((item) => item.address === "127.0.0.1").length,
+      1,
+    );
   },
 );
