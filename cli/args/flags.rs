@@ -527,8 +527,8 @@ To evaluate code in the shell:
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
-  let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(&args)?;
+  let mut app = clap_root(&version);
+  let matches = app.try_get_matches_from_mut(&args)?;
 
   let mut flags = Flags::default();
 
