@@ -978,9 +978,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.45.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef056cd1ca61584e7db9e3a025676f880be5a67101aee54f295b8770100eeb53"
+checksum = "910f889d786d8b7ef40d50da4f2a4da01adf1c63c2f4a3b74324f6313eee8c59"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -2817,9 +2817,9 @@ dependencies = [
 
 [[package]]
 name = "netif"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a96c14078e0dae0c847c413b31304d5563daeb2494a61ebb01cb66f19b8ba99f"
+checksum = "d29a01b9f018d6b7b277fef6c79fdbd9bf17bb2d1e298238055cafab49baa5ee"
 dependencies = [
  "libc",
  "winapi 0.3.9",
