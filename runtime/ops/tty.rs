@@ -205,6 +205,7 @@ struct ConsoleSize {
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
+  result: &mut [u8],
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 

@@ -5,8 +5,10 @@
   const core = window.Deno.core;
   const ops = core.ops;
 
+  const size = new Uint32Array(2);
+  const sizeU8 = new Uint8Array(8);
   function consoleSize(rid) {
-    return ops.op_console_size(rid);
+    return ops.op_console_size(rid, sizeU8);
   }
 
   function isatty(rid) {
