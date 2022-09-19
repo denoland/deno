@@ -236,6 +236,7 @@
       offset += 2;
     }
     str += "};";
+    // ...so you don't like eval huh? don't worry, it only executes during snapshot :)
     return [new Function("view", str), new Uint32Array(offset)];
   }
 
