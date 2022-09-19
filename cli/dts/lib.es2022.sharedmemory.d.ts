@@ -18,13 +18,10 @@ and limitations under the License.
 /// <reference no-default-lib="true"/>
 
 
-declare namespace Intl {
-  interface NumberRangeFormatPart extends NumberFormatPart {
-    source: "startRange" | "endRange" | "shared"
-  }
-
-  interface NumberFormat {
-    formatRange(start: number | bigint, end: number | bigint): string;
-    formatRangeToParts(start: number | bigint, end: number | bigint): NumberRangeFormatPart[];
-  }
+interface Atomics {
+    /**
+     * A non-blocking, asynchronous version of wait which is usable on the main thread.
+     * Waits asynchronously on a shared memory location and returns a Promise
+     */
+    waitAsync(typedArray: BigInt64Array | Int32Array, index: number, value: bigint, timeout?: number): { async: false, value: "ok" | "not-equal" | "timed-out" } | { async: true, value: Promise<"ok" | "not-equal" | "timed-out"> };
 }
