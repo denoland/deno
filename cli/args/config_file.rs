@@ -525,6 +525,20 @@ impl ConfigFile {
       std::env::current_dir()?.join(path_ref)
     };
 
+    // perf: Check if the config file exists before canonicalizing path.
+    if !config_file.exists() {
+      return Err(
+        std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          format!(
+            "Could not find the config file: {}",
+            config_file.to_string_lossy()
+          ),
+        )
+        .into(),
+      );
+    }
+
     let config_path = canonicalize_path(&config_file).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
