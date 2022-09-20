@@ -42,6 +42,7 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -150,17 +151,18 @@ impl CliOptions {
   pub fn resolve_local_node_modules_folder(
     &self,
   ) -> Result<Option<PathBuf>, AnyError> {
-    if !self.flags.local_npm {
+    let path = if !self.flags.local_npm {
       return Ok(None);
     } else if let Some(config_path) = self
       .maybe_config_file
       .as_ref()
       .and_then(|c| c.specifier.to_file_path().ok())
     {
-      Ok(Some(config_path.parent().unwrap().join("node_modules")))
+      config_path.parent().unwrap().join("node_modules")
     } else {
-      Ok(Some(std::env::current_dir()?.join("node_modules")))
-    }
+      std::env::current_dir()?.join("node_modules")
+    };
+    Ok(Some(fs_util::canonicalize_path(&path)?))
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {

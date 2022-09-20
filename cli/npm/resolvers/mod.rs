@@ -37,8 +37,6 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules: Option<PathBuf>,
   ) -> Self {
-    // For now, always create a GlobalNpmPackageResolver, but in the future
-    // this might be a local node_modules folder
     let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
         cache,
