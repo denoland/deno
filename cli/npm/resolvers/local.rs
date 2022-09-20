@@ -1,16 +1,13 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
@@ -57,7 +54,10 @@ impl LocalNpmPackageResolver {
       resolution,
       folder_index: Default::default(),
       registry_url,
-      root_node_modules_specifier: ModuleSpecifier::from_directory_path(&node_modules_folder).unwrap(),
+      root_node_modules_specifier: ModuleSpecifier::from_directory_path(
+        &node_modules_folder,
+      )
+      .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
   }
@@ -74,15 +74,22 @@ impl LocalNpmPackageResolver {
     }
   }
 
-  fn resolve_folder_for_specifier(&self, specifier: &ModuleSpecifier) -> Result<PathBuf, AnyError> {
+  fn resolve_folder_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<PathBuf, AnyError> {
     match self.maybe_resolve_folder_for_specifier(specifier) {
       Some(path) => Ok(path),
       None => bail!("could not find npm package for '{}'", specifier),
     }
   }
 
-  fn maybe_resolve_folder_for_specifier(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    let relative_url = self.root_node_modules_specifier.make_relative(specifier)?;
+  fn maybe_resolve_folder_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<PathBuf> {
+    let relative_url =
+      self.root_node_modules_specifier.make_relative(specifier)?;
     if relative_url.starts_with("../") {
       return None;
     }
@@ -99,7 +106,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolved_package =
       self.resolution.resolve_package_from_deno_module(pkg_req)?;
     let folder_index = self.folder_index.read();
-    let root_folder = folder_index.all_folders.get(&self.root_node_modules_path).unwrap();
+    let root_folder = folder_index
+      .all_folders
+      .get(&self.root_node_modules_path)
+      .unwrap();
     let sub_dir_name = if root_folder
       .folder_names
       .contains(&resolved_package.id.to_string())
@@ -119,8 +129,22 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let local_path = self.resolve_folder_for_specifier(referrer)?;
     let package_root_path = self.resolve_package_root(&local_path);
-    self.resolution.resolve_package_from_package(name, referrer)
-    todo!()
+    let mut current_folder = package_root_path.as_path();
+    loop {
+      let sub_dir = current_folder.join("node_modules").join(name);
+      if sub_dir.is_dir() {
+        return Ok(sub_dir);
+      }
+      if current_folder == self.root_node_modules_path {
+        bail!(
+          "could not find package '{}' from referrer '{}'.",
+          name,
+          referrer
+        );
+      }
+      current_folder = current_folder.parent().unwrap().parent().unwrap();
+      debug_assert_eq!(current_folder.file_stem().unwrap(), "node_modules");
+    }
   }
 
   fn resolve_package_folder_from_specifier(
@@ -183,10 +207,16 @@ fn setup_node_modules(
     .collect::<Vec<_>>();
   top_level_packages.sort_by(|a, b| a.id.cmp(&b.id));
 
-  let folders_index = create_virtual_node_modules_folder(snapshot, root_node_modules_dir_path);
+  let folders_index =
+    create_virtual_node_modules_folder(snapshot, root_node_modules_dir_path);
 
   // todo(dsherret): ensure only one process enters this at a time.
-  sync_folder_with_fs(&folders_index, &root_node_modules_dir_path, cache, registry_url)?;
+  sync_folder_with_fs(
+    &folders_index,
+    &root_node_modules_dir_path,
+    cache,
+    registry_url,
+  )?;
 
   Ok(folders_index)
 }
@@ -214,7 +244,9 @@ impl NodeModulesFolder {
 
   pub fn add_folder(&mut self, folder_name: String, package_id: NpmPackageId) {
     self.folder_names.insert(folder_name.clone());
-    self.packages_to_folder_names.insert(package_id, folder_name);
+    self
+      .packages_to_folder_names
+      .insert(package_id, folder_name);
   }
 }
 
@@ -233,7 +265,8 @@ fn create_virtual_node_modules_folder(
   let mut folders_index = NodeModulesFolderIndex {
     all_folders: Default::default(),
   };
-  let mut root_folder = NodeModulesFolder::new(root_node_modules_path.to_path_buf());
+  let mut root_folder =
+    NodeModulesFolder::new(root_node_modules_path.to_path_buf());
 
   // go over all the top level packages to ensure they're
   // kept in the top level folder
@@ -250,16 +283,30 @@ fn create_virtual_node_modules_folder(
     };
     root_folder.add_folder(folder_name.clone(), package.id.clone());
   }
-  folders_index.all_folders.insert(root_node_modules_path.to_path_buf(), root_folder);
+  folders_index
+    .all_folders
+    .insert(root_node_modules_path.to_path_buf(), root_folder);
 
   // now go over each package and sub packages and populate them in the folder
   for top_level_package in &top_level_packages {
     let sub_node_modules_path = {
-      let root_folder = folders_index.all_folders.get(root_node_modules_path).unwrap();
-      let sub_dir = root_folder.packages_to_folder_names.get(&top_level_package.id).unwrap();
+      let root_folder = folders_index
+        .all_folders
+        .get(root_node_modules_path)
+        .unwrap();
+      let sub_dir = root_folder
+        .packages_to_folder_names
+        .get(&top_level_package.id)
+        .unwrap();
       root_folder.path.join(sub_dir).join("node_modules")
     };
-    populate_folder_deps(top_level_package, &sub_node_modules_path, root_node_modules_path, &mut folders_index, snapshot);
+    populate_folder_deps(
+      top_level_package,
+      &sub_node_modules_path,
+      root_node_modules_path,
+      &mut folders_index,
+      snapshot,
+    );
   }
   folders_index
 }
@@ -281,15 +328,27 @@ fn populate_folder_deps(
       folders_index,
     ) {
       let sub_node_modules_path = {
-        let node_modules_folder = folders_index.all_folders.entry(insert_folder.clone()).or_insert_with(|| NodeModulesFolder::new(insert_folder));
+        let node_modules_folder = folders_index
+          .all_folders
+          .entry(insert_folder.clone())
+          .or_insert_with(|| NodeModulesFolder::new(insert_folder));
         node_modules_folder.add_folder(package_ref_name.clone(), id.clone());
-        node_modules_folder.path.join(package_ref_name).join("node_modules")
+        node_modules_folder
+          .path
+          .join(package_ref_name)
+          .join("node_modules")
       };
 
       // now go through all this module's dependencies
       let package = snapshot.package_from_id(id).unwrap();
 
-      populate_folder_deps(&package, &sub_node_modules_path, root_node_modules_path, folders_index, snapshot);
+      populate_folder_deps(
+        &package,
+        &sub_node_modules_path,
+        root_node_modules_path,
+        folders_index,
+        snapshot,
+      );
     }
   }
 }
@@ -364,7 +423,11 @@ fn sync_folder_with_fs(
     let local_folder_path = output_dir.join(folder_name);
     let sub_node_modules_path = local_folder_path.join("node_modules");
     let cache_folder = cache.package_folder(&package_id, registry_url);
-    let folder_kind = if folders_index.all_folders.get(&sub_node_modules_path).is_none() {
+    let folder_kind = if folders_index
+      .all_folders
+      .get(&sub_node_modules_path)
+      .is_none()
+    {
       FolderKind::Symlink
     } else {
       FolderKind::SubDir
