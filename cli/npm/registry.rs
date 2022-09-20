@@ -168,9 +168,7 @@ impl NpmRegistryApi {
       Ok(info)
     } else {
       let mut maybe_package_info = None;
-      if !(matches!(self.cache_setting, CacheSetting::ReloadAll)
-        || matches!(self.cache_setting, CacheSetting::ReloadSome(_)))
-      {
+      if self.cache_setting.should_use_for_npm_package(name) {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
