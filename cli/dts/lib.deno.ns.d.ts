@@ -169,6 +169,22 @@ declare namespace Deno {
    */
   export const noColor: boolean;
 
+  /**
+   * Returns the release version of the Operating System.
+   *
+   * ```ts
+   * console.log(Deno.osRelease());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   * Under consideration to possibly move to Deno.build or Deno.versions and if
+   * it should depend sys-info, which may not be desirable.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
+   */
+  export function osRelease(): string;
+
   /** @category Permissions */
   export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
 
