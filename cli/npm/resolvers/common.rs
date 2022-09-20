@@ -10,34 +10,25 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 
-/// Information about the local npm package.
-pub struct LocalNpmPackageInfo {
-  /// Unique identifier.
-  pub id: NpmPackageId,
-  /// Local folder path of the npm package.
-  pub folder_path: PathBuf,
-}
-
 pub trait InnerNpmPackageResolver: Send + Sync {
-  fn resolve_package_from_deno_module(
+  fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_from_package(
+  fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_from_specifier(
+  fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
   fn has_packages(&self) -> bool;
 

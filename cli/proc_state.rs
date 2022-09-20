@@ -515,15 +515,7 @@ impl ProcState {
             &self.npm_resolver,
           ))
           .with_context(|| {
-            format!(
-              "Could not resolve '{}' from '{}'.",
-              specifier,
-              self
-                .npm_resolver
-                .resolve_package_from_specifier(&referrer)
-                .unwrap()
-                .id
-            )
+            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
           });
       }
 

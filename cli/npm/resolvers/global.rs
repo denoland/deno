@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::io::ErrorKind;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -19,7 +19,6 @@ use crate::npm::NpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
-use super::common::LocalNpmPackageInfo;
 
 #[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
@@ -40,45 +39,42 @@ impl GlobalNpmPackageResolver {
     }
   }
 
-  fn local_package_info(&self, id: &NpmPackageId) -> LocalNpmPackageInfo {
-    LocalNpmPackageInfo {
-      folder_path: self.cache.package_folder(id, &self.registry_url),
-      id: id.clone(),
-    }
+  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
+    self.cache.package_folder(id, &self.registry_url)
   }
 }
 
 impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
-  fn resolve_package_from_deno_module(
+  fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     let pkg = self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    Ok(self.local_package_info(&pkg.id))
+    Ok(self.package_folder(&pkg.id))
   }
 
-  fn resolve_package_from_package(
+  fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
       .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
     let pkg = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id)?;
-    Ok(self.local_package_info(&pkg.id))
+    Ok(self.package_folder(&pkg.id))
   }
 
-  fn resolve_package_from_specifier(
+  fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
+  ) -> Result<PathBuf, AnyError> {
     let pkg_id = self
       .cache
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
-    Ok(self.local_package_info(&pkg_id))
+    Ok(self.package_folder(&pkg_id))
   }
 
   fn has_packages(&self) -> bool {
