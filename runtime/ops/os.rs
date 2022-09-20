@@ -108,9 +108,17 @@ fn op_get_env(
     state.borrow_mut::<Permissions>().env.check(&key)?;
   }
 
-  if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error("Key contains invalid characters."));
+  if key.is_empty() {
+    return Err(type_error("Key is an empty string."));
   }
+
+  if key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error(format!(
+      "Key contains invalid characters: {:?}",
+      key
+    )));
+  }
+
   let r = match env::var(key) {
     Err(env::VarError::NotPresent) => None,
     v => Some(v?),
