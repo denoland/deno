@@ -541,7 +541,7 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || typeof resp.then === "function") {
+              if (resp instanceof Promise || typeof resp?.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,
