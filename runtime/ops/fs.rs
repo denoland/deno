@@ -394,7 +394,7 @@ async fn op_fsync_async(
 fn op_fstat_sync(
   state: &mut OpState,
   rid: ResourceId,
-  out_buf: &mut [u8],
+  out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
   let metadata = StdFileResource::with_file(state, rid, |std_file| {
     std_file.metadata().map_err(AnyError::from)
@@ -953,15 +953,7 @@ fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> (u64, bool) {
 macro_rules! create_struct_writer {
   (pub struct $name:ident { $($field:ident: $type:ty),* $(,)? }) => {
     impl $name {
-      fn write(self, buf: &mut [u8]) {
-        assert_eq!(buf.len() % std::mem::size_of::<u32>(), 0);
-        // SAFETY: size is multiple of 4
-        let buf = unsafe {
-          std::slice::from_raw_parts_mut(
-            buf.as_mut_ptr() as *mut u32,
-            buf.len() / std::mem::size_of::<u32>(),
-          )
-        };
+      fn write(self, buf: &mut [u32]) {
         let mut offset = 0;
         $(
           let value = self.$field as u64;
@@ -1068,7 +1060,7 @@ fn op_stat_sync(
   state: &mut OpState,
   path: String,
   lstat: bool,
-  out_buf: &mut [u8],
+  out_buf: &mut [u32],
 ) -> Result<(), AnyError> {
   let path = PathBuf::from(&path);
   state.borrow_mut::<Permissions>().read.check(&path)?;

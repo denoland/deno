@@ -285,7 +285,7 @@
   }
 
   function fstatSync(rid) {
-    ops.op_fstat_sync(rid, statBuf.buffer);
+    ops.op_fstat_sync(rid, statBuf);
     return statStruct(statBuf);
   }
 
@@ -305,7 +305,7 @@
     ops.op_stat_sync(
       pathFromURL(path),
       true,
-      statBuf.buffer,
+      statBuf,
     );
     return statStruct(statBuf);
   }
@@ -322,7 +322,7 @@
     ops.op_stat_sync(
       pathFromURL(path),
       false,
-      statBuf.buffer,
+      statBuf,
     );
     return statStruct(statBuf);
   }
