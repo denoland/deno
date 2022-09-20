@@ -1,7 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,22 +9,19 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::RwLock;
-use deno_core::serde_json;
 use deno_core::url::Url;
-use serde::Deserialize;
-use serde::Serialize;
 
+use crate::fs_util;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolutionPackage;
 
 use super::common::cache_packages;
 use super::common::ensure_registry_read_permission;
@@ -34,7 +31,6 @@ use super::common::InnerNpmPackageResolver;
 pub struct LocalNpmPackageResolver {
   cache: NpmCache,
   resolution: Arc<NpmResolution>,
-  folder_index: Arc<RwLock<NodeModulesFolderIndex>>,
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_specifier: ModuleSpecifier,
@@ -52,7 +48,6 @@ impl LocalNpmPackageResolver {
     Self {
       cache,
       resolution,
-      folder_index: Default::default(),
       registry_url,
       root_node_modules_specifier: ModuleSpecifier::from_directory_path(
         &node_modules_folder,
@@ -105,24 +100,17 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let resolved_package =
       self.resolution.resolve_package_from_deno_module(pkg_req)?;
-    let folder_index = self.folder_index.read();
-    let root_folder = folder_index
-      .all_folders
-      .get(&self.root_node_modules_path)
-      .unwrap();
-    let package_name = if root_folder
-      .folder_names
-      .contains(&resolved_package.id.to_string())
-    {
-      // it's the fully resolved package name
-      resolved_package.id.to_string()
-    } else {
-      resolved_package.id.name.clone()
-    };
-    Ok(join_package_name(
+
+    // it might be at the full path if there are duplicate names
+    let fully_resolved_folder_path = join_package_name(
       &self.root_node_modules_path,
-      &package_name,
-    ))
+      &resolved_package.id.to_string(),
+    );
+    Ok(if fully_resolved_folder_path.exists() {
+      fully_resolved_folder_path
+    } else {
+      join_package_name(&self.root_node_modules_path, &resolved_package.id.name)
+    })
   }
 
   fn resolve_package_folder_from_package(
@@ -177,216 +165,137 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       )
       .await?;
 
-      let folder_index = setup_node_modules(
+      sync_resolution_with_fs(
         &resolver.resolution.snapshot(),
         &resolver.cache,
         &resolver.registry_url,
         &resolver.root_node_modules_path,
       )?;
 
-      *resolver.folder_index.write() = folder_index;
       Ok(())
     }
     .boxed()
   }
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    return Ok(());
-    // let registry_path = self.cache.registry_folder(&self.registry_url);
-    // ensure_registry_read_permission(&registry_path, path)
+    ensure_registry_read_permission(&self.root_node_modules_path, path)
   }
 }
 
-fn setup_node_modules(
+/// Creates a pnpm style folder structure.
+fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &NpmCache,
   registry_url: &Url,
-  root_node_modules_dir_path: &PathBuf,
-) -> Result<NodeModulesFolderIndex, AnyError> {
-  // resolve everything to folder structure
-  let mut top_level_packages = snapshot
-    .top_level_packages()
-    .into_iter()
-    .map(|id| snapshot.package_from_id(&id).unwrap())
-    .collect::<Vec<_>>();
-  top_level_packages.sort_by(|a, b| a.id.cmp(&b.id));
+  root_node_modules_dir_path: &Path,
+) -> Result<(), AnyError> {
+  fn get_package_folder_name(package_id: &NpmPackageId) -> String {
+    package_id.to_string().replace('/', "+")
+  }
 
-  let folders_index =
-    create_virtual_node_modules_folder(snapshot, root_node_modules_dir_path);
+  let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
+  fs::create_dir_all(&deno_local_registry_dir).with_context(|| {
+    format!("Creating '{}'", deno_local_registry_dir.display())
+  })?;
 
-  // todo(dsherret): ensure only one process enters this at a time.
-  sync_folder_with_fs(
-    &folders_index,
-    &root_node_modules_dir_path,
-    cache,
-    registry_url,
-  )?;
-
-  Ok(folders_index)
-}
-
-#[derive(Default, Debug)]
-struct NodeModulesFolderIndex {
-  // all folders based on their path
-  all_folders: HashMap<PathBuf, NodeModulesFolder>,
-}
-
-#[derive(Default, Debug, Clone)]
-struct NodeModulesFolder {
-  path: PathBuf,
-  folder_names: HashSet<String>,
-  packages_to_folder_names: HashMap<NpmPackageId, String>,
-}
-
-impl NodeModulesFolder {
-  pub fn new(path: PathBuf) -> Self {
-    Self {
-      path,
-      ..Default::default()
+  // 1. Write all the packages out the .deno directory.
+  //
+  // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
+  // node_modules/.deno/<package_id>/node_modules/<package_name>
+  let all_packages = snapshot.all_packages();
+  for package in &all_packages {
+    let folder_name = get_package_folder_name(&package.id);
+    let folder_path = deno_local_registry_dir.join(&folder_name);
+    let initialized_file = folder_path.join("deno_initialized");
+    if !initialized_file.exists() {
+      let sub_node_modules = folder_path.join("node_modules");
+      let package_path = join_package_name(&sub_node_modules, &package.id.name);
+      fs::create_dir_all(&package_path)
+        .with_context(|| format!("Creating '{}'", folder_path.display()))?;
+      let cache_folder = cache.package_folder(&package.id, registry_url);
+      // for now copy, but in the future consider hard linking
+      fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
+      // write out a file that indicates this folder has been initialized
+      fs::write(initialized_file, "")?;
     }
   }
 
-  pub fn add_folder(&mut self, folder_name: String, package_id: NpmPackageId) {
-    self.folder_names.insert(folder_name.clone());
-    self
-      .packages_to_folder_names
-      .insert(package_id, folder_name);
-  }
-}
-
-fn create_virtual_node_modules_folder(
-  snapshot: &NpmResolutionSnapshot,
-  root_node_modules_path: &Path,
-) -> NodeModulesFolderIndex {
-  // resolve everything to folder structure
-  let mut top_level_packages = snapshot
-    .top_level_packages()
-    .into_iter()
-    .map(|id| snapshot.package_from_id(&id).unwrap())
-    .collect::<Vec<_>>();
-  top_level_packages.sort_by(|a, b| a.id.cmp(&b.id));
-
-  let mut folders_index = NodeModulesFolderIndex {
-    all_folders: Default::default(),
-  };
-  let mut root_folder =
-    NodeModulesFolder::new(root_node_modules_path.to_path_buf());
-
-  // go over all the top level packages to ensure they're
-  // kept in the top level folder
-  for package in &top_level_packages {
-    let folder_name = if root_folder.folder_names.contains(&package.id.name) {
-      // This is when you say have two packages like so:
-      //   import chalkv4 from "npm:chalk@4"
-      //   import chalkv5 from "npm:chalk@5"
-      // In this scenario, we use the full resolved package id
-      // for the second package.
-      package.id.to_string()
-    } else {
-      package.id.name.to_string()
-    };
-    root_folder.add_folder(folder_name.clone(), package.id.clone());
-  }
-  folders_index
-    .all_folders
-    .insert(root_node_modules_path.to_path_buf(), root_folder);
-
-  // now go over each package and sub packages and populate them in the folder
-  for top_level_package in &top_level_packages {
-    let sub_node_modules_path = {
-      let root_folder = folders_index
-        .all_folders
-        .get(root_node_modules_path)
-        .unwrap();
-      let sub_dir = root_folder
-        .packages_to_folder_names
-        .get(&top_level_package.id)
-        .unwrap();
-      root_folder.path.join(sub_dir).join("node_modules")
-    };
-    populate_folder_deps(
-      top_level_package,
-      &sub_node_modules_path,
-      root_node_modules_path,
-      &mut folders_index,
-      snapshot,
-    );
-  }
-  folders_index
-}
-
-fn populate_folder_deps(
-  package: &NpmResolutionPackage,
-  sub_node_modules_path: &Path,
-  root_node_modules_path: &Path,
-  folders_index: &mut NodeModulesFolderIndex,
-  snapshot: &NpmResolutionSnapshot,
-) {
-  // package_ref_name is what the package refers to the other package as
-  for (package_ref_name, id) in &package.dependencies {
-    if let Some(insert_folder) = get_insert_folder(
-      package_ref_name,
-      id,
-      sub_node_modules_path,
-      root_node_modules_path,
-      folders_index,
-    ) {
-      let sub_node_modules_path = {
-        let node_modules_folder = folders_index
-          .all_folders
-          .entry(insert_folder.clone())
-          .or_insert_with(|| NodeModulesFolder::new(insert_folder));
-        node_modules_folder.add_folder(package_ref_name.clone(), id.clone());
-        node_modules_folder
-          .path
-          .join(package_ref_name)
-          .join("node_modules")
-      };
-
-      // now go through all this module's dependencies
-      let package = snapshot.package_from_id(id).unwrap();
-
-      populate_folder_deps(
-        &package,
-        &sub_node_modules_path,
-        root_node_modules_path,
-        folders_index,
-        snapshot,
+  // 2. Symlink all the dependencies into the .deno directory.
+  //
+  // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
+  // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
+  for package in &all_packages {
+    let sub_node_modules = deno_local_registry_dir
+      .join(&get_package_folder_name(&package.id))
+      .join("node_modules");
+    for (name, dep_id) in &package.dependencies {
+      let dep_folder_name = get_package_folder_name(dep_id);
+      let dep_folder_path = join_package_name(
+        &deno_local_registry_dir
+          .join(dep_folder_name)
+          .join("node_modules"),
+        &dep_id.name,
       );
+      symlink_package_dir(
+        &dep_folder_path,
+        &join_package_name(&sub_node_modules, name),
+      )?;
     }
   }
-}
 
-fn get_insert_folder(
-  package_ref_name: &String,
-  id: &NpmPackageId,
-  sub_node_modules_path: &Path,
-  root_node_modules_path: &Path,
-  folders_index: &mut NodeModulesFolderIndex,
-) -> Option<PathBuf> {
-  let mut current_folder_path = sub_node_modules_path.to_path_buf();
-  loop {
-    if let Some(folder) = folders_index.all_folders.get(&current_folder_path) {
-      if folder.folder_names.contains(package_ref_name) {
-        if folder.packages_to_folder_names.get(id) == Some(package_ref_name) {
-          // same name and id exists in the tree, so ignore
-          return None;
-        } else {
-          // same name, but different id exists in the tree, so
-          // use the child folder
-          return Some(sub_node_modules_path.to_path_buf());
-        }
+  // 3. Create all the packages in the node_modules folder, which are symlinks.
+  //
+  // Symlink node_modules/<package_name> to
+  // node_modules/.deno/<package_id>/node_modules/<package_name>
+  let mut found_names = HashSet::new();
+  let mut pending_packages = VecDeque::new();
+  pending_packages.extend(
+    snapshot
+      .top_level_packages()
+      .into_iter()
+      .map(|id| (id, true)),
+  );
+  while let Some((package_id, is_top_level)) = pending_packages.pop_front() {
+    let root_folder_name = if found_names.insert(package_id.name.clone()) {
+      package_id.name.clone()
+    } else if is_top_level {
+      package_id.to_string()
+    } else {
+      continue; // skip, already handled
+    };
+    let local_registry_package_path = deno_local_registry_dir
+      .join(&get_package_folder_name(&package_id))
+      .join("node_modules")
+      .join(&package_id.name);
+
+    symlink_package_dir(
+      &local_registry_package_path,
+      &join_package_name(root_node_modules_dir_path, &root_folder_name),
+    )?;
+    if let Some(package) = snapshot.package_from_id(&package_id) {
+      for id in package.dependencies.values() {
+        pending_packages.push_back((id.clone(), false));
       }
     }
-    // go up to the next node_modules
-    let parent = get_next_node_modules_ancestor(sub_node_modules_path);
-    if parent == root_node_modules_path {
-      // no name found, so insert in the root folder
-      return Some(root_node_modules_path.to_path_buf());
-    }
-    debug_assert_eq!(parent.file_stem().unwrap(), "node_modules");
-    current_folder_path = parent.to_path_buf();
   }
+
+  Ok(())
+}
+
+fn symlink_package_dir(
+  old_path: &Path,
+  new_path: &Path,
+) -> Result<(), AnyError> {
+  let new_parent = new_path.parent().unwrap();
+  if new_parent.file_name().unwrap() != "node_modules" {
+    // create the parent folder that will contain the symlink
+    fs::create_dir_all(new_parent)
+      .with_context(|| format!("Creating '{}'", new_parent.display()))?;
+  }
+
+  // need to delete the previous symlink before creating a new one
+  let _ignore = fs::remove_dir(new_path);
+  fs_util::symlink_dir(old_path, new_path)
 }
 
 fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
@@ -406,174 +315,4 @@ fn get_next_node_modules_ancestor(mut path: &Path) -> &Path {
       return path;
     }
   }
-}
-
-#[derive(Default, Serialize, Deserialize)]
-struct FolderData {
-  packages: HashMap<String, FolderDataPackage>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
-struct FolderDataPackage {
-  id: String,
-  kind: FolderKind,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-enum FolderKind {
-  Symlink,
-  SubDir,
-}
-
-fn sync_folder_with_fs(
-  folders_index: &NodeModulesFolderIndex,
-  output_dir: &PathBuf,
-  cache: &NpmCache,
-  registry_url: &Url,
-) -> Result<(), AnyError> {
-  let folder = match folders_index.all_folders.get(output_dir) {
-    Some(folder) => folder,
-    None => return Ok(()), // nothing to do
-  };
-  // create the folders
-  fs::create_dir_all(output_dir)?;
-  let resolution_file = output_dir.join(".deno_resolution");
-  let mut folder_data: FolderData = fs::read_to_string(&resolution_file)
-    .ok()
-    .and_then(|text| serde_json::from_str(&text).ok())
-    .unwrap_or_default();
-  for (package_id, folder_name) in &folder.packages_to_folder_names {
-    let local_folder_path = join_package_name(output_dir, folder_name);
-    let sub_node_modules_path = local_folder_path.join("node_modules");
-    let cache_folder = cache.package_folder(&package_id, registry_url);
-    let folder_kind = if folders_index
-      .all_folders
-      .get(&sub_node_modules_path)
-      .is_none()
-    {
-      FolderKind::Symlink
-    } else {
-      FolderKind::SubDir
-    };
-    let expected_folder_data_package = FolderDataPackage {
-      id: package_id.to_string(),
-      kind: folder_kind,
-    };
-    let state_matches = folder_data.packages.get(&package_id.name)
-      == Some(&expected_folder_data_package);
-
-    if !state_matches {
-      // some packages might contain a slash and thus be in a sub dir, so create this dir
-      if folder_name.contains('/') {
-        let parent = local_folder_path.parent().unwrap();
-        if !parent.exists() {
-          fs::create_dir(parent)?;
-        }
-      }
-
-      match folder_kind {
-        FolderKind::Symlink => {
-          remove_dir_all(&local_folder_path)?;
-          // no sub packages, so create a symlink
-          symlink_dir(&cache_folder, &local_folder_path)?;
-        }
-        FolderKind::SubDir => {
-          // there's sub packages, so symlink the children
-          symlink_dir_children(&cache_folder, &local_folder_path)?;
-        }
-      }
-      folder_data
-        .packages
-        .insert(package_id.name.to_string(), expected_folder_data_package);
-    }
-
-    if folder_kind == FolderKind::SubDir {
-      let sub_folder = local_folder_path.join("node_modules");
-      sync_folder_with_fs(folders_index, &sub_folder, cache, registry_url)?;
-    }
-  }
-
-  if let Ok(text) = serde_json::to_string(&folder_data) {
-    let _ignore = fs::write(resolution_file, text);
-  }
-
-  Ok(())
-}
-
-fn remove_dir_all(path: &Path) -> Result<(), AnyError> {
-  match fs::remove_dir_all(path) {
-    Ok(_) => Ok(()),
-    Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-    Err(err) => Err(err.into()),
-  }
-}
-
-fn symlink_dir_children(
-  oldpath: &Path,
-  newpath: &Path,
-) -> Result<(), AnyError> {
-  debug_assert!(oldpath.is_dir());
-  fs::create_dir(&newpath)?;
-  for entry in fs::read_dir(oldpath)? {
-    let entry = entry?;
-    if entry.file_type()?.is_dir() {
-      symlink_dir(&entry.path(), &newpath.join(entry.file_name()))?;
-    } else {
-      symlink_file(&entry.path(), &newpath.join(entry.file_name()))?;
-    }
-  }
-  Ok(())
-}
-
-// todo(dsherret): try to consolidate these symlink_dir and symlink_file functions
-fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
-  use std::io::Error;
-  let err_mapper = |err: Error| {
-    Error::new(
-      err.kind(),
-      format!(
-        "{}, symlink '{}' -> '{}'",
-        err,
-        oldpath.display(),
-        newpath.display()
-      ),
-    )
-  };
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::symlink;
-    symlink(&oldpath, &newpath).map_err(err_mapper)?;
-  }
-  #[cfg(not(unix))]
-  {
-    use std::os::windows::fs::symlink_dir;
-    symlink_dir(&oldpath, &newpath).map_err(err_mapper)?;
-  }
-  Ok(())
-}
-
-fn symlink_file(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
-  use std::io::Error;
-  let err_mapper = |err: Error| {
-    Error::new(
-      err.kind(),
-      format!(
-        "{}, symlink '{}' -> '{}'",
-        err,
-        oldpath.display(),
-        newpath.display()
-      ),
-    )
-  };
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::symlink;
-    symlink(&oldpath, &newpath).map_err(err_mapper)?;
-  }
-  #[cfg(not(unix))]
-  {
-    use std::os::windows::fs::symlink_file;
-    symlink_file(&oldpath, &newpath).map_err(err_mapper)?;
-  }
-  Ok(())
 }

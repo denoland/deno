@@ -294,6 +294,60 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   }
 }
 
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(&to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(&from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
+}
+
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, symlink '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::symlink;
+    symlink(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  #[cfg(not(unix))]
+  {
+    use std::os::windows::fs::symlink_dir;
+    symlink_dir(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  Ok(())
+}
+
 /// Attempts to convert a specifier to a file path. By default, uses the Url
 /// crate's `to_file_path()` method, but falls back to try and resolve unix-style
 /// paths on Windows.
