@@ -5,23 +5,29 @@
   const core = window.Deno.core;
   const ops = core.ops;
 
+  function unwrapErr(r) {
+    if (r === false) {
+      // A fast call indicating failure. We insert the error in OpState.
+      // Let's throw the error using a slow call.
+      ops.op_take_last_error();
+    }
+  }
+
   const size = new Uint32Array(2);
-  const sizeU8 = new Uint8Array(8);
   function consoleSize(rid) {
-    return ops.op_console_size(rid, sizeU8);
+    unwrapErr(ops.op_console_size.fast(rid, size));
+    return { columns: size[0], rows: size[1] };
   }
 
+  const isattyBuffer = new Uint8Array(1);
   function isatty(rid) {
-    return ops.op_isatty(rid);
+    unwrapErr(ops.op_isatty.fast(rid, isattyBuffer));
+    return !!isattyBuffer[0];
   }
 
-  const DEFAULT_SET_RAW_OPTIONS = {
-    cbreak: false,
-  };
-
+  const DEFAULT_CBREAK = false;
   function setRaw(rid, mode, options = {}) {
-    const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-    ops.op_set_raw({ rid, mode, options: rOptions });
+    unwrapErr(ops.op_set_raw.fast(rid, mode, options.cbreak || DEFAULT_CBREAK));
   }
 
   window.__bootstrap.tty = {

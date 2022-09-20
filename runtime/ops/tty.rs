@@ -5,9 +5,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ResourceId;
-use serde::Deserialize;
-use serde::Serialize;
 use std::io::Error;
 
 #[cfg(unix)]
@@ -46,30 +43,41 @@ pub fn init() -> Extension {
       op_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
+      op_take_last_error::decl(),
     ])
     .build()
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetRawOptions {
-  cbreak: bool,
-}
+// #[op(fast)] cannot throw errors themselves, so we send an error code
+// to JS and the op puts a TtyError in state.
+//
+// JS should call op_take_last_error() to throw the error.
+struct TtyError(AnyError);
 
-#[derive(Deserialize)]
-pub struct SetRawArgs {
-  rid: ResourceId,
-  mode: bool,
-  options: SetRawOptions,
+#[inline]
+fn wrap_err(state: &mut OpState, r: Result<(), AnyError>) -> bool {
+  match r {
+    Ok(_) => true,
+    Err(err) => {
+      state.put::<TtyError>(TtyError(err));
+      false
+    }
+  }
 }
 
 #[op]
-fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.setRaw");
+fn op_take_last_error(op_state: &mut OpState) -> Result<(), AnyError> {
+  Err(op_state.take::<TtyError>().0)
+}
 
-  let rid = args.rid;
-  let is_raw = args.mode;
-  let cbreak = args.options.cbreak;
+#[op(fast)]
+fn op_set_raw(
+  state: &mut OpState,
+  rid: u32,
+  is_raw: bool,
+  cbreak: bool,
+) -> bool {
+  super::check_unstable(state, "Deno.setRaw");
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -83,10 +91,10 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
     use winapi::um::{consoleapi, handleapi};
 
     if cbreak {
-      return Err(deno_core::error::not_supported());
+      return wrap_err(state, Err(deno_core::error::not_supported()));
     }
 
-    StdFileResource::with_file(state, rid, move |std_file| {
+    let result = StdFileResource::with_file(state, rid, move |std_file| {
       let handle = std_file.as_raw_handle();
 
       if handle == handleapi::INVALID_HANDLE_VALUE {
@@ -112,13 +120,14 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
       }
 
       Ok(())
-    })
+    });
+    wrap_err(state, result);
   }
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
 
-    StdFileResource::with_file_and_metadata(
+    let result = StdFileResource::with_file_and_metadata(
       state,
       rid,
       move |std_file, meta_data| {
@@ -164,13 +173,14 @@ fn op_set_raw(state: &mut OpState, args: SetRawArgs) -> Result<(), AnyError> {
 
         Ok(())
       },
-    )
+    );
+    wrap_err(state, result)
   }
 }
 
-#[op]
-fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
-  let isatty: bool = StdFileResource::with_file(state, rid, move |std_file| {
+#[op(fast)]
+fn op_isatty(state: &mut OpState, rid: u32, out: &mut [u8]) -> bool {
+  let result = StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use winapi::shared::minwindef::FALSE;
@@ -181,7 +191,11 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       // If I cannot get mode out of console, it is not a console.
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
-      Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE })
+      {
+        out[0] = unsafe {
+          consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE
+        } as u8;
+      }
     }
     #[cfg(unix)]
     {
@@ -189,27 +203,20 @@ fn op_isatty(state: &mut OpState, rid: ResourceId) -> Result<bool, AnyError> {
       let raw_fd = std_file.as_raw_fd();
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
-      Ok(unsafe { libc::isatty(raw_fd as libc::c_int) == 1 })
+      {
+        out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
+      }
     }
-  })?;
-  Ok(isatty)
+    Ok(())
+  });
+  wrap_err(state, result)
 }
 
-#[derive(Serialize)]
-struct ConsoleSize {
-  columns: u32,
-  rows: u32,
-}
-
-#[op]
-fn op_console_size(
-  state: &mut OpState,
-  rid: ResourceId,
-  result: &mut [u8],
-) -> Result<ConsoleSize, AnyError> {
+#[op(fast)]
+fn op_console_size(state: &mut OpState, rid: u32, result: &mut [u32]) -> bool {
+  println!("{}", result.len());
   super::check_unstable(state, "Deno.consoleSize");
-
-  let size = StdFileResource::with_file(state, rid, move |std_file| {
+  let result = StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use std::os::windows::io::AsRawHandle;
@@ -225,11 +232,9 @@ fn op_console_size(
         {
           return Err(Error::last_os_error().into());
         }
-
-        Ok(ConsoleSize {
-          columns: bufinfo.dwSize.X as u32,
-          rows: bufinfo.dwSize.Y as u32,
-        })
+        result[0] = bufinfo.dwSize.X as u32;
+        result[1] = bufinfo.dwSize.Y as u32;
+        Ok(())
       }
     }
 
@@ -245,15 +250,11 @@ fn op_console_size(
         if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
           return Err(Error::last_os_error().into());
         }
-
-        // TODO (caspervonb) return a tuple instead
-        Ok(ConsoleSize {
-          columns: size.ws_col as u32,
-          rows: size.ws_row as u32,
-        })
+        result[0] = size.ws_col as u32;
+        result[1] = size.ws_row as u32;
+        Ok(())
       }
     }
-  })?;
-
-  Ok(size)
+  });
+  wrap_err(state, result)
 }
