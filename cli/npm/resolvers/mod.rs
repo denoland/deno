@@ -59,6 +59,7 @@ impl NpmPackageResolver {
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<PathBuf, AnyError> {
+    log::debug!("Resolving {}", pkg_req);
     self.inner.resolve_package_folder_from_deno_module(pkg_req)
   }
 
@@ -68,6 +69,7 @@ impl NpmPackageResolver {
     name: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
+    log::debug!("Resolving {} from {}", name, referrer);
     self
       .inner
       .resolve_package_folder_from_package(name, referrer)
@@ -80,6 +82,7 @@ impl NpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
+    log::debug!("Resolving {}", specifier);
     self.inner.resolve_package_folder_from_specifier(specifier)
   }
 
@@ -133,7 +136,7 @@ impl RequireNpmResolver for NpmPackageResolver {
     specifier: &str,
     referrer: &std::path::Path,
   ) -> Result<PathBuf, AnyError> {
-    let referrer = specifier_to_path(referrer)?;
+    let referrer = path_to_specifier(referrer)?;
     self.resolve_package_folder_from_package(specifier, &referrer)
   }
 
@@ -141,7 +144,7 @@ impl RequireNpmResolver for NpmPackageResolver {
     &self,
     path: &Path,
   ) -> Result<PathBuf, AnyError> {
-    let specifier = specifier_to_path(path)?;
+    let specifier = path_to_specifier(path)?;
     self.resolve_package_folder_from_specifier(&specifier)
   }
 
@@ -160,7 +163,7 @@ impl RequireNpmResolver for NpmPackageResolver {
   }
 }
 
-fn specifier_to_path(path: &Path) -> Result<ModuleSpecifier, AnyError> {
+fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
   match ModuleSpecifier::from_file_path(&path) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),

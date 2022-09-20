@@ -65,7 +65,7 @@ impl LocalNpmPackageResolver {
   fn resolve_package_root(&self, path: &Path) -> PathBuf {
     let mut last_found = path;
     loop {
-      let parent = path.parent().unwrap();
+      let parent = last_found.parent().unwrap();
       if parent.file_name().unwrap() == "node_modules" {
         return last_found.to_path_buf();
       } else {
@@ -110,7 +110,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       .all_folders
       .get(&self.root_node_modules_path)
       .unwrap();
-    let sub_dir_name = if root_folder
+    let package_name = if root_folder
       .folder_names
       .contains(&resolved_package.id.to_string())
     {
@@ -119,7 +119,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     } else {
       resolved_package.id.name.clone()
     };
-    Ok(self.root_node_modules_path.join(sub_dir_name))
+    Ok(join_package_name(
+      &self.root_node_modules_path,
+      &package_name,
+    ))
   }
 
   fn resolve_package_folder_from_package(
@@ -131,7 +134,8 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
     loop {
-      let sub_dir = current_folder.join("node_modules").join(name);
+      let sub_dir =
+        join_package_name(&current_folder.join("node_modules"), name);
       if sub_dir.is_dir() {
         return Ok(sub_dir);
       }
@@ -142,8 +146,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
           referrer
         );
       }
-      current_folder = current_folder.parent().unwrap().parent().unwrap();
-      debug_assert_eq!(current_folder.file_stem().unwrap(), "node_modules");
+      current_folder = get_next_node_modules_ancestor(current_folder);
     }
   }
 
@@ -188,8 +191,9 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   }
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
-    let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(&registry_path, path)
+    return Ok(());
+    // let registry_path = self.cache.registry_folder(&self.registry_url);
+    // ensure_registry_read_permission(&registry_path, path)
   }
 }
 
@@ -374,14 +378,33 @@ fn get_insert_folder(
         }
       }
     }
-    // go up two folders to the next node_modules
-    let parent = sub_node_modules_path.parent().unwrap().parent().unwrap();
+    // go up to the next node_modules
+    let parent = get_next_node_modules_ancestor(sub_node_modules_path);
     if parent == root_node_modules_path {
       // no name found, so insert in the root folder
       return Some(root_node_modules_path.to_path_buf());
     }
     debug_assert_eq!(parent.file_stem().unwrap(), "node_modules");
     current_folder_path = parent.to_path_buf();
+  }
+}
+
+fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
+  let mut path = path.to_path_buf();
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    path = path.join(part);
+  }
+  path
+}
+
+fn get_next_node_modules_ancestor(mut path: &Path) -> &Path {
+  loop {
+    path = path.parent().unwrap();
+    let file_name = path.file_name().unwrap().to_string_lossy();
+    if file_name == "node_modules" {
+      return path;
+    }
   }
 }
 
@@ -420,7 +443,7 @@ fn sync_folder_with_fs(
     .and_then(|text| serde_json::from_str(&text).ok())
     .unwrap_or_default();
   for (package_id, folder_name) in &folder.packages_to_folder_names {
-    let local_folder_path = output_dir.join(folder_name);
+    let local_folder_path = join_package_name(output_dir, folder_name);
     let sub_node_modules_path = local_folder_path.join("node_modules");
     let cache_folder = cache.package_folder(&package_id, registry_url);
     let folder_kind = if folders_index
@@ -440,6 +463,14 @@ fn sync_folder_with_fs(
       == Some(&expected_folder_data_package);
 
     if !state_matches {
+      // some packages might contain a slash and thus be in a sub dir, so create this dir
+      if folder_name.contains('/') {
+        let parent = local_folder_path.parent().unwrap();
+        if !parent.exists() {
+          fs::create_dir(parent)?;
+        }
+      }
+
       match folder_kind {
         FolderKind::Symlink => {
           remove_dir_all(&local_folder_path)?;
