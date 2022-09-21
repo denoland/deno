@@ -137,6 +137,4 @@ pub enum Algorithm {
   Pbkdf2,
   #[serde(rename = "HKDF")]
   Hkdf,
-  #[serde(rename = "ED25519")]
-  Ed25519,
 }

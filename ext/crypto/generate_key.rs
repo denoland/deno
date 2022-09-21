@@ -38,10 +38,6 @@ pub enum GenerateKeyOptions {
     hash: ShaHash,
     length: Option<usize>,
   },
-  #[serde(rename = "ED25519")]
-  Ed25519,
-  #[serde(rename = "X25519")]
-  X25519,
 }
 
 #[op]
@@ -58,20 +54,9 @@ pub async fn op_crypto_generate_key(
     GenerateKeyOptions::Hmac { hash, length } => {
       generate_key_hmac(hash, length)
     }
-    GenerateKeyOptions::Ed25519 => generate_key_ed25519(),
-    GenerateKeyOptions::X25519 => {
-      Err(type_error("Use op_generate_x25519_keypair() instead"))
-    }
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
-}
-
-fn generate_key_ed25519() -> Result<Vec<u8>, AnyError> {
-  let rng = ring::rand::SystemRandom::new();
-  let pkcs8_bytes = Ed25519KeyPair::generate_pkcs8(&rng)
-    .map_err(|e| operation_error(e.to_string()))?;
-  Ok(pkcs8_bytes.as_ref().to_vec())
 }
 
 fn generate_key_rsa(
