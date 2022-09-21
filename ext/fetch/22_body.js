@@ -163,19 +163,8 @@
           if (done) break;
 
           if (finalBuffer) {
-            if (totalLength + chunk.byteLength <= finalBuffer.byteLength) {
-              // fast path, content-length is present
-              TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
-            } else {
-              // downgrade to slow path, this could only happen if
-              // totalLength > content-length
-              ArrayPrototypePush(
-                chunks,
-                TypedArrayPrototypeSubarray(finalBuffer, 0, totalLength),
-              );
-              ArrayPrototypePush(chunks, chunk);
-              finalBuffer = null;
-            }
+            // fast path, content-length is present
+            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
           } else {
             // slow path, content-length is not present
             // or totalLength > content-length
@@ -185,10 +174,7 @@
         }
 
         if (finalBuffer) {
-          return totalLength < finalBuffer.byteLength
-            // future proofing: this condition is always false right now
-            ? finalBuffer.slice(0, totalLength)
-            : finalBuffer;
+          return finalBuffer;
         }
 
         finalBuffer = new Uint8Array(totalLength);
