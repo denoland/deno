@@ -98,6 +98,8 @@
       "AES-GCM": "AesKeyGenParams",
       "AES-KW": "AesKeyGenParams",
       "HMAC": "HmacKeyGenParams",
+      "X25519": null,
+      "Ed25519": null,
     },
     "sign": {
       "RSASSA-PKCS1-v1_5": null,
@@ -1909,6 +1911,53 @@
         }
 
         return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
+      case "X25519": {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+        const privateKeyData = new Uint8Array(32);
+        const publicKeyData = new Uint8Array(32);
+        ops.op_generate_x25518_keypair(privateKeyData, publicKeyData);
+        
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "private",
+          data: privateKeyData,
+        });
+
+        const publicHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "public",
+          data: publicKeyData,
+        });
+
+        const algorithm = {
+          name: algorithmName,
+        };
+
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, []),
+          algorithm,
+          publicHandle,
+        );
+
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        return { publicKey, privateKey }; 
       }
       case "HMAC": {
         // 1.

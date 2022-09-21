@@ -88,6 +88,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .ops(vec![
       op_crypto_get_random_values::decl(),
       op_crypto_generate_key::decl(),
+      generate_key::op_generate_x25519_keypair::decl(),
       op_crypto_sign_key::decl(),
       op_crypto_verify_key::decl(),
       op_crypto_derive_bits::decl(),

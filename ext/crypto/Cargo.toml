@@ -40,3 +40,5 @@ sha2 = "0.10.2"
 spki = "0.6.0"
 tokio = { version = "1.21", features = ["full"] }
 uuid = { version = "1.0.0", features = ["v4"] }
+# https://github.com/dalek-cryptography/x25519-dalek/pull/89
+x25519-dalek = "2.0.0-pre.1"
