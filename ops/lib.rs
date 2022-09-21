@@ -308,13 +308,13 @@ fn codegen_fast_impl(
     if let Some(FastApiSyn {
       args,
       ret,
-      use_recv,
+      use_op_state,
       use_fast_cb_opts,
       v8_values,
       slices,
     }) = fast_info
     {
-      let offset = if use_recv { 1 } else { 0 };
+      let offset = if use_op_state { 1 } else { 0 };
       let mut inputs = f
         .sig
         .inputs
@@ -332,7 +332,7 @@ fn codegen_fast_impl(
           if let Some(ty) = slices.get(&(idx + offset)) {
             return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
           }
-          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
+          if (use_fast_cb_opts || use_op_state) && idx + offset == f.sig.inputs.len() - 1 {
             return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
           }
           if v8_values.contains(&idx) {
@@ -341,7 +341,7 @@ fn codegen_fast_impl(
           quote!(#arg)
         })
         .collect::<Vec<_>>();
-      if !slices.is_empty() && !use_fast_cb_opts {
+      if !slices.is_empty() && !use_fast_cb_opts && !use_op_state {
         inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
       }
       let input_idents = f
@@ -391,10 +391,10 @@ fn codegen_fast_impl(
           quote! {
             fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
               // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-              let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*opts };
-              // SAFETY: data union is always created as the `v8::Value` version
+              let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
+              // SAFETY: data union is always created as the `v8::Local<v8::Value>` version
               let data = unsafe { opts.data.data };
-              // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+              // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
               let ctx = unsafe {
                 &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
                 as *const #core::_ops::OpCtx)
@@ -412,13 +412,13 @@ fn codegen_fast_impl(
       } else {
         let output = &f.sig.output;
         let func_name = format_ident!("func_{}", name);
-        let recv_decl = if use_fast_cb_opts {
+        let recv_decl = if use_op_state {
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-            let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*opts };
-            // SAFETY: data union is always created as the `v8::Value` version
+            let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
+            // SAFETY: data union is always created as the `v8::Local<v8::Value>` version.
             let data = unsafe { opts.data.data };
-            // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+            // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
             let ctx = unsafe {
               &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
               as *const #core::_ops::OpCtx)
@@ -525,7 +525,7 @@ fn codegen_v8_sync(
 struct FastApiSyn {
   args: TokenStream2,
   ret: TokenStream2,
-  use_recv: bool,
+  use_op_state: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
   slices: HashMap<usize, TokenStream2>,
@@ -541,7 +541,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     },
   };
 
-  let mut use_recv = false;
+  let mut use_op_state = false;
   let mut use_fast_cb_opts = false;
   let mut v8_values = Vec::new();
   let mut slices = HashMap::new();
@@ -549,12 +549,11 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   for (pos, input) in inputs.iter().enumerate() {
     if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
       use_fast_cb_opts = true;
-      args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
       continue;
     }
 
     if pos == 0 && is_mut_ref_opstate(input) {
-      use_fast_cb_opts = true;
+      use_op_state = true;
       continue;
     }
 
@@ -588,8 +587,10 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     }
   }
 
-  // Push CallbackOptions into args; it must be the last argument.
-  args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
+  if use_fast_cb_opts || use_op_state {
+    // Push CallbackOptions into args; it must be the last argument.
+    args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
+  }
 
   let args = args
     .iter()
@@ -599,7 +600,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   Some(FastApiSyn {
     args: args.parse().unwrap(),
     ret,
-    use_recv,
+    use_op_state,
     slices,
     v8_values,
     use_fast_cb_opts,
