@@ -94,6 +94,7 @@ use log::debug;
 use log::info;
 use npm::NpmPackageReference;
 use std::env;
+use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
@@ -636,7 +637,7 @@ async fn bundle_command(
           );
         }
       } else {
-        println!("{}", bundle_output.code);
+        io::stdout().write_all(bundle_output.code.as_bytes())?;
       }
 
       Ok(())
@@ -1078,7 +1079,7 @@ pub fn main() {
         if err.kind() == clap::ErrorKind::DisplayHelp
           || err.kind() == clap::ErrorKind::DisplayVersion =>
       {
-        err.print().unwrap();
+        unwrap_or_exit(err.print().map_err(AnyError::from));
         std::process::exit(0);
       }
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
