@@ -3781,7 +3781,7 @@
           );
         }
 
-        // 5-6.
+        // 5.
         const kHandle = baseKey[_handle];
         const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
 
@@ -3789,7 +3789,12 @@
         const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
         const secret = new Uint8Array(32);
-        ops.op_derive_bits_x25519.fast(k, u, secret);
+        const isIdentity = ops.op_derive_bits_x25519.fast(k, u, secret);
+
+        // 6.
+        if (isIdentity) {
+          throw new DOMException("Invalid key", "OperationError");
+        }
 
         // 7.
         if (length === null) {
