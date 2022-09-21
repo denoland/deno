@@ -33,7 +33,7 @@ serde_json = { version = "1.0.79", features = ["preserve_order"] }
 serde_v8 = { version = "0.62.0", path = "../serde_v8" }
 sourcemap = "6.1"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
-v8 = { version = "0.50.0", default-features = false }
+v8 = { version = "0.51.0", default-features = false }
 
 [[example]]
 name = "http_bench_json_ops"
