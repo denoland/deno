@@ -8,13 +8,14 @@
 // that is created when Deno needs to type check TypeScript, and in some
 // instances convert TypeScript to JavaScript.
 
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
 ((window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
+  const ops = core.ops;
 
   let logDebug = false;
   let logSource = "JS";
@@ -29,6 +30,15 @@ delete Object.prototype.__proto__;
   // normalized specifier.
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
   const normalizedToOriginalMap = new Map();
+
+  /**
+   * @param {unknown} value
+   * @returns {value is ts.CreateSourceFileOptions}
+   */
+  function isCreateSourceFileOptions(value) {
+    return value != null && typeof value === "object" &&
+      "languageVersion" in value;
+  }
 
   function setLogDebug(debug, source) {
     logDebug = debug;
@@ -72,6 +82,45 @@ delete Object.prototype.__proto__;
     }
   }
 
+  // deno-fmt-ignore
+  const base64abc = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
+    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d",
+    "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
+    "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7",
+    "8", "9", "+", "/",
+  ];
+
+  /** Taken from https://deno.land/std/encoding/base64.ts */
+  function convertToBase64(data) {
+    const uint8 = core.encode(data);
+    let result = "",
+      i;
+    const l = uint8.length;
+    for (i = 2; i < l; i += 3) {
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[((uint8[i - 1] & 0x0f) << 2) | (uint8[i] >> 6)];
+      result += base64abc[uint8[i] & 0x3f];
+    }
+    if (i === l + 1) {
+      // 1 octet yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[(uint8[i - 2] & 0x03) << 4];
+      result += "==";
+    }
+    if (i === l) {
+      // 2 octets yet to write
+      result += base64abc[uint8[i - 2] >> 2];
+      result += base64abc[((uint8[i - 2] & 0x03) << 4) | (uint8[i - 1] >> 4)];
+      result += base64abc[(uint8[i - 1] & 0x0f) << 2];
+      result += "=";
+    }
+    return result;
+  }
+
+  // In the case of the LSP, this is initialized with the assets
+  // when snapshotting and never added to or removed after that.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
@@ -140,16 +189,9 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
-    // TS1208: All files must be modules when the '--isolatedModules' flag is
-    // provided.  We can ignore because we guarantee that all files are
-    // modules.
-    1208,
-    // TS1375: 'await' expressions are only allowed at the top level of a file
-    // when that file is a module, but this file has no imports or exports.
-    // Consider adding an empty 'export {}' to make this file a module.
-    1375,
-    // TS2306: File 'file:///Users/rld/src/deno/cli/tests/testdata/subdir/amd_like.js' is
-    // not a module.
+    // TS2306: File '.../index.d.ts' is not a module.
+    // We get this for `x-typescript-types` declaration files which don't export
+    // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
     // We ignore because type defintion files can end with '.ts'.
@@ -186,62 +228,6 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
-  class ScriptSnapshot {
-    /** @type {string} */
-    specifier;
-    /** @type {string} */
-    version;
-    /**
-     * @param {string} specifier
-     * @param {string} version
-     */
-    constructor(specifier, version) {
-      this.specifier = specifier;
-      this.version = version;
-    }
-    /**
-     * @param {number} start
-     * @param {number} end
-     * @returns {string}
-     */
-    getText(start, end) {
-      const { specifier, version } = this;
-      debug(
-        `snapshot.getText(${start}, ${end}) specifier: ${specifier} version: ${version}`,
-      );
-      return core.opSync("op_get_text", { specifier, version, start, end });
-    }
-    /**
-     * @returns {number}
-     */
-    getLength() {
-      const { specifier, version } = this;
-      debug(`snapshot.getLength() specifier: ${specifier} version: ${version}`);
-      return core.opSync("op_get_length", { specifier, version });
-    }
-    /**
-     * @param {ScriptSnapshot} oldSnapshot
-     * @returns {ts.TextChangeRange | undefined}
-     */
-    getChangeRange(oldSnapshot) {
-      const { specifier, version } = this;
-      const { version: oldVersion } = oldSnapshot;
-      const oldLength = oldSnapshot.getLength();
-      debug(
-        `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
-      );
-      return core.opSync(
-        "op_get_change_range",
-        { specifier, oldLength, oldVersion, version },
-      );
-    }
-    dispose() {
-      const { specifier, version } = this;
-      debug(`snapshot.dispose() specifier: ${specifier} version: ${version}`);
-      core.opSync("op_dispose", { specifier, version });
-    }
-  }
-
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
@@ -265,7 +251,7 @@ delete Object.prototype.__proto__;
       }
 
       this.#lastCheckTimeMs = timeMs;
-      return core.opSync("op_is_cancelled", {});
+      return ops.op_is_cancelled();
     }
 
     throwIfCancellationRequested() {
@@ -289,11 +275,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.opSync("op_exists", { specifier });
+      return ops.op_exists({ specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.opSync("op_load", { specifier }).data;
+      return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -307,20 +293,24 @@ delete Object.prototype.__proto__;
     ) {
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[languageVersion]
+          ts.ScriptTarget[
+            isCreateSourceFileOptions(languageVersion)
+              ? languageVersion.languageVersion
+              : languageVersion
+          ]
         })`,
       );
+
+      // Needs the original specifier
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+
       let sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
         return sourceFile;
       }
 
-      // Needs the original specifier
-      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-
-      /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
-      const { data, hash, scriptKind } = core.opSync(
-        "op_load",
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
       assert(
@@ -335,8 +325,9 @@ delete Object.prototype.__proto__;
         scriptKind,
       );
       sourceFile.moduleName = specifier;
-      sourceFile.version = hash;
+      sourceFile.version = version;
       sourceFileCache.set(specifier, sourceFile);
+      scriptVersionCache.set(specifier, version);
       return sourceFile;
     },
     getDefaultLibFileName() {
@@ -345,20 +336,15 @@ delete Object.prototype.__proto__;
     getDefaultLibLocation() {
       return ASSETS;
     },
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      let maybeSpecifiers;
-      if (sourceFiles) {
-        maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-      }
-      return core.opSync(
-        "op_emit",
-        { maybeSpecifiers, fileName, data },
+      return ops.op_emit(
+        { fileName, data },
       );
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
-      return cwd ?? core.opSync("op_cwd", null);
+      return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -374,7 +360,7 @@ delete Object.prototype.__proto__;
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.opSync("op_resolve", {
+      const resolved = ops.op_resolve({
         specifiers,
         base,
       });
@@ -397,7 +383,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.opSync("op_create_hash", { data }).hash;
+      return ops.op_create_hash({ data }).hash;
     },
 
     // LanguageServiceHost
@@ -412,7 +398,7 @@ delete Object.prototype.__proto__;
       if (scriptFileNamesCache) {
         return scriptFileNamesCache;
       }
-      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
+      return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -425,7 +411,7 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = core.opSync("op_script_version", { specifier });
+      const scriptVersion = ops.op_script_version({ specifier });
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -445,11 +431,16 @@ delete Object.prototype.__proto__;
           },
         };
       }
-      const version = host.getScriptVersion(specifier);
-      if (version != null) {
-        return new ScriptSnapshot(specifier, version);
+
+      const fileInfo = ops.op_load(
+        { specifier },
+      );
+      if (fileInfo) {
+        scriptVersionCache.set(specifier, fileInfo.version);
+        return ts.ScriptSnapshot.fromString(fileInfo.data);
+      } else {
+        return undefined;
       }
-      return undefined;
     },
   };
 
@@ -531,6 +522,14 @@ delete Object.prototype.__proto__;
    * @param {Request} request
    */
   function exec({ config, debug: debugFlag, rootNames }) {
+    // https://github.com/microsoft/TypeScript/issues/49150
+    ts.base64encode = function (host, input) {
+      if (host && host.base64encode) {
+        return host.base64encode(input);
+      }
+      return convertToBase64(input);
+    };
+
     setLogDebug(debugFlag, "TS");
     performanceStart();
     debug(">>> exec start", { rootNames });
@@ -552,19 +551,21 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const { diagnostics: emitDiagnostics } = program.emit();
-
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...program.getSyntacticDiagnostics(),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-      ...emitDiagnostics,
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+
+    // emit the tsbuildinfo file
+    // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
+    program.emitBuildInfo(host.writeFile);
+
     performanceProgram({ program });
 
-    core.opSync("op_respond", {
+    ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -576,7 +577,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.opSync("op_respond", { id, data });
+    ops.op_respond({ id, data });
   }
 
   /**
@@ -584,11 +585,16 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+
     // reset all memoized source files names
     scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
     switch (request.method) {
+      case "restart": {
+        serverRestart();
+        return respond(id, true);
+      }
       case "configure": {
         const { options, errors } = ts
           .convertCompilerOptionsFromJson(request.compilerOptions, "");
@@ -611,12 +617,17 @@ delete Object.prototype.__proto__;
           ),
         );
       }
-      case "getAsset": {
-        const sourceFile = host.getSourceFile(
-          request.specifier,
-          ts.ScriptTarget.ESNext,
-        );
-        return respond(id, sourceFile && sourceFile.text);
+      case "getAssets": {
+        const assets = [];
+        for (const sourceFile of sourceFileCache.values()) {
+          if (sourceFile.fileName.startsWith(ASSETS)) {
+            assets.push({
+              specifier: sourceFile.fileName,
+              text: sourceFile.text,
+            });
+          }
+        }
+        return respond(id, assets);
       }
       case "getApplicableRefactors": {
         return respond(
@@ -703,10 +714,9 @@ delete Object.prototype.__proto__;
             request.args.specifier,
             request.args.position,
             request.args.name,
-            undefined,
+            {},
             request.args.source,
-            undefined,
-            // @ts-expect-error this exists in 4.3 but not part of the d.ts
+            request.args.preferences,
             request.args.data,
           ),
         );
@@ -743,7 +753,10 @@ delete Object.prototype.__proto__;
           }
           return respond(id, diagnosticMap);
         } catch (e) {
-          if (!(e instanceof OperationCanceledError)) {
+          if (
+            !(e instanceof OperationCanceledError ||
+              e instanceof ts.OperationCanceledException)
+          ) {
             if ("stack" in e) {
               error(e.stack);
             } else {
@@ -905,6 +918,11 @@ delete Object.prototype.__proto__;
     debug("serverInit()");
   }
 
+  function serverRestart() {
+    languageService = ts.createLanguageService(host);
+    debug("serverRestart()");
+  }
+
   let hasStarted = false;
 
   /** Startup the runtime environment, setting various flags.
@@ -922,7 +940,7 @@ delete Object.prototype.__proto__;
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
 
-  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
+  const { buildSpecifier, libs } = ops.op_build_info();
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into

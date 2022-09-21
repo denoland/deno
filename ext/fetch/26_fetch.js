@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
   const { BlobPrototype } = window.__bootstrap.file;
@@ -27,6 +28,7 @@
     nullBodyStatus,
     networkError,
     abortedNetworkError,
+    processUrlList,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
@@ -67,8 +69,16 @@
    * @param {Uint8Array | null} body
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
-  function opFetch(args, body) {
-    return core.opSync("op_fetch", args, body);
+  function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
+    return ops.op_fetch(
+      method,
+      url,
+      headers,
+      clientRid,
+      hasBody,
+      bodyLength,
+      body,
+    );
   }
 
   /**
@@ -210,14 +220,12 @@
     }
 
     const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
-      {
-        method: req.method,
-        url: req.currentUrl(),
-        headers: req.headerList,
-        clientRid: req.clientRid,
-        hasBody: reqBody !== null,
-        bodyLength: req.body?.length,
-      },
+      req.method,
+      req.currentUrl(),
+      req.headerList,
+      req.clientRid,
+      reqBody !== null,
+      req.body?.length,
       ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody)
         ? reqBody
         : null,
@@ -288,6 +296,8 @@
     }
     if (terminator.aborted) return abortedNetworkError();
 
+    processUrlList(req.urlList, req.urlListProcessed);
+
     /** @type {InnerResponse} */
     const response = {
       headerList: resp.headers,
@@ -299,7 +309,7 @@
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
-      urlList: req.urlList,
+      urlList: req.urlListProcessed,
     };
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
@@ -332,7 +342,8 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...new SafeArrayIterator(req.urlList)];
+      processUrlList(req.urlList, req.urlListProcessed);
+      response.urlList = [...new SafeArrayIterator(req.urlListProcessed)];
     }
 
     return response;
@@ -400,7 +411,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    ArrayPrototypePush(request.urlList, locationURL.href);
+    ArrayPrototypePush(request.urlList, () => locationURL.href);
     return mainFetch(request, true, terminator);
   }
 
@@ -443,6 +454,10 @@
 
       if (!requestObject.headers.has("Accept")) {
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+      }
+
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
       }
 
       // 12.
@@ -510,68 +525,72 @@
   }
 
   /**
-   * Handle the Promise<Response> argument to the WebAssembly streaming
-   * APIs. This function should be registered through
-   * `Deno.core.setWasmStreamingCallback`.
+   * Handle the Response argument to the WebAssembly streaming APIs, after
+   * resolving if it was passed as a promise. This function should be registered
+   * through `Deno.core.setWasmStreamingCallback`.
    *
-   * @param {any} source The source parameter that the WebAssembly
-   * streaming API was called with.
-   * @param {number} rid An rid that represents the wasm streaming
-   * resource.
+   * @param {any} source The source parameter that the WebAssembly streaming API
+   * was called with. If it was called with a Promise, `source` is the resolved
+   * value of that promise.
+   * @param {number} rid An rid that represents the wasm streaming resource.
    */
   function handleWasmStreaming(source, rid) {
     // This implements part of
     // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
-    (async () => {
-      try {
-        const res = webidl.converters["Response"](await source, {
-          prefix: "Failed to call 'WebAssembly.compileStreaming'",
-          context: "Argument 1",
-        });
+    try {
+      const res = webidl.converters["Response"](source, {
+        prefix: "Failed to call 'WebAssembly.compileStreaming'",
+        context: "Argument 1",
+      });
 
-        // 2.3.
-        // The spec is ambiguous here, see
-        // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
-        // expect the raw value of the Content-Type attribute lowercased.
-        // We ignore this for file:// because file fetches don't have a
-        // Content-Type.
-        if (!StringPrototypeStartsWith(res.url, "file://")) {
-          const contentType = res.headers.get("Content-Type");
-          if (
-            typeof contentType !== "string" ||
-            StringPrototypeToLowerCase(contentType) !== "application/wasm"
-          ) {
-            throw new TypeError("Invalid WebAssembly content type.");
-          }
+      // 2.3.
+      // The spec is ambiguous here, see
+      // https://github.com/WebAssembly/spec/issues/1138. The WPT tests expect
+      // the raw value of the Content-Type attribute lowercased. We ignore this
+      // for file:// because file fetches don't have a Content-Type.
+      if (!StringPrototypeStartsWith(res.url, "file://")) {
+        const contentType = res.headers.get("Content-Type");
+        if (
+          typeof contentType !== "string" ||
+          StringPrototypeToLowerCase(contentType) !== "application/wasm"
+        ) {
+          throw new TypeError("Invalid WebAssembly content type.");
         }
+      }
 
-        // 2.5.
-        if (!res.ok) {
-          throw new TypeError(`HTTP status code ${res.status}`);
-        }
+      // 2.5.
+      if (!res.ok) {
+        throw new TypeError(`HTTP status code ${res.status}`);
+      }
 
-        // Pass the resolved URL to v8.
-        core.opSync("op_wasm_streaming_set_url", rid, res.url);
+      // Pass the resolved URL to v8.
+      ops.op_wasm_streaming_set_url(rid, res.url);
 
+      if (res.body !== null) {
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each
         // chunk to the feed as soon as it's available.
-        if (res.body !== null) {
+        (async () => {
           const reader = res.body.getReader();
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.opSync("op_wasm_streaming_feed", rid, chunk);
+            ops.op_wasm_streaming_feed(rid, chunk);
           }
-        }
-
-        // 2.7.
+        })().then(
+          // 2.7
+          () => core.close(rid),
+          // 2.8
+          (err) => core.abortWasmStreaming(rid, err),
+        );
+      } else {
+        // 2.7
         core.close(rid);
-      } catch (err) {
-        // 2.8 and 3
-        core.abortWasmStreaming(rid, err);
       }
-    })();
+    } catch (err) {
+      // 2.8
+      core.abortWasmStreaming(rid, err);
+    }
   }
 
   window.__bootstrap.fetch ??= {};

@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
 
   /**
    * @param {Deno.CreateHttpClientOptions} options
@@ -20,7 +21,11 @@
    */
   function createHttpClient(options) {
     options.caCerts ??= [];
-    return new HttpClient(core.opSync("op_fetch_custom_client", options));
+    return new HttpClient(
+      ops.op_fetch_custom_client(
+        options,
+      ),
+    );
   }
 
   class HttpClient {

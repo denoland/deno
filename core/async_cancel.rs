@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::RcLike;
+use crate::Resource;
 use futures::future::FusedFuture;
 use futures::future::Future;
 use futures::future::TryFuture;
@@ -8,6 +9,7 @@ use futures::task::Context;
 use futures::task::Poll;
 use pin_project::pin_project;
 use std::any::type_name;
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -81,6 +83,16 @@ impl<F: Future> Future for Cancelable<F> {
 impl<F: Future> FusedFuture for Cancelable<F> {
   fn is_terminated(&self) -> bool {
     matches!(self, Self::Terminated)
+  }
+}
+
+impl Resource for CancelHandle {
+  fn name(&self) -> Cow<str> {
+    "cancellation".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel();
   }
 }
 
@@ -207,7 +219,7 @@ mod internal {
       // Do a cancellation check _before_ polling the inner future. If it has
       // already been canceled the inner future will not be polled.
       let node = match &*registration {
-        Registration::WillRegister { head_node } => &*head_node,
+        Registration::WillRegister { head_node } => head_node,
         Registration::Registered { node } => node,
       };
       if node.is_canceled() {
@@ -290,13 +302,19 @@ mod internal {
         Some((head, rc)) => {
           // Register this `Cancelable` node with a `CancelHandle` head node.
           assert_ne!(self, head);
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           let self_inner = unsafe { &mut *self.inner.get() };
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           let head_inner = unsafe { &mut *head.inner.get() };
           self_inner.link(waker, head_inner, rc)
         }
         None => {
           // This `Cancelable` has already been linked to a `CancelHandle` head
           // node; just update our stored `Waker` if necessary.
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           let inner = unsafe { &mut *self.inner.get() };
           inner.update_waker(waker)
         }
@@ -304,11 +322,15 @@ mod internal {
     }
 
     pub fn cancel(&self) {
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let inner = unsafe { &mut *self.inner.get() };
       inner.cancel();
     }
 
     pub fn is_canceled(&self) -> bool {
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let inner = unsafe { &mut *self.inner.get() };
       inner.is_canceled()
     }
@@ -325,6 +347,8 @@ mod internal {
 
   impl Drop for Node {
     fn drop(&mut self) {
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let inner = unsafe { &mut *self.inner.get() };
       inner.unlink();
     }
@@ -380,6 +404,8 @@ mod internal {
           prev: next_prev_nn,
           ..
         } => {
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           let prev = unsafe { &mut *next_prev_nn.as_ptr() };
           match prev {
             NodeInner::Linked {
@@ -432,10 +458,14 @@ mod internal {
         if prev_nn == next_nn {
           // There were only two nodes in this chain; after unlinking ourselves
           // the other node is no longer linked.
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           let other = unsafe { prev_nn.as_mut() };
           *other = NodeInner::Unlinked;
         } else {
           // The chain had more than two nodes.
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           match unsafe { prev_nn.as_mut() } {
             NodeInner::Linked {
               next: prev_next_nn, ..
@@ -444,6 +474,8 @@ mod internal {
             }
             _ => unreachable!(),
           }
+          // TODO(piscisaureus): safety comment
+          #[allow(clippy::undocumented_unsafe_blocks)]
           match unsafe { next_nn.as_mut() } {
             NodeInner::Linked {
               prev: next_prev_nn, ..
@@ -461,6 +493,8 @@ mod internal {
     fn cancel(&mut self) {
       let mut head_nn = NonNull::from(self);
 
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       // Mark the head node as canceled.
       let mut item_nn =
         match replace(unsafe { head_nn.as_mut() }, NodeInner::Canceled) {
@@ -475,6 +509,8 @@ mod internal {
 
       // Cancel all item nodes in the chain, waking each stored `Waker`.
       while item_nn != head_nn {
+        // TODO(piscisaureus): safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         match replace(unsafe { item_nn.as_mut() }, NodeInner::Canceled) {
           NodeInner::Linked {
             kind: NodeKind::Item { waker },
@@ -733,6 +769,7 @@ mod tests {
     assert!(Rc::get_mut(&mut cancel_handle).is_some());
 
     let mut future = pending::<Never>().or_cancel(&cancel_handle);
+    // SAFETY: `Cancelable` pins the future
     let future = unsafe { Pin::new_unchecked(&mut future) };
 
     // There are two `Rc<CancelHandle>` references now, so this fails.

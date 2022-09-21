@@ -10,6 +10,9 @@ self.addEventListener("message", (evt) => {
 });
 
 self.onerror = (...args) => {
+  // Take the last 100 characters so the filename doesn't get truncated
+  // depending on the dev's FS structure.
+  args = args.map((v) => typeof v == "string" ? v.slice(-100) : v);
   console.log("Arguments from self.onerror:", args);
   return true;
 };

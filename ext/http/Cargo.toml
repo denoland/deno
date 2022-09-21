@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.37.0"
+version = "0.63.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -13,19 +13,28 @@ description = "HTTP server implementation for Deno"
 [lib]
 path = "lib.rs"
 
+[[bench]]
+name = "compressible"
+harness = false
+
 [dependencies]
+async-compression = { version = "0.3.12", features = ["tokio", "brotli", "gzip"] }
 base64 = "0.13.0"
-brotli = "3.3.3"
+brotli = "3.3.4"
 bytes = "1"
 cache_control = "0.2.0"
-deno_core = { version = "0.125.0", path = "../../core" }
-deno_websocket = { version = "0.48.0", path = "../websocket" }
-flate2 = "1.0.22"
-fly-accept-encoding = "0.2.0-alpha.5"
-hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
+deno_core = { version = "0.151.0", path = "../../core" }
+deno_websocket = { version = "0.74.0", path = "../websocket" }
+flate2 = "1.0.23"
+fly-accept-encoding = "0.2.0"
+hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
 mime = "0.3.16"
-percent-encoding = "2.1.0"
+percent-encoding = "2.2.0"
+phf = { version = "0.10", features = ["macros"] }
 ring = "0.16.20"
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.10.1", features = ["full"] }
-tokio-util = { version = "0.6.7", features = ["io"] }
+serde = { version = "1.0.136", features = ["derive"] }
+tokio = { version = "1.21", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+
+[dev-dependencies]
+bencher = "0.1"

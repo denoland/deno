@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertMatch } from "./test_util.ts";
+import { assertEquals, assertMatch } from "./test_util.ts";
 
 Deno.test(function errorStackMessageLine() {
   const e1 = new Error();
@@ -51,18 +51,4 @@ Deno.test(function captureStackTrace() {
     assertEquals(stack2, stack1.replace(/(?<=^[^\n]*\n)[^\n]*\n/, ""));
   }
   foo();
-});
-
-// FIXME(bartlomieju): no longer works after migrating
-// to JavaScript runtime code
-Deno.test({ ignore: true }, function applySourceMap() {
-  const result = Deno.applySourceMap({
-    fileName: "CLI_SNAPSHOT.js",
-    lineNumber: 23,
-    columnNumber: 0,
-  });
-  Deno.core.print(`result: ${result}`, true);
-  assert(result.fileName.endsWith(".ts"));
-  assert(result.lineNumber != null);
-  assert(result.columnNumber != null);
 });

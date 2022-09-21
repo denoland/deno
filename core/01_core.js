@@ -15,9 +15,9 @@
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
-    ObjectEntries,
     ObjectFromEntries,
     MapPrototypeGet,
+    MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
@@ -25,15 +25,9 @@
     StringPrototypeSlice,
     ObjectAssign,
     SymbolFor,
+    setQueueMicrotask,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
-  const opIds = Object.keys(ops).reduce((a, v, i) => {
-    a[v] = i;
-    return a;
-  }, {});
-
-  // Available on start due to bindings.
-  const { refOp_, unrefOp_ } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -133,6 +127,18 @@
     errorMap[className] = errorBuilder;
   }
 
+  function buildCustomError(className, message, code) {
+    const error = errorMap[className]?.(message);
+    // Strip buildCustomError() calls from stack trace
+    if (typeof error == "object") {
+      ErrorCaptureStackTrace(error, buildCustomError);
+      if (code) {
+        error.code = code;
+      }
+    }
+    return error;
+  }
+
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
@@ -154,10 +160,16 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](opIds[opName], promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let p = setPromise(promiseId);
+    try {
+      ops[opName](promiseId, ...args);
+    } catch (err) {
+      // Cleanup the just-created promise
+      getPromise(promiseId);
+      // Rethrow the error
+      throw err;
+    }
+    p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.
@@ -174,58 +186,65 @@
   }
 
   function opSync(opName, ...args) {
-    return unwrapOpResult(ops[opName](opIds[opName], ...args));
+    return ops[opName](...args);
   }
 
   function refOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    refOp_(promiseId);
+    ops.op_ref_op(promiseId);
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    unrefOp_(promiseId);
+    ops.op_unref_op(promiseId);
   }
 
   function resources() {
-    return ObjectFromEntries(opSync("op_resources"));
-  }
-
-  function read(rid, buf) {
-    return opAsync("op_read", rid, buf);
-  }
-
-  function write(rid, buf) {
-    return opAsync("op_write", rid, buf);
-  }
-
-  function shutdown(rid) {
-    return opAsync("op_shutdown", rid);
-  }
-
-  function close(rid) {
-    opSync("op_close", rid);
-  }
-
-  function tryClose(rid) {
-    opSync("op_try_close", rid);
-  }
-
-  function print(str, isErr = false) {
-    opSync("op_print", str, isErr);
+    return ObjectFromEntries(ops.op_resources());
   }
 
   function metrics() {
-    const [aggregate, perOps] = opSync("op_metrics");
+    const [aggregate, perOps] = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opIds),
-      ([opName, opId]) => [opName, perOps[opId]],
+      ops.op_op_names(),
+      (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
+  }
+
+  let reportExceptionCallback = undefined;
+
+  // Used to report errors thrown from functions passed to `queueMicrotask()`.
+  // The callback will be passed the thrown error. For example, you can use this
+  // to dispatch an error event to the global scope.
+  // In other words, set the implementation for
+  // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+  function setReportExceptionCallback(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    reportExceptionCallback = cb;
+  }
+
+  function queueMicrotask(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    return ops.op_queue_microtask(() => {
+      try {
+        cb();
+      } catch (error) {
+        if (reportExceptionCallback) {
+          reportExceptionCallback(error);
+        } else {
+          throw error;
+        }
+      }
+    });
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -251,16 +270,11 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    close,
-    tryClose,
-    read,
-    write,
-    shutdown,
-    print,
     resources,
     metrics,
     registerErrorBuilder,
     registerErrorClass,
+    buildCustomError,
     opresolve,
     BadResource,
     BadResourcePrototype,
@@ -271,8 +285,51 @@
     opCallTraces,
     refOp,
     unrefOp,
+    setReportExceptionCallback,
+    close: (rid) => ops.op_close(rid),
+    tryClose: (rid) => ops.op_try_close(rid),
+    read: opAsync.bind(null, "op_read"),
+    write: opAsync.bind(null, "op_write"),
+    shutdown: opAsync.bind(null, "op_shutdown"),
+    print: (msg, isErr) => ops.op_print(msg, isErr),
+    setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
+    setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),
+    runMicrotasks: () => ops.op_run_microtasks(),
+    hasTickScheduled: () => ops.op_has_tick_scheduled(),
+    setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
+    evalContext: (
+      source,
+      specifier,
+    ) => ops.op_eval_context(source, specifier),
+    createHostObject: () => ops.op_create_host_object(),
+    encode: (text) => ops.op_encode(text),
+    decode: (buffer) => ops.op_decode(buffer),
+    serialize: (
+      value,
+      options,
+      errorCallback,
+    ) => ops.op_serialize(value, options, errorCallback),
+    deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
+    getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
+    getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
+    isProxy: (value) => ops.op_is_proxy.fast(value),
+    memoryUsage: () => ops.op_memory_usage(),
+    setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
+    abortWasmStreaming: (
+      rid,
+      error,
+    ) => ops.op_abort_wasm_streaming(rid, error),
+    destructureError: (error) => ops.op_destructure_error(error),
+    opNames: () => ops.op_op_names(),
+    eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
+    setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
+    byteLength: (str) => ops.op_str_byte_length(str),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
   ObjectAssign(globalThis.Deno, { core });
+
+  // Direct bindings on `globalThis`
+  ObjectAssign(globalThis, { queueMicrotask });
+  setQueueMicrotask(queueMicrotask);
 })(globalThis);

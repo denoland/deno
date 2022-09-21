@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assertRejects, assertThrows } from "./test_util.ts";
+import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 Deno.test(function testWrongOverloads() {
   assertThrows(
@@ -116,4 +116,34 @@ Deno.test(async function invalidStepArguments(t) {
     TypeError,
     "Expected a test definition or name and function.",
   );
+});
+
+Deno.test(async function nameOnTextContext(t1) {
+  await assertEquals(t1.name, "nameOnTextContext");
+  await t1.step("step", async (t2) => {
+    await assertEquals(t2.name, "step");
+    await t2.step("nested step", async (t3) => {
+      await assertEquals(t3.name, "nested step");
+    });
+  });
+});
+
+Deno.test(async function originOnTextContext(t1) {
+  await assertEquals(t1.origin, Deno.mainModule);
+  await t1.step("step", async (t2) => {
+    await assertEquals(t2.origin, Deno.mainModule);
+    await t2.step("nested step", async (t3) => {
+      await assertEquals(t3.origin, Deno.mainModule);
+    });
+  });
+});
+
+Deno.test(async function parentOnTextContext(t1) {
+  await assertEquals(t1.parent, undefined);
+  await t1.step("step", async (t2) => {
+    await assertEquals(t1, t2.parent);
+    await t2.step("nested step", async (t3) => {
+      await assertEquals(t2, t3.parent);
+    });
+  });
 });

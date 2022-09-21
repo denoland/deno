@@ -5,7 +5,7 @@ Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
-      new URL("../testdata/workers/worker_types.ts", import.meta.url).href,
+      import.meta.resolve("../testdata/workers/worker_types.ts"),
       { type: "module" },
     );
     assert(w);

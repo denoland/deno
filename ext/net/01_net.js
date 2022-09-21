@@ -3,8 +3,8 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
-  const { ReadableStream, WritableStream } = window.__bootstrap.streams;
+  const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+  const { WritableStream, readableStreamForRid } = window.__bootstrap.streams;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -42,7 +42,7 @@
   }
 
   function opListen(args) {
-    return core.opSync("op_net_listen", args);
+    return ops.op_net_listen(args);
   }
 
   function opConnect(args) {
@@ -65,40 +65,12 @@
     return core.opAsync("op_dns_resolve", { query, recordType, options });
   }
 
-  const DEFAULT_CHUNK_SIZE = 16_640;
-
   function tryClose(rid) {
     try {
       core.close(rid);
     } catch {
       // Ignore errors
     }
-  }
-
-  function readableStreamForRid(rid) {
-    return new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        const v = controller.byobRequest.view;
-        try {
-          const bytesRead = await read(rid, v);
-          if (bytesRead === null) {
-            tryClose(rid);
-            controller.close();
-            controller.byobRequest.respond(0);
-          } else {
-            controller.byobRequest.respond(bytesRead);
-          }
-        } catch (e) {
-          controller.error(e);
-          tryClose(rid);
-        }
-      },
-      cancel() {
-        tryClose(rid);
-      },
-      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
-    });
   }
 
   function writableStreamForRid(rid) {
@@ -185,11 +157,11 @@
 
   class TcpConn extends Conn {
     setNoDelay(nodelay = true) {
-      return core.opSync("op_set_nodelay", this.rid, nodelay);
+      return ops.op_set_nodelay(this.rid, nodelay);
     }
 
     setKeepAlive(keepalive = true) {
-      return core.opSync("op_set_keepalive", this.rid, keepalive);
+      return ops.op_set_keepalive(this.rid, keepalive);
     }
   }
 

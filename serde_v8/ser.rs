@@ -7,8 +7,10 @@ use std::cell::RefCell;
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
 use crate::magic::transl8::MAGIC_FIELD;
-use crate::magic::transl8::{opaque_deref, opaque_recv, MagicType, ToV8};
-use crate::{magic, Buffer, ByteString, U16String};
+use crate::magic::transl8::{opaque_deref_mut, opaque_recv, MagicType, ToV8};
+use crate::{
+  magic, ByteString, DetachedBuffer, StringOrBuffer, U16String, ZeroCopyBuf,
+};
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -251,7 +253,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 
   fn end(self) -> JsResult<'a> {
     // SAFETY: transerialization assumptions imply `T` is still alive.
-    let x: &T = unsafe { opaque_deref(self.opaque) };
+    let x: &mut T = unsafe { opaque_deref_mut(self.opaque) };
     let scope = &mut *self.scope.borrow_mut();
     x.to_v8(scope)
   }
@@ -260,9 +262,11 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
-  MagicBuffer(MagicalSerializer<'a, 'b, 'c, Buffer>),
+  ZeroCopyBuf(MagicalSerializer<'a, 'b, 'c, ZeroCopyBuf>),
+  MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
+  MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -277,9 +281,13 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
   ) -> Result<()> {
     match self {
       StructSerializers::Magic(s) => s.serialize_field(key, value),
-      StructSerializers::MagicBuffer(s) => s.serialize_field(key, value),
+      StructSerializers::ZeroCopyBuf(s) => s.serialize_field(key, value),
+      StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
+      StructSerializers::MagicStringOrBuffer(s) => {
+        s.serialize_field(key, value)
+      }
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -287,9 +295,11 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
   fn end(self) -> JsResult<'a> {
     match self {
       StructSerializers::Magic(s) => s.end(),
-      StructSerializers::MagicBuffer(s) => s.end(),
+      StructSerializers::ZeroCopyBuf(s) => s.end(),
+      StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
+      StructSerializers::MagicStringOrBuffer(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -367,6 +377,9 @@ macro_rules! forward_to {
     };
 }
 
+const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
+
 impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   type Ok = v8::Local<'a, v8::Value>;
   type Error = Error;
@@ -389,8 +402,6 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       serialize_u16(u16, serialize_u32, 'a);
 
       serialize_f32(f32, serialize_f64, 'a);
-      serialize_u64(u64, serialize_f64, 'a);
-      serialize_i64(i64, serialize_f64, 'a);
   }
 
   fn serialize_i32(self, v: i32) -> JsResult<'a> {
@@ -401,6 +412,28 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     Ok(v8::Integer::new_from_unsigned(&mut self.scope.borrow_mut(), v).into())
   }
 
+  fn serialize_i64(self, v: i64) -> JsResult<'a> {
+    let s = &mut self.scope.borrow_mut();
+    // If i64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_i64(s, v).into())
+    }
+  }
+
+  fn serialize_u64(self, v: u64) -> JsResult<'a> {
+    let s = &mut self.scope.borrow_mut();
+    // If u64 can fit in max safe integer bounds then serialize as v8::Number
+    // otherwise serialize as v8::BigInt
+    if v <= (MAX_SAFE_INTEGER as u64) {
+      Ok(v8::Number::new(s, v as _).into())
+    } else {
+      Ok(v8::BigInt::new_from_u64(s, v).into())
+    }
+  }
+
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
     Ok(v8::Number::new(&mut self.scope.borrow_mut(), v).into())
   }
@@ -409,19 +442,25 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     Ok(v8::Boolean::new(&mut self.scope.borrow_mut(), v).into())
   }
 
-  fn serialize_char(self, _v: char) -> JsResult<'a> {
-    unimplemented!();
+  fn serialize_char(self, v: char) -> JsResult<'a> {
+    self.serialize_str(&v.to_string())
   }
 
   fn serialize_str(self, v: &str) -> JsResult<'a> {
-    v8::String::new(&mut self.scope.borrow_mut(), v)
-      .map(|v| v.into())
-      .ok_or(Error::ExpectedString)
+    let maybe_str = v8::String::new(&mut self.scope.borrow_mut(), v);
+
+    // v8 string can return 'None' if buffer length > kMaxLength.
+    if let Some(str) = maybe_str {
+      Ok(str.into())
+    } else {
+      Err(Error::Message(String::from(
+        "Cannot allocate String: buffer exceeds maximum length.",
+      )))
+    }
   }
 
-  fn serialize_bytes(self, _v: &[u8]) -> JsResult<'a> {
-    // TODO: investigate using Uint8Arrays
-    unimplemented!()
+  fn serialize_bytes(self, v: &[u8]) -> JsResult<'a> {
+    Ok(slice_to_uint8array(&mut self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_none(self) -> JsResult<'a> {
@@ -524,9 +563,17 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
         let m = MagicalSerializer::<U16String>::new(self.scope);
         Ok(StructSerializers::MagicU16String(m))
       }
-      Buffer::MAGIC_NAME => {
-        let m = MagicalSerializer::<Buffer>::new(self.scope);
-        Ok(StructSerializers::MagicBuffer(m))
+      ZeroCopyBuf::MAGIC_NAME => {
+        let m = MagicalSerializer::<ZeroCopyBuf>::new(self.scope);
+        Ok(StructSerializers::ZeroCopyBuf(m))
+      }
+      DetachedBuffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);
+        Ok(StructSerializers::MagicDetached(m))
+      }
+      StringOrBuffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
+        Ok(StructSerializers::MagicStringOrBuffer(m))
       }
       magic::Value::MAGIC_NAME => {
         let m = MagicalSerializer::<magic::Value<'a>>::new(self.scope);
@@ -551,4 +598,27 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
   }
+}
+
+pub fn slice_to_uint8array<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: &[u8],
+) -> v8::Local<'a, v8::Uint8Array> {
+  let buffer = if buf.is_empty() {
+    v8::ArrayBuffer::new(scope, 0)
+  } else {
+    let store: v8::UniqueRef<_> =
+      v8::ArrayBuffer::new_backing_store(scope, buf.len());
+    // SAFETY: raw memory copy into the v8 ArrayBuffer allocated above
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        buf.as_ptr(),
+        store.data().unwrap().as_ptr() as *mut u8,
+        buf.len(),
+      )
+    }
+    v8::ArrayBuffer::with_backing_store(scope, &store.make_shared())
+  };
+  v8::Uint8Array::new(scope, buffer, 0, buf.len())
+    .expect("Failed to create UintArray8")
 }

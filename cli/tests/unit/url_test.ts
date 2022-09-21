@@ -494,3 +494,15 @@ Deno.test(function urlSearchParamsIdentityPreserved() {
   const sp2 = u.searchParams;
   assertStrictEquals(sp1, sp2);
 });
+
+Deno.test(function urlTakeURLObjectAsParameter() {
+  const url = new URL(
+    new URL(
+      "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+    ),
+  );
+  assertEquals(
+    url.href,
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+  );
+});

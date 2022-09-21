@@ -36,18 +36,9 @@ Deno.test({ permissions: { net: false } }, async function connectTLSNoPerm() {
 Deno.test(
   { permissions: { read: true, net: true } },
   async function connectTLSInvalidHost() {
-    const listener = await Deno.listenTls({
-      hostname: "localhost",
-      port: 3567,
-      certFile: "cli/tests/testdata/tls/localhost.crt",
-      keyFile: "cli/tests/testdata/tls/localhost.key",
-    });
-
     await assertRejects(async () => {
-      await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
+      await Deno.connectTls({ hostname: "256.0.0.0", port: 3567 });
     }, TypeError);
-
-    listener.close();
   },
 );
 
@@ -1028,20 +1019,14 @@ function createHttpsListener(port: number): Deno.Listener {
 }
 
 async function curl(url: string): Promise<string> {
-  const curl = Deno.run({
-    cmd: ["curl", "--insecure", url],
-    stdout: "piped",
+  const { success, code, stdout } = await Deno.spawn("curl", {
+    args: ["--insecure", url],
   });
 
-  try {
-    const [status, output] = await Promise.all([curl.status(), curl.output()]);
-    if (!status.success) {
-      throw new Error(`curl ${url} failed: ${status.code}`);
-    }
-    return new TextDecoder().decode(output);
-  } finally {
-    curl.close();
+  if (!success) {
+    throw new Error(`curl ${url} failed: ${code}`);
   }
+  return new TextDecoder().decode(stdout);
 }
 
 Deno.test(

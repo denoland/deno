@@ -37,10 +37,22 @@ Deno.test(function getRandomValuesInt32Array() {
   assertNotEquals(arr, new Int32Array(8));
 });
 
+Deno.test(function getRandomValuesBigInt64Array() {
+  const arr = new BigInt64Array(8);
+  crypto.getRandomValues(arr);
+  assertNotEquals(arr, new BigInt64Array(8));
+});
+
 Deno.test(function getRandomValuesUint32Array() {
   const arr = new Uint32Array(8);
   crypto.getRandomValues(arr);
   assertNotEquals(arr, new Uint32Array(8));
+});
+
+Deno.test(function getRandomValuesBigUint64Array() {
+  const arr = new BigUint64Array(8);
+  crypto.getRandomValues(arr);
+  assertNotEquals(arr, new BigUint64Array(8));
 });
 
 Deno.test(function getRandomValuesReturnValue() {

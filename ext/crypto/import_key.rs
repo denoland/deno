@@ -1,20 +1,18 @@
-use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::ZeroCopyBuf;
-use elliptic_curve::pkcs8::der::Decodable as Pkcs8Decodable;
-use elliptic_curve::pkcs8::PrivateKeyInfo;
-use ring::signature::EcdsaKeyPair;
-use rsa::pkcs1::UIntBytes;
-use rsa::pkcs8::AlgorithmIdentifier;
-use serde::Deserialize;
-use serde::Serialize;
-use spki::der::Encodable;
-
-use crate::ec_key::ECPrivateKey;
 use crate::key::CryptoNamedCurve;
 use crate::shared::*;
 use crate::OaepPrivateKeyParameters;
 use crate::PssPrivateKeyParameters;
+use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::ZeroCopyBuf;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
+use p256::pkcs8::EncodePrivateKey;
+use ring::signature::EcdsaKeyPair;
+use rsa::pkcs1::UIntRef;
+use serde::Deserialize;
+use serde::Serialize;
+use spki::der::Decode;
+use spki::der::Encode;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,7 +112,7 @@ macro_rules! jwt_b64_int_or_err {
   ($name:ident, $b64:expr, $err:expr) => {
     let bytes = base64::decode_config($b64, URL_SAFE_FORGIVING)
       .map_err(|_| data_error($err))?;
-    let $name = UIntBytes::new(&bytes).map_err(|_| data_error($err))?;
+    let $name = UIntRef::new(&bytes).map_err(|_| data_error($err))?;
   };
 }
 
@@ -164,7 +162,6 @@ fn import_key_rsa_jwk(
       jwt_b64_int_or_err!(coefficient, &qi, "invalid CRT coefficient");
 
       let private_key = rsa::pkcs1::RsaPrivateKey {
-        version: rsa::pkcs1::Version::TwoPrime,
         modulus,
         public_exponent,
         private_exponent,
@@ -173,6 +170,7 @@ fn import_key_rsa_jwk(
         exponent1,
         exponent2,
         coefficient,
+        other_prime_infos: None,
       };
 
       let data = private_key
@@ -191,28 +189,6 @@ fn import_key_rsa_jwk(
     }
     _ => unreachable!(),
   }
-}
-
-fn validate_mask_gen(
-  mask_gen_algorithm: &AlgorithmIdentifier,
-  hash_algorithm: &AlgorithmIdentifier,
-) -> Result<(), deno_core::anyhow::Error> {
-  if mask_gen_algorithm.oid != ID_MFG1 {
-    return Err(not_supported_error("unsupported mask gen algorithm"));
-  }
-
-  let parameters = mask_gen_algorithm
-    .parameters_any()
-    .map_err(|_| not_supported_error("unsupported parameters"))?;
-  let mgf1_hash_identifier = AlgorithmIdentifier::try_from(parameters)
-    .map_err(|_| not_supported_error("unsupported parameters"))?;
-
-  // The hash function on which MGF1 is based.
-  mgf1_hash_identifier
-    .assert_algorithm_oid(hash_algorithm.oid)
-    .map_err(|_| not_supported_error("unsupported parameters"))?;
-
-  Ok(())
 }
 
 fn import_key_rsassa(
@@ -383,7 +359,6 @@ fn import_key_rsapss(
             return Err(not_supported_error("unsupported hash algorithm"));
           }
 
-          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
           hash
         }
         _ => return Err(data_error("unsupported algorithm")),
@@ -446,7 +421,7 @@ fn import_key_rsapss(
           .map_err(|_| not_supported_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -456,10 +431,7 @@ fn import_key_rsapss(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-
-          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -532,7 +504,7 @@ fn import_key_rsaoaep(
           .map_err(|_| data_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -542,10 +514,7 @@ fn import_key_rsaoaep(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-
-          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -607,7 +576,7 @@ fn import_key_rsaoaep(
           .map_err(|_| not_supported_error("malformed parameters"))?;
 
           let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
+          match hash_alg.oid {
             // id-sha1
             ID_SHA1_OID => Some(ShaHash::Sha1),
             // id-sha256
@@ -617,9 +586,7 @@ fn import_key_rsaoaep(
             // id-sha256
             ID_SHA512_OID => Some(ShaHash::Sha512),
             _ => return Err(data_error("unsupported hash algorithm")),
-          };
-          validate_mask_gen(&params.mask_gen_algorithm, &hash_alg)?;
-          hash
+          }
         }
         _ => return Err(data_error("unsupported algorithm")),
       };
@@ -716,30 +683,18 @@ fn import_key_ec_jwk(
       })
     }
     KeyData::JwkPrivateEc { d, x, y } => {
-      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
-
       jwt_b64_int_or_err!(private_d, &d, "invalid JWK private key");
-
+      let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
       let pkcs8_der = match named_curve {
         EcNamedCurve::P256 => {
           let d = decode_b64url_to_field_bytes::<p256::NistP256>(&d)?;
-
-          let pk =
-            ECPrivateKey::<p256::NistP256>::from_private_and_public_bytes(
-              d,
-              &point_bytes,
-            );
+          let pk = p256::SecretKey::from_be_bytes(&d)?;
 
           pk.to_pkcs8_der()?
         }
         EcNamedCurve::P384 => {
           let d = decode_b64url_to_field_bytes::<p384::NistP384>(&d)?;
-
-          let pk =
-            ECPrivateKey::<p384::NistP384>::from_private_and_public_bytes(
-              d,
-              &point_bytes,
-            );
+          let pk = p384::SecretKey::from_be_bytes(&d)?;
 
           pk.to_pkcs8_der()?
         }
@@ -764,7 +719,7 @@ fn import_key_ec_jwk(
       );
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Private(pkcs8_der.as_ref().to_vec().into()),
+        raw_data: RawKeyData::Private(pkcs8_der.as_bytes().to_vec().into()),
       })
     }
     _ => unreachable!(),
@@ -775,11 +730,11 @@ pub struct ECParametersSpki {
   pub named_curve_alg: spki::der::asn1::ObjectIdentifier,
 }
 
-impl<'a> TryFrom<spki::der::asn1::Any<'a>> for ECParametersSpki {
+impl<'a> TryFrom<spki::der::asn1::AnyRef<'a>> for ECParametersSpki {
   type Error = spki::der::Error;
 
   fn try_from(
-    any: spki::der::asn1::Any<'a>,
+    any: spki::der::asn1::AnyRef<'a>,
   ) -> spki::der::Result<ECParametersSpki> {
     let x = any.oid()?;
 
@@ -824,15 +779,14 @@ fn import_key_ec(
       // 2-7
       // Deserialize PKCS8 - validate structure, extracts named_curve
       let named_curve_alg = match named_curve {
-        EcNamedCurve::P256 => {
-          let pk = ECPrivateKey::<p256::NistP256>::try_from(data.as_ref())?;
-
-          pk.named_curve_oid().unwrap()
-        }
-        EcNamedCurve::P384 => {
-          let pk = ECPrivateKey::<p384::NistP384>::try_from(data.as_ref())?;
-
-          pk.named_curve_oid().unwrap()
+        EcNamedCurve::P256 | EcNamedCurve::P384 => {
+          let pk = PrivateKeyInfo::from_der(data.as_ref())
+            .map_err(|_| data_error("expected valid PKCS#8 data"))?;
+          pk.algorithm
+            .parameters
+            .ok_or_else(|| data_error("malformed parameters"))?
+            .oid()
+            .unwrap()
         }
         EcNamedCurve::P521 => {
           return Err(data_error("Unsupported named curve"))
@@ -922,7 +876,6 @@ fn import_key_ec(
               p256::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
                 data_error("invalid P-256 eliptic curve SPKI data")
               })?;
-
             if point.is_identity() {
               return Err(data_error("invalid P-256 eliptic curve point"));
             }
@@ -957,7 +910,7 @@ fn import_key_ec(
       }
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(encoded_key.to_vec().into()),
+        raw_data: RawKeyData::Public(encoded_key.into()),
       })
     }
     KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {

@@ -144,7 +144,7 @@ pub fn listen_unix(
   addr: &Path,
 ) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
   if addr.exists() {
-    remove_file(&addr).unwrap();
+    remove_file(&addr)?;
   }
   let listener = UnixListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
@@ -162,7 +162,7 @@ pub fn listen_unix_packet(
   addr: &Path,
 ) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
   if addr.exists() {
-    remove_file(&addr).unwrap();
+    remove_file(&addr)?;
   }
   let socket = UnixDatagram::bind(&addr)?;
   let local_addr = socket.local_addr()?;

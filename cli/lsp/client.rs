@@ -8,14 +8,22 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use lspower::lsp;
-use lspower::lsp::ConfigurationItem;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;
 
 use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
+use super::testing::lsp_custom as testing_lsp_custom;
+
+#[derive(Debug)]
+pub enum TestingNotification {
+  Module(testing_lsp_custom::TestModuleNotificationParams),
+  DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
+  Progress(testing_lsp_custom::TestRunProgressParams),
+}
 
 #[derive(Clone)]
 pub struct Client(Arc<dyn ClientTrait>);
@@ -27,8 +35,8 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-  pub fn from_lspower(client: lspower::Client) -> Self {
-    Self(Arc::new(LspowerClient(client)))
+  pub fn from_tower(client: tower_lsp::Client) -> Self {
+    Self(Arc::new(TowerClient(client)))
   }
 
   pub fn new_for_repl() -> Self {
@@ -49,6 +57,10 @@ impl Client {
     params: lsp_custom::RegistryStateNotificationParams,
   ) {
     self.0.send_registry_state_notification(params).await;
+  }
+
+  pub fn send_test_notification(&self, params: TestingNotification) {
+    self.0.send_test_notification(params);
   }
 
   pub async fn specifier_configurations(
@@ -118,6 +130,7 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   ) -> AsyncReturn<()>;
+  fn send_test_notification(&self, params: TestingNotification);
   fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
@@ -135,9 +148,9 @@ trait ClientTrait: Send + Sync {
 }
 
 #[derive(Clone)]
-struct LspowerClient(lspower::Client);
+struct TowerClient(tower_lsp::Client);
 
-impl ClientTrait for LspowerClient {
+impl ClientTrait for TowerClient {
   fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -157,11 +170,34 @@ impl ClientTrait for LspowerClient {
     let client = self.0.clone();
     Box::pin(async move {
       client
-        .send_custom_notification::<lsp_custom::RegistryStateNotification>(
-          params,
-        )
+        .send_notification::<lsp_custom::RegistryStateNotification>(params)
         .await
     })
+  }
+
+  fn send_test_notification(&self, notification: TestingNotification) {
+    let client = self.0.clone();
+    tokio::task::spawn(async move {
+      match notification {
+        TestingNotification::Module(params) => {
+          client
+            .send_notification::<testing_lsp_custom::TestModuleNotification>(
+              params,
+            )
+            .await
+        }
+        TestingNotification::DeleteModule(params) => client
+          .send_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
+            params,
+          )
+          .await,
+        TestingNotification::Progress(params) => client
+          .send_notification::<testing_lsp_custom::TestRunProgressNotification>(
+            params,
+          )
+          .await,
+      }
+    });
   }
 
   fn specifier_configurations(
@@ -259,6 +295,8 @@ impl ClientTrait for ReplClient {
   ) -> AsyncReturn<()> {
     Box::pin(future::ready(()))
   }
+
+  fn send_test_notification(&self, _params: TestingNotification) {}
 
   fn specifier_configurations(
     &self,

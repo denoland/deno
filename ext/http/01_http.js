@@ -13,9 +13,10 @@
     newInnerRequest,
     newInnerResponse,
     fromInnerResponse,
+    _flash,
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
-  const { BadResourcePrototype, InterruptedPrototype } = core;
+  const { BadResourcePrototype, InterruptedPrototype, ops } = core;
   const { ReadableStream, ReadableStreamPrototype } =
     window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
@@ -32,7 +33,8 @@
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred } = window.__bootstrap.streams;
+  const { Deferred, getReadableStreamRid, readableStreamClose } =
+    window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -80,7 +82,7 @@
       return this.#rid;
     }
 
-    /** @returns {Promise<ResponseEvent | null>} */
+    /** @returns {Promise<RequestEvent | null>} */
     async nextRequest() {
       let nextRequest;
       try {
@@ -110,7 +112,7 @@
         return null;
       }
 
-      const [streamRid, method, headersList, url] = nextRequest;
+      const [streamRid, method, url] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -123,9 +125,9 @@
       }
 
       const innerRequest = newInnerRequest(
-        method,
+        () => method,
         url,
-        headersList,
+        () => ops.op_http_headers(streamRid),
         body !== null ? new InnerBody(body) : null,
         false,
       );
@@ -235,11 +237,12 @@
           typeof respBody === "string" ||
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
         );
-
         try {
           await core.opAsync(
             "op_http_write_headers",
-            [streamRid, innerResp.status ?? 200, innerResp.headerList],
+            streamRid,
+            innerResp.status ?? 200,
+            innerResp.headerList,
             isStreamingResponseBody ? null : respBody,
           );
         } catch (error) {
@@ -267,16 +270,21 @@
           ) {
             throw new TypeError("Unreachable");
           }
-          const reader = respBody.getReader();
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
-              await reader.cancel(new TypeError("Value not a Uint8Array"));
-              break;
+          const resourceRid = getReadableStreamRid(respBody);
+          let reader;
+          if (resourceRid) {
+            if (respBody.locked) {
+              throw new TypeError("ReadableStream is locked.");
             }
+            reader = respBody.getReader(); // Aquire JS lock.
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await core.opAsync(
+                "op_http_write_resource",
+                streamRid,
+                resourceRid,
+              );
+              core.tryClose(resourceRid);
+              readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -289,7 +297,32 @@
               await reader.cancel(error);
               throw error;
             }
+          } else {
+            reader = respBody.getReader();
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+                await reader.cancel(new TypeError("Value not a Uint8Array"));
+                break;
+              }
+              try {
+                await core.opAsync("op_http_write", streamRid, value);
+              } catch (error) {
+                const connError = httpConn[connErrorSymbol];
+                if (
+                  ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+                  connError != null
+                ) {
+                  // deno-lint-ignore no-ex-assign
+                  error = new connError.constructor(connError.message);
+                }
+                await reader.cancel(error);
+                throw error;
+              }
+            }
           }
+
           try {
             await core.opAsync("op_http_shutdown", streamRid);
           } catch (error) {
@@ -325,32 +358,18 @@
 
           httpConn.close();
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            await core.opAsync("op_ws_close", { rid: wsRid });
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
 
-            ws[_readyState] = WebSocket.CLOSED;
-
-            const errEvent = new ErrorEvent("error");
-            ws.dispatchEvent(errEvent);
-
-            const event = new CloseEvent("close");
-            ws.dispatchEvent(event);
-
-            core.tryClose(wsRid);
-          } else {
-            ws[_readyState] = WebSocket.OPEN;
-            const event = new Event("open");
-            ws.dispatchEvent(event);
-
-            ws[_eventLoop]();
-            if (ws[_idleTimeoutDuration]) {
-              ws.addEventListener(
-                "close",
-                () => clearTimeout(ws[_idleTimeoutTimeout]),
-              );
-            }
-            ws[_serverHandleIdleTimeout]();
+          ws[_eventLoop]();
+          if (ws[_idleTimeoutDuration]) {
+            ws.addEventListener(
+              "close",
+              () => clearTimeout(ws[_idleTimeoutTimeout]),
+            );
           }
+          ws[_serverHandleIdleTimeout]();
         }
       } finally {
         if (SetPrototypeDelete(httpConn.managedResources, streamRid)) {
@@ -420,7 +439,7 @@
       );
     }
 
-    const accept = core.opSync("op_http_websocket_accept_header", websocketKey);
+    const accept = ops.op_http_websocket_accept_header(websocketKey);
 
     const r = newInnerResponse(101);
     r.headerList = [
@@ -457,6 +476,12 @@
   }
 
   function upgradeHttp(req) {
+    if (req[_flash]) {
+      throw new TypeError(
+        "Flash requests can not be upgraded with `upgradeHttp`. Use `upgradeHttpRaw` instead.",
+      );
+    }
+
     req[_deferred] = new Deferred();
     return req[_deferred].promise;
   }
@@ -465,5 +490,6 @@
     HttpConn,
     upgradeWebSocket,
     upgradeHttp,
+    _ws,
   };
 })(this);

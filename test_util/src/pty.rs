@@ -82,7 +82,7 @@ pub fn create_pty(
   let pty = windows::WinPseudoConsole::new(
     program,
     args,
-    &cwd.as_ref().to_string_lossy().to_string(),
+    &cwd.as_ref().to_string_lossy(),
     env_vars,
   );
   Box::new(pty)
@@ -153,6 +153,8 @@ mod windows {
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
+      // SAFETY:
+      // Generous use of winapi to create a PTY (thus large unsafe block).
       unsafe {
         let mut size: COORD = std::mem::zeroed();
         size.X = 800;
@@ -238,22 +240,24 @@ mod windows {
 
   impl Read for WinPseudoConsole {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-      unsafe {
-        loop {
-          let mut bytes_read = 0;
-          let success = ReadFile(
+      loop {
+        let mut bytes_read = 0;
+        // SAFETY:
+        // winapi call
+        let success = unsafe {
+          ReadFile(
             self.stdout_read_handle.as_raw_handle(),
             buf.as_mut_ptr() as _,
             buf.len() as u32,
             &mut bytes_read,
             ptr::null_mut(),
-          );
+          )
+        };
 
-          // ignore zero-byte writes
-          let is_zero_byte_write = bytes_read == 0 && success == TRUE;
-          if !is_zero_byte_write {
-            return Ok(bytes_read as usize);
-          }
+        // ignore zero-byte writes
+        let is_zero_byte_write = bytes_read == 0 && success == TRUE;
+        if !is_zero_byte_write {
+          return Ok(bytes_read as usize);
         }
       }
     }
@@ -271,17 +275,19 @@ mod windows {
 
   impl std::io::Write for WinPseudoConsole {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-      unsafe {
-        let mut bytes_written = 0;
-        assert_win_success!(WriteFile(
+      let mut bytes_written = 0;
+      // SAFETY:
+      // winapi call
+      assert_win_success!(unsafe {
+        WriteFile(
           self.stdin_write_handle.as_raw_handle(),
           buffer.as_ptr() as *const _,
           buffer.len() as u32,
           &mut bytes_written,
           ptr::null_mut(),
-        ));
-        Ok(bytes_written as usize)
-      }
+        )
+      });
+      Ok(bytes_written as usize)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -299,10 +305,14 @@ mod windows {
     }
 
     pub fn duplicate(&self) -> WinHandle {
-      unsafe {
-        let process_handle = GetCurrentProcess();
-        let mut duplicate_handle = ptr::null_mut();
-        assert_win_success!(DuplicateHandle(
+      // SAFETY:
+      // winapi call
+      let process_handle = unsafe { GetCurrentProcess() };
+      let mut duplicate_handle = ptr::null_mut();
+      // SAFETY:
+      // winapi call
+      assert_win_success!(unsafe {
+        DuplicateHandle(
           process_handle,
           self.inner,
           process_handle,
@@ -310,10 +320,10 @@ mod windows {
           0,
           0,
           DUPLICATE_SAME_ACCESS,
-        ));
+        )
+      });
 
-        WinHandle::new(duplicate_handle)
-      }
+      WinHandle::new(duplicate_handle)
     }
 
     pub fn as_raw_handle(&self) -> HANDLE {
@@ -328,13 +338,16 @@ mod windows {
     }
   }
 
+  // SAFETY: These handles are ok to send across threads.
   unsafe impl Send for WinHandle {}
+  // SAFETY: These handles are ok to send across threads.
   unsafe impl Sync for WinHandle {}
 
   impl Drop for WinHandle {
     fn drop(&mut self) {
-      unsafe {
-        if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
+      if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
+        // SAFETY: winapi call
+        unsafe {
           winapi::um::handleapi::CloseHandle(self.inner);
         }
       }
@@ -347,6 +360,8 @@ mod windows {
 
   impl ProcThreadAttributeList {
     pub fn new(console_handle: HPCON) -> Self {
+      // SAFETY:
+      // Generous use of unsafe winapi calls to create a ProcThreadAttributeList.
       unsafe {
         // discover size required for the list
         let mut size = 0;
@@ -393,24 +408,23 @@ mod windows {
 
   impl Drop for ProcThreadAttributeList {
     fn drop(&mut self) {
+      // SAFETY:
+      // winapi call
       unsafe { DeleteProcThreadAttributeList(self.as_mut_ptr()) };
     }
   }
 
   fn create_pipe() -> (WinHandle, WinHandle) {
-    unsafe {
-      let mut read_handle = std::ptr::null_mut();
-      let mut write_handle = std::ptr::null_mut();
+    let mut read_handle = std::ptr::null_mut();
+    let mut write_handle = std::ptr::null_mut();
 
-      assert_win_success!(CreatePipe(
-        &mut read_handle,
-        &mut write_handle,
-        ptr::null_mut(),
-        0
-      ));
+    // SAFETY:
+    // Creating an anonymous pipe with winapi.
+    assert_win_success!(unsafe {
+      CreatePipe(&mut read_handle, &mut write_handle, ptr::null_mut(), 0)
+    });
 
-      (WinHandle::new(read_handle), WinHandle::new(write_handle))
-    }
+    (WinHandle::new(read_handle), WinHandle::new(write_handle))
   }
 
   fn to_windows_str(str: &str) -> Vec<u16> {

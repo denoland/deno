@@ -1,7 +1,7 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo
+#!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
-import { GitLogOutput, path, semver } from "./deps.ts";
+import { $, GitLogOutput, semver } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
@@ -9,75 +9,69 @@ const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
 // increment the cli version
-await cliCrate.promptAndIncrement();
+if (Deno.args.some((a) => a === "--patch")) {
+  await cliCrate.increment("patch");
+} else if (Deno.args.some((a) => a === "--minor")) {
+  await cliCrate.increment("minor");
+} else if (Deno.args.some((a) => a === "--major")) {
+  await cliCrate.increment("major");
+} else {
+  await cliCrate.promptAndIncrement();
+}
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
   await crate.increment("minor");
 }
 
+// update the std version used in the code
+$.logStep("Updating std version...");
+await updateStdVersion();
+
 // update the lock file
-await workspace.getCliCrate().cargoCheck();
+await workspace.getCliCrate().cargoUpdate("--workspace");
 
 // try to update the Releases.md markdown text
 try {
+  $.logStep("Updating Releases.md...");
   await updateReleasesMd();
 } catch (err) {
-  console.error(err);
-  console.error(
-    "Updating Releases.md failed. Please manually run " +
+  $.log(err);
+  $.logError(
+    "Error Updating Releases.md failed. Please manually run " +
       "`git log --oneline VERSION_FROM..VERSION_TO` and " +
       "use the output to update Releases.md",
   );
 }
 
 async function updateReleasesMd() {
-  const filePath = path.join(DenoWorkspace.rootDirPath, "Releases.md");
-  const oldFileText = await Deno.readTextFile(filePath);
-  const insertText = await getReleasesMdText();
-
-  await Deno.writeTextFile(
-    filePath,
-    oldFileText.replace(/^### /m, insertText + "\n\n### "),
-  );
+  const gitLog = await getGitLog();
+  const releasesMdFile = workspace.getReleasesMdFile();
+  releasesMdFile.updateWithGitLog({
+    version: cliCrate.version,
+    gitLog,
+  });
 
   await workspace.runFormatter();
-  console.log(
-    "Updated Release.md -- Please review the output to ensure it's correct.",
-  );
-}
-
-async function getReleasesMdText() {
-  const gitLog = await getGitLog();
-  const formattedGitLog = gitLog.formatForReleaseMarkdown();
-  const formattedDate = getFormattedDate(new Date());
-
-  return `### ${cliCrate.version} / ${formattedDate}\n\n` +
-    `${formattedGitLog}`;
-
-  function getFormattedDate(date: Date) {
-    const formattedMonth = padTwoDigit(date.getMonth() + 1);
-    const formattedDay = padTwoDigit(date.getDate());
-    return `${date.getFullYear()}.${formattedMonth}.${formattedDay}`;
-
-    function padTwoDigit(val: number) {
-      return val.toString().padStart(2, "0");
-    }
-  }
 }
 
 async function getGitLog() {
-  const lastVersion = semver.parse(originalCliVersion)!;
-  const lastVersionTag = `v${originalCliVersion}`;
+  const originalVersion = semver.parse(originalCliVersion)!;
+  const originalVersionTag = `v${originalCliVersion}`;
   // fetch the upstream tags
   await repo.gitFetchTags("upstream");
 
+  // make the repo unshallow so we can fetch the latest tag
+  if (await repo.gitIsShallow()) {
+    await repo.gitFetchUnshallow("origin");
+  }
+
   // this means we're on the patch release
   const latestTag = await repo.gitLatestTag();
-  if (latestTag === lastVersionTag) {
+  if (latestTag === originalVersionTag) {
     return await repo.getGitLogFromTags(
       "upstream",
-      lastVersionTag,
+      originalVersionTag,
       undefined,
     );
   } else {
@@ -85,8 +79,8 @@ async function getGitLog() {
     await repo.gitFetchHistory("upstream");
     const lastMinorHistory = await repo.getGitLogFromTags(
       "upstream",
-      `v${lastVersion.major}.${lastVersion.minor}.0`,
-      lastVersionTag,
+      `v${originalVersion.major}.${originalVersion.minor}.0`,
+      originalVersionTag,
     );
     const currentHistory = await repo.getGitLogFromTags(
       "upstream",
@@ -100,4 +94,20 @@ async function getGitLog() {
       currentHistory.lines.filter((l) => !lastMinorMessages.has(l.message)),
     );
   }
+}
+
+async function updateStdVersion() {
+  const compatFilePath = $.path.join(cliCrate.folderPath, "deno_std.rs");
+  const text = await Deno.readTextFile(compatFilePath);
+  const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
+  const stdVersionText = versionRe.exec(text)?.[1];
+  if (stdVersionText == null) {
+    throw new Error(`Could not find the deno_std version in ${compatFilePath}`);
+  }
+  const stdVersion = semver.parse(stdVersionText)!;
+  const newStdVersion = stdVersion.inc("minor");
+  await Deno.writeTextFile(
+    compatFilePath,
+    text.replace(versionRe, `std@${newStdVersion}`),
+  );
 }

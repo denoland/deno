@@ -1,88 +1,38 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-
-use std::ops::{Deref, DerefMut};
-
 use super::transl8::{FromV8, ToV8};
 use crate::magic::transl8::impl_magic;
 use crate::Error;
+use smallvec::SmallVec;
+use std::mem::size_of;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct ByteString(pub Vec<u8>);
+const USIZE2X: usize = size_of::<usize>() * 2;
+
+#[derive(
+  PartialEq,
+  Eq,
+  Clone,
+  Debug,
+  Default,
+  derive_more::Deref,
+  derive_more::DerefMut,
+  derive_more::AsRef,
+  derive_more::AsMut,
+)]
+#[as_mut(forward)]
+#[as_ref(forward)]
+pub struct ByteString(SmallVec<[u8; USIZE2X]>);
 impl_magic!(ByteString);
 
-impl ByteString {
-  pub fn new() -> ByteString {
-    ByteString(Vec::new())
-  }
-
-  pub fn with_capacity(capacity: usize) -> ByteString {
-    ByteString(Vec::with_capacity(capacity))
-  }
-
-  pub fn capacity(&self) -> usize {
-    self.0.capacity()
-  }
-
-  pub fn reserve(&mut self, additional: usize) {
-    self.0.reserve(additional)
-  }
-
-  pub fn reserve_exact(&mut self, additional: usize) {
-    self.0.reserve_exact(additional)
-  }
-
-  pub fn shrink_to_fit(&mut self) {
-    self.0.shrink_to_fit()
-  }
-
-  pub fn truncate(&mut self, len: usize) {
-    self.0.truncate(len)
-  }
-
-  pub fn push(&mut self, value: u8) {
-    self.0.push(value)
-  }
-
-  pub fn pop(&mut self) -> Option<u8> {
-    self.0.pop()
-  }
-}
-
-impl Default for ByteString {
-  fn default() -> Self {
-    ByteString::new()
-  }
-}
-
-impl Deref for ByteString {
-  type Target = [u8];
-
-  fn deref(&self) -> &[u8] {
-    self.0.deref()
-  }
-}
-
-impl DerefMut for ByteString {
-  fn deref_mut(&mut self) -> &mut [u8] {
-    self.0.deref_mut()
-  }
-}
-
-impl AsRef<[u8]> for ByteString {
-  fn as_ref(&self) -> &[u8] {
-    self.0.as_ref()
-  }
-}
-
-impl AsMut<[u8]> for ByteString {
-  fn as_mut(&mut self) -> &mut [u8] {
-    self.0.as_mut()
-  }
-}
+// const-assert that Vec<u8> and SmallVec<[u8; size_of::<usize>() * 2]> have a same size.
+// Note from https://docs.rs/smallvec/latest/smallvec/#union -
+//   smallvec can still be larger than Vec if the inline buffer is
+//   larger than two machine words.
+const _: () =
+  assert!(size_of::<Vec<u8>>() == size_of::<SmallVec<[u8; USIZE2X]>>());
 
 impl ToV8 for ByteString {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     let v =
@@ -103,10 +53,10 @@ impl FromV8 for ByteString {
       return Err(Error::ExpectedLatin1);
     }
     let len = v8str.length();
-    let mut buffer = Vec::with_capacity(len);
+    let mut buffer = SmallVec::with_capacity(len);
+    #[allow(clippy::uninit_vec)]
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
-    #[allow(clippy::uninit_vec)]
     unsafe {
       buffer.set_len(len);
       let written = v8str.write_one_byte(
@@ -117,6 +67,41 @@ impl FromV8 for ByteString {
       );
       assert!(written == len);
     }
-    Ok(ByteString(buffer))
+    Ok(Self(buffer))
+  }
+}
+
+// smallvec does not impl From/Into traits
+// like Vec<u8> does. So here we are.
+
+impl From<Vec<u8>> for ByteString {
+  fn from(vec: Vec<u8>) -> Self {
+    ByteString(SmallVec::from_vec(vec))
+  }
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<Vec<u8>> for ByteString {
+  fn into(self) -> Vec<u8> {
+    self.0.into_vec()
+  }
+}
+
+impl From<&[u8]> for ByteString {
+  fn from(s: &[u8]) -> Self {
+    ByteString(SmallVec::from_slice(s))
+  }
+}
+
+impl From<&str> for ByteString {
+  fn from(s: &str) -> Self {
+    let v: Vec<u8> = s.into();
+    ByteString::from(v)
+  }
+}
+
+impl From<String> for ByteString {
+  fn from(s: String) -> Self {
+    ByteString::from(s.into_bytes())
   }
 }

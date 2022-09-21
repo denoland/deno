@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/vscode/devcontainers/rust:0-1
+FROM mcr.microsoft.com/vscode/devcontainers/rust:1-bullseye
 
 # Install Deno
 ENV DENO_INSTALL=/usr/local

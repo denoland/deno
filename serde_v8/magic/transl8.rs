@@ -14,7 +14,7 @@ pub(crate) trait MagicType {
 
 pub(crate) trait ToV8 {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error>;
 }
@@ -104,14 +104,14 @@ pub(crate) unsafe fn opaque_recv<T: ?Sized>(ptr: &T) -> u64 {
 }
 
 /// Transmutes an "opaque" ptr back into a reference
-pub(crate) unsafe fn opaque_deref<'a, T>(ptr: u64) -> &'a T {
-  std::mem::transmute(ptr)
+pub(crate) unsafe fn opaque_deref_mut<'a, T>(ptr: u64) -> &'a mut T {
+  std::mem::transmute(ptr as usize)
 }
 
 /// Transmutes & copies the value from the "opaque" ptr
 /// NOTE: takes ownership & requires other end to forget its ownership
 pub(crate) unsafe fn opaque_take<T>(ptr: u64) -> T {
-  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr))
+  std::mem::transmute_copy::<T, T>(std::mem::transmute(ptr as usize))
 }
 
 macro_rules! impl_magic {
@@ -141,3 +141,25 @@ macro_rules! impl_magic {
   };
 }
 pub(crate) use impl_magic;
+
+macro_rules! impl_wrapper {
+  ($i:item) => {
+    #[derive(
+      PartialEq,
+      Eq,
+      Clone,
+      Debug,
+      Default,
+      derive_more::Deref,
+      derive_more::DerefMut,
+      derive_more::AsRef,
+      derive_more::AsMut,
+      derive_more::From,
+    )]
+    #[as_mut(forward)]
+    #[as_ref(forward)]
+    #[from(forward)]
+    $i
+  };
+}
+pub(crate) use impl_wrapper;

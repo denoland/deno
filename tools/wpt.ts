@@ -32,7 +32,7 @@ import {
   wptreport,
 } from "./wpt/utils.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
+import { writeAll, writeAllSync } from "../test_util/std/streams/conversion.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -90,10 +90,11 @@ async function setup() {
         `The WPT require certain entries to be present in your ${hostsPath} file. Should these be configured automatically?`,
       );
     if (autoConfigure) {
-      const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
-      const status = await proc.status();
-      assert(status.success, "wpt make-hosts-file should not fail");
-      const entries = new TextDecoder().decode(await proc.output());
+      const { success, stdout } = await runPy(["wpt", "make-hosts-file"], {
+        stdout: "piped",
+      }).output();
+      assert(success, "wpt make-hosts-file should not fail");
+      const entries = new TextDecoder().decode(stdout);
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
           throw new Error(

@@ -5,18 +5,21 @@ use serde::{de, ser};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
   Message(String),
 
   ExpectedBoolean,
   ExpectedInteger,
+  ExpectedNumber,
   ExpectedString,
   ExpectedArray,
   ExpectedMap,
   ExpectedEnum,
   ExpectedObject,
   ExpectedBuffer,
+  ExpectedDetachable,
 
   ExpectedUtf8,
   ExpectedLatin1,

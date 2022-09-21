@@ -6,12 +6,12 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspResponseError;
+use tower_lsp::lsp_types as lsp;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("testdata/db.ts");
@@ -44,7 +44,7 @@ struct FixtureMessage {
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
 fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error): (Option<Value>, Option<LspResponseError>) =
@@ -125,7 +125,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
@@ -189,7 +189,7 @@ fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, maybe_err) =
@@ -285,7 +285,7 @@ fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
 
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
-  let mut client = LspClient::new(deno_exe)?;
+  let mut client = LspClient::new(deno_exe, false)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
   let (_, response_error) =
@@ -333,7 +333,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 /// Generate benchmarks for the LSP server.
-pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
+pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, i64>, AnyError> {
   println!("-> Start benchmarking lsp");
   let mut exec_times = HashMap::new();
 
@@ -343,7 +343,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_startup_shutdown(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("startup_shutdown".to_string(), mean);
 
@@ -353,7 +353,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_big_file_edits(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("big_file_edits".to_string(), mean);
 
@@ -363,7 +363,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_find_replace(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("find_replace".to_string(), mean);
 
@@ -373,7 +373,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_code_lens(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("code_lens".to_string(), mean);
 

@@ -170,9 +170,6 @@
   // Create copy of isNaN
   primordials[isNaN.name] = isNaN;
 
-  // Create copy of queueMicrotask
-  primordials["queueMicrotask"] = queueMicrotask;
-
   // Create copies of URI handling functions
   [
     decodeURI,
@@ -280,6 +277,7 @@
     ArrayPrototypeForEach,
     FunctionPrototypeCall,
     Map,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectSetPrototypeOf,
     Promise,
@@ -455,6 +453,25 @@
         .finally(onFinally)
         .then(a, b)
     );
+
+  // Create getter and setter for `queueMicrotask`, it hasn't been bound yet.
+  let queueMicrotask = undefined;
+  ObjectDefineProperty(primordials, "queueMicrotask", {
+    get() {
+      return queueMicrotask;
+    },
+  });
+  primordials.setQueueMicrotask = (value) => {
+    if (queueMicrotask !== undefined) {
+      throw new Error("queueMicrotask is already defined");
+    }
+    queueMicrotask = value;
+  };
+
+  // Renaming from `eval` is necessary because otherwise it would perform direct
+  // evaluation, allowing user-land access to local variables.
+  // This is because the identifier `eval` is somewhat treated as a keyword
+  primordials.indirectEval = eval;
 
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);

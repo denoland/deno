@@ -8,15 +8,15 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use lspower::lsp;
 use pretty_assertions::assert_eq;
 use std::collections::HashSet;
 use std::fs;
-use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
 use test_util::testdata_path;
+use test_util::TempDir;
+use tower_lsp::lsp_types as lsp;
 
 fn load_fixture(path: &str) -> Value {
   load_fixture_as(path)
@@ -38,7 +38,7 @@ fn load_fixture_str(path: &str) -> String {
 
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", load_fixture(init_path))
     .unwrap();
@@ -233,7 +233,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 fn lsp_init_tsconfig() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let tsconfig =
@@ -247,7 +247,7 @@ fn lsp_init_tsconfig() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -276,7 +276,7 @@ fn lsp_init_tsconfig() {
 fn lsp_tsconfig_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let tsconfig =
     serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
   fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
@@ -290,7 +290,7 @@ fn lsp_tsconfig_types() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -341,16 +341,16 @@ fn lsp_tsconfig_bad_config_path() {
 
 #[test]
 fn lsp_triple_slash_types() {
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let temp_dir = TempDir::new().unwrap();
   let a_dts = load_fixture_str("a.d.ts");
   fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
 
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -377,7 +377,7 @@ fn lsp_triple_slash_types() {
 
 #[test]
 fn lsp_import_map() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -397,7 +397,7 @@ fn lsp_import_map() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -488,7 +488,7 @@ fn lsp_import_map_data_url() {
 
 #[test]
 fn lsp_import_map_config_file() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
 
@@ -516,7 +516,7 @@ fn lsp_import_map_config_file() {
   .unwrap();
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -577,6 +577,51 @@ fn lsp_import_map_config_file() {
     }))
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_deno_task() {
+  let temp_dir = TempDir::new();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  fs::write(
+    workspace_root.join("deno.jsonc"),
+    r#"{
+    "tasks": {
+      "build": "deno test",
+      "some:test": "deno bundle mod.ts"
+    }
+  }"#,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>("deno/task", json!(null))
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([
+      {
+        "name": "build",
+        "detail": "deno test"
+      },
+      {
+        "name": "some:test",
+        "detail": "deno bundle mod.ts"
+      }
+    ]))
+  );
 }
 
 #[test]
@@ -659,7 +704,7 @@ fn lsp_import_assertions() {
 
 #[test]
 fn lsp_import_map_import_completions() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let import_map =
@@ -680,7 +725,7 @@ fn lsp_import_map_import_completions() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -729,35 +774,40 @@ fn lsp_import_map_import_completions() {
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": "."
+          "insertText": ".",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "..",
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": ".."
+          "insertText": "..",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "std",
-          "insertText": "std"
+          "insertText": "std",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
           "sortText": "fs",
-          "insertText": "fs"
+          "insertText": "fs",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "/~",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "/~",
-          "insertText": "/~"
+          "insertText": "/~",
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -838,7 +888,8 @@ fn lsp_import_map_import_completions() {
               }
             },
             "newText": "/~/b.ts"
-          }
+          },
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -884,7 +935,8 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
+        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range": {
         "start": {
@@ -1028,7 +1080,7 @@ fn lsp_workspace_enable_paths() {
   // we aren't actually writing anything to the tempdir in this test, but we
   // just need a legitimate file path on the host system so that logic that
   // tries to convert to and from the fs paths works on all env
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
 
   let root_specifier =
     ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
@@ -1040,7 +1092,7 @@ fn lsp_workspace_enable_paths() {
   }]);
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -1308,7 +1360,8 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent."
+        "The pid of the current process's parent.",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range":{
         "start":{
@@ -1356,7 +1409,9 @@ fn lsp_hover_change_mbc() {
               },
               "end": {
                 "line": 1,
-                "character": 13
+                // the LSP uses utf16 encoded characters indexes, so
+                // after the deno emoiji is character index 15
+                "character": 15
               }
             },
             "text": ""
@@ -1380,7 +1435,7 @@ fn lsp_hover_change_mbc() {
         },
         "position": {
           "line": 2,
-          "character": 14
+          "character": 15
         }
       }),
     )
@@ -1399,11 +1454,11 @@ fn lsp_hover_change_mbc() {
       "range": {
         "start": {
           "line": 2,
-          "character": 13,
+          "character": 15,
         },
         "end": {
           "line": 2,
-          "character": 14,
+          "character": 16,
         },
       }
     }))
@@ -1413,7 +1468,8 @@ fn lsp_hover_change_mbc() {
 
 #[test]
 fn lsp_hover_closed_document() {
-  let temp_dir = TempDir::new().unwrap().into_path();
+  let temp_dir_guard = TempDir::new();
+  let temp_dir = temp_dir_guard.path();
   let a_path = temp_dir.join("a.ts");
   fs::write(a_path, r#"export const a = "a";"#).unwrap();
   let b_path = temp_dir.join("b.ts");
@@ -2008,7 +2064,7 @@ fn lsp_hover_jsdoc_symbol_link() {
           "language": "typescript",
           "value": "function a(): void"
         },
-        "JSDoc [hello](file:///a/b.ts#L1,1) and [`b`](file:///a/file.ts#L5,7)"
+        "JSDoc [hello](file:///a/file.ts#L1,10) and [`b`](file:///a/file.ts#L5,7)"
       ],
       "range": {
         "start": {
@@ -2140,149 +2196,6 @@ fn lsp_call_hierarchy() {
     maybe_res,
     Some(load_fixture("outgoing_calls_response.json"))
   );
-  shutdown(&mut client);
-}
-
-#[test]
-fn lsp_format_mbc() {
-  let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(
-    maybe_res,
-    Some(json!(load_fixture("formatting_mbc_response.json")))
-  );
-  shutdown(&mut client);
-}
-
-#[test]
-fn lsp_format_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_fmt_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
-  if let Some(Value::Object(mut map)) = params.initialization_options {
-    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
-    params.initialization_options = Some(Value::Object(map));
-  }
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  let file_uri =
-    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
-      .unwrap()
-      .to_string();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(json!(null)));
-  shutdown(&mut client);
-}
-
-#[test]
-fn lsp_format_exclude_default_config() {
-  let temp_dir = TempDir::new().unwrap();
-  let workspace_root = temp_dir.path().canonicalize().unwrap();
-  let mut params: lsp::InitializeParams =
-    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
-  let deno_jsonc =
-    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
-  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
-
-  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
-
-  let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
-  client
-    .write_request::<_, _, Value>("initialize", params)
-    .unwrap();
-
-  let file_uri =
-    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
-      .unwrap()
-      .to_string();
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": file_uri,
-        "languageId": "typescript",
-        "version": 1,
-        "text": "function   myFunc(){}"
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/formatting",
-      json!({
-        "textDocument": {
-          "uri": file_uri
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert_eq!(maybe_res, Some(json!(null)));
   shutdown(&mut client);
 }
 
@@ -3585,6 +3498,7 @@ fn lsp_completions_optional() {
           "sortText": "11",
           "filterText": "b",
           "insertText": "b",
+          "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
               "specifier": "file:///a/file.ts",
@@ -3620,6 +3534,124 @@ fn lsp_completions_optional() {
     }))
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_completions_auto_import() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const foo = \"foo\";\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export {};\n\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 0,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    if !list.items.iter().any(|item| item.label == "foo") {
+      panic!("completions items missing 'foo' symbol");
+    }
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "foo",
+        "kind": 6,
+        "sortText": "￿16",
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 12,
+            "name": "foo",
+            "source": "./b",
+            "data": {
+              "exportName": "foo",
+              "moduleSpecifier": "./b",
+              "fileName": "file:///a/b.ts"
+            },
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "foo",
+      "kind": 6,
+      "detail": "const foo: \"foo\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 0,
+              "character": 0
+            }
+          },
+          "newText": "import { foo } from \"./b.ts\";\n\n"
+        }
+      ],
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
 }
 
 #[test]
@@ -3767,7 +3799,7 @@ fn lsp_auto_discover_registry() {
 #[test]
 fn lsp_cache_location() {
   let _g = http_server();
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params_registry.json"))
       .unwrap();
@@ -3779,7 +3811,7 @@ fn lsp_cache_location() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -3900,7 +3932,7 @@ fn lsp_tls_cert() {
   params.root_uri = Some(Url::from_file_path(testdata_path()).unwrap());
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -4075,8 +4107,8 @@ fn lsp_diagnostics_warn_redirect() {
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
           ..Default::default()
         }
       ],
@@ -4377,7 +4409,7 @@ fn lsp_performance() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
   let (maybe_res, maybe_err) = client
-    .write_request::<_, _, PerformanceAverages>("deno/performance", json!({}))
+    .write_request::<_, _, PerformanceAverages>("deno/performance", json!(null))
     .unwrap();
   assert!(maybe_err.is_none());
   if let Some(res) = maybe_res {
@@ -4385,6 +4417,216 @@ fn lsp_performance() {
   } else {
     panic!("unexpected result");
   }
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_no_changes() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console;\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  client.assert_no_notification("window/showMessage");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_error() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console test test\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_mbc() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!(load_fixture("formatting_mbc_response.json")))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_exclude_with_config() {
+  let temp_dir = TempDir::new();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_fmt_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_format_exclude_default_config() {
+  let temp_dir = TempDir::new();
+  let workspace_root = temp_dir.path().canonicalize().unwrap();
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.exclude.jsonc")).unwrap();
+  fs::write(workspace_root.join("deno.jsonc"), deno_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(workspace_root.clone()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  let file_uri =
+    ModuleSpecifier::from_file_path(workspace_root.join("ignored.ts"))
+      .unwrap()
+      .to_string();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "function   myFunc(){}"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": file_uri
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
   shutdown(&mut client);
 }
 
@@ -4563,7 +4805,7 @@ fn lsp_format_markdown() {
 
 #[test]
 fn lsp_format_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_fmt_jsonc =
@@ -4577,7 +4819,7 @@ fn lsp_format_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5042,7 +5284,7 @@ console.log(snake_case);
 
 #[test]
 fn lsp_lint_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
@@ -5056,7 +5298,7 @@ fn lsp_lint_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5074,7 +5316,7 @@ fn lsp_lint_with_config() {
 
 #[test]
 fn lsp_lint_exclude_with_config() {
-  let temp_dir = TempDir::new().unwrap();
+  let temp_dir = TempDir::new();
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
   let deno_lint_jsonc =
@@ -5089,7 +5331,7 @@ fn lsp_lint_exclude_with_config() {
   }
 
   let deno_exe = deno_exe_path();
-  let mut client = LspClient::new(&deno_exe).unwrap();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
   client
     .write_request::<_, _, Value>("initialize", params)
     .unwrap();
@@ -5189,5 +5431,249 @@ export function B() {
       }
     }))
   );
+  shutdown(&mut client);
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct TestData {
+  id: String,
+  label: String,
+  steps: Option<Vec<TestData>>,
+  range: Option<lsp::Range>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum TestModuleNotificationKind {
+  Insert,
+  Replace,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestModuleNotificationParams {
+  text_document: lsp::TextDocumentIdentifier,
+  kind: TestModuleNotificationKind,
+  label: String,
+  tests: Vec<TestData>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnqueuedTestModule {
+  text_document: lsp::TextDocumentIdentifier,
+  ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestRunResponseParams {
+  enqueued: Vec<EnqueuedTestModule>,
+}
+
+#[test]
+fn lsp_testing_api() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new();
+
+  let root_specifier =
+    ensure_directory_specifier(Url::from_file_path(temp_dir.path()).unwrap());
+
+  let module_path = temp_dir.path().join("./test.ts");
+  let specifier = ModuleSpecifier::from_file_path(&module_path).unwrap();
+  let contents = r#"
+Deno.test({
+  name: "test a",
+  fn() {
+    console.log("test a");
+  }
+});
+"#;
+  fs::write(&module_path, &contents).unwrap();
+  fs::write(temp_dir.path().join("./deno.jsonc"), r#"{}"#).unwrap();
+
+  params.root_uri = Some(root_specifier);
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe, false).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": specifier,
+          "languageId": "typescript",
+          "version": 1,
+          "text": contents,
+        }
+      }),
+    )
+    .unwrap();
+
+  handle_configuration_request(
+    &mut client,
+    json!([{
+      "enable": true,
+      "codeLens": {
+        "test": true
+      }
+    }]),
+  );
+
+  for _ in 0..4 {
+    let result = client.read_notification::<Value>();
+    assert!(result.is_ok());
+    let (method, notification) = result.unwrap();
+    if method.as_str() == "deno/testModule" {
+      let params: TestModuleNotificationParams =
+        serde_json::from_value(notification.unwrap()).unwrap();
+      assert_eq!(params.text_document.uri, specifier);
+      assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+      assert_eq!(params.label, "test.ts");
+      assert_eq!(params.tests.len(), 1);
+      let test = &params.tests[0];
+      assert_eq!(test.label, "test a");
+      assert!(test.steps.is_none());
+      assert_eq!(
+        test.range,
+        Some(lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 5,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 9,
+          }
+        })
+      );
+    }
+  }
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, TestRunResponseParams>(
+      "deno/testRun",
+      json!({
+        "id": 1,
+        "kind": "run",
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let res = maybe_res.unwrap();
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(res.enqueued[0].text_document.uri, specifier);
+  assert_eq!(res.enqueued[0].ids.len(), 1);
+  let id = res.enqueued[0].ids[0].clone();
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+        },
+      }
+    }))
+  );
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  let notification_value = notification
+    .as_ref()
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("message")
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("value")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  // deno test's output capturing flushes with a zero-width space in order to
+  // synchronize the output pipes. Occassionally this zero width space
+  // might end up in the output so strip it from the output comparison here.
+  assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "output",
+        "value": notification_value,
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+        },
+      }
+    }))
+  );
+
+  let res = client.read_notification::<Value>();
+  assert!(res.is_ok());
+  let (method, notification) = res.unwrap();
+  assert_eq!(method, "deno/testRunProgress");
+  let notification = notification.unwrap();
+  let obj = notification.as_object().unwrap();
+  assert_eq!(obj.get("id"), Some(&json!(1)));
+  let message = obj.get("message").unwrap().as_object().unwrap();
+  match message.get("type").and_then(|v| v.as_str()) {
+    Some("passed") => {
+      assert_eq!(
+        message.get("test"),
+        Some(&json!({
+          "textDocument": {
+            "uri": specifier
+          },
+          "id": id,
+        }))
+      );
+      assert!(message.contains_key("duration"));
+
+      let res = client.read_notification::<Value>();
+      assert!(res.is_ok());
+      let (method, notification) = res.unwrap();
+      assert_eq!(method, "deno/testRunProgress");
+      assert_eq!(
+        notification,
+        Some(json!({
+          "id": 1,
+          "message": {
+            "type": "end",
+          }
+        }))
+      );
+    }
+    // sometimes on windows, the messages come out of order, but it actually is
+    // working, so if we do get the end before the passed, we will simply let
+    // the test pass
+    Some("end") => (),
+    _ => panic!("unexpected message {}", json!(notification)),
+  }
+
   shutdown(&mut client);
 }

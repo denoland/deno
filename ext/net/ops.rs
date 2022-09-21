@@ -34,6 +34,7 @@ use std::rc::Rc;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use trust_dns_proto::rr::rdata::caa::Value;
 use trust_dns_proto::rr::record_data::RData;
 use trust_dns_proto::rr::record_type::RecordType;
 use trust_dns_resolver::config::NameServerConfigGroup;
@@ -568,18 +569,41 @@ where
   }
 }
 
-#[derive(Serialize, PartialEq, Debug)]
+#[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
   A(String),
   Aaaa(String),
   Aname(String),
+  Caa {
+    critical: bool,
+    tag: String,
+    value: String,
+  },
   Cname(String),
   Mx {
     preference: u16,
     exchange: String,
   },
+  Naptr {
+    order: u16,
+    preference: u16,
+    flags: String,
+    services: String,
+    regexp: String,
+    replacement: String,
+  },
+  Ns(String),
   Ptr(String),
+  Soa {
+    mname: String,
+    rname: String,
+    serial: u32,
+    refresh: i32,
+    retry: i32,
+    expire: i32,
+    minimum: u32,
+  },
   Srv {
     priority: u16,
     weight: u16,
@@ -661,7 +685,7 @@ where
   let resolver = AsyncResolver::tokio(config, opts)?;
 
   let results = resolver
-    .lookup(query, record_type, Default::default())
+    .lookup(query, record_type)
     .await
     .map_err(|e| {
       let message = format!("{}", e);
@@ -722,6 +746,30 @@ fn rdata_to_return_record(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsReturnRecord::Aname),
+      CAA => r.as_caa().map(|caa| DnsReturnRecord::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: match caa.value() {
+          Value::Issuer(name, key_values) => {
+            let mut s = String::new();
+
+            if let Some(name) = name {
+              s.push_str(&name.to_string());
+            } else if name.is_none() && key_values.is_empty() {
+              s.push(';');
+            }
+
+            for key_value in key_values {
+              s.push_str("; ");
+              s.push_str(&key_value.to_string());
+            }
+
+            s
+          }
+          Value::Url(url) => url.to_string(),
+          Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
+        },
+      }),
       CNAME => r
         .as_cname()
         .map(ToString::to_string)
@@ -730,10 +778,28 @@ fn rdata_to_return_record(
         preference: mx.preference(),
         exchange: mx.exchange().to_string(),
       }),
+      NAPTR => r.as_naptr().map(|naptr| DnsReturnRecord::Naptr {
+        order: naptr.order(),
+        preference: naptr.preference(),
+        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
+        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
+        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
+        replacement: naptr.replacement().to_string(),
+      }),
+      NS => r.as_ns().map(ToString::to_string).map(DnsReturnRecord::Ns),
       PTR => r
         .as_ptr()
         .map(ToString::to_string)
         .map(DnsReturnRecord::Ptr),
+      SOA => r.as_soa().map(|soa| DnsReturnRecord::Soa {
+        mname: soa.mname().to_string(),
+        rname: soa.rname().to_string(),
+        serial: soa.serial(),
+        refresh: soa.refresh(),
+        retry: soa.retry(),
+        expire: soa.expire(),
+        minimum: soa.minimum(),
+      }),
       SRV => r.as_srv().map(|srv| DnsReturnRecord::Srv {
         priority: srv.priority(),
         weight: srv.weight(),
@@ -767,9 +833,13 @@ mod tests {
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::path::Path;
+  use trust_dns_proto::rr::rdata::caa::KeyValue;
+  use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
+  use trust_dns_proto::rr::rdata::naptr::NAPTR;
   use trust_dns_proto::rr::rdata::srv::SRV;
   use trust_dns_proto::rr::rdata::txt::TXT;
+  use trust_dns_proto::rr::rdata::SOA;
   use trust_dns_proto::rr::record_data::RData;
   use trust_dns_proto::rr::Name;
 
@@ -798,6 +868,24 @@ mod tests {
   }
 
   #[test]
+  fn rdata_to_return_record_caa() {
+    let func = rdata_to_return_record(RecordType::CAA);
+    let rdata = RData::CAA(CAA::new_issue(
+      false,
+      Some(Name::parse("example.com", None).unwrap()),
+      vec![KeyValue::new("account", "123456")],
+    ));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::Caa {
+        critical: false,
+        tag: "issue".to_string(),
+        value: "example.com; account=123456".to_string(),
+      })
+    );
+  }
+
+  #[test]
   fn rdata_to_return_record_cname() {
     let func = rdata_to_return_record(RecordType::CNAME);
     let rdata = RData::CNAME(Name::new());
@@ -818,10 +906,67 @@ mod tests {
   }
 
   #[test]
+  fn rdata_to_return_record_naptr() {
+    let func = rdata_to_return_record(RecordType::NAPTR);
+    let rdata = RData::NAPTR(NAPTR::new(
+      1,
+      2,
+      <Box<[u8]>>::default(),
+      <Box<[u8]>>::default(),
+      <Box<[u8]>>::default(),
+      Name::new(),
+    ));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::Naptr {
+        order: 1,
+        preference: 2,
+        flags: "".to_string(),
+        services: "".to_string(),
+        regexp: "".to_string(),
+        replacement: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_ns() {
+    let func = rdata_to_return_record(RecordType::NS);
+    let rdata = RData::NS(Name::new());
+    assert_eq!(func(&rdata), Some(DnsReturnRecord::Ns("".to_string())));
+  }
+
+  #[test]
   fn rdata_to_return_record_ptr() {
     let func = rdata_to_return_record(RecordType::PTR);
     let rdata = RData::PTR(Name::new());
     assert_eq!(func(&rdata), Some(DnsReturnRecord::Ptr("".to_string())));
+  }
+
+  #[test]
+  fn rdata_to_return_record_soa() {
+    let func = rdata_to_return_record(RecordType::SOA);
+    let rdata = RData::SOA(SOA::new(
+      Name::new(),
+      Name::new(),
+      0,
+      i32::MAX,
+      i32::MAX,
+      i32::MAX,
+      0,
+    ));
+    assert_eq!(
+      func(&rdata),
+      Some(DnsReturnRecord::Soa {
+        mname: "".to_string(),
+        rname: "".to_string(),
+        serial: 0,
+        refresh: i32::MAX,
+        retry: i32::MAX,
+        expire: i32::MAX,
+        minimum: 0,
+      })
+    );
   }
 
   #[test]
@@ -902,6 +1047,7 @@ mod tests {
     check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
   }
 
+  #[allow(clippy::type_complexity)]
   async fn check_sockopt(
     addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,

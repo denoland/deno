@@ -1,142 +1,96 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-// Run with: deno run -A ./cli/bench/deno_common.js
-function benchSync(name, n, innerLoop) {
-  const t1 = Date.now();
-  for (let i = 0; i < n; i++) {
-    innerLoop(i);
+
+// v8 builtin that's close to the upper bound non-NOPs
+Deno.bench("date_now", { n: 5e5 }, () => {
+  Date.now();
+});
+
+// Fast API calls
+{
+  // deno-lint-ignore camelcase
+  const { op_add } = Deno.core.ops;
+  // deno-lint-ignore no-inner-declarations
+  function add(a, b) {
+    return op_add.fast(a, b);
   }
-  const t2 = Date.now();
-  console.log(benchStats(name, n, t1, t2));
-}
-
-async function benchAsync(name, n, innerLoop) {
-  const t1 = Date.now();
-  for (let i = 0; i < n; i++) {
-    await innerLoop(i);
+  // deno-lint-ignore no-inner-declarations
+  function addJS(a, b) {
+    return a + b;
   }
-  const t2 = Date.now();
-  console.log(benchStats(name, n, t1, t2));
+  Deno.bench("op_add", () => add(1, 2));
+  Deno.bench("add_js", () => addJS(1, 2));
 }
 
-// Parallel version benchAsync
-async function benchAsyncP(name, n, p, innerLoop) {
-  const range = new Array(p).fill(null);
-  const t1 = Date.now();
-  for (let i = 0; i < n / p; i++) {
-    await Promise.all(range.map(() => innerLoop()));
-  }
-  const t2 = Date.now();
-  console.log(benchStats(name, n, t1, t2));
+// deno-lint-ignore camelcase
+const { op_void_sync } = Deno.core.ops;
+function sync() {
+  return op_void_sync.fast();
 }
+sync(); // Warmup
 
-function benchStats(name, n, t1, t2) {
-  const dt = (t2 - t1) / 1e3;
-  const r = n / dt;
-  const ns = Math.floor(dt / n * 1e9);
-  return `${name}:${" ".repeat(20 - name.length)}\t` +
-    `n = ${n}, dt = ${dt.toFixed(3)}s, r = ${r.toFixed(0)}/s, t = ${ns}ns/op`;
-}
+// Void ops measure op-overhead
+Deno.bench("op_void_sync", () => sync());
 
-function benchB64RtLong() {
-  const input = "long-string".repeat(99999);
-  benchSync("b64_rt_long", 100, () => {
-    atob(btoa(input));
-  });
-}
+Deno.bench(
+  "op_void_async",
+  { n: 1e6 },
+  () => Deno.core.opAsync("op_void_async"),
+);
 
-function benchB64RtShort() {
-  benchSync("b64_rt_short", 1e6, () => {
-    atob(btoa("123"));
-  });
-}
+// A very lightweight op, that should be highly optimizable
+Deno.bench("perf_now", { n: 5e5 }, () => {
+  performance.now();
+});
 
-function benchUrlParse() {
-  benchSync("url_parse", 5e4, (i) => {
+Deno.bench("open_file_sync", () => {
+  const file = Deno.openSync("./cli/bench/testdata/128k.bin");
+  file.close();
+});
+
+// A common "language feature", that should be fast
+// also a decent representation of a non-trivial JSON-op
+{
+  let i = 0;
+  Deno.bench("url_parse", { n: 5e4 }, () => {
     new URL(`http://www.google.com/${i}`);
+    i++;
   });
 }
 
-function benchLargeBlobText() {
-  const input = "long-string".repeat(999_999);
-  benchSync("blob_text_large", 100, () => {
-    new Blob([input]).text();
+Deno.bench("blob_text_large", { n: 100 }, () => {
+  new Blob([input]).text();
+});
+
+const input = "long-string".repeat(99999);
+Deno.bench("b64_rt_long", { n: 100 }, () => {
+  atob(btoa(input));
+});
+
+Deno.bench("b64_rt_short", { n: 1e6 }, () => {
+  atob(btoa("123"));
+});
+
+{
+  const buf = new Uint8Array(100);
+  const file = Deno.openSync("/dev/zero");
+  Deno.bench("read_zero", { n: 5e5 }, () => {
+    Deno.readSync(file.rid, buf);
   });
 }
 
-function benchDateNow() {
-  benchSync("date_now", 5e5, () => {
-    Date.now();
-  });
-}
-
-function benchPerfNow() {
-  benchSync("perf_now", 5e5, () => {
-    performance.now();
-  });
-}
-
-function benchWriteNull() {
+{
   // Not too large since we want to measure op-overhead not sys IO
   const dataChunk = new Uint8Array(100);
   const file = Deno.openSync("/dev/null", { write: true });
-  benchSync("write_null", 5e5, () => {
+  Deno.bench("write_null", { n: 5e5 }, () => {
     Deno.writeSync(file.rid, dataChunk);
   });
-  Deno.close(file.rid);
 }
 
-function benchReadZero() {
-  const buf = new Uint8Array(100);
-  const file = Deno.openSync("/dev/zero");
-  benchSync("read_zero", 5e5, () => {
-    Deno.readSync(file.rid, buf);
-  });
-  Deno.close(file.rid);
-}
+Deno.bench(
+  "read_128k",
+  { n: 5e4 },
+  () => Deno.readFile("./cli/bench/testdata/128k.bin"),
+);
 
-function benchRead128k() {
-  return benchAsync(
-    "read_128k",
-    5e4,
-    () => Deno.readFile("./cli/bench/testdata/128k.bin"),
-  );
-}
-
-function benchRequestNew() {
-  return benchSync("request_new", 5e5, () => new Request("https://deno.land"));
-}
-
-function benchOpVoidSync() {
-  return benchSync("op_void_sync", 1e7, () => Deno.core.opSync("op_void_sync"));
-}
-
-function benchOpVoidAsync() {
-  return benchAsyncP(
-    "op_void_async",
-    1e6,
-    1e3,
-    () => Deno.core.opAsync("op_void_async"),
-  );
-}
-
-async function main() {
-  // v8 builtin that's close to the upper bound non-NOPs
-  benchDateNow();
-  // Void ops measure op-overhead
-  benchOpVoidSync();
-  await benchOpVoidAsync();
-  // A very lightweight op, that should be highly optimizable
-  benchPerfNow();
-  // A common "language feature", that should be fast
-  // also a decent representation of a non-trivial JSON-op
-  benchUrlParse();
-  benchLargeBlobText();
-  benchB64RtLong();
-  benchB64RtShort();
-  // IO ops
-  benchReadZero();
-  benchWriteNull();
-  await benchRead128k();
-  benchRequestNew();
-}
-await main();
+Deno.bench("request_new", { n: 5e5 }, () => new Request("https://deno.land"));
