@@ -131,6 +131,7 @@
       "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
       "ECDH": "EcdhKeyDeriveParams",
+      "X25519": "EcdhKeyDeriveParams",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
@@ -1613,7 +1614,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
       const result = await generateKey(
         normalizedAlgorithm,
         extractable,
@@ -1916,15 +1916,15 @@
         if (
           ArrayPrototypeFind(
             usages,
-            (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
           ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
         const privateKeyData = new Uint8Array(32);
         const publicKeyData = new Uint8Array(32);
-        ops.op_generate_x25518_keypair(privateKeyData, publicKeyData);
-        
+        ops.op_generate_x25519_keypair.fast(privateKeyData, publicKeyData);
+
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
           type: "private",
@@ -1957,7 +1957,7 @@
           handle,
         );
 
-        return { publicKey, privateKey }; 
+        return { publicKey, privateKey };
       }
       case "HMAC": {
         // 1.
@@ -3761,6 +3761,44 @@
         }, normalizedAlgorithm.salt);
 
         return buf.buffer;
+      }
+      case "X25519": {
+        // 1.
+        if (baseKey[_type] !== "private") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 2.
+        const publicKey = normalizedAlgorithm.public;
+        // 3.
+        if (publicKey[_type] !== "public") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 4.
+        if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+          throw new DOMException(
+            "Algorithm mismatch",
+            "InvalidAccessError",
+          );
+        }
+
+        // 5-6.
+        const kHandle = baseKey[_handle];
+        const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
+
+        const uHandle = publicKey[_handle];
+        const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
+
+        const secret = new Uint8Array(32);
+        ops.op_derive_bits_x25519.fast(k, u, secret);
+
+        // 7.
+        if (length === null) {
+          return secret.buffer;
+        } else if (secret.length * 8 < length) {
+          throw new DOMException("Invalid length", "OperationError");
+        } else {
+          return secret.subarray(0, length / 8).buffer;
+        }
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");

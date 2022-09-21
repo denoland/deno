@@ -62,6 +62,7 @@ mod generate_key;
 mod import_key;
 mod key;
 mod shared;
+mod x25519;
 
 pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::encrypt::op_crypto_encrypt;
@@ -88,7 +89,6 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .ops(vec![
       op_crypto_get_random_values::decl(),
       op_crypto_generate_key::decl(),
-      generate_key::op_generate_x25519_keypair::decl(),
       op_crypto_sign_key::decl(),
       op_crypto_verify_key::decl(),
       op_crypto_derive_bits::decl(),
@@ -100,6 +100,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       op_crypto_random_uuid::decl(),
       op_crypto_wrap_key::decl(),
       op_crypto_unwrap_key::decl(),
+      x25519::op_generate_x25519_keypair::decl(),
+      x25519::op_derive_bits_x25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
