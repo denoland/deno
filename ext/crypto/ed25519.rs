@@ -1,10 +1,10 @@
 use deno_core::op;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
 use spki::der::Decode;
-use elliptic_curve::pkcs8::PrivateKeyInfo;
 
 #[op(fast)]
 pub fn op_generate_ed25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) -> bool {
@@ -35,7 +35,6 @@ pub fn op_verify_ed25519(pubkey: &[u8], data: &[u8], signature: &[u8]) -> bool {
     .verify(data, signature)
     .is_ok()
 }
-
 
 // id-Ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }
 pub const ED25519_OID: const_oid::ObjectIdentifier =

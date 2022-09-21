@@ -2254,7 +2254,9 @@
         }
 
         // 6.
-        if (keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig") {
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
+        ) {
           throw new DOMException("Invalid key usage", "DataError");
         }
 
