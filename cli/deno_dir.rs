@@ -4,6 +4,8 @@ use crate::cache::DiskCache;
 
 use std::path::PathBuf;
 
+pub use dirs::cache_dir;
+
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Clone)]

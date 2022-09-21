@@ -3,6 +3,8 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::args::UpgradeFlags;
+use crate::deno_dir::cache_dir;
+use crate::version;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -11,15 +13,99 @@ use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Read;
+use std::io::Seek;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
+use std::time::SystemTime;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
+const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
+
+const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
+
+pub fn check_for_upgrades() -> Option<String> {
+  let current_exe_mtime =
+    env::current_exe().ok()?.metadata().ok()?.modified().ok()?;
+
+  // Open `$DENO_DIR/latest.txt` for reading and writing. If this fails somehow
+  // we bail out early and return `None`.
+  let cache_dir = cache_dir()?;
+  let mut latest_txt_file = loop {
+    match fs::OpenOptions::new()
+      .create(true)
+      .read(true)
+      .write(true)
+      .open(&cache_dir.join("deno/latest.txt"))
+    {
+      Ok(file) => break file,
+      Err(err) if err.kind() == io::ErrorKind::NotFound => {
+        fs::create_dir_all(&cache_dir.join("deno")).ok()?;
+      }
+      Err(_) => return None,
+    }
+  };
+
+  let latest_txt_mtime = latest_txt_file.metadata().ok()?.modified().ok()?;
+  let latest_txt_age = SystemTime::now()
+    .duration_since(latest_txt_mtime)
+    .unwrap_or_default();
+
+  // We consider `latest.txt` valid and up-to-date if it is non-empty and newer
+  // than the currently running deno executable.
+  let latest_txt_version = if latest_txt_mtime > current_exe_mtime {
+    let mut buf = String::new();
+    match latest_txt_file.read_to_string(&mut buf) {
+      Ok(0) | Err(_) => None,
+      Ok(_) => Some(buf),
+    }
+  } else {
+    None
+  };
+
+  // Spawn a task that will query dl.deno.land for the latest version and update
+  // latest.txt. This step is skipped if latest.txt is valid and no older than
+  // 12 hours.
+  if latest_txt_version.is_none() || latest_txt_age >= UPGRADE_CHECK_INTERVAL {
+    tokio::spawn(async move {
+      // Sleep for a small amount of time to not unnecessarily impact startup
+      // time.
+      tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
+
+      // Fetch latest version or commit hash from server.
+      let client = match build_http_client(None) {
+        Ok(client) => client,
+        Err(_) => return,
+      };
+      let latest_version = match if version::is_canary() {
+        get_latest_canary_version(&client).await
+      } else {
+        get_latest_release_version(&client).await
+      } {
+        Ok(latest_version) => latest_version,
+        Err(_) => return,
+      };
+
+      // Write the latest version to `latest.txt`.
+      let _ = latest_txt_file
+        .rewind()
+        .and_then(|_| latest_txt_file.set_len(0))
+        .and_then(|_| latest_txt_file.write_all(latest_version.as_bytes()));
+    });
+  }
+
+  // Return `Some(version)` if a new version is available, `None` otherwise.
+  latest_txt_version
+    .filter(|v| v != version::release_version_or_canary_commit_hash())
+}
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let old_exe_path = std::env::current_exe()?;
@@ -29,17 +115,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     bail!("You do not have write permission to {:?}", old_exe_path);
   }
 
-  let mut client_builder = Client::builder();
-
-  // If we have been provided a CA Certificate, add it into the HTTP client
-  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
-    client_builder = client_builder.add_root_certificate(cert);
-  }
-
-  let client = client_builder.build()?;
+  let client = build_http_client(upgrade_flags.ca_file)?;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -73,8 +149,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
     None => {
       let latest_version = if upgrade_flags.canary {
+        println!("Looking up latest canary version");
         get_latest_canary_version(&client).await?
       } else {
+        println!("Looking up latest version");
         get_latest_release_version(&client).await?
       };
 
@@ -140,31 +218,44 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+fn build_http_client(
+  ca_file: Option<String>,
+) -> Result<reqwest::Client, AnyError> {
+  let mut client_builder =
+    Client::builder().user_agent(version::get_user_agent());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  let ca_file = ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file)?;
+    let cert = reqwest::Certificate::from_pem(&buf)?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
+  Ok(client)
+}
+
 async fn get_latest_release_version(
   client: &Client,
 ) -> Result<String, AnyError> {
-  println!("Looking up latest version");
-
   let res = client
-    .get(&format!("{}/latest", RELEASE_URL))
+    .get("https://dl.deno.land/release-latest.txt")
     .send()
     .await?;
-  let version = res.url().path_segments().unwrap().last().unwrap();
-
+  let version = res.text().await?.trim().to_string();
   Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
   client: &Client,
 ) -> Result<String, AnyError> {
-  println!("Looking up latest version");
-
   let res = client
     .get("https://dl.deno.land/canary-latest.txt")
     .send()
     .await?;
   let version = res.text().await?.trim().to_string();
-
   Ok(version)
 }
 
