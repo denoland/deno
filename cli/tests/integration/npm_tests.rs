@@ -425,7 +425,7 @@ itest!(builtin_module_module {
 
 itest!(local_npm_require_added_node_modules_folder {
   args:
-    "run --unstable --local-npm -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+    "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
   envs: env_vars(),
   http_server: true,
@@ -434,7 +434,7 @@ itest!(local_npm_require_added_node_modules_folder {
 });
 
 itest!(local_npm_with_deps {
-  args: "run --allow-read --allow-env --unstable --local-npm $TESTDATA/npm/cjs_with_deps/main.js",
+  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,

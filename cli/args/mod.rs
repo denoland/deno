@@ -147,11 +147,11 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
-  /// Resolves the folder to use for a local node_modules folder.
+  /// Resolves the path to use for a local node_modules folder.
   pub fn resolve_local_node_modules_folder(
     &self,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let path = if !self.flags.local_npm {
+    let path = if !self.flags.node_modules_dir {
       return Ok(None);
     } else if let Some(config_path) = self
       .maybe_config_file

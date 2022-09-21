@@ -37,9 +37,10 @@ impl NpmPackageResolver {
     api: NpmRegistryApi,
     unstable: bool,
     no_npm: bool,
-    local_node_modules: Option<PathBuf>,
+    local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules {
+    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules_path
+    {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
         cache,
         api,

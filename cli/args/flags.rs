@@ -301,7 +301,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
-  pub local_npm: bool,
+  pub node_modules_dir: bool,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -2153,8 +2153,8 @@ fn no_npm_arg<'a>() -> Arg<'a> {
 }
 
 fn local_npm_arg<'a>() -> Arg<'a> {
-  Arg::new("local-npm")
-    .long("local-npm")
+  Arg::new("node-modules-dir")
+    .long("node-modules-dir")
     .help("Creates a local node_modules folder")
 }
 
@@ -3069,8 +3069,8 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn local_npm_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("local-npm") {
-    flags.local_npm = true;
+  if matches.is_present("node-modules-dir") {
+    flags.node_modules_dir = true;
   }
 }
 
@@ -5049,14 +5049,15 @@ mod tests {
 
   #[test]
   fn local_npm() {
-    let r = flags_from_vec(svec!["deno", "run", "--local-npm", "script.ts"]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
         }),
-        local_npm: true,
+        node_modules_dir: true,
         ..Flags::default()
       }
     );
