@@ -33,7 +33,6 @@ use ring::rand as RingRand;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
-use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::der::Decode;
@@ -56,6 +55,7 @@ use std::path::PathBuf;
 pub use rand; // Re-export rand
 
 mod decrypt;
+mod ed25519;
 mod encrypt;
 mod export_key;
 mod generate_key;
@@ -105,6 +105,9 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       x25519::op_derive_bits_x25519::decl(),
       x25519::op_import_spki_x25519::decl(),
       x25519::op_import_pkcs8_x25519::decl(),
+      ed25519::op_generate_ed25519_keypair::decl(),
+      ed25519::op_sign_ed25519::decl(),
+      ed25519::op_verify_ed25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -315,11 +318,6 @@ pub async fn op_crypto_sign_key(
       let signature = ring::hmac::sign(&key, data);
       signature.as_ref().to_vec()
     }
-    Algorithm::Ed25519 => {
-      let key_pair = Ed25519KeyPair::from_pkcs8(&*args.key.data)?;
-      let signature = key_pair.sign(data);
-      signature.as_ref().to_vec()
-    }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
@@ -474,22 +472,6 @@ pub async fn op_crypto_verify_key(
       let public_key =
         ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
 
-      public_key.verify(data, &*args.signature).is_ok()
-    }
-    Algorithm::Ed25519 => {
-      let private_key;
-      let public_key_bytes = match args.key.r#type {
-        KeyType::Private => {
-          private_key = Ed25519KeyPair::from_pkcs8(&*args.key.data)?;
-          private_key.public_key().as_ref()
-        }
-        KeyType::Public => &*args.key.data,
-        _ => unreachable!(),
-      };
-      let public_key = ring::signature::UnparsedPublicKey::new(
-        &ring::signature::ED25519,
-        public_key_bytes,
-      );
       public_key.verify(data, &*args.signature).is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),

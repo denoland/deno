@@ -106,12 +106,14 @@
       "RSA-PSS": "RsaPssParams",
       "ECDSA": "EcdsaParams",
       "HMAC": null,
+      "Ed25519": null,
     },
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
       "ECDSA": "EcdsaParams",
       "HMAC": null,
+      "Ed25519": null,
     },
     "importKey": {
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
@@ -838,6 +840,26 @@
 
           return signature.buffer;
         }
+        case "Ed25519": {
+          // 1.
+          if (key[_type] !== "private") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
+          const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
+          const signature = new Uint8Array(SIGNATURE_LEN);
+          if (!ops.op_sign_ed25519.fast(keyData, data, signature)) {
+            throw new DOMException(
+              "Failed to sign",
+              "OperationError",
+            );
+          }
+          return signature.buffer;
+        }
       }
 
       throw new TypeError("unreachable");
@@ -1294,6 +1316,17 @@
             signature,
             namedCurve: key[_algorithm].namedCurve,
           }, data);
+        }
+        case "Ed25519": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          return ops.op_verify_ed25519.fast(keyData, data, signature);
         }
       }
 
@@ -1956,6 +1989,54 @@
           "private",
           extractable,
           usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        return { publicKey, privateKey };
+      }
+      case "Ed25519": {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const ED25519_SEED_LEN = 32;
+        const ED25519_PUBLIC_KEY_LEN = 32;
+        const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
+        const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
+        if (
+          !ops.op_generate_ed25519_keypair.fast(privateKeyData, publicKeyData)
+        ) {
+          throw new DOMException("Failed to geerate key", "OperationError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const publicHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: algorithmName,
+        };
+
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, ["verify"]),
+          algorithm,
+          publicHandle,
+        );
+
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["sign"]),
           algorithm,
           handle,
         );
