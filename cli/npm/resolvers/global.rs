@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+//! Code for global npm cache resolution.
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,6 +22,7 @@ use crate::npm::NpmRegistryApi;
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
 
+/// Resolves packages from the global npm cache.
 #[derive(Debug, Clone)]
 pub struct GlobalNpmPackageResolver {
   cache: NpmCache,

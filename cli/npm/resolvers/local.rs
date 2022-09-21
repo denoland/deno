@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+//! Code for local node_modules resolution.
+
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
@@ -27,6 +29,8 @@ use super::common::cache_packages;
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
 
+/// Resolver that creates a local node_modules directory
+/// and resolves packages from it.
 #[derive(Debug, Clone)]
 pub struct LocalNpmPackageResolver {
   cache: NpmCache,
