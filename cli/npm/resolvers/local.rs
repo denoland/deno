@@ -293,7 +293,7 @@ fn symlink_package_dir(
   }
 
   // need to delete the previous symlink before creating a new one
-  let _ignore = fs::remove_dir(new_path);
+  let _ignore = fs::remove_dir_all(new_path);
   fs_util::symlink_dir(old_path, new_path)
 }
 
