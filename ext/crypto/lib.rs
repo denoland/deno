@@ -100,8 +100,11 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       op_crypto_random_uuid::decl(),
       op_crypto_wrap_key::decl(),
       op_crypto_unwrap_key::decl(),
+      op_crypto_base64url::decl(),
       x25519::op_generate_x25519_keypair::decl(),
       x25519::op_derive_bits_x25519::decl(),
+      x25519::op_import_spki_x25519::decl(),
+      x25519::op_import_pkcs8_x25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -110,6 +113,13 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       Ok(())
     })
     .build()
+}
+
+#[op]
+pub fn op_crypto_base64url(data: String) -> ZeroCopyBuf {
+  let data: Vec<u8> =
+    base64::encode_config(data, base64::URL_SAFE_NO_PAD).into();
+  data.into()
 }
 
 #[op]

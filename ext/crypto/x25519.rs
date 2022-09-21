@@ -1,8 +1,10 @@
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::op;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
 use rand::rngs::OsRng;
 use rand::RngCore;
+use spki::der::Decode;
 
 #[op(fast)]
 pub fn op_generate_x25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
@@ -34,5 +36,54 @@ pub fn op_derive_bits_x25519(k: &[u8], u: &[u8], secret: &mut [u8]) -> bool {
     return false;
   }
   secret.copy_from_slice(&sh_sec);
+  true
+}
+
+// id-X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
+pub const X25519_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
+
+#[op(fast)]
+pub fn op_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
+  // 2-3.
+  let pk_info = match spki::SubjectPublicKeyInfo::from_der(&key_data) {
+    Ok(pk_info) => pk_info,
+    Err(_) => return false,
+  };
+  // 4.
+  let alg = pk_info.algorithm.oid;
+  if alg != X25519_OID {
+    return false;
+  }
+  // 5.
+  if pk_info.algorithm.parameters.is_some() {
+    return false;
+  }
+  out.copy_from_slice(pk_info.subject_public_key);
+  true
+}
+
+#[op(fast)]
+pub fn op_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
+  // 2-3.
+  let pk_info = match PrivateKeyInfo::from_der(key_data) {
+    Ok(pk_info) => pk_info,
+    Err(_) => return false,
+  };
+  // 4.
+  let alg = pk_info.algorithm.oid;
+  if alg != X25519_OID {
+    return false;
+  }
+  // 5.
+  if pk_info.algorithm.parameters.is_some() {
+    return false;
+  }
+  // 6.
+  // CurvePrivateKey ::= OCTET STRING
+  if pk_info.private_key.len() != 32 {
+    return false;
+  }
+  out.copy_from_slice(pk_info.private_key);
   true
 }

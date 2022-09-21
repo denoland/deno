@@ -44,9 +44,6 @@ pub enum GenerateKeyOptions {
   X25519,
 }
 
-#[op(fast)]
-pub fn op_generate_x448_keypair() {}
-
 #[op]
 pub async fn op_crypto_generate_key(
   opts: GenerateKeyOptions,
@@ -63,7 +60,7 @@ pub async fn op_crypto_generate_key(
     }
     GenerateKeyOptions::Ed25519 => generate_key_ed25519(),
     GenerateKeyOptions::X25519 => {
-      return Err(type_error("Use op_generate_x25519_keypair() instead"))
+      Err(type_error("Use op_generate_x25519_keypair() instead"))
     }
   };
   let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;

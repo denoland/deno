@@ -126,6 +126,7 @@
       "AES-CBC": null,
       "AES-GCM": null,
       "AES-KW": null,
+      "X25519": null,
     },
     "deriveBits": {
       "HKDF": "HkdfParams",
@@ -956,6 +957,14 @@
             extractable,
             keyUsages,
             ["wrapKey", "unwrapKey"],
+          );
+        }
+        case "X25519": {
+          return importKeyX25519(
+            format,
+            keyData,
+            extractable,
+            keyUsages,
           );
         }
         default:
@@ -1926,16 +1935,10 @@
         ops.op_generate_x25519_keypair.fast(privateKeyData, publicKeyData);
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "private",
-          data: privateKeyData,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
 
         const publicHandle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "public",
-          data: publicKeyData,
-        });
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
 
         const algorithm = {
           name: algorithmName,
@@ -2013,6 +2016,211 @@
         // 14.
         return key;
       }
+    }
+  }
+
+  function importKeyX25519(
+    format,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+
+        // 2-3.
+        const algorithm = {
+          name: "X25519",
+        };
+
+        // 4-6.
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "spki": {
+        // 1.
+        if (keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const publicKeyData = new Uint8Array(32);
+        if (!ops.op_import_spki_x25519.fast(keyData, publicKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: "X25519",
+        };
+
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "pkcs8": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const privateKeyData = new Uint8Array(32);
+        if (!ops.op_import_pkcs8_x25519.fast(keyData, privateKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const algorithm = {
+          name: "X25519",
+        };
+
+        return constructKey(
+          "private",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+
+        // 2.
+        if (jwk.d !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_KEY_USAGES["X25519"].private,
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        }
+
+        // 3.
+        if (jwk.d === undefined && keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 4.
+        if (jwk.kty !== "OKP") {
+          throw new DOMException("Invalid key type", "DataError");
+        }
+
+        // 5.
+        if (jwk.crv !== "X25519") {
+          throw new DOMException("Invalid curve", "DataError");
+        }
+
+        // 6.
+        if (keyUsages.length > 0 && jwk.use !== undefined) {
+          if (jwk.use !== "enc") {
+            throw new DOMException("Invalid key use", "DataError");
+          }
+        }
+
+        // 7.
+        if (jwk.key_ops !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+          throw new DOMException("Invalid key extractability", "DataError");
+        }
+
+        // 9.
+        if (jwk.d !== undefined) {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+          const algorithm = {
+            name: "X25519",
+          };
+
+          return constructKey(
+            "private",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        } else {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+          const algorithm = {
+            name: "X25519",
+          };
+
+          return constructKey(
+            "public",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        }
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 
@@ -2780,6 +2988,9 @@
       public: [],
       private: ["deriveKey", "deriveBits"],
       jwkUse: "enc",
+    },
+    "X25519": {
+      private: ["deriveKey", "deriveBits"],
     },
   };
 
