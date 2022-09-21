@@ -42,7 +42,6 @@
     PromiseResolve,
     TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
-    TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
