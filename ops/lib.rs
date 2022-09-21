@@ -361,7 +361,6 @@ fn codegen_fast_impl(
             return quote! {
               match unsafe { &* #ident }.get_storage_if_aligned() {
                 Some(s) => {
-                  dbg!(unsafe { &* #ident }.byte_length);
                   s
                 },
                 None => {

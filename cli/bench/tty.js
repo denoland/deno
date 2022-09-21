@@ -17,9 +17,5 @@ function bench(fun) {
 }
 
 bench(() => {
-  Deno.isatty(0);
-});
-
-bench(() => {
   Deno.consoleSize(0);
 });
