@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
