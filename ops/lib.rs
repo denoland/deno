@@ -389,8 +389,16 @@ fn codegen_fast_impl(
         // TODO(@littledivy): Fast async calls.
         (
           quote! {
-            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
-              let op_ctx = recv.get_aligned_pointer_from_internal_field(#core::_ops::V8_WRAPPER_OBJECT_INDEX);
+            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),* , opts: *mut #core::v8::fast_api::FastApiCallbackOptions) {
+              // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
+              let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { options.as_ref() };
+              // SAFETY: data union is always created as the `v8::Value` version
+              let data = unsafe { opts.data.data };
+              // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+              let ctx = unsafe {
+                &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
+                as *const #core::_ops::OpCtx)
+              };
               let op_id = op_ctx.op_id;
               #core::_ops::queue_async_op(scope, async move {
                 let result = Self::call(#args);
@@ -404,10 +412,17 @@ fn codegen_fast_impl(
       } else {
         let output = &f.sig.output;
         let func_name = format_ident!("func_{}", name);
-        let recv_decl = if use_recv {
+        let recv_decl = if use_fast_cb_opts {
           quote! {
-            let ptr = unsafe { recv.get_aligned_pointer_from_internal_field(#core::_ops::V8_WRAPPER_OBJECT_INDEX) };
-            let op_ctx = unsafe { &*(ptr as *const #core::_ops::OpCtx) };
+            // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
+            let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { options.as_ref() };
+            // SAFETY: data union is always created as the `v8::Value` version
+            let data = unsafe { opts.data.data };
+            // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+            let ctx = unsafe {
+              &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
+              as *const #core::_ops::OpCtx)
+            };
             let state = &mut op_ctx.state.borrow_mut();
           }
         } else {
@@ -416,7 +431,7 @@ fn codegen_fast_impl(
 
         (
           quote! {
-            fn #func_name #generics (recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
+            fn #func_name #generics (_recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
               #recv_decl
               #name::call::<#type_params>(#(#input_idents),*)
             }
@@ -539,7 +554,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     }
 
     if pos == 0 && is_mut_ref_opstate(input) {
-      use_recv = true;
+      use_fast_cb_opts = true;
       continue;
     }
 
@@ -572,6 +587,9 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
       }
     }
   }
+
+  // Push CallbackOptions into args; it must be the last argument.
+  args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
 
   let args = args
     .iter()
