@@ -332,7 +332,7 @@ fn codegen_fast_impl(
           if let Some(ty) = slices.get(&(idx + offset)) {
             return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
           }
-          if (use_fast_cb_opts || use_op_state) && idx + offset == f.sig.inputs.len() - 1 {
+          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
             return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
           }
           if v8_values.contains(&idx) {
@@ -341,7 +341,7 @@ fn codegen_fast_impl(
           quote!(#arg)
         })
         .collect::<Vec<_>>();
-      if !slices.is_empty() && !use_fast_cb_opts && !use_op_state {
+      if (!slices.is_empty() || use_op_state) && !use_fast_cb_opts {
         inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
       }
       let input_idents = f
@@ -399,7 +399,7 @@ fn codegen_fast_impl(
                 &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
                 as *const #core::_ops::OpCtx)
               };
-              let op_id = op_ctx.op_id;
+              let op_id = ctx.op_id;
               #core::_ops::queue_async_op(scope, async move {
                 let result = Self::call(#args);
                 (__promise_id, __op_id, #core::_ops::OpResult::Ok(result))
@@ -413,6 +413,7 @@ fn codegen_fast_impl(
         let output = &f.sig.output;
         let func_name = format_ident!("func_{}", name);
         let recv_decl = if use_op_state {
+          let op_state_name = input_idents.first();
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
             let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
@@ -423,7 +424,7 @@ fn codegen_fast_impl(
               &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
               as *const #core::_ops::OpCtx)
             };
-            let state = &mut op_ctx.state.borrow_mut();
+            let #op_state_name = &mut ctx.state.borrow_mut();
           }
         } else {
           quote!()
