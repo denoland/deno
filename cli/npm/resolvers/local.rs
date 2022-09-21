@@ -122,8 +122,8 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
     loop {
-      let sub_dir =
-        join_package_name(&current_folder.join("node_modules"), name);
+      current_folder = get_next_node_modules_ancestor(current_folder);
+      let sub_dir = join_package_name(current_folder, name);
       if sub_dir.is_dir() {
         return Ok(sub_dir);
       }
@@ -134,7 +134,6 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
           referrer
         );
       }
-      current_folder = get_next_node_modules_ancestor(current_folder);
     }
   }
 

@@ -16,6 +16,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::fs_util;
+
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
@@ -60,6 +62,7 @@ impl NpmPackageResolver {
     let path = self
       .inner
       .resolve_package_folder_from_deno_module(pkg_req)?;
+    let path = fs_util::canonicalize_path_maybe_not_exists(&path)?;
     log::debug!("Resolved {} to {}", pkg_req, path.display());
     Ok(path)
   }
