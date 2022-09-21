@@ -3,6 +3,8 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
+use spki::der::Decode;
+use elliptic_curve::pkcs8::PrivateKeyInfo;
 
 #[op(fast)]
 pub fn op_generate_ed25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) -> bool {
@@ -32,4 +34,54 @@ pub fn op_verify_ed25519(pubkey: &[u8], data: &[u8], signature: &[u8]) -> bool {
   ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey)
     .verify(data, signature)
     .is_ok()
+}
+
+
+// id-Ed25519 OBJECT IDENTIFIER ::= { 1 3 101 112 }
+pub const ED25519_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
+
+#[op(fast)]
+pub fn op_import_spki_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
+  // 2-3.
+  let pk_info = match spki::SubjectPublicKeyInfo::from_der(&key_data) {
+    Ok(pk_info) => pk_info,
+    Err(_) => return false,
+  };
+  // 4.
+  let alg = pk_info.algorithm.oid;
+  if alg != ED25519_OID {
+    return false;
+  }
+  // 5.
+  if pk_info.algorithm.parameters.is_some() {
+    return false;
+  }
+  out.copy_from_slice(pk_info.subject_public_key);
+  true
+}
+
+#[op(fast)]
+pub fn op_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
+  // 2-3.
+  let pk_info = match PrivateKeyInfo::from_der(key_data) {
+    Ok(pk_info) => pk_info,
+    Err(_) => return false,
+  };
+  // 4.
+  let alg = pk_info.algorithm.oid;
+  if alg != ED25519_OID {
+    return false;
+  }
+  // 5.
+  if pk_info.algorithm.parameters.is_some() {
+    return false;
+  }
+  // 6.
+  // CurvePrivateKey ::= OCTET STRING
+  if pk_info.private_key.len() != 32 {
+    return false;
+  }
+  out.copy_from_slice(pk_info.private_key);
+  true
 }

@@ -106,6 +106,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       x25519::op_import_spki_x25519::decl(),
       x25519::op_import_pkcs8_x25519::decl(),
       ed25519::op_generate_ed25519_keypair::decl(),
+      ed25519::op_import_spki_ed25519::decl(),
+      ed25519::op_import_pkcs8_ed25519::decl(),
       ed25519::op_sign_ed25519::decl(),
       ed25519::op_verify_ed25519::decl(),
     ])

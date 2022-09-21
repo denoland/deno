@@ -989,6 +989,14 @@
             keyUsages,
           );
         }
+        case "Ed25519": {
+          return importKeyEd25519(
+            format,
+            keyData,
+            extractable,
+            keyUsages,
+          );
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -2097,6 +2105,232 @@
         // 14.
         return key;
       }
+    }
+  }
+
+  function importKeyEd25519(
+    format,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+
+        // 2-3.
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        // 4-6.
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "spki": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const publicKeyData = new Uint8Array(32);
+        if (!ops.op_import_spki_ed25519.fast(keyData, publicKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "pkcs8": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["sign"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const privateKeyData = new Uint8Array(32);
+        if (!ops.op_import_pkcs8_ed25519.fast(keyData, privateKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        return constructKey(
+          "private",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+
+        // 2.
+        if (jwk.d !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  ["sign"],
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        } else {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  ["verify"],
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        }
+
+        // 3.
+        if (jwk.kty !== "OKP") {
+          throw new DOMException("Invalid key type", "DataError");
+        }
+
+        // 4.
+        if (jwk.crv !== "Ed25519") {
+          throw new DOMException("Invalid curve", "DataError");
+        }
+
+        // 5.
+        if (jwk.alg !== undefined && jwk.alg !== "EdDSA") {
+          throw new DOMException("Invalid algorithm", "DataError");
+        }
+
+        // 6.
+        if (keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig") {
+          throw new DOMException("Invalid key usage", "DataError");
+        }
+
+        // 7.
+        if (jwk.key_ops !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+          throw new DOMException("Invalid key extractability", "DataError");
+        }
+
+        // 9.
+        if (jwk.d !== undefined) {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+          const algorithm = {
+            name: "Ed25519",
+          };
+
+          return constructKey(
+            "private",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        } else {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+          const algorithm = {
+            name: "Ed25519",
+          };
+
+          return constructKey(
+            "public",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        }
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 
