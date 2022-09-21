@@ -1,10 +1,13 @@
+use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use ring::signature::Ed25519KeyPair;
 use ring::signature::KeyPair;
 use spki::der::Decode;
+use spki::der::Encode;
 
 #[op(fast)]
 pub fn op_generate_ed25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) -> bool {
@@ -83,4 +86,43 @@ pub fn op_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
   }
   out.copy_from_slice(pk_info.private_key);
   true
+}
+
+#[op]
+pub fn op_export_spki_ed25519(pubkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+  let key_info = spki::SubjectPublicKeyInfo {
+    algorithm: spki::AlgorithmIdentifier {
+      // id-Ed25519
+      oid: ED25519_OID,
+      parameters: None,
+    },
+    subject_public_key: pubkey,
+  };
+  Ok(key_info.to_vec()?.into())
+}
+
+#[op]
+pub fn op_export_pkcs8_ed25519(pkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+  let pk_info = rsa::pkcs8::PrivateKeyInfo {
+    public_key: None,
+    algorithm: rsa::pkcs8::AlgorithmIdentifier {
+      // id-Ed25519
+      oid: ED25519_OID,
+      parameters: None,
+    },
+    private_key: pkey, // OCTET STRING
+  };
+
+  Ok(pk_info.to_vec()?.into())
+}
+
+// 'x' from Section 2 of RFC 8037
+// https://www.rfc-editor.org/rfc/rfc8037#section-2
+#[op]
+pub fn op_jwk_x_ed25519(pkey: &[u8]) -> Result<String, AnyError> {
+  let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
+  Ok(base64::encode_config(
+    pair.public_key().as_ref(),
+    base64::URL_SAFE_NO_PAD,
+  ))
 }

@@ -1045,6 +1045,10 @@
           result = exportKeyEC(format, key, innerKey);
           break;
         }
+        case "Ed25519": {
+          result = exportKeyEd25519(format, key, innerKey);
+          break;
+        }
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM":
@@ -4000,6 +4004,64 @@
         // 8.
         jwk.ext = key[_extractable];
 
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function exportKeyEd25519(format, key, innerKey) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2-3.
+        return innerKey.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const spkiDer = ops.op_export_spki_ed25519(innerKey);
+        return spkiDer.buffer;
+      }
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const pkcs8Der = ops.op_export_pkcs8_ed25519(innerKey);
+        return pkcs8Der.buffer;
+      }
+      case "jwk": {
+        const x = key[_type] === "private" ? ops.op_jwk_x_ed25519(innerKey) : ops.op_crypto_base64url(innerKey);
+        const jwk = {
+          kty: "OKP",
+          alg: "EdDSA",
+          crv: "Ed25519",
+          x,
+          key_ops: key.usages,
+          ext: key[_extractable],
+        };
+        if (key[_type] === "private") {
+          jwk.d = ops.op_crypto_base64url(innerKey);
+        }
         return jwk;
       }
       default:

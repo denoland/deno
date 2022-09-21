@@ -110,6 +110,9 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ed25519::op_import_pkcs8_ed25519::decl(),
       ed25519::op_sign_ed25519::decl(),
       ed25519::op_verify_ed25519::decl(),
+      ed25519::op_export_spki_ed25519::decl(),
+      ed25519::op_export_pkcs8_ed25519::decl(),
+      ed25519::op_jwk_x_ed25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
