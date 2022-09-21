@@ -242,7 +242,9 @@ impl ProcState {
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
-      cli_options.resolve_local_node_modules_folder()?,
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();

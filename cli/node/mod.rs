@@ -26,11 +26,11 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
-use path_clean::PathClean;
 use regex::Regex;
 
 use crate::file_fetcher::FileFetcher;

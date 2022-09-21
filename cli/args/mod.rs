@@ -42,7 +42,6 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
-use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -162,7 +161,7 @@ impl CliOptions {
     } else {
       std::env::current_dir()?.join("node_modules")
     };
-    Ok(Some(fs_util::canonicalize_path(&path)?))
+    Ok(Some(path))
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {

@@ -4,17 +4,17 @@ mod common;
 mod global;
 mod local;
 
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
 
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
@@ -147,10 +147,11 @@ impl RequireNpmResolver for NpmPackageResolver {
   }
 
   fn in_npm_package(&self, path: &Path) -> bool {
-    let specifier = match ModuleSpecifier::from_file_path(path) {
-      Ok(p) => p,
-      Err(_) => return false,
-    };
+    let specifier =
+      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
     self
       .resolve_package_folder_from_specifier(&specifier)
       .is_ok()
@@ -162,7 +163,7 @@ impl RequireNpmResolver for NpmPackageResolver {
 }
 
 fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path) {
+  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }

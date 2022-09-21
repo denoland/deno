@@ -830,7 +830,6 @@ dependencies = [
  "notify",
  "once_cell",
  "os_pipe",
- "path-clean",
  "percent-encoding 2.2.0",
  "pin-project",
  "pretty_assertions",

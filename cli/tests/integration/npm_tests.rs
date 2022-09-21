@@ -423,6 +423,24 @@ itest!(builtin_module_module {
   http_server: true,
 });
 
+itest!(local_npm_require_added_node_modules_folder {
+  args:
+    "run --unstable --local-npm -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+  output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(local_npm_with_deps {
+  args: "run --allow-read --allow-env --unstable --local-npm $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
