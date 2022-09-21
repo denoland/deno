@@ -64,12 +64,12 @@
   }
 
   class InnerBody {
-    #contentLength = null;
+    #knownExactLength = null;
 
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, contentLength) {
+    constructor(stream, knownExactLength) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -78,7 +78,7 @@
       /** @type {null | number} */
       this.length = null;
 
-      this.#contentLength = contentLength;
+      this.#knownExactLength = knownExactLength;
     }
 
     get stream() {
@@ -152,8 +152,8 @@
         /** @type {Uint8Array[]} */
         const chunks = [];
 
-        let finalBuffer = this.#contentLength
-          ? new Uint8Array(this.#contentLength)
+        let finalBuffer = this.#knownExactLength
+          ? new Uint8Array(this.#knownExactLength)
           : null;
 
         let totalLength = 0;

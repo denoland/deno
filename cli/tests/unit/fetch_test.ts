@@ -1753,7 +1753,7 @@ Deno.test(
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4518";
+    const addr = "127.0.0.1:4519";
     const data = "a".repeat(10 << 10);
 
     const contentLength = data.length * 2;
