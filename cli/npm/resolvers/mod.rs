@@ -57,8 +57,11 @@ impl NpmPackageResolver {
     &self,
     pkg_req: &NpmPackageReq,
   ) -> Result<PathBuf, AnyError> {
-    log::debug!("Resolving {}", pkg_req);
-    self.inner.resolve_package_folder_from_deno_module(pkg_req)
+    let path = self
+      .inner
+      .resolve_package_folder_from_deno_module(pkg_req)?;
+    log::debug!("Resolved {} to {}", pkg_req, path.display());
+    Ok(path)
   }
 
   /// Resolves an npm package folder path from an npm package referrer.
@@ -67,10 +70,11 @@ impl NpmPackageResolver {
     name: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    log::debug!("Resolving {} from {}", name, referrer);
-    self
+    let path = self
       .inner
-      .resolve_package_folder_from_package(name, referrer)
+      .resolve_package_folder_from_package(name, referrer)?;
+    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
+    Ok(path)
   }
 
   /// Resolve the root folder of the package the provided specifier is in.
@@ -80,8 +84,11 @@ impl NpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    log::debug!("Resolving {}", specifier);
-    self.inner.resolve_package_folder_from_specifier(specifier)
+    let path = self
+      .inner
+      .resolve_package_folder_from_specifier(specifier)?;
+    log::debug!("Resolved {} to {}", specifier, path.display());
+    Ok(path)
   }
 
   /// Gets if the provided specifier is in an npm package.

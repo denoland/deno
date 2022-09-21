@@ -5,10 +5,11 @@ use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
-use std::io::{Error, Write};
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -73,6 +74,35 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
   return Ok(strip_unc_prefix(path));
   #[cfg(not(windows))]
   return Ok(path);
+}
+
+/// Canonicalizes a path which might be non-existent by going up the
+/// ancestors until it finds a directory that exists, canonicalizes
+/// that path, then adds back the remaining path components.
+///
+/// Note: When using this, you should be aware that a symlink may
+/// subsequently be created along this path by some other code.
+pub fn canonicalize_path_maybe_not_exists(
+  path: &Path,
+) -> Result<PathBuf, Error> {
+  let path = path.to_path_buf().clean();
+  let mut path = path.as_path();
+  let mut names_stack = Vec::new();
+  loop {
+    match canonicalize_path(path) {
+      Ok(mut canonicalized_path) => {
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(canonicalized_path);
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        names_stack.push(path.file_name().unwrap());
+        path = path.parent().unwrap();
+      }
+      Err(err) => return Err(err),
+    }
+  }
 }
 
 #[cfg(windows)]
