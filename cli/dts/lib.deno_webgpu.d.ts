@@ -143,8 +143,8 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
     | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
     | null;
 
-  readonly features: ReadonlyArray<GPUFeatureName>;
-  readonly limits: Record<string, number>;
+  readonly features: GPUSupportedFeatures;
+  readonly limits: GPUSupportedLimits;
   readonly queue: GPUQueue;
 
   destroy(): undefined;
