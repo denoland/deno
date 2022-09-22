@@ -4050,7 +4050,9 @@
         return pkcs8Der.buffer;
       }
       case "jwk": {
-        const x = key[_type] === "private" ? ops.op_jwk_x_ed25519(innerKey) : ops.op_crypto_base64url(innerKey);
+        const x = key[_type] === "private"
+          ? ops.op_jwk_x_ed25519(innerKey)
+          : ops.op_crypto_base64url(innerKey);
         const jwk = {
           kty: "OKP",
           alg: "EdDSA",
