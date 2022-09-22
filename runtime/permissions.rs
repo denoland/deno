@@ -34,7 +34,7 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
 pub enum PermissionState {
   Granted = 0,
   Prompt = 1,
@@ -135,7 +135,7 @@ impl Default for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnitPermission {
   pub name: &'static str,
   pub description: &'static str,
@@ -207,7 +207,7 @@ impl AsRef<str> for EnvVarName {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnaryPermission<T: Eq + Hash> {
   pub name: &'static str,
   pub description: &'static str,
@@ -302,6 +302,9 @@ pub struct FfiDescriptor(pub PathBuf);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
+    if self.global_state == PermissionState::Granted {
+      return PermissionState::Granted;
+    }
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
@@ -454,6 +457,9 @@ impl Default for UnaryPermission<ReadDescriptor> {
 
 impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
+    if self.global_state == PermissionState::Granted {
+      return PermissionState::Granted;
+    }
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
@@ -1133,7 +1139,7 @@ impl Default for UnaryPermission<FfiDescriptor> {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
   pub write: UnaryPermission<WriteDescriptor>,
@@ -1158,7 +1164,7 @@ impl Default for Permissions {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
@@ -1490,7 +1496,7 @@ fn escalation_error() -> AnyError {
   )
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ChildUnitPermissionArg {
   Inherit,
   Granted,
@@ -1542,7 +1548,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ChildUnaryPermissionArg {
   Inherit,
   Granted,
@@ -1610,7 +1616,7 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 }
 
 /// Directly deserializable from JS worker and test permission options.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   hrtime: ChildUnitPermissionArg,
@@ -2060,6 +2066,11 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     }
   }
 
+  // Clear n-lines in terminal and move cursor to the beginning of the line.
+  fn clear_n_lines(n: usize) {
+    eprint!("\x1B[{}A\x1B[0J", n);
+  }
+
   // For security reasons we must consume everything in stdin so that previously
   // buffered data cannot effect the prompt.
   if let Err(err) = clear_stdin() {
@@ -2067,13 +2078,19 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     return false; // don't grant permission if this fails
   }
 
-  let opts = "[y/n (y = yes allow, n = no deny)] ";
+  // print to stderr so that if stdout is piped this is still displayed.
+  const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
+  eprint!("{}  ┌ ", PERMISSION_EMOJI);
+  eprint!("{}", colors::bold("Deno requests "));
+  eprint!("{}", colors::bold(message));
+  eprintln!("{}", colors::bold("."));
   let msg = format!(
-    "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
-    PERMISSION_EMOJI, message, name, opts
+    "   ├ Run again with --allow-{} to bypass this prompt.",
+    name
   );
-  // print to stderr so that if deno is > to a file this is still displayed.
-  eprint!("{}", colors::bold(&msg));
+  eprintln!("{}", colors::italic(&msg));
+  eprint!("   └ {}", colors::bold("Allow?"));
+  eprint!(" {} > ", OPTS);
   loop {
     let mut input = String::new();
     let stdin = std::io::stdin();
@@ -2086,12 +2103,23 @@ fn permission_prompt(message: &str, name: &str) -> bool {
       Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
-      'y' => return true,
-      'n' => return false,
+      'y' => {
+        clear_n_lines(4);
+        let msg = format!("Granted {}.", message);
+        eprintln!("✅ {}", colors::bold(&msg));
+        return true;
+      }
+      'n' => {
+        clear_n_lines(4);
+        let msg = format!("Denied {}.", message);
+        eprintln!("❌ {}", colors::bold(&msg));
+        return false;
+      }
       _ => {
         // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
-        eprint!("{}", colors::bold(&msg_again));
+        clear_n_lines(1);
+        eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
+        eprint!(" {} > ", OPTS);
       }
     };
   }

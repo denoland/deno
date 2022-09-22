@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.25.3 / 2022.09.15
+
+- doc(unstable): mention that `signal` input isn't supported in `spawnSync`
+  (#15889)
+- fix(ext/flash): don't block requests (#15852)
+- fix(npm): align Deno importing Node cjs with Node esm importing cjs (#15879)
+- fix(npm): align Node esm code importing cjs with Node (#15838)
+- fix(npm): binary entrypoint for .js or no extension (#15900)
+- fix(npm): remove export binding to match node (#15837)
+- fix(npm): support cjs resolution of package subpath with package.json (#15855)
+- fix(npm): use shim from deno_node crate for 'module' built-in module (#15881)
+- fix(ops): add node.js env variable allowlist (#15893)
+- perf(ext/flash): remove string->buffer cache (#15850)
+- perf(serde_v8): remove Mutex from ZeroCopyBuf (#15888)
+- perf(url): return early if url has no query string (#15856)
+- perf: optimize URL serialization (#15663)
+
 ### 1.25.2 / 2022.09.09
 
 - BREAKING(unstable): remove --compat mode (#15678)

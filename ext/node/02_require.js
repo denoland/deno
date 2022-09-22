@@ -20,16 +20,23 @@
     ObjectKeys,
     ObjectPrototype,
     ObjectCreate,
+    Proxy,
     SafeMap,
     SafeWeakMap,
+    SafeArrayIterator,
     JSONParse,
+    String,
     StringPrototypeEndsWith,
     StringPrototypeIndexOf,
+    StringPrototypeIncludes,
     StringPrototypeMatch,
     StringPrototypeSlice,
+    StringPrototypeSplit,
     StringPrototypeStartsWith,
     StringPrototypeCharCodeAt,
     RegExpPrototypeTest,
+    Error,
+    TypeError,
   } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
@@ -254,9 +261,9 @@
 
   Module.builtinModules = node.builtinModules;
 
-  Module._extensions = Object.create(null);
-  Module._cache = Object.create(null);
-  Module._pathCache = Object.create(null);
+  Module._extensions = ObjectCreate(null);
+  Module._cache = ObjectCreate(null);
+  Module._pathCache = ObjectCreate(null);
   let modulePaths = [];
   Module.globalPaths = modulePaths;
 
@@ -402,7 +409,7 @@
         parent.filename,
       );
       if (denoDirPath) {
-        paths.push(denoDirPath);
+        ArrayPrototypePush(paths, denoDirPath);
       }
     }
     const lookupPathsResult = ops.op_require_resolve_lookup_paths(
@@ -411,7 +418,7 @@
       parent?.filename ?? "",
     );
     if (lookupPathsResult) {
-      paths.push(...lookupPathsResult);
+      ArrayPrototypePush(paths, ...new SafeArrayIterator(lookupPathsResult));
     }
     return paths;
   };
@@ -668,10 +675,11 @@
   function enrichCJSError(error) {
     if (error instanceof SyntaxError) {
       if (
-        error.message.includes(
+        StringPrototypeIncludes(
+          error.message,
           "Cannot use import statement outside a module",
         ) ||
-        error.message.includes("Unexpected token 'export'")
+        StringPrototypeIncludes(error.message, "Unexpected token 'export'")
       ) {
         console.error(
           'To load an ES module, set "type": "module" in the package.json or use ' +
@@ -745,8 +753,8 @@
   };
 
   function stripBOM(content) {
-    if (content.charCodeAt(0) === 0xfeff) {
-      content = content.slice(1);
+    if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
+      content = StringPrototypeSlice(content, 1);
     }
     return content;
   }
@@ -820,25 +828,7 @@
 
   Module.Module = Module;
 
-  const m = {
-    _cache: Module._cache,
-    _extensions: Module._extensions,
-    _findPath: Module._findPath,
-    _initPaths: Module._initPaths,
-    _load: Module._load,
-    _nodeModulePaths: Module._nodeModulePaths,
-    _pathCache: Module._pathCache,
-    _preloadModules: Module._preloadModules,
-    _resolveFilename: Module._resolveFilename,
-    _resolveLookupPaths: Module._resolveLookupPaths,
-    builtinModules: Module.builtinModules,
-    createRequire: Module.createRequire,
-    globalPaths: Module.globalPaths,
-    Module,
-    wrap: Module.wrap,
-  };
-
-  node.nativeModuleExports.module = m;
+  node.nativeModuleExports.module = Module;
 
   function loadNativeModule(_id, request) {
     if (nativeModulePolyfill.has(request)) {
@@ -865,13 +855,13 @@
 
   /** @param specifier {string} */
   function packageSpecifierSubPath(specifier) {
-    let parts = specifier.split("/");
-    if (parts[0].startsWith("@")) {
-      parts = parts.slice(2);
+    let parts = StringPrototypeSplit(specifier, "/");
+    if (StringPrototypeStartsWith(parts[0], "@")) {
+      parts = ArrayPrototypeSlice(parts, 2);
     } else {
-      parts = parts.slice(1);
+      parts = ArrayPrototypeSlice(parts, 1);
     }
-    return parts.join("/");
+    return ArrayPrototypeJoin(parts, "/");
   }
 
   window.__bootstrap.internals = {
@@ -882,7 +872,6 @@
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      moduleExports: m,
     },
   };
 })(globalThis);

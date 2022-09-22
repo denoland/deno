@@ -312,7 +312,7 @@
     deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
     getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
     getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
-    isProxy: (value) => ops.op_is_proxy.fast(value),
+    isProxy: (value) => ops.op_is_proxy(value),
     memoryUsage: () => ops.op_memory_usage(),
     setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
     abortWasmStreaming: (
