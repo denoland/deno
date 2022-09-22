@@ -231,7 +231,6 @@ impl ProcState {
     let api = NpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      cli_options.reload_flag(),
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
