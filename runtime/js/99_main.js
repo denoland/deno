@@ -469,10 +469,12 @@ delete Intl.v8BreakIterator;
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     caches: {
-      configurable: true,
       enumerable: true,
+      configurable: true,
       get: caches.cacheStorage,
     },
+    CacheStorage: util.nonEnumerable(caches.CacheStorage),
+    Cache: util.nonEnumerable(caches.Cache),
     console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),

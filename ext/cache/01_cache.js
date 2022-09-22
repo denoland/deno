@@ -137,7 +137,7 @@
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
-    async match(request, options) {
+    async match(request, options = undefined) {
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       const p = await this.#matchAll(request, options);
@@ -149,7 +149,7 @@
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
-    async delete(request, options) {
+    async delete(request, options = undefined) {
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // Step 1.
@@ -262,10 +262,14 @@
     }
   }
 
+  webidl.configurePrototype(CacheStorage);
+  webidl.configurePrototype(Cache);
   const CacheStoragePrototype = CacheStorage.prototype;
 
   let cacheStorage;
   window.__bootstrap.caches = {
+    CacheStorage,
+    Cache,
     cacheStorage() {
       if (!cacheStorage) {
         cacheStorage = webidl.createBranded(CacheStorage);
