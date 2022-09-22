@@ -4058,7 +4058,7 @@
           alg: "EdDSA",
           crv: "Ed25519",
           x,
-          key_ops: key.usages,
+          "key_ops": key.usages,
           ext: key[_extractable],
         };
         if (key[_type] === "private") {
