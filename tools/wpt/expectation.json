@@ -4931,28 +4931,14 @@
     ],
     "cache-storage": {
       "cache-match.https.any.html": [
-        "Cache.match with no matching entries",
-        "Cache.match with URL",
-        "Cache.match with Request",
-        "Cache.match with multiple cache hits",
-        "Cache.match with new Request",
-        "Cache.match with HEAD",
-        "Cache.match with ignoreSearch option (request with no search parameters)",
-        "Cache.match with ignoreSearch option (request with search parameter)",
         "Cache.match supports ignoreVary",
-        "Cache.match does not support cacheName option",
-        "Cache.match with URL containing fragment",
-        "Cache.match with string fragment \"http\" as query",
         "Cache.match with Request and Response objects with different URLs",
-        "Cache.match with POST Request",
-        "Cache.match with a non-2xx Response",
         "Cache.match with a network error Response",
         "cors-exposed header should be stored correctly.",
         "MIME type should be set from content-header correctly.",
         "Cache.match ignores vary headers on opaque response."
       ],
       "cache-delete.https.any.html": [
-        "Cache.delete called with a string URL",
         "Cache.delete called with a HEAD request",
         "Cache.delete supports ignoreVary",
         "Cache.delete with ignoreSearch option (request with search parameters)",

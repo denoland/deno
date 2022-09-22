@@ -103,7 +103,7 @@
       }
 
       // Step 8.
-      if (innerResponse.body.unusable()) {
+      if (innerResponse.body !== null && innerResponse.body.unusable()) {
         throw new TypeError("Response body must not already used");
       }
 
@@ -206,11 +206,14 @@
         // as we don't expose matchAll() API.
         return responses;
       } else {
+        // Remove the fragment from the request URL.
+        const url = new URL(r.url);
+        url.hash = "";
         const matchResult = await core.opAsync(
           "op_cache_match",
           {
             cacheId: this[_id],
-            requestUrl: r.url,
+            requestUrl: url.toString(),
           },
         );
         if (matchResult) {

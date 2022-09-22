@@ -10,6 +10,7 @@ use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use rusqlite::params;
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
@@ -192,7 +193,7 @@ impl Cache for SqliteBackedCache {
   > {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let (cache_meta, response_body_key) = tokio::task::spawn_blocking(move || {
+    let query_result = tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
         "SELECT response_body_key, response_headers, response_status, response_status_text
@@ -207,20 +208,24 @@ impl Cache for SqliteBackedCache {
           let response_headers: Vec<(String, String)> = serde_json::from_str(&response_headers).expect("malformed response headers from db");
           Ok((CacheMatchResponseMeta {response_headers,response_status,response_status_text}, response_body_key))
         },
-      )?;
-      Ok::<(CacheMatchResponseMeta, Option<String>), AnyError>(result)
+      );
+      result.optional()
     })
     .await??;
 
-    if let Some(path) = response_body_key {
-      let response_path = cache_storage_dir.join("responses").join(path);
-      let file = tokio::fs::File::open(response_path).await?;
-      return Ok(Some((
-        cache_meta,
-        Some(Rc::new(CacheResponseResource::new(file))),
-      )));
-    } else {
-      Ok(Some((cache_meta, None)))
+    match query_result {
+      Some((cache_meta, Some(response_body_key))) => {
+        let response_path = cache_storage_dir.join("responses").join(response_body_key);
+        let file = tokio::fs::File::open(response_path).await?;
+        return Ok(Some((
+          cache_meta,
+          Some(Rc::new(CacheResponseResource::new(file))),
+        )));
+      }
+      Some((cache_meta, None)) => {
+        return Ok(Some((cache_meta, None)));
+      }
+      None => return Ok(None),
     }
   }
 
