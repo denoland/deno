@@ -116,6 +116,40 @@ Deno.test(
   },
 );
 
+Deno.test({ permissions: { env: true } }, function envInvalidChars() {
+  assertThrows(() => Deno.env.get(""), TypeError, "Key is an empty string");
+  assertThrows(
+    () => Deno.env.get("\0"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.get("="),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("", "foo"),
+    TypeError,
+    "Key is an empty string",
+  );
+  assertThrows(
+    () => Deno.env.set("\0", "foo"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.set("=", "foo"),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("foo", "\0"),
+    TypeError,
+    'Value contains invalid characters: "\\0"',
+  );
+});
+
 Deno.test(function osPid() {
   assert(Deno.pid > 0);
 });

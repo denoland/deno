@@ -140,33 +140,21 @@ fn initialize_ops(
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
 ) {
-  let object_template = v8::ObjectTemplate::new(scope);
-  assert!(object_template.set_internal_field_count(
-    (crate::runtime::V8_WRAPPER_OBJECT_INDEX + 1) as usize
-  ));
-
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
     if ctx.decl.fast_fn.is_some() && snapshot_loaded {
-      let method_obj = object_template.new_instance(scope).unwrap();
-      method_obj.set_aligned_pointer_in_internal_field(
-        crate::runtime::V8_WRAPPER_OBJECT_INDEX,
-        ctx_ptr,
-      );
       set_func_raw(
         scope,
-        method_obj,
-        "fast",
+        ops_obj,
+        ctx.decl.name,
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
         snapshot_loaded,
       );
-      let method_key = v8::String::new(scope, ctx.decl.name).unwrap();
-      ops_obj.set(scope, method_key.into(), method_obj.into());
     } else {
       set_func_raw(
         scope,
