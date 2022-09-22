@@ -1,5 +1,4 @@
 use crate::shared::*;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ZeroCopyBuf;
@@ -8,7 +7,6 @@ use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
-use ring::signature::Ed25519KeyPair;
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;

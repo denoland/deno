@@ -46,7 +46,7 @@ pub const X25519_OID: const_oid::ObjectIdentifier =
 #[op(fast)]
 pub fn op_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
   // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfo::from_der(&key_data) {
+  let pk_info = match spki::SubjectPublicKeyInfo::from_der(key_data) {
     Ok(pk_info) => pk_info,
     Err(_) => return false,
   };
