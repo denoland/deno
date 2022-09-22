@@ -360,9 +360,7 @@ fn codegen_fast_impl(
           if slices.get(&idx).is_some() {
             return quote! {
               match unsafe { &* #ident }.get_storage_if_aligned() {
-                Some(s) => {
-                  s
-                },
+                Some(s) => s,
                 None => {
                   unsafe { &mut * fast_api_callback_options }.fallback = true;
                   return Default::default();
