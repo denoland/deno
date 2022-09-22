@@ -452,7 +452,7 @@ fn codegen_fast_impl(
                 result
               },
               Err(err) => {
-                #op_state_name.fast_op_error.replace(err);
+                #op_state_name.last_fast_op_error.replace(err);
                 opts.fallback = true;
                 Default::default()
               },
@@ -543,7 +543,7 @@ fn codegen_v8_sync(
     quote! {
       {
         let op_state = &mut ctx.state.borrow_mut();
-        if let Some(err) = op_state.fast_op_error.take() {
+        if let Some(err) = op_state.last_fast_op_error.take() {
           let exception = #core::error::to_v8_error(scope, op_state.get_error_class_fn, &err);
           scope.throw_exception(exception);
           return;
