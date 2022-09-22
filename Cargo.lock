@@ -2817,9 +2817,9 @@ dependencies = [
 
 [[package]]
 name = "netif"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a96c14078e0dae0c847c413b31304d5563daeb2494a61ebb01cb66f19b8ba99f"
+checksum = "d29a01b9f018d6b7b277fef6c79fdbd9bf17bb2d1e298238055cafab49baa5ee"
 dependencies = [
  "libc",
  "winapi 0.3.9",
@@ -5315,9 +5315,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.50.0"
+version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c5d353ef04138242857d4f14f679659460f240275119424df31de5f6f1184fd"
+checksum = "e72791f754a6517e86d88e4521baad3a7d428ce54e266ba560b8747b2a99b946"
 dependencies = [
  "bitflags",
  "fslock",

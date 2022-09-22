@@ -4107,8 +4107,8 @@ fn lsp_diagnostics_warn_redirect() {
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
           ..Default::default()
         }
       ],
