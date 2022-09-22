@@ -2748,8 +2748,22 @@
       "request": {
         "request-init-002.any.html": true,
         "request-init-002.any.worker.html": true,
-        "request-init-stream.any.html": true,
-        "request-init-stream.any.worker.html": true,
+        "request-init-stream.any.html": [
+          "It is error to omit .duplex when the body is a ReadableStream.",
+          "It is error to set .duplex = 'full' when the body is null.",
+          "It is error to set .duplex = 'full' when the body is a string.",
+          "It is error to set .duplex = 'full' when the body is a Uint8Array.",
+          "It is error to set .duplex = 'full' when the body is a Blob.",
+          "It is error to set .duplex = 'full' when the body is a ReadableStream."
+        ],
+        "request-init-stream.any.worker.html": [
+          "It is error to omit .duplex when the body is a ReadableStream.",
+          "It is error to set .duplex = 'full' when the body is null.",
+          "It is error to set .duplex = 'full' when the body is a string.",
+          "It is error to set .duplex = 'full' when the body is a Uint8Array.",
+          "It is error to set .duplex = 'full' when the body is a Blob.",
+          "It is error to set .duplex = 'full' when the body is a ReadableStream."
+        ],
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
@@ -2814,6 +2828,7 @@
           "Adding invalid request header \"Keep-Alive: KO\"",
           "Adding invalid request header \"Origin: KO\"",
           "Adding invalid request header \"Referer: KO\"",
+          "Adding invalid request header \"Set-Cookie: KO\"",
           "Adding invalid request header \"TE: KO\"",
           "Adding invalid request header \"Trailer: KO\"",
           "Adding invalid request header \"Transfer-Encoding: KO\"",
@@ -2851,6 +2866,7 @@
           "Adding invalid request header \"Keep-Alive: KO\"",
           "Adding invalid request header \"Origin: KO\"",
           "Adding invalid request header \"Referer: KO\"",
+          "Adding invalid request header \"Set-Cookie: KO\"",
           "Adding invalid request header \"TE: KO\"",
           "Adding invalid request header \"Trailer: KO\"",
           "Adding invalid request header \"Transfer-Encoding: KO\"",
@@ -3383,6 +3399,7 @@
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Response interface: operation error()",
         "Response interface: operation redirect(USVString, optional unsigned short)",
+        "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
@@ -3413,6 +3430,7 @@
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
         "Response interface: operation error()",
         "Response interface: operation redirect(USVString, optional unsigned short)",
+        "Response interface: operation json(any, optional ResponseInit)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
@@ -4616,7 +4634,10 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
+      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
+      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
+      "Pattern: [\"/foo?bar#baz\",\"https://example.com:8080\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]"
     ],
     "urlpattern.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4633,7 +4654,10 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
+      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
+      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
+      "Pattern: [\"/foo?bar#baz\",\"https://example.com:8080\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]"
     ],
     "urlpattern.https.any.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4650,7 +4674,10 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
+      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
+      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
+      "Pattern: [\"/foo?bar#baz\",\"https://example.com:8080\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]"
     ],
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"pathname\":\"/foo/:bar?\"}] Inputs: [{\"pathname\":\"/foo\"}]",
@@ -4667,7 +4694,10 @@
       "Pattern: [] Inputs: [\"https://example.com/\"]",
       "Pattern: [] Inputs: [{}]",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]"
+      "Pattern: [{\"pathname\":\"*{}**?\"}] Inputs: [{\"pathname\":\"foobar\"}]",
+      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
+      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
+      "Pattern: [\"/foo?bar#baz\",\"https://example.com:8080\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]"
     ]
   },
   "compression": {
