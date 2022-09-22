@@ -4860,8 +4860,7 @@
       "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "Window interface: attribute caches",
       "Navigator interface: attribute serviceWorker",
-      "idl_test setup",
-      "Cache interface: calling match(RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError"
+      "idl_test setup"
     ],
     "idlharness.https.any.worker.html": [
       "ServiceWorker interface: existence and properties of interface object",
@@ -4968,8 +4967,7 @@
       "CacheStorage interface: calling match(RequestInfo, optional MultiCacheQueryOptions) on caches with too few arguments must throw TypeError",
       "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "WorkerGlobalScope interface: attribute caches",
-      "WorkerNavigator interface: attribute serviceWorker",
-      "Cache interface: calling match(RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError"
+      "WorkerNavigator interface: attribute serviceWorker"
     ]
   }
 }

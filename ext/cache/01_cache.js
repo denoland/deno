@@ -29,9 +29,7 @@
       const prefix = "Failed to execute 'open' on 'CacheStorage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      const cacheInstance = webidl.createBranded(Cache);
-      cacheInstance[_id] = cacheId;
-      return cacheInstance;
+      return new Cache(cacheId);
     }
 
     async has(cacheName) {
@@ -55,13 +53,12 @@
     /** @type {number} */
     [_id];
 
-    constructor() {
-      webidl.illegalConstructor();
+    constructor(cacheId) {
+      this[_id] = cacheId;
     }
 
     /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
     async put(request, response) {
-      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'put' on 'Cache'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       // Step 1.
@@ -141,7 +138,6 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
-      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       const p = await this.#matchAll(request, options);
@@ -154,7 +150,6 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, options) {
-      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // Step 1.
@@ -268,7 +263,6 @@
   }
 
   const CacheStoragePrototype = CacheStorage.prototype;
-  const CachePrototype = Cache.prototype;
 
   let cacheStorage;
   window.__bootstrap.caches = {
