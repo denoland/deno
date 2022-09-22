@@ -11,12 +11,12 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
-use crate::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
@@ -162,10 +162,6 @@ impl ReadonlyNpmCache {
       version: NpmVersion::parse(version).unwrap(),
     })
   }
-
-  pub fn get_cache_location(&self) -> PathBuf {
-    self.root_dir.clone()
-  }
 }
 
 /// Stores a single copy of npm packages in a cache.
@@ -173,24 +169,14 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  progress_bar: ProgressBar,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
-    cache_setting: CacheSetting,
-    progress_bar: ProgressBar,
-  ) -> Self {
+  pub fn from_deno_dir(dir: &DenoDir, cache_setting: CacheSetting) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
-      progress_bar,
     }
-  }
-
-  pub fn as_readonly(&self) -> ReadonlyNpmCache {
-    self.readonly.clone()
   }
 
   pub async fn ensure_package(
@@ -218,7 +204,13 @@ impl NpmCache {
       );
     }
 
-    let _guard = self.progress_bar.update(&dist.tarball);
+    log::log!(
+      log::Level::Info,
+      "{} {}",
+      colors::green("Download"),
+      dist.tarball,
+    );
+
     let response = reqwest::get(&dist.tarball).await?;
 
     if response.status() == 404 {

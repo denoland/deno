@@ -19,11 +19,11 @@ and limitations under the License.
 
 
 interface ErrorOptions {
-    cause?: unknown;
+    cause?: Error;
 }
 
 interface Error {
-    cause?: unknown;
+    cause?: Error;
 }
 
 interface ErrorConstructor {

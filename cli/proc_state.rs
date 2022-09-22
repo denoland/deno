@@ -26,7 +26,6 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
-use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::tools::check;
@@ -91,7 +90,6 @@ pub struct Inner {
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
-  progress_bar: ProgressBar,
 }
 
 impl Deref for ProcState {
@@ -151,7 +149,6 @@ impl ProcState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
-    let progress_bar = ProgressBar::default();
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -161,7 +158,6 @@ impl ProcState {
       cli_options
         .unsafely_ignore_certificate_errors()
         .map(ToOwned::to_owned),
-      Some(progress_bar.clone()),
     )?;
 
     let lockfile = cli_options
@@ -223,16 +219,11 @@ impl ProcState {
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
     let registry_url = NpmRegistryApi::default_url();
-    let npm_cache = NpmCache::from_deno_dir(
-      &dir,
-      cli_options.cache_setting(),
-      progress_bar.clone(),
-    );
+    let npm_cache = NpmCache::from_deno_dir(&dir, cli_options.cache_setting());
     let api = NpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),
-      progress_bar.clone(),
     );
     let npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
@@ -240,7 +231,7 @@ impl ProcState {
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
-      cli_options.no_npm(),
+      false,
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
@@ -271,7 +262,6 @@ impl ProcState {
       npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
-      progress_bar,
     })))
   }
 
@@ -431,8 +421,6 @@ impl ProcState {
         .await?;
       self.prepare_node_std_graph().await?;
     }
-
-    self.progress_bar.clear();
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {

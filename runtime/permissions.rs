@@ -2066,11 +2066,6 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     }
   }
 
-  // Clear n-lines in terminal and move cursor to the beginning of the line.
-  fn clear_n_lines(n: usize) {
-    eprint!("\x1B[{}A\x1B[0J", n);
-  }
-
   // For security reasons we must consume everything in stdin so that previously
   // buffered data cannot effect the prompt.
   if let Err(err) = clear_stdin() {
@@ -2078,19 +2073,13 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     return false; // don't grant permission if this fails
   }
 
-  // print to stderr so that if stdout is piped this is still displayed.
-  const OPTS: &str = "[y/n] (y = yes, allow; n = no, deny)";
-  eprint!("{}  ┌ ", PERMISSION_EMOJI);
-  eprint!("{}", colors::bold("Deno requests "));
-  eprint!("{}", colors::bold(message));
-  eprintln!("{}", colors::bold("."));
+  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
-    "   ├ Run again with --allow-{} to bypass this prompt.",
-    name
+    "{}  ️Deno requests {}. Run again with --allow-{} to bypass this prompt.\n   Allow? {} ",
+    PERMISSION_EMOJI, message, name, opts
   );
-  eprintln!("{}", colors::italic(&msg));
-  eprint!("   └ {}", colors::bold("Allow?"));
-  eprint!(" {} > ", OPTS);
+  // print to stderr so that if deno is > to a file this is still displayed.
+  eprint!("{}", colors::bold(&msg));
   loop {
     let mut input = String::new();
     let stdin = std::io::stdin();
@@ -2103,23 +2092,12 @@ fn permission_prompt(message: &str, name: &str) -> bool {
       Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
-      'y' => {
-        clear_n_lines(4);
-        let msg = format!("Granted {}.", message);
-        eprintln!("✅ {}", colors::bold(&msg));
-        return true;
-      }
-      'n' => {
-        clear_n_lines(4);
-        let msg = format!("Denied {}.", message);
-        eprintln!("❌ {}", colors::bold(&msg));
-        return false;
-      }
+      'y' => return true,
+      'n' => return false,
       _ => {
         // If we don't get a recognized option try again.
-        clear_n_lines(1);
-        eprint!("   └ {}", colors::bold("Unrecognized option. Allow?"));
-        eprint!(" {} > ", OPTS);
+        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
+        eprint!("{}", colors::bold(&msg_again));
       }
     };
   }

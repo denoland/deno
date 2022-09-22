@@ -26,7 +26,6 @@ mod node;
 mod npm;
 mod ops;
 mod proc_state;
-mod progress_bar;
 mod resolver;
 mod standalone;
 mod text_encoding;
@@ -133,7 +132,6 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
@@ -150,7 +148,6 @@ fn print_cache_info(
     let mut output = json!({
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
-      "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
@@ -171,11 +168,6 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Remote modules cache:"),
       modules_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("npm modules cache:"),
-      npm_cache.display()
     );
     println!(
       "{} {}",

@@ -19,22 +19,7 @@ and limitations under the License.
 
 
 declare namespace Intl {
-
-    interface DateTimeFormatPartTypesRegistry {
-        day: any
-        dayPeriod: any
-        era: any
-        hour: any
-        literal: any
-        minute: any
-        month: any
-        second: any
-        timeZoneName: any
-        weekday: any
-        year: any
-    }
-
-    type DateTimeFormatPartTypes = keyof DateTimeFormatPartTypesRegistry;
+    type DateTimeFormatPartTypes = "day" | "dayPeriod" | "era" | "hour" | "literal" | "minute" | "month" | "second" | "timeZoneName" | "weekday" | "year";
 
     interface DateTimeFormatPart {
         type: DateTimeFormatPartTypes;

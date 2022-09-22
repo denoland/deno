@@ -271,10 +271,6 @@ interface IDBObjectStoreParameters {
     keyPath?: string | string[] | null;
 }
 
-interface IDBTransactionOptions {
-    durability?: IDBTransactionDurability;
-}
-
 interface IDBVersionChangeEventInit extends EventInit {
     newVersion?: number | null;
     oldVersion?: number;
@@ -500,12 +496,12 @@ interface RTCEncodedVideoFrameMetadata {
     width?: number;
 }
 
-interface ReadableStreamReadDoneResult {
+interface ReadableStreamDefaultReadDoneResult {
     done: true;
     value?: undefined;
 }
 
-interface ReadableStreamReadValueResult<T> {
+interface ReadableStreamDefaultReadValueResult<T> {
     done: false;
     value: T;
 }
@@ -1008,7 +1004,6 @@ declare var CustomEvent: {
 
 /** An abnormal event (called an exception) which occurs as a result of calling a method or accessing a property of a web API. */
 interface DOMException extends Error {
-    /** @deprecated */
     readonly code: number;
     readonly message: string;
     readonly name: string;
@@ -1471,7 +1466,7 @@ declare var EventTarget: {
 
 /** Extends the lifetime of the install and activate events dispatched on the global scope as part of the service worker lifecycle. This ensures that any functional events (like FetchEvent) are not dispatched until it upgrades database schemas and deletes the outdated cache entries. */
 interface ExtendableEvent extends Event {
-    waitUntil(f: Promise<any>): void;
+    waitUntil(f: any): void;
 }
 
 declare var ExtendableEvent: {
@@ -1806,7 +1801,7 @@ interface IDBDatabase extends EventTarget {
      */
     deleteObjectStore(name: string): void;
     /** Returns a new transaction with the given mode ("readonly" or "readwrite") and scope which can be a single object store name or an array of names. */
-    transaction(storeNames: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions): IDBTransaction;
+    transaction(storeNames: string | string[], mode?: IDBTransactionMode): IDBTransaction;
     addEventListener<K extends keyof IDBDatabaseEventMap>(type: K, listener: (this: IDBDatabase, ev: IDBDatabaseEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
     removeEventListener<K extends keyof IDBDatabaseEventMap>(type: K, listener: (this: IDBDatabase, ev: IDBDatabaseEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
@@ -2292,6 +2287,7 @@ interface NavigatorID {
     readonly appName: string;
     /** @deprecated */
     readonly appVersion: string;
+    /** @deprecated */
     readonly platform: string;
     /** @deprecated */
     readonly product: string;
@@ -2308,6 +2304,10 @@ interface NavigatorLocks {
     readonly locks: LockManager;
 }
 
+interface NavigatorNetworkInformation {
+    readonly connection: NetworkInformation;
+}
+
 interface NavigatorOnLine {
     readonly onLine: boolean;
 }
@@ -2316,6 +2316,15 @@ interface NavigatorOnLine {
 interface NavigatorStorage {
     readonly storage: StorageManager;
 }
+
+interface NetworkInformation extends EventTarget {
+    readonly type: ConnectionType;
+}
+
+declare var NetworkInformation: {
+    prototype: NetworkInformation;
+    new(): NetworkInformation;
+};
 
 interface NotificationEventMap {
     "click": Event;
@@ -2649,7 +2658,6 @@ declare var PushMessageData: {
  */
 interface PushSubscription {
     readonly endpoint: string;
-    readonly expirationTime: EpochTimeStamp | null;
     readonly options: PushSubscriptionOptions;
     getKey(name: PushEncryptionKeyName): ArrayBuffer | null;
     toJSON(): PushSubscriptionJSON;
@@ -2694,19 +2702,6 @@ declare var RTCEncodedVideoFrame: {
     new(): RTCEncodedVideoFrame;
 };
 
-interface ReadableByteStreamController {
-    readonly byobRequest: ReadableStreamBYOBRequest | null;
-    readonly desiredSize: number | null;
-    close(): void;
-    enqueue(chunk: ArrayBufferView): void;
-    error(e?: any): void;
-}
-
-declare var ReadableByteStreamController: {
-    prototype: ReadableByteStreamController;
-    new(): ReadableByteStreamController;
-};
-
 /** This Streams API interface represents a readable stream of byte data. The Fetch API offers a concrete instance of a ReadableStream through the body property of a Response object. */
 interface ReadableStream<R = any> {
     readonly locked: boolean;
@@ -2722,27 +2717,6 @@ declare var ReadableStream: {
     new<R = any>(underlyingSource?: UnderlyingSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
 };
 
-interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
-    read(view: ArrayBufferView): Promise<ReadableStreamReadResult<ArrayBufferView>>;
-    releaseLock(): void;
-}
-
-declare var ReadableStreamBYOBReader: {
-    prototype: ReadableStreamBYOBReader;
-    new(stream: ReadableStream): ReadableStreamBYOBReader;
-};
-
-interface ReadableStreamBYOBRequest {
-    readonly view: ArrayBufferView | null;
-    respond(bytesWritten: number): void;
-    respondWithNewView(view: ArrayBufferView): void;
-}
-
-declare var ReadableStreamBYOBRequest: {
-    prototype: ReadableStreamBYOBRequest;
-    new(): ReadableStreamBYOBRequest;
-};
-
 interface ReadableStreamDefaultController<R = any> {
     readonly desiredSize: number | null;
     close(): void;
@@ -2756,7 +2730,7 @@ declare var ReadableStreamDefaultController: {
 };
 
 interface ReadableStreamDefaultReader<R = any> extends ReadableStreamGenericReader {
-    read(): Promise<ReadableStreamReadResult<R>>;
+    read(): Promise<ReadableStreamDefaultReadResult<R>>;
     releaseLock(): void;
 }
 
@@ -2925,7 +2899,6 @@ interface ServiceWorkerGlobalScope extends WorkerGlobalScope {
     onnotificationclose: ((this: ServiceWorkerGlobalScope, ev: NotificationEvent) => any) | null;
     onpush: ((this: ServiceWorkerGlobalScope, ev: PushEvent) => any) | null;
     readonly registration: ServiceWorkerRegistration;
-    readonly serviceWorker: ServiceWorker;
     skipWaiting(): Promise<void>;
     addEventListener<K extends keyof ServiceWorkerGlobalScopeEventMap>(type: K, listener: (this: ServiceWorkerGlobalScope, ev: ServiceWorkerGlobalScopeEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
@@ -3008,11 +2981,11 @@ declare var StorageManager: {
  * Available only in secure contexts.
  */
 interface SubtleCrypto {
-    decrypt(algorithm: AlgorithmIdentifier | RsaOaepParams | AesCtrParams | AesCbcParams | AesGcmParams, key: CryptoKey, data: BufferSource): Promise<ArrayBuffer>;
+    decrypt(algorithm: AlgorithmIdentifier | RsaOaepParams | AesCtrParams | AesCbcParams | AesGcmParams, key: CryptoKey, data: BufferSource): Promise<any>;
     deriveBits(algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params, baseKey: CryptoKey, length: number): Promise<ArrayBuffer>;
     deriveKey(algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params, baseKey: CryptoKey, derivedKeyType: AlgorithmIdentifier | AesDerivedKeyParams | HmacImportParams | HkdfParams | Pbkdf2Params, extractable: boolean, keyUsages: KeyUsage[]): Promise<CryptoKey>;
     digest(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer>;
-    encrypt(algorithm: AlgorithmIdentifier | RsaOaepParams | AesCtrParams | AesCbcParams | AesGcmParams, key: CryptoKey, data: BufferSource): Promise<ArrayBuffer>;
+    encrypt(algorithm: AlgorithmIdentifier | RsaOaepParams | AesCtrParams | AesCbcParams | AesGcmParams, key: CryptoKey, data: BufferSource): Promise<any>;
     exportKey(format: "jwk", key: CryptoKey): Promise<JsonWebKey>;
     exportKey(format: Exclude<KeyFormat, "jwk">, key: CryptoKey): Promise<ArrayBuffer>;
     generateKey(algorithm: RsaHashedKeyGenParams | EcKeyGenParams, extractable: boolean, keyUsages: ReadonlyArray<KeyUsage>): Promise<CryptoKeyPair>;
@@ -5305,8 +5278,8 @@ interface WindowOrWorkerGlobalScope {
     readonly performance: Performance;
     atob(data: string): string;
     btoa(data: string): string;
-    clearInterval(id: number | undefined): void;
-    clearTimeout(id: number | undefined): void;
+    clearInterval(id?: number): void;
+    clearTimeout(id?: number): void;
     createImageBitmap(image: ImageBitmapSource, options?: ImageBitmapOptions): Promise<ImageBitmap>;
     createImageBitmap(image: ImageBitmapSource, sx: number, sy: number, sw: number, sh: number, options?: ImageBitmapOptions): Promise<ImageBitmap>;
     fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
@@ -5398,7 +5371,7 @@ declare var WorkerLocation: {
 };
 
 /** A subset of the Navigator interface allowed to be accessed from a Worker. Such an object is initialized for each worker and is available via the WorkerGlobalScope.navigator property obtained by calling window.self.navigator. */
-interface WorkerNavigator extends NavigatorConcurrentHardware, NavigatorID, NavigatorLanguage, NavigatorLocks, NavigatorOnLine, NavigatorStorage {
+interface WorkerNavigator extends NavigatorConcurrentHardware, NavigatorID, NavigatorLanguage, NavigatorLocks, NavigatorNetworkInformation, NavigatorOnLine, NavigatorStorage {
     readonly mediaCapabilities: MediaCapabilities;
 }
 
@@ -5422,7 +5395,6 @@ declare var WritableStream: {
 
 /** This Streams API interface represents a controller allowing control of a WritableStream's state. When constructing a WritableStream, the underlying sink is given a corresponding WritableStreamDefaultController instance to manipulate. */
 interface WritableStreamDefaultController {
-    readonly signal: AbortSignal;
     error(e?: any): void;
 }
 
@@ -5846,8 +5818,8 @@ declare var origin: string;
 declare var performance: Performance;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
-declare function clearInterval(id: number | undefined): void;
-declare function clearTimeout(id: number | undefined): void;
+declare function clearInterval(id?: number): void;
+declare function clearTimeout(id?: number): void;
 declare function createImageBitmap(image: ImageBitmapSource, options?: ImageBitmapOptions): Promise<ImageBitmap>;
 declare function createImageBitmap(image: ImageBitmapSource, sx: number, sy: number, sw: number, sh: number, options?: ImageBitmapOptions): Promise<ImageBitmap>;
 declare function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
@@ -5887,7 +5859,7 @@ type GLsizeiptr = number;
 type GLuint = number;
 type GLuint64 = number;
 type HashAlgorithmIdentifier = AlgorithmIdentifier;
-type HeadersInit = [string, string][] | Record<string, string> | Headers;
+type HeadersInit = string[][] | Record<string, string> | Headers;
 type IDBValidKey = number | string | Date | BufferSource | IDBValidKey[];
 type ImageBitmapSource = CanvasImageSource | Blob | ImageData;
 type Int32List = Int32Array | GLint[];
@@ -5897,7 +5869,7 @@ type OnErrorEventHandler = OnErrorEventHandlerNonNull | null;
 type PerformanceEntryList = PerformanceEntry[];
 type PushMessageDataInit = BufferSource | string;
 type ReadableStreamController<T> = ReadableStreamDefaultController<T>;
-type ReadableStreamReadResult<T> = ReadableStreamReadValueResult<T> | ReadableStreamReadDoneResult;
+type ReadableStreamDefaultReadResult<T> = ReadableStreamDefaultReadValueResult<T> | ReadableStreamDefaultReadDoneResult;
 type ReadableStreamReader<T> = ReadableStreamDefaultReader<T>;
 type RequestInfo = Request | string;
 type TexImageSource = ImageBitmap | ImageData | OffscreenCanvas;
@@ -5910,6 +5882,7 @@ type BinaryType = "arraybuffer" | "blob";
 type ClientTypes = "all" | "sharedworker" | "window" | "worker";
 type ColorGamut = "p3" | "rec2020" | "srgb";
 type ColorSpaceConversion = "default" | "none";
+type ConnectionType = "bluetooth" | "cellular" | "ethernet" | "mixed" | "none" | "other" | "unknown" | "wifi";
 type DocumentVisibilityState = "hidden" | "visible";
 type EndingType = "native" | "transparent";
 type FileSystemHandleKind = "directory" | "file";

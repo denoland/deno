@@ -313,7 +313,6 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
-  pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
   pub seed: Option<u64>,
@@ -1734,7 +1733,6 @@ fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .arg(no_npm_arg())
     .arg(local_npm_arg())
     .arg(no_config_arg())
     .arg(config_arg())
@@ -1750,7 +1748,6 @@ fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
-    .arg(no_npm_arg())
     .arg(local_npm_arg())
     .arg(config_arg())
     .arg(no_config_arg())
@@ -2148,12 +2145,6 @@ fn no_remote_arg<'a>() -> Arg<'a> {
   Arg::new("no-remote")
     .long("no-remote")
     .help("Do not resolve remote modules")
-}
-
-fn no_npm_arg<'a>() -> Arg<'a> {
-  Arg::new("no-npm")
-    .long("no-npm")
-    .help("Do not resolve npm modules")
 }
 
 fn local_npm_arg<'a>() -> Arg<'a> {
@@ -2807,7 +2798,6 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  no_npm_arg_parse(flags, matches);
   local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
@@ -2823,7 +2813,6 @@ fn compile_args_without_no_check_parse(
 ) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
-  no_npm_arg_parse(flags, matches);
   local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
@@ -3063,12 +3052,6 @@ fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
     flags.no_remote = true;
-  }
-}
-
-fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("no-npm") {
-    flags.no_npm = true;
   }
 }
 
@@ -5031,21 +5014,6 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         no_remote: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn no_npm() {
-    let r = flags_from_vec(svec!["deno", "run", "--no-npm", "script.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "script.ts".to_string(),
-        }),
-        no_npm: true,
         ..Flags::default()
       }
     );
