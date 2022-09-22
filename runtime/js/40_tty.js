@@ -2,6 +2,10 @@
 "use strict";
 
 ((window) => {
+  const {
+    Uint32Array,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
 
