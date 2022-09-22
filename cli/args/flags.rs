@@ -1934,7 +1934,11 @@ fn reload_arg<'a>() -> Arg<'a> {
 --reload=https://deno.land/std
   Reload only standard modules
 --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
-  Reloads specific modules",
+  Reloads specific modules
+--reload=npm:
+  Reload all npm modules
+--reload=npm:chalk
+  Reload specific npm module",
     )
     .value_hint(ValueHint::FilePath)
     .validator(reload_arg_validate)
