@@ -314,6 +314,7 @@ fn codegen_fast_impl(
       use_op_state,
       use_fast_cb_opts,
       v8_values,
+      returns_result,
       slices,
     }) = fast_info
     {
@@ -344,7 +345,9 @@ fn codegen_fast_impl(
           quote!(#arg)
         })
         .collect::<Vec<_>>();
-      if (!slices.is_empty() || use_op_state) && !use_fast_cb_opts {
+      if (!slices.is_empty() || use_op_state || returns_result)
+        && !use_fast_cb_opts
+      {
         inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
       }
       let input_idents = f
@@ -413,10 +416,19 @@ fn codegen_fast_impl(
           quote! {},
         )
       } else {
-        let output = &f.sig.output;
+        let output = if returns_result {
+          get_fast_result_return_type(&f.sig.output)
+        } else {
+          let output = &f.sig.output;
+          quote! { #output }
+        };
         let func_name = format_ident!("func_{}", name);
-        let recv_decl = if use_op_state {
-          let op_state_name = input_idents.first();
+        let op_state_name = if use_op_state {
+          input_idents.first().unwrap().clone()
+        } else {
+          quote! { op_state }
+        };
+        let recv_decl = if use_op_state || returns_result {
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
             let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
@@ -430,14 +442,31 @@ fn codegen_fast_impl(
             let #op_state_name = &mut ctx.state.borrow_mut();
           }
         } else {
-          quote!()
+          quote! {}
+        };
+
+        let result_handling = if returns_result {
+          quote! {
+            match result {
+              Ok(result) => {
+                result
+              },
+              Err(err) => {
+                #op_state_name.fast_op_error.replace(err);
+                Default::default()
+              },
+            }
+          }
+        } else {
+          quote! { result }
         };
 
         (
           quote! {
             fn #func_name #generics (_recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
               #recv_decl
-              #name::call::<#type_params>(#(#input_idents),*)
+              let result = #name::call::<#type_params>(#(#input_idents),*);
+              #result_handling
             }
           },
           quote! {
@@ -550,15 +579,20 @@ struct FastApiSyn {
   use_op_state: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
+  returns_result: bool,
   slices: HashMap<usize, TokenStream2>,
 }
 
 fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   let inputs = &f.sig.inputs;
+  let mut returns_result = false;
   let ret = match &f.sig.output {
     syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),
-    syn::ReturnType::Type(_, ty) => match is_fast_scalar(core, ty, true) {
-      Some(ret) => ret,
+    syn::ReturnType::Type(_, ty) => match is_fast_return_type(core, ty) {
+      Some((ret, is_result)) => {
+        returns_result = is_result;
+        ret
+      }
       None => return None,
     },
   };
@@ -626,6 +660,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     slices,
     v8_values,
     use_fast_cb_opts,
+    returns_result,
   })
 }
 
@@ -669,6 +704,49 @@ fn is_fast_typed_array(arg: impl ToTokens) -> bool {
     Regex::new(r#": (?:deno_core :: )?FastApiTypedArray$"#).unwrap()
   });
   RE.is_match(&tokens(arg))
+}
+
+fn is_fast_return_type(
+  core: &TokenStream2,
+  ty: impl ToTokens,
+) -> Option<(TokenStream2, bool)> {
+  if is_result(&ty) {
+    if tokens(&ty).contains("Result < u32") || is_resource_id(&ty) {
+      Some((quote! { #core::v8::fast_api::CType::Uint32 }, true))
+    } else if tokens(&ty).contains("Result < i32") {
+      Some((quote! { #core::v8::fast_api::CType::Int32 }, true))
+    } else if tokens(&ty).contains("Result < f32") {
+      Some((quote! { #core::v8::fast_api::CType::Float32 }, true))
+    } else if tokens(&ty).contains("Result < f64") {
+      Some((quote! { #core::v8::fast_api::CType::Float64 }, true))
+    } else if tokens(&ty).contains("Result < bool") {
+      Some((quote! { #core::v8::fast_api::CType::Bool }, true))
+    } else if tokens(&ty).contains("Result < ()") {
+      Some((quote! { #core::v8::fast_api::CType::Void }, true))
+    } else {
+      None
+    }
+  } else {
+    is_fast_scalar(core, ty, true).map(|s| (s, false))
+  }
+}
+
+fn get_fast_result_return_type(ty: impl ToTokens) -> TokenStream2 {
+  if tokens(&ty).contains("Result < u32") || is_resource_id(&ty) {
+    quote! { -> u32 }
+  } else if tokens(&ty).contains("Result < i32") {
+    quote! { -> i32 }
+  } else if tokens(&ty).contains("Result < f32") {
+    quote! { -> f32 }
+  } else if tokens(&ty).contains("Result < f64") {
+    quote! { -> f64 }
+  } else if tokens(&ty).contains("Result < bool") {
+    quote! { -> bool }
+  } else if tokens(&ty).contains("Result < ()") {
+    quote! {}
+  } else {
+    unreachable!()
+  }
 }
 
 fn is_fast_scalar(
