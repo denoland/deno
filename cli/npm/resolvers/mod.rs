@@ -7,8 +7,8 @@ mod local;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
-use deno_core::serde_json;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
@@ -39,6 +39,7 @@ static IS_CHILD_PROCESS_FORK: Lazy<bool> =
 #[derive(Debug, Serialize, Deserialize)]
 struct ForkNpmState {
   snapshot: NpmResolutionSnapshot,
+  local_node_modules_path: Option<String>,
 }
 
 impl ForkNpmState {
@@ -66,6 +67,7 @@ pub struct NpmPackageResolver {
   unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
+  local_node_modules_path: Option<PathBuf>,
 }
 
 impl NpmPackageResolver {
@@ -76,19 +78,30 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules_path
+    let fork_state = ForkNpmState::take();
+    let local_node_modules_path = local_node_modules_path.or_else(|| {
+      fork_state
+        .as_ref()
+        .and_then(|s| s.local_node_modules_path.as_ref().map(PathBuf::from))
+    });
+    let maybe_snapshot = fork_state.map(|s| s.snapshot);
+    let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
     {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
         cache,
         api,
-        node_modules_folder,
+        node_modules_folder.clone(),
+        maybe_snapshot,
       )),
-      None => Arc::new(GlobalNpmPackageResolver::new(cache, api)),
+      None => {
+        Arc::new(GlobalNpmPackageResolver::new(cache, api, maybe_snapshot))
+      }
     };
     Self {
       unstable,
       no_npm,
       inner,
+      local_node_modules_path,
     }
   }
 
@@ -183,6 +196,10 @@ impl NpmPackageResolver {
   pub fn get_fork_state(&self) -> String {
     serde_json::to_string(&ForkNpmState {
       snapshot: self.inner.snapshot(),
+      local_node_modules_path: self
+        .local_node_modules_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
   }

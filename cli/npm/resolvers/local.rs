@@ -45,9 +45,10 @@ impl LocalNpmPackageResolver {
     cache: NpmCache,
     api: NpmRegistryApi,
     node_modules_folder: PathBuf,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api));
+    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
 
     Self {
       cache,
@@ -182,6 +183,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     ensure_registry_read_permission(&self.root_node_modules_path, path)
+  }
+
+  fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.resolution.snapshot()
   }
 }
 
