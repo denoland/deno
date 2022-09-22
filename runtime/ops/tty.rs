@@ -121,7 +121,7 @@ fn op_set_raw(
 
       Ok(())
     });
-    wrap_err(state, result);
+    wrap_err(state, result)
   }
   #[cfg(unix)]
   {
