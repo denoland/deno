@@ -9,4 +9,5 @@
 [submodule "test_util/wpt"]
 	path = test_util/wpt
 	url = https://github.com/web-platform-tests/wpt.git
+	branch = lucacasonato/cache_storage_anyjs
 
