@@ -8,11 +8,11 @@ https://github.com/denoland/deno_install
 
 ### 1.25.4 / 2022.09.22
 
-- examples(core): panik (#15983)
-- feat(npm): add flag for creating and resolving npm packages to a local
-  node_modules folder (#15971)
-- feat(npm): add support for --reload=npm: and --reload=npm:<package> (#15972)
-- feat(ops): Automatic fast ops creation (#15527)
+- feat(unstable/npm): add flag for creating and resolving npm packages to a
+  local node_modules folder (#15971)
+- feat(unstable/npm): add support for --reload=npm: and --reload=npm:<package>
+  (#15972)
+- feat(internal/ops): Automatic fast ops creation (#15527)
 - fix(compile): keep non-exe extension in output name on Windows (#15994)
 - fix(doc): deno doc should parse modules if they haven't been parsed before
   (#15941)
@@ -28,7 +28,6 @@ https://github.com/denoland/deno_install
 - perf(ext/console): avoid `wrapConsole` when not inspecting (#15931)
 - perf(web): optimize encodeInto() (#15922)
 - perf: fs optimizations - part 1 (#15873)
-- upgrade deps (#15914)
 
 ### 1.25.3 / 2022.09.15
 
