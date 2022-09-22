@@ -59,7 +59,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
@@ -144,13 +144,14 @@ impl TestDescription {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
   String(String),
   Bytes(Vec<u8>),
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
@@ -160,7 +161,7 @@ pub enum TestResult {
   Cancelled,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestStepDescription {
   pub id: usize,
@@ -183,6 +184,7 @@ impl TestStepDescription {
   }
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -202,7 +204,7 @@ impl TestStepResult {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,

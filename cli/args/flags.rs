@@ -45,30 +45,30 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Option<Vec<String>>,
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BundleFlags {
   pub source_file: String,
   pub out_file: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CheckFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<PathBuf>,
@@ -76,12 +76,12 @@ pub struct CompileFlags {
   pub target: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CoverageFlags {
   pub files: Vec<PathBuf>,
   pub output: Option<PathBuf>,
@@ -91,7 +91,7 @@ pub struct CoverageFlags {
   pub lcov: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
@@ -99,14 +99,14 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
   pub ext: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FmtFlags {
   pub check: bool,
   pub files: Vec<PathBuf>,
@@ -119,18 +119,18 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InitFlags {
   pub dir: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InstallFlags {
   pub module_url: String,
   pub args: Vec<String>,
@@ -139,13 +139,13 @@ pub struct InstallFlags {
   pub force: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
@@ -156,13 +156,13 @@ pub struct LintFlags {
   pub json: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RunFlags {
   pub script: String,
 }
@@ -173,13 +173,13 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
   pub doc: bool,
@@ -193,7 +193,7 @@ pub struct TestFlags {
   pub trace_ops: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
@@ -203,14 +203,14 @@ pub struct UpgradeFlags {
   pub ca_file: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct VendorFlags {
   pub specifiers: Vec<String>,
   pub output_path: Option<PathBuf>,
   pub force: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -246,7 +246,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -264,7 +264,7 @@ impl Default for TypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConfigFlag {
   Discover,
   Path(String),
@@ -277,7 +277,7 @@ impl Default for ConfigFlag {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -528,8 +528,8 @@ To evaluate code in the shell:
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
-  let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(&args)?;
+  let mut app = clap_root(&version);
+  let matches = app.try_get_matches_from_mut(&args)?;
 
   let mut flags = Flags::default();
 
