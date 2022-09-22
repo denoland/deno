@@ -1655,7 +1655,10 @@ function invalidServer(addr: string, body: Uint8Array): Deno.Listener {
 
   (async () => {
     for await (const conn of listener) {
-      await conn.write(body);
+      const p1 = conn.read(new Uint8Array(2 ** 14));
+      const p2 = conn.write(body);
+
+      await Promise.all([p1, p2]);
       conn.close();
     }
   })();
