@@ -85,7 +85,6 @@ monch = "=0.2.0"
 notify = "=5.0.0"
 once_cell = "=1.14.0"
 os_pipe = "=1.0.1"
-path-clean = "=0.1.0"
 percent-encoding = "=2.2.0"
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 rand = { version = "=0.8.5", features = ["small_rng"] }

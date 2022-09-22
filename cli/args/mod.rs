@@ -42,6 +42,7 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -144,6 +145,24 @@ impl CliOptions {
   /// Overrides the import map specifier to use.
   pub fn set_import_map_specifier(&mut self, path: Option<ModuleSpecifier>) {
     self.overrides.import_map_specifier = Some(path);
+  }
+
+  /// Resolves the path to use for a local node_modules folder.
+  pub fn resolve_local_node_modules_folder(
+    &self,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let path = if !self.flags.node_modules_dir {
+      return Ok(None);
+    } else if let Some(config_path) = self
+      .maybe_config_file
+      .as_ref()
+      .and_then(|c| c.specifier.to_file_path().ok())
+    {
+      config_path.parent().unwrap().join("node_modules")
+    } else {
+      std::env::current_dir()?.join("node_modules")
+    };
+    Ok(Some(fs_util::canonicalize_path_maybe_not_exists(&path)?))
   }
 
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {

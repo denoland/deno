@@ -301,6 +301,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
+  pub node_modules_dir: bool,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -1732,6 +1733,7 @@ fn compile_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
+    .arg(local_npm_arg())
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(no_check_arg())
@@ -1746,6 +1748,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
   app
     .arg(import_map_arg())
     .arg(no_remote_arg())
+    .arg(local_npm_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -2142,6 +2145,12 @@ fn no_remote_arg<'a>() -> Arg<'a> {
   Arg::new("no-remote")
     .long("no-remote")
     .help("Do not resolve remote modules")
+}
+
+fn local_npm_arg<'a>() -> Arg<'a> {
+  Arg::new("node-modules-dir")
+    .long("node-modules-dir")
+    .help("Creates a local node_modules folder")
 }
 
 fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
@@ -2789,6 +2798,7 @@ fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
@@ -2803,6 +2813,7 @@ fn compile_args_without_no_check_parse(
 ) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3041,6 +3052,12 @@ fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
     flags.no_remote = true;
+  }
+}
+
+fn local_npm_args_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.is_present("node-modules-dir") {
+    flags.node_modules_dir = true;
   }
 }
 
@@ -4997,6 +5014,22 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         no_remote: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn local_npm() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        node_modules_dir: true,
         ..Flags::default()
       }
     );
