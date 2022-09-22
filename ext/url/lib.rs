@@ -128,7 +128,7 @@ fn parse_url(
   }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
   Hash = 0,

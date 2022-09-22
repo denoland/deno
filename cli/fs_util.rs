@@ -542,8 +542,8 @@ mod tests {
     assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
     assert!(!is_supported_ext(Path::new("README.md")));
     assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext(Path::new("foo.jsx")));
     assert!(is_supported_ext(Path::new("foo.tsx")));
     assert!(is_supported_ext(Path::new("foo.TS")));
@@ -563,8 +563,12 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/001_hello.js"
+    )));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/002_hello.ts"
+    )));
     assert!(is_supported_test_ext(Path::new("foo.jsx")));
     assert!(is_supported_test_ext(Path::new("foo.tsx")));
     assert!(is_supported_test_ext(Path::new("foo.TS")));

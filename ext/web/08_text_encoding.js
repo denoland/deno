@@ -25,6 +25,7 @@
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   class TextDecoder {
@@ -199,9 +200,15 @@
         context: "Argument 2",
         allowShared: true,
       });
-      return ops.op_encoding_encode_into(source, destination);
+      ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
     }
   }
+
+  const encodeIntoBuf = new Uint32Array(2);
 
   webidl.configurePrototype(TextEncoder);
   const TextEncoderPrototype = TextEncoder.prototype;
