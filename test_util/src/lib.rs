@@ -690,7 +690,7 @@ async fn main_server(
         .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
       res.headers_mut().insert(
         "location",
-        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+        HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js").unwrap(),
       );
       Ok(res)
     }
@@ -774,7 +774,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_directives_redirect.js") => {
+    (_, "/run/type_directives_redirect.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -788,7 +788,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.js") => {
+    (_, "/run/type_headers_deno_types.foo.js") => {
       let mut res = Response::new(Body::from(
         "export function foo(text) { console.log(text); }",
       ));
@@ -799,12 +799,12 @@ async fn main_server(
       res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
-          "http://localhost:4545/type_headers_deno_types.d.ts",
+          "http://localhost:4545/run/type_headers_deno_types.d.ts",
         ),
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.d.ts") => {
+    (_, "/run/type_headers_deno_types.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: number): void;"));
       res.headers_mut().insert(
@@ -813,7 +813,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.d.ts") => {
+    (_, "/run/type_headers_deno_types.foo.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: string): void;"));
       res.headers_mut().insert(
@@ -1458,7 +1458,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/053_import_compression/brotli") {
+  if p.ends_with("/run/import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -1471,7 +1471,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("/053_import_compression/gziped") {
+  if p.ends_with("/run/import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));

@@ -24,6 +24,6 @@ libc = "0.2"
 log = "0.4.17"
 mio = { version = "0.8.1", features = ["os-poll", "net"] }
 rustls = { version = "0.20" }
-rustls-pemfile = { version = "0.2.1" }
+rustls-pemfile = "1.0"
 serde = { version = "1.0.136", features = ["derive"] }
-tokio = { version = "1.19", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }

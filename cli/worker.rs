@@ -415,6 +415,7 @@ pub async fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.options.unstable(),
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps
@@ -529,6 +530,7 @@ fn create_web_worker_callback(
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.options.unstable(),
         user_agent: version::get_user_agent(),
+        inspect: ps.options.is_inspecting(),
       },
       extensions,
       unsafely_ignore_certificate_errors: ps

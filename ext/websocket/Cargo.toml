@@ -19,6 +19,6 @@ deno_tls = { version = "0.56.0", path = "../tls" }
 http = "0.2.6"
 hyper = { version = "0.14.18" }
 serde = { version = "1.0.136", features = ["derive"] }
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 tokio-rustls = "0.23.3"
 tokio-tungstenite = { version = "0.16.1", features = ["rustls-tls-webpki-roots"] }
