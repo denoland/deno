@@ -115,13 +115,13 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let is_async = asyncness || is_future(&func.sig.output);
 
   // First generate fast call bindings to opt-in to error handling in slow call
-  let (has_fast_call, fast_impl, fast_field) =
+  let (has_fallible_fast_call, fast_impl, fast_field) =
     codegen_fast_impl(&core, &func, name, is_async, must_be_fast);
 
   let v8_body = if is_async {
     codegen_v8_async(&core, &func, margs, asyncness, deferred)
   } else {
-    codegen_v8_sync(&core, &func, margs, has_fast_call)
+    codegen_v8_sync(&core, &func, margs, has_fallible_fast_call)
   };
 
   let docline = format!("Use `{name}::decl()` to get an op-declaration");
@@ -487,7 +487,7 @@ fn codegen_fast_impl(
           )
         };
       return (
-        true,
+        returns_result,
         quote! {
           #[allow(non_camel_case_types)]
           #[doc(hidden)]
@@ -521,7 +521,7 @@ fn codegen_v8_sync(
   core: &TokenStream2,
   f: &syn::ItemFn,
   margs: MacroArgs,
-  has_fast_call: bool,
+  has_fallible_fast_call: bool,
 ) -> TokenStream2 {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
@@ -538,7 +538,7 @@ fn codegen_v8_sync(
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let fast_error_handler = if has_fast_call {
+  let fast_error_handler = if has_fallible_fast_call {
     quote! {
       {
         let op_state = &mut ctx.state.borrow_mut();
