@@ -3406,6 +3406,7 @@ fn websocket() {
   assert!(status.success());
 }
 
+#[ignore]
 #[test]
 fn websocketstream() {
   let _g = util::http_server();
