@@ -302,6 +302,9 @@ pub struct FfiDescriptor(pub PathBuf);
 
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
+    if self.global_state == PermissionState::Granted {
+      return PermissionState::Granted;
+    }
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
@@ -454,6 +457,9 @@ impl Default for UnaryPermission<ReadDescriptor> {
 
 impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
+    if self.global_state == PermissionState::Granted {
+      return PermissionState::Granted;
+    }
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
     if self.global_state == PermissionState::Denied
       && match path.as_ref() {
