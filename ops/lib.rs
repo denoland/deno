@@ -431,7 +431,7 @@ fn codegen_fast_impl(
         let recv_decl = if use_op_state || returns_result {
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-            let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
+            let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { &mut *fast_api_callback_options };
             // SAFETY: data union is always created as the `v8::Local<v8::Value>` version.
             let data = unsafe { opts.data.data };
             // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
@@ -453,6 +453,7 @@ fn codegen_fast_impl(
               },
               Err(err) => {
                 #op_state_name.fast_op_error.replace(err);
+                opts.fallback = true;
                 Default::default()
               },
             }
