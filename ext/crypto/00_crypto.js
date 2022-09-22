@@ -852,7 +852,7 @@
           // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
           const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
           const signature = new Uint8Array(SIGNATURE_LEN);
-          if (!ops.op_sign_ed25519.fast(keyData, data, signature)) {
+          if (!ops.op_sign_ed25519(keyData, data, signature)) {
             throw new DOMException(
               "Failed to sign",
               "OperationError",
@@ -1338,7 +1338,7 @@
             );
           }
 
-          return ops.op_verify_ed25519.fast(keyData, data, signature);
+          return ops.op_verify_ed25519(keyData, data, signature);
         }
       }
 
@@ -1977,7 +1977,7 @@
         }
         const privateKeyData = new Uint8Array(32);
         const publicKeyData = new Uint8Array(32);
-        ops.op_generate_x25519_keypair.fast(privateKeyData, publicKeyData);
+        ops.op_generate_x25519_keypair(privateKeyData, publicKeyData);
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2022,9 +2022,9 @@
         const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
         const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
         if (
-          !ops.op_generate_ed25519_keypair.fast(privateKeyData, publicKeyData)
+          !ops.op_generate_ed25519_keypair(privateKeyData, publicKeyData)
         ) {
-          throw new DOMException("Failed to geerate key", "OperationError");
+          throw new DOMException("Failed to generate key", "OperationError");
         }
 
         const handle = {};
@@ -2159,7 +2159,7 @@
         }
 
         const publicKeyData = new Uint8Array(32);
-        if (!ops.op_import_spki_ed25519.fast(keyData, publicKeyData)) {
+        if (!ops.op_import_spki_ed25519(keyData, publicKeyData)) {
           throw new DOMException("Invalid key data", "DataError");
         }
 
@@ -2190,7 +2190,7 @@
         }
 
         const privateKeyData = new Uint8Array(32);
-        if (!ops.op_import_pkcs8_ed25519.fast(keyData, privateKeyData)) {
+        if (!ops.op_import_pkcs8_ed25519(keyData, privateKeyData)) {
           throw new DOMException("Invalid key data", "DataError");
         }
 
@@ -2377,7 +2377,7 @@
         }
 
         const publicKeyData = new Uint8Array(32);
-        if (!ops.op_import_spki_x25519.fast(keyData, publicKeyData)) {
+        if (!ops.op_import_spki_x25519(keyData, publicKeyData)) {
           throw new DOMException("Invalid key data", "DataError");
         }
 
@@ -2408,7 +2408,7 @@
         }
 
         const privateKeyData = new Uint8Array(32);
-        if (!ops.op_import_pkcs8_x25519.fast(keyData, privateKeyData)) {
+        if (!ops.op_import_pkcs8_x25519(keyData, privateKeyData)) {
           throw new DOMException("Invalid key data", "DataError");
         }
 
@@ -4381,7 +4381,7 @@
         const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
         const secret = new Uint8Array(32);
-        const isIdentity = ops.op_derive_bits_x25519.fast(k, u, secret);
+        const isIdentity = ops.op_derive_bits_x25519(k, u, secret);
 
         // 6.
         if (isIdentity) {
