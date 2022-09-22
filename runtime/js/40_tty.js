@@ -15,19 +15,19 @@
 
   const size = new Uint32Array(2);
   function consoleSize(rid) {
-    unwrapErr(ops.op_console_size.fast(rid, size));
+    unwrapErr(ops.op_console_size(rid, size));
     return { columns: size[0], rows: size[1] };
   }
 
   const isattyBuffer = new Uint8Array(1);
   function isatty(rid) {
-    unwrapErr(ops.op_isatty.fast(rid, isattyBuffer));
+    unwrapErr(ops.op_isatty(rid, isattyBuffer));
     return !!isattyBuffer[0];
   }
 
   const DEFAULT_CBREAK = false;
   function setRaw(rid, mode, options = {}) {
-    unwrapErr(ops.op_set_raw.fast(rid, mode, options.cbreak || DEFAULT_CBREAK));
+    unwrapErr(ops.op_set_raw(rid, mode, options.cbreak || DEFAULT_CBREAK));
   }
 
   window.__bootstrap.tty = {
