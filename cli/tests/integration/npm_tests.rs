@@ -423,7 +423,7 @@ itest!(builtin_module_module {
   http_server: true,
 });
 
-itest!(local_npm_require_added_node_modules_folder {
+itest!(node_modules_dir_require_added_node_modules_folder {
   args:
     "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
@@ -433,13 +433,41 @@ itest!(local_npm_require_added_node_modules_folder {
   temp_cwd: true,
 });
 
-itest!(local_npm_with_deps {
+itest!(node_modules_dir_with_deps {
   args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
   envs: env_vars(),
   http_server: true,
   temp_cwd: true,
 });
+
+#[test]
+fn node_modules_dir_cache() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("cache")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let node_modules = deno_dir.path().join("node_modules");
+  assert!(node_modules
+    .join(
+      ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
+    )
+    .exists());
+  assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
+}
 
 #[test]
 fn ensure_registry_files_local() {
