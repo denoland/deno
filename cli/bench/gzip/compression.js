@@ -18,6 +18,22 @@ async function bench(name, fun) {
   else total = 3;
 }
 
+function compress(buffer) {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  writer.write(buffer);
+  writer.close();
+  return (new Response(cs.readable).arrayBuffer());
+}
+
+function decompress(buffer) {
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  writer.write(buffer);
+  writer.close();
+  return (new Response(ds.readable).arrayBuffer());
+}
+
 const data = typeof Deno !== "undefined"
   ? Deno.readFileSync("cli/bench/gzip/uncompressed.png")
   : require("fs").readFileSync("cli/bench/gzip/uncompressed.png");
@@ -37,22 +53,6 @@ if (typeof Deno !== "undefined") {
       await decompress(compressed);
     });
   })();
-
-  function compress(buffer) {
-    const cs = new CompressionStream("gzip");
-    const writer = cs.writable.getWriter();
-    writer.write(buffer);
-    writer.close();
-    return (new Response(cs.readable).arrayBuffer());
-  }
-
-  function decompress(buffer) {
-    const ds = new DecompressionStream("gzip");
-    const writer = ds.writable.getWriter();
-    writer.write(buffer);
-    writer.close();
-    return (new Response(ds.readable).arrayBuffer());
-  }
 } else {
   const { gzipSync, gunzipSync } = typeof Bun !== "undefined"
     ? Bun
