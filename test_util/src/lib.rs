@@ -1861,6 +1861,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub temp_cwd: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1874,6 +1875,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       );
       std::borrow::Cow::Borrowed(&self.args_vec)
     };
+    let testdata_dir = testdata_path();
+    let args = args
+      .iter()
+      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
+      .collect::<Vec<_>>();
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1884,17 +1890,21 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let testdata_dir = testdata_path();
     let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    println!("deno_exe args {}", self.args);
-    println!("deno_exe testdata path {:?}", &testdata_dir);
+    let cwd = if self.temp_cwd {
+      deno_dir.path()
+    } else {
+      testdata_dir.as_path()
+    };
+    println!("deno_exe args {}", args.join(" "));
+    println!("deno_exe cwd {:?}", &testdata_dir);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&testdata_dir);
+    command.current_dir(&cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1949,7 +1959,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.first() == Some(&"test") {
+    if args.first().map(|s| s.as_str()) == Some("test") {
       actual = actual.replace('\u{200B}', "");
     }
 
