@@ -4821,9 +4821,11 @@
       "NavigationPreloadManager interface: operation getState()",
       "Cache interface: existence and properties of interface object",
       "Cache interface object length",
+      "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
       "Cache interface: operation addAll(sequence<RequestInfo>)",
+      "Cache interface: operation delete(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation keys(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: self.cacheInstance must inherit property \"matchAll(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling matchAll(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
@@ -4909,9 +4911,11 @@
       "NavigationPreloadManager interface: operation getState()",
       "Cache interface: existence and properties of interface object",
       "Cache interface object length",
+      "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
       "Cache interface: operation addAll(sequence<RequestInfo>)",
+      "Cache interface: operation delete(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation keys(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: self.cacheInstance must inherit property \"matchAll(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling matchAll(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
@@ -4931,6 +4935,7 @@
     ],
     "cache-storage": {
       "cache-match.https.any.html": [
+        "Cache.match supports ignoreMethod",
         "Cache.match supports ignoreVary",
         "Cache.match with Request and Response objects with different URLs",
         "Cache.match with a network error Response",
@@ -4949,7 +4954,6 @@
       "cache-add.https.any.html": false,
       "cache-add.https.any.worker.html": false,
       "cache-delete.https.any.worker.html": [
-        "Cache.delete called with a string URL",
         "Cache.delete called with a HEAD request",
         "Cache.delete supports ignoreVary",
         "Cache.delete with ignoreSearch option (request with search parameters)",
@@ -4958,21 +4962,9 @@
       "cache-keys.https.any.html": false,
       "cache-keys.https.any.worker.html": false,
       "cache-match.https.any.worker.html": [
-        "Cache.match with no matching entries",
-        "Cache.match with URL",
-        "Cache.match with Request",
-        "Cache.match with multiple cache hits",
-        "Cache.match with new Request",
-        "Cache.match with HEAD",
-        "Cache.match with ignoreSearch option (request with no search parameters)",
-        "Cache.match with ignoreSearch option (request with search parameter)",
+        "Cache.match supports ignoreMethod",
         "Cache.match supports ignoreVary",
-        "Cache.match does not support cacheName option",
-        "Cache.match with URL containing fragment",
-        "Cache.match with string fragment \"http\" as query",
         "Cache.match with Request and Response objects with different URLs",
-        "Cache.match with POST Request",
-        "Cache.match with a non-2xx Response",
         "Cache.match with a network error Response",
         "cors-exposed header should be stored correctly.",
         "MIME type should be set from content-header correctly.",
@@ -4988,13 +4980,9 @@
       ],
       "cache-put.https.any.worker.html": [
         "Cache.put called with Request and Response from fetch()",
-        "Cache.put with Response without a body",
         "Cache.put with opaque-filtered HTTP 206 response",
         "Cache.put with HTTP 500 response",
-        "Cache.put called twice with matching Requests and different Responses",
-        "Cache.put called twice with request URLs that differ only by a fragment",
-        "Cache.put with a VARY:* opaque response should not reject",
-        "Cache.put should store Response.redirect() correctly"
+        "Cache.put with a VARY:* opaque response should not reject"
       ],
       "cache-storage-keys.https.any.html": false,
       "cache-storage-keys.https.any.worker.html": false,
@@ -5010,7 +4998,12 @@
         "CacheStorage.open with existing cache",
         "CacheStorage names are DOMStrings not USVStrings"
       ],
-      "common.https.window.html": false
+      "common.https.window.html": true
+    },
+    "service-worker": {
+      "fetch-request-xhr-sync-error.https.window.html": false,
+      "ready.https.window.html": false,
+      "xhr-content-length.https.window.html": false
     }
   }
 }

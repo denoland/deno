@@ -509,7 +509,6 @@ fn create_web_worker_callback(
       std::env::temp_dir()
         .join("deno_cache")
         .join(checksum::gen(&[key.as_bytes()]))
-        .join(format!("{}", args.worker_id))
     });
 
     let options = WebWorkerOptions {

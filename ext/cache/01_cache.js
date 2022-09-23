@@ -137,7 +137,7 @@
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
-    async match(request, options = undefined) {
+    async match(request, options) {
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       const p = await this.#matchAll(request, options);
@@ -149,7 +149,7 @@
     }
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
-    async delete(request, options = undefined) {
+    async delete(request, _options) {
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       // Step 1.
@@ -157,8 +157,8 @@
       // Step 2.
       if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
         r = request;
-        if (request.method !== "GET" && !options["ignoreMethod"]) {
-          return [];
+        if (request.method !== "GET") {
+          return false;
         }
       } else if (
         typeof request === "string" ||
@@ -179,13 +179,13 @@
      *
      * The function will return an array of responses.
      */
-    async #matchAll(request, options = {}) {
+    async #matchAll(request, _options) {
       // Step 1.
       let r = null;
       // Step 2.
       if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
         r = request;
-        if (request.method !== "GET" && !options["ignoreMethod"]) {
+        if (request.method !== "GET") {
           return [];
         }
       } else if (
