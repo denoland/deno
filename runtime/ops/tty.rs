@@ -43,31 +43,8 @@ pub fn init() -> Extension {
       op_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
-      op_take_last_error::decl(),
     ])
     .build()
-}
-
-// #[op(fast)] cannot throw errors themselves, so we send an error code
-// to JS and the op puts a TtyError in state.
-//
-// JS should call op_take_last_error() to throw the error.
-struct TtyError(AnyError);
-
-#[inline]
-fn wrap_err(state: &mut OpState, r: Result<(), AnyError>) -> bool {
-  match r {
-    Ok(_) => true,
-    Err(err) => {
-      state.put::<TtyError>(TtyError(err));
-      false
-    }
-  }
-}
-
-#[op]
-fn op_take_last_error(op_state: &mut OpState) -> Result<(), AnyError> {
-  Err(op_state.take::<TtyError>().0)
 }
 
 #[op(fast)]
@@ -76,7 +53,7 @@ fn op_set_raw(
   rid: u32,
   is_raw: bool,
   cbreak: bool,
-) -> bool {
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
@@ -94,7 +71,7 @@ fn op_set_raw(
       return wrap_err(state, Err(deno_core::error::not_supported()));
     }
 
-    let result = StdFileResource::with_file(state, rid, move |std_file| {
+    StdFileResource::with_file(state, rid, move |std_file| {
       let handle = std_file.as_raw_handle();
 
       if handle == handleapi::INVALID_HANDLE_VALUE {
@@ -120,14 +97,13 @@ fn op_set_raw(
       }
 
       Ok(())
-    });
-    wrap_err(state, result)
+    })
   }
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
 
-    let result = StdFileResource::with_file_and_metadata(
+    StdFileResource::with_file_and_metadata(
       state,
       rid,
       move |std_file, meta_data| {
@@ -173,14 +149,17 @@ fn op_set_raw(
 
         Ok(())
       },
-    );
-    wrap_err(state, result)
+    )
   }
 }
 
 #[op(fast)]
-fn op_isatty(state: &mut OpState, rid: u32, out: &mut [u8]) -> bool {
-  let result = StdFileResource::with_file(state, rid, move |std_file| {
+fn op_isatty(
+  state: &mut OpState,
+  rid: u32,
+  out: &mut [u8],
+) -> Result<(), AnyError> {
+  StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use winapi::shared::minwindef::FALSE;
@@ -208,15 +187,17 @@ fn op_isatty(state: &mut OpState, rid: u32, out: &mut [u8]) -> bool {
       }
     }
     Ok(())
-  });
-  wrap_err(state, result)
+  })
 }
 
 #[op(fast)]
-fn op_console_size(state: &mut OpState, rid: u32, result: &mut [u32]) -> bool {
-  println!("{}", result.len());
+fn op_console_size(
+  state: &mut OpState,
+  rid: u32,
+  result: &mut [u32],
+) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
-  let result = StdFileResource::with_file(state, rid, move |std_file| {
+  StdFileResource::with_file(state, rid, move |std_file| {
     #[cfg(windows)]
     {
       use std::os::windows::io::AsRawHandle;
@@ -255,6 +236,5 @@ fn op_console_size(state: &mut OpState, rid: u32, result: &mut [u32]) -> bool {
         Ok(())
       }
     }
-  });
-  wrap_err(state, result)
+  })
 }
