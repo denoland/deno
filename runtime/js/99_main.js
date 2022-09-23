@@ -648,6 +648,7 @@ delete Intl.v8BreakIterator;
       ppid,
       unstableFlag,
       cpuCount,
+      inspectFlag,
       userAgent: userAgentInfo,
     } = runtimeOptions;
 
@@ -679,8 +680,10 @@ delete Intl.v8BreakIterator;
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-    const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    if (inspectFlag) {
+      const consoleFromDeno = globalThis.console;
+      wrapConsole(consoleFromDeno, consoleFromV8);
+    }
 
     eventTarget.setEventTargetData(globalThis);
 

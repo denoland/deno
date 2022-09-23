@@ -11,7 +11,7 @@ use aes_gcm::aes::Aes128;
 use aes_gcm::aes::Aes192;
 use aes_gcm::aes::Aes256;
 use aes_gcm::AeadInPlace;
-use aes_gcm::NewAead;
+use aes_gcm::KeyInit;
 use aes_gcm::Nonce;
 use ctr::Ctr128BE;
 use ctr::Ctr32BE;

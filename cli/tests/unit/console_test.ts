@@ -1918,7 +1918,7 @@ Deno.test(function inspectErrorCircular() {
     cause: new Error("This is a cause error"),
   });
   error1.cause = error1;
-  assert(error2.cause);
+  assert(error2.cause instanceof Error);
   error2.cause.cause = error2;
 
   assertStringIncludes(

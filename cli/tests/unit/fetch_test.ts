@@ -93,40 +93,40 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
-    await fetch("http://localhost:4545/fixture.json");
+    await fetch("http://localhost:4545/assets/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
-  const response = await fetch("http://localhost:4545/fixture.json");
-  assertEquals(response.url, "http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/assets/fixture.json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchURL() {
   const response = await fetch(
-    new URL("http://localhost:4545/fixture.json"),
+    new URL("http://localhost:4545/assets/fixture.json"),
   );
-  assertEquals(response.url, "http://localhost:4545/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/assets/fixture.json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchHeaders() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBlob() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
@@ -137,7 +137,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedReader() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
 
@@ -155,7 +155,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedCancelStream() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
 
@@ -167,7 +167,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchAsyncIterator() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
 
   assert(response.body !== null);
@@ -181,7 +181,7 @@ Deno.test({ permissions: { net: true } }, async function fetchAsyncIterator() {
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBodyReader() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
   const reader = response.body.getReader();
@@ -220,7 +220,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function responseClone() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
   assertEquals(response.status, response1.status);
@@ -359,10 +359,10 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchWithRedirection() {
-    const response = await fetch("http://localhost:4546/hello.txt");
+    const response = await fetch("http://localhost:4546/assets/hello.txt");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/hello.txt");
+    assertEquals(response.url, "http://localhost:4545/assets/hello.txt");
     const body = await response.text();
     assert(body.includes("Hello world!"));
   },
@@ -374,7 +374,7 @@ Deno.test(
   },
   async function fetchWithRelativeRedirection() {
     const response = await fetch(
-      "http://localhost:4545/001_hello.js",
+      "http://localhost:4545/run/001_hello.js",
     );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
@@ -449,7 +449,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchSeparateInit() {
     // related to: https://github.com/denoland/deno/issues/10396
-    const req = new Request("http://localhost:4545/001_hello.js");
+    const req = new Request("http://localhost:4545/run/001_hello.js");
     const init = {
       method: "GET",
     };
@@ -901,7 +901,7 @@ Deno.test(async function responseWithoutBody() {
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBodyReadTwice() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
 
   // Read body
   const _json = await response.json();
@@ -925,7 +925,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderAfterRead() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
     const reader = await response.body.getReader();
@@ -1005,7 +1005,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchResourceCloseAfterStreamCancel() {
-    const res = await fetch("http://localhost:4545/fixture.json");
+    const res = await fetch("http://localhost:4545/assets/fixture.json");
     assert(res.body !== null);
 
     // After ReadableStream.cancel is called, resource handle must be closed
@@ -1113,7 +1113,7 @@ Deno.test(
   > {
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
-    const response = await fetch("https://localhost:5545/fixture.json", {
+    const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
     });
     const json = await response.json();
@@ -1286,7 +1286,7 @@ Deno.test(
           "cli/tests/testdata/tls/localhost.key",
         ),
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);
@@ -1303,7 +1303,7 @@ Deno.test(
         ),
         privateKey: "bad data",
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);
@@ -1320,7 +1320,7 @@ Deno.test(
         ),
         privateKey: "",
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);

@@ -31,7 +31,7 @@
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(hrU8.buffer);
   function opNow() {
-    ops.op_now.fast(hrU8);
+    ops.op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   }
 

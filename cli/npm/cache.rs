@@ -18,10 +18,10 @@ use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::progress_bar::ProgressBar;
 
+use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
-use super::NpmPackageVersionDistInfo;
 
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
@@ -204,6 +204,7 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && self.cache_setting.should_use_for_npm_package(&id.name)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
