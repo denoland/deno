@@ -28,6 +28,10 @@
       webidl.assertBranded(this, CacheStoragePrototype);
       const prefix = "Failed to execute 'open' on 'CacheStorage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      cacheName = webidl.converters["DOMString"](cacheName, {
+        prefix,
+        context: "Argument 1",
+      });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
       return new Cache(cacheId);
     }
@@ -36,6 +40,10 @@
       webidl.assertBranded(this, CacheStoragePrototype);
       const prefix = "Failed to execute 'has' on 'CacheStorage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      cacheName = webidl.converters["DOMString"](cacheName, {
+        prefix,
+        context: "Argument 1",
+      });
       return await core.opAsync("op_cache_storage_has", cacheName);
     }
 
@@ -43,6 +51,10 @@
       webidl.assertBranded(this, CacheStoragePrototype);
       const prefix = "Failed to execute 'delete' on 'CacheStorage'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      cacheName = webidl.converters["DOMString"](cacheName, {
+        prefix,
+        context: "Argument 1",
+      });
       return await core.opAsync("op_cache_storage_delete", cacheName);
     }
   }
@@ -61,6 +73,14 @@
     async put(request, response) {
       const prefix = "Failed to execute 'put' on 'Cache'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
+      request = webidl.converters["RequestInfo_DOMString"](request, {
+        prefix,
+        context: "Argument 1",
+      });
+      response = webidl.converters["Response"](response, {
+        prefix,
+        context: "Argument 2",
+      });
       // Step 1.
       let innerRequest = null;
       // Step 2.
@@ -140,6 +160,10 @@
     async match(request, options) {
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      request = webidl.converters["RequestInfo_DOMString"](request, {
+        prefix,
+        context: "Argument 1",
+      });
       const p = await this.#matchAll(request, options);
       if (p.length > 0) {
         return p[0];
@@ -152,6 +176,10 @@
     async delete(request, _options) {
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      request = webidl.converters["RequestInfo_DOMString"](request, {
+        prefix,
+        context: "Argument 1",
+      });
       // Step 1.
       let r = null;
       // Step 2.
