@@ -199,6 +199,18 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    self
+      .ensure_package_inner(id, dist, registry_url)
+      .await
+      .with_context(|| format!("Failed caching npm package '{}'.", id))
+  }
+
+  async fn ensure_package_inner(
+    &self,
+    id: &NpmPackageId,
+    dist: &NpmPackageVersionDistInfo,
+    registry_url: &Url,
+  ) -> Result<(), AnyError> {
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract

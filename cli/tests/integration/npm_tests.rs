@@ -578,6 +578,39 @@ fn node_modules_dir_cache() {
     )
     .exists());
   assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
+
+  // now try deleting the folder with the package source in the npm cache dir
+  let package_global_cache_dir = deno_dir
+    .path()
+    .join("npm")
+    .join("localhost_4545")
+    .join("npm")
+    .join("registry")
+    .join("@denotest")
+    .join("dual-cjs-esm")
+    .join("1.0.0");
+  assert!(package_global_cache_dir.exists());
+  std::fs::remove_dir_all(&package_global_cache_dir).unwrap();
+
+  // run the output, and it shouldn't bother recreating the directory
+  // because it already has everything cached locally in the node_modules folder
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg("-A")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  // this won't exist, but actually the parent directory
+  // will because it still re-downloads the registry information
+  assert!(!package_global_cache_dir.exists());
 }
 
 #[test]
