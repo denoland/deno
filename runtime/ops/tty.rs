@@ -68,7 +68,7 @@ fn op_set_raw(
     use winapi::um::{consoleapi, handleapi};
 
     if cbreak {
-      return wrap_err(state, Err(deno_core::error::not_supported()));
+      return Err(deno_core::error::not_supported());
     }
 
     StdFileResource::with_file(state, rid, move |std_file| {
