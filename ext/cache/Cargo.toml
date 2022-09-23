@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 async-trait = "0.1"
-deno_core = { version = "0.151.0", path = "../../core" }
+deno_core = { version = "0.152.0", path = "../../core" }
 rusqlite = { version = "0.28.0", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.129", features = ["derive"] }
 sha2 = "0.10.2"
