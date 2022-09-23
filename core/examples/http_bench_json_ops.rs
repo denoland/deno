@@ -133,7 +133,11 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let ext = deno_core::Extension::builder()
-    .ops(vec![op_listen::decl(), op_accept::decl()])
+    .ops(vec![
+      op_listen::decl(),
+      op_accept::decl(),
+      op_try_write_sync::decl(),
+    ])
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
@@ -151,6 +155,15 @@ fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   let listener = TcpListener::try_from(std_listener)?;
   let rid = state.resource_table.add(listener);
   Ok(rid)
+}
+
+#[op(fast)]
+fn op_try_write_sync(state: &mut OpState, rid: u32, buf: &[u8]) -> u32 {
+  let resource = state.resource_table.get::<TcpStream>(rid).unwrap();
+  let wr = RcRef::map(&resource, |r| &r.wr)
+    .try_borrow_mut()
+    .expect("poisoned");
+  wr.try_write(buf).unwrap_or(0) as u32
 }
 
 #[op]

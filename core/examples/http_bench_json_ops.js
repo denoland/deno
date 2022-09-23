@@ -2,6 +2,7 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
+const { ops } = Deno.core;
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
@@ -11,7 +12,7 @@ const responseBuf = new Uint8Array(
 
 /** Listens on 0.0.0.0:4500, returns rid. */
 function listen() {
-  return Deno.core.ops.op_listen();
+  return ops.op_listen();
 }
 
 /** Accepts a connection, returns rid. */
@@ -23,16 +24,12 @@ async function serve(rid) {
   try {
     while (true) {
       await Deno.core.read(rid, requestBuf);
-      await Deno.core.write(rid, responseBuf);
+      const nwritten = ops.op_try_write_sync(rid, responseBuf);
+      if (nwritten !== responseBuf.byteLength) {
+        await Deno.core.write(rid, responseBuf.subarray(nwritten));
+      }
     }
-  } catch (e) {
-    if (
-      !e.message.includes("Broken pipe") &&
-      !e.message.includes("Connection reset by peer")
-    ) {
-      throw e;
-    }
-  }
+  } catch { /* pass */ }
   Deno.core.close(rid);
 }
 
