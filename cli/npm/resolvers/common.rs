@@ -1,3 +1,6 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -9,34 +12,25 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 
-/// Information about the local npm package.
-pub struct LocalNpmPackageInfo {
-  /// Unique identifier.
-  pub id: NpmPackageId,
-  /// Local folder path of the npm package.
-  pub folder_path: PathBuf,
-}
-
 pub trait InnerNpmPackageResolver: Send + Sync {
-  fn resolve_package_from_deno_module(
+  fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_from_package(
+  fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_from_specifier(
+  fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError>;
+  ) -> Result<PathBuf, AnyError>;
 
   fn has_packages(&self) -> bool;
 
@@ -86,4 +80,34 @@ pub async fn cache_packages(
     }
   }
   Ok(())
+}
+
+pub fn ensure_registry_read_permission(
+  registry_path: &Path,
+  path: &Path,
+) -> Result<(), AnyError> {
+  // allow reading if it's in the node_modules
+  if path.starts_with(&registry_path)
+    && path
+      .components()
+      .all(|c| !matches!(c, std::path::Component::ParentDir))
+  {
+    // todo(dsherret): cache this?
+    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
+      match std::fs::canonicalize(path) {
+        Ok(path) if path.starts_with(registry_path) => {
+          return Ok(());
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+          return Ok(());
+        }
+        _ => {} // ignore
+      }
+    }
+  }
+
+  Err(deno_core::error::custom_error(
+    "PermissionDenied",
+    format!("Reading {} is not allowed", path.display()),
+  ))
 }

@@ -638,8 +638,8 @@ fn raw_chmod(path: &Path, _raw_mode: u32) -> Result<(), AnyError> {
 fn op_chown_sync(
   state: &mut OpState,
   path: String,
-  uid: Option<u32>,
-  gid: Option<u32>,
+  #[cfg_attr(windows, allow(unused_variables))] uid: Option<u32>,
+  #[cfg_attr(windows, allow(unused_variables))] gid: Option<u32>,
 ) -> Result<(), AnyError> {
   let path = Path::new(&path).to_path_buf();
   state.borrow_mut::<Permissions>().write.check(&path)?;
@@ -668,8 +668,8 @@ fn op_chown_sync(
 async fn op_chown_async(
   state: Rc<RefCell<OpState>>,
   path: String,
-  uid: Option<u32>,
-  gid: Option<u32>,
+  #[cfg_attr(windows, allow(unused_variables))] uid: Option<u32>,
+  #[cfg_attr(windows, allow(unused_variables))] gid: Option<u32>,
 ) -> Result<(), AnyError> {
   let path = Path::new(&path).to_path_buf();
 
@@ -837,7 +837,6 @@ fn op_copy_file_sync(
 
   #[cfg(target_os = "macos")]
   {
-    use libc::chmod;
     use libc::clonefile;
     use libc::stat;
     use libc::unlink;
