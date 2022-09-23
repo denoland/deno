@@ -629,6 +629,10 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
             args.push(arg);
           }
           None => match is_ref_slice(&ty) {
+            Some(SliceType::U32Mut) => {
+              args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint32) });
+              slices.insert(pos, quote!(u32));
+            }
             Some(_) => {
               args.push(quote! { #core::v8::fast_api::Type::TypedArray(#core::v8::fast_api::CType::Uint8) });
               slices.insert(pos, quote!(u8));
