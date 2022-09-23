@@ -71,14 +71,11 @@
         innerRequest = toInnerRequest(new Request(request));
       }
       // Step 4.
-      const reqUrl = innerRequest.url();
-      if (!reqUrl.startsWith("http:") && !reqUrl.startsWith("https:")) {
-        const url = new URL(reqUrl);
-        if (url.protocol !== "http:" && url.protocol !== "https:") {
-          throw new TypeError(
-            "Request url protocol must be 'http:' or 'https:'",
-          );
-        }
+      const reqUrl = new URL(innerRequest.url());
+      if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
+        throw new TypeError(
+          "Request url protocol must be 'http:' or 'https:'",
+        );
       }
       if (innerRequest.method !== "GET") {
         throw new TypeError("Request method must be GET");
@@ -107,12 +104,15 @@
         throw new TypeError("Response body must not already used");
       }
 
+      // Remove fragment from request URL before put.
+      reqUrl.hash = "";
+
       // Step 9-11.
       const rid = await core.opAsync(
         "op_cache_put",
         {
           cacheId: this[_id],
-          requestUrl: innerRequest.url(),
+          requestUrl: reqUrl.toString(),
           responseHeaders: innerResponse.headerList,
           requestHeaders: innerRequest.headerList,
           responseHasBody: innerResponse.body !== null,

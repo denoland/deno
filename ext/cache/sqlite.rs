@@ -61,7 +61,9 @@ impl Cache for SqliteBackedCache {
                     response_status        INTEGER NOT NULL,
                     response_status_text   TEXT,
                     response_body_key      TEXT,
-                    FOREIGN KEY (cache_id) REFERENCES cache_storage(id) ON DELETE CASCADE
+                    FOREIGN KEY (cache_id) REFERENCES cache_storage(id) ON DELETE CASCADE,
+
+                    UNIQUE (cache_id, request_url)
                 )",
           (),
         )
@@ -215,7 +217,8 @@ impl Cache for SqliteBackedCache {
 
     match query_result {
       Some((cache_meta, Some(response_body_key))) => {
-        let response_path = cache_storage_dir.join("responses").join(response_body_key);
+        let response_path =
+          cache_storage_dir.join("responses").join(response_body_key);
         let file = tokio::fs::File::open(response_path).await?;
         return Ok(Some((
           cache_meta,

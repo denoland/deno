@@ -4982,13 +4982,9 @@
       "cache-matchAll.https.any.worker.html": false,
       "cache-put.https.any.html": [
         "Cache.put called with Request and Response from fetch()",
-        "Cache.put with Response without a body",
         "Cache.put with opaque-filtered HTTP 206 response",
         "Cache.put with HTTP 500 response",
-        "Cache.put called twice with matching Requests and different Responses",
-        "Cache.put called twice with request URLs that differ only by a fragment",
-        "Cache.put with a VARY:* opaque response should not reject",
-        "Cache.put should store Response.redirect() correctly"
+        "Cache.put with a VARY:* opaque response should not reject"
       ],
       "cache-put.https.any.worker.html": [
         "Cache.put called with Request and Response from fetch()",
