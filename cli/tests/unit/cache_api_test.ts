@@ -59,7 +59,37 @@ Deno.test(async function cacheApi() {
     );
   }
 
-  // TODO(@satyarohith): more tests with Vary header.
+  // Test cache.match() with same url but different values for Vary header.
+  {
+    await cache.put(
+      new Request("https://example.com/", {
+        headers: {
+          "Accept": "application/json",
+        },
+      }),
+      Response.json({ msg: "hello world" }, {
+        headers: {
+          "Content-Type": "application/json",
+          "Vary": "Accept",
+        },
+      }),
+    );
+    const res = await cache.match("https://example.com/");
+    assertEquals(res, undefined);
+    const res2 = await cache.match(
+      new Request("https://example.com/", {
+        headers: { "Accept": "text/html" },
+      }),
+    );
+    assertEquals(res2, undefined);
+
+    const res3 = await cache.match(
+      new Request("https://example.com/", {
+        headers: { "Accept": "application/json" },
+      }),
+    );
+    assertEquals(await res3?.json(), { msg: "hello world" });
+  }
 
   assert(await caches.delete(cacheName));
   assertFalse(await caches.has(cacheName));

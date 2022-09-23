@@ -219,13 +219,14 @@ impl Cache for SqliteBackedCache {
 
     match query_result {
       Some((cache_meta, Some(response_body_key))) => {
-        if let Some((_, vary_header)) = cache_meta
-          .response_headers
-          .iter()
-          .find(|(k, _)| k.to_lowercase() == "vary")
+        // From https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm
+        // If there's Vary header in the response, ensure all the
+        // headers of the cached request match the query request.
+        if let Some(vary_header) =
+          get_header("vary", &cache_meta.response_headers)
         {
           if !vary_header_matches(
-            vary_header,
+            &vary_header,
             &request.request_headers,
             &cache_meta.request_headers,
           ) {
@@ -265,21 +266,17 @@ impl Cache for SqliteBackedCache {
   }
 }
 
+/// Check if the headers provided in the vary_header match
+/// the query request headers and the cached request headers.
 fn vary_header_matches(
   vary_header: &str,
   query_request_headers: &[(String, String)],
   cached_request_headers: &[(String, String)],
 ) -> bool {
-  // If there's Vary header in the response, ensure all the
-  // headers of the cached request match the query request.
   let headers = get_headers_from_vary_header(vary_header);
   for header in headers {
-    let query_header = query_request_headers
-      .iter()
-      .find(|(k, _)| k.to_lowercase() == header.to_lowercase());
-    let cached_header = cached_request_headers
-      .iter()
-      .find(|(k, _)| k.to_lowercase() == header.to_lowercase());
+    let query_header = get_header(&header, query_request_headers);
+    let cached_header = get_header(&header, cached_request_headers);
     if query_header != cached_header {
       return false;
     }
@@ -292,6 +289,13 @@ fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
     .split(',')
     .map(|s| s.trim().to_lowercase())
     .collect()
+}
+
+fn get_header(name: &str, headers: &[(String, String)]) -> Option<String> {
+  headers
+    .iter()
+    .find(|(k, _)| k.to_lowercase() == name.to_lowercase())
+    .map(|(_, v)| v.to_owned())
 }
 
 impl deno_core::Resource for SqliteBackedCache {
