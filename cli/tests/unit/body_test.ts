@@ -102,3 +102,43 @@ Deno.test(async function bodyArrayBufferMultipleParts() {
   const body = buildBody(stream);
   assertEquals((await body.arrayBuffer()).byteLength, size);
 });
+
+Deno.test(function bodyEmptyContentType() {
+  const bodies = [new ArrayBuffer(0), new Uint8Array(0), new ReadableStream()];
+  for (const body of bodies) {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      body,
+    });
+
+    assertEquals(req.headers.has("content-type"), false);
+  }
+});
+
+Deno.test(function bodyContentType() {
+  const bodies = [
+    { body: "deno", type: "text/plain;charset=UTF-8" },
+    {
+      body: new URLSearchParams(),
+      type: "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+  ];
+  for (const { body, type } of bodies) {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      body,
+    });
+    assertEquals(req.headers.get("content-type"), type);
+  }
+
+  const req = new Request("https://example.com", {
+    method: "POST",
+    body: new FormData(),
+  });
+  assertEquals(
+    req.headers.get("content-type")?.startsWith(
+      "multipart/form-data; boundary=----",
+    ),
+    true,
+  );
+});
