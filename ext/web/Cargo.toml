@@ -18,7 +18,7 @@ async-trait = "0.1.51"
 base64-simd = "0.7"
 deno_core = { version = "0.152.0", path = "../../core" }
 encoding_rs = "0.8.31"
-flate2 = "1"
+flate2 = { version = "1.0", features = ["zlib-ng"], default-features = false }
 serde = "1.0.136"
 tokio = { version = "1.21", features = ["full"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }

@@ -38,26 +38,24 @@ impl Resource for CompressionResource {
   }
 }
 
-#[op]
+#[op(fast)]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: String,
+  format: u32,
   is_decoder: bool,
-) -> ResourceId {
+) -> u32 {
   let w = Vec::new();
-  let inner = match (format.as_str(), is_decoder) {
-    ("deflate", true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
-    ("deflate", false) => {
+  let inner = match (format, is_decoder) {
+    (0, true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
+    (0, false) => {
       Inner::DeflateEncoder(ZlibEncoder::new(w, Compression::default()))
     }
-    ("deflate-raw", true) => Inner::DeflateRawDecoder(DeflateDecoder::new(w)),
-    ("deflate-raw", false) => {
+    (1, true) => Inner::DeflateRawDecoder(DeflateDecoder::new(w)),
+    (1, false) => {
       Inner::DeflateRawEncoder(DeflateEncoder::new(w, Compression::default()))
     }
-    ("gzip", true) => Inner::GzDecoder(GzDecoder::new(w)),
-    ("gzip", false) => {
-      Inner::GzEncoder(GzEncoder::new(w, Compression::default()))
-    }
+    (2, true) => Inner::GzDecoder(GzDecoder::new(w)),
+    (2, false) => Inner::GzEncoder(GzEncoder::new(w, Compression::default())),
     _ => unreachable!(),
   };
   let resource = CompressionResource(RefCell::new(inner));

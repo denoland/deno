@@ -22,6 +22,12 @@
     ],
   );
 
+  const formatMap = {
+    deflate: 0,
+    "deflate-raw": 1,
+    gzip: 2,
+  };
+
   class CompressionStream {
     #transform;
 
@@ -33,7 +39,7 @@
         context: "Argument 1",
       });
 
-      const rid = ops.op_compression_new(format, false);
+      const rid = ops.op_compression_new(formatMap[format], false);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
@@ -81,7 +87,7 @@
         context: "Argument 1",
       });
 
-      const rid = ops.op_compression_new(format, true);
+      const rid = ops.op_compression_new(formatMap[format], true);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
