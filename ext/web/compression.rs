@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
@@ -43,7 +44,7 @@ pub fn op_compression_new(
   state: &mut OpState,
   format: u32,
   is_decoder: bool,
-) -> u32 {
+) -> Result<u32, AnyError> {
   let w = Vec::new();
   let inner = match (format, is_decoder) {
     (0, true) => Inner::DeflateDecoder(ZlibDecoder::new(w)),
@@ -56,10 +57,10 @@ pub fn op_compression_new(
     }
     (2, true) => Inner::GzDecoder(GzDecoder::new(w)),
     (2, false) => Inner::GzEncoder(GzEncoder::new(w, Compression::default())),
-    _ => unreachable!(),
+    _ => return Err(type_error("Invalid compression format")),
   };
   let resource = CompressionResource(RefCell::new(inner));
-  state.resource_table.add(resource)
+  Ok(state.resource_table.add(resource))
 }
 
 #[op]
