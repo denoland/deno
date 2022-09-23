@@ -260,8 +260,7 @@
           responses.push(response);
         }
       }
-      // TODO(@satyarohith): Step 5.4.
-      // TODO(@satyarohith): Step 5.5.
+      // Step 5.4-5.5: don't apply in this context.
 
       return responses;
     }

@@ -113,7 +113,6 @@ impl Cache for SqliteBackedCache {
           Ok(count > 0)
         },
       )?;
-      // TODO(@satyarohith): check if cache exists on disk.
       Ok::<bool, AnyError>(cache_exists)
     })
     .await?
@@ -122,14 +121,26 @@ impl Cache for SqliteBackedCache {
   /// Delete a cache storage. Internally, this deletes the row in the sqlite db.
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
     let db = self.connection.clone();
+    let cache_storage_dir = self.cache_storage_dir.clone();
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
-      let rows_effected = db.execute(
-        "DELETE FROM cache_storage WHERE cache_name = ?1",
-        params![cache_name],
-      )?;
-      // TODO(@satyarohith): delete assets related to cache from disk.
-      Ok::<bool, AnyError>(rows_effected > 0)
+      let maybe_cache_id = db
+        .query_row(
+          "DELETE FROM cache_storage WHERE cache_name = ?1 RETURNING id",
+          params![cache_name],
+          |row| {
+            let id: i64 = row.get(0)?;
+            Ok(id)
+          },
+        )
+        .optional()?;
+      if let Some(cache_id) = maybe_cache_id {
+        let cache_dir = cache_storage_dir.join(cache_id.to_string());
+        if cache_dir.exists() {
+          std::fs::remove_dir_all(cache_dir)?;
+        }
+      }
+      Ok::<bool, AnyError>(maybe_cache_id.is_some())
     })
     .await?
   }
@@ -169,7 +180,7 @@ impl Cache for SqliteBackedCache {
         )?
       };
       if let Some(body_key) = maybe_response_body {
-        let responses_dir  = cache_storage_dir.join("responses");
+        let responses_dir  = cache_storage_dir.join(request_response.cache_id.to_string()).join("responses");
           std::fs::create_dir_all(&responses_dir)?;
         let response_path = responses_dir.join(body_key);
         Ok::<Option<PathBuf>, AnyError>(Some(response_path))
@@ -233,8 +244,10 @@ impl Cache for SqliteBackedCache {
             return Ok(None);
           }
         }
-        let response_path =
-          cache_storage_dir.join("responses").join(response_body_key);
+        let response_path = cache_storage_dir
+          .join(request.cache_id.to_string())
+          .join("responses")
+          .join(response_body_key);
         let file = tokio::fs::File::open(response_path).await?;
         return Ok(Some((
           cache_meta,
