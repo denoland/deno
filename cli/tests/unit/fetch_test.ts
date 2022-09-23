@@ -1640,48 +1640,54 @@ Deno.test(async function staticResponseJson() {
   assertEquals(res, data);
 });
 
-Deno.test(async function fetchGetHeadWithBody() {
-  for (const method of ["GET", "HEAD"]) {
-    await assertRejects(
-      async () => {
-        await fetch("http://localhost:4545/echo_server", {
-          body: new Uint8Array(5),
-          method,
-        });
-      },
-      TypeError,
-      "Request with GET/HEAD method cannot have body.",
-    );
-  }
-});
-
-Deno.test(async function fetchResponseWithDuplicateHeaders() {
-  const address = "localhost:4525";
-  const [hostname, port] = address.split(":");
-  const listener = Deno.listen({
-    hostname,
-    port: Number(port),
-  }) as Deno.Listener;
-
-  const data = "Deno";
-  (async () => {
-    for await (const conn of listener) {
-      const p1 = conn.read(new Uint8Array(2 ** 14));
-      const p2 = conn.write(
-        new TextEncoder().encode(
-          `HTTP/1.1 200 OK\r\nContent-Length: ${data.length}\r\nContent-Length: ${data.length}\r\n\r\n${data}`,
-        ),
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchGetHeadWithBody() {
+    for (const method of ["GET", "HEAD"]) {
+      await assertRejects(
+        async () => {
+          await fetch("http://localhost:4545/echo_server", {
+            body: new Uint8Array(5),
+            method,
+          });
+        },
+        TypeError,
+        "Request with GET/HEAD method cannot have body.",
       );
-      await Promise.all([p1, p2]);
-      conn.close();
     }
-  })();
+  },
+);
 
-  const response = await fetch(`http://${address}`);
-  await response.body?.cancel();
-  assertEquals(
-    response.headers.get("content-length"),
-    [data.length, data.length].join(", "),
-  );
-  listener.close();
-});
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchResponseWithDuplicateHeaders() {
+    const address = "localhost:4525";
+    const [hostname, port] = address.split(":");
+    const listener = Deno.listen({
+      hostname,
+      port: Number(port),
+    }) as Deno.Listener;
+
+    const data = "Deno";
+    (async () => {
+      for await (const conn of listener) {
+        const p1 = conn.read(new Uint8Array(2 ** 14));
+        const p2 = conn.write(
+          new TextEncoder().encode(
+            `HTTP/1.1 200 OK\r\nContent-Length: ${data.length}\r\nContent-Length: ${data.length}\r\n\r\n${data}`,
+          ),
+        );
+        await Promise.all([p1, p2]);
+        conn.close();
+      }
+    })();
+
+    const response = await fetch(`http://${address}`);
+    await response.body?.cancel();
+    assertEquals(
+      response.headers.get("content-length"),
+      [data.length, data.length].join(", "),
+    );
+    listener.close();
+  },
+);
