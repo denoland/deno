@@ -209,11 +209,13 @@
         // Remove the fragment from the request URL.
         const url = new URL(r.url);
         url.hash = "";
+        const innerRequest = toInnerRequest(r);
         const matchResult = await core.opAsync(
           "op_cache_match",
           {
             cacheId: this[_id],
             requestUrl: url.toString(),
+            requestHeaders: innerRequest.headerList,
           },
         );
         if (matchResult) {

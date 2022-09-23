@@ -36,6 +36,7 @@ pub struct CachePutRequest {
 pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
+  pub request_headers: Vec<(String, String)>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -46,8 +47,9 @@ pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchResponseMeta {
   pub response_status: u16,
-  pub response_headers: Vec<(String, String)>,
   pub response_status_text: String,
+  pub request_headers: Vec<(String, String)>,
+  pub response_headers: Vec<(String, String)>,
 }
 
 #[derive(Deserialize, Debug)]

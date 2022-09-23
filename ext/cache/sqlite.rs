@@ -198,7 +198,7 @@ impl Cache for SqliteBackedCache {
     let query_result = tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
-        "SELECT response_body_key, response_headers, response_status, response_status_text
+        "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers
              FROM request_response_list
              WHERE cache_id = ?1 AND request_url = ?2",
         (request.cache_id, &request.request_url),
@@ -207,8 +207,10 @@ impl Cache for SqliteBackedCache {
           let response_headers: String = row.get(1)?;
           let response_status: u16 = row.get(2)?;
           let response_status_text: String = row.get(3)?;
+          let request_headers: String = row.get(4)?;
           let response_headers: Vec<(String, String)> = serde_json::from_str(&response_headers).expect("malformed response headers from db");
-          Ok((CacheMatchResponseMeta {response_headers,response_status,response_status_text}, response_body_key))
+          let request_headers: Vec<(String, String)> = serde_json::from_str(&request_headers).expect("malformed request headers from db");
+          Ok((CacheMatchResponseMeta {request_headers, response_headers,response_status,response_status_text}, response_body_key))
         },
       );
       result.optional()
@@ -217,6 +219,19 @@ impl Cache for SqliteBackedCache {
 
     match query_result {
       Some((cache_meta, Some(response_body_key))) => {
+        if let Some((_, vary_header)) = cache_meta
+          .response_headers
+          .iter()
+          .find(|(k, _)| k.to_lowercase() == "vary")
+        {
+          if !vary_header_matches(
+            vary_header,
+            &request.request_headers,
+            &cache_meta.request_headers,
+          ) {
+            return Ok(None);
+          }
+        }
         let response_path =
           cache_storage_dir.join("responses").join(response_body_key);
         let file = tokio::fs::File::open(response_path).await?;
@@ -248,6 +263,35 @@ impl Cache for SqliteBackedCache {
     })
     .await?
   }
+}
+
+fn vary_header_matches(
+  vary_header: &str,
+  query_request_headers: &[(String, String)],
+  cached_request_headers: &[(String, String)],
+) -> bool {
+  // If there's Vary header in the response, ensure all the
+  // headers of the cached request match the query request.
+  let headers = get_headers_from_vary_header(vary_header);
+  for header in headers {
+    let query_header = query_request_headers
+      .iter()
+      .find(|(k, _)| k.to_lowercase() == header.to_lowercase());
+    let cached_header = cached_request_headers
+      .iter()
+      .find(|(k, _)| k.to_lowercase() == header.to_lowercase());
+    if query_header != cached_header {
+      return false;
+    }
+  }
+  true
+}
+
+fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
+  vary_header
+    .split(',')
+    .map(|s| s.trim().to_lowercase())
+    .collect()
 }
 
 impl deno_core::Resource for SqliteBackedCache {
