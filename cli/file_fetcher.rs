@@ -146,6 +146,23 @@ impl CacheSetting {
       }
     }
   }
+
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::ReloadSome(list) => {
+        if list.contains(&"npm:".to_string()) {
+          return false;
+        }
+        let specifier = format!("npm:{}", package_name);
+        if list.contains(&specifier) {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    }
+  }
 }
 
 /// Fetch a source file from the local file system.

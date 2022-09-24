@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
@@ -183,6 +184,26 @@ impl NpmResolutionSnapshot {
       ),
       None => bail!("could not find npm package directory for '{}'", req),
     }
+  }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .package_reqs
+      .iter()
+      .map(|(req, version)| NpmPackageId {
+        name: req.name.clone(),
+        version: version.clone(),
+      })
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>()
+  }
+
+  pub fn package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<&NpmResolutionPackage> {
+    self.packages.get(id)
   }
 
   pub fn resolve_package_from_package(
@@ -471,8 +492,6 @@ impl NpmResolution {
     !self.snapshot.read().packages.is_empty()
   }
 
-  // todo(dsherret): for use in the lsp
-  #[allow(dead_code)]
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
   }
