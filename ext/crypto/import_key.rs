@@ -637,8 +637,8 @@ fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
   jwt_b64_int_or_err!(val, b64, "invalid b64 coordinate");
 
   let mut bytes = elliptic_curve::FieldBytes::<C>::default();
-  let val = val.as_bytes();
-  let mut new_val: Vec<u8> = vec![0; 32 - val.len()];
+  let original_bytes = val.as_bytes();
+  let mut new_bytes: Vec<u8> = vec![0; 32 - original_bytes.len()];
   new_bytes.extend_from_slice(&original_bytes);
   let val = new_val.as_slice();
 
