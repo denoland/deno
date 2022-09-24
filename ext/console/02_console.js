@@ -915,6 +915,14 @@
   function inspectDate(value, inspectOptions) {
     // without quotes, ISO format, in magenta like before
     const magenta = maybeColor(colors.magenta, inspectOptions);
+    if (core.isProxy(value)) {
+      if (
+        ReflectHas(value, "toISOString") &&
+        typeof value["toISOString"] === "function"
+      ) {
+        return magenta(value.toISOString());
+      }
+    }
     return magenta(
       isInvalidDate(value) ? "Invalid Date" : DatePrototypeToISOString(value),
     );
