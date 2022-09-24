@@ -30,6 +30,8 @@
     StringPrototypeToLowerCase,
     StringPrototypeToUpperCase,
     TypeError,
+    Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   const ASCII_DIGIT = ["\u0030-\u0039"];
@@ -243,12 +245,16 @@
     return ops.op_base64_encode(data);
   }
 
+  const sizeOutBuffer = new Uint32Array(1);
   /**
    * @param {string} data
    * @returns {Uint8Array}
    */
   function forgivingBase64Decode(data) {
-    return ops.op_base64_decode(data);
+    const rid = ops.op_base64_decode_start(data, sizeOutBuffer);
+    const resultBuffer = new Uint8Array(sizeOutBuffer[0]);
+    const finalSize = ops.op_base64_decode_finish(rid, resultBuffer);
+    return resultBuffer.subarray(0, finalSize - 1);
   }
 
   /**

@@ -160,6 +160,7 @@ pub struct OpState {
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
+  pub isolate_ptr: *mut v8::Isolate,
   gotham_state: GothamState,
 }
 
@@ -170,6 +171,7 @@ impl OpState {
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
       last_fast_op_error: None,
+      isolate_ptr: std::ptr::null_mut(),
       tracker: OpsTracker::new(ops_count),
     }
   }

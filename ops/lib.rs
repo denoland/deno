@@ -188,7 +188,7 @@ fn codegen_v8_async(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a, true))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
@@ -253,7 +253,7 @@ fn codegen_v8_async(
 
     // Track async call & get copy of get_error_class_fn
     let get_class = {
-      let state = state.borrow();
+      let state = ::std::cell::RefCell::borrow(&state);
       state.tracker.track_async(op_id);
       state.get_error_class_fn
     };
@@ -280,11 +280,17 @@ fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
   }
 }
 
-fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
+fn opstate_arg(arg: &FnArg, is_async: bool) -> Option<TokenStream2> {
   match arg {
-    arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
+    arg if is_rc_refcell_opstate(arg) => {
+      if is_async {
+        Some(quote! { ctx.state.clone(), })
+      } else {
+        panic!("`Rc<RefCell<OpState>>` is not needed in sync calls, use `&mut OpState` instead");
+      }
+    }
     arg if is_mut_ref_opstate(arg) => {
-      Some(quote! { &mut ctx.state.borrow_mut(), })
+      Some(quote! { &mut ::std::cell::RefCell::borrow_mut(&ctx.state), })
     }
     _ => None,
   }
@@ -314,17 +320,20 @@ fn codegen_fast_impl(
       use_op_state,
       use_fast_cb_opts,
       v8_values,
+      string_values,
       returns_result,
       slices,
     }) = fast_info
     {
       let offset = if use_op_state { 1 } else { 0 };
+      let drop_count = if use_fast_cb_opts { 1 } else { 0 };
       let mut inputs = f
         .sig
         .inputs
         .iter()
-        .skip(offset)
         .enumerate()
+        .take(f.sig.inputs.len() - drop_count)
+        .skip(offset)
         .map(|(idx, arg)| {
           let ident = match arg {
             FnArg::Receiver(_) => unreachable!(),
@@ -333,20 +342,20 @@ fn codegen_fast_impl(
               _ => unreachable!(),
             },
           };
-          if let Some(ty) = slices.get(&(idx + offset)) {
+          if let Some(ty) = slices.get(&idx) {
             return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
           }
-          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
-            return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
-          }
-          if v8_values.contains(&idx) {
+          if v8_values.contains(&idx) || string_values.contains(&idx) {
             return quote! { #ident: #core::v8::Local < #core::v8::Value > };
           }
           quote!(#arg)
         })
         .collect::<Vec<_>>();
-      if (!slices.is_empty() || use_op_state || returns_result)
-        && !use_fast_cb_opts
+      if use_fast_cb_opts
+        || !slices.is_empty()
+        || use_op_state
+        || returns_result
+        || !string_values.is_empty()
       {
         inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
       }
@@ -356,6 +365,9 @@ fn codegen_fast_impl(
         .iter()
         .enumerate()
         .map(|(idx, a)| {
+          if idx == 0 && use_op_state {
+            return quote! { &mut ::std::cell::RefCell::borrow_mut(&ctx.state) };
+          }
           let ident = match a {
             FnArg::Receiver(_) => unreachable!(),
             FnArg::Typed(t) => match &*t.pat {
@@ -383,6 +395,19 @@ fn codegen_fast_impl(
                 v8_value: #ident,
               }
             };
+          } else if string_values.contains(&idx) {
+            return quote! {
+              match #core::v8::Local::<#core::v8::String>::try_from(#ident) {
+                Ok(v8_string) => {
+                  let rust_string: ::std::string::String = v8_string.to_rust_string_lossy(isolate);
+                  rust_string
+                },
+                Err(_) => {
+                  unsafe { &mut * fast_api_callback_options }.fallback = true;
+                  return Default::default();
+                }
+              }
+            }
           }
           quote! { #ident }
         })
@@ -422,13 +447,28 @@ fn codegen_fast_impl(
           let output = &f.sig.output;
           quote! { #output }
         };
-        let func_name = format_ident!("func_{}", name);
-        let op_state_name = if use_op_state {
-          input_idents.first().unwrap().clone()
-        } else {
-          quote! { op_state }
-        };
-        let recv_decl = if use_op_state || returns_result {
+        let func_name = format_ident!("fast_{}", name);
+        let recv_decl = if use_op_state
+          || returns_result
+          || !string_values.is_empty()
+        {
+          // If string values are used, we need a reference to the isolate.
+          // In this case we need to pick it out of the OpState but also must check
+          // that the pointer is not null.
+          let isolate_decl = if string_values.is_empty() {
+            quote! {}
+          } else {
+            quote! {
+              let isolate = {
+                let isolate_ptr = ::std::cell::RefCell::borrow(&ctx.state).isolate_ptr;
+                if isolate_ptr.is_null() {
+                  opts.fallback = true;
+                  return Default::default();
+                }
+                unsafe { &mut *isolate_ptr }
+              };
+            }
+          };
           quote! {
             // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
             let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { &mut *fast_api_callback_options };
@@ -439,7 +479,7 @@ fn codegen_fast_impl(
               &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
               as *const #core::_ops::OpCtx)
             };
-            let #op_state_name = &mut ctx.state.borrow_mut();
+            #isolate_decl
           }
         } else {
           quote! {}
@@ -452,7 +492,7 @@ fn codegen_fast_impl(
                 result
               },
               Err(err) => {
-                #op_state_name.last_fast_op_error.replace(err);
+                let _ = ::std::cell::RefCell::borrow_mut(&ctx.state).last_fast_op_error.replace(err);
                 opts.fallback = true;
                 Default::default()
               },
@@ -530,7 +570,8 @@ fn codegen_v8_sync(
     .inputs
     .iter()
     .map_while(|a| {
-      (if is_v8 { scope_arg(a) } else { None }).or_else(|| opstate_arg(a))
+      (if is_v8 { scope_arg(a) } else { None })
+        .or_else(|| opstate_arg(a, false))
     })
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
@@ -542,9 +583,15 @@ fn codegen_v8_sync(
   let fast_error_handler = if has_fallible_fast_call {
     quote! {
       {
-        let op_state = &mut ctx.state.borrow_mut();
+        let mut op_state = ::std::cell::RefCell::borrow_mut(&ctx.state);
         if let Some(err) = op_state.last_fast_op_error.take() {
-          let exception = #core::error::to_v8_error(scope, op_state.get_error_class_fn, &err);
+          let get_error_class_fn = op_state.get_error_class_fn;
+          ::std::mem::drop(op_state);
+          let exception = #core::error::to_v8_error(
+            scope,
+            get_error_class_fn,
+            &err
+          );
           scope.throw_exception(exception);
           return;
         }
@@ -567,7 +614,7 @@ fn codegen_v8_sync(
     let result = Self::call::<#type_params>(#args_head #args_tail);
 
     // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
-    let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
+    let op_state = ::std::cell::RefCell::borrow(&ctx.state);
     op_state.tracker.track_sync(ctx.id);
 
     #ret
@@ -580,6 +627,7 @@ struct FastApiSyn {
   use_op_state: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
+  string_values: Vec<usize>,
   returns_result: bool,
   slices: HashMap<usize, TokenStream2>,
 }
@@ -598,22 +646,27 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     },
   };
 
-  let mut use_op_state = false;
-  let mut use_fast_cb_opts = false;
+  let use_op_state = match inputs.first() {
+    Some(input) => is_mut_ref_opstate(input),
+    None => false,
+  };
+  let skip_count = if use_op_state { 1 } else { 0 };
+  let use_fast_cb_opts = match inputs.last() {
+    Some(input) => is_optional_fast_callback_option(input),
+    None => false,
+  };
+  let drop_count = if use_fast_cb_opts { 1 } else { 0 };
   let mut v8_values = Vec::new();
+  let mut string_values = Vec::new();
   let mut slices = HashMap::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
-  for (pos, input) in inputs.iter().enumerate() {
-    if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
-      use_fast_cb_opts = true;
-      continue;
-    }
 
-    if pos == 0 && is_mut_ref_opstate(input) {
-      use_op_state = true;
-      continue;
-    }
-
+  for (pos, input) in inputs
+    .iter()
+    .enumerate()
+    .skip(skip_count)
+    .take(inputs.len() - drop_count)
+  {
     let ty = match input {
       syn::FnArg::Typed(pat) => &pat.ty,
       _ => unreachable!(),
@@ -622,6 +675,9 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     if let Some(arg) = is_fast_v8_value(core, ty) {
       args.push(arg);
       v8_values.push(pos);
+    } else if is_string(ty) {
+      args.push(quote! { #core::v8::fast_api::Type::V8Value });
+      string_values.push(pos);
     } else {
       match is_fast_scalar(core, ty, false) {
         None => match is_fast_arg_sequence(core, ty) {
@@ -648,7 +704,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     }
   }
 
-  if use_fast_cb_opts || use_op_state {
+  if use_fast_cb_opts || use_op_state || !string_values.is_empty() {
     // Push CallbackOptions into args; it must be the last argument.
     args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
   }
@@ -664,6 +720,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     use_op_state,
     slices,
     v8_values,
+    string_values,
     use_fast_cb_opts,
     returns_result,
   })

@@ -453,7 +453,7 @@ impl JsRuntime {
       .open(&mut isolate)
       .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
 
-    let module_map = ModuleMap::new(loader, op_state);
+    let module_map = ModuleMap::new(loader, op_state.clone());
     isolate.set_slot(Rc::new(RefCell::new(module_map)));
 
     let mut js_runtime = Self {
@@ -466,9 +466,13 @@ impl JsRuntime {
       extensions: options.extensions,
     };
 
+    op_state.borrow_mut().isolate_ptr =
+      &mut **js_runtime.v8_isolate.as_mut().unwrap();
+
     // Init resources and ops before extensions to make sure they are
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
+
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {

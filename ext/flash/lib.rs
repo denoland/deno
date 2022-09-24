@@ -396,12 +396,7 @@ async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
 }
 
 #[op]
-fn op_flash_path(
-  state: Rc<RefCell<OpState>>,
-  server_id: u32,
-  token: u32,
-) -> String {
-  let mut op_state = state.borrow_mut();
+fn op_flash_path(op_state: &mut OpState, server_id: u32, token: u32) -> String {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
   ctx
@@ -601,11 +596,10 @@ fn op_flash_has_body_stream(
 
 #[op]
 fn op_flash_headers(
-  state: Rc<RefCell<OpState>>,
+  op_state: &mut OpState,
   server_id: u32,
   token: u32,
 ) -> Result<Vec<(ByteString, ByteString)>, AnyError> {
-  let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx
     .servers

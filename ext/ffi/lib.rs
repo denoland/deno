@@ -1804,7 +1804,7 @@ where
 #[op(v8)]
 fn op_ffi_call_ptr<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: &mut deno_core::OpState,
   pointer: usize,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
@@ -1812,12 +1812,9 @@ fn op_ffi_call_ptr<FP, 'scope>(
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable2(&state, "Deno.UnsafeFnPointer#call");
-  {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
-  };
+  check_unstable(state, "Deno.UnsafeFnPointer#call");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(None)?;
 
   let symbol = PtrSymbol::new(pointer, &def);
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
@@ -2017,20 +2014,17 @@ fn op_ffi_get_static<'scope>(
 #[op(v8)]
 fn op_ffi_call_nonblocking<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
+  op_state: &mut deno_core::OpState,
   rid: ResourceId,
   symbol: String,
   parameters: serde_v8::Value<'scope>,
 ) -> Result<impl Future<Output = Result<Value, AnyError>> + 'static, AnyError> {
-  let symbol = {
-    let state = state.borrow();
-    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
-    let symbols = &resource.symbols;
-    *symbols
-      .get(&symbol)
-      .ok_or_else(|| type_error("Invalid FFI symbol name"))?
-      .clone()
-  };
+  let resource = op_state.resource_table.get::<DynamicLibraryResource>(rid)?;
+  let symbols = &resource.symbols;
+  let symbol = *symbols
+    .get(&symbol)
+    .ok_or_else(|| type_error("Invalid FFI symbol name"))?
+    .clone();
 
   let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
 

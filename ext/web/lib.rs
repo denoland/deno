@@ -20,7 +20,6 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::U16String;
-use deno_core::ZeroCopyBuf;
 
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -30,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -85,7 +85,8 @@ pub fn init<P: TimersPermission + 'static>(
       "15_performance.js",
     ))
     .ops(vec![
-      op_base64_decode::decl(),
+      op_base64_decode_start::decl(),
+      op_base64_decode_finish::decl(),
       op_base64_encode::decl(),
       op_base64_atob::decl(),
       op_base64_btoa::decl(),
@@ -123,12 +124,49 @@ pub fn init<P: TimersPermission + 'static>(
     .build()
 }
 
-#[op]
-fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
-  let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode(&mut s)?;
-  s.truncate(decoded_len);
-  Ok(s.into())
+struct StringResource(String);
+
+impl Resource for StringResource {
+  fn name(&self) -> Cow<str> {
+    "string".into()
+  }
+}
+
+#[op(fast)]
+fn op_base64_decode_start(
+  op_state: &mut OpState,
+  input: String,
+  out: &mut [u32],
+) -> Result<u32, AnyError> {
+  if out.len() != 1 {
+    return Err(type_error(
+      "Invalid decode size out buffer, must have length of 1",
+    ));
+  }
+  // TODO: Error out on >u32 results
+  out[0] = input.len() as u32;
+  Ok(op_state.resource_table.add(StringResource(input)))
+}
+
+#[op(fast)]
+fn op_base64_decode_finish(
+  op_state: &mut OpState,
+  rid: u32,
+  out: &mut [u8],
+) -> Result<u32, AnyError> {
+  let resource = op_state.resource_table.take::<StringResource>(rid)?;
+  let StringResource(s) =
+    Rc::try_unwrap(resource).map_err(|_| type_error("Whatever"))?;
+  let s = s.as_bytes();
+  if s.len() != out.len() {
+    return Err(type_error(
+      "Invalid decode data out buffer, must have length equal to data size",
+    ));
+  }
+  // SAFETY: Length have been checked to be equal
+  out.copy_from_slice(s);
+  let decoded_len = forgiving_base64_decode(out)?;
+  Ok(decoded_len as u32)
 }
 
 #[op]
