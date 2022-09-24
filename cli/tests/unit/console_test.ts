@@ -1890,6 +1890,20 @@ Deno.test(function inspectProxy() {
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
   );
+  assertEquals(
+    stripColor(Deno.inspect(
+      new Proxy(new Date("2022-09-24T15:59:39.529Z"), {
+        get(target: Date, p: keyof Date) {
+          const value = target[p];
+          if (typeof value === "function") {
+            return value.bind(target);
+          }
+          return value;
+        },
+      }),
+    )),
+    "2022-09-24T15:59:39.529Z",
+  );
 });
 
 Deno.test(function inspectError() {
