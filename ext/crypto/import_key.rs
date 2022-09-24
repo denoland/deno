@@ -638,8 +638,12 @@ fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
 
   let mut bytes = elliptic_curve::FieldBytes::<C>::default();
   let original_bytes = val.as_bytes();
-  let mut new_bytes: Vec<u8> = vec![0; 32 - original_bytes.len()];
+  let mut new_bytes: Vec<u8> = vec![];
+  if original_bytes.len() < bytes.len() {
+    new_bytes = vec![0; bytes.len() - original_bytes.len()];
+  }
   new_bytes.extend_from_slice(&original_bytes);
+
   let val = new_bytes.as_slice();
 
   if val.len() != bytes.len() {
