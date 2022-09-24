@@ -640,7 +640,7 @@ fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
   let original_bytes = val.as_bytes();
   let mut new_bytes: Vec<u8> = vec![0; 32 - original_bytes.len()];
   new_bytes.extend_from_slice(&original_bytes);
-  let val = new_val.as_slice();
+  let val = new_bytes.as_slice();
 
   if val.len() != bytes.len() {
     return Err(data_error("invalid b64 coordinate"));
