@@ -4720,8 +4720,12 @@
     "decompression-constructor-error.tentative.any.worker.html": true,
     "decompression-correct-input.tentative.any.html": true,
     "decompression-correct-input.tentative.any.worker.html": true,
-    "decompression-corrupt-input.tentative.any.html": true,
-    "decompression-corrupt-input.tentative.any.worker.html": true,
+    "decompression-corrupt-input.tentative.any.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
+    "decompression-corrupt-input.tentative.any.worker.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,
     "decompression-split-chunk.tentative.any.html": true,
@@ -4731,6 +4735,8 @@
     "decompression-with-detach.tentative.window.html": true,
     "idlharness.https.any.html": true,
     "idlharness.https.any.worker.html": true,
-    "idlharness-shadowrealm.window.html": false
+    "idlharness-shadowrealm.window.html": false,
+    "compression-constructor-error.tentative.any.html": true,
+    "compression-constructor-error.tentative.any.worker.html": true
   }
 }
