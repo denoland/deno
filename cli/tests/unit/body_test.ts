@@ -136,7 +136,7 @@ Deno.test(function bodyContentType() {
     body: new FormData(),
   });
   assertEquals(
-    req.headers.get("content-type")?.startsWith(
+    req.headers.get("content-type")!.startsWith(
       "multipart/form-data; boundary=----",
     ),
     true,
