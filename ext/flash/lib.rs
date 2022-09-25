@@ -832,6 +832,13 @@ fn run_server(
         &one as *const _ as *const _,
         std::mem::size_of_val(&one) as _,
       );
+      libc::setsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_REUSEADDR,
+        &one as *const _ as *const _,
+        std::mem::size_of_val(&one) as _,
+      );
     }
   }
 
