@@ -817,6 +817,24 @@ fn run_server(
   maybe_key: Option<String>,
 ) -> Result<(), AnyError> {
   let mut listener = TcpListener::bind(addr)?;
+
+  // Enable SO_REUSEPORT on Linux.
+  #[cfg(target_os = "linux")]
+  {
+    use std::os::unix::io::AsRawFd;
+    let fd = listener.as_raw_fd();
+    let one = 1;
+    unsafe {
+      libc::setsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_REUSEPORT,
+        &one as *const _ as *const _,
+        std::mem::size_of_val(&one) as _,
+      );
+    }
+  }
+
   let mut poll = Poll::new()?;
   let token = Token(0);
   poll
@@ -875,6 +893,7 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
+
               let socket = match tls_context {
                 Some(ref tls_conf) => {
                   let connection =
