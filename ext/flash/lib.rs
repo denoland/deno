@@ -86,7 +86,7 @@ pub struct ServerContext {
   cancel_handle: Rc<CancelHandle>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ParseStatus {
   None,
   Ongoing(usize),

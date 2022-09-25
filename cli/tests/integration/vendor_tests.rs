@@ -347,6 +347,7 @@ fn existing_import_map_mixed_with_remote() {
     .arg("--output")
     .arg("vendor2")
     .stderr(Stdio::piped())
+    .stdout(Stdio::piped())
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();

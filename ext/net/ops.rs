@@ -569,7 +569,7 @@ where
   }
 }
 
-#[derive(Serialize, PartialEq, Debug)]
+#[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
   A(String),
@@ -685,7 +685,7 @@ where
   let resolver = AsyncResolver::tokio(config, opts)?;
 
   let results = resolver
-    .lookup(query, record_type, Default::default())
+    .lookup(query, record_type)
     .await
     .map_err(|e| {
       let message = format!("{}", e);

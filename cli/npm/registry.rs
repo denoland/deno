@@ -105,7 +105,6 @@ pub struct NpmRegistryApi {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
-  reload: bool,
   cache_setting: CacheSetting,
   progress_bar: ProgressBar,
 }
@@ -131,24 +130,8 @@ impl NpmRegistryApi {
   }
 
   pub fn new(
-    cache: NpmCache,
-    reload: bool,
-    cache_setting: CacheSetting,
-    progress_bar: ProgressBar,
-  ) -> Self {
-    Self::from_base(
-      Self::default_url(),
-      cache,
-      reload,
-      cache_setting,
-      progress_bar,
-    )
-  }
-
-  pub fn from_base(
     base_url: Url,
     cache: NpmCache,
-    reload: bool,
     cache_setting: CacheSetting,
     progress_bar: ProgressBar,
   ) -> Self {
@@ -156,7 +139,6 @@ impl NpmRegistryApi {
       base_url,
       cache,
       mem_cache: Default::default(),
-      reload,
       cache_setting,
       progress_bar,
     }
@@ -186,7 +168,7 @@ impl NpmRegistryApi {
       Ok(info)
     } else {
       let mut maybe_package_info = None;
-      if !self.reload {
+      if self.cache_setting.should_use_for_npm_package(name) {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }

@@ -7,29 +7,29 @@ use test_util::TempDir;
 #[test]
 fn fmt_test() {
   let t = TempDir::new();
-  let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
+  let testdata_fmt_dir = util::testdata_path().join("fmt");
+  let fixed_js = testdata_fmt_dir.join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
-    util::testdata_path().join("badly_formatted.mjs");
+    testdata_fmt_dir.join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_js, &badly_formatted_js).unwrap();
 
-  let fixed_md = util::testdata_path().join("badly_formatted_fixed.md");
-  let badly_formatted_original_md =
-    util::testdata_path().join("badly_formatted.md");
+  let fixed_md = testdata_fmt_dir.join("badly_formatted_fixed.md");
+  let badly_formatted_original_md = testdata_fmt_dir.join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_md, &badly_formatted_md).unwrap();
 
-  let fixed_json = util::testdata_path().join("badly_formatted_fixed.json");
+  let fixed_json = testdata_fmt_dir.join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
-    util::testdata_path().join("badly_formatted.json");
+    testdata_fmt_dir.join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_json, &badly_formatted_json).unwrap();
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_fmt_dir)
     .arg("fmt")
     .arg(format!(
       "--ignore={},{},{}",
@@ -48,7 +48,7 @@ fn fmt_test() {
 
   // Check without ignore.
   let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_fmt_dir)
     .arg("fmt")
     .arg("--check")
     .arg(badly_formatted_js_str)
@@ -62,7 +62,7 @@ fn fmt_test() {
 
   // Format the source file.
   let status = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&testdata_fmt_dir)
     .arg("fmt")
     .arg(badly_formatted_js_str)
     .arg(badly_formatted_md_str)
