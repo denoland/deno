@@ -4999,11 +4999,6 @@
         "CacheStorage names are DOMStrings not USVStrings"
       ],
       "common.https.window.html": true
-    },
-    "service-worker": {
-      "fetch-request-xhr-sync-error.https.window.html": false,
-      "ready.https.window.html": false,
-      "xhr-content-length.https.window.html": false
     }
   }
 }
