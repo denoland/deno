@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
+import { delay, join, ROOT_PATH, TextLineStream, toFileUrl } from "../util.js";
 import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
@@ -32,8 +32,7 @@ export async function runWithTestUtil<T>(
     const passedTime = performance.now() - start;
     if (passedTime > 15000) {
       proc.kill("SIGINT");
-      await proc.status();
-      proc.close();
+      await proc.status;
       throw new Error("Timed out while trying to start wpt test util.");
     }
   }
@@ -45,8 +44,7 @@ export async function runWithTestUtil<T>(
   } finally {
     if (verbose) console.log("Killing wpt test util.");
     proc.kill("SIGINT");
-    await proc.status();
-    proc.close();
+    await proc.status;
   }
 }
 
@@ -89,21 +87,17 @@ export async function runSingleTest(
 
     const startTime = new Date().getTime();
 
-    const cmd = [
-      denoBinary(),
+    const args = [
       "run",
-    ];
-
-    cmd.push(
       "-A",
       "--unstable",
-    );
+    ];
 
     if (inspectBrk) {
-      cmd.push("--inspect-brk");
+      args.push("--inspect-brk");
     }
 
-    cmd.push(
+    args.push(
       "--enable-testing-features-do-not-use",
       "--location",
       url.toString(),
@@ -113,8 +107,8 @@ export async function runSingleTest(
       "[]",
     );
 
-    const proc = Deno.run({
-      cmd,
+    const proc = Deno.spawnChild(denoBinary(), {
+      args,
       env: {
         NO_COLOR: "1",
       },
@@ -127,7 +121,9 @@ export async function runSingleTest(
 
     let harnessStatus = null;
 
-    const lines = readLines(proc.stderr);
+    const lines = proc.stderr.pipeThrough(new TextDecoderStream()).pipeThrough(
+      new TextLineStream(),
+    );
     for await (const line of lines) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
@@ -144,7 +140,7 @@ export async function runSingleTest(
 
     const duration = new Date().getTime() - startTime;
 
-    const { code } = await proc.status();
+    const { code } = await proc.status;
     return {
       status: code,
       harnessStatus,

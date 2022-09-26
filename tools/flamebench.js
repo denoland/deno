@@ -3,35 +3,34 @@
 import { join, ROOT_PATH as ROOT } from "./util.js";
 
 async function bashOut(subcmd) {
-  const p = Deno.run({
-    cmd: ["bash", "-c", subcmd],
+  const { success, stdout } = await Deno.spawn("bash", {
+    args: ["-c", subcmd],
     stdout: "piped",
     stderr: "null",
   });
 
   // Check for failure
-  const { success } = await p.status();
   if (!success) {
     throw new Error("subcmd failed");
   }
   // Gather output
-  const output = new TextDecoder().decode(await p.output());
-  // Cleanup
-  p.close();
+  const output = new TextDecoder().decode(stdout);
 
   return output.trim();
 }
 
 async function bashThrough(subcmd, opts = {}) {
-  const p = Deno.run({ ...opts, cmd: ["bash", "-c", subcmd] });
+  const { success, code } = await Deno.spawn("bash", {
+    ...opts,
+    args: ["-c", subcmd],
+    stdout: "inherit",
+    stderr: "inherit",
+  });
 
   // Exit process on failure
-  const { success, code } = await p.status();
   if (!success) {
     Deno.exit(code);
   }
-  // Cleanup
-  p.close();
 }
 
 async function availableBenches() {

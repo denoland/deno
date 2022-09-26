@@ -19,26 +19,31 @@ function assertArrayEquals(a1, a2) {
 
 function main() {
   const emptyString = "";
-  const emptyStringSerialized = [255, 14, 34, 0];
-  assertArrayEquals(Deno.core.serialize(emptyString), emptyStringSerialized);
+  const emptyStringSerialized = [255, 15, 34, 0];
+  assertArrayEquals(
+    Deno.core.ops.op_serialize(emptyString),
+    emptyStringSerialized,
+  );
   assert(
-    Deno.core.deserialize(new Uint8Array(emptyStringSerialized)) ===
+    Deno.core.ops.op_deserialize(
+      new Uint8Array(emptyStringSerialized),
+    ) ===
       emptyString,
   );
 
   const primitiveValueArray = ["test", "a", null, undefined];
   // deno-fmt-ignore
   const primitiveValueArraySerialized = [
-    255, 14, 65, 4, 34, 4, 116, 101, 115, 116,
+    255, 15, 65, 4, 34, 4, 116, 101, 115, 116,
     34, 1, 97, 48, 95, 36, 0, 4,
   ];
   assertArrayEquals(
-    Deno.core.serialize(primitiveValueArray),
+    Deno.core.ops.op_serialize(primitiveValueArray),
     primitiveValueArraySerialized,
   );
 
   assertArrayEquals(
-    Deno.core.deserialize(
+    Deno.core.ops.op_deserialize(
       new Uint8Array(primitiveValueArraySerialized),
     ),
     primitiveValueArray,
@@ -48,7 +53,7 @@ function main() {
   circularObject.test = circularObject;
   // deno-fmt-ignore
   const circularObjectSerialized = [
-    255, 14, 111, 34, 4, 116, 101, 115,
+    255, 15, 111, 34, 4, 116, 101, 115,
     116, 94, 0, 34, 5, 116, 101, 115,
     116, 50, 34, 2, 100, 100, 34, 5,
     116, 101, 115, 116, 51, 34, 2, 97,
@@ -56,11 +61,11 @@ function main() {
   ];
 
   assertArrayEquals(
-    Deno.core.serialize(circularObject),
+    Deno.core.ops.op_serialize(circularObject),
     circularObjectSerialized,
   );
 
-  const deserializedCircularObject = Deno.core.deserialize(
+  const deserializedCircularObject = Deno.core.ops.op_deserialize(
     new Uint8Array(circularObjectSerialized),
   );
   assert(deserializedCircularObject.test == deserializedCircularObject);

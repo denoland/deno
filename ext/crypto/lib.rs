@@ -9,20 +9,16 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use shared::operation_error;
 
-use std::cell::RefCell;
-use std::num::NonZeroU32;
-use std::rc::Rc;
-
 use p256::elliptic_curve::sec1::FromEncodedPoint;
-use p256::pkcs8::FromPrivateKey;
+use p256::pkcs8::DecodePrivateKey;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -39,10 +35,10 @@ use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
-use rsa::pkcs1::der::Decodable;
-use rsa::pkcs1::der::Encodable;
-use rsa::pkcs1::FromRsaPrivateKey;
-use rsa::pkcs1::FromRsaPublicKey;
+use rsa::pkcs1::der::Decode;
+use rsa::pkcs1::der::Encode;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::der::asn1;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -53,12 +49,12 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 use std::convert::TryFrom;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
 mod decrypt;
-mod ec_key;
 mod encrypt;
 mod export_key;
 mod generate_key;
@@ -89,22 +85,19 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       "01_webidl.js",
     ))
     .ops(vec![
-      (
-        "op_crypto_get_random_values",
-        op_sync(op_crypto_get_random_values),
-      ),
-      ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
-      ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
-      ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
-      ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
-      ("op_crypto_import_key", op_sync(op_crypto_import_key)),
-      ("op_crypto_export_key", op_sync(op_crypto_export_key)),
-      ("op_crypto_encrypt", op_async(op_crypto_encrypt)),
-      ("op_crypto_decrypt", op_async(op_crypto_decrypt)),
-      ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
-      ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
-      ("op_crypto_wrap_key", op_sync(op_crypto_wrap_key)),
-      ("op_crypto_unwrap_key", op_sync(op_crypto_unwrap_key)),
+      op_crypto_get_random_values::decl(),
+      op_crypto_generate_key::decl(),
+      op_crypto_sign_key::decl(),
+      op_crypto_verify_key::decl(),
+      op_crypto_derive_bits::decl(),
+      op_crypto_import_key::decl(),
+      op_crypto_export_key::decl(),
+      op_crypto_encrypt::decl(),
+      op_crypto_decrypt::decl(),
+      op_crypto_subtle_digest::decl(),
+      op_crypto_random_uuid::decl(),
+      op_crypto_wrap_key::decl(),
+      op_crypto_unwrap_key::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -115,10 +108,10 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
     .build()
 }
 
+#[op]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   mut zero_copy: ZeroCopyBuf,
-  _: (),
 ) -> Result<(), AnyError> {
   if zero_copy.len() > 65536 {
     return Err(
@@ -171,8 +164,8 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op]
 pub async fn op_crypto_sign_key(
-  _state: Rc<RefCell<OpState>>,
   args: SignArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -325,8 +318,8 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
+#[op]
 pub async fn op_crypto_verify_key(
-  _state: Rc<RefCell<OpState>>,
   args: VerifyArg,
   zero_copy: ZeroCopyBuf,
 ) -> Result<bool, AnyError> {
@@ -485,8 +478,8 @@ pub struct DeriveKeyArg {
   info: Option<ZeroCopyBuf>,
 }
 
+#[op]
 pub async fn op_crypto_derive_bits(
-  _state: Rc<RefCell<OpState>>,
   args: DeriveKeyArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -542,11 +535,10 @@ pub async fn op_crypto_derive_bits(
                   type_error("Unexpected error decoding private key")
                 })?;
 
-              let pk: Option<p256::PublicKey> =
-                p256::PublicKey::from_encoded_point(&point);
-
-              if let Some(pk) = pk {
-                pk
+              let pk = p256::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
               } else {
                 return Err(type_error(
                   "Unexpected error decoding private key",
@@ -557,15 +549,52 @@ pub async fn op_crypto_derive_bits(
           };
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_secret_scalar(),
+            secret_key.to_nonzero_scalar(),
             public_key.as_affine(),
           );
 
-          Ok(shared_secret.as_bytes().to_vec().into())
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec().into())
         }
-        // TODO(@littledivy): support for P384
-        // https://github.com/RustCrypto/elliptic-curves/issues/240
-        _ => Err(type_error("Unsupported namedCurve".to_string())),
+        CryptoNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+            .map_err(|_| type_error("Unexpected error decoding private key"))?;
+
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p384::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p384::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| {
+                  type_error("Unexpected error decoding private key")
+                })?;
+
+              let pk = p384::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
+              } else {
+                return Err(type_error(
+                  "Unexpected error decoding private key",
+                ));
+              }
+            }
+            _ => unreachable!(),
+          };
+
+          let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_nonzero_scalar(),
+            public_key.as_affine(),
+          );
+
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec().into())
+        }
       }
     }
     Algorithm::Hkdf => {
@@ -659,7 +688,7 @@ static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
       // id-sha1
       oid: ID_SHA1_OID,
       // NULL
-      parameters: Some(asn1::Any::from(asn1::Null)),
+      parameters: Some(asn1::AnyRef::from(asn1::Null)),
     }
   });
 
@@ -680,7 +709,7 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
     oid: ID_MFG1,
     // sha1
     parameters: Some(
-      asn1::Any::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
+      asn1::AnyRef::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
     ),
   }
 });
@@ -700,33 +729,51 @@ static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
       // id-pSpecified
       oid: ID_P_SPECIFIED,
       // EncodingParameters
-      parameters: Some(asn1::Any::from(asn1::OctetString::new(b"").unwrap())),
+      parameters: Some(asn1::AnyRef::from(
+        asn1::OctetStringRef::new(b"").unwrap(),
+      )),
     }
   });
 
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
+fn decode_content_tag<'a, T>(
+  decoder: &mut rsa::pkcs8::der::SliceReader<'a>,
+  tag: rsa::pkcs8::der::TagNumber,
+) -> rsa::pkcs8::der::Result<Option<T>>
+where
+  T: rsa::pkcs8::der::Decode<'a>,
+{
+  Ok(
+    rsa::pkcs8::der::asn1::ContextSpecific::<T>::decode_explicit(decoder, tag)?
+      .map(|field| field.value),
+  )
+}
+
+impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
   for PssPrivateKeyParameters<'a>
 {
   type Error = rsa::pkcs8::der::Error;
 
   fn try_from(
-    any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
+    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
+  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let salt_length = decoder
-        .context_specific(SALT_LENGTH_TAG)?
+      let salt_length = decode_content_tag::<u32>(decoder, SALT_LENGTH_TAG)?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(20);
@@ -754,32 +801,37 @@ pub struct OaepPrivateKeyParameters<'a> {
   pub p_source_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
 }
 
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
+impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
   for OaepPrivateKeyParameters<'a>
 {
   type Error = rsa::pkcs8::der::Error;
 
   fn try_from(
-    any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
+    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
+  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters<'a>> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder
-        .context_specific(HASH_ALGORITHM_TAG)?
+      let hash_algorithm =
+        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
+          decoder,
+          HASH_ALGORITHM_TAG,
+        )?
         .map(TryInto::try_into)
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific(MASK_GEN_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
+      let mask_gen_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, MASK_GEN_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
 
-      let p_source_algorithm = decoder
-        .context_specific(P_SOURCE_ALGORITHM_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*P_SPECIFIED_EMPTY);
+      let p_source_algorithm = decode_content_tag::<
+        rsa::pkcs8::AlgorithmIdentifier,
+      >(decoder, P_SOURCE_ALGORITHM_TAG)?
+      .map(TryInto::try_into)
+      .transpose()?
+      .unwrap_or(*P_SPECIFIED_EMPTY);
 
       Ok(Self {
         hash_algorithm,
@@ -790,18 +842,15 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   }
 }
 
-pub fn op_crypto_random_uuid(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
+#[op]
+pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
     seeded_rng.fill(&mut bytes);
     uuid::Builder::from_bytes(bytes)
-      .set_version(uuid::Version::Random)
-      .build()
+      .with_version(uuid::Version::Random)
+      .into_uuid()
   } else {
     uuid::Uuid::new_v4()
   };
@@ -809,8 +858,8 @@ pub fn op_crypto_random_uuid(
   Ok(uuid.to_string())
 }
 
+#[op]
 pub async fn op_crypto_subtle_digest(
-  _state: Rc<RefCell<OpState>>,
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -832,8 +881,8 @@ pub struct WrapUnwrapKeyArg {
   algorithm: Algorithm,
 }
 
+#[op]
 pub fn op_crypto_wrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
@@ -861,8 +910,8 @@ pub fn op_crypto_wrap_key(
   }
 }
 
+#[op]
 pub fn op_crypto_unwrap_key(
-  _state: &mut OpState,
   args: WrapUnwrapKeyArg,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {

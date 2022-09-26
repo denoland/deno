@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert } from "./test_util.ts";
+import { assert, assertThrows, fail } from "./test_util.ts";
 
 Deno.test("Errors work", () => {
   assert(new Deno.errors.NotFound("msg") instanceof Error);
@@ -21,4 +21,12 @@ Deno.test("Errors work", () => {
   assert(new Deno.errors.Http("msg") instanceof Error);
   assert(new Deno.errors.Busy("msg") instanceof Error);
   assert(new Deno.errors.NotSupported("msg") instanceof Error);
+});
+
+Deno.test("Errors have some tamper resistance", () => {
+  // deno-lint-ignore no-explicit-any
+  (Object.prototype as any).get = () => {};
+  assertThrows(() => fail("test error"), Error, "test error");
+  // deno-lint-ignore no-explicit-any
+  delete (Object.prototype as any).get;
 });

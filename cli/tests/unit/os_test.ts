@@ -74,19 +74,14 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const proc = Deno.run({
-        cmd: [Deno.execPath(), "eval", src],
+      const { success, stdout } = await Deno.spawn(Deno.execPath(), {
+        args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
-        stdout: "piped",
       });
-      const status = await proc.status();
-      assertEquals(status.success, true);
+      assertEquals(success, true);
       const expectedValues = Object.values(expectedEnv);
-      const actualValues = JSON.parse(
-        new TextDecoder().decode(await proc.output()),
-      );
+      const actualValues = JSON.parse(new TextDecoder().decode(stdout));
       assertEquals(actualValues, expectedValues);
-      proc.close();
     };
 
     assertEquals(Deno.env.get("path"), Deno.env.get("PATH"));
@@ -121,6 +116,40 @@ Deno.test(
   },
 );
 
+Deno.test({ permissions: { env: true } }, function envInvalidChars() {
+  assertThrows(() => Deno.env.get(""), TypeError, "Key is an empty string");
+  assertThrows(
+    () => Deno.env.get("\0"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.get("="),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("", "foo"),
+    TypeError,
+    "Key is an empty string",
+  );
+  assertThrows(
+    () => Deno.env.set("\0", "foo"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.set("=", "foo"),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("foo", "\0"),
+    TypeError,
+    'Value contains invalid characters: "\\0"',
+  );
+});
+
 Deno.test(function osPid() {
   assert(Deno.pid > 0);
 });
@@ -133,16 +162,13 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
-    const process = Deno.run({
-      cmd: [Deno.execPath(), "eval", "-p", "--unstable", "Deno.ppid"],
-      stdout: "piped",
+    const { stdout } = await Deno.spawn(Deno.execPath(), {
+      args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
     });
-    const output = await process.output();
-    process.close();
 
     const expected = Deno.pid;
-    const actual = parseInt(decoder.decode(output));
+    const actual = parseInt(decoder.decode(stdout));
     assertEquals(actual, expected);
   },
 );
@@ -210,5 +236,15 @@ Deno.test({ permissions: { env: true } }, function getUid() {
     const uid = Deno.getUid();
     assert(typeof uid === "number");
     assert(uid > 0);
+  }
+});
+
+Deno.test({ permissions: { env: true } }, function getGid() {
+  if (Deno.build.os === "windows") {
+    assertEquals(Deno.getGid(), null);
+  } else {
+    const gid = Deno.getGid();
+    assert(typeof gid === "number");
+    assert(gid > 0);
   }
 });

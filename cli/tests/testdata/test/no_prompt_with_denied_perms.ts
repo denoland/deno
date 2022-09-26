@@ -1,3 +1,3 @@
-Deno.test("no prompt", { permissions: { read: false } }, () => {
-  Deno.readTextFile("./some_file.txt");
+Deno.test("no prompt", { permissions: { read: false } }, async () => {
+  await Deno.readTextFile("./some_file.txt");
 });

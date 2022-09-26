@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
 use super::path_to_regex::parse;
 use super::path_to_regex::string_to_regex;
@@ -31,12 +32,12 @@ use deno_graph::Dependency;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::error;
-use lspower::lsp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -63,6 +64,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'&')
   .add(b'+')
   .add(b',');
+
+const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
 static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
@@ -341,7 +344,7 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct RegistryConfigurationVariable {
+pub struct RegistryConfigurationVariable {
   /// The name of the variable.
   key: String,
   /// An optional URL/API endpoint that can provide optional documentation for a
@@ -353,7 +356,7 @@ pub(crate) struct RegistryConfigurationVariable {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub(crate) struct RegistryConfiguration {
+pub struct RegistryConfiguration {
   /// A Express-like path which describes how URLs are composed for a registry.
   schema: String,
   /// The variables denoted in the `schema` should have a variable entry.
@@ -407,7 +410,7 @@ enum VariableItems {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ModuleRegistryOptions {
+pub struct ModuleRegistryOptions {
   pub maybe_root_path: Option<PathBuf>,
   pub maybe_ca_stores: Option<Vec<String>>,
   pub maybe_ca_file: Option<String>,
@@ -418,7 +421,7 @@ pub(crate) struct ModuleRegistryOptions {
 /// registries and can provide completion information for URLs that match
 /// one of the enabled registries.
 #[derive(Debug, Clone)]
-pub(crate) struct ModuleRegistry {
+pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
 }
@@ -452,6 +455,7 @@ impl ModuleRegistry {
       root_cert_store,
       BlobStore::default(),
       options.unsafely_ignore_certificate_errors,
+      None,
     )?;
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
@@ -493,6 +497,12 @@ impl ModuleRegistry {
         filter_text,
         sort_text: Some("1".to_string()),
         text_edit,
+        commit_characters: Some(
+          REGISTRY_IMPORT_COMMIT_CHARS
+            .iter()
+            .map(|&c| c.into())
+            .collect(),
+        ),
         ..Default::default()
       },
     );
@@ -506,10 +516,7 @@ impl ModuleRegistry {
   }
 
   /// Check to see if the given origin has a registry configuration.
-  pub(crate) async fn check_origin(
-    &self,
-    origin: &str,
-  ) -> Result<(), AnyError> {
+  pub async fn check_origin(&self, origin: &str) -> Result<(), AnyError> {
     let origin_url = Url::parse(origin)?;
     let specifier = origin_url.join(CONFIG_PATH)?;
     self.fetch_config(&specifier).await?;
@@ -592,10 +599,7 @@ impl ModuleRegistry {
     Ok(())
   }
 
-  pub(crate) async fn get_hover(
-    &self,
-    dependency: &Dependency,
-  ) -> Option<String> {
+  pub async fn get_hover(&self, dependency: &Dependency) -> Option<String> {
     let maybe_code = dependency.get_code();
     let maybe_type = dependency.get_type();
     let specifier = match (maybe_code, maybe_type) {
@@ -647,7 +651,7 @@ impl ModuleRegistry {
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
-  pub(crate) async fn get_completions(
+  pub async fn get_completions(
     &self,
     current_specifier: &str,
     offset: usize,
@@ -790,6 +794,21 @@ impl ModuleRegistry {
                             &key,
                             &item,
                           );
+                          let commit_characters = if is_incomplete {
+                            Some(
+                              REGISTRY_IMPORT_COMMIT_CHARS
+                                .iter()
+                                .map(|&c| c.into())
+                                .collect(),
+                            )
+                          } else {
+                            Some(
+                              IMPORT_COMMIT_CHARS
+                                .iter()
+                                .map(|&c| c.into())
+                                .collect(),
+                            )
+                          };
                           completions.insert(
                             item,
                             lsp::CompletionItem {
@@ -802,6 +821,7 @@ impl ModuleRegistry {
                               command,
                               preselect,
                               data,
+                              commit_characters,
                               ..Default::default()
                             },
                           );
@@ -842,6 +862,12 @@ impl ModuleRegistry {
                           sort_text: Some("1".to_string()),
                           text_edit,
                           preselect: Some(true),
+                          commit_characters: Some(
+                            REGISTRY_IMPORT_COMMIT_CHARS
+                              .iter()
+                              .map(|&c| c.into())
+                              .collect(),
+                          ),
                           ..Default::default()
                         },
                       );
@@ -895,6 +921,21 @@ impl ModuleRegistry {
                             let preselect =
                               get_preselect(item.clone(), preselect.clone());
                             let data = get_data(registry, &specifier, k, &path);
+                            let commit_characters = if is_incomplete {
+                              Some(
+                                REGISTRY_IMPORT_COMMIT_CHARS
+                                  .iter()
+                                  .map(|&c| c.into())
+                                  .collect(),
+                              )
+                            } else {
+                              Some(
+                                IMPORT_COMMIT_CHARS
+                                  .iter()
+                                  .map(|&c| c.into())
+                                  .collect(),
+                              )
+                            };
                             completions.insert(
                               item.clone(),
                               lsp::CompletionItem {
@@ -907,6 +948,7 @@ impl ModuleRegistry {
                                 command,
                                 preselect,
                                 data,
+                                commit_characters,
                                 ..Default::default()
                               },
                             );
@@ -938,7 +980,7 @@ impl ModuleRegistry {
     self.get_origin_completions(current_specifier, range)
   }
 
-  pub(crate) async fn get_documentation(
+  pub async fn get_documentation(
     &self,
     url: &str,
   ) -> Option<lsp::Documentation> {
@@ -975,6 +1017,12 @@ impl ModuleRegistry {
             detail: Some("(registry)".to_string()),
             sort_text: Some("2".to_string()),
             text_edit,
+            commit_characters: Some(
+              REGISTRY_IMPORT_COMMIT_CHARS
+                .iter()
+                .map(|&c| c.into())
+                .collect(),
+            ),
             ..Default::default()
           })
         } else {
@@ -1056,7 +1104,7 @@ impl ModuleRegistry {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tempfile::TempDir;
+  use test_util::TempDir;
 
   #[test]
   fn test_validate_registry_configuration() {
@@ -1211,7 +1259,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1272,7 +1320,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1495,7 +1543,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1565,7 +1613,7 @@ mod tests {
   #[tokio::test]
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let mut module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1616,7 +1664,7 @@ mod tests {
   #[tokio::test]
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();
@@ -1627,7 +1675,7 @@ mod tests {
   #[tokio::test]
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
-    let temp_dir = TempDir::new().expect("could not create tmp");
+    let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries");
     let module_registry =
       ModuleRegistry::new(&location, ModuleRegistryOptions::default()).unwrap();

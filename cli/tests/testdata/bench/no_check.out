@@ -1,0 +1,5 @@
+error: Uncaught TypeError: Cannot read properties of undefined (reading 'fn')
+Deno.bench();
+     ^
+    at [WILDCARD]
+    at [WILDCARD]/bench/no_check.ts:1:6

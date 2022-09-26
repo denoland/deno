@@ -1,12 +1,16 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::emit::TypeLib;
+use crate::emit::TsTypeLib;
 use crate::errors::get_error_class_name;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
+
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
+use deno_graph::GraphImport;
 use deno_graph::MediaType;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
@@ -19,7 +23,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-pub(crate) fn contains_specifier(
+pub fn contains_specifier(
   v: &[(ModuleSpecifier, ModuleKind)],
   specifier: &ModuleSpecifier,
 ) -> bool {
@@ -28,18 +32,15 @@ pub(crate) fn contains_specifier(
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum ModuleEntry {
+pub enum ModuleEntry {
   Module {
-    code: Arc<String>,
+    code: Arc<str>,
     dependencies: BTreeMap<String, Dependency>,
     media_type: MediaType,
     /// A set of type libs that the module has passed a type check with this
     /// session. This would consist of window, worker or both.
-    checked_libs: HashSet<TypeLib>,
+    checked_libs: HashSet<TsTypeLib>,
     maybe_types: Option<Resolved>,
-  },
-  Configuration {
-    dependencies: BTreeMap<String, Resolved>,
   },
   Error(ModuleGraphError),
   Redirect(ModuleSpecifier),
@@ -47,20 +48,43 @@ pub(crate) enum ModuleEntry {
 
 /// Composes data from potentially many `ModuleGraph`s.
 #[derive(Debug, Default)]
-pub(crate) struct GraphData {
+pub struct GraphData {
   modules: HashMap<ModuleSpecifier, ModuleEntry>,
+  npm_packages: HashSet<NpmPackageReq>,
   /// Map of first known referrer locations for each module. Used to enhance
   /// error messages.
   referrer_map: HashMap<ModuleSpecifier, Range>,
-  configurations: HashSet<ModuleSpecifier>,
+  graph_imports: Vec<GraphImport>,
   cjs_esm_translations: HashMap<ModuleSpecifier, String>,
 }
 
 impl GraphData {
   /// Store data from `graph` into `self`.
-  pub(crate) fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+  pub fn add_graph(&mut self, graph: &ModuleGraph, reload: bool) {
+    for graph_import in &graph.imports {
+      for dep in graph_import.dependencies.values() {
+        for resolved in [&dep.maybe_code, &dep.maybe_type] {
+          if let Resolved::Ok {
+            specifier, range, ..
+          } = resolved
+          {
+            let entry = self.referrer_map.entry(specifier.clone());
+            entry.or_insert_with(|| range.clone());
+          }
+        }
+      }
+      self.graph_imports.push(graph_import.clone())
+    }
+
     for (specifier, result) in graph.specifiers() {
       if !reload && self.modules.contains_key(&specifier) {
+        continue;
+      }
+      if specifier.scheme() == "npm" {
+        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
+        let reference =
+          NpmPackageReference::from_specifier(&specifier).unwrap();
+        self.npm_packages.insert(reference.req);
         continue;
       }
       if let Some(found) = graph.redirects.get(&specifier) {
@@ -71,27 +95,6 @@ impl GraphData {
       match result {
         Ok((_, _, media_type)) => {
           let module = graph.get(&specifier).unwrap();
-          if module.kind == ModuleKind::Synthetic {
-            let mut dependencies = BTreeMap::new();
-            for (specifier, dependency) in &module.dependencies {
-              if !matches!(dependency.maybe_type, Resolved::None) {
-                dependencies
-                  .insert(specifier.clone(), dependency.maybe_type.clone());
-                if let Resolved::Ok {
-                  specifier, range, ..
-                } = &dependency.maybe_type
-                {
-                  let entry = self.referrer_map.entry(specifier.clone());
-                  entry.or_insert_with(|| range.clone());
-                }
-              }
-            }
-            self.modules.insert(
-              module.specifier.clone(),
-              ModuleEntry::Configuration { dependencies },
-            );
-            self.configurations.insert(module.specifier.clone());
-          }
           let code = match &module.maybe_source {
             Some(source) => source.clone(),
             None => continue,
@@ -139,13 +142,20 @@ impl GraphData {
     }
   }
 
-  pub(crate) fn entries(&self) -> HashMap<&ModuleSpecifier, &ModuleEntry> {
-    self.modules.iter().collect()
+  pub fn entries(
+    &self,
+  ) -> impl Iterator<Item = (&ModuleSpecifier, &ModuleEntry)> {
+    self.modules.iter()
+  }
+
+  /// Gets the unique npm package requirements from all the encountered graphs.
+  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
+    self.npm_packages.iter().cloned().collect()
   }
 
   /// Walk dependencies from `roots` and return every encountered specifier.
   /// Return `None` if any modules are not known.
-  pub(crate) fn walk<'a>(
+  pub fn walk<'a>(
     &'a self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     follow_dynamic: bool,
@@ -159,11 +169,26 @@ impl GraphData {
       seen.insert(root);
       visiting.push_back(root);
     }
-    for root in &self.configurations {
-      seen.insert(root);
-      visiting.push_back(root);
+    for (_, dep) in self.graph_imports.iter().flat_map(|i| &i.dependencies) {
+      let mut resolutions = vec![&dep.maybe_code];
+      if follow_type_only {
+        resolutions.push(&dep.maybe_type);
+      }
+      #[allow(clippy::manual_flatten)]
+      for resolved in resolutions {
+        if let Resolved::Ok { specifier, .. } = resolved {
+          if !seen.contains(specifier) {
+            seen.insert(specifier);
+            visiting.push_front(specifier);
+          }
+        }
+      }
     }
     while let Some(specifier) = visiting.pop_front() {
+      if NpmPackageReference::from_specifier(specifier).is_ok() {
+        continue; // skip analyzing npm specifiers
+      }
+
       let (specifier, entry) = match self.modules.get_key_value(specifier) {
         Some(pair) => pair,
         None => return None,
@@ -193,7 +218,13 @@ impl GraphData {
               }
             }
           }
-          for (_, dep) in dependencies.iter().rev() {
+          for (dep_specifier, dep) in dependencies.iter().rev() {
+            // todo(dsherret): ideally there would be a way to skip external dependencies
+            // in the graph here rather than specifically npm package references
+            if NpmPackageReference::from_str(dep_specifier).is_ok() {
+              continue;
+            }
+
             if !dep.is_dynamic || follow_dynamic {
               let mut resolutions = vec![&dep.maybe_code];
               if check_types {
@@ -207,16 +238,6 @@ impl GraphData {
                     visiting.push_front(specifier);
                   }
                 }
-              }
-            }
-          }
-        }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved in dependencies.values() {
-            if let Resolved::Ok { specifier, .. } = resolved {
-              if !seen.contains(specifier) {
-                seen.insert(specifier);
-                visiting.push_front(specifier);
               }
             }
           }
@@ -235,7 +256,7 @@ impl GraphData {
 
   /// Clone part of `self`, containing only modules which are dependencies of
   /// `roots`. Returns `None` if any roots are not known.
-  pub(crate) fn graph_segment(
+  pub fn graph_segment(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
   ) -> Option<Self> {
@@ -253,8 +274,9 @@ impl GraphData {
     }
     Some(Self {
       modules,
+      npm_packages: self.npm_packages.clone(),
       referrer_map,
-      configurations: self.configurations.clone(),
+      graph_imports: self.graph_imports.to_vec(),
       cjs_esm_translations: Default::default(),
     })
   }
@@ -263,7 +285,7 @@ impl GraphData {
   /// so. Returns `Some(Err(_))` if there is a known module graph or resolution
   /// error statically reachable from `roots`. Returns `None` if any modules are
   /// not known.
-  pub(crate) fn check(
+  pub fn check(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
     follow_type_only: bool,
@@ -324,20 +346,6 @@ impl GraphData {
             }
           }
         }
-        ModuleEntry::Configuration { dependencies } => {
-          for resolved_result in dependencies.values() {
-            if let Resolved::Err(error) = resolved_result {
-              let range = error.range();
-              if !range.specifier.as_str().contains("$deno") {
-                return Some(Err(custom_error(
-                  get_error_class_name(&error.clone().into()),
-                  format!("{}\n    at {}", error, range),
-                )));
-              }
-              return Some(Err(error.clone().into()));
-            }
-          }
-        }
         ModuleEntry::Error(error) => {
           if !contains_specifier(roots, specifier) {
             if let Some(range) = self.referrer_map.get(specifier) {
@@ -360,10 +368,10 @@ impl GraphData {
 
   /// Mark `roots` and all of their dependencies as type checked under `lib`.
   /// Assumes that all of those modules are known.
-  pub(crate) fn set_type_checked(
+  pub fn set_type_checked(
     &mut self,
     roots: &[(ModuleSpecifier, ModuleKind)],
-    lib: &TypeLib,
+    lib: TsTypeLib,
   ) {
     let specifiers: Vec<ModuleSpecifier> =
       match self.walk(roots, true, true, true) {
@@ -374,16 +382,16 @@ impl GraphData {
       if let ModuleEntry::Module { checked_libs, .. } =
         self.modules.get_mut(&specifier).unwrap()
       {
-        checked_libs.insert(lib.clone());
+        checked_libs.insert(lib);
       }
     }
   }
 
   /// Check if `roots` are all marked as type checked under `lib`.
-  pub(crate) fn is_type_checked(
+  pub fn is_type_checked(
     &self,
     roots: &[(ModuleSpecifier, ModuleKind)],
-    lib: &TypeLib,
+    lib: &TsTypeLib,
   ) -> bool {
     roots.iter().all(|(r, _)| {
       let found = self.follow_redirect(r);
@@ -398,7 +406,7 @@ impl GraphData {
 
   /// If `specifier` is known and a redirect, return the found specifier.
   /// Otherwise return `specifier`.
-  pub(crate) fn follow_redirect(
+  pub fn follow_redirect(
     &self,
     specifier: &ModuleSpecifier,
   ) -> ModuleSpecifier {
@@ -408,28 +416,32 @@ impl GraphData {
     }
   }
 
-  pub(crate) fn get<'a>(
+  pub fn get<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<&'a ModuleEntry> {
     self.modules.get(specifier)
   }
 
-  // TODO(bartlomieju): after saving translated source
-  // it's never removed, potentially leading to excessive
-  // memory consumption
-  pub(crate) fn add_cjs_esm_translation(
-    &mut self,
+  /// Get the dependencies of a module or graph import.
+  pub fn get_dependencies<'a>(
+    &'a self,
     specifier: &ModuleSpecifier,
-    source: String,
-  ) {
-    let prev = self
-      .cjs_esm_translations
-      .insert(specifier.to_owned(), source);
-    assert!(prev.is_none());
+  ) -> Option<&'a BTreeMap<String, Dependency>> {
+    let specifier = self.follow_redirect(specifier);
+    if let Some(ModuleEntry::Module { dependencies, .. }) = self.get(&specifier)
+    {
+      return Some(dependencies);
+    }
+    if let Some(graph_import) =
+      self.graph_imports.iter().find(|i| i.referrer == specifier)
+    {
+      return Some(&graph_import.dependencies);
+    }
+    None
   }
 
-  pub(crate) fn get_cjs_esm_translation<'a>(
+  pub fn get_cjs_esm_translation<'a>(
     &'a self,
     specifier: &ModuleSpecifier,
   ) -> Option<&'a String> {
@@ -446,7 +458,7 @@ impl From<&ModuleGraph> for GraphData {
 }
 
 /// Like `graph.valid()`, but enhanced with referrer info.
-pub(crate) fn graph_valid(
+pub fn graph_valid(
   graph: &ModuleGraph,
   follow_type_only: bool,
   check_js: bool,
@@ -457,7 +469,7 @@ pub(crate) fn graph_valid(
 }
 
 /// Calls `graph.lock()` and exits on errors.
-pub(crate) fn graph_lock_or_exit(graph: &ModuleGraph) {
+pub fn graph_lock_or_exit(graph: &ModuleGraph) {
   if let Err(err) = graph.lock() {
     log::error!("{} {}", colors::red("error:"), err);
     std::process::exit(10);

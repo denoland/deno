@@ -1,0 +1,4 @@
+error: TS2584 [ERROR]: Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.
+  console.log(document);
+              ~~~~~~~~
+    at [WILDCARD]run/with_config/frontend_work.ts:2:15

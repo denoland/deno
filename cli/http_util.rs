@@ -55,9 +55,9 @@ pub type HeadersMap = HashMap<String, String>;
 /// A structure used to determine if a entity in the http cache can be used.
 ///
 /// This is heavily influenced by
-/// https://github.com/kornelski/rusty-http-cache-semantics which is BSD
+/// <https://github.com/kornelski/rusty-http-cache-semantics> which is BSD
 /// 2-Clause Licensed and copyright Kornel Lesiński
-pub(crate) struct CacheSemantics {
+pub struct CacheSemantics {
   cache_control: CacheControl,
   cached: SystemTime,
   headers: HashMap<String, String>,
@@ -199,7 +199,7 @@ impl CacheSemantics {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum FetchOnceResult {
   Code(Vec<u8>, HeadersMap),
   NotModified,
@@ -324,7 +324,7 @@ mod tests {
   async fn test_fetch_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/fixture.json").unwrap();
+    let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
@@ -348,7 +348,7 @@ mod tests {
   async fn test_fetch_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/gziped")
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
@@ -412,7 +412,7 @@ mod tests {
   async fn test_fetch_brotli() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/053_import_compression/brotli")
+    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
@@ -462,9 +462,10 @@ mod tests {
   async fn test_fetch_once_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4546/fixture.json").unwrap();
+    let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url = Url::parse("http://localhost:4545/fixture.json").unwrap();
+    let target_url =
+      Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
     let result = fetch_once(FetchOnceArgs {
       client,
@@ -523,7 +524,7 @@ mod tests {
   async fn test_fetch_with_cafile_string() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("https://localhost:5545/fixture.json").unwrap();
+    let url = Url::parse("https://localhost:5545/assets/fixture.json").unwrap();
 
     let client = create_http_client(
       version::get_user_agent(),
@@ -593,6 +594,7 @@ mod tests {
   // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
   #[cfg(not(windows))]
   #[tokio::test]
+  #[ignore] // https://github.com/denoland/deno/issues/12561
   async fn test_fetch_with_empty_certificate_store() {
     use deno_runtime::deno_tls::rustls::RootCertStore;
 
@@ -629,7 +631,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("https://localhost:5545/053_import_compression/gziped")
+      Url::parse("https://localhost:5545/run/import_compression/gziped")
         .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
@@ -723,7 +725,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("https://localhost:5545/053_import_compression/brotli")
+      Url::parse("https://localhost:5545/run/import_compression/brotli")
         .unwrap();
     let client = create_http_client(
       version::get_user_agent(),

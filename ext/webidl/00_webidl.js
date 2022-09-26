@@ -57,6 +57,7 @@
     ReflectApply,
     ReflectDefineProperty,
     ReflectGetOwnPropertyDescriptor,
+    ReflectHas,
     ReflectOwnKeys,
     RegExpPrototypeTest,
     Set,
@@ -183,7 +184,7 @@
     const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -236,7 +237,7 @@
     const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
     return (V, opts = {}) => {
-      let x = toNumber(V, opts);
+      let x = toNumber(V);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
@@ -300,7 +301,7 @@
   });
 
   converters.float = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -327,8 +328,8 @@
     return y;
   };
 
-  converters["unrestricted float"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted float"] = (V, _opts) => {
+    const x = toNumber(V);
 
     if (isNaN(x)) {
       return x;
@@ -342,7 +343,7 @@
   };
 
   converters.double = (V, opts) => {
-    const x = toNumber(V, opts);
+    const x = toNumber(V);
 
     if (!NumberIsFinite(x)) {
       throw makeException(
@@ -355,8 +356,8 @@
     return x;
   };
 
-  converters["unrestricted double"] = (V, opts) => {
-    const x = toNumber(V, opts);
+  converters["unrestricted double"] = (V, _opts) => {
+    const x = toNumber(V);
 
     return x;
   };
@@ -648,7 +649,7 @@
 
     const defaultValues = {};
     for (const member of allMembers) {
-      if ("defaultValue" in member) {
+      if (ReflectHas(member, "defaultValue")) {
         const idlMemberValue = member.defaultValue;
         const imvType = typeof idlMemberValue;
         // Copy by value types can be directly assigned, copy by reference types
@@ -714,7 +715,7 @@
           throw makeException(
             TypeError,
             `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-            { ...opts },
+            opts,
           );
         }
       }
@@ -1013,13 +1014,16 @@
     for (const key in descriptors) {
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
-      if ("value" in descriptor && typeof descriptor.value === "function") {
+      if (
+        ReflectHas(descriptor, "value") &&
+        typeof descriptor.value === "function"
+      ) {
         ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           writable: true,
           configurable: true,
         });
-      } else if ("get" in descriptor) {
+      } else if (ReflectHas(descriptor, "get")) {
         ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           configurable: true,

@@ -2,20 +2,19 @@
 
 //! This module provides feature to upgrade deno executable
 
-use crate::flags::UpgradeFlags;
+use crate::args::UpgradeFlags;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
-use semver_parser::version::parse as semver_parse;
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use tempfile::TempDir;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -33,7 +32,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let mut client_builder = Client::builder();
 
   // If we have been provided a CA Certificate, add it into the HTTP client
-  if let Some(ca_file) = upgrade_flags.ca_file {
+  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
     let buf = std::fs::read(ca_file)?;
     let cert = reqwest::Certificate::from_pem(&buf)?;
     client_builder = client_builder.add_root_certificate(cert);
@@ -47,7 +47,8 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
         bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary && semver_parse(&passed_version).is_err()
+      } else if !upgrade_flags.canary
+        && semver::Version::parse(&passed_version).is_err()
       {
         bail!("Invalid semver passed");
       }
@@ -78,12 +79,11 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let mut latest_hash = latest_version.clone();
-        latest_hash.truncate(7);
+        let latest_hash = latest_version.clone();
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver_parse(&crate::version::deno()).unwrap();
-        let latest = semver_parse(&latest_version).unwrap();
+        let current = semver::Version::parse(&crate::version::deno()).unwrap();
+        let latest = semver::Version::parse(&latest_version).unwrap();
         current >= latest
       } else {
         false
@@ -228,7 +228,7 @@ pub fn unpack(
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
-  let temp_dir = TempDir::new()?.into_path();
+  let temp_dir = secure_tempfile::TempDir::new()?.into_path();
   let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
   let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);

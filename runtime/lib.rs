@@ -8,6 +8,7 @@ pub use deno_fetch;
 pub use deno_ffi;
 pub use deno_http;
 pub use deno_net;
+pub use deno_node;
 pub use deno_tls;
 pub use deno_url;
 pub use deno_web;
@@ -18,6 +19,7 @@ pub use deno_webstorage;
 
 pub mod colors;
 pub mod errors;
+pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;

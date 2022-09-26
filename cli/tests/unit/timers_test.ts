@@ -6,10 +6,9 @@ import {
   Deferred,
   deferred,
   delay,
+  execCode,
   unreachable,
 } from "./test_util.ts";
-
-const decoder = new TextDecoder();
 
 Deno.test(async function functionParameterBindingSuccess() {
   const promise = deferred();
@@ -83,6 +82,27 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
   const error = await global.globalPromise;
   assertEquals(error.name, "ReferenceError");
   Reflect.deleteProperty(global, "globalPromise");
+});
+
+Deno.test(async function evalPrimordial() {
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+  };
+  global.globalPromise = deferred();
+  const originalEval = globalThis.eval;
+  let wasCalled = false;
+  globalThis.eval = (argument) => {
+    wasCalled = true;
+    return originalEval(argument);
+  };
+  setTimeout(
+    "globalThis.globalPromise.resolve();" as unknown as () => void,
+    0,
+  );
+  await global.globalPromise;
+  assert(!wasCalled);
+  Reflect.deleteProperty(global, "globalPromise");
+  globalThis.eval = originalEval;
 });
 
 Deno.test(async function timeoutArgs() {
@@ -216,7 +236,7 @@ Deno.test(async function callbackTakesLongerThanInterval() {
   const interval = setInterval(() => {
     if (timeEndOfFirstCallback === undefined) {
       // First callback
-      Deno.sleepSync(300);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
       timeEndOfFirstCallback = Date.now();
     } else {
       // Second callback
@@ -238,7 +258,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue1() {
   }, 300);
 
   const interval = setInterval(() => {
-    Deno.sleepSync(400);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400);
     // Both the interval and the timeout's due times are now in the past.
     clearInterval(interval);
   }, 100);
@@ -256,7 +276,7 @@ Deno.test(async function clearTimeoutAfterNextTimerIsDue2() {
     promise.resolve();
   }, 200);
 
-  Deno.sleepSync(300);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
   // Both of the timeouts' due times are now in the past.
   clearTimeout(timeout1);
 
@@ -532,70 +552,9 @@ Deno.test(async function timerIgnoresDateOverride() {
   assertEquals(hasThrown, 1);
 });
 
-Deno.test({ permissions: { hrtime: true } }, function sleepSync() {
-  const start = performance.now();
-  Deno.sleepSync(10);
-  const after = performance.now();
-  assert(after - start >= 10);
-});
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncShorterPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(short).then(() => {
-      const after = perf.now();
-      // pending promises should resolve after the main thread comes out of sleep
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(long);
-
-    await p;
-  },
-);
-
-Deno.test(
-  { permissions: { hrtime: true } },
-  async function sleepSyncLongerPromise() {
-    const perf = performance;
-    const short = 5;
-    const long = 10;
-
-    const start = perf.now();
-    const p = delay(long).then(() => {
-      const after = perf.now();
-      // sleeping for less than the duration of a promise should have no impact
-      // on the resolution of that promise
-      assert(after - start >= long);
-    });
-    Deno.sleepSync(short);
-
-    await p;
-  },
-);
-
-async function execCode(code: string) {
-  const p = Deno.run({
-    cmd: [
-      Deno.execPath(),
-      "eval",
-      "--unstable",
-      code,
-    ],
-    stdout: "piped",
-  });
-  const [status, output] = await Promise.all([p.status(), p.output()]);
-  p.close();
-  return [status.code, decoder.decode(output)];
-}
-
 Deno.test({
   name: "unrefTimer",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer = setTimeout(() => console.log("1"));
@@ -608,7 +567,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -623,7 +582,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - mix ref and unref 2",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 200);
@@ -639,7 +598,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref interval",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       let i = 0;
@@ -658,7 +617,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref 1",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => console.log("1"), 10);
@@ -672,7 +631,7 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - unref then ref",
-  permissions: { run: true },
+  permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
       const timer1 = setTimeout(() => {
@@ -689,9 +648,82 @@ Deno.test({
 
 Deno.test({
   name: "unrefTimer - invalid calls do nothing",
-  permissions: { run: true },
   fn: () => {
     Deno.unrefTimer(NaN);
     Deno.refTimer(NaN);
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with no listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      // This unref timer expires before the signal, and if it does expire, then
+      // it means the signal has kept the event loop alive.
+      const timer = setTimeout(() => console.log("Unexpected!"), 1500);
+      Deno.unrefTimer(timer);
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(1000);
+      signal.addEventListener("abort", () => console.log("Event fired!"));
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Event fired!\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with removed listeners",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      const callback = () => console.log("Unexpected: Event fired");
+      signal.addEventListener("abort", callback);
+
+      setTimeout(() => {
+        console.log("Removing the listener.");
+        signal.removeEventListener("abort", callback);
+      }, 500);
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "Removing the listener.\n");
+  },
+});
+
+Deno.test({
+  name: "AbortSignal.timeout() with listener for a non-abort event",
+  permissions: { run: true, read: true },
+  fn: async () => {
+    const [statusCode, output] = await execCode(`
+      const signal = AbortSignal.timeout(2000);
+
+      signal.addEventListener("someOtherEvent", () => {
+        console.log("Unexpected: someOtherEvent called");
+      });
+
+      Deno.unrefTimer(
+        setTimeout(() => console.log("Unexpected: Unref timer"), 1500)
+      );
+    `);
+    assertEquals(statusCode, 0);
+    assertEquals(output, "");
   },
 });

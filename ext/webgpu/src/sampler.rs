@@ -1,8 +1,10 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -25,17 +27,17 @@ pub struct CreateSamplerArgs {
   address_mode_w: wgpu_types::AddressMode,
   mag_filter: wgpu_types::FilterMode,
   min_filter: wgpu_types::FilterMode,
-  mipmap_filter: wgpu_types::FilterMode,
+  mipmap_filter: wgpu_types::FilterMode, // TODO: GPUMipmapFilterMode
   lod_min_clamp: f32,
   lod_max_clamp: f32,
   compare: Option<wgpu_types::CompareFunction>,
   max_anisotropy: u8,
 }
 
+#[op]
 pub fn op_webgpu_create_sampler(
   state: &mut OpState,
   args: CreateSamplerArgs,
-  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

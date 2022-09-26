@@ -29,9 +29,7 @@ fn get_graph_error_class(err: &GraphError) -> &'static str {
   get_module_graph_error_class(&err.0)
 }
 
-pub(crate) fn get_module_graph_error_class(
-  err: &ModuleGraphError,
-) -> &'static str {
+pub fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   match err {
     ModuleGraphError::LoadingErr(_, err) => get_error_class_name(err.as_ref()),
     ModuleGraphError::InvalidSource(_, _)
@@ -55,7 +53,7 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
   }
 }
 
-pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
+pub fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e)
     .or_else(|| {
       e.downcast_ref::<ImportMapError>()

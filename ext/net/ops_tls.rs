@@ -25,15 +25,15 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::OpDecl;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -54,6 +54,9 @@ use io::Error;
 use io::Read;
 use io::Write;
 use serde::Deserialize;
+use socket2::Domain;
+use socket2::Socket;
+use socket2::Type;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -124,7 +127,7 @@ impl TlsStream {
     Self::new(tcp, Connection::Server(tls))
   }
 
-  fn into_split(self) -> (ReadHalf, WriteHalf) {
+  pub fn into_split(self) -> (ReadHalf, WriteHalf) {
     let shared = Shared::new(self);
     let rd = ReadHalf {
       shared: shared.clone(),
@@ -153,11 +156,7 @@ impl TlsStream {
   }
 
   fn get_alpn_protocol(&mut self) -> Option<ByteString> {
-    self
-      .inner_mut()
-      .tls
-      .alpn_protocol()
-      .map(|s| ByteString(s.to_owned()))
+    self.inner_mut().tls.alpn_protocol().map(|s| s.into())
   }
 }
 
@@ -376,11 +375,17 @@ impl TlsStreamInner {
     ready!(self.poll_io(cx, Flow::Read))?;
 
     if self.rd_state == State::StreamOpen {
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let buf_slice =
         unsafe { &mut *(buf.unfilled_mut() as *mut [_] as *mut [u8]) };
       let bytes_read = self.tls.reader().read(buf_slice)?;
       assert_ne!(bytes_read, 0);
-      unsafe { buf.assume_init(bytes_read) };
+      // TODO(bartlomieju):
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        buf.assume_init(bytes_read)
+      };
       buf.advance(bytes_read);
     }
 
@@ -439,6 +444,8 @@ impl TlsStreamInner {
       self.rd_state = State::StreamClosed;
     }
 
+    // Wait for the handshake to complete.
+    ready!(self.poll_io(cx, Flow::Handshake))?;
     // Send TLS 'CloseNotify' alert.
     ready!(self.poll_shutdown(cx))?;
     // Wait for 'CloseNotify', shut down TCP stream, wait for TCP FIN packet.
@@ -580,10 +587,16 @@ impl Shared {
     let self_weak = Arc::downgrade(self);
     let self_ptr = self_weak.into_raw() as *const ();
     let raw_waker = RawWaker::new(self_ptr, &Self::SHARED_WAKER_VTABLE);
-    unsafe { Waker::from_raw(raw_waker) }
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      Waker::from_raw(raw_waker)
+    }
   }
 
   fn clone_shared_waker(self_ptr: *const ()) -> RawWaker {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let self_weak = unsafe { Weak::from_raw(self_ptr as *const Self) };
     let ptr1 = self_weak.clone().into_raw();
     let ptr2 = self_weak.into_raw();
@@ -597,6 +610,8 @@ impl Shared {
   }
 
   fn wake_shared_waker_by_ref(self_ptr: *const ()) {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let self_weak = unsafe { Weak::from_raw(self_ptr as *const Self) };
     if let Some(self_arc) = Weak::upgrade(&self_weak) {
       self_arc.rd_waker.wake();
@@ -606,6 +621,8 @@ impl Shared {
   }
 
   fn drop_shared_waker(self_ptr: *const ()) {
+    // TODO(bartlomieju):
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let _ = unsafe { Weak::from_raw(self_ptr as *const Self) };
   }
 
@@ -639,13 +656,13 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
-    ("op_tls_start", op_async(op_tls_start::<P>)),
-    ("op_tls_connect", op_async(op_tls_connect::<P>)),
-    ("op_tls_listen", op_sync(op_tls_listen::<P>)),
-    ("op_tls_accept", op_async(op_tls_accept)),
-    ("op_tls_handshake", op_async(op_tls_handshake)),
+    op_tls_start::decl::<P>(),
+    op_tls_connect::decl::<P>(),
+    op_tls_listen::decl::<P>(),
+    op_tls_accept::decl(),
+    op_tls_handshake::decl(),
   ]
 }
 
@@ -675,11 +692,11 @@ impl TlsStreamResource {
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
     let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
-    Ok(nread)
+    Ok((nread, buf))
   }
 
   pub async fn write(
@@ -723,7 +740,10 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -762,10 +782,10 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -854,10 +874,10 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1013,10 +1033,10 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
+#[op]
 pub fn op_tls_listen<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
-  _: (),
 ) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1075,8 +1095,19 @@ where
   let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
-  let std_listener = std::net::TcpListener::bind(bind_addr)?;
-  std_listener.set_nonblocking(true)?;
+  let domain = if bind_addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket = Socket::new(domain, Type::STREAM, None)?;
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  let socket_addr = socket2::SockAddr::from(bind_addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
   let tcp_listener = TcpListener::from_std(std_listener)?;
   let local_addr = tcp_listener.local_addr()?;
 
@@ -1098,10 +1129,10 @@ where
   })
 }
 
+#[op]
 pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
@@ -1149,10 +1180,10 @@ pub async fn op_tls_accept(
   })
 }
 
+#[op]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()

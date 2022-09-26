@@ -7,6 +7,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const { listenerCount } = window.__bootstrap.eventTarget;
   const {
     Set,
     SetPrototypeAdd,
@@ -14,6 +15,7 @@
     Symbol,
     TypeError,
   } = window.__bootstrap.primordials;
+  const { setTimeout, refTimer, unrefTimer } = window.__bootstrap.timers;
 
   const add = Symbol("[[add]]");
   const signalAbort = Symbol("[[signalAbort]]");
@@ -21,6 +23,7 @@
   const abortReason = Symbol("[[abortReason]]");
   const abortAlgos = Symbol("[[abortAlgos]]");
   const signal = Symbol("[[signal]]");
+  const timerId = Symbol("[[timerId]]");
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -31,6 +34,27 @@
       }
       const signal = new AbortSignal(illegalConstructorKey);
       signal[signalAbort](reason);
+      return signal;
+    }
+
+    static timeout(millis) {
+      const prefix = "Failed to call 'AbortSignal.timeout'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      millis = webidl.converters["unsigned long long"](millis, {
+        enforceRange: true,
+      });
+
+      const signal = new AbortSignal(illegalConstructorKey);
+      signal[timerId] = setTimeout(
+        () => {
+          signal[timerId] = null;
+          signal[signalAbort](
+            new DOMException("Signal timed out.", "TimeoutError"),
+          );
+        },
+        millis,
+      );
+      unrefTimer(signal[timerId]);
       return signal;
     }
 
@@ -73,6 +97,7 @@
       super();
       this[abortReason] = undefined;
       this[abortAlgos] = null;
+      this[timerId] = null;
       this[webidl.brand] = webidl.brand;
     }
 
@@ -90,6 +115,25 @@
       webidl.assertBranded(this, AbortSignalPrototype);
       if (this[abortReason] !== undefined) {
         throw this[abortReason];
+      }
+    }
+
+    // `addEventListener` and `removeEventListener` have to be overriden in
+    // order to have the timer block the event loop while there are listeners.
+    // `[add]` and `[remove]` don't ref and unref the timer because they can
+    // only be used by Deno internals, which use it to essentially cancel async
+    // ops which would block the event loop.
+    addEventListener(...args) {
+      super.addEventListener(...args);
+      if (this[timerId] !== null && listenerCount(this, "abort") > 0) {
+        refTimer(this[timerId]);
+      }
+    }
+
+    removeEventListener(...args) {
+      super.removeEventListener(...args);
+      if (this[timerId] !== null && listenerCount(this, "abort") === 0) {
+        unrefTimer(this[timerId]);
       }
     }
   }

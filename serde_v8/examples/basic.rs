@@ -52,8 +52,10 @@ fn main() {
     println!("x = {}", x);
   }
 
+  // SAFETY: all isolates have been destroyed, so we can now safely let V8 clean
+  // up its resources.
   unsafe {
     v8::V8::dispose();
   }
-  v8::V8::shutdown_platform();
+  v8::V8::dispose_platform();
 }

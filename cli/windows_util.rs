@@ -5,6 +5,7 @@
 /// constructed from a stdio handle; if the handle is null this causes a panic.
 pub fn ensure_stdio_open() {
   #[cfg(windows)]
+  // SAFETY: winapi calls
   unsafe {
     use std::mem::size_of;
     use winapi::shared::minwindef::DWORD;

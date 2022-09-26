@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 // Basic tests for the structured clone algorithm. Mainly tests TypeScript
 // typings. Actual functionality is tested in WPT.
@@ -16,4 +16,15 @@ Deno.test("self.structuredClone", async () => {
   await new Promise((resolve) => portTransferred.onmessage = () => resolve(1));
   channelOriginal.port1.close();
   portTransferred.close();
+});
+
+Deno.test("correct DataCloneError message", () => {
+  assertThrows(
+    () => {
+      const sab = new SharedArrayBuffer(1024);
+      structuredClone(sab, { transfer: [sab] });
+    },
+    DOMException,
+    "Value not transferable",
+  );
 });

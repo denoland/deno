@@ -28,9 +28,9 @@ fn main() -> Result<(), Error> {
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;
-    let _ = js_runtime.mod_evaluate(mod_id);
+    let result = js_runtime.mod_evaluate(mod_id);
     js_runtime.run_event_loop(false).await?;
-    Ok(())
+    result.await?
   };
   runtime.block_on(future)
 }

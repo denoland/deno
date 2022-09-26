@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferIsView,
@@ -24,6 +25,7 @@
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   class TextDecoder {
@@ -51,7 +53,7 @@
         prefix,
         context: "Argument 2",
       });
-      const encoding = core.opSync("op_encoding_normalize_label", label);
+      const encoding = ops.op_encoding_normalize_label(label);
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
@@ -95,16 +97,6 @@
         context: "Argument 2",
       });
 
-      // TODO(lucacasonato): add fast path for non-streaming decoder & decode
-
-      if (this.#rid === null) {
-        this.#rid = core.opSync("op_encoding_new_decoder", {
-          label: this.#encoding,
-          fatal: this.#fatal,
-          ignoreBom: this.#ignoreBOM,
-        });
-      }
-
       try {
         try {
           if (ArrayBufferIsView(input)) {
@@ -132,12 +124,26 @@
           // with a TypedArray argument copies the data.
           input = new Uint8Array(input);
         }
-        return core.opSync("op_encoding_decode", input, {
-          rid: this.#rid,
-          stream: options.stream,
-        });
+
+        if (!options.stream && this.#rid === null) {
+          return ops.op_encoding_decode_single(
+            input,
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
+        }
+
+        if (this.#rid === null) {
+          this.#rid = ops.op_encoding_new_decoder(
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
+        }
+        return ops.op_encoding_decode(input, this.#rid, options.stream);
       } finally {
-        if (!options.stream) {
+        if (!options.stream && this.#rid !== null) {
           core.close(this.#rid);
           this.#rid = null;
         }
@@ -194,9 +200,15 @@
         context: "Argument 2",
         allowShared: true,
       });
-      return core.opSync("op_encoding_encode_into", source, destination);
+      ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
     }
   }
+
+  const encodeIntoBuf = new Uint32Array(2);
 
   webidl.configurePrototype(TextEncoder);
   const TextEncoderPrototype = TextEncoder.prototype;

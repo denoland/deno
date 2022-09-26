@@ -9,8 +9,8 @@ use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
+use deno_core::op;
+
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -101,12 +101,9 @@ where
       "26_fetch.js",
     ))
     .ops(vec![
-      ("op_fetch", op_sync(op_fetch::<FP>)),
-      ("op_fetch_send", op_async(op_fetch_send)),
-      (
-        "op_fetch_custom_client",
-        op_sync(op_fetch_custom_client::<FP>),
-      ),
+      op_fetch::decl::<FP>(),
+      op_fetch_send::decl(),
+      op_fetch_custom_client::decl::<FP>(),
     ])
     .state(move |state| {
       state.put::<Options>(options.clone());
@@ -177,18 +174,6 @@ pub trait FetchPermissions {
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchArgs {
-  method: ByteString,
-  url: String,
-  headers: Vec<(ByteString, ByteString)>,
-  client_rid: Option<u32>,
-  has_body: bool,
-  body_length: Option<u64>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -197,15 +182,21 @@ pub struct FetchReturn {
   cancel_handle_rid: Option<ResourceId>,
 }
 
+#[op]
 pub fn op_fetch<FP>(
   state: &mut OpState,
-  args: FetchArgs,
+  method: ByteString,
+  url: String,
+  headers: Vec<(ByteString, ByteString)>,
+  client_rid: Option<u32>,
+  has_body: bool,
+  body_length: Option<u64>,
   data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
-  let client = if let Some(rid) = args.client_rid {
+  let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
@@ -213,8 +204,8 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(&args.method)?;
-  let url = Url::parse(&args.url)?;
+  let method = Method::from_bytes(&method)?;
+  let url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
@@ -253,7 +244,7 @@ where
 
       let mut request = client.request(method.clone(), url);
 
-      let request_body_rid = if args.has_body {
+      let request_body_rid = if has_body {
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
@@ -261,7 +252,7 @@ where
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
-            if let Some(body_size) = args.body_length {
+            if let Some(body_size) = body_length {
               request =
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
@@ -291,12 +282,12 @@ where
         None
       };
 
-      for (key, value) in args.headers {
+      for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
-        if name != HOST {
+        if !matches!(name, HOST | CONTENT_LENGTH) {
           request = request.header(name, v);
         }
       }
@@ -370,12 +361,13 @@ pub struct FetchResponse {
   headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
+  content_length: Option<u64>,
 }
 
+#[op]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -397,12 +389,10 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_bytes: &[u8] = key.as_ref();
-    res_headers.push((
-      ByteString(key_bytes.to_owned()),
-      ByteString(val.as_bytes().to_owned()),
-    ));
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
+
+  let content_length = res.content_length();
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
@@ -422,6 +412,7 @@ pub async fn op_fetch_send(
     headers: res_headers,
     url,
     response_rid: rid,
+    content_length,
   })
 }
 
@@ -491,12 +482,15 @@ impl Resource for FetchResponseBodyResource {
     "fetchResponseBody".into()
   }
 
-  fn read(self: Rc<Self>, mut buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(async move {
       let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-      Ok(read)
+      Ok((read, buf))
     })
   }
 
@@ -530,10 +524,10 @@ pub struct CreateHttpClientOptions {
   private_key: Option<String>,
 }
 
+#[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,

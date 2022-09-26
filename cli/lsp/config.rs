@@ -1,16 +1,18 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use super::client::Client;
+use super::logging::lsp_log;
+use crate::fs_util;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use lsp::WorkspaceFolder;
-use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -19,6 +21,10 @@ pub struct ClientCapabilities {
   pub code_action_disabled_support: bool,
   pub line_folding_only: bool,
   pub status_notification: bool,
+  /// The client provides the `experimental.testingApi` capability, which is
+  /// built around VSCode's testing API. It indicates that the server should
+  /// send notifications about tests discovered in modules.
+  pub testing_api: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
 }
@@ -128,9 +134,39 @@ impl Default for ImportCompletionSettings {
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: bool,
+  /// A list of paths, using the workspace folder as a base that should be Deno
+  /// enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
   /// Code lens specific settings for the resource.
   #[serde(default)]
   pub code_lens: CodeLensSpecifierSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TestingSettings {
+  /// A vector of arguments which should be used when running the tests for
+  /// a workspace.
+  #[serde(default)]
+  pub args: Vec<String>,
+  /// Enable or disable the testing API if the client is capable of supporting
+  /// the testing API.
+  #[serde(default = "is_true")]
+  pub enable: bool,
+}
+
+impl Default for TestingSettings {
+  fn default() -> Self {
+    Self {
+      args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+      enable: true,
+    }
+  }
+}
+
+fn default_to_true() -> bool {
+  true
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -140,6 +176,10 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   #[serde(default)]
   pub enable: bool,
+
+  /// A list of paths, using the root_uri as a base that should be Deno enabled.
+  #[serde(default)]
+  pub enable_paths: Vec<String>,
 
   /// An option that points to a path string of the path to utilise as the
   /// cache/DENO_DIR for the language server.
@@ -166,13 +206,17 @@ pub struct WorkspaceSettings {
   pub internal_debug: bool,
 
   /// A flag that indicates if linting is enabled for the workspace.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
   pub suggest: CompletionSettings,
+
+  /// Testing settings for the workspace.
+  #[serde(default)]
+  pub testing: TestingSettings,
 
   /// An option which sets the cert file to use when attempting to fetch remote
   /// resources. This overrides `DENO_CERT` if present.
@@ -198,14 +242,27 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
+  pub enabled_paths: HashMap<String, Vec<String>>,
   pub settings: Settings,
-  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
+  /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(settings) = self.settings.specifiers.get(specifier) {
-      settings.1.enable
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
+    if let Some((_, SpecifierSettings { enable, .. })) =
+      self.settings.specifiers.get(specifier)
+    {
+      *enable
     } else {
       self.settings.workspace.enable
     }
@@ -228,14 +285,19 @@ pub struct Settings {
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
+  enabled_paths: HashMap<String, Vec<String>>,
+  pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
-  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
+  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
 }
 
 impl Config {
   pub fn new() -> Self {
     Self {
       client_capabilities: ClientCapabilities::default(),
+      enabled_paths: Default::default(),
+      /// Root provided by the initialization parameters.
+      root_uri: None,
       settings: Default::default(),
       workspace_folders: None,
     }
@@ -259,8 +321,8 @@ impl Config {
   pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
     Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
+      enabled_paths: self.enabled_paths.clone(),
       settings: self.settings.clone(),
-      workspace_folders: self.workspace_folders.clone(),
     })
   }
 
@@ -269,6 +331,16 @@ impl Config {
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if !self.enabled_paths.is_empty() {
+      let specifier_str = specifier.to_string();
+      for (workspace, enabled_paths) in self.enabled_paths.iter() {
+        if specifier_str.starts_with(workspace) {
+          return enabled_paths
+            .iter()
+            .any(|path| specifier_str.starts_with(path));
+        }
+      }
+    }
     self
       .settings
       .specifiers
@@ -295,7 +367,10 @@ impl Config {
       self.client_capabilities.status_notification = experimental
         .get("statusNotification")
         .and_then(|it| it.as_bool())
-        == Some(true)
+        == Some(true);
+      self.client_capabilities.testing_api =
+        experimental.get("testingApi").and_then(|it| it.as_bool())
+          == Some(true);
     }
 
     if let Some(workspace) = &capabilities.workspace {
@@ -321,6 +396,66 @@ impl Config {
     }
   }
 
+  /// Given the configured workspaces or root URI and the their settings,
+  /// update and resolve any paths that should be enabled
+  pub async fn update_enabled_paths(&mut self, client: Client) -> bool {
+    if let Some(workspace_folders) = self.workspace_folders.clone() {
+      let mut touched = false;
+      for (workspace, folder) in workspace_folders {
+        if let Ok(settings) = client.specifier_configuration(&folder.uri).await
+        {
+          if self.update_enabled_paths_entry(&workspace, settings.enable_paths)
+          {
+            touched = true;
+          }
+        }
+      }
+      touched
+    } else if let Some(root_uri) = self.root_uri.clone() {
+      self.update_enabled_paths_entry(
+        &root_uri,
+        self.settings.workspace.enable_paths.clone(),
+      )
+    } else {
+      false
+    }
+  }
+
+  /// Update a specific entry in the enabled paths for a given workspace.
+  fn update_enabled_paths_entry(
+    &mut self,
+    workspace: &ModuleSpecifier,
+    enabled_paths: Vec<String>,
+  ) -> bool {
+    let workspace = fs_util::ensure_directory_specifier(workspace.clone());
+    let key = workspace.to_string();
+    let mut touched = false;
+    if !enabled_paths.is_empty() {
+      if let Ok(workspace_path) = fs_util::specifier_to_file_path(&workspace) {
+        let mut paths = Vec::new();
+        for path in &enabled_paths {
+          let fs_path = workspace_path.join(path);
+          match ModuleSpecifier::from_file_path(fs_path) {
+            Ok(path_uri) => {
+              paths.push(path_uri.to_string());
+            }
+            Err(_) => {
+              lsp_log!("Unable to resolve a file path for `deno.enablePath` from \"{}\" for workspace \"{}\".", path, workspace);
+            }
+          }
+        }
+        if !paths.is_empty() {
+          touched = true;
+          self.enabled_paths.insert(key, paths);
+        }
+      }
+    } else {
+      touched = true;
+      self.enabled_paths.remove(&key);
+    }
+    touched
+  }
+
   pub fn get_specifiers_with_client_uris(&self) -> Vec<SpecifierWithClientUri> {
     self
       .settings
@@ -330,7 +465,7 @@ impl Config {
         specifier: s.clone(),
         client_uri: u.clone(),
       })
-      .collect::<Vec<_>>()
+      .collect()
   }
 
   pub fn set_specifier_settings(
@@ -352,33 +487,9 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
 
-  #[derive(Debug, Default)]
-  struct MockLanguageServer;
-
-  #[lspower::async_trait]
-  impl lspower::LanguageServer for MockLanguageServer {
-    async fn initialize(
-      &self,
-      _params: lspower::lsp::InitializeParams,
-    ) -> lspower::jsonrpc::Result<lsp::InitializeResult> {
-      Ok(lspower::lsp::InitializeResult {
-        capabilities: lspower::lsp::ServerCapabilities::default(),
-        server_info: None,
-      })
-    }
-
-    async fn shutdown(&self) -> lspower::jsonrpc::Result<()> {
-      Ok(())
-    }
-  }
-
-  fn setup() -> Config {
-    Config::new()
-  }
-
   #[test]
   fn test_config_specifier_enabled() {
-    let mut config = setup();
+    let mut config = Config::new();
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config
@@ -390,8 +501,42 @@ mod tests {
   }
 
   #[test]
+  fn test_config_snapshot_specifier_enabled() {
+    let mut config = Config::new();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier));
+    config
+      .set_workspace_settings(json!({
+        "enable": true
+      }))
+      .expect("could not update");
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier));
+  }
+
+  #[test]
+  fn test_config_specifier_enabled_path() {
+    let mut config = Config::new();
+    let specifier_a = resolve_url("file:///project/worker/a.ts").unwrap();
+    let specifier_b = resolve_url("file:///project/other/b.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let mut enabled_paths = HashMap::new();
+    enabled_paths.insert(
+      "file:///project/".to_string(),
+      vec!["file:///project/worker/".to_string()],
+    );
+    config.enabled_paths = enabled_paths;
+    assert!(config.specifier_enabled(&specifier_a));
+    assert!(!config.specifier_enabled(&specifier_b));
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot.specifier_enabled(&specifier_a));
+    assert!(!config_snapshot.specifier_enabled(&specifier_b));
+  }
+
+  #[test]
   fn test_set_workspace_settings_defaults() {
-    let mut config = setup();
+    let mut config = Config::new();
     config
       .set_workspace_settings(json!({}))
       .expect("could not update");
@@ -399,6 +544,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        enable_paths: Vec::new(),
         cache: None,
         certificate_stores: None,
         config: None,
@@ -410,7 +556,7 @@ mod tests {
           test: true,
         },
         internal_debug: false,
-        lint: false,
+        lint: true,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -420,6 +566,10 @@ mod tests {
             auto_discover: true,
             hosts: HashMap::new(),
           }
+        },
+        testing: TestingSettings {
+          args: vec!["--allow-all".to_string(), "--no-check".to_string()],
+          enable: true
         },
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,

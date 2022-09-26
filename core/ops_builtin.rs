@@ -1,16 +1,15 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
-use crate::op_async;
-use crate::op_sync;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
-use crate::void_op_async;
-use crate::void_op_sync;
 use crate::Extension;
 use crate::OpState;
 use crate::Resource;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
+use deno_ops::op;
 use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
@@ -24,47 +23,55 @@ pub(crate) fn init_builtins() -> Extension {
       "02_error.js",
     ))
     .ops(vec![
-      ("op_close", op_sync(op_close)),
-      ("op_try_close", op_sync(op_try_close)),
-      ("op_print", op_sync(op_print)),
-      ("op_resources", op_sync(op_resources)),
-      ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
-      ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
-      (
-        "op_wasm_streaming_set_url",
-        op_sync(op_wasm_streaming_set_url),
-      ),
-      ("op_metrics", op_sync(op_metrics)),
-      ("op_void_sync", void_op_sync()),
-      ("op_void_async", void_op_async()),
-      // TODO(@AaronO): track IO metrics for builtin streams
-      ("op_read", op_async(op_read)),
-      ("op_write", op_async(op_write)),
-      ("op_shutdown", op_async(op_shutdown)),
+      op_close::decl(),
+      op_try_close::decl(),
+      op_print::decl(),
+      op_resources::decl(),
+      op_wasm_streaming_feed::decl(),
+      op_wasm_streaming_set_url::decl(),
+      op_void_sync::decl(),
+      op_void_async::decl(),
+      op_add::decl(),
+      // // TODO(@AaronO): track IO metrics for builtin streams
+      op_read::decl(),
+      op_write::decl(),
+      op_shutdown::decl(),
+      op_metrics::decl(),
+      op_format_file_name::decl(),
+      op_is_proxy::decl(),
+      op_str_byte_length::decl(),
     ])
+    .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
 }
 
 /// Return map of resources with id as key
 /// and string representation as value.
-pub fn op_resources(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<Vec<(ResourceId, String)>, Error> {
-  let serialized_resources = state
+#[op]
+pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
+  state
     .resource_table
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
-    .collect();
-  Ok(serialized_resources)
+    .collect()
 }
 
+#[op(fast)]
+fn op_add(a: i32, b: i32) -> i32 {
+  a + b
+}
+
+#[op(fast)]
+pub fn op_void_sync() {}
+
+#[op]
+pub async fn op_void_async() {}
+
 /// Remove a resource from the resource table.
+#[op]
 pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
@@ -75,10 +82,10 @@ pub fn op_close(
 
 /// Try to remove a resource from the resource table. If there is no resource
 /// with the specified `rid`, this is a no-op.
+#[op]
 pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
-  _: (),
 ) -> Result<(), Error> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
@@ -87,12 +94,16 @@ pub fn op_try_close(
   Ok(())
 }
 
+#[op]
+pub fn op_metrics(state: &mut OpState) -> (OpMetrics, Vec<OpMetrics>) {
+  let aggregate = state.tracker.aggregate();
+  let per_op = state.tracker.per_op();
+  (aggregate, per_op)
+}
+
 /// Builtin utility to print to stdout/stderr
-pub fn op_print(
-  _state: &mut OpState,
-  msg: String,
-  is_err: bool,
-) -> Result<(), Error> {
+#[op]
+pub fn op_print(msg: String, is_err: bool) -> Result<(), Error> {
   if is_err {
     stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
@@ -119,40 +130,21 @@ impl Resource for WasmStreamingResource {
 }
 
 /// Feed bytes to WasmStreamingResource.
+#[op]
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
-  bytes: ZeroCopyBuf,
+  bytes: &[u8],
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(bytes);
 
   Ok(())
 }
 
-/// Abort a WasmStreamingResource.
-pub fn op_wasm_streaming_abort(
-  state: &mut OpState,
-  rid: ResourceId,
-  exception: serde_v8::Value,
-) -> Result<(), Error> {
-  let wasm_streaming =
-    state.resource_table.take::<WasmStreamingResource>(rid)?;
-
-  // At this point there are no clones of Rc<WasmStreamingResource> on the
-  // resource table, and no one should own a reference because we're never
-  // cloning them. So we can be sure `wasm_streaming` is the only reference.
-  if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
-    wsr.0.into_inner().abort(Some(exception.v8_value));
-  } else {
-    panic!("Couldn't consume WasmStreamingResource.");
-  }
-
-  Ok(())
-}
-
+#[op]
 pub fn op_wasm_streaming_set_url(
   state: &mut OpState,
   rid: ResourceId,
@@ -166,16 +158,7 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
-pub fn op_metrics(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
-  let aggregate = state.tracker.aggregate();
-  let per_op = state.tracker.per_op();
-  Ok((aggregate, per_op))
-}
-
+#[op]
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -185,6 +168,7 @@ async fn op_read(
   resource.read(buf).await.map(|n| n as u32)
 }
 
+#[op]
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -194,11 +178,33 @@ async fn op_write(
   resource.write(buf).await.map(|n| n as u32)
 }
 
+#[op]
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _: (),
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.shutdown().await
+}
+
+#[op]
+fn op_format_file_name(file_name: String) -> String {
+  format_file_name(&file_name)
+}
+
+#[op(fast)]
+fn op_is_proxy(value: serde_v8::Value) -> bool {
+  value.v8_value.is_proxy()
+}
+
+#[op(v8)]
+fn op_str_byte_length(
+  scope: &mut v8::HandleScope,
+  value: serde_v8::Value,
+) -> u32 {
+  if let Ok(string) = v8::Local::<v8::String>::try_from(value.v8_value) {
+    string.utf8_length(scope) as u32
+  } else {
+    0
+  }
 }

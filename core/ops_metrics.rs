@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use crate::serde::Serialize;
 use crate::OpId;
-use std::cell::RefCell;
-use std::cell::RefMut;
+use std::cell::{RefCell, RefMut};
 
 // TODO(@AaronO): split into AggregateMetrics & PerOpMetrics
 #[derive(Clone, Default, Debug, Serialize)]
@@ -26,10 +26,16 @@ pub struct OpMetrics {
 // TODO(@AaronO): track errors
 #[derive(Default, Debug)]
 pub struct OpsTracker {
-  pub ops: RefCell<Vec<OpMetrics>>,
+  ops: RefCell<Vec<OpMetrics>>,
 }
 
 impl OpsTracker {
+  pub fn new(ops_count: usize) -> Self {
+    Self {
+      ops: RefCell::new(vec![Default::default(); ops_count]),
+    }
+  }
+
   pub fn per_op(&self) -> Vec<OpMetrics> {
     self.ops.borrow().clone()
   }
@@ -54,35 +60,30 @@ impl OpsTracker {
     sum
   }
 
-  fn ensure_capacity(&self, op_id: OpId) {
-    let ops = &mut self.ops.borrow_mut();
-    if op_id >= ops.len() {
-      let delta_len = 1 + op_id - ops.len();
-      ops.extend(vec![OpMetrics::default(); delta_len])
-    }
-  }
-
+  #[inline]
   fn metrics_mut(&self, id: OpId) -> RefMut<OpMetrics> {
-    self.ensure_capacity(id);
-    RefMut::map(self.ops.borrow_mut(), |ops| ops.get_mut(id).unwrap())
+    RefMut::map(self.ops.borrow_mut(), |ops| &mut ops[id])
   }
 
+  #[inline]
   pub fn track_sync(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let mut metrics = self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_completed += 1;
     metrics.ops_dispatched_sync += 1;
     metrics.ops_completed_sync += 1;
   }
 
+  #[inline]
   pub fn track_async(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let mut metrics = self.metrics_mut(id);
     metrics.ops_dispatched += 1;
     metrics.ops_dispatched_async += 1;
   }
 
+  #[inline]
   pub fn track_async_completed(&self, id: OpId) {
-    let metrics = &mut self.metrics_mut(id);
+    let mut metrics = self.metrics_mut(id);
     metrics.ops_completed += 1;
     metrics.ops_completed_async += 1;
   }

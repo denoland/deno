@@ -2,10 +2,11 @@
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use lspower::lsp;
+use tower_lsp::lsp_types as lsp;
 
 pub const CACHE_REQUEST: &str = "deno/cache";
 pub const PERFORMANCE_REQUEST: &str = "deno/performance";
+pub const TASK_REQUEST: &str = "deno/task";
 pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
   "deno/reloadImportRegistries";
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";

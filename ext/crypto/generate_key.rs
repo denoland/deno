@@ -1,16 +1,13 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::shared::*;
 use deno_core::error::AnyError;
-use deno_core::OpState;
+use deno_core::op;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
-use rsa::pkcs1::ToRsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
 use serde::Deserialize;
@@ -41,10 +38,9 @@ pub enum GenerateKeyOptions {
   },
 }
 
+#[op]
 pub async fn op_crypto_generate_key(
-  _state: Rc<RefCell<OpState>>,
   opts: GenerateKeyOptions,
-  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {
@@ -80,7 +76,7 @@ fn generate_key_rsa(
     .to_pkcs1_der()
     .map_err(|_| operation_error("Failed to serialize RSA key"))?;
 
-  Ok(private_key.as_ref().to_vec())
+  Ok(private_key.as_bytes().to_vec())
 }
 
 fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {

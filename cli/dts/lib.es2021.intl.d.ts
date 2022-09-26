@@ -20,12 +20,25 @@ and limitations under the License.
 
 declare namespace Intl {
 
+    interface DateTimeFormatPartTypesRegistry {
+        fractionalSecond: any
+     }
+
     interface DateTimeFormatOptions {
         formatMatcher?: "basic" | "best fit" | "best fit" | undefined;
         dateStyle?: "full" | "long" | "medium" | "short" | undefined;
         timeStyle?: "full" | "long" | "medium" | "short" | undefined;
         dayPeriod?: "narrow" | "short" | "long" | undefined;
-        fractionalSecondDigits?: 0 | 1 | 2 | 3 | undefined;
+        fractionalSecondDigits?: 1 | 2 | 3 | undefined;
+    }
+
+    interface DateTimeRangeFormatPart extends DateTimeFormatPart {
+        source: "startRange" | "endRange" | "shared"
+    }
+
+    interface DateTimeFormat {
+        formatRange(startDate: Date | number | bigint, endDate: Date | number | bigint): string;
+        formatRangeToParts(startDate: Date | number | bigint, endDate: Date | number | bigint): DateTimeRangeFormatPart[];
     }
 
     interface ResolvedDateTimeFormatOptions {
@@ -34,49 +47,44 @@ declare namespace Intl {
         timeStyle?: "full" | "long" | "medium" | "short";
         hourCycle?: "h11" | "h12" | "h23" | "h24";
         dayPeriod?: "narrow" | "short" | "long";
-        fractionalSecondDigits?: 0 | 1 | 2 | 3;
-    }
-
-    interface NumberFormat {
-        formatRange(startDate: number | bigint, endDate: number | bigint): string;
-        formatRangeToParts(startDate: number | bigint, endDate: number | bigint): NumberFormatPart[];
+        fractionalSecondDigits?: 1 | 2 | 3;
     }
 
     /**
      * The locale matching algorithm to use.
      *
-     * [MDN](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation).
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
      */
     type ListFormatLocaleMatcher = "lookup" | "best fit";
 
-     /**
-      * The format of output message.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+    /**
+     * The format of output message.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     type ListFormatType = "conjunction" | "disjunction" | "unit";
- 
-     /**
-      * The length of the formatted message.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+
+    /**
+     * The length of the formatted message.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     type ListFormatStyle = "long" | "short" | "narrow";
- 
-     /**
-      * An object with some or all properties of the `Intl.ListFormat` constructor `options` parameter.
-      *
-      * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
-      */
+
+    /**
+     * An object with some or all properties of the `Intl.ListFormat` constructor `options` parameter.
+     *
+     * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/ListFormat/ListFormat#parameters).
+     */
     interface ListFormatOptions {
         /** The locale matching algorithm to use. For information about this option, see [Intl page](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl#Locale_negotiation). */
-        localeMatcher?: ListFormatLocaleMatcher;
+        localeMatcher?: ListFormatLocaleMatcher | undefined;
         /** The format of output message. */
-        type?: ListFormatType;
+        type?: ListFormatType | undefined;
         /** The length of the internationalized message. */
-        style?: ListFormatStyle;
+        style?: ListFormatStyle | undefined;
     }
- 
+
     interface ListFormat {
         /**
          * Returns a string with a language-specific representation of the list.

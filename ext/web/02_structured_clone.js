@@ -77,7 +77,7 @@
       return core.deserialize(core.serialize(value));
     } catch (e) {
       if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
-        throw new DOMException("Uncloneable value", "DataCloneError");
+        throw new DOMException(e.message, "DataCloneError");
       }
       throw e;
     }

@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
@@ -27,28 +28,26 @@
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     permissions,
     name,
     workerType,
   ) {
-    return core.opSync("op_create_worker", {
+    return ops.op_create_worker({
       hasSourceCode,
       name,
       permissions: serializePermissions(permissions),
       sourceCode,
       specifier,
-      useDenoNamespace,
       workerType,
     });
   }
 
   function hostTerminateWorker(id) {
-    core.opSync("op_host_terminate_worker", id);
+    ops.op_host_terminate_worker(id);
   }
 
   function hostPostMessage(id, data) {
-    core.opSync("op_host_post_message", id, data);
+    ops.op_host_post_message(id, data);
   }
 
   function hostRecvCtrl(id) {
@@ -79,20 +78,6 @@
         type = "classic",
       } = options;
 
-      let namespace;
-      let permissions;
-      if (typeof deno == "object") {
-        namespace = deno.namespace ?? false;
-        permissions = deno.permissions ?? undefined;
-      } else {
-        // Assume `deno: boolean | undefined`.
-        // TODO(Soremwar)
-        // `deno: boolean` is kept for backwards compatibility with the previous
-        // worker options implementation. Remove for 2.0
-        namespace = !!deno;
-        permissions = undefined;
-      }
-
       const workerType = webidl.converters["WorkerType"](type);
 
       if (
@@ -120,8 +105,7 @@
         specifier,
         hasSourceCode,
         sourceCode,
-        namespace,
-        permissions,
+        deno?.permissions,
         name,
         workerType,
       );
@@ -134,20 +118,21 @@
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+        lineno: e.lineNumber ? e.lineNumber : undefined,
+        colno: e.columnNumber ? e.columnNumber : undefined,
         filename: e.fileName,
         error: null,
       });
 
-      let handled = false;
-
       this.dispatchEvent(event);
-      if (event.defaultPrevented) {
-        handled = true;
+      // Don't bubble error event to window for loader errors (`!e.fileName`).
+      // TODO(nayeemrmn): It's not correct to use `e.fileName` to detect user
+      // errors. It won't be there for non-awaited async ops for example.
+      if (e.fileName && !event.defaultPrevented) {
+        window.dispatchEvent(event);
       }
 
-      return handled;
+      return event.defaultPrevented;
     }
 
     #pollControl = async () => {
@@ -165,7 +150,7 @@
           } /* falls through */
           case 2: { // Error
             if (!this.#handleError(data)) {
-              throw new Error("Unhandled error event in child worker.");
+              throw new Error("Unhandled error in child worker.");
             }
             break;
           }

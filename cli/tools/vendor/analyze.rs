@@ -25,7 +25,7 @@ struct DefaultExportFinder {
   has_default_export: bool,
 }
 
-impl<'a> Visit for DefaultExportFinder {
+impl Visit for DefaultExportFinder {
   noop_visit_type!();
 
   fn visit_export_default_decl(&mut self, _: &ExportDefaultDecl) {
@@ -106,7 +106,7 @@ mod test {
       maybe_syntax: None,
       media_type: MediaType::TypeScript,
       scope_analysis: false,
-      source: SourceTextInfo::from_string(text.to_string()),
+      text_info: SourceTextInfo::from_string(text.to_string()),
     })
     .unwrap()
   }

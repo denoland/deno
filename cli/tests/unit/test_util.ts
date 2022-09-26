@@ -27,3 +27,17 @@ export function pathToAbsoluteFileUrl(path: string): URL {
 
   return new URL(`file://${Deno.build.os === "windows" ? "/" : ""}${path}`);
 }
+
+const decoder = new TextDecoder();
+
+export async function execCode(code: string): Promise<[number, string]> {
+  const output = await Deno.spawn(Deno.execPath(), {
+    args: [
+      "eval",
+      "--unstable",
+      "--no-check",
+      code,
+    ],
+  });
+  return [output.code, decoder.decode(output.stdout)];
+}

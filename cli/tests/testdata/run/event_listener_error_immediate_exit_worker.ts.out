@@ -1,0 +1,8 @@
+1
+error: Uncaught (in worker "") Error: bar
+  throw new Error("bar");
+        ^
+    at [WILDCARD]/event_listener_error_immediate_exit.ts:4:9
+    at [WILDCARD]/event_listener_error_immediate_exit.ts:11:1
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at [WILDCARD]

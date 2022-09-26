@@ -5,10 +5,12 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::config_file::LintConfig;
+use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
@@ -16,19 +18,19 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use lspower::lsp;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
 static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
-    (&[("2339", "2339"), ("2345", "2339")])
+    ([("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
       .collect()
@@ -38,7 +40,7 @@ static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
 /// multiple fixes available.
 static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
   Lazy::new(|| {
-    (&[
+    ([
       ("annotateWithTypeFromJSDoc", (1, false)),
       ("constructorForDerivedNeedSuperCall", (1, false)),
       ("extendsInterfaceBecomesImplements", (1, false)),
@@ -52,9 +54,9 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
       ("addMissingAwait", (1, false)),
       ("fixImport", (0, true)),
     ])
-      .iter()
-      .cloned()
-      .collect()
+    .iter()
+    .cloned()
+    .collect()
   });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
@@ -173,7 +175,7 @@ fn check_specifier(
 
 /// For a set of tsc changes, can them for any that contain something that looks
 /// like an import and rewrite the import specifier to include the extension
-pub(crate) fn fix_ts_import_changes(
+pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
   documents: &Documents,
@@ -323,14 +325,13 @@ fn is_preferred(
 
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
-pub(crate) async fn ts_changes_to_edit(
+pub fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let text_document_edit =
-      change.to_text_document_edit(language_server).await?;
+    let text_document_edit = change.to_text_document_edit(language_server)?;
     text_document_edits.push(text_document_edit);
   }
   Ok(Some(lsp::WorkspaceEdit {
@@ -366,7 +367,7 @@ pub struct CodeActionCollection {
 }
 
 impl CodeActionCollection {
-  pub(crate) fn add_deno_fix_action(
+  pub fn add_deno_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -376,7 +377,7 @@ impl CodeActionCollection {
     Ok(())
   }
 
-  pub(crate) fn add_deno_lint_ignore_action(
+  pub fn add_deno_lint_ignore_action(
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
@@ -469,8 +470,8 @@ impl CodeActionCollection {
       // Get the end position of the comment.
       let line = maybe_parsed_source
         .unwrap()
-        .source()
-        .line_and_column_index(ignore_comment.span.hi());
+        .text_info()
+        .line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
@@ -539,7 +540,7 @@ impl CodeActionCollection {
   }
 
   /// Add a TypeScript code fix action to the code actions collection.
-  pub(crate) async fn add_ts_fix_action(
+  pub fn add_ts_fix_action(
     &mut self,
     specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
@@ -561,7 +562,7 @@ impl CodeActionCollection {
     }
     let action =
       fix_ts_import_action(specifier, action, &language_server.documents)?;
-    let edit = ts_changes_to_edit(&action.changes, language_server).await?;
+    let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -720,6 +721,24 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
+pub fn source_range_to_lsp_range(
+  range: &SourceRange,
+  source_text_info: &SourceTextInfo,
+) -> lsp::Range {
+  let start = source_text_info.line_and_column_index(range.start);
+  let end = source_text_info.line_and_column_index(range.end);
+  lsp::Range {
+    start: lsp::Position {
+      line: start.line_index as u32,
+      character: start.column_index as u32,
+    },
+    end: lsp::Position {
+      line: end.line_index as u32,
+      character: end.column_index as u32,
+    },
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -788,12 +807,12 @@ mod tests {
       start: deno_lint::diagnostic::Position {
         line_index: 0,
         column_index: 2,
-        byte_pos: 23,
+        byte_index: 23,
       },
       end: deno_lint::diagnostic::Position {
         line_index: 1,
         column_index: 0,
-        byte_pos: 33,
+        byte_index: 33,
       },
     };
     let actual = as_lsp_range(&fixture);

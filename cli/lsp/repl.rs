@@ -2,46 +2,45 @@
 
 use std::collections::HashMap;
 
-use deno_ast::swc::common::BytePos;
-use deno_ast::swc::common::Span;
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use lspower::lsp::ClientCapabilities;
-use lspower::lsp::ClientInfo;
-use lspower::lsp::CompletionContext;
-use lspower::lsp::CompletionParams;
-use lspower::lsp::CompletionResponse;
-use lspower::lsp::CompletionTextEdit;
-use lspower::lsp::CompletionTriggerKind;
-use lspower::lsp::DidChangeTextDocumentParams;
-use lspower::lsp::DidCloseTextDocumentParams;
-use lspower::lsp::DidOpenTextDocumentParams;
-use lspower::lsp::InitializeParams;
-use lspower::lsp::InitializedParams;
-use lspower::lsp::PartialResultParams;
-use lspower::lsp::Position;
-use lspower::lsp::Range;
-use lspower::lsp::TextDocumentContentChangeEvent;
-use lspower::lsp::TextDocumentIdentifier;
-use lspower::lsp::TextDocumentItem;
-use lspower::lsp::TextDocumentPositionParams;
-use lspower::lsp::VersionedTextDocumentIdentifier;
-use lspower::lsp::WorkDoneProgressParams;
-use lspower::LanguageServer;
+use tower_lsp::lsp_types::ClientCapabilities;
+use tower_lsp::lsp_types::ClientInfo;
+use tower_lsp::lsp_types::CompletionContext;
+use tower_lsp::lsp_types::CompletionParams;
+use tower_lsp::lsp_types::CompletionResponse;
+use tower_lsp::lsp_types::CompletionTextEdit;
+use tower_lsp::lsp_types::CompletionTriggerKind;
+use tower_lsp::lsp_types::DidChangeTextDocumentParams;
+use tower_lsp::lsp_types::DidCloseTextDocumentParams;
+use tower_lsp::lsp_types::DidOpenTextDocumentParams;
+use tower_lsp::lsp_types::InitializeParams;
+use tower_lsp::lsp_types::InitializedParams;
+use tower_lsp::lsp_types::PartialResultParams;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
+use tower_lsp::lsp_types::TextDocumentContentChangeEvent;
+use tower_lsp::lsp_types::TextDocumentIdentifier;
+use tower_lsp::lsp_types::TextDocumentItem;
+use tower_lsp::lsp_types::TextDocumentPositionParams;
+use tower_lsp::lsp_types::VersionedTextDocumentIdentifier;
+use tower_lsp::lsp_types::WorkDoneProgressParams;
+use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::CompletionSettings;
 use super::config::ImportCompletionSettings;
+use super::config::TestingSettings;
 use super::config::WorkspaceSettings;
 
 #[derive(Debug)]
 pub struct ReplCompletionItem {
   pub new_text: String,
-  pub span: Span,
+  pub range: std::ops::Range<usize>,
 }
 
 pub struct ReplLanguageServer {
@@ -112,12 +111,12 @@ impl ReplLanguageServer {
     position: usize,
   ) -> Vec<ReplCompletionItem> {
     self.did_change(line_text).await;
-    let before_line_len = BytePos(self.document_text.len() as u32);
-    let position = before_line_len + BytePos(position as u32);
     let text_info = deno_ast::SourceTextInfo::from_string(format!(
       "{}{}",
       self.document_text, self.pending_text
     ));
+    let before_line_len = self.document_text.len();
+    let position = text_info.range().start + before_line_len + position;
     let line_and_column = text_info.line_and_column_index(position);
     let response = self
       .language_server
@@ -146,35 +145,38 @@ impl ReplLanguageServer {
       .ok()
       .unwrap_or_default();
 
-    let items = match response {
+    let mut items = match response {
       Some(CompletionResponse::Array(items)) => items,
       Some(CompletionResponse::List(list)) => list.items,
       None => Vec::new(),
     };
+    items.sort_by_key(|item| {
+      if let Some(sort_text) = &item.sort_text {
+        sort_text.clone()
+      } else {
+        item.label.clone()
+      }
+    });
     items
       .into_iter()
       .filter_map(|item| {
         item.text_edit.and_then(|edit| match edit {
           CompletionTextEdit::Edit(edit) => Some(ReplCompletionItem {
             new_text: edit.new_text,
-            span: lsp_range_to_span(&text_info, &edit.range),
+            range: lsp_range_to_std_range(&text_info, &edit.range),
           }),
           CompletionTextEdit::InsertAndReplace(_) => None,
         })
       })
       .filter(|item| {
         // filter the results to only exact matches
-        let text = &text_info.text_str()
-          [item.span.lo.0 as usize..item.span.hi.0 as usize];
+        let text = &text_info.text_str()[item.range.clone()];
         item.new_text.starts_with(text)
       })
       .map(|mut item| {
         // convert back to a line position
-        item.span = Span::new(
-          item.span.lo - before_line_len,
-          item.span.hi - before_line_len,
-          Default::default(),
-        );
+        item.range.start -= before_line_len;
+        item.range.end -= before_line_len;
         item
       })
       .collect()
@@ -250,18 +252,24 @@ impl ReplLanguageServer {
   }
 }
 
-fn lsp_range_to_span(text_info: &SourceTextInfo, range: &Range) -> Span {
-  Span::new(
-    text_info.byte_index(LineAndColumnIndex {
+fn lsp_range_to_std_range(
+  text_info: &SourceTextInfo,
+  range: &Range,
+) -> std::ops::Range<usize> {
+  let start_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
       line_index: range.start.line as usize,
       column_index: range.start.character as usize,
-    }),
-    text_info.byte_index(LineAndColumnIndex {
+    })
+    .as_byte_index(text_info.range().start);
+  let end_index = text_info
+    .loc_to_source_pos(LineAndColumnIndex {
       line_index: range.end.line as usize,
       column_index: range.end.character as usize,
-    }),
-    Default::default(),
-  )
+    })
+    .as_byte_index(text_info.range().start);
+
+  start_index..end_index
 }
 
 fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
@@ -273,6 +281,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: true,
+    enable_paths: Vec::new(),
     config: None,
     certificate_stores: None,
     cache: None,
@@ -292,6 +301,10 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         auto_discover: false,
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
+    },
+    testing: TestingSettings {
+      args: vec![],
+      enable: false,
     },
   }
 }

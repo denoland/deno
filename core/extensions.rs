@@ -1,20 +1,44 @@
-use crate::OpFn;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::OpState;
 use anyhow::Error;
+use std::{cell::RefCell, rc::Rc, task::Context};
+use v8::fast_api::FastFunction;
 
-pub type SourcePair = (&'static str, Box<SourceLoadFn>);
-pub type SourceLoadFn = dyn Fn() -> Result<String, Error>;
-pub type OpPair = (&'static str, Box<OpFn>);
-pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
+pub type SourcePair = (&'static str, &'static str);
+pub type OpFnRef = v8::FunctionCallback;
+pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), Error>;
+pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
+
+pub struct OpDecl {
+  pub name: &'static str,
+  pub v8_fn_ptr: OpFnRef,
+  pub enabled: bool,
+  pub is_async: bool,
+  pub is_unstable: bool,
+  pub is_v8: bool,
+  pub fast_fn: Option<Box<dyn FastFunction>>,
+}
+
+impl OpDecl {
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
+  }
+}
 
 #[derive(Default)]
 pub struct Extension {
   js_files: Option<Vec<SourcePair>>,
-  ops: Option<Vec<OpPair>>,
+  ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
+  enabled: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -34,14 +58,18 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
+  pub fn init_ops(&mut self) -> Option<Vec<OpDecl>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
     }
     self.initialized = true;
 
-    self.ops.take()
+    let mut ops = self.ops.take()?;
+    for op in ops.iter_mut() {
+      op.enabled = self.enabled && op.enabled;
+    }
+    Some(ops)
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -56,15 +84,40 @@ impl Extension {
   pub fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
     self.middleware_fn.take()
   }
+
+  pub fn init_event_loop_middleware(&mut self) -> Option<Box<OpEventLoopFn>> {
+    self.event_loop_middleware.take()
+  }
+
+  pub fn run_event_loop_middleware(
+    &self,
+    op_state_rc: Rc<RefCell<OpState>>,
+    cx: &mut Context,
+  ) -> bool {
+    self
+      .event_loop_middleware
+      .as_ref()
+      .map(|f| f(op_state_rc, cx))
+      .unwrap_or(false)
+  }
+
+  pub fn enabled(self, enabled: bool) -> Self {
+    Self { enabled, ..self }
+  }
+
+  pub fn disable(self) -> Self {
+    self.enabled(false)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
 #[derive(Default)]
 pub struct ExtensionBuilder {
   js: Vec<SourcePair>,
-  ops: Vec<OpPair>,
+  ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
+  event_loop_middleware: Option<Box<OpEventLoopFn>>,
 }
 
 impl ExtensionBuilder {
@@ -73,7 +126,7 @@ impl ExtensionBuilder {
     self
   }
 
-  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
+  pub fn ops(&mut self, ops: Vec<OpDecl>) -> &mut Self {
     self.ops.extend(ops);
     self
   }
@@ -88,9 +141,17 @@ impl ExtensionBuilder {
 
   pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
   where
-    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+    F: Fn(OpDecl) -> OpDecl + 'static,
   {
     self.middleware = Some(Box::new(middleware_fn));
+    self
+  }
+
+  pub fn event_loop_middleware<F>(&mut self, middleware_fn: F) -> &mut Self
+  where
+    F: Fn(Rc<RefCell<OpState>>, &mut Context) -> bool + 'static,
+  {
+    self.event_loop_middleware = Some(Box::new(middleware_fn));
     self
   }
 
@@ -102,13 +163,14 @@ impl ExtensionBuilder {
       ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
+      event_loop_middleware: self.event_loop_middleware.take(),
       initialized: false,
+      enabled: true,
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
-/// representing the filename and source code. This is only meant for extensions
-/// that will be snapshotted, as code will be loaded at runtime.
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
+/// representing the filename and source code.
 ///
 /// Example:
 /// ```ignore
@@ -124,13 +186,7 @@ macro_rules! include_js_files {
     vec![
       $((
         concat!($prefix, "/", $file),
-        Box::new(|| {
-          let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-          let path = c.join($file);
-          println!("cargo:rerun-if-changed={}", path.display());
-          let src = std::fs::read_to_string(path)?;
-          Ok(src)
-        }),
+        include_str!($file),
       ),)+
     ]
   };

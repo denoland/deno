@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
-pub(crate) static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
+pub static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
   Lazy::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches

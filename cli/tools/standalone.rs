@@ -1,16 +1,20 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CompileFlags;
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::RunFlags;
+use crate::args::TypeCheckMode;
 use crate::deno_dir::DenoDir;
-use crate::flags::CheckFlag;
-use crate::flags::DenoSubcommand;
-use crate::flags::Flags;
-use crate::flags::RunFlags;
+use crate::fs_util;
 use crate::standalone::Metadata;
 use crate::standalone::MAGIC_TRAILER;
 use crate::ProcState;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleSpecifier;
@@ -25,6 +29,8 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+
+use super::installer::infer_name_from_url;
 
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
@@ -159,37 +165,26 @@ pub async fn create_standalone_binary(
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
 pub async fn write_standalone_binary(
-  output: PathBuf,
-  target: Option<String>,
+  output_path: PathBuf,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
-  let output = match target {
-    Some(target) => {
-      if target.contains("windows") {
-        output.with_extension("exe")
-      } else {
-        output
-      }
-    }
-    None => {
-      if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-        output.with_extension("exe")
-      } else {
-        output
-      }
-    }
-  };
-
-  if output.exists() {
+  if output_path.exists() {
     // If the output is a directory, throw error
-    if output.is_dir() {
-      bail!("Could not compile: {:?} is a directory.", &output);
+    if output_path.is_dir() {
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because a directory exists with ",
+          "the same name. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name."
+        ),
+        output_path.display()
+      );
     }
 
     // Make sure we don't overwrite any file not created by Deno compiler.
     // Check for magic trailer in last 24 bytes.
     let mut has_trailer = false;
-    let mut output_file = File::open(&output)?;
+    let mut output_file = File::open(&output_path)?;
     // This seek may fail because the file is too small to possibly be
     // `deno compile` output.
     if output_file.seek(SeekFrom::End(-24)).is_ok() {
@@ -199,26 +194,40 @@ pub async fn write_standalone_binary(
       has_trailer = magic_trailer == MAGIC_TRAILER;
     }
     if !has_trailer {
-      bail!("Could not compile: cannot overwrite {:?}.", &output);
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because the file already exists ",
+          "and cannot be overwritten. Please delete the existing file or ",
+          "use the `--output <file-path` flag to provide an alternative name."
+        ),
+        output_path.display()
+      );
     }
 
     // Remove file if it was indeed a deno compiled binary, to avoid corruption
     // (see https://github.com/denoland/deno/issues/10310)
-    std::fs::remove_file(&output)?;
+    std::fs::remove_file(&output_path)?;
   } else {
-    let output_base = &output.parent().unwrap();
+    let output_base = &output_path.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
-      bail!("Could not compile: {:?} is a file.", &output_base);
+      bail!(
+        concat!(
+          "Could not compile to file '{}' because its parent directory ",
+          "is an existing file. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name.",
+        ),
+        output_base.display(),
+      );
     }
     tokio::fs::create_dir_all(output_base).await?;
   }
 
-  tokio::fs::write(&output, final_bin).await?;
+  tokio::fs::write(&output_path, final_bin).await?;
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o777);
-    tokio::fs::set_permissions(output, perms).await?;
+    tokio::fs::set_permissions(output_path, perms).await?;
   }
 
   Ok(())
@@ -254,26 +263,26 @@ pub fn compile_to_runtime_flags(
     cache_blocklist: vec![],
     cache_path: None,
     cached_only: false,
-    config_path: None,
+    config_flag: Default::default(),
     coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,
     ignore: vec![],
     import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
     inspect: None,
+    node_modules_dir: false,
     location: flags.location.clone(),
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
-    check: CheckFlag::All,
-    compat: flags.compat,
+    type_check_mode: TypeCheckMode::Local,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors
       .clone(),
     no_remote: false,
+    no_npm: false,
     no_prompt: flags.no_prompt,
     reload: false,
-    repl: false,
     seed: flags.seed,
     unstable: flags.unstable,
     v8_flags: flags.v8_flags.clone(),
@@ -281,4 +290,104 @@ pub fn compile_to_runtime_flags(
     watch: None,
     no_clear_screen: false,
   })
+}
+
+pub fn resolve_compile_executable_output_path(
+  compile_flags: &CompileFlags,
+) -> Result<PathBuf, AnyError> {
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
+  compile_flags.output.as_ref().and_then(|output| {
+    if fs_util::path_has_trailing_slash(output) {
+      let infer_file_name = infer_name_from_url(&module_specifier).map(PathBuf::from)?;
+      Some(output.join(infer_file_name))
+    } else {
+      Some(output.to_path_buf())
+    }
+  }).or_else(|| {
+    infer_name_from_url(&module_specifier).map(PathBuf::from)
+  }).ok_or_else(|| generic_error(
+    "An executable name was not provided. One could not be inferred from the URL. Aborting.",
+  )).map(|output| {
+    get_os_specific_filepath(output, &compile_flags.target)
+  })
+}
+
+fn get_os_specific_filepath(
+  output: PathBuf,
+  target: &Option<String>,
+) -> PathBuf {
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(windows),
+  };
+  if is_windows && output.extension().unwrap_or_default() != "exe" {
+    if let Some(ext) = output.extension() {
+      // keep version in my-exe-0.1.0 -> my-exe-0.1.0.exe
+      output.with_extension(format!("{}.exe", ext.to_string_lossy()))
+    } else {
+      output.with_extension("exe")
+    }
+  } else {
+    output
+  }
+}
+
+#[cfg(test)]
+mod test {
+  pub use super::*;
+
+  #[test]
+  fn resolve_compile_executable_output_path_target_linux() {
+    let path = resolve_compile_executable_output_path(&CompileFlags {
+      source_file: "mod.ts".to_string(),
+      output: Some(PathBuf::from("./file")),
+      args: Vec::new(),
+      target: Some("x86_64-unknown-linux-gnu".to_string()),
+    })
+    .unwrap();
+
+    // no extension, no matter what the operating system is
+    // because the target was specified as linux
+    // https://github.com/denoland/deno/issues/9667
+    assert_eq!(path.file_name().unwrap(), "file");
+  }
+
+  #[test]
+  fn resolve_compile_executable_output_path_target_windows() {
+    let path = resolve_compile_executable_output_path(&CompileFlags {
+      source_file: "mod.ts".to_string(),
+      output: Some(PathBuf::from("./file")),
+      args: Vec::new(),
+      target: Some("x86_64-pc-windows-msvc".to_string()),
+    })
+    .unwrap();
+    assert_eq!(path.file_name().unwrap(), "file.exe");
+  }
+
+  #[test]
+  fn test_os_specific_file_path() {
+    fn run_test(path: &str, target: Option<&str>, expected: &str) {
+      assert_eq!(
+        get_os_specific_filepath(
+          PathBuf::from(path),
+          &target.map(|s| s.to_string())
+        ),
+        PathBuf::from(expected)
+      );
+    }
+
+    if cfg!(windows) {
+      run_test("C:\\my-exe", None, "C:\\my-exe.exe");
+      run_test("C:\\my-exe.exe", None, "C:\\my-exe.exe");
+      run_test("C:\\my-exe-0.1.2", None, "C:\\my-exe-0.1.2.exe");
+    } else {
+      run_test("my-exe", Some("linux"), "my-exe");
+      run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+    }
+
+    run_test("C:\\my-exe", Some("windows"), "C:\\my-exe.exe");
+    run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
+    run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
+    run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
 }

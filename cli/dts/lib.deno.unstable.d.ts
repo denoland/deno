@@ -4,9 +4,209 @@
 /// <reference lib="deno.ns" />
 
 declare namespace Deno {
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.  This API is under consideration to
-   * determine if permissions are required to call it.
+  export {}; // stop default export type behavior
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Testing
+   */
+  export interface BenchDefinition {
+    fn: () => void | Promise<void>;
+    name: string;
+    ignore?: boolean;
+    /** Group name for the benchmark.
+     * Grouped benchmarks produce a time summary */
+    group?: string;
+    /** Benchmark should be used as the baseline for other benchmarks
+     * If there are multiple baselines in a group, the first one is used as the baseline */
+    baseline?: boolean;
+    /** If at least one bench has `only` set to true, only run benches that have
+     * `only` set to true and fail the bench suite. */
+    only?: boolean;
+    /** Ensure the bench case does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
+
+    /** Specifies the permissions that should be used to run the bench.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+     */
+    permissions?: Deno.PermissionOptions;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({
+   *   name: "example test",
+   *   fn(): void {
+   *     assertEquals("world", "world");
+   *   },
+   * });
+   *
+   * Deno.bench({
+   *   name: "example ignored test",
+   *   ignore: Deno.build.os === "windows",
+   *   fn(): void {
+   *     // This test is ignored only on Windows machines
+   *   },
+   * });
+   *
+   * Deno.bench({
+   *   name: "example async test",
+   *   async fn() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(t: BenchDefinition): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench("My test description", (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench("My async test description", async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(
+    name: string,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench(function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench(async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(fn: () => void | Promise<void>): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench("My test description", { permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(
+    name: string,
+    options: Omit<BenchDefinition, "fn" | "name">,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({ name: "My test description", permissions: { read: true } }, (): void => {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(
+    options: Omit<BenchDefinition, "fn">,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Register a bench which will be run when `deno bench` is used on the command
+   * line and the containing module looks like a bench module.
+   * `fn` can be async if required. Declared function must have a name.
+   *
+   * ```ts
+   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   *
+   * Deno.bench({ permissions: { read: true } }, function myTestName(): void {
+   *   assertEquals("hello", "hello");
+   * });
+   *
+   * Deno.bench({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
+   * ```
+   *
+   * @category Testing
+   */
+  export function bench(
+    options: Omit<BenchDefinition, "fn" | "name">,
+    fn: () => void | Promise<void>,
+  ): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
    * This call always returns what the umask was before the call.
@@ -17,7 +217,12 @@ declare namespace Deno {
    * console.log(Deno.umask());  // e.g. 63 (0o077)
    * ```
    *
+   * This API is under consideration to determine if permissions are required to
+   * call it.
+   *
    * NOTE:  This API is not implemented on Windows
+   *
+   * @category File System
    */
   export function umask(mask?: number): number;
 
@@ -28,6 +233,8 @@ declare namespace Deno {
    * ```ts
    * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
    * ```
+   *
+   * @category I/O
    */
   export function consoleSize(
     rid: number,
@@ -36,8 +243,7 @@ declare namespace Deno {
     rows: number;
   };
 
-  /** **Unstable**  There are questions around which permission this needs. And
-   * maybe should be renamed (loadAverage?)
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
@@ -50,12 +256,15 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
+   * There are questions around which permission this needs. And maybe should be
+   * renamed (loadAverage?).
+   *
+   * @tags allow-env
+   * @category Observability
    */
   export function loadavg(): number[];
 
-  /** **Unstable** new API. yet to be vetted. Under consideration to possibly move to
-   * Deno.build or Deno.versions and if it should depend sys-info, which may not
-   * be desireable.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Returns the release version of the Operating System.
    *
@@ -64,10 +273,15 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
+   * Under consideration to possibly move to Deno.build or Deno.versions and if
+   * it should depend sys-info, which may not be desirable.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
    */
   export function osRelease(): string;
 
-  /** **Unstable** new API. yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
@@ -79,9 +293,16 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-env` permission.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Runtime Environment
+   */
   export interface SystemMemoryInfo {
     /** Total installed memory */
     total: number;
@@ -95,7 +316,7 @@ declare namespace Deno {
     available: number;
     /** Memory used by kernel buffers */
     buffers: number;
-    /** Memory  used  by  the  page  cache  and  slabs */
+    /** Memory used by the page cache and slabs */
     cached: number;
     /** Total swap memory */
     swapTotal: number;
@@ -103,7 +324,12 @@ declare namespace Deno {
     swapFree: number;
   }
 
-  /** The information of the network interface */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The information of the network interface.
+   *
+   * @category Network
+   */
   export interface NetworkInterfaceInfo {
     /** The network interface name */
     name: string;
@@ -121,51 +347,242 @@ declare namespace Deno {
     mac: string;
   }
 
-  /** **Unstable** new API. yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns an array of the network interface informations.
+   * Returns an array of the network interface information.
    *
    * ```ts
    * console.log(Deno.networkInterfaces());
    * ```
    *
    * Requires `allow-env` permission.
+   *
+   * @tags allow-env
+   * @category Network
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
 
-  /** **Unstable** new API. yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the user id of the process on POSIX platforms. Returns null on windows.
+   * Returns the user id of the process on POSIX platforms. Returns null on Windows.
    *
    * ```ts
    * console.log(Deno.getUid());
    * ```
    *
    * Requires `allow-env` permission.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
    */
   export function getUid(): number | null;
 
-  /** All possible types for interfacing with foreign functions */
-  export type NativeType =
-    | "void"
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Returns the group id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.getGid());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
+   */
+  export function getGid(): number | null;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * All plain number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
     | "i16"
     | "u32"
     | "i32"
+    | "f32"
+    | "f64";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * All BigInt number types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  type NativeBigIntType =
     | "u64"
     | "i64"
     | "usize"
-    | "isize"
-    | "f32"
-    | "f64"
-    | "pointer";
+    | "isize";
 
-  /** A foreign function as defined by its parameter and result types */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type NativeBooleanType = "bool";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type NativePointerType = "pointer";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type NativeBufferType = "buffer";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type NativeFunctionType = "function";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type NativeVoidType = "void";
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * All possible types for interfacing with foreign functions.
+   *
+   * @category FFI
+   */
+  export type NativeType =
+    | NativeNumberType
+    | NativeBigIntType
+    | NativeBooleanType
+    | NativePointerType
+    | NativeBufferType
+    | NativeFunctionType;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  export type NativeResultType = NativeType | NativeVoidType;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type ToNativeTypeMap =
+    & Record<NativeNumberType, number>
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
+    & Record<NativePointerType, PointerValue | null>
+    & Record<NativeFunctionType, PointerValue | null>
+    & Record<NativeBufferType, TypedArray | null>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Type conversion for foreign symbol parameters and unsafe callback return
+   * types.
+   *
+   * @category FFI
+   */
+  type ToNativeType<T extends NativeType = NativeType> = ToNativeTypeMap[T];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Type conversion for unsafe callback return types.
+   *
+   * @category FFI
+   */
+  type ToNativeResultType<T extends NativeResultType = NativeResultType> =
+    ToNativeResultTypeMap[T];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type ToNativeParameterTypes<T extends readonly NativeType[]> =
+    //
+    [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly ToNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: ToNativeType<T[K]>;
+        }
+      : never;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type FromNativeTypeMap =
+    & Record<NativeNumberType, number>
+    & Record<NativeBigIntType, PointerValue>
+    & Record<NativeBooleanType, boolean>
+    & Record<NativePointerType, PointerValue>
+    & Record<NativeBufferType, PointerValue>
+    & Record<NativeFunctionType, PointerValue>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Type conversion for foreign symbol return types and unsafe callback
+   * parameters.
+   *
+   * @category FFI
+   */
+  type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type FromNativeResultTypeMap =
+    & FromNativeTypeMap
+    & Record<NativeVoidType, void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Type conversion for foreign symbol return types.
+   *
+   * @category FFI
+   */
+  type FromNativeResultType<T extends NativeResultType = NativeResultType> =
+    FromNativeResultTypeMap[T];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type FromNativeParameterTypes<
+    T extends readonly NativeType[],
+  > =
+    //
+    [(T[number])[]] extends [T] ? FromNativeType<T[number]>[]
+      : [readonly (T[number])[]] extends [T]
+        ? readonly FromNativeType<T[number]>[]
+      : T extends readonly [...NativeType[]] ? {
+          [K in keyof T]: FromNativeType<T[K]>;
+        }
+      : never;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A foreign function as defined by its parameter and result types.
+   *
+   * @category FFI
+   */
   export interface ForeignFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
-    Result extends NativeType = NativeType,
+    Result extends NativeResultType = NativeResultType,
     NonBlocking extends boolean = boolean,
   > {
     /** Name of the symbol, defaults to the key name in symbols object. */
@@ -174,60 +591,79 @@ declare namespace Deno {
     result: Result;
     /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
     nonblocking?: NonBlocking;
+    /** When true, function calls can safely callback into JS or trigger a GC event. Default is `false`. */
+    callback?: boolean;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
-    type: Exclude<Type, "void">;
+    type: Type;
   }
 
-  /** A foreign library interface descriptor */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A foreign library interface descriptor.
+   *
+   * @category FFI
+   */
   export interface ForeignLibraryInterface {
     [name: string]: ForeignFunction | ForeignStatic;
   }
 
-  /** All possible number types interfacing with foreign functions */
-  type StaticNativeNumberType = Exclude<NativeType, "void" | "pointer">;
-
-  /** Infers a foreign function return type */
-  type StaticForeignFunctionResult<T extends NativeType> = T extends "void"
-    ? void
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? UnsafePointer
-    : never;
-
-  type StaticForeignFunctionParameter<T> = T extends "void" ? void
-    : T extends StaticNativeNumberType ? number
-    : T extends "pointer" ? Deno.UnsafePointer | Deno.TypedArray | null
-    : unknown;
-
-  /** Infers a foreign function parameter list. */
-  type StaticForeignFunctionParameters<T extends readonly NativeType[]> = [
-    ...{
-      [K in keyof T]: StaticForeignFunctionParameter<T[K]>;
-    },
-  ];
-
-  /** Infers a foreign symbol */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Infers a foreign symbol.
+   *
+   * @category FFI
+   */
   type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction ? (
-      ...args: StaticForeignFunctionParameters<T["parameters"]>
-    ) => ConditionalAsync<
-      T["nonblocking"],
-      StaticForeignFunctionResult<T["result"]>
-    >
-      : T extends ForeignStatic ? StaticForeignFunctionResult<T["type"]>
+    T extends ForeignFunction ? FromForeignFunction<T>
+      : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   *  @category FFI
+   */
+  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
+    readonly [] ? () => StaticForeignSymbolReturnType<T>
+    : (
+      ...args: ToNativeParameterTypes<T["parameters"]>
+    ) => StaticForeignSymbolReturnType<T>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+    ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
   type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
-  /** Infers a foreign library interface */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Infers a foreign library interface.
+   *
+   * @category FFI
+   */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
     [K in keyof T]: StaticForeignSymbol<T[K]>;
   };
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
   type TypedArray =
     | Int8Array
     | Uint8Array
@@ -241,38 +677,48 @@ declare namespace Deno {
     | BigInt64Array
     | BigUint64Array;
 
-  /** **UNSTABLE**: Unsafe and new API, beware!
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe pointer to a memory location for passing and returning pointers to and from the ffi
+   * Pointer type depends on the architecture and actual pointer value.
+   *
+   * On a 32 bit system all pointer values are plain numbers. On a 64 bit
+   * system pointer values are represented as numbers if the value is below
+   * `Number.MAX_SAFE_INTEGER`.
+   *
+   * @category FFI
+   */
+  export type PointerValue = number | bigint;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An unsafe pointer to a memory location for passing and returning pointers
+   * to and from the FFI.
+   *
+   * @category FFI
    */
   export class UnsafePointer {
-    constructor(value: bigint);
-
-    value: bigint;
-
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(typedArray: TypedArray): UnsafePointer;
-
-    /**
-     * Returns the value of the pointer which is useful in certain scenarios.
-     */
-    valueOf(): bigint;
+    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
   }
 
-  /** **UNSTABLE**: Unsafe and new API, beware!
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * An unsafe pointer view to a memory location as specified by the `pointer`
    * value. The `UnsafePointerView` API mimics the standard built in interface
    * `DataView` for accessing the underlying types at an memory location
    * (numbers, strings and raw bytes).
+   *
+   * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: UnsafePointer);
+    constructor(pointer: bigint);
 
-    pointer: UnsafePointer;
+    pointer: bigint;
 
+    /** Gets a boolean at the specified byte offset from the pointer. */
+    getBool(offset?: number): boolean;
     /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
     getUint8(offset?: number): number;
     /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
@@ -286,487 +732,163 @@ declare namespace Deno {
     /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
-    getBigUint64(offset?: number): bigint;
+    getBigUint64(offset?: number): PointerValue;
     /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
-    getBigInt64(offset?: number): bigint;
+    getBigInt64(offset?: number): PointerValue;
     /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
     getFloat32(offset?: number): number;
     /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
     getFloat64(offset?: number): number;
     /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
     getCString(offset?: number): string;
+    /** Gets a C string (null terminated string) at the specified byte offset from the specified pointer. */
+    static getCString(pointer: PointerValue, offset?: number): string;
     /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
-    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional offset from the pointer. */
+    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the specified pointer. */
+    static getArrayBuffer(
+      pointer: PointerValue,
+      byteLength: number,
+      offset?: number,
+    ): ArrayBuffer;
+    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     copyInto(destination: TypedArray, offset?: number): void;
+    /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
+    static copyInto(
+      pointer: PointerValue,
+      destination: TypedArray,
+      offset?: number,
+    ): void;
   }
 
-  /**
-   * **UNSTABLE**: Unsafe and new API, beware!
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * An unsafe pointer to a function, for calling functions that are not
    * present as symbols.
+   *
+   * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: UnsafePointer;
+    pointer: bigint;
     definition: Fn;
 
-    constructor(pointer: UnsafePointer, definition: Fn);
+    constructor(pointer: bigint, definition: Fn);
 
-    call(
-      ...args: StaticForeignFunctionParameters<Fn["parameters"]>
-    ): ConditionalAsync<
-      Fn["nonblocking"],
-      StaticForeignFunctionResult<Fn["result"]>
-    >;
+    call: FromForeignFunction<Fn>;
   }
 
-  /** A dynamic library resource */
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  export interface UnsafeCallbackDefinition<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > {
+    parameters: Parameters;
+    result: Result;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category FFI
+   */
+  type UnsafeCallbackFunction<
+    Parameters extends readonly NativeType[] = readonly NativeType[],
+    Result extends NativeResultType = NativeResultType,
+  > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
+    ...args: FromNativeParameterTypes<Parameters>
+  ) => ToNativeResultType<Result>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An unsafe function pointer for passing JavaScript functions
+   * as C function pointers to ffi calls.
+   *
+   * The function pointer remains valid until the `close()` method is called.
+   *
+   * The callback can be explicitly ref'ed and deref'ed to stop Deno's
+   * process from exiting.
+   *
+   * @category FFI
+   */
+  export class UnsafeCallback<
+    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+  > {
+    constructor(
+      definition: Definition,
+      callback: UnsafeCallbackFunction<
+        Definition["parameters"],
+        Definition["result"]
+      >,
+    );
+
+    pointer: bigint;
+    definition: Definition;
+    callback: UnsafeCallbackFunction<
+      Definition["parameters"],
+      Definition["result"]
+    >;
+
+    /**
+     * Adds one to this callback's reference counting.
+     *
+     * If the callback's reference count becomes non-zero, it will keep
+     * Deno's process from exiting.
+     */
+    ref(): void;
+
+    /**
+     * Removes one from this callback's reference counting.
+     *
+     * If the callback's reference counter becomes zero, it will no longer
+     * keep Deno's process from exiting.
+     */
+    unref(): void;
+
+    /**
+     * Removes the C function pointer associated with the UnsafeCallback.
+     * Continuing to use the instance after calling this object will lead to errors
+     * and crashes.
+     *
+     * Calling this method will also immediately set the callback's reference
+     * counting to zero and it will no longer keep Deno's process from exiting.
+     */
+    close(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A dynamic library resource
+   *
+   * @category FFI
+   */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them */
     symbols: StaticForeignLibraryInterface<S>;
     close(): void;
   }
 
-  /** **UNSTABLE**: Unsafe and new API, beware!
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Opens a dynamic library and registers symbols
+   *
+   * @category FFI
    */
   export function dlopen<S extends ForeignLibraryInterface>(
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
 
-  /** The log category for a diagnostic message. */
-  export enum DiagnosticCategory {
-    Warning = 0,
-    Error = 1,
-    Suggestion = 2,
-    Message = 3,
-  }
-
-  export interface DiagnosticMessageChain {
-    messageText: string;
-    category: DiagnosticCategory;
-    code: number;
-    next?: DiagnosticMessageChain[];
-  }
-
-  export interface Diagnostic {
-    /** A string message summarizing the diagnostic. */
-    messageText?: string;
-    /** An ordered array of further diagnostics. */
-    messageChain?: DiagnosticMessageChain;
-    /** Information related to the diagnostic. This is present when there is a
-     * suggestion or other additional diagnostic information */
-    relatedInformation?: Diagnostic[];
-    /** The text of the source line related to the diagnostic. */
-    sourceLine?: string;
-    source?: string;
-    /** The start position of the error. Zero based index. */
-    start?: {
-      line: number;
-      character: number;
-    };
-    /** The end position of the error.  Zero based index. */
-    end?: {
-      line: number;
-      character: number;
-    };
-    /** The filename of the resource related to the diagnostic message. */
-    fileName?: string;
-    /** The category of the diagnostic. */
-    category: DiagnosticCategory;
-    /** A number identifier. */
-    code: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Format an array of diagnostic items and return them as a single string in a
-   * user friendly format. If there are no diagnostics then it will return an
-   * empty string.
-   *
-   * ```ts
-   * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
-   * console.table(diagnostics);  // Prints raw diagnostic data
-   * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
-   * console.log(Deno.formatDiagnostics([]));  // An empty string
-   * ```
-   *
-   * @param diagnostics An array of diagnostic items to format
+   * @category I/O
    */
-  export function formatDiagnostics(diagnostics: Diagnostic[]): string;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * A specific subset TypeScript compiler options that can be supported by the
-   * Deno TypeScript compiler. */
-  export interface CompilerOptions {
-    /** Allow JavaScript files to be compiled. Defaults to `true`. */
-    allowJs?: boolean;
-    /** Allow default imports from modules with no default export. This does not
-     * affect code emit, just typechecking. Defaults to `false`. */
-    allowSyntheticDefaultImports?: boolean;
-    /** Allow accessing UMD globals from modules. Defaults to `false`. */
-    allowUmdGlobalAccess?: boolean;
-    /** Do not report errors on unreachable code. Defaults to `false`. */
-    allowUnreachableCode?: boolean;
-    /** Do not report errors on unused labels. Defaults to `false` */
-    allowUnusedLabels?: boolean;
-    /** Parse in strict mode and emit `"use strict"` for each source file.
-     * Defaults to `true`. */
-    alwaysStrict?: boolean;
-    /** Base directory to resolve non-relative module names. Defaults to
-     * `undefined`. */
-    baseUrl?: string;
-    /** The character set of the input files. Defaults to `"utf8"`. */
-    charset?: string;
-    /** Report errors in `.js` files. Use in conjunction with `allowJs`. Defaults
-     * to `false`. */
-    checkJs?: boolean;
-    /** Generates corresponding `.d.ts` file. Defaults to `false`. */
-    declaration?: boolean;
-    /** Output directory for generated declaration files. */
-    declarationDir?: string;
-    /** Generates a source map for each corresponding `.d.ts` file. Defaults to
-     * `false`. */
-    declarationMap?: boolean;
-    /** Provide full support for iterables in `for..of`, spread and
-     * destructuring when targeting ES5 or ES3. Defaults to `false`. */
-    downlevelIteration?: boolean;
-    /** Only emit `.d.ts` declaration files. Defaults to `false`. */
-    emitDeclarationOnly?: boolean;
-    /** Emit design-type metadata for decorated declarations in source. See issue
-     * [microsoft/TypeScript#2577](https://github.com/Microsoft/TypeScript/issues/2577)
-     * for details. Defaults to `false`. */
-    emitDecoratorMetadata?: boolean;
-    /** Emit `__importStar` and `__importDefault` helpers for runtime babel
-     * ecosystem compatibility and enable `allowSyntheticDefaultImports` for type
-     * system compatibility. Defaults to `true`. */
-    esModuleInterop?: boolean;
-    /** Enables experimental support for ES decorators. Defaults to `true`. */
-    experimentalDecorators?: boolean;
-    /** Import emit helpers (e.g. `__extends`, `__rest`, etc..) from
-     * [tslib](https://www.npmjs.com/package/tslib). */
-    importHelpers?: boolean;
-    /** This flag controls how `import` works, there are 3 different options:
-     *
-     * - `remove`: The default behavior of dropping import statements which only
-     *   reference types.
-     * - `preserve`: Preserves all `import` statements whose values or types are
-     *   never used. This can cause imports/side-effects to be preserved.
-     * - `error`: This preserves all imports (the same as the preserve option),
-     *   but will error when a value import is only used as a type. This might
-     *   be useful if you want to ensure no values are being accidentally
-     *   imported, but still make side-effect imports explicit.
-     *
-     * This flag works because you can use `import type` to explicitly create an
-     * `import` statement which should never be emitted into JavaScript. */
-    importsNotUsedAsValues?: "remove" | "preserve" | "error";
-    /** Emit a single file with source maps instead of having a separate file.
-     * Defaults to `false`. */
-    inlineSourceMap?: boolean;
-    /** Emit the source alongside the source maps within a single file; requires
-     * `inlineSourceMap` or `sourceMap` to be set. Defaults to `false`. */
-    inlineSources?: boolean;
-    /** Support JSX in `.tsx` files: `"react"`, `"preserve"`, `"react-native"`,
-     * `"react-jsx", `"react-jsxdev"`.
-     * Defaults to `"react"`. */
-    jsx?: "react" | "preserve" | "react-native" | "react-jsx" | "react-jsx-dev";
-    /** Specify the JSX factory function to use when targeting react JSX emit,
-     * e.g. `React.createElement` or `h`. Defaults to `React.createElement`. */
-    jsxFactory?: string;
-    /** Specify the JSX fragment factory function to use when targeting react
-     * JSX emit, e.g. `Fragment`. Defaults to `React.Fragment`. */
-    jsxFragmentFactory?: string;
-    /** Declares the module specifier to be used for importing the `jsx` and
-     * `jsxs` factory functions when using jsx as `"react-jsx"` or
-     * `"react-jsxdev"`. Defaults to `"react"`. */
-    jsxImportSource?: string;
-    /** Resolve keyof to string valued property names only (no numbers or
-     * symbols). Defaults to `false`. */
-    keyofStringsOnly?: string;
-    /** List of library files to be included in the compilation. If omitted,
-     * then the Deno main runtime libs are used. */
-    lib?: string[];
-    /** The locale to use to show error messages. */
-    locale?: string;
-    /** Specifies the location where debugger should locate map files instead of
-     * generated locations. Use this flag if the `.map` files will be located at
-     * run-time in a different location than the `.js` files. The location
-     * specified will be embedded in the source map to direct the debugger where
-     * the map files will be located. Defaults to `undefined`. */
-    mapRoot?: string;
-    /** Specify the module format for the emitted code. Defaults to
-     * `"esnext"`. */
-    module?:
-      | "none"
-      | "commonjs"
-      | "amd"
-      | "system"
-      | "umd"
-      | "es6"
-      | "es2015"
-      | "es2020"
-      | "esnext";
-    /** Do not generate custom helper functions like `__extends` in compiled
-     * output. Defaults to `false`. */
-    noEmitHelpers?: boolean;
-    /** Report errors for fallthrough cases in switch statement. Defaults to
-     * `false`. */
-    noFallthroughCasesInSwitch?: boolean;
-    /** Raise error on expressions and declarations with an implied any type.
-     * Defaults to `true`. */
-    noImplicitAny?: boolean;
-    /** Report an error when not all code paths in function return a value.
-     * Defaults to `false`. */
-    noImplicitReturns?: boolean;
-    /** Raise error on `this` expressions with an implied `any` type. Defaults to
-     * `true`. */
-    noImplicitThis?: boolean;
-    /** Do not emit `"use strict"` directives in module output. Defaults to
-     * `false`. */
-    noImplicitUseStrict?: boolean;
-    /** Do not include the default library file (`lib.d.ts`). Defaults to
-     * `false`. */
-    noLib?: boolean;
-    /** Do not add triple-slash references or module import targets to the list of
-     * compiled files. Defaults to `false`. */
-    noResolve?: boolean;
-    /** Disable strict checking of generic signatures in function types. Defaults
-     * to `false`. */
-    noStrictGenericChecks?: boolean;
-    /** Include 'undefined' in index signature results. Defaults to `false`. */
-    noUncheckedIndexedAccess?: boolean;
-    /** Report errors on unused locals. Defaults to `false`. */
-    noUnusedLocals?: boolean;
-    /** Report errors on unused parameters. Defaults to `false`. */
-    noUnusedParameters?: boolean;
-    /** List of path mapping entries for module names to locations relative to the
-     * `baseUrl`. Defaults to `undefined`. */
-    paths?: Record<string, string[]>;
-    /** Do not erase const enum declarations in generated code. Defaults to
-     * `false`. */
-    preserveConstEnums?: boolean;
-    /** Remove all comments except copy-right header comments beginning with
-     * `/*!`. Defaults to `true`. */
-    removeComments?: boolean;
-    /** Specifies the root directory of input files. Only use to control the
-     * output directory structure with `outDir`. Defaults to `undefined`. */
-    rootDir?: string;
-    /** List of _root_ folders whose combined content represent the structure of
-     * the project at runtime. Defaults to `undefined`. */
-    rootDirs?: string[];
-    /** Generates corresponding `.map` file. Defaults to `false`. */
-    sourceMap?: boolean;
-    /** Specifies the location where debugger should locate TypeScript files
-     * instead of source locations. Use this flag if the sources will be located
-     * at run-time in a different location than that at design-time. The location
-     * specified will be embedded in the sourceMap to direct the debugger where
-     * the source files will be located. Defaults to `undefined`. */
-    sourceRoot?: string;
-    /** Skip type checking of all declaration files (`*.d.ts`). */
-    skipLibCheck?: boolean;
-    /** Enable all strict type checking options. Enabling `strict` enables
-     * `noImplicitAny`, `noImplicitThis`, `alwaysStrict`, `strictBindCallApply`,
-     * `strictNullChecks`, `strictFunctionTypes` and
-     * `strictPropertyInitialization`. Defaults to `true`. */
-    strict?: boolean;
-    /** Enable stricter checking of the `bind`, `call`, and `apply` methods on
-     * functions. Defaults to `true`. */
-    strictBindCallApply?: boolean;
-    /** Disable bivariant parameter checking for function types. Defaults to
-     * `true`. */
-    strictFunctionTypes?: boolean;
-    /** Ensure non-undefined class properties are initialized in the constructor.
-     * This option requires `strictNullChecks` be enabled in order to take effect.
-     * Defaults to `true`. */
-    strictPropertyInitialization?: boolean;
-    /** In strict null checking mode, the `null` and `undefined` values are not in
-     * the domain of every type and are only assignable to themselves and `any`
-     * (the one exception being that `undefined` is also assignable to `void`). */
-    strictNullChecks?: boolean;
-    /** Suppress excess property checks for object literals. Defaults to
-     * `false`. */
-    suppressExcessPropertyErrors?: boolean;
-    /** Suppress `noImplicitAny` errors for indexing objects lacking index
-     * signatures. */
-    suppressImplicitAnyIndexErrors?: boolean;
-    /** Specify ECMAScript target version. Defaults to `esnext`. */
-    target?:
-      | "es3"
-      | "es5"
-      | "es6"
-      | "es2015"
-      | "es2016"
-      | "es2017"
-      | "es2018"
-      | "es2019"
-      | "es2020"
-      | "esnext";
-    /** List of names of type definitions to include when type checking.
-     * Defaults to `undefined`.
-     *
-     * The type definitions are resolved according to the normal Deno resolution
-     * irrespective of if sources are provided on the call. In addition, unlike
-     * passing the `--config` option on startup, there is no base to resolve
-     * relative specifiers, so the specifiers here have to be fully qualified
-     * URLs or paths.  For example:
-     *
-     * ```ts
-     * Deno.emit("./a.ts", {
-     *   compilerOptions: {
-     *     types: [
-     *       "https://deno.land/x/pkg/types.d.ts",
-     *       "/Users/me/pkg/types.d.ts",
-     *     ]
-     *   }
-     * });
-     * ```
-     */
-    types?: string[];
-    /** Emit class fields with ECMAScript-standard semantics. Defaults to
-     * `false`. */
-    useDefineForClassFields?: boolean;
-  }
-
-  interface ImportMap {
-    imports: Record<string, string>;
-    scopes?: Record<string, Record<string, string>>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * The options for `Deno.emit()` API.
-   */
-  export interface EmitOptions {
-    /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"module"`) or a single
-     * file self contained script executed in an immediately invoked function
-     * when loaded (`"classic"`). */
-    bundle?: "module" | "classic";
-    /** If `true` then the sources will be typed checked, returning any
-     * diagnostic errors in the result.  If `false` type checking will be
-     * skipped.  Defaults to `true`.
-     *
-     * *Note* by default, only TypeScript will be type checked, just like on
-     * the command line.  Use the `compilerOptions` options of `checkJs` to
-     * enable type checking of JavaScript. */
-    check?: boolean;
-    /** A set of options that are aligned to TypeScript compiler options that
-     * are supported by Deno. */
-    compilerOptions?: CompilerOptions;
-    /** An [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps)
-     * which will be applied to the imports. */
-    importMap?: ImportMap;
-    /** An absolute path to an [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps).
-     * Required to be specified if an `importMap` is specified to be able to
-     * determine resolution of relative paths. If a `importMap` is not
-     * specified, then it will assumed the file path points to an import map on
-     * disk and will be attempted to be loaded based on current runtime
-     * permissions.
-     */
-    importMapPath?: string;
-    /** A record of sources to use when doing the emit.  If provided, Deno will
-     * use these sources instead of trying to resolve the modules externally. */
-    sources?: Record<string, string>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * The result of `Deno.emit()` API.
-   */
-  export interface EmitResult {
-    /** Diagnostic messages returned from the type checker (`tsc`).
-     *
-     * Can be used with `Deno.formatDiagnostics` to display a user
-     * friendly string. */
-    diagnostics: Diagnostic[];
-    /** Any emitted files.  If bundled, then the JavaScript will have the
-     * key of `deno:///bundle.js` with an optional map (based on
-     * `compilerOptions`) in `deno:///bundle.js.map`. */
-    files: Record<string, string>;
-    /** An optional array of any compiler options that were ignored by Deno. */
-    ignoredOptions?: string[];
-    /** An array of internal statistics related to the emit, for diagnostic
-     * purposes. */
-    stats: Array<[string, number]>;
-  }
-
-  /**
-   * **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Similar to the command line functionality of `deno run` or `deno cache`,
-   * `Deno.emit()` provides a way to provide Deno arbitrary JavaScript
-   * or TypeScript and have it return JavaScript based on the options and
-   * settings provided. The source code can either be provided or the modules
-   * can be fetched and resolved in line with the behavior of the command line.
-   *
-   * Requires `allow-read` and/or `allow-net` if sources are not provided.
-   *
-   * @param rootSpecifier The specifier that will be used as the entry point.
-   *                      If no sources are provided, then the specifier would
-   *                      be the same as if you typed it on the command line for
-   *                      `deno run`. If sources are provided, it should match
-   *                      one of the names of the sources.
-   * @param options  A set of options to be used with the emit.
-   *
-   * @returns The result of the emit. If diagnostics are found, they can be used
-   * with `Deno.formatDiagnostics` to construct a user friendly string, which
-   * has the same format as CLI diagnostics.
-   */
-  export function emit(
-    rootSpecifier: string | URL,
-    options?: EmitOptions,
-  ): Promise<EmitResult>;
-
-  /** **UNSTABLE**: Should not have same name as `window.location` type. */
-  interface Location {
-    /** The full url for the module, e.g. `file://some/file.ts` or
-     * `https://some/file.ts`. */
-    fileName: string;
-    /** The line number in the file. It is assumed to be 1-indexed. */
-    lineNumber: number;
-    /** The column number in the file. It is assumed to be 1-indexed. */
-    columnNumber: number;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Given a current location in a module, lookup the source location and return
-   * it.
-   *
-   * When Deno transpiles code, it keep source maps of the transpiled code. This
-   * function can be used to lookup the original location. This is
-   * automatically done when accessing the `.stack` of an error, or when an
-   * uncaught error is logged. This function can be used to perform the lookup
-   * for creating better error handling.
-   *
-   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
-   * expectations, but is not typical of most index numbers in Deno.
-   *
-   * An example:
-   *
-   * ```ts
-   * const origin = Deno.applySourceMap({
-   *   fileName: "file://my/module.ts",
-   *   lineNumber: 5,
-   *   columnNumber: 15
-   * });
-   *
-   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
-   * ```
-   */
-  export function applySourceMap(location: Location): Location;
-
   export type SetRawOptions = {
     cbreak: boolean;
   };
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Set TTY to be under raw mode or not. In raw mode, characters are read and
    * returned as is, without being processed. All special processing of
@@ -781,6 +903,8 @@ declare namespace Deno {
    * ```ts
    * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
    * ```
+   *
+   * @category I/O
    */
   export function setRaw(
     rid: number,
@@ -788,7 +912,7 @@ declare namespace Deno {
     options?: SetRawOptions,
   ): void;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
@@ -798,14 +922,19 @@ declare namespace Deno {
    * Deno.utimeSync("myfile.txt", 1556495550, new Date());
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission.
+   * Needs investigation into high precision time.
+   *
+   * @tags allow-write
+   * @category File System
+   */
   export function utimeSync(
     path: string | URL,
     atime: number | Date,
     mtime: number | Date,
   ): void;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
    * system object referenced by `path`. Given times are either in seconds
@@ -815,13 +944,22 @@ declare namespace Deno {
    * await Deno.utime("myfile.txt", 1556495550, new Date());
    * ```
    *
-   * Requires `allow-write` permission. */
+   * Requires `allow-write` permission.
+   * Needs investigation into high precision time.
+   *
+   * @tags allow-write
+   * @category File System
+   */
   export function utime(
     path: string | URL,
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
   export function run<
     T extends RunOptions & {
       clearEnv?: boolean;
@@ -834,8 +972,7 @@ declare namespace Deno {
     },
   >(opt: T): Process<T>;
 
-  /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
-   * necessary around the permissions required.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Get the `hostname` of the machine the Deno process is running on.
    *
@@ -843,11 +980,17 @@ declare namespace Deno {
    * console.log(Deno.hostname());
    * ```
    *
-   *  Requires `allow-env` permission.
+   * Requires `allow-env` permission.
+   * Additional consideration is still necessary around the permissions
+   * required.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
    */
   export function hostname(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
@@ -855,6 +998,8 @@ declare namespace Deno {
    * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
    * const req = await fetch("https://myserver.com", { client });
    * ```
+   *
+   * @category Fetch API
    */
   export class HttpClient {
     rid: number;
@@ -862,7 +1007,10 @@ declare namespace Deno {
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * The options used when creating a [HttpClient].
+   *
+   * @category Fetch API
    */
   export interface CreateHttpClientOptions {
     /** A list of root certificates that will be used in addition to the
@@ -878,17 +1026,26 @@ declare namespace Deno {
     privateKey?: string;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Fetch API
+   */
   export interface Proxy {
     url: string;
     basicAuth?: BasicAuth;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Fetch API
+   */
   export interface BasicAuth {
     username: string;
     password: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
@@ -901,12 +1058,14 @@ declare namespace Deno {
    * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
    * const response = await fetch("https://myserver.com", { client });
    * ```
+   *
+   * @category Fetch API
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
   ): HttpClient;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file stream resource referenced by `rid`. Given times are either in
@@ -916,6 +1075,10 @@ declare namespace Deno {
    * const file = Deno.openSync("file.txt", { create: true, write: true });
    * Deno.futimeSync(file.rid, 1556495550, new Date());
    * ```
+   *
+   * Needs investigation into high precision time.
+   *
+   * @category File System
    */
   export function futimeSync(
     rid: number,
@@ -923,7 +1086,7 @@ declare namespace Deno {
     mtime: number | Date,
   ): void;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
    * stream resource referenced by `rid`. Given times are either in seconds
@@ -933,6 +1096,10 @@ declare namespace Deno {
    * const file = await Deno.open("file.txt", { create: true, write: true });
    * await Deno.futime(file.rid, 1556495550, new Date());
    * ```
+   *
+   * Needs investigation into high precision time.
+   *
+   * @category File System
    */
   export function futime(
     rid: number,
@@ -940,32 +1107,18 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * SleepSync puts the main thread to sleep synchronously for a given amount of
-   * time in milliseconds.
+   * A generic transport listener for message-oriented protocols.
    *
-   * ```ts
-   * Deno.sleepSync(10);
-   * ```
+   * @category Network
    */
-  export function sleepSync(millis: number): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * A generic transport listener for message-oriented protocols. */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
-    /** **UNSTABLE**: new API, yet to be vetted.
-     *
-     * Waits for and resolves to the next message to the `UDPConn`. */
+    /** Waits for and resolves to the next message to the `UDPConn`. */
     receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
-    /** UNSTABLE: new API, yet to be vetted.
-     *
-     * Sends a message to the target. */
+    /** Sends a message to the target. */
     send(p: Uint8Array, addr: Addr): Promise<number>;
-    /** UNSTABLE: new API, yet to be vetted.
-     *
-     * Close closes the socket. Any pending message promises will be rejected
+    /** Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
     /** Return the address of the `UDPConn`. */
@@ -973,12 +1126,16 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
     path: string;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
@@ -986,12 +1143,16 @@ declare namespace Deno {
    * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission. */
+   * Requires `allow-read` and `allow-write` permission.
+   *
+   * @tags allow-read, allow-write
+   * @category Network
+   */
   export function listen(
     options: UnixListenOptions & { transport: "unix" },
   ): Listener;
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
@@ -1007,12 +1168,16 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function listenDatagram(
     options: ListenOptions & { transport: "udp" },
   ): DatagramConn;
 
-  /** **UNSTABLE**: new API, yet to be vetted
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Listen announces on the local transport address.
    *
@@ -1023,18 +1188,25 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission. */
+   * Requires `allow-read` and `allow-write` permission.
+   *
+   * @tags allow-read, allow-write
+   * @category Network
+   */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface UnixConnectOptions {
     transport: "unix";
     path: string;
   }
 
-  /** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
-   * be vetted.  The TCP transport is considered stable.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
@@ -1047,20 +1219,34 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   *
+   * @tags allow-net, allow-read
+   * @category Network
+   */
   export function connect(
     options: ConnectOptions,
   ): Promise<TcpConn>;
   export function connect(
     options: UnixConnectOptions,
-  ): Promise<Conn>;
+  ): Promise<UnixConn>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface ConnectTlsOptions {
-    /** PEM formatted client certificate chain. */
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * PEM formatted client certificate chain.
+     */
     certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * PEM formatted (RSA or PKCS8) private key of client certificate.
+     */
     privateKey?: string;
-    /** **UNSTABLE**: new API, yet to be vetted.
+    /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols supported by
      * the client. If not specified, no ALPN extension will be included in the
@@ -1069,8 +1255,12 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface TlsHandshakeInfo {
-    /** **UNSTABLE**: new API, yet to be vetted.
+    /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Contains the ALPN protocol selected during negotiation with the server.
      * If no ALPN protocol selected, returns `null`.
@@ -1078,14 +1268,21 @@ declare namespace Deno {
     alpnProtocol: string | null;
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface TlsConn extends Conn {
-    /** Runs the client or server handshake protocol to completion if that has
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
-     * will be completed automatically as soon as data is sent or received. */
+     * will be completed automatically as soon as data is sent or received.
+     */
     handshake(): Promise<TlsHandshakeInfo>;
   }
 
-  /** **UNSTABLE** New API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Create a TLS connection with an attached client certificate.
    *
@@ -1099,11 +1296,18 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface ListenTlsOptions {
-    /** **UNSTABLE**: new API, yet to be vetted.
+    /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
      * the client. If not specified, no ALPN extension will be included in the
@@ -1112,8 +1316,12 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
   export interface StartTlsOptions {
-    /** **UNSTABLE**: new API, yet to be vetted.
+    /** **UNSTABLE**: New API, yet to be vetted.
      *
      * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
      * the client. If not specified, no ALPN extension will be included in the
@@ -1122,61 +1330,433 @@ declare namespace Deno {
     alpnProtocols?: string[];
   }
 
-  /** **UNSTABLE**: New API should be tested first.
+  /** @category Network */
+  export interface Listener extends AsyncIterable<Conn> {
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+    /** **UNSTABLE**: New API, yet to be vetted.
+     *
+     * Make the listener not block the event loop from finishing.
+     */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
+   *
+   * @category File System
    */
   export function flock(rid: number, exclusive?: boolean): Promise<void>;
 
-  /** **UNSTABLE**: New API should be tested first.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
    * defaults to `false`.
+   *
+   * @category File System
    */
   export function flockSync(rid: number, exclusive?: boolean): void;
 
-  /** **UNSTABLE**: New API should be tested first.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Release an advisory file-system lock for the provided file.
+   *
+   * @category File System
    */
   export function funlock(rid: number): Promise<void>;
 
-  /** **UNSTABLE**: New API should be tested first.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Release an advisory file-system lock for the provided file.
+   *
+   * @category File System
    */
   export function funlockSync(rid: number): void;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Make the timer of the given id blocking the event loop from finishing
+   * Make the timer of the given id blocking the event loop from finishing.
+   *
+   * @category Timers
    */
   export function refTimer(id: number): void;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Make the timer of the given id not blocking the event loop from finishing
+   * Make the timer of the given id not blocking the event loop from finishing.
+   *
+   * @category Timers
    */
   export function unrefTimer(id: number): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A handler for HTTP requests. Consumes a request and returns a response.
+   *
+   * If a handler throws, the server calling the handler will assume the impact
+   * of the error is isolated to the individual request. It will catch the error
+   * and if necessary will close the underlying connection.
+   *
+   * @category HTTP Server
+   */
+  export type ServeHandler = (request: Request) => Response | Promise<Response>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeOptions extends Partial<Deno.ListenOptions> {
+    /** An AbortSignal to close the server and all connections. */
+    signal?: AbortSignal;
+
+    /** The handler to invoke when route handlers throw an error. */
+    onError?: (error: unknown) => Response | Promise<Response>;
+
+    /** The callback which is called when the server started listening */
+    onListen?: (params: { hostname: string; port: number }) => void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeTlsOptions extends ServeOptions {
+    /** Server private key in PEM format */
+    cert: string;
+
+    /** Cert chain in PEM format */
+    key: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category HTTP Server
+   */
+  export interface ServeInit {
+    /** The handler to invoke to process each incoming request. */
+    handler: ServeHandler;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Serves HTTP requests with the given handler.
+   *
+   * You can specify an object with a port and hostname option, which is the
+   * address to listen on. The default is port 9000 on hostname "127.0.0.1".
+   *
+   * The below example serves with the port 9000.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can change the address to listen on using the `hostname` and `port`
+   * options. The below example serves on port 3000.
+   *
+   * ```ts
+   * Deno.serve({ port: 3000 }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can stop the server with an AbortSignal. The abort signal needs to be
+   * passed as the `signal` option in the options bag. The server aborts when
+   * the abort signal is aborted. To wait for the server to close, await the
+   * promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
+   *  .then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message `Listening on http://<hostname>:<port>/`
+   * on start up. If you like to change this behaviour, you can specify a custom
+   * `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ port, hostname }) {
+   *     console.log(`Server started at http://${hostname}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   handler: (_req) => new Response("Hello, world"),
+   * });
+   * ```
+   *
+   * To enable TLS you must specify the `key` and `cert` options.
+   *
+   * ```ts
+   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
+   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
+   * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export function serve(
+    handler: ServeHandler,
+    options?: ServeOptions | ServeTlsOptions,
+  ): Promise<void>;
+  export function serve(
+    options: ServeOptions | ServeTlsOptions,
+    handler: ServeHandler,
+  ): Promise<void>;
+  export function serve(
+    options: ServeInit & (ServeOptions | ServeTlsOptions),
+  ): Promise<void>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+   *
+   * The returned promise returns underlying connection and first packet
+   * received. The promise shouldn't be awaited before responding to the
+   * `request`, otherwise event loop might deadlock.
+   *
+   * ```ts
+   * function handler(req: Request): Response {
+   *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
+   *     // ...
+   *   });
+   *   return new Response(null, { status: 101 });
+   * }
+   * ```
+   *
+   * This method can only be called on requests originating the `Deno.serveHttp`
+   * server.
+   *
+   * @category HTTP Server
+   */
+  export function upgradeHttp(
+    request: Request,
+  ): Promise<[Deno.Conn, Uint8Array]>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Allows "hijacking" the connection that the request is associated with.
+   * This can be used to implement protocols that build on top of HTTP (eg.
+   * WebSockets).
+
+   * Unlike `Deno.upgradeHttp` this function does not require that you respond
+   * to the request with a `Response` object. Instead this function returns
+   * the underlying connection and first packet received immediately, and then
+   * the caller is responsible for writing the response to the connection.
+   *
+   * This method can only be called on requests originating the `Deno.serve`
+   * server.
+   *
+   * @category HTTP Server
+   */
+  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export interface SpawnOptions {
+    /** Arguments to pass to the process. */
+    args?: string[];
+    /**
+     * The working directory of the process.
+     * If not specified, the cwd of the parent process is used.
+     */
+    cwd?: string | URL;
+    /**
+     * Clear environmental variables from parent process.
+     * Doesn't guarantee that only `opt.env` variables are present,
+     * as the OS may set environmental variables for processes.
+     */
+    clearEnv?: boolean;
+    /** Environmental variables to pass to the subprocess. */
+    env?: Record<string, string>;
+    /**
+     * Sets the child process’s user ID. This translates to a setuid call
+     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     */
+    uid?: number;
+    /** Similar to `uid`, but sets the group ID of the child process. */
+    gid?: number;
+    /**
+     * An AbortSignal that allows closing the process using the corresponding
+     * AbortController by sending the process a SIGTERM signal.
+     * Not supported in spawnSync.
+     */
+    signal?: AbortSignal;
+
+    /** Defaults to "null". */
+    stdin?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stdout?: "piped" | "inherit" | "null";
+    /** Defaults to "piped". */
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Spawns a child process.
+   *
+   * If any stdio options are not set to `"piped"`, accessing the corresponding
+   * field on the `Child` or its `SpawnOutput` will throw a `TypeError`.
+   *
+   * If stdin is set to `"piped"`, the stdin WritableStream needs to be closed
+   * manually.
+   *
+   * ```ts
+   * const child = Deno.spawnChild(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *     "console.log('Hello World')",
+   *   ],
+   *   stdin: "piped",
+   * });
+   *
+   * // open a file and pipe the subprocess output to it.
+   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   *
+   * // manually close stdin
+   * child.stdin.close();
+   * const status = await child.status;
+   * ```
+   *
+   * @category Sub Process
+   */
+  export function spawnChild(
+    command: string | URL,
+    options?: SpawnOptions,
+  ): Child;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export class Child {
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
+    readonly pid: number;
+    /** Get the status of the child. */
+    readonly status: Promise<ChildStatus>;
+
+    /** Waits for the child to exit completely, returning all its output and status. */
+    output(): Promise<SpawnOutput>;
+    /** Kills the process with given Signal. Defaults to SIGTERM. */
+    kill(signo?: Signal): void;
+
+    ref(): void;
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
+   * ```ts
+   * const { code, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *        "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @category Sub Process
+   */
+  export function spawn(
+    command: string | URL,
+    options?: SpawnOptions,
+  ): Promise<SpawnOutput>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Synchronously executes a subprocess, waiting for it to finish and
+   * collecting all of its output.
+   * Will throw an error if `stdin: "piped"` is passed.
+   *
+   * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
+   * corresponding field on `SpawnOutput` will throw a `TypeError`.
+   *
+   * ```ts
+   * const { code, stdout, stderr } = Deno.spawnSync(Deno.execPath(), {
+   *   args: [
+   *     "eval",
+   *       "console.log('hello'); console.error('world')",
+   *   ],
+   * });
+   * console.assert(code === 0);
+   * console.assert("hello\n" === new TextDecoder().decode(stdout));
+   * console.assert("world\n" === new TextDecoder().decode(stderr));
+   * ```
+   *
+   * @category Sub Process
+   */
+  export function spawnSync(
+    command: string | URL,
+    options?: SpawnOptions,
+  ): SpawnOutput;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export interface ChildStatus {
+    success: boolean;
+    code: number;
+    signal: Signal | null;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Sub Process
+   */
+  export interface SpawnOutput extends ChildStatus {
+    get stdout(): Uint8Array;
+    get stderr(): Uint8Array;
+  }
 }
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net, allow-read
+ * @category Fetch API
+ */
 declare function fetch(
   input: Request | URL | string,
   init?: RequestInit & { client: Deno.HttpClient },
 ): Promise<Response>;
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Web Workers
+ */
 declare interface WorkerOptions {
-  /** UNSTABLE: New API.
+  /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Set deno.namespace to `true` to make `Deno` namespace and all of its
-   * methods available to the worker environment. Defaults to `false`.
-   *
-   * Configure deno.permissions options to change the level of access the worker will
-   * have. By default it will inherit the permissions of its parent thread. The permissions
+   * Configure permissions options to change the level of access the worker will
+   * have. By default it will have no permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    * - "inherit" will take the permissions of the thread the worker is created in
-   * - You can disable/enable permissions all together by passing a boolean
+   * - "none" will use the default behavior and have no permission
    * - You can provide a list of routes relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions only)
    *
@@ -1188,7 +1768,6 @@ declare interface WorkerOptions {
    *   new URL("deno_worker.ts", import.meta.url).href, {
    *     type: "module",
    *     deno: {
-   *       namespace: true,
    *       permissions: {
    *         read: true,
    *       },
@@ -1197,35 +1776,26 @@ declare interface WorkerOptions {
    * );
    * ```
    */
-  // TODO(Soremwar)
-  // `deno: boolean` is kept for backwards compatibility with the previous
-  // worker options implementation. Remove for 2.0.
-  deno?: boolean | {
-    namespace?: boolean;
+  deno?: {
     /** Set to `"none"` to disable all the permissions in the worker. */
-    permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean | string[];
-      hrtime?: "inherit" | boolean;
-      /** The format of the net access list must be `hostname[:port]`
-       * in order to be resolved.
-       *
-       * For example: `["https://deno.land", "localhost:8080"]`.
-       */
-      net?: "inherit" | boolean | string[];
-      ffi?: "inherit" | boolean | Array<string | URL>;
-      read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean | Array<string | URL>;
-      write?: "inherit" | boolean | Array<string | URL>;
-    };
+    permissions?: Deno.PermissionOptions;
   };
 }
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Web Sockets
+ */
 declare interface WebSocketStreamOptions {
   protocols?: string[];
   signal?: AbortSignal;
   headers?: HeadersInit;
 }
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Web Sockets
+ */
 declare interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
   writable: WritableStream<string | Uint8Array>;
@@ -1233,11 +1803,20 @@ declare interface WebSocketConnection {
   protocol: string;
 }
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @category Web Sockets
+ */
 declare interface WebSocketCloseInfo {
   code?: number;
   reason?: string;
 }
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
 declare class WebSocketStream {
   constructor(url: string, options?: WebSocketStreamOptions);
   url: string;

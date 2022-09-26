@@ -6,14 +6,17 @@
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::config_file::LintConfig;
+use crate::args::Flags;
+use crate::args::LintConfig;
+use crate::args::LintFlags;
+use crate::colors;
+use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::{Flags, LintFlags};
-use crate::fmt_errors;
-use crate::fs_util::{collect_files, is_supported_ext, specifier_to_file_path};
+use crate::fs_util::collect_files;
+use crate::fs_util::is_supported_ext;
+use crate::fs_util::specifier_to_file_path;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::run_parallelized;
-use crate::{colors, file_watcher};
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::generic_error;
@@ -25,14 +28,20 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use deno_runtime::fmt_errors::format_location;
 use log::debug;
 use log::info;
 use serde::Serialize;
 use std::fs;
-use std::io::{stdin, Read};
+use std::io::stdin;
+use std::io::Read;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use crate::cache::IncrementalCache;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
@@ -50,7 +59,6 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
-  let flags = Arc::new(flags);
   let LintFlags {
     maybe_rules_tags,
     maybe_rules_include,
@@ -62,17 +70,13 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   } = lint_flags;
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
-  // over config file, ie. if there's `files.ignore` in config file
+  // over config file, i.e. if there's `files.ignore` in config file
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
 
-  let ps = ProcState::build(flags.clone()).await?;
-  let maybe_lint_config = if let Some(config_file) = &ps.maybe_config_file {
-    config_file.to_lint_config()?
-  } else {
-    None
-  };
+  let ps = ProcState::build(flags).await?;
+  let maybe_lint_config = ps.options.to_lint_config()?;
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
     if include_files.is_empty() {
@@ -124,7 +128,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files
@@ -147,6 +151,17 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   };
 
   let operation = |paths: Vec<PathBuf>| async {
+    let incremental_cache = Arc::new(IncrementalCache::new(
+      &ps.dir.lint_incremental_cache_db_file_path(),
+      // use a hash of the rule names in order to bust the cache
+      &{
+        // ensure this is stable by sorting it
+        let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+        names.sort_unstable();
+        names
+      },
+      &paths,
+    ));
     let target_files_len = paths.len();
     let reporter_kind = reporter_kind.clone();
     let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
@@ -154,8 +169,23 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let has_error = has_error.clone();
       let lint_rules = lint_rules.clone();
       let reporter_lock = reporter_lock.clone();
+      let incremental_cache = incremental_cache.clone();
       move |file_path| {
-        let r = lint_file(file_path.clone(), lint_rules.clone());
+        let file_text = fs::read_to_string(&file_path)?;
+
+        // don't bother rechecking this file if it didn't have any diagnostics before
+        if incremental_cache.is_file_same(&file_path, &file_text) {
+          return Ok(());
+        }
+
+        let r = lint_file(file_path.clone(), file_text, lint_rules.clone());
+        if let Ok((file_diagnostics, file_text)) = &r {
+          if file_diagnostics.is_empty() {
+            // update the incremental cache if there were no diagnostics
+            incremental_cache.update_file(&file_path, file_text)
+          }
+        }
+
         handle_lint_result(
           &file_path.to_string_lossy(),
           r,
@@ -167,11 +197,12 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       }
     })
     .await?;
+    incremental_cache.wait_completion().await;
     reporter_lock.lock().unwrap().close(target_files_len);
 
     Ok(())
   };
-  if flags.watch.is_some() {
+  if ps.options.watch_paths().is_some() {
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
@@ -182,7 +213,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       operation,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen: !flags.no_clear_screen,
+        clear_screen: !ps.options.no_clear_screen(),
       },
     )
     .await?;
@@ -262,10 +293,10 @@ pub fn create_linter(
 
 fn lint_file(
   file_path: PathBuf,
+  source_code: String,
   lint_rules: Vec<Arc<dyn LintRule>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
 
   let linter = create_linter(media_type, lint_rules);
@@ -351,7 +382,7 @@ impl LintReporter for PrettyLintReporter {
       &source_lines,
       d.range.clone(),
       d.hint.as_ref(),
-      &fmt_errors::format_location(&JsStackFrame::from_location(
+      &format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
         Some(d.range.start.line_index as i64 + 1), // 1-indexed
         // todo(#11111): make 1-indexed as well
@@ -479,7 +510,7 @@ impl LintReporter for JsonLintReporter {
   }
 }
 
-fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
+fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   // Sort so that we guarantee a deterministic output which is useful for tests
   diagnostics.sort_by(|a, b| {
     use std::cmp::Ordering;
@@ -500,7 +531,7 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
   });
 }
 
-pub(crate) fn get_configured_rules(
+pub fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
   maybe_rules_tags: Option<Vec<String>>,
   maybe_rules_include: Option<Vec<String>>,
@@ -550,7 +581,7 @@ pub(crate) fn get_configured_rules(
   );
 
   if configured_rules.is_empty() {
-    anyhow!("No rules have been configured");
+    return Err(anyhow!("No rules have been configured"));
   }
 
   Ok(configured_rules)
@@ -561,7 +592,7 @@ mod test {
   use deno_lint::rules::get_recommended_rules;
 
   use super::*;
-  use crate::config_file::LintRulesConfig;
+  use crate::args::LintRulesConfig;
 
   #[test]
   fn recommended_rules_when_no_tags_in_config() {

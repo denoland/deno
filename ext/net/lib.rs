@@ -81,9 +81,8 @@ pub fn init<P: NetPermissions + 'static>(
   unstable: bool,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
-  let mut ops_to_register = vec![];
-  ops_to_register.extend(ops::init::<P>());
-  ops_to_register.extend(ops_tls::init::<P>());
+  let mut ops = ops::init::<P>();
+  ops.extend(ops_tls::init::<P>());
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/net",
@@ -91,7 +90,7 @@ pub fn init<P: NetPermissions + 'static>(
       "02_tls.js",
       "04_net_unstable.js",
     ))
-    .ops(ops_to_register)
+    .ops(ops)
     .state(move |state| {
       state.put(DefaultTlsOptions {
         root_cert_store: root_cert_store.clone(),

@@ -4,7 +4,6 @@
 ((window) => {
   const {
     decodeURIComponent,
-    Error,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     SafeArrayIterator,
@@ -31,19 +30,6 @@
         `DEBUG ${logSource} -`,
         ...new SafeArrayIterator(args),
       );
-    }
-  }
-
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
     }
   }
 
@@ -154,8 +140,6 @@
     log,
     setLogDebug,
     createResolvable,
-    assert,
-    AssertionError,
     pathFromURL,
     writable,
     nonEnumerable,

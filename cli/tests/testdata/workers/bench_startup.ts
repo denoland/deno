@@ -5,7 +5,7 @@ async function bench() {
   const workers: Worker[] = [];
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
-      new URL("bench_worker.ts", import.meta.url).href,
+      import.meta.resolve("./bench_worker.ts"),
       { type: "module" },
     );
     const promise = new Promise<void>((resolve) => {

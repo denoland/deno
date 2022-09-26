@@ -1,0 +1,3 @@
+throw {
+  foo: new Error(),
+};

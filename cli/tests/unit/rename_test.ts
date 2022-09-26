@@ -167,7 +167,7 @@ Deno.test(
       () => {
         Deno.renameSync(olddir, file);
       },
-      undefined,
+      Error,
       `rename '${olddir}' -> '${file}'`,
     );
 
@@ -252,7 +252,7 @@ Deno.test(
       () => {
         Deno.renameSync(olddir, emptydir);
       },
-      undefined,
+      Error,
       `rename '${olddir}' -> '${emptydir}'`,
     );
 

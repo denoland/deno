@@ -41,6 +41,8 @@ Object.defineProperty(globalThis, "_error", {
    console.log("Last thrown error is no longer saved to _error.");
   },
 });
+
+globalThis.clear = console.clear.bind(console);
 "#;
 
 pub enum EvaluationOutput {
@@ -114,7 +116,7 @@ impl ReplSession {
     Ok(repl_session)
   }
 
-  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+  pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let closed = self
       .evaluate_expression("(this.closed)")
       .await?
@@ -163,8 +165,18 @@ impl ReplSession {
           exception_details,
         } = evaluate_response.value;
 
-        if exception_details.is_some() {
+        Ok(if let Some(exception_details) = exception_details {
           self.set_last_thrown_error(&result).await?;
+          let description = match exception_details.exception {
+            Some(exception) => exception
+              .description
+              .unwrap_or_else(|| "Unknown exception".to_string()),
+            None => "Unknown exception".to_string(),
+          };
+          EvaluationOutput::Error(format!(
+            "{} {}",
+            exception_details.text, description
+          ))
         } else {
           self
             .language_server
@@ -172,12 +184,8 @@ impl ReplSession {
             .await;
 
           self.set_last_eval_result(&result).await?;
-        }
-
-        let value = self.get_eval_value(&result).await?;
-        Ok(match exception_details {
-          Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
-          None => EvaluationOutput::Value(value),
+          let value = self.get_eval_value(&result).await?;
+          EvaluationOutput::Value(value)
         })
       }
       Err(err) => {
@@ -330,7 +338,7 @@ impl ReplSession {
   ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: "repl.ts".to_string(),
-      source: deno_ast::SourceTextInfo::from_string(expression.to_string()),
+      text_info: deno_ast::SourceTextInfo::from_string(expression.to_string()),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: false,
       maybe_syntax: None,

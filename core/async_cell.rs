@@ -157,12 +157,16 @@ impl<T: 'static> RcRef<T> {
     map_fn: F,
   ) -> RcRef<T> {
     let RcRef::<S> { rc, value } = source.into();
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     let value = map_fn(unsafe { &*value });
     RcRef { rc, value }
   }
 
   pub(crate) fn split(rc_ref: &Self) -> (&T, &Rc<dyn Any>) {
     let &Self { ref rc, value } = rc_ref;
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
     (unsafe { &*value }, rc)
   }
 }
@@ -206,7 +210,11 @@ impl<T: 'static> From<&Rc<T>> for RcRef<T> {
 impl<T> Deref for RcRef<T> {
   type Target = T;
   fn deref(&self) -> &Self::Target {
-    unsafe { &*self.value }
+    // TODO(piscisaureus): safety comment
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      &*self.value
+    }
   }
 }
 
@@ -260,6 +268,8 @@ mod internal {
       // Don't allow synchronous borrows to cut in line; if there are any
       // enqueued waiters, return `None`, even if the current borrow is a shared
       // one and the requested borrow is too.
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let waiters = unsafe { &mut *cell_ref.waiters.as_ptr() };
       if waiters.is_empty() {
         // There are no enqueued waiters, but it is still possible that the cell
@@ -288,6 +298,8 @@ mod internal {
       let waiter = Waiter::new(M::borrow_mode());
       let turn = self.turn.get();
       let index = {
+        // TODO(piscisaureus): safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         waiters.push_back(Some(waiter));
         waiters.len() - 1
@@ -315,6 +327,8 @@ mod internal {
         Poll::Ready(())
       } else {
         // This waiter is still in line and has not yet been woken.
+        // TODO(piscisaureus): safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         // Sanity check: id cannot be higher than the last queue element.
         assert!(id < turn + waiters.len());
@@ -330,6 +344,8 @@ mod internal {
 
     fn wake_waiters(&self) {
       let mut borrow_count = self.borrow_count.get();
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let waiters = unsafe { &mut *self.waiters.as_ptr() };
       let mut turn = self.turn.get();
 
@@ -379,6 +395,8 @@ mod internal {
         self.drop_borrow::<M>();
       } else {
         // This waiter is still in the queue, take it out and leave a "hole".
+        // TODO(piscisaureus): safety comment
+        #[allow(clippy::undocumented_unsafe_blocks)]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         waiters[id - turn].take().unwrap();
       }
@@ -411,6 +429,8 @@ mod internal {
     type Output = AsyncBorrowImpl<T, M>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
       ready!(self.cell.as_ref().unwrap().poll_waiter::<M>(self.id, cx));
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       let self_mut = unsafe { Pin::get_unchecked_mut(self) };
       let cell = self_mut.cell.take().unwrap();
       Poll::Ready(AsyncBorrowImpl::<T, M>::new(cell))
@@ -448,7 +468,11 @@ mod internal {
   impl<T, M: BorrowModeTrait> Deref for AsyncBorrowImpl<T, M> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-      unsafe { &*self.cell.as_ptr() }
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        &*self.cell.as_ptr()
+      }
     }
   }
 
@@ -466,7 +490,11 @@ mod internal {
 
   impl<T> DerefMut for AsyncBorrowImpl<T, Exclusive> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-      unsafe { &mut *self.cell.as_ptr() }
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        &mut *self.cell.as_ptr()
+      }
     }
   }
 

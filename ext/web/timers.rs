@@ -3,6 +3,8 @@
 //! This module helps deno implement timers and performance APIs.
 
 use deno_core::error::AnyError;
+use deno_core::op;
+
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -25,29 +27,31 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-pub fn op_now<TP>(
-  state: &mut OpState,
-  _argument: (),
-  _: (),
-) -> Result<f64, AnyError>
+#[op(fast)]
+pub fn op_now<TP>(state: &mut OpState, buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
 {
   let start_time = state.borrow::<StartTime>();
-  let seconds = start_time.elapsed().as_secs();
-  let mut subsec_nanos = start_time.elapsed().subsec_nanos() as f64;
-  let reduced_time_precision = 2_000_000.0; // 2ms in nanoseconds
+  let elapsed = start_time.elapsed();
+  let seconds = elapsed.as_secs();
+  let mut subsec_nanos = elapsed.subsec_nanos();
 
   // If the permission is not enabled
   // Round the nano result on 2 milliseconds
   // see: https://developer.mozilla.org/en-US/docs/Web/API/DOMHighResTimeStamp#Reduced_time_precision
   if !state.borrow_mut::<TP>().allow_hrtime() {
+    let reduced_time_precision = 2_000_000; // 2ms in nanoseconds
     subsec_nanos -= subsec_nanos % reduced_time_precision;
   }
-
-  let result = (seconds * 1_000) as f64 + (subsec_nanos / 1_000_000.0);
-
-  Ok(result)
+  if buf.len() < 8 {
+    return;
+  }
+  let buf: &mut [u32] =
+    // SAFETY: buffer is at least 8 bytes long.
+    unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as _, 2) };
+  buf[0] = seconds as u32;
+  buf[1] = subsec_nanos as u32;
 }
 
 pub struct TimerHandle(Rc<CancelHandle>);
@@ -64,19 +68,16 @@ impl Resource for TimerHandle {
 
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
-pub fn op_timer_handle(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<ResourceId, AnyError> {
-  let rid = state
+#[op]
+pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
+  state
     .resource_table
-    .add(TimerHandle(CancelHandle::new_rc()));
-  Ok(rid)
+    .add(TimerHandle(CancelHandle::new_rc()))
 }
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
+#[op(deferred)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
@@ -86,18 +87,5 @@ pub async fn op_sleep(
   tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
     .await?;
-  Ok(())
-}
-
-pub fn op_sleep_sync<TP>(
-  state: &mut OpState,
-  millis: u64,
-  _: (),
-) -> Result<(), AnyError>
-where
-  TP: TimersPermission + 'static,
-{
-  state.borrow::<TP>().check_unstable(state, "Deno.sleepSync");
-  std::thread::sleep(Duration::from_millis(millis));
   Ok(())
 }

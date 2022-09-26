@@ -5,6 +5,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
@@ -29,6 +30,8 @@
     StringPrototypeToLowerCase,
     Symbol,
     SymbolIterator,
+    PromisePrototypeCatch,
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -187,8 +190,7 @@
 
       this[_url] = wsURL.href;
 
-      core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
+      ops.op_ws_check_permission_and_cancel_handle(
         this[_url],
         false,
       );
@@ -223,10 +225,11 @@
       }
 
       PromisePrototypeThen(
-        core.opAsync("op_ws_create", {
-          url: wsURL.href,
-          protocols: ArrayPrototypeJoin(protocols, ", "),
-        }),
+        core.opAsync(
+          "op_ws_create",
+          wsURL.href,
+          ArrayPrototypeJoin(protocols, ", "),
+        ),
         (create) => {
           this[_rid] = create.rid;
           this[_extensions] = create.extensions;
@@ -234,9 +237,7 @@
 
           if (this[_readyState] === CLOSING) {
             PromisePrototypeThen(
-              core.opAsync("op_ws_close", {
-                rid: this[_rid],
-              }),
+              core.opAsync("op_ws_close", this[_rid]),
               () => {
                 this[_readyState] = CLOSED;
 
@@ -368,20 +369,19 @@
       } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
-        PromisePrototypeThen(
-          core.opAsync("op_ws_close", {
-            rid: this[_rid],
-            code,
-            reason,
-          }),
-          () => {
+        PromisePrototypeCatch(
+          core.opAsync("op_ws_close", this[_rid], code, reason),
+          (err) => {
             this[_readyState] = CLOSED;
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: code ?? 1005,
-              reason,
+
+            const errorEv = new ErrorEvent("error", {
+              error: err,
+              message: ErrorPrototypeToString(err),
             });
-            this.dispatchEvent(event);
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            this.dispatchEvent(closeEv);
             core.tryClose(this[_rid]);
           },
         );
@@ -389,7 +389,7 @@
     }
 
     async [_eventLoop]() {
-      while (this[_readyState] === OPEN) {
+      while (this[_readyState] !== CLOSED) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
@@ -434,8 +434,22 @@
           }
           case "closed":
           case "close": {
+            const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
+
+            if (prevState === OPEN) {
+              try {
+                await core.opAsync(
+                  "op_ws_close",
+                  this[_rid],
+                  value.code,
+                  value.reason,
+                );
+              } catch {
+                // ignore failures
+              }
+            }
 
             const event = new CloseEvent("close", {
               wasClean: true,
@@ -467,34 +481,51 @@
       if (this[_idleTimeoutDuration]) {
         clearTimeout(this[_idleTimeoutTimeout]);
         this[_idleTimeoutTimeout] = setTimeout(async () => {
-          await core.opAsync("op_ws_send", this[_rid], {
-            kind: "ping",
-          });
-          this[_idleTimeoutTimeout] = setTimeout(async () => {
-            this[_readyState] = CLOSING;
-            const reason = "No response from ping frame.";
-            await core.opAsync("op_ws_close", {
-              rid: this[_rid],
-              code: 1001,
-              reason,
+          if (this[_readyState] === OPEN) {
+            await core.opAsync("op_ws_send", this[_rid], {
+              kind: "ping",
             });
-            this[_readyState] = CLOSED;
+            this[_idleTimeoutTimeout] = setTimeout(async () => {
+              if (this[_readyState] === OPEN) {
+                this[_readyState] = CLOSING;
+                const reason = "No response from ping frame.";
+                await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+                this[_readyState] = CLOSED;
 
-            const errEvent = new ErrorEvent("error", {
-              message: reason,
-            });
-            this.dispatchEvent(errEvent);
+                const errEvent = new ErrorEvent("error", {
+                  message: reason,
+                });
+                this.dispatchEvent(errEvent);
 
-            const event = new CloseEvent("close", {
-              wasClean: false,
-              code: 1001,
-              reason,
-            });
-            this.dispatchEvent(event);
-            core.tryClose(this[_rid]);
-          }, (this[_idleTimeoutDuration] / 2) * 1000);
+                const event = new CloseEvent("close", {
+                  wasClean: false,
+                  code: 1001,
+                  reason,
+                });
+                this.dispatchEvent(event);
+                core.tryClose(this[_rid]);
+              } else {
+                clearTimeout(this[_idleTimeoutTimeout]);
+              }
+            }, (this[_idleTimeoutDuration] / 2) * 1000);
+          } else {
+            clearTimeout(this[_idleTimeoutTimeout]);
+          }
         }, (this[_idleTimeoutDuration] / 2) * 1000);
       }
+    }
+
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          url: this.url,
+          readyState: this.readyState,
+          extensions: this.extensions,
+          protocol: this.protocol,
+          binaryType: this.binaryType,
+          bufferedAmount: this.bufferedAmount,
+        })
+      }`;
     }
   }
 

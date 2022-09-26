@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferPrototype,
@@ -340,8 +341,22 @@
      */
     async text() {
       webidl.assertBranded(this, BlobPrototype);
-      const buffer = await this.arrayBuffer();
-      return core.decode(new Uint8Array(buffer));
+      const buffer = await this.#u8Array(this.size);
+      return core.decode(buffer);
+    }
+
+    async #u8Array(size) {
+      const bytes = new Uint8Array(size);
+      const partIterator = toIterator(this[_parts]);
+      let offset = 0;
+      for await (const chunk of partIterator) {
+        const byteLength = chunk.byteLength;
+        if (byteLength > 0) {
+          TypedArrayPrototypeSet(bytes, chunk, offset);
+          offset += byteLength;
+        }
+      }
+      return bytes;
     }
 
     /**
@@ -349,14 +364,8 @@
      */
     async arrayBuffer() {
       webidl.assertBranded(this, BlobPrototype);
-      const stream = this.stream();
-      const bytes = new Uint8Array(this.size);
-      let offset = 0;
-      for await (const chunk of stream) {
-        TypedArrayPrototypeSet(bytes, chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return bytes.buffer;
+      const buf = await this.#u8Array(this.size);
+      return buf.buffer;
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
@@ -394,7 +403,10 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    // BlobPart is passed to processBlobParts after conversion, which calls core.encode()
+    // on the string.
+    // core.encode() is equivalent to USVString normalization.
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["sequence<BlobPart>"] = webidl.createSequenceConverter(
     webidl.converters["BlobPart"],
@@ -494,7 +506,7 @@
   // A finalization registry to deallocate a blob part when its JS reference is
   // garbage collected.
   const registry = new FinalizationRegistry((uuid) => {
-    core.opSync("op_blob_remove_part", uuid);
+    ops.op_blob_remove_part(uuid);
   });
 
   // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
@@ -522,7 +534,7 @@
      * @returns {BlobReference}
      */
     static fromUint8Array(data) {
-      const id = core.opSync("op_blob_create_part", data);
+      const id = ops.op_blob_create_part(data);
       return new BlobReference(id, data.byteLength);
     }
 
@@ -537,7 +549,7 @@
      */
     slice(start, end) {
       const size = end - start;
-      const id = core.opSync("op_blob_slice_part", this._id, {
+      const id = ops.op_blob_slice_part(this._id, {
         start,
         len: size,
       });
@@ -577,7 +589,7 @@
    * @returns {Blob | null}
    */
   function blobFromObjectUrl(url) {
-    const blobData = core.opSync("op_blob_from_object_url", url);
+    const blobData = ops.op_blob_from_object_url(url);
     if (blobData === null) {
       return null;
     }

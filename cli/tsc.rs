@@ -1,8 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::emit;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
 
@@ -11,23 +10,26 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op_sync;
+use deno_core::op;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
-use deno_core::OpFn;
+use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -59,7 +61,7 @@ pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
     static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
       include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
 
-    zstd::block::decompress(
+    zstd::bulk::decompress(
       &COMPRESSED_COMPILER_SNAPSHOT[4..],
       u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
         as usize,
@@ -80,14 +82,15 @@ macro_rules! inc {
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
-pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
+pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
-    (&[
+    ([
       (
         "lib.dom.asynciterable.d.ts",
         inc!("lib.dom.asynciterable.d.ts"),
       ),
       ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+      ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
       ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
       ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
       ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
@@ -96,6 +99,7 @@ pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
       ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
       ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
       ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+      ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
       ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
       ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
       ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
@@ -108,10 +112,44 @@ pub(crate) static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
         inc!("lib.webworker.iterable.d.ts"),
       ),
     ])
-      .iter()
-      .cloned()
-      .collect()
+    .iter()
+    .cloned()
+    .collect()
   });
+
+/// A structure representing stats from a type check operation for a graph.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Stats(pub Vec<(String, u32)>);
+
+impl<'de> Deserialize<'de> for Stats {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let items: Vec<(String, u32)> = Deserialize::deserialize(deserializer)?;
+    Ok(Stats(items))
+  }
+}
+
+impl Serialize for Stats {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.0, serializer)
+  }
+}
+
+impl fmt::Display for Stats {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    writeln!(f, "Compilation statistics:")?;
+    for (key, value) in self.0.clone() {
+      writeln!(f, "  {}: {}", key, value)?;
+    }
+
+    Ok(())
+  }
+}
 
 /// Retrieve a static asset that are included in the binary.
 pub fn get_asset(asset: &str) -> Option<&'static str> {
@@ -119,7 +157,7 @@ pub fn get_asset(asset: &str) -> Option<&'static str> {
 }
 
 fn get_maybe_hash(
-  maybe_source: Option<&String>,
+  maybe_source: Option<&str>,
   hash_data: &[Vec<u8>],
 ) -> Option<String> {
   if let Some(source) = maybe_source {
@@ -237,7 +275,7 @@ pub struct Request {
   pub config: TsConfig,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
-  pub(crate) graph_data: Arc<RwLock<GraphData>>,
+  pub graph_data: Arc<RwLock<GraphData>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
@@ -247,21 +285,18 @@ pub struct Request {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct Response {
+pub struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
-  /// Any files that were emitted during the check.
-  pub emitted_files: Vec<EmittedFile>,
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
   /// Statistics from the check.
-  pub stats: emit::Stats,
+  pub stats: Stats,
 }
 
 #[derive(Debug)]
 struct State {
   hash_data: Vec<Vec<u8>>,
-  emitted_files: Vec<EmittedFile>,
   graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
@@ -281,7 +316,6 @@ impl State {
   ) -> Self {
     State {
       hash_data,
-      emitted_files: Default::default(),
       graph_data,
       maybe_config_specifier,
       maybe_tsbuildinfo,
@@ -297,18 +331,6 @@ fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
     .map_err(|err| err.into())
 }
 
-fn op<F, V, R>(op_fn: F) -> Box<OpFn>
-where
-  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
-  V: de::DeserializeOwned,
-  R: Serialize + 'static,
-{
-  op_sync(move |s, args, _: ()| {
-    let state = s.borrow_mut::<State>();
-    op_fn(state, args)
-  })
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateHashArgs {
@@ -317,7 +339,9 @@ struct CreateHashArgs {
   data: String,
 }
 
-fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_create_hash(s: &mut OpState, args: Value) -> Result<Value, AnyError> {
+  let state = s.borrow_mut::<State>();
   let v: CreateHashArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
   let mut data = vec![v.data.as_bytes().to_owned()];
@@ -326,7 +350,9 @@ fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
   Ok(json!({ "hash": hash }))
 }
 
-fn op_cwd(state: &mut State, _args: Value) -> Result<String, AnyError> {
+#[op]
+fn op_cwd(s: &mut OpState) -> Result<String, AnyError> {
+  let state = s.borrow_mut::<State>();
   if let Some(config_specifier) = &state.maybe_config_specifier {
     let cwd = config_specifier.join("./")?;
     Ok(cwd.to_string())
@@ -343,57 +369,21 @@ struct EmitArgs {
   /// The _internal_ filename for the file.  This will be used to determine how
   /// the file is cached and stored.
   file_name: String,
-  /// A string representation of the specifier that was associated with a
-  /// module.  This should be present on every module that represents a module
-  /// that was requested to be transformed.
-  maybe_specifiers: Option<Vec<String>>,
 }
 
-fn op_emit(state: &mut State, args: EmitArgs) -> Result<Value, AnyError> {
+#[op]
+fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
+  let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "deno:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
     _ => {
-      let media_type = MediaType::from(&args.file_name);
-      let media_type = if matches!(
-        media_type,
-        MediaType::JavaScript
-          | MediaType::Mjs
-          | MediaType::Cjs
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::SourceMap
-          | MediaType::TsBuildInfo
-      ) {
-        media_type
-      } else {
-        MediaType::JavaScript
-      };
-      state.emitted_files.push(EmittedFile {
-        data: args.data,
-        maybe_specifiers: if let Some(specifiers) = &args.maybe_specifiers {
-          let specifiers = specifiers
-            .iter()
-            .map(|s| {
-              if let Some(data_specifier) = state.remapped_specifiers.get(s) {
-                data_specifier.clone()
-              } else if let Some(remapped_specifier) = state.root_map.get(s) {
-                remapped_specifier.clone()
-              } else {
-                normalize_specifier(s).unwrap()
-              }
-            })
-            .collect();
-          Some(specifiers)
-        } else {
-          None
-        },
-        media_type,
-      })
+      if cfg!(debug_assertions) {
+        panic!("Unhandled emit write: {}", args.file_name);
+      }
     }
   }
 
-  Ok(json!(true))
+  true
 }
 
 #[derive(Debug, Deserialize)]
@@ -402,19 +392,21 @@ struct ExistsArgs {
   specifier: String,
 }
 
-fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+#[op]
+fn op_exists(state: &mut OpState, args: ExistsArgs) -> bool {
+  let state = state.borrow_mut::<State>();
   let graph_data = state.graph_data.read();
   if let Ok(specifier) = normalize_specifier(&args.specifier) {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
-      Ok(true)
+      true
     } else {
-      Ok(matches!(
+      matches!(
         graph_data.get(&graph_data.follow_redirect(&specifier)),
         Some(ModuleEntry::Module { .. })
-      ))
+      )
     }
   } else {
-    Ok(false)
+    false
   }
 }
 
@@ -424,7 +416,7 @@ struct LoadArgs {
   specifier: String,
 }
 
-fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+pub fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
     MediaType::Jsx => 2,
@@ -442,25 +434,28 @@ fn as_ts_script_kind(media_type: &MediaType) -> i32 {
   }
 }
 
-fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
   let specifier = normalize_specifier(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
+  let graph_data = state.graph_data.read();
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.clone()
+    state.maybe_tsbuildinfo.as_deref()
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
-    Some("declare const __: any;\nexport = __;\n".to_string())
+    Some("declare const __: any;\nexport = __;\n")
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
-    let maybe_source = get_asset(&name).map(String::from);
-    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
+    let maybe_source = get_asset(&name);
+    hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
@@ -473,7 +468,6 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let graph_data = state.graph_data.read();
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
       media_type: mt,
@@ -482,17 +476,17 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
       graph_data.get(&graph_data.follow_redirect(&specifier))
     {
       media_type = *mt;
-      Some(code.as_ref().clone())
+      Some(code as &str)
     } else {
       media_type = MediaType::Unknown;
       None
     };
-    hash = get_maybe_hash(maybe_source.as_ref(), &state.hash_data);
+    hash = get_maybe_hash(maybe_source, &state.hash_data);
     maybe_source
   };
 
   Ok(
-    json!({ "data": data, "hash": hash, "scriptKind": as_ts_script_kind(&media_type) }),
+    json!({ "data": data, "version": hash, "scriptKind": as_ts_script_kind(&media_type) }),
   )
 }
 
@@ -506,7 +500,12 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
+#[op]
+fn op_resolve(
+  state: &mut OpState,
+  args: ResolveArgs,
+) -> Result<Vec<(String, String)>, AnyError> {
+  let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> = Vec::new();
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
@@ -527,21 +526,15 @@ fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
       ));
     } else {
       let graph_data = state.graph_data.read();
-      let referrer = graph_data.follow_redirect(&referrer);
-      let resolved_dep = match graph_data.get(&referrer) {
-        Some(ModuleEntry::Module { dependencies, .. }) => {
-          dependencies.get(specifier).map(|d| {
-            if matches!(d.maybe_type, Resolved::Ok { .. }) {
-              &d.maybe_type
-            } else {
-              &d.maybe_code
-            }
-          })
-        }
-        Some(ModuleEntry::Configuration { dependencies }) => {
-          dependencies.get(specifier)
-        }
-        _ => None,
+      let resolved_dep = match graph_data.get_dependencies(&referrer) {
+        Some(dependencies) => dependencies.get(specifier).map(|d| {
+          if matches!(d.maybe_type, Resolved::Ok { .. }) {
+            &d.maybe_type
+          } else {
+            &d.maybe_code
+          }
+        }),
+        None => None,
       };
       let maybe_result = match resolved_dep {
         Some(Resolved::Ok { specifier, .. }) => {
@@ -602,16 +595,18 @@ fn op_resolve(state: &mut State, args: ResolveArgs) -> Result<Value, AnyError> {
     }
   }
 
-  Ok(json!(resolved))
+  Ok(resolved)
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
-  pub stats: emit::Stats,
+  pub stats: Stats,
 }
 
-fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
+#[op]
+fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+  let state = state.borrow_mut::<State>();
   let v: RespondArgs = serde_json::from_value(args)
     .context("Error converting the result for \"op_respond\".")?;
   state.maybe_response = Some(v);
@@ -621,11 +616,7 @@ fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
-  let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(compiler_snapshot()),
-    ..Default::default()
-  });
+pub fn exec(request: Request) -> Result<Response, AnyError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -653,28 +644,32 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
       }
     })
     .collect();
-
-  {
-    let op_state = runtime.op_state();
-    let mut op_state = op_state.borrow_mut();
-    op_state.put(State::new(
-      request.graph_data,
-      request.hash_data.clone(),
-      request.maybe_config_specifier.clone(),
-      request.maybe_tsbuildinfo.clone(),
-      root_map,
-      remapped_specifiers,
-    ));
-  }
-
-  runtime.register_op("op_cwd", op(op_cwd));
-  runtime.register_op("op_create_hash", op(op_create_hash));
-  runtime.register_op("op_emit", op(op_emit));
-  runtime.register_op("op_exists", op(op_exists));
-  runtime.register_op("op_load", op(op_load));
-  runtime.register_op("op_resolve", op(op_resolve));
-  runtime.register_op("op_respond", op(op_respond));
-  runtime.sync_ops_cache();
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![Extension::builder()
+      .ops(vec![
+        op_cwd::decl(),
+        op_create_hash::decl(),
+        op_emit::decl(),
+        op_exists::decl(),
+        op_load::decl(),
+        op_resolve::decl(),
+        op_respond::decl(),
+      ])
+      .state(move |state| {
+        state.put(State::new(
+          request.graph_data.clone(),
+          request.hash_data.clone(),
+          request.maybe_config_specifier.clone(),
+          request.maybe_tsbuildinfo.clone(),
+          root_map.clone(),
+          remapped_specifiers.clone(),
+        ));
+        Ok(())
+      })
+      .build()],
+    ..Default::default()
+  });
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({
@@ -696,13 +691,11 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
 
   if let Some(response) = state.maybe_response {
     let diagnostics = response.diagnostics;
-    let emitted_files = state.emitted_files;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
     let stats = response.stats;
 
     Ok(Response {
       diagnostics,
-      emitted_files,
       maybe_tsbuildinfo,
       stats,
     })
@@ -714,16 +707,16 @@ pub(crate) fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::config_file::TsConfig;
+  use crate::args::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
-  use crate::emit::Stats;
   use deno_core::futures::future;
+  use deno_core::OpState;
   use deno_graph::ModuleKind;
   use std::fs;
 
   #[derive(Debug, Default)]
-  pub(crate) struct MockLoader {
+  pub struct MockLoader {
     pub fixtures: PathBuf,
   }
 
@@ -744,7 +737,7 @@ mod tests {
           Some(deno_graph::source::LoadResponse::Module {
             specifier: specifier.clone(),
             maybe_headers: None,
-            content: Arc::new(c),
+            content: c.into(),
           })
         })
         .map_err(|err| err.into());
@@ -756,7 +749,7 @@ mod tests {
     maybe_specifier: Option<ModuleSpecifier>,
     maybe_hash_data: Option<Vec<Vec<u8>>>,
     maybe_tsbuildinfo: Option<String>,
-  ) -> State {
+  ) -> OpState {
     let specifier = maybe_specifier
       .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
@@ -773,14 +766,17 @@ mod tests {
       None,
     )
     .await;
-    State::new(
+    let state = State::new(
       Arc::new(RwLock::new((&graph).into())),
       hash_data,
       None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
-    )
+    );
+    let mut op_state = OpState::new(1);
+    op_state.put(state);
+    op_state
   }
 
   async fn test_exec(
@@ -831,7 +827,7 @@ mod tests {
 
   #[test]
   fn test_compiler_snapshot() {
-    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+    let mut js_runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
     });
@@ -851,9 +847,11 @@ mod tests {
   #[tokio::test]
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
-    let actual =
-      op_create_hash(&mut state, json!({ "data": "some sort of content" }))
-        .expect("could not invoke op");
+    let actual = op_create_hash::call(
+      &mut state,
+      json!({ "data": "some sort of content" }),
+    )
+    .expect("could not invoke op");
     assert_eq!(
       actual,
       json!({"hash": "ae92df8f104748768838916857a1623b6a3c593110131b0a00f81ad9dac16511"})
@@ -895,77 +893,17 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_emit() {
-    let mut state = setup(None, None, None).await;
-    let actual = op_emit(
-      &mut state,
-      EmitArgs {
-        data: "some file content".to_string(),
-        file_name: "cache:///some/file.js".to_string(),
-        maybe_specifiers: Some(vec!["file:///some/file.ts".to_string()]),
-      },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
-    assert_eq!(state.emitted_files.len(), 1);
-    assert!(state.maybe_tsbuildinfo.is_none());
-    assert_eq!(
-      state.emitted_files[0],
-      EmittedFile {
-        data: "some file content".to_string(),
-        maybe_specifiers: Some(vec![resolve_url_or_path(
-          "file:///some/file.ts"
-        )
-        .unwrap()]),
-        media_type: MediaType::JavaScript,
-      }
-    );
-  }
-
-  #[tokio::test]
-  async fn test_emit_strange_specifier() {
-    let mut state = setup(None, None, None).await;
-    let actual = op_emit(
-      &mut state,
-      EmitArgs {
-        data: "some file content".to_string(),
-        file_name: "deno:///some.file.ts?q=.json".to_string(),
-        maybe_specifiers: Some(
-          vec!["file:///some/file.ts?q=.json".to_string()],
-        ),
-      },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
-    assert_eq!(state.emitted_files.len(), 1);
-    assert!(state.maybe_tsbuildinfo.is_none());
-    assert_eq!(
-      state.emitted_files[0],
-      EmittedFile {
-        data: "some file content".to_string(),
-        maybe_specifiers: Some(vec![resolve_url_or_path(
-          "file:///some/file.ts?q=.json"
-        )
-        .unwrap()]),
-        media_type: MediaType::JavaScript,
-      }
-    );
-  }
-
-  #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = op_emit(
+    let actual = op_emit::call(
       &mut state,
       EmitArgs {
         data: "some file content".to_string(),
         file_name: "deno:///.tsbuildinfo".to_string(),
-        maybe_specifiers: None,
       },
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
-    assert_eq!(state.emitted_files.len(), 0);
+    );
+    assert!(actual);
+    let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_tsbuildinfo,
       Some("some file content".to_string())
@@ -980,7 +918,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = op_load(
+    let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
     )
@@ -989,7 +927,7 @@ mod tests {
       actual,
       json!({
         "data": "console.log(\"hello deno\");\n",
-        "hash": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
+        "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
         "scriptKind": 3,
       })
     );
@@ -999,7 +937,7 @@ mod tests {
   #[serde(rename_all = "camelCase")]
   struct LoadResponse {
     data: String,
-    hash: Option<String>,
+    version: Option<String>,
     script_kind: i64,
   }
 
@@ -1011,14 +949,16 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let value =
-      op_load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
-        .expect("should have invoked op");
+    let value = op_load::call(
+      &mut state,
+      json!({ "specifier": "asset:///lib.dom.d.ts" }),
+    )
+    .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
     let expected = get_asset("lib.dom.d.ts").unwrap();
     assert_eq!(actual.data, expected);
-    assert!(actual.hash.is_some());
+    assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
 
@@ -1031,13 +971,13 @@ mod tests {
     )
     .await;
     let actual =
-      op_load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
+      op_load::call(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
         .expect("should have invoked op");
     assert_eq!(
       actual,
       json!({
         "data": "some content",
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     );
@@ -1046,7 +986,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = op_load(
+    let actual = op_load::call(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
     )
@@ -1055,7 +995,7 @@ mod tests {
       actual,
       json!({
         "data": null,
-        "hash": null,
+        "version": null,
         "scriptKind": 0,
       })
     )
@@ -1069,7 +1009,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve(
+    let actual = op_resolve::call(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1077,7 +1017,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, json!([["https://deno.land/x/b.ts", ".ts"]]));
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), ".ts".into())]
+    );
   }
 
   #[tokio::test]
@@ -1088,7 +1031,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = op_resolve(
+    let actual = op_resolve::call(
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
@@ -1098,14 +1041,14 @@ mod tests {
     .expect("should have not errored");
     assert_eq!(
       actual,
-      json!([["deno:///missing_dependency.d.ts", ".d.ts"]])
+      vec![("deno:///missing_dependency.d.ts".into(), ".d.ts".into())]
     );
   }
 
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = op_respond(
+    let actual = op_respond::call(
       &mut state,
       json!({
         "diagnostics": [
@@ -1120,6 +1063,7 @@ mod tests {
     )
     .expect("should have invoked op");
     assert_eq!(actual, json!(true));
+    let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,
       Some(RespondArgs {
@@ -1150,7 +1094,6 @@ mod tests {
       .expect("exec should not have errored");
     eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
-    assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1163,7 +1106,6 @@ mod tests {
       .expect("exec should not have errored");
     eprintln!("diagnostics {:#?}", actual.diagnostics);
     assert!(actual.diagnostics.is_empty());
-    assert!(actual.emitted_files.is_empty());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }

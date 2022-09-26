@@ -1,0 +1,17 @@
+Warning deno task is unstable and may drastically change in the future
+Task not found: non_existent
+Available tasks:
+- boolean_logic
+    sleep 0.1 && echo 3 && echo 4 & echo 1 && echo 2 || echo NOPE
+- deno_echo
+    deno eval 'console.log(5)'
+- echo
+    echo 1
+- echo_cwd
+    echo $(pwd)
+- exit_code_5
+    echo $(echo 10 ; exit 2) && exit 5
+- piped
+    echo 12345 | (deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)' && deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)')
+- strings
+    deno run main.ts && deno eval "console.log(\"test\")"

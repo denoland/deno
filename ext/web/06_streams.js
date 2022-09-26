@@ -8,6 +8,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { add, remove, signalAbort, newSignal, AbortSignalPrototype } =
     window.__bootstrap.abortSignal;
@@ -21,7 +22,6 @@
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
-    Error,
     Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,
@@ -42,6 +42,7 @@
     PromiseResolve,
     queueMicrotask,
     RangeError,
+    ReflectHas,
     SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
@@ -58,24 +59,7 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
-
-  class AssertionError extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AssertionError";
-    }
-  }
-
-  /**
-   * @param {unknown} cond
-   * @param {string=} msg
-   * @returns {asserts cond}
-   */
-  function assert(cond, msg = "Assertion failed.") {
-    if (!cond) {
-      throw new AssertionError(msg);
-    }
-  }
+  const { AssertionError, assert } = window.__bootstrap.infra;
 
   /** @template T */
   class Deferred {
@@ -208,7 +192,7 @@
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    return isFakeDetached in O;
+    return ReflectHas(O, isFakeDetached);
   }
 
   /**
@@ -410,7 +394,10 @@
    * @returns {T}
    */
   function dequeueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = ArrayPrototypeShift(container[_queue]);
     container[_queueTotalSize] -= valueWithSize.size;
@@ -428,7 +415,10 @@
    * @returns {void}
    */
   function enqueueValueWithSize(container, value, size) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     if (isNonNegativeNumber(size) === false) {
       throw RangeError("chunk size isn't a positive number");
     }
@@ -579,10 +569,14 @@
   /** @param {WritableStream} stream */
   function initializeWritableStream(stream) {
     stream[_state] = "writable";
-    stream[_storedError] = stream[_writer] = stream[_controller] =
-      stream[_inFlightWriteRequest] = stream[_closeRequest] =
-        stream[_inFlightCloseRequest] = stream[_pendingAbortRequest] =
-          undefined;
+    stream[_storedError] =
+      stream[_writer] =
+      stream[_controller] =
+      stream[_inFlightWriteRequest] =
+      stream[_closeRequest] =
+      stream[_inFlightCloseRequest] =
+      stream[_pendingAbortRequest] =
+        undefined;
     stream[_writeRequests] = [];
     stream[_backpressure] = false;
   }
@@ -610,7 +604,7 @@
    */
   function isReadableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -630,7 +624,7 @@
    */
   function isReadableStreamDefaultReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readRequests in value));
+      !ReflectHas(value, _readRequests));
   }
 
   /**
@@ -639,7 +633,7 @@
    */
   function isReadableStreamBYOBReader(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_readIntoRequests in value));
+      !ReflectHas(value, _readIntoRequests));
   }
 
   /**
@@ -651,13 +645,71 @@
     return stream[_disturbed];
   }
 
+  const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
+
+  /**
+   * @callback unrefCallback
+   * @param {Promise} promise
+   * @returns {undefined}
+   */
+  /**
+   * @param {number} rid
+   * @param {unrefCallback=} unrefCallback
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRid(rid, unrefCallback) {
+    const stream = webidl.createBranded(ReadableStream);
+    stream[_maybeRid] = rid;
+    const underlyingSource = {
+      type: "bytes",
+      async pull(controller) {
+        const v = controller.byobRequest.view;
+        try {
+          const promise = core.read(rid, v);
+
+          unrefCallback?.(promise);
+
+          const bytesRead = await promise;
+
+          if (bytesRead === 0) {
+            core.tryClose(rid);
+            controller.close();
+            controller.byobRequest.respond(0);
+          } else {
+            controller.byobRequest.respond(bytesRead);
+          }
+        } catch (e) {
+          controller.error(e);
+          core.tryClose(rid);
+        }
+      },
+      cancel() {
+        core.tryClose(rid);
+      },
+      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
+    };
+    initializeReadableStream(stream);
+    setUpReadableByteStreamControllerFromUnderlyingSource(
+      stream,
+      underlyingSource,
+      underlyingSource,
+      0,
+    );
+
+    return stream;
+  }
+
+  function getReadableStreamRid(stream) {
+    return stream[_maybeRid];
+  }
+
   /**
    * @param {unknown} value
    * @returns {value is WritableStream}
    */
   function isWritableStream(value) {
     return !(typeof value !== "object" || value === null ||
-      !(_controller in value));
+      !ReflectHas(value, _controller));
   }
 
   /**
@@ -670,14 +722,16 @@
     }
     return true;
   }
-
   /**
    * @template T
    * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
    * @returns {T | _close}
    */
   function peekQueueValue(container) {
-    assert(_queue in container && _queueTotalSize in container);
+    assert(
+      ReflectHas(container, _queue) &&
+        ReflectHas(container, _queueTotalSize),
+    );
     assert(container[_queue].length);
     const valueWithSize = container[_queue][0];
     return valueWithSize.value;
@@ -2916,8 +2970,11 @@
     assert(stream[_controller] === undefined);
     controller[_stream] = stream;
     resetQueue(controller);
-    controller[_started] = controller[_closeRequested] =
-      controller[_pullAgain] = controller[_pulling] = false;
+    controller[_started] =
+      controller[_closeRequested] =
+      controller[_pullAgain] =
+      controller[_pulling] =
+        false;
     controller[_strategySizeAlgorithm] = sizeAlgorithm;
     controller[_strategyHWM] = highWaterMark;
     controller[_pullAlgorithm] = pullAlgorithm;
@@ -4296,6 +4353,7 @@
     WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
+  const _maybeRid = Symbol("[[maybeRid]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
@@ -4310,6 +4368,8 @@
     [_state];
     /** @type {any} */
     [_storedError];
+    /** @type {number | null} */
+    [_maybeRid] = null;
 
     /**
      * @param {UnderlyingSource<R>=} underlyingSource
@@ -4351,7 +4411,7 @@
           highWaterMark,
         );
       } else {
-        assert(!("type" in underlyingSourceDict));
+        assert(!(ReflectHas(underlyingSourceDict, "type")));
         const sizeAlgorithm = extractSizeAlgorithm(strategy);
         const highWaterMark = extractHighWaterMark(strategy, 1);
         setUpReadableStreamDefaultControllerFromUnderlyingSource(
@@ -5844,10 +5904,14 @@
 
   window.__bootstrap.streams = {
     // Non-Public
+    _state,
     isReadableStreamDisturbed,
     errorReadableStream,
     createProxy,
     writableStreamClose,
+    readableStreamClose,
+    readableStreamForRid,
+    getReadableStreamRid,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,

@@ -10,23 +10,26 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
-    RegExp,
-    ArrayPrototypeMap,
-    StringPrototypeCharCodeAt,
-    NumberPrototypeToString,
-    StringPrototypePadStart,
-    TypeError,
     ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    Error,
+    JSONStringify,
+    NumberPrototypeToString,
+    RegExp,
     SafeArrayIterator,
-    StringPrototypeCharAt,
-    StringPrototypeMatch,
-    StringPrototypeSlice,
     String,
+    StringPrototypeCharAt,
+    StringPrototypeCharCodeAt,
+    StringPrototypeMatch,
+    StringPrototypePadStart,
     StringPrototypeReplace,
-    StringPrototypeToUpperCase,
-    StringPrototypeToLowerCase,
+    StringPrototypeSlice,
     StringPrototypeSubstring,
+    StringPrototypeToLowerCase,
+    StringPrototypeToUpperCase,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const ASCII_DIGIT = ["\u0030-\u0039"];
@@ -237,7 +240,7 @@
    * @returns {string}
    */
   function forgivingBase64Encode(data) {
-    return core.opSync("op_base64_encode", data);
+    return ops.op_base64_encode(data);
   }
 
   /**
@@ -245,7 +248,7 @@
    * @returns {Uint8Array}
    */
   function forgivingBase64Decode(data) {
-    return core.opSync("op_base64_decode", data);
+    return ops.op_base64_decode(data);
   }
 
   /**
@@ -275,6 +278,36 @@
     return StringPrototypeMatch(s, HTTP_BETWEEN_WHITESPACE)?.[1] ?? "";
   }
 
+  class AssertionError extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "AssertionError";
+    }
+  }
+
+  /**
+   * @param {unknown} cond
+   * @param {string=} msg
+   * @returns {asserts cond}
+   */
+  function assert(cond, msg = "Assertion failed.") {
+    if (!cond) {
+      throw new AssertionError(msg);
+    }
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function serializeJSValueToJSONString(value) {
+    const result = JSONStringify(value);
+    if (result === undefined) {
+      throw new TypeError("Value is not JSON serializable.");
+    }
+    return result;
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -299,5 +332,8 @@
     collectHttpQuotedString,
     forgivingBase64Encode,
     forgivingBase64Decode,
+    AssertionError,
+    assert,
+    serializeJSValueToJSONString,
   };
 })(globalThis);

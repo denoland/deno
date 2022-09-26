@@ -1,0 +1,13 @@
+error: Uncaught (in worker "") Error: foo
+  throw new Error("foo");
+        ^
+    at foo ([WILDCARD]/error.ts:2:9)
+    at [WILDCARD]/error.ts:5:1
+{
+  message: "Uncaught Error: foo",
+  filename: "[WILDCARD]/error.ts",
+  lineno: 2,
+  colno: 9
+}
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+    at [WILDCARD]
