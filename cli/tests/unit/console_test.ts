@@ -1632,6 +1632,29 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
   });
 });
 
+// console.log(new Proxy(new Date(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
+  mockConsole((console, out) => {
+    const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
+    console.log(proxiedDate);
+    assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
+  });
+});
+
+Deno.test(function consoleLogProxiedObject() {
+  mockConsole((console, out) => {
+    const obj = { a: 1 };
+    const target = {
+      getPrototypeOf() {
+        return {}
+      },
+    }
+    const proxiedObject = new Proxy(obj, target);
+    console.log(proxiedObject);
+    assertEquals(stripColor(out.toString()), "{ a: 1 }\n");
+  });
+});
+
 // console.dir test
 Deno.test(function consoleDir() {
   mockConsole((console, out) => {
@@ -1889,20 +1912,6 @@ Deno.test(function inspectProxy() {
       { showProxy: true },
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
-  );
-  assertEquals(
-    stripColor(Deno.inspect(
-      new Proxy(new Date("2022-09-24T15:59:39.529Z"), {
-        get(target: Date, p: keyof Date) {
-          const value = target[p];
-          if (typeof value === "function") {
-            return value.bind(target);
-          }
-          return value;
-        },
-      }),
-    )),
-    "2022-09-24T15:59:39.529Z",
   );
 });
 

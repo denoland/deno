@@ -674,11 +674,9 @@
           return handleCircular(value, cyan);
         }
 
-        if(proxyDetails) {
-          value = proxyDetails[0]
-        }
+        const targetObject = proxyDetails ? proxyDetails[0] : value
 
-        return inspectObject(value, inspectOptions);
+        return inspectObject(targetObject, inspectOptions);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
