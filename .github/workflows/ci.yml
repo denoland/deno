@@ -42,7 +42,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Check formatting
         run: deno run --allow-write --allow-read --allow-run --unstable ./tools/format.js --check
       - name: Cache Rust
@@ -72,7 +72,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -119,7 +119,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -149,7 +149,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -194,7 +194,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -233,7 +233,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Install Python
         uses: actions/setup-python@v1
         with:
@@ -272,7 +272,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -321,7 +321,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -354,7 +354,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -401,7 +401,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -433,7 +433,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -482,7 +482,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -513,7 +513,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -560,7 +560,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.22.0
+          deno-version: v1.25.4
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
