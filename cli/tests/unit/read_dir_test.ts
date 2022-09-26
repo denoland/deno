@@ -41,10 +41,10 @@ Deno.test({ permissions: { read: false } }, function readDirSyncPerm() {
 Deno.test({ permissions: { read: true } }, function readDirSyncNotDir() {
   assertThrows(
     () => {
-      Deno.readDirSync("cli/tests/testdata/fixture.json");
+      Deno.readDirSync("cli/tests/testdata/assets/fixture.json");
     },
     Error,
-    `readdir 'cli/tests/testdata/fixture.json'`,
+    `readdir 'cli/tests/testdata/assets/fixture.json'`,
   );
 });
 

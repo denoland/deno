@@ -146,6 +146,23 @@ impl CacheSetting {
       }
     }
   }
+
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::ReloadSome(list) => {
+        if list.contains(&"npm:".to_string()) {
+          return false;
+        }
+        let specifier = format!("npm:{}", package_name);
+        if list.contains(&specifier) {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    }
+  }
 }
 
 /// Fetch a source file from the local file system.
@@ -1551,7 +1568,8 @@ mod tests {
       None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1559,7 +1577,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
-    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/002_hello.ts\", but --no-remote is specified.");
+    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
   }
 
   #[tokio::test]
@@ -1587,7 +1605,8 @@ mod tests {
       None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1595,7 +1614,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotCached"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())

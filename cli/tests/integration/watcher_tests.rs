@@ -242,15 +242,15 @@ fn lint_all_files_on_each_change_test() {
 
 #[test]
 fn fmt_watch_test() {
+  let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
-  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
-  let badly_formatted_original =
-    util::testdata_path().join("badly_formatted.mjs");
+  let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&fmt_testdata_path)
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
@@ -291,10 +291,10 @@ fn fmt_watch_test() {
 
 #[test]
 fn fmt_watch_without_args_test() {
+  let fmt_testdata_path = util::testdata_path().join("fmt");
   let t = TempDir::new();
-  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
-  let badly_formatted_original =
-    util::testdata_path().join("badly_formatted.mjs");
+  let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted).unwrap();
 
@@ -339,15 +339,15 @@ fn fmt_watch_without_args_test() {
 #[test]
 fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
-  let badly_formatted_original =
-    util::testdata_path().join("badly_formatted.mjs");
+  let fmt_testdata_path = util::testdata_path().join("fmt");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
   let badly_formatted_1 = t.path().join("badly_formatted_1.js");
   let badly_formatted_2 = t.path().join("badly_formatted_2.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted_1).unwrap();
   std::fs::copy(&badly_formatted_original, &badly_formatted_2).unwrap();
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(&fmt_testdata_path)
     .arg("fmt")
     .arg(&t.path())
     .arg("--watch")
