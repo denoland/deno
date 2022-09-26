@@ -35,9 +35,9 @@ if (Deno.build.os === "darwin") {
 
 const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
 const proc = Deno.run({
-  cmd: [tar, "-Izstd", "-cvf", "artifacts.tar.zst", ...artifacts],
+  cmd: [tar, "-cvf", "artifacts.tar", ...artifacts],
 });
 const { success } = await proc.status();
 if (!success) {
-  throw `Failed to package artifacts.tar.zst`;
+  throw `Failed to package artifacts.tar`;
 }

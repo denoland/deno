@@ -66,11 +66,20 @@ const RESTORE_BUILD = (buildJobName, platform) => [
   },
   {
     name: "Unpack artifacts",
-    run: `${
-      platform === "macos" ? "gtar" : "tar"
-    } -I unzstd -xpf artifacts.tar.zst`,
+    run: `${platform === "macos" ? "gtar" : "tar"} -xpf artifacts.tar`,
   },
 ];
+
+const USE_GNU_TAR = (platform) =>
+  platform === "windows"
+    ? [
+      {
+        name: "Use GNU tar",
+        shell: "cmd",
+        run: `echo C:\\Program Files\\Git\\usr\\bin>>"%GITHUB_PATH%"`,
+      },
+    ]
+    : [];
 
 const INSTALL_RUST = {
   name: "Install Rust",
@@ -193,6 +202,7 @@ for (const platform of PLATFORMS) {
       if: true,
       steps: [
         ...CHECKOUT_STEPS(["./test_util/std"]),
+        ...USE_GNU_TAR(platform.name),
         INSTALL_DENO,
         INSTALL_RUST,
         CACHE_RUST(target.target),
@@ -217,7 +227,7 @@ for (const platform of PLATFORMS) {
           uses: "actions/upload-artifact@v3",
           with: {
             name: BUILD_JOB_ID,
-            path: "artifacts.tar.zst",
+            path: "artifacts.tar",
           },
         },
       ],
@@ -252,6 +262,7 @@ for (const platform of PLATFORMS) {
       },
       steps: [
         ...CHECKOUT_STEPS(["./test_util/std", "./third_party"]),
+        ...USE_GNU_TAR(platform.name),
         INSTALL_DENO,
         ...RESTORE_BUILD(BUILD_JOB_ID, platform.name),
         ...(platform.name === "macos"
@@ -359,14 +370,14 @@ for (const [jobId, platform] of releases) {
     uses: "actions/download-artifact@v3",
     with: {
       name: jobId,
-      path: `${platform}.tar.zst`,
+      path: `${platform}.tar`,
     },
   });
   uploadCanary.steps.push({
     name: `Unpack artifacts (${platform})`,
     run: `${
       platform === "macos" ? "gtar" : "tar"
-    } -I unzstd -xpf ${platform}.tar.zst -C ${platform}`,
+    } -xpf ${platform}.tar -C ${platform}`,
   });
   uploadCanary.steps.push({
     name: `Create zip (${platform})`,
