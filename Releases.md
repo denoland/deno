@@ -6,6 +6,46 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.25.4 / 2022.09.22
+
+- feat(unstable/npm): add flag for creating and resolving npm packages to a
+  local node_modules folder (#15971)
+- feat(unstable/npm): add support for --reload=npm: and --reload=npm:<package>
+  (#15972)
+- feat(internal/ops): Automatic fast ops creation (#15527)
+- fix(compile): keep non-exe extension in output name on Windows (#15994)
+- fix(doc): deno doc should parse modules if they haven't been parsed before
+  (#15941)
+- fix(ext/node): fix builtin module module (#15904)
+- fix(ext/webgpu): make GPUDevice.features SetLike (#15853)
+- fix(flash): panic if response if undefined (#15964)
+- fix(runtime): better error message with Deno.env.get/set (#15966)
+- fix(runtime): fix permission status cache keys (#15899)
+- perf(cli): avoid `canonicalize_path` if config file does not exist (#15957)
+- perf(cli): avoid `clap::App::clone` (#15951)
+- perf(cli): use -O3 instead of -Oz (#15952)
+- perf(core): use single ObjectTemplate for ops in `initialize_ops` (#15959)
+- perf(ext/console): avoid `wrapConsole` when not inspecting (#15931)
+- perf(web): optimize encodeInto() (#15922)
+- perf: fs optimizations - part 1 (#15873)
+
+### 1.25.3 / 2022.09.15
+
+- doc(unstable): mention that `signal` input isn't supported in `spawnSync`
+  (#15889)
+- fix(ext/flash): don't block requests (#15852)
+- fix(npm): align Deno importing Node cjs with Node esm importing cjs (#15879)
+- fix(npm): align Node esm code importing cjs with Node (#15838)
+- fix(npm): binary entrypoint for .js or no extension (#15900)
+- fix(npm): remove export binding to match node (#15837)
+- fix(npm): support cjs resolution of package subpath with package.json (#15855)
+- fix(npm): use shim from deno_node crate for 'module' built-in module (#15881)
+- fix(ops): add node.js env variable allowlist (#15893)
+- perf(ext/flash): remove string->buffer cache (#15850)
+- perf(serde_v8): remove Mutex from ZeroCopyBuf (#15888)
+- perf(url): return early if url has no query string (#15856)
+- perf: optimize URL serialization (#15663)
+
 ### 1.25.2 / 2022.09.09
 
 - BREAKING(unstable): remove --compat mode (#15678)
