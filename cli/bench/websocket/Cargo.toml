@@ -1,0 +1,14 @@
+[package]
+name = "ws-client-perf"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ws_client_perf"
+path = "client.rs"
+
+[dependencies]
+futures-util = "*"
+tokio = { version = "1.0.0", default-features = false, features = ["full"] }
+tokio-tungstenite = "0.16.1"
+url = "2.0.0"

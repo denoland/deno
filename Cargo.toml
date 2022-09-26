@@ -5,6 +5,7 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/bench/websocket",
   "core",
   "ops",
   "runtime",
