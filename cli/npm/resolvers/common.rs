@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
@@ -48,38 +47,39 @@ pub async fn cache_packages(
   cache: &NpmCache,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
-  if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string()) {
-    // for some of the tests, we want downloading of packages
-    // to be deterministic so that the output is always the same
+  let sync_download = should_sync_download();
+  if sync_download {
+    // we're running the tests not with --quiet
+    // and we want the output to be deterministic
     packages.sort_by(|a, b| a.id.cmp(&b.id));
-    for package in packages {
+  }
+  let mut handles = Vec::with_capacity(packages.len());
+  for package in packages {
+    let cache = cache.clone();
+    let registry_url = registry_url.clone();
+    let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.id, &package.dist, registry_url)
+        .ensure_package(&package.id, &package.dist, &registry_url)
         .await
-        .with_context(|| {
-          format!("Failed caching npm package '{}'.", package.id)
-        })?;
-    }
-  } else {
-    let handles = packages.into_iter().map(|package| {
-      let cache = cache.clone();
-      let registry_url = registry_url.clone();
-      tokio::task::spawn(async move {
-        cache
-          .ensure_package(&package.id, &package.dist, &registry_url)
-          .await
-          .with_context(|| {
-            format!("Failed caching npm package '{}'.", package.id)
-          })
-      })
     });
-    let results = futures::future::join_all(handles).await;
-    for result in results {
-      // surface the first error
-      result??;
+    if sync_download {
+      handle.await??;
+    } else {
+      handles.push(handle);
     }
   }
+  let results = futures::future::join_all(handles).await;
+  for result in results {
+    // surface the first error
+    result??;
+  }
   Ok(())
+}
+
+/// For some of the tests, we want downloading of packages
+/// to be deterministic so that the output is always the same
+pub fn should_sync_download() -> bool {
+  std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
 }
 
 pub fn ensure_registry_read_permission(
