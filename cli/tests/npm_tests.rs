@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod integration;
+
 use deno_core::url::Url;
 use std::process::Stdio;
 use test_util as util;

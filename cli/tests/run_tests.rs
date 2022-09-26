@@ -3280,7 +3280,7 @@ async fn http2_request_url() {
       assert_eq!(msg, "READY");
 
       let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
+        "./testdata/tls/RootCA.crt"
       ))
       .unwrap();
 

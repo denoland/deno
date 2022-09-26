@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
+mod integration;
+
 use deno_runtime::deno_net::ops_tls::TlsStream;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls_pemfile;
@@ -227,7 +228,7 @@ async fn listen_tls_alpn() {
       assert_eq!(&msg, b"READY");
 
       let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
-        "../testdata/tls/RootCA.crt"
+        "./testdata/tls/RootCA.crt"
       )));
       let certs = rustls_pemfile::certs(&mut reader).unwrap();
       let mut root_store = rustls::RootCertStore::empty();
@@ -284,7 +285,7 @@ async fn listen_tls_alpn_fail() {
       assert_eq!(&msg, b"READY");
 
       let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
-        "../testdata/tls/RootCA.crt"
+        "./testdata/tls/RootCA.crt"
       )));
       let certs = rustls_pemfile::certs(&mut reader).unwrap();
       let mut root_store = rustls::RootCertStore::empty();
