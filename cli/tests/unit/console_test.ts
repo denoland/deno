@@ -1646,9 +1646,9 @@ Deno.test(function consoleLogProxiedObject() {
     const obj = { a: 1 };
     const target = {
       getPrototypeOf() {
-        return {}
+        return {};
       },
-    }
+    };
     const proxiedObject = new Proxy(obj, target);
     console.log(proxiedObject);
     assertEquals(stripColor(out.toString()), "{ a: 1 }\n");
