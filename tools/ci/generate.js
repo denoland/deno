@@ -72,11 +72,6 @@ const RESTORE_BUILD = (buildJobName, platform) => [
   },
 ];
 
-const INSTALL_RUST = {
-  name: "Install Rust",
-  uses: "dtolnay/rust-toolchain@stable",
-};
-
 const INSTALL_DENO = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v1",
@@ -101,7 +96,6 @@ CI.jobs.lint = {
   "timeout-minutes": 90,
   steps: [
     ...CHECKOUT_STEPS(["./test_util/std", "./third_party"]),
-    INSTALL_RUST,
     INSTALL_DENO,
     {
       name: "Check formatting",
@@ -187,7 +181,6 @@ for (const platform of PLATFORMS) {
       if: true,
       steps: [
         ...CHECKOUT_STEPS(["./test_util/std"]),
-        INSTALL_RUST,
         INSTALL_DENO,
         CACHE_RUST(target.target),
         {
