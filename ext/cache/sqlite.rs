@@ -18,6 +18,8 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use crate::Cache;
 use crate::CacheDeleteRequest;
@@ -60,6 +62,7 @@ impl SqliteBackedCache {
                     response_status        INTEGER NOT NULL,
                     response_status_text   TEXT,
                     response_body_key      TEXT,
+                    last_inserted_at       INTEGER UNSIGNED NOT NULL,
                     FOREIGN KEY (cache_id) REFERENCES cache_storage(id) ON DELETE CASCADE,
 
                     UNIQUE (cache_id, request_url)
@@ -167,14 +170,19 @@ impl Cache for SqliteBackedCache {
         get_responses_dir(cache_storage_dir, request_response.cache_id);
       let response_path = responses_dir.join(&body_key);
       let file = tokio::fs::File::create(response_path).await?;
+      let duration_since_epoch = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+      let start_time = duration_since_epoch.as_secs();
       Ok(Some(Rc::new(CachePutResource {
         file: AsyncRefCell::new(file),
         db,
         put_request: request_response,
         response_body_key: body_key,
+        start_time,
       })))
     } else {
-      insert_cache_asset(db, request_response, response_body_key).await?;
+      insert_cache_asset(db, request_response, None).await?;
       Ok(None)
     }
   }
@@ -263,15 +271,34 @@ impl Cache for SqliteBackedCache {
 async fn insert_cache_asset(
   db: Arc<Mutex<rusqlite::Connection>>,
   put: CachePutRequest,
-  response_body_key: Option<String>,
+  body_key_start_time: Option<(String, u64)>,
 ) -> Result<Option<String>, deno_core::anyhow::Error> {
   tokio::task::spawn_blocking(move || {
     let maybe_response_body = {
       let db = db.lock();
+      let mut response_body_key = None;
+      if let Some((body_key, start_time)) = body_key_start_time {
+        response_body_key = Some(body_key);
+          let last_inserted_at = db.query_row("
+          SELECT last_inserted_at FROM request_response_list
+          WHERE cache_id = ?1 AND request_url = ?2",
+          (put.cache_id, &put.request_url), |row| {
+            let last_inserted_at: i64 = row.get(0)?;
+            Ok(last_inserted_at)
+          }).optional()?;
+          if let Some(last_inserted) = last_inserted_at {
+            // Some other worker has already inserted this resource into the cache.
+            // Note: okay to unwrap() as it is always present when response_body_key is present.
+            if start_time > (last_inserted as u64) {
+              return Ok(None);
+            }
+          }
+      }
       db.query_row(
         "INSERT OR REPLACE INTO request_response_list
-             (cache_id, request_url, request_headers, response_headers, response_body_key, response_status, response_status_text)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (cache_id, request_url, request_headers, response_headers,
+              response_body_key, response_status, response_status_text, last_inserted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              RETURNING response_body_key",
         (
           put.cache_id,
@@ -281,6 +308,7 @@ async fn insert_cache_asset(
           response_body_key,
           put.response_status,
           put.response_status_text,
+          SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         ),
         |row| {
           let response_body_key: Option<String> = row.get(0)?;
@@ -342,6 +370,7 @@ pub struct CachePutResource {
   pub put_request: CachePutRequest,
   pub response_body_key: String,
   pub file: AsyncRefCell<tokio::fs::File>,
+  pub start_time: u64,
 }
 
 impl CachePutResource {
@@ -360,7 +389,7 @@ impl CachePutResource {
     let response_body_key = insert_cache_asset(
       self.db.clone(),
       self.put_request.clone(),
-      Some(self.response_body_key.clone()),
+      Some((self.response_body_key.clone(), self.start_time)),
     )
     .await?;
     assert!(response_body_key.is_some());
