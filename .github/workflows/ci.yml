@@ -41,6 +41,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Check formatting
         run: deno run --allow-write --allow-read --allow-run --unstable ./tools/format.js --check
       - name: Cache Rust
@@ -69,6 +77,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -144,6 +160,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -265,6 +289,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -345,6 +377,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -422,6 +462,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:
@@ -500,6 +548,14 @@ jobs:
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.25.4
+      - name: Install Rust
+        run: |-
+          rustup self update
+          cargo --version
+          rustc --version
+          rustfmt --version
+          cargo-fmt --version
+          cargo-clippy --version
       - name: Cache Rust
         uses: Swatinem/rust-cache@v1
         with:

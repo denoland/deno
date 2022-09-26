@@ -72,6 +72,18 @@ const RESTORE_BUILD = (buildJobName, platform) => [
   },
 ];
 
+const INSTALL_RUST = {
+  name: "Install Rust",
+  run: [
+    "rustup self update",
+    "cargo --version",
+    "rustc --version",
+    "rustfmt --version",
+    "cargo-fmt --version",
+    "cargo-clippy --version",
+  ].join("\n"),
+};
+
 const INSTALL_DENO = {
   name: "Install Deno",
   uses: "denoland/setup-deno@v1",
@@ -97,6 +109,7 @@ CI.jobs.lint = {
   steps: [
     ...CHECKOUT_STEPS(["./test_util/std", "./third_party"]),
     INSTALL_DENO,
+    INSTALL_RUST,
     {
       name: "Check formatting",
       run:
@@ -182,6 +195,7 @@ for (const platform of PLATFORMS) {
       steps: [
         ...CHECKOUT_STEPS(["./test_util/std"]),
         INSTALL_DENO,
+        INSTALL_RUST,
         CACHE_RUST(target.target),
         {
           name: "Build",
