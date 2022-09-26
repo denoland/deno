@@ -156,47 +156,25 @@ impl Cache for SqliteBackedCache {
   ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let maybe_body_path = tokio::task::spawn_blocking(move || {
-      let response_body_key = if request_response.response_has_body {
-        Some(hash(&request_response.request_url))
-      } else {
-        None
-      };
-      let maybe_response_body = {
-        let db = db.lock();
-        db.query_row(
-          "INSERT OR REPLACE INTO request_response_list
-               (cache_id, request_url, request_headers, response_headers, response_body_key, response_status, response_status_text)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-               RETURNING response_body_key",
-          (
-            request_response.cache_id,
-            &request_response.request_url,
-            serde_json::to_string(&request_response.request_headers)?,
-            serde_json::to_string(&request_response.response_headers)?,
-            response_body_key,
-            &request_response.response_status,
-            &request_response.response_status_text,
-          ),
-          |row| {
-            let response_body_key: Option<String> = row.get(0)?;
-            Ok(response_body_key)
-          },
-        )?
-      };
-      if let Some(body_key) = maybe_response_body {
-        let responses_dir  = get_responses_dir(cache_storage_dir, request_response.cache_id);
-        let response_path = responses_dir.join(body_key);
-        Ok::<Option<PathBuf>, AnyError>(Some(response_path))
-      } else {
-        Ok::<Option<PathBuf>, AnyError>(None)
-      }
-    }).await??;
-    if let Some(path) = maybe_body_path {
-      // TODO(@satyarohith): can we create the file in the blocking task above?
-      let file = tokio::fs::File::create(path).await?;
-      Ok(Some(Rc::new(CachePutResource::new(file))))
+    let response_body_key = if request_response.response_has_body {
+      Some(hash(&request_response.request_url))
     } else {
+      None
+    };
+
+    if let Some(body_key) = response_body_key {
+      let responses_dir =
+        get_responses_dir(cache_storage_dir, request_response.cache_id);
+      let response_path = responses_dir.join(&body_key);
+      let file = tokio::fs::File::create(response_path).await?;
+      Ok(Some(Rc::new(CachePutResource {
+        file: AsyncRefCell::new(file),
+        db,
+        put_request: request_response,
+        response_body_key: body_key,
+      })))
+    } else {
+      insert_cache_asset(db, request_response, response_body_key).await?;
       Ok(None)
     }
   }
@@ -282,6 +260,38 @@ impl Cache for SqliteBackedCache {
   }
 }
 
+async fn insert_cache_asset(
+  db: Arc<Mutex<rusqlite::Connection>>,
+  put: CachePutRequest,
+  response_body_key: Option<String>,
+) -> Result<Option<String>, deno_core::anyhow::Error> {
+  tokio::task::spawn_blocking(move || {
+    let maybe_response_body = {
+      let db = db.lock();
+      db.query_row(
+        "INSERT OR REPLACE INTO request_response_list
+             (cache_id, request_url, request_headers, response_headers, response_body_key, response_status, response_status_text)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             RETURNING response_body_key",
+        (
+          put.cache_id,
+          put.request_url,
+          serde_json::to_string(&put.request_headers)?,
+          serde_json::to_string(&put.response_headers)?,
+          response_body_key,
+          put.response_status,
+          put.response_status_text,
+        ),
+        |row| {
+          let response_body_key: Option<String> = row.get(0)?;
+          Ok(response_body_key)
+        },
+      )?
+    };
+      Ok::<Option<String>, AnyError>(maybe_response_body)
+  }).await?
+}
+
 #[inline]
 fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
   cache_storage_dir
@@ -328,16 +338,13 @@ impl deno_core::Resource for SqliteBackedCache {
 }
 
 pub struct CachePutResource {
-  file: AsyncRefCell<tokio::fs::File>,
+  pub db: Arc<Mutex<rusqlite::Connection>>,
+  pub put_request: CachePutRequest,
+  pub response_body_key: String,
+  pub file: AsyncRefCell<tokio::fs::File>,
 }
 
 impl CachePutResource {
-  fn new(file: tokio::fs::File) -> Self {
-    Self {
-      file: AsyncRefCell::new(file),
-    }
-  }
-
   async fn write(self: Rc<Self>, data: ZeroCopyBuf) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
@@ -350,6 +357,13 @@ impl CachePutResource {
     let mut file = resource.borrow_mut().await;
     file.flush().await?;
     file.sync_all().await?;
+    let response_body_key = insert_cache_asset(
+      self.db.clone(),
+      self.put_request.clone(),
+      Some(self.response_body_key.clone()),
+    )
+    .await?;
+    assert!(response_body_key.is_some());
     Ok(())
   }
 }
