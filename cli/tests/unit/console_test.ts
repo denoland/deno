@@ -1641,20 +1641,6 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
   });
 });
 
-Deno.test(function consoleLogProxiedObject() {
-  mockConsole((console, out) => {
-    const obj = { a: 1 };
-    const target = {
-      getPrototypeOf() {
-        return {};
-      },
-    };
-    const proxiedObject = new Proxy(obj, target);
-    console.log(proxiedObject);
-    assertEquals(stripColor(out.toString()), "{ a: 1 }\n");
-  });
-});
-
 // console.dir test
 Deno.test(function consoleDir() {
   mockConsole((console, out) => {

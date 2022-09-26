@@ -675,8 +675,9 @@
         }
 
         return inspectObject(
-          proxyDetails ? proxyDetails[0] : value,
+          value,
           inspectOptions,
+          proxyDetails,
         );
       default:
         // Not implemented is red
@@ -1238,7 +1239,7 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(value, inspectOptions) {
+  function inspectObject(value, inspectOptions, proxyDetails) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -1281,11 +1282,20 @@
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-      return inspectDate(value, inspectOptions);
+      return inspectDate(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
-      return inspectSet(value, inspectOptions);
+      return inspectSet(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
-      return inspectMap(value, inspectOptions);
+      return inspectMap(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
