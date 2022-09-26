@@ -61,7 +61,6 @@ pub struct CacheDeleteRequest {
 
 #[async_trait]
 pub trait Cache: Clone {
-  fn new(cache_storage_dir: PathBuf) -> Self;
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError>;
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError>;
@@ -180,9 +179,7 @@ where
   Ok(cache.clone())
 }
 
-pub fn init<CA: Cache + 'static>(
-  cache_storage_dir: Option<PathBuf>,
-) -> Extension {
+pub fn init<CA: Cache + 'static>(maybe_cache: Option<CA>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/cache",
@@ -197,8 +194,8 @@ pub fn init<CA: Cache + 'static>(
       op_cache_delete::decl::<CA>(),
     ])
     .state(move |state| {
-      if let Some(cache_storage) = &cache_storage_dir {
-        state.put(CA::new(cache_storage.clone()));
+      if let Some(cache) = &maybe_cache {
+        state.put(cache.clone())
       }
       Ok(())
     })

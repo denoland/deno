@@ -31,9 +31,8 @@ pub struct SqliteBackedCache {
   pub cache_storage_dir: PathBuf,
 }
 
-#[async_trait]
-impl Cache for SqliteBackedCache {
-  fn new(cache_storage_dir: PathBuf) -> Self {
+impl SqliteBackedCache {
+  pub fn new(cache_storage_dir: PathBuf) -> Self {
     {
       std::fs::create_dir_all(&cache_storage_dir)
         .expect("failed to create cache dir");
@@ -74,7 +73,10 @@ impl Cache for SqliteBackedCache {
       }
     }
   }
+}
 
+#[async_trait]
+impl Cache for SqliteBackedCache {
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.

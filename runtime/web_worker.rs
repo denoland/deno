@@ -375,6 +375,7 @@ impl WebWorker {
         Ok(())
       })
       .build();
+    let cache = options.cache_storage_dir.map(SqliteBackedCache::new);
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -394,7 +395,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(options.cache_storage_dir),
+      deno_cache::init::<SqliteBackedCache>(cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

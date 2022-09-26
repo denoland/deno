@@ -133,6 +133,7 @@ impl MainWorker {
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let cache = options.cache_storage_dir.map(SqliteBackedCache::new);
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -153,7 +154,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(options.cache_storage_dir.clone()),
+      deno_cache::init::<SqliteBackedCache>(cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
