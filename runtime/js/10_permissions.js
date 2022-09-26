@@ -38,6 +38,7 @@
     "write",
     "net",
     "env",
+    "sys-info",
     "run",
     "ffi",
     "hrtime",
@@ -132,6 +133,8 @@
       key += `-${desc.command}&`;
     } else if (desc.name === "env" && desc.variable) {
       key += `-${desc.variable}&`;
+    } else if (desc.name === "sys-info" && desc.kind) {
+      key += `-${desc.kind}&`;
     } else {
       key += "$";
     }
@@ -242,7 +245,7 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (const key of ["env", "hrtime", "net", "sys-info"]) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {
