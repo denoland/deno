@@ -1639,3 +1639,137 @@ Deno.test(async function staticResponseJson() {
   const res = await resp.json();
   assertEquals(res, data);
 });
+
+function invalidServer(addr: string, body: Uint8Array): Deno.Listener {
+  const [hostname, port] = addr.split(":");
+  const listener = Deno.listen({
+    hostname,
+    port: Number(port),
+  }) as Deno.Listener;
+
+  (async () => {
+    for await (const conn of listener) {
+      const p1 = conn.read(new Uint8Array(2 ** 14));
+      const p2 = conn.write(body);
+
+      await Promise.all([p1, p2]);
+      conn.close();
+    }
+  })();
+
+  return listener;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLengthAndTransferEncoding(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4516";
+    const data = "a".repeat(10 << 10);
+
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${
+        Math.round(data.length * 2)
+      }\r\nTransfer-Encoding: chunked\r\n\r\n${
+        data.length.toString(16)
+      }\r\n${data}\r\n0\r\n\r\n`,
+    );
+
+    // if transfer-encoding is sent, content-length is ignored
+    // even if it has an invalid value (content-length > totalLength)
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+
+    const res = await response.arrayBuffer();
+    const buf = new TextEncoder().encode(data);
+    assertEquals(res.byteLength, buf.byteLength);
+    assertEquals(new Uint8Array(res), buf);
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4517";
+    const data = "a".repeat(10 << 10);
+
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${
+        Math.round(data.length / 2)
+      }\r\nContent-Length: ${data.length}\r\n\r\n${data}`,
+    );
+
+    // It should fail if multiple content-length headers with different values are sent
+    const listener = invalidServer(addr, body);
+    await assertRejects(
+      async () => {
+        await fetch(`http://${addr}/`);
+      },
+      TypeError,
+      "invalid content-length parsed",
+    );
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4518";
+    const data = "a".repeat(10 << 10);
+
+    const contentLength = data.length / 2;
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${contentLength}\r\n\r\n${data}`,
+    );
+
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+
+    // If content-length < totalLength, a maximum of content-length bytes
+    // should be returned.
+    const res = await response.arrayBuffer();
+    const buf = new TextEncoder().encode(data);
+    assertEquals(res.byteLength, contentLength);
+    assertEquals(new Uint8Array(res), buf.subarray(contentLength));
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4519";
+    const data = "a".repeat(10 << 10);
+
+    const contentLength = data.length * 2;
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${contentLength}\r\n\r\n${data}`,
+    );
+
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+    // If content-length > totalLength, a maximum of content-length bytes
+    // should be returned.
+    await assertRejects(
+      async () => {
+        await response.arrayBuffer();
+      },
+      Error,
+      "end of file before message length reached",
+    );
+
+    listener.close();
+  },
+);

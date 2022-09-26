@@ -109,7 +109,7 @@
       requestPath,
       "package.json",
     );
-    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),

@@ -121,12 +121,9 @@ impl ProgressBar {
   pub fn clear(&self) {
     let mut inner = self.0.lock();
 
-    match inner.pb.as_ref() {
-      Some(pb) => {
-        pb.finish_and_clear();
-        inner.pb = None;
-      }
-      None => {}
-    };
+    if let Some(pb) = inner.pb.as_ref() {
+      pb.finish_and_clear();
+      inner.pb = None;
+    }
   }
 }
