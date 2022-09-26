@@ -57,6 +57,7 @@ use std::task::Context;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use socket2::Socket;
 
 mod chunked;
 mod request;
@@ -816,31 +817,25 @@ fn run_server(
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
 ) -> Result<(), AnyError> {
-  let mut listener = TcpListener::bind(addr)?;
+  let domain = if addr.is_ipv4() {
+    socket2::Domain::IPV4
+  } else {
+    socket2::Domain::IPV6
+  };
+  let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
 
-  // Enable SO_REUSEPORT on Linux.
-  #[cfg(target_os = "linux")]
+  #[cfg(not(windows))]
   {
-    use std::os::unix::io::AsRawFd;
-    let fd = listener.as_raw_fd();
-    let one = 1;
-    unsafe {
-      libc::setsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_REUSEPORT,
-        &one as *const _ as *const _,
-        std::mem::size_of_val(&one) as _,
-      );
-      libc::setsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_REUSEADDR,
-        &one as *const _ as *const _,
-        std::mem::size_of_val(&one) as _,
-      );
-    }
+    socket.set_reuse_address(true)?;
+    socket.set_reuse_port(true)?;
   }
+
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
+  let mut listener = TcpListener::from_std(std_listener);
 
   let mut poll = Poll::new()?;
   let token = Token(0);

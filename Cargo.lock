@@ -1052,6 +1052,7 @@ dependencies = [
  "rustls",
  "rustls-pemfile 1.0.1",
  "serde",
+ "socket2",
  "tokio",
 ]
 

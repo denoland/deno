@@ -27,3 +27,4 @@ rustls = { version = "0.20" }
 rustls-pemfile = "1.0"
 serde = { version = "1.0.136", features = ["derive"] }
 tokio = { version = "1.21", features = ["full"] }
+socket2 = "0.4.7"
