@@ -24,6 +24,9 @@ use std::rc::Rc;
 pub struct CachePutRequest {
   pub cache_id: i64,
   pub request_url: String,
+  // TODO(@satyarohith): use ByteString for headers.
+  // Note: ByteString cannot be stored as JSON in sqlite.
+  // Serialize into a buffer with V8 serializer.
   pub request_headers: Vec<(String, String)>,
   pub response_headers: Vec<(String, String)>,
   pub response_has_body: bool,
