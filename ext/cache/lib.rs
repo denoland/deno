@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CachePutRequest {
   pub cache_id: i64,
@@ -31,7 +31,7 @@ pub struct CachePutRequest {
   pub response_status_text: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchRequest {
   pub cache_id: i64,
@@ -52,7 +52,7 @@ pub struct CacheMatchResponseMeta {
   pub response_headers: Vec<(String, String)>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
