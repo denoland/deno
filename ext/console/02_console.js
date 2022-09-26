@@ -674,7 +674,11 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectObject(value, inspectOptions, proxyDetails);
+        if(proxyDetails) {
+          value = proxyDetails[0]
+        }
+
+        return inspectObject(value, inspectOptions);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -915,14 +919,6 @@
   function inspectDate(value, inspectOptions) {
     // without quotes, ISO format, in magenta like before
     const magenta = maybeColor(colors.magenta, inspectOptions);
-    if (core.isProxy(value)) {
-      if (
-        ReflectHas(value, "toISOString") &&
-        typeof value["toISOString"] === "function"
-      ) {
-        return magenta(value.toISOString());
-      }
-    }
     return magenta(
       isInvalidDate(value) ? "Invalid Date" : DatePrototypeToISOString(value),
     );
@@ -1243,11 +1239,7 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(
-    value,
-    inspectOptions,
-    proxyDetails,
-  ) {
+  function inspectObject(value, inspectOptions) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -1292,15 +1284,9 @@
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
       return inspectDate(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
-      return inspectSet(
-        proxyDetails ? proxyDetails[0] : value,
-        inspectOptions,
-      );
+      return inspectSet(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(MapPrototype, value)) {
-      return inspectMap(
-        proxyDetails ? proxyDetails[0] : value,
-        inspectOptions,
-      );
+      return inspectMap(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(WeakSetPrototype, value)) {
       return inspectWeakSet(inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(WeakMapPrototype, value)) {
