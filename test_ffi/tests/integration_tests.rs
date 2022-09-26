@@ -142,8 +142,6 @@ fn symbol_types() {
 
 #[test]
 fn thread_safe_callback() {
-  build();
-
   let output = deno_cmd()
     .arg("run")
     .arg("--allow-ffi")
@@ -174,8 +172,6 @@ fn thread_safe_callback() {
 
 #[test]
 fn event_loop_integration() {
-  build();
-
   let output = deno_cmd()
     .arg("run")
     .arg("--allow-ffi")
