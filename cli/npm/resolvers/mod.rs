@@ -2,9 +2,13 @@
 
 mod common;
 mod global;
+mod local;
 
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
 
@@ -12,15 +16,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
+use crate::fs_util;
 
 use self::common::InnerNpmPackageResolver;
+use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
-
-pub use self::common::LocalNpmPackageInfo;
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
@@ -35,10 +37,17 @@ impl NpmPackageResolver {
     api: NpmRegistryApi,
     unstable: bool,
     no_npm: bool,
+    local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    // For now, always create a GlobalNpmPackageResolver, but in the future
-    // this might be a local node_modules folder
-    let inner = Arc::new(GlobalNpmPackageResolver::new(cache, api));
+    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules_path
+    {
+      Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+        cache,
+        api,
+        node_modules_folder,
+      )),
+      None => Arc::new(GlobalNpmPackageResolver::new(cache, api)),
+    };
     Self {
       unstable,
       no_npm,
@@ -46,36 +55,51 @@ impl NpmPackageResolver {
     }
   }
 
-  /// Resolves an npm package from a Deno module.
-  pub fn resolve_package_from_deno_module(
+  /// Resolves an npm package folder path from a Deno module.
+  pub fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
-    self.inner.resolve_package_from_deno_module(pkg_req)
+  ) -> Result<PathBuf, AnyError> {
+    let path = self
+      .inner
+      .resolve_package_folder_from_deno_module(pkg_req)?;
+    let path = fs_util::canonicalize_path_maybe_not_exists(&path)?;
+    log::debug!("Resolved {} to {}", pkg_req, path.display());
+    Ok(path)
   }
 
-  /// Resolves an npm package from an npm package referrer.
-  pub fn resolve_package_from_package(
+  /// Resolves an npm package folder path from an npm package referrer.
+  pub fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
-    self.inner.resolve_package_from_package(name, referrer)
+  ) -> Result<PathBuf, AnyError> {
+    let path = self
+      .inner
+      .resolve_package_folder_from_package(name, referrer)?;
+    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
+    Ok(path)
   }
 
   /// Resolve the root folder of the package the provided specifier is in.
   ///
   /// This will error when the provided specifier is not in an npm package.
-  pub fn resolve_package_from_specifier(
+  pub fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<LocalNpmPackageInfo, AnyError> {
-    self.inner.resolve_package_from_specifier(specifier)
+  ) -> Result<PathBuf, AnyError> {
+    let path = self
+      .inner
+      .resolve_package_folder_from_specifier(specifier)?;
+    log::debug!("Resolved {} to {}", specifier, path.display());
+    Ok(path)
   }
 
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    self.resolve_package_from_specifier(specifier).is_ok()
+    self
+      .resolve_package_folder_from_specifier(specifier)
+      .is_ok()
   }
 
   /// If the resolver has resolved any npm packages.
@@ -121,28 +145,27 @@ impl RequireNpmResolver for NpmPackageResolver {
     specifier: &str,
     referrer: &std::path::Path,
   ) -> Result<PathBuf, AnyError> {
-    let referrer = specifier_to_path(referrer)?;
-    self
-      .resolve_package_from_package(specifier, &referrer)
-      .map(|p| p.folder_path)
+    let referrer = path_to_specifier(referrer)?;
+    self.resolve_package_folder_from_package(specifier, &referrer)
   }
 
   fn resolve_package_folder_from_path(
     &self,
     path: &Path,
   ) -> Result<PathBuf, AnyError> {
-    let specifier = specifier_to_path(path)?;
-    self
-      .resolve_package_from_specifier(&specifier)
-      .map(|p| p.folder_path)
+    let specifier = path_to_specifier(path)?;
+    self.resolve_package_folder_from_specifier(&specifier)
   }
 
   fn in_npm_package(&self, path: &Path) -> bool {
-    let specifier = match ModuleSpecifier::from_file_path(path) {
-      Ok(p) => p,
-      Err(_) => return false,
-    };
-    self.resolve_package_from_specifier(&specifier).is_ok()
+    let specifier =
+      match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
+        Ok(p) => p,
+        Err(_) => return false,
+      };
+    self
+      .resolve_package_folder_from_specifier(&specifier)
+      .is_ok()
   }
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
@@ -150,8 +173,8 @@ impl RequireNpmResolver for NpmPackageResolver {
   }
 }
 
-fn specifier_to_path(path: &Path) -> Result<ModuleSpecifier, AnyError> {
-  match ModuleSpecifier::from_file_path(&path) {
+fn path_to_specifier(path: &Path) -> Result<ModuleSpecifier, AnyError> {
+  match ModuleSpecifier::from_file_path(&path.to_path_buf().clean()) {
     Ok(specifier) => Ok(specifier),
     Err(()) => bail!("Could not convert '{}' to url.", path.display()),
   }

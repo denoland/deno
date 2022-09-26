@@ -757,8 +757,8 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
     assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));
