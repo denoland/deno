@@ -84,7 +84,7 @@ macro_rules! inc {
 /// Contains static assets that are not preloaded in the compiler snapshot.
 pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
-    (&[
+    ([
       (
         "lib.dom.asynciterable.d.ts",
         inc!("lib.dom.asynciterable.d.ts"),
@@ -112,9 +112,9 @@ pub static STATIC_ASSETS: Lazy<HashMap<&'static str, &'static str>> =
         inc!("lib.webworker.iterable.d.ts"),
       ),
     ])
-      .iter()
-      .cloned()
-      .collect()
+    .iter()
+    .cloned()
+    .collect()
   });
 
 /// A structure representing stats from a type check operation for a graph.
