@@ -754,19 +754,19 @@ fn import_key_ec(
         EcNamedCurve::P256 => {
           // 1-2.
           let point = p256::EncodedPoint::from_bytes(&data)
-            .map_err(|_| data_error("invalid P-256 eliptic curve point"))?;
+            .map_err(|_| data_error("invalid P-256 elliptic curve point"))?;
           // 3.
           if point.is_identity() {
-            return Err(data_error("invalid P-256 eliptic curve point"));
+            return Err(data_error("invalid P-256 elliptic curve point"));
           }
         }
         EcNamedCurve::P384 => {
           // 1-2.
           let point = p384::EncodedPoint::from_bytes(&data)
-            .map_err(|_| data_error("invalid P-384 eliptic curve point"))?;
+            .map_err(|_| data_error("invalid P-384 elliptic curve point"))?;
           // 3.
           if point.is_identity() {
-            return Err(data_error("invalid P-384 eliptic curve point"));
+            return Err(data_error("invalid P-384 elliptic curve point"));
           }
         }
         _ => return Err(not_supported_error("Unsupported named curve")),
@@ -874,10 +874,10 @@ fn import_key_ec(
           EcNamedCurve::P256 => {
             let point =
               p256::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
-                data_error("invalid P-256 eliptic curve SPKI data")
+                data_error("invalid P-256 elliptic curve SPKI data")
               })?;
             if point.is_identity() {
-              return Err(data_error("invalid P-256 eliptic curve point"));
+              return Err(data_error("invalid P-256 elliptic curve point"));
             }
 
             point.as_bytes().len()
@@ -885,11 +885,11 @@ fn import_key_ec(
           EcNamedCurve::P384 => {
             let point =
               p384::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
-                data_error("invalid P-384 eliptic curve SPKI data")
+                data_error("invalid P-384 elliptic curve SPKI data")
               })?;
 
             if point.is_identity() {
-              return Err(data_error("invalid P-384 eliptic curve point"));
+              return Err(data_error("invalid P-384 elliptic curve point"));
             }
 
             point.as_bytes().len()

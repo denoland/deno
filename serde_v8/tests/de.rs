@@ -319,7 +319,7 @@ detest!(
 defail!(defail_struct, MathOp, "123", |e| e
   == Err(Error::ExpectedObject));
 
-#[derive(PartialEq, Debug, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {
   pub a: String,
   #[serde(default)]
@@ -339,7 +339,7 @@ detest!(de_bstr, ByteString, "'hello'", "hello".into());
 defail!(defail_bstr, ByteString, "'👋bye'", |e| e
   == Err(Error::ExpectedLatin1));
 
-#[derive(PartialEq, Debug, Deserialize)]
+#[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct StructWithBytes {
   #[serde(with = "serde_bytes")]
   a: Vec<u8>,

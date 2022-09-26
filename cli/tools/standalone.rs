@@ -270,6 +270,7 @@ pub fn compile_to_runtime_flags(
     import_map_path: flags.import_map_path.clone(),
     inspect_brk: None,
     inspect: None,
+    node_modules_dir: false,
     location: flags.location.clone(),
     lock_write: false,
     lock: None,
@@ -307,23 +308,28 @@ pub fn resolve_compile_executable_output_path(
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output| {
-    match &compile_flags.target {
-      Some(target) => {
-        if target.contains("windows") {
-          output.with_extension("exe")
-        } else {
-          output
-        }
-      }
-      None => {
-        if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-          output.with_extension("exe")
-        } else {
-          output
-        }
-      }
-    }
+    get_os_specific_filepath(output, &compile_flags.target)
   })
+}
+
+fn get_os_specific_filepath(
+  output: PathBuf,
+  target: &Option<String>,
+) -> PathBuf {
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(windows),
+  };
+  if is_windows && output.extension().unwrap_or_default() != "exe" {
+    if let Some(ext) = output.extension() {
+      // keep version in my-exe-0.1.0 -> my-exe-0.1.0.exe
+      output.with_extension(format!("{}.exe", ext.to_string_lossy()))
+    } else {
+      output.with_extension("exe")
+    }
+  } else {
+    output
+  }
 }
 
 #[cfg(test)]
@@ -356,5 +362,32 @@ mod test {
     })
     .unwrap();
     assert_eq!(path.file_name().unwrap(), "file.exe");
+  }
+
+  #[test]
+  fn test_os_specific_file_path() {
+    fn run_test(path: &str, target: Option<&str>, expected: &str) {
+      assert_eq!(
+        get_os_specific_filepath(
+          PathBuf::from(path),
+          &target.map(|s| s.to_string())
+        ),
+        PathBuf::from(expected)
+      );
+    }
+
+    if cfg!(windows) {
+      run_test("C:\\my-exe", None, "C:\\my-exe.exe");
+      run_test("C:\\my-exe.exe", None, "C:\\my-exe.exe");
+      run_test("C:\\my-exe-0.1.2", None, "C:\\my-exe-0.1.2.exe");
+    } else {
+      run_test("my-exe", Some("linux"), "my-exe");
+      run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+    }
+
+    run_test("C:\\my-exe", Some("windows"), "C:\\my-exe.exe");
+    run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
+    run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
+    run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
   }
 }

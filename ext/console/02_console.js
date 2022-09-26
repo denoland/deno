@@ -59,6 +59,7 @@
     SafeSet,
     SetPrototype,
     SetPrototypeEntries,
+    SetPrototypeGetSize,
     Symbol,
     SymbolPrototype,
     SymbolPrototypeToString,
@@ -90,6 +91,7 @@
     MapPrototypeDelete,
     MapPrototypeEntries,
     MapPrototypeForEach,
+    MapPrototypeGetSize,
     Error,
     ErrorPrototype,
     ErrorCaptureStackTrace,
@@ -110,6 +112,7 @@
     ReflectGetOwnPropertyDescriptor,
     ReflectGetPrototypeOf,
     ReflectHas,
+    TypedArrayPrototypeGetLength,
     WeakMapPrototype,
     WeakSetPrototype,
   } = window.__bootstrap.primordials;
@@ -390,19 +393,23 @@
     const entries = [];
     let iter;
     let valueIsTypedArray = false;
+    let entriesLength;
 
     switch (options.typeName) {
       case "Map":
         iter = MapPrototypeEntries(value);
+        entriesLength = MapPrototypeGetSize(value);
         break;
       case "Set":
         iter = SetPrototypeEntries(value);
+        entriesLength = SetPrototypeGetSize(value);
         break;
       case "Array":
-        iter = ArrayPrototypeEntries(value);
+        entriesLength = value.length;
         break;
       default:
         if (isTypedArray(value)) {
+          entriesLength = TypedArrayPrototypeGetLength(value);
           iter = ArrayPrototypeEntries(value);
           valueIsTypedArray = true;
         } else {
@@ -410,41 +417,61 @@
         }
     }
 
-    let entriesLength = 0;
-    const next = () => {
-      return iter.next();
-    };
-    while (true) {
-      let el;
-      try {
-        const res = iter.next();
-        if (res.done) {
-          break;
-        }
-        el = res.value;
-      } catch (err) {
-        if (valueIsTypedArray) {
-          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
-          // is detached. We don't want to show the exception in that case, so
-          // we catch it here and pretend the ArrayBuffer has no entries (like
-          // Chrome DevTools does).
-          break;
-        }
-        throw err;
-      }
-      if (entriesLength < inspectOptions.iterableLimit) {
+    if (options.typeName === "Array") {
+      for (
+        let i = 0, j = 0;
+        i < entriesLength && j < inspectOptions.iterableLimit;
+        i++, j++
+      ) {
         inspectOptions.indentLevel++;
-        ArrayPrototypePush(
-          entries,
-          options.entryHandler(
-            el,
-            inspectOptions,
-            FunctionPrototypeBind(next, iter),
-          ),
+        const { entry, skipTo } = options.entryHandler(
+          [i, value[i]],
+          inspectOptions,
         );
+        ArrayPrototypePush(entries, entry);
         inspectOptions.indentLevel--;
+
+        if (skipTo) {
+          // subtract skipped (empty) items
+          entriesLength -= skipTo - i;
+          i = skipTo;
+        }
       }
-      entriesLength++;
+    } else {
+      let i = 0;
+      while (true) {
+        let el;
+        try {
+          const res = iter.next();
+          if (res.done) {
+            break;
+          }
+          el = res.value;
+        } catch (err) {
+          if (valueIsTypedArray) {
+            // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
+            // is detached. We don't want to show the exception in that case, so
+            // we catch it here and pretend the ArrayBuffer has no entries (like
+            // Chrome DevTools does).
+            break;
+          }
+          throw err;
+        }
+        if (i < inspectOptions.iterableLimit) {
+          inspectOptions.indentLevel++;
+          ArrayPrototypePush(
+            entries,
+            options.entryHandler(
+              el,
+              inspectOptions,
+            ),
+          );
+          inspectOptions.indentLevel--;
+        } else {
+          break;
+        }
+        i++;
+      }
     }
 
     if (options.sort) {
@@ -674,7 +701,11 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectObject(value, inspectOptions, proxyDetails);
+        return inspectObject(
+          value,
+          inspectOptions,
+          proxyDetails,
+        );
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -805,24 +836,45 @@
     inspectOptions,
   ) {
     const gray = maybeColor(colors.gray, inspectOptions);
+    let lastValidIndex = 0;
+    let keys;
     const options = {
       typeName: "Array",
       displayName: "",
       delims: ["[", "]"],
-      entryHandler: (entry, inspectOptions, next) => {
+      entryHandler: (entry, inspectOptions) => {
         const [index, val] = entry;
         let i = index;
+        lastValidIndex = index;
         if (!ObjectPrototypeHasOwnProperty(value, i)) {
-          i++;
-          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
-            next();
-            i++;
+          let skipTo;
+          keys = keys || ObjectKeys(value);
+          i = value.length;
+          if (keys.length === 0) {
+            // fast path, all items are empty
+            skipTo = i;
+          } else {
+            // Not all indexes are empty or there's a non-index property
+            // Find first non-empty array index
+            while (keys.length) {
+              const key = ArrayPrototypeShift(keys);
+              // check if it's a valid array index
+              if (key > lastValidIndex && key < 2 ** 32 - 1) {
+                i = Number(key);
+                break;
+              }
+            }
+
+            skipTo = i - 1;
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return gray(`<${emptyItems} empty item${ending}>`);
+          return {
+            entry: gray(`<${emptyItems} empty item${ending}>`),
+            skipTo,
+          };
         } else {
-          return inspectValueWithQuotes(val, inspectOptions);
+          return { entry: inspectValueWithQuotes(val, inspectOptions) };
         }
       },
       group: inspectOptions.compact,
@@ -1235,11 +1287,7 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(
-    value,
-    inspectOptions,
-    proxyDetails,
-  ) {
+  function inspectObject(value, inspectOptions, proxyDetails) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -1282,7 +1330,10 @@
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-      return inspectDate(value, inspectOptions);
+      return inspectDate(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(
         proxyDetails ? proxyDetails[0] : value,
