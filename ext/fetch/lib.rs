@@ -361,6 +361,7 @@ pub struct FetchResponse {
   headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
+  content_length: Option<u64>,
 }
 
 #[op]
@@ -391,6 +392,8 @@ pub async fn op_fetch_send(
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
+  let content_length = res.content_length();
+
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
   }));
@@ -409,6 +412,7 @@ pub async fn op_fetch_send(
     headers: res_headers,
     url,
     response_rid: rid,
+    content_length,
   })
 }
 
