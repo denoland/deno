@@ -34,8 +34,9 @@ if (Deno.build.os === "darwin") {
 }
 
 const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
+const zstd = Deno.build.os === "windows" ? "zstd.exe" : "zstd";
 const proc = Deno.run({
-  cmd: [tar, "-I zstd", "-cvf", "artifacts.tar.zst", ...artifacts],
+  cmd: [tar, `-I ${zstd}`, "-cvf", "artifacts.tar.zst", ...artifacts],
 });
 const { success } = await proc.status();
 if (!success) {
