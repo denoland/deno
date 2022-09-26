@@ -5672,6 +5672,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ws-client-perf"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "tokio",
+ "tokio-tungstenite",
+ "url 2.3.1",
+]
+
+[[package]]
 name = "xattr"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

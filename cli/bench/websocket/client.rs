@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use futures_util::SinkExt;
 use futures_util::StreamExt;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 #[tokio::main(flavor = "current_thread")]
@@ -26,8 +25,6 @@ async fn main() {
           "Sent {} messages in 1 sec, throughput: {} bytes/sec",
           count, bytes
         );
-        count = 0;
-        bytes = 0;
         break;
       }
     }
