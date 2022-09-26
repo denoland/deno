@@ -1,0 +1,25 @@
+A
+["1.2.3.4","5.6.7.8"]
+AAAA
+["1:2:3:4:5:6:7:8"]
+ANAME
+["aname.example.com."]
+CAA
+[{"critical":false,"tag":"issue","value":"ca.example.net"},{"critical":false,"tag":"issue","value":"ca2.example.net; account=123456"},{"critical":false,"tag":"issuewild","value":";"},{"critical":false,"tag":"iodef","value":"mailto:security@example.com"},{"critical":true,"tag":"tbs","value":"Unknown"}]
+CNAME
+["cname.example.com."]
+MX
+[{"preference":10,"exchange":"mx1.com."},{"preference":20,"exchange":"mx2.com."}]
+NAPTR
+[{"order":10,"preference":0,"flags":"s","services":"SIPS+D2T","regexp":"","replacement":"_sips._tcp.example.com."},{"order":10,"preference":0,"flags":"s","services":"RELAY:turn.udp","regexp":"","replacement":"_turn._udp.example.com."}]
+NS
+["ns1.ns.com.","ns2.ns.com.","ns3.ns.com."]
+PTR
+["www.example.com.","alias.example.com."]
+SOA
+[{"mname":"net.example.com.","rname":"admin\\.domain.example.com.","serial":20,"refresh":7200,"retry":600,"expire":3600000,"minimum":60}]
+SRV
+[{"priority":0,"weight":100,"port":1234,"target":"srv.example.com."}]
+TXT
+[["I","am","a","txt","record"],["I","am","another","txt","record"],["I am a different","txt record"],["key=val"]]
+Error NotFound thrown for not-found-example.com

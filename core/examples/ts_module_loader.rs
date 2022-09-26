@@ -69,7 +69,7 @@ impl ModuleLoader for TypescriptModuleLoader {
       let code = if should_transpile {
         let parsed = deno_ast::parse_module(ParseParams {
           specifier: module_specifier.to_string(),
-          source: SourceTextInfo::from_string(code),
+          text_info: SourceTextInfo::from_string(code),
           media_type,
           capture_tokens: false,
           scope_analysis: false,
@@ -80,7 +80,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         code
       };
       let module = ModuleSource {
-        code,
+        code: code.into_bytes().into_boxed_slice(),
         module_type,
         module_url_specified: module_specifier.to_string(),
         module_url_found: module_specifier.to_string(),
@@ -109,9 +109,9 @@ fn main() -> Result<(), Error> {
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;
-    let _ = js_runtime.mod_evaluate(mod_id);
+    let result = js_runtime.mod_evaluate(mod_id);
     js_runtime.run_event_loop(false).await?;
-    Ok(())
+    result.await?
   };
 
   tokio::runtime::Builder::new_current_thread()

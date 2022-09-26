@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
   const { pathFromURL } = window.__bootstrap.util;
@@ -11,13 +12,12 @@
     ArrayPrototypeMap,
     ArrayPrototypeSlice,
     TypeError,
-    isNaN,
     ObjectEntries,
     String,
   } = window.__bootstrap.primordials;
 
   function opKill(pid, signo) {
-    core.opSync("op_kill", pid, signo);
+    ops.op_kill(pid, signo);
   }
 
   function opRunStatus(rid) {
@@ -26,7 +26,7 @@
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return core.opSync("op_run", request);
+    return ops.op_run(request);
   }
 
   async function runStatus(rid) {
@@ -95,10 +95,6 @@
     }
   }
 
-  function isRid(arg) {
-    return !isNaN(arg);
-  }
-
   function run({
     cmd,
     cwd = undefined,
@@ -120,12 +116,9 @@
       env: ObjectEntries(env),
       gid,
       uid,
-      stdin: isRid(stdin) ? "" : stdin,
-      stdout: isRid(stdout) ? "" : stdout,
-      stderr: isRid(stderr) ? "" : stderr,
-      stdinRid: isRid(stdin) ? stdin : 0,
-      stdoutRid: isRid(stdout) ? stdout : 0,
-      stderrRid: isRid(stderr) ? stderr : 0,
+      stdin,
+      stdout,
+      stderr,
     });
     return new Process(res);
   }

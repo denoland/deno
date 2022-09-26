@@ -163,11 +163,10 @@ impl BlobPart for SlicedBlobPart {
 pub fn op_blob_create_part(
   state: &mut deno_core::OpState,
   data: ZeroCopyBuf,
-) -> Result<Uuid, AnyError> {
+) -> Uuid {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
-  let id = blob_store.insert_part(Arc::new(part));
-  Ok(id)
+  blob_store.insert_part(Arc::new(part))
 }
 
 #[derive(Deserialize)]
@@ -219,13 +218,9 @@ pub async fn op_blob_read_part(
 }
 
 #[op]
-pub fn op_blob_remove_part(
-  state: &mut deno_core::OpState,
-  id: Uuid,
-) -> Result<(), AnyError> {
+pub fn op_blob_remove_part(state: &mut deno_core::OpState, id: Uuid) {
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_part(&id);
-  Ok(())
 }
 
 #[op]

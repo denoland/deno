@@ -13,27 +13,30 @@ fn compile() {
   } else {
     dir.path().join("welcome")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./test_util/std/examples/welcome.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(&exe)
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
 }
 
 #[test]
@@ -50,7 +53,7 @@ fn standalone_args() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .arg("a")
     .arg("b")
     .stdout(std::process::Stdio::piped())
@@ -87,7 +90,7 @@ fn standalone_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error.ts")
+    .arg("./compile/standalone_error.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -105,9 +108,12 @@ fn standalone_error() {
   assert!(!output.status.success());
   assert_eq!(output.stdout, b"");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at boom (file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at boom (file://"));
   assert!(stderr.contains("standalone_error.ts:2:11"));
   assert!(stderr.contains("at foo (file://"));
   assert!(stderr.contains("standalone_error.ts:5:5"));
@@ -129,7 +135,7 @@ fn standalone_error_module_with_imports() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error_module_with_imports_1.ts")
+    .arg("./compile/standalone_error_module_with_imports_1.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -148,9 +154,12 @@ fn standalone_error_module_with_imports() {
   println!("{:#?}", &output);
   assert_eq!(output.stdout, b"hello\n");
   let stderr = String::from_utf8(output.stderr).unwrap();
+  let stderr = util::strip_ansi_codes(&stderr).to_string();
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
-  assert!(stderr.contains("error: Error: boom!\n    at file://"));
+  assert!(stderr.contains("error: Uncaught Error: boom!"));
+  assert!(stderr.contains("throw new Error(\"boom!\");"));
+  assert!(stderr.contains("\n    at file://"));
   assert!(stderr.contains("standalone_error_module_with_imports_2.ts:2:7"));
 }
 
@@ -168,7 +177,7 @@ fn standalone_load_datauri() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_datauri.ts")
+    .arg("./compile/standalone_import_datauri.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -201,7 +210,7 @@ fn standalone_follow_redirects() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_follow_redirects.ts")
+    .arg("./compile/standalone_follow_redirects.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -220,76 +229,6 @@ fn standalone_follow_redirects() {
 }
 
 #[test]
-fn standalone_compiler_ops() {
-  let dir = TempDir::new();
-  let exe = if cfg!(windows) {
-    dir.path().join("standalone_compiler_ops.exe")
-  } else {
-    dir.path().join("standalone_compiler_ops")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./standalone_compiler_ops.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
-}
-
-#[test]
-fn compile_with_directory_output_flag() {
-  let dir = TempDir::new();
-  let output_path = if cfg!(windows) {
-    dir.path().join(r"args\random\")
-  } else {
-    dir.path().join("args/random/")
-  };
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&output_path)
-    .arg("./standalone_compiler_ops.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let exe = if cfg!(windows) {
-    output_path.join("standalone_compiler_ops.exe")
-  } else {
-    output_path.join("standalone_compiler_ops")
-  };
-  assert!(&exe.exists());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, b"Hello, Compiler API!\n");
-}
-
-#[test]
 fn compile_with_file_exists_error() {
   let dir = TempDir::new();
   let output_path = if cfg!(windows) {
@@ -305,7 +244,7 @@ fn compile_with_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&output_path)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -339,7 +278,7 @@ fn compile_with_directory_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -373,7 +312,7 @@ fn compile_with_conflict_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -410,7 +349,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -425,7 +364,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -451,7 +390,7 @@ fn standalone_runtime_flags() {
     .arg("1")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_runtime_flags.ts")
+    .arg("./compile/standalone_runtime_flags.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -487,10 +426,10 @@ fn standalone_import_map() {
     .arg("--unstable")
     .arg("--allow-read")
     .arg("--import-map")
-    .arg("standalone_import_map.json")
+    .arg("compile/standalone_import_map.json")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_map.ts")
+    .arg("./compile/standalone_import_map.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -522,7 +461,7 @@ fn skip_rebundle() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./001_hello.js")
+    .arg("./run/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -531,7 +470,7 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
 
-  //no "Bundle testdata_path/001_hello.js" in output
+  //no "Bundle testdata_path/run/001_hello.js" in output
   assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
 
   let output = Command::new(exe)
@@ -542,4 +481,53 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
   assert_eq!(output.stdout, "Hello World\n".as_bytes());
+}
+
+#[test]
+fn check_local_by_default() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let status = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default.ts"))
+    .status()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn check_local_by_default2() {
+  let _guard = util::http_server();
+  let dir = TempDir::new();
+  let exe = if cfg!(windows) {
+    dir.path().join("welcome.exe")
+  } else {
+    dir.path().join("welcome")
+  };
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .env("NO_COLOR", "1")
+    .arg("compile")
+    .arg("--unstable")
+    .arg("--output")
+    .arg(&exe)
+    .arg(util::testdata_path().join("./compile/check_local_by_default2.ts"))
+    .output()
+    .unwrap();
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stdout.is_empty());
+  assert!(stderr.contains(
+    r#"error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'."#
+  ));
 }

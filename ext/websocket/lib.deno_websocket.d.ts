@@ -5,12 +5,14 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category Web Sockets */
 interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
+/** @category Web Sockets */
 declare class CloseEvent extends Event {
   constructor(type: string, eventInitDict?: CloseEventInit);
   /**
@@ -27,6 +29,7 @@ declare class CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
+/** @category Web Sockets */
 interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
@@ -35,12 +38,17 @@ interface WebSocketEventMap {
 }
 
 /**
- * Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection.
+ * Provides the API for creating and managing a WebSocket connection to a
+ * server, as well as for sending and receiving data on the connection.
  *
- * If you are looking to create a WebSocket server, please take a look at `Deno.upgradeWebSocket()`.
+ * If you are looking to create a WebSocket server, please take a look at
+ * `Deno.upgradeWebSocket()`.
+ *
+ * @tags allow-net
+ * @category Web Sockets
  */
 declare class WebSocket extends EventTarget {
-  constructor(url: string, protocols?: string | string[]);
+  constructor(url: string | URL, protocols?: string | string[]);
 
   static readonly CLOSED: number;
   static readonly CLOSING: number;
@@ -113,4 +121,5 @@ declare class WebSocket extends EventTarget {
   ): void;
 }
 
+/** @category Web Sockets */
 type BinaryType = "arraybuffer" | "blob";

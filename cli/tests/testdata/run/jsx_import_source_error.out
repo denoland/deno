@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDCARD]/nonexistent/jsx-runtime".
+    at file:///[WILDCARD]/jsx_import_source_no_pragma.tsx:1:1

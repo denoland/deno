@@ -1,8 +1,10 @@
 Check [WILDCARD]/bench/clear_timeout.ts
-running 3 benches from [WILDCARD]/bench/clear_timeout.ts
-bench bench1 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
-bench bench2 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
-bench bench3 ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok ([WILDCARD])
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
 
-bench result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
-
+[WILDCARD]/bench/clear_timeout.ts
+benchmark      time (avg)             (min … max)       p75       p99      p995
+------------------------------------------------- -----------------------------
+bench1 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+bench2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+bench3 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]

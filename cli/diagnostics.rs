@@ -6,7 +6,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use deno_graph::ModuleGraphError;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -16,7 +15,6 @@ const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
   "BenchDefinition",
-  "CompilerOptions",
   "CreateHttpClientOptions",
   "DatagramConn",
   "Diagnostic",
@@ -27,11 +25,8 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "EmitResult",
   "HttpClient",
   "Location",
-  "MXRecord",
   "Metrics",
   "OpMetrics",
-  "RecordType",
-  "SRVRecord",
   "SetRawOptions",
   "SignalStream",
   "StartTlsOptions",
@@ -39,13 +34,10 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixConnectOptions",
   "UnixListenOptions",
   "addSignalListener",
-  "applySourceMap",
   "bench",
   "connect",
   "consoleSize",
   "createHttpClient",
-  "emit",
-  "formatDiagnostics",
   "futime",
   "futimeSync",
   "hostname",
@@ -60,12 +52,21 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "setRaw",
   "shutdown",
   "Signal",
-  "sleepSync",
   "startTls",
   "systemMemoryInfo",
   "umask",
   "utime",
   "utimeSync",
+  "spawnChild",
+  "Child",
+  "spawn",
+  "spawnSync",
+  "ChildStatus",
+  "SpawnOutput",
+  "serve",
+  "ServeInit",
+  "ServeTlsInit",
+  "Handler",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
@@ -353,21 +354,6 @@ impl Diagnostics {
   #[cfg(test)]
   pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
     Diagnostics(diagnostics)
-  }
-
-  pub fn extend_graph_errors(&mut self, errors: Vec<ModuleGraphError>) {
-    self.0.extend(errors.into_iter().map(|err| Diagnostic {
-      category: DiagnosticCategory::Error,
-      code: 900001,
-      start: None,
-      end: None,
-      message_text: Some(err.to_string()),
-      message_chain: None,
-      source: None,
-      source_line: None,
-      file_name: Some(err.specifier().to_string()),
-      related_information: None,
-    }));
   }
 
   /// Return a set of diagnostics where only the values where the predicate

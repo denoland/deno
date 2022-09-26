@@ -1,18 +1,21 @@
-[WILDCARD]
-running 14 benches from [WILDCARD]
-bench read false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench read true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench write false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench write true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench net false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench net true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench env false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench env true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench run false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench run true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench ffi false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench ffi true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench hrtime false ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
-bench hrtime true ... 1000 iterations [WILDCARD] ns/iter ([WILDCARD]..[WILDCARD] ns/iter) ok [WILDCARD]
+Check [WILDCARD]/bench/allow_all.ts
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
 
-bench result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+[WILDCARD]/bench/allow_all.ts
+benchmark         time (avg)             (min … max)       p75       p99      p995
+---------------------------------------------------- -----------------------------
+read false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+read true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+write false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+write true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+net false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+net true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+env false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+env true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+run false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+run true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+ffi false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+ffi true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+hrtime false [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+hrtime true [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]

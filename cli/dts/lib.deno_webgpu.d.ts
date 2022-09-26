@@ -5,16 +5,17 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-// 8cc98b6f10b7f354473a08c3773bb1de839845b9
-
+/** @category WebGPU */
 interface GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUObjectDescriptorBase {
   label?: string;
 }
 
+/** @category WebGPU */
 declare class GPUSupportedLimits {
   maxTextureDimension1D?: number;
   maxTextureDimension2D?: number;
@@ -44,6 +45,7 @@ declare class GPUSupportedLimits {
   maxComputeWorkgroupsPerDimension?: number;
 }
 
+/** @category WebGPU */
 declare class GPUSupportedFeatures {
   forEach(
     callbackfn: (
@@ -64,33 +66,47 @@ declare class GPUSupportedFeatures {
   values(): IterableIterator<GPUFeatureName>;
 }
 
+/** @category WebGPU */
+declare class GPUAdapterInfo {
+  readonly vendor: string;
+  readonly architecture: string;
+  readonly device: string;
+  readonly description: string;
+}
+
+/** @category WebGPU */
 declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
 }
 
+/** @category WebGPU */
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
   forceFallbackAdapter?: boolean;
 }
 
+/** @category WebGPU */
 declare type GPUPowerPreference = "low-power" | "high-performance";
 
+/** @category WebGPU */
 declare class GPUAdapter {
-  readonly name: string;
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
+  requestAdapterInfo(unmaskHints?: string[]): Promise<GPUAdapterInfo>;
 }
 
+/** @category WebGPU */
 declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
   requiredFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number>;
 }
 
+/** @category WebGPU */
 declare type GPUFeatureName =
   | "depth-clip-control"
   | "depth24unorm-stencil8"
@@ -101,6 +117,7 @@ declare type GPUFeatureName =
   | "texture-compression-astc"
   | "timestamp-query"
   | "indirect-first-instance"
+  | "shader-f16"
   // extended from spec
   | "mappable-primary-buffers"
   | "sampled-texture-binding-array"
@@ -115,8 +132,9 @@ declare type GPUFeatureName =
   | "shader-float64"
   | "vertex-attribute-64bit";
 
+/** @category WebGPU */
 declare class GPUDevice extends EventTarget implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
@@ -125,8 +143,8 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
     | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
     | null;
 
-  readonly features: ReadonlyArray<GPUFeatureName>;
-  readonly limits: Record<string, number>;
+  readonly features: GPUSupportedFeatures;
+  readonly limits: GPUSupportedLimits;
   readonly queue: GPUQueue;
 
   destroy(): undefined;
@@ -167,8 +185,9 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
 }
 
+/** @category WebGPU */
 declare class GPUBuffer implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   mapAsync(
     mode: GPUMapModeFlags,
@@ -181,13 +200,17 @@ declare class GPUBuffer implements GPUObjectBase {
   destroy(): undefined;
 }
 
+/** @category WebGPU */
 declare interface GPUBufferDescriptor extends GPUObjectDescriptorBase {
   size: number;
   usage: GPUBufferUsageFlags;
   mappedAtCreation?: boolean;
 }
 
+/** @category WebGPU */
 declare type GPUBufferUsageFlags = number;
+
+/** @category WebGPU */
 declare class GPUBufferUsage {
   static MAP_READ: 0x0001;
   static MAP_WRITE: 0x0002;
@@ -201,19 +224,24 @@ declare class GPUBufferUsage {
   static QUERY_RESOLVE: 0x0200;
 }
 
+/** @category WebGPU */
 declare type GPUMapModeFlags = number;
+
+/** @category WebGPU */
 declare class GPUMapMode {
   static READ: 0x0001;
   static WRITE: 0x0002;
 }
 
+/** @category WebGPU */
 declare class GPUTexture implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
   destroy(): undefined;
 }
 
+/** @category WebGPU */
 declare interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
   size: GPUExtent3D;
   mipLevelCount?: number;
@@ -223,9 +251,13 @@ declare interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
   usage: GPUTextureUsageFlags;
 }
 
+/** @category WebGPU */
 declare type GPUTextureDimension = "1d" | "2d" | "3d";
 
+/** @category WebGPU */
 declare type GPUTextureUsageFlags = number;
+
+/** @category WebGPU */
 declare class GPUTextureUsage {
   static COPY_SRC: 0x01;
   static COPY_DST: 0x02;
@@ -234,10 +266,12 @@ declare class GPUTextureUsage {
   static RENDER_ATTACHMENT: 0x10;
 }
 
+/** @category WebGPU */
 declare class GPUTextureView implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
   format?: GPUTextureFormat;
   dimension?: GPUTextureViewDimension;
@@ -248,6 +282,7 @@ declare interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
   arrayLayerCount?: number;
 }
 
+/** @category WebGPU */
 declare type GPUTextureViewDimension =
   | "1d"
   | "2d"
@@ -256,8 +291,10 @@ declare type GPUTextureViewDimension =
   | "cube-array"
   | "3d";
 
+/** @category WebGPU */
 declare type GPUTextureAspect = "all" | "stencil-only" | "depth-only";
 
+/** @category WebGPU */
 declare type GPUTextureFormat =
   | "r8unorm"
   | "r8snorm"
@@ -300,6 +337,8 @@ declare type GPUTextureFormat =
   | "depth24plus"
   | "depth24plus-stencil8"
   | "depth32float"
+  | "depth24unorm-stencil8"
+  | "depth32float-stencil8"
   | "bc1-rgba-unorm"
   | "bc1-rgba-unorm-srgb"
   | "bc2-rgba-unorm"
@@ -351,31 +390,37 @@ declare type GPUTextureFormat =
   | "astc-12x10-unorm"
   | "astc-12x10-unorm-srgb"
   | "astc-12x12-unorm"
-  | "astc-12x12-unorm-srgb"
-  | "depth24unorm-stencil8"
-  | "depth32float-stencil8";
+  | "astc-12x12-unorm-srgb";
 
+/** @category WebGPU */
 declare class GPUSampler implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
   addressModeU?: GPUAddressMode;
   addressModeV?: GPUAddressMode;
   addressModeW?: GPUAddressMode;
   magFilter?: GPUFilterMode;
   minFilter?: GPUFilterMode;
-  mipmapFilter?: GPUFilterMode;
+  mipmapFilter?: GPUMipmapFilterMode;
   lodMinClamp?: number;
   lodMaxClamp?: number;
   compare?: GPUCompareFunction;
   maxAnisotropy?: number;
 }
 
+/** @category WebGPU */
 declare type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
 
+/** @category WebGPU */
 declare type GPUFilterMode = "nearest" | "linear";
 
+/** @category WebGPU */
+declare type GPUMipmapFilterMode = "nearest" | "linear";
+
+/** @category WebGPU */
 declare type GPUCompareFunction =
   | "never"
   | "less"
@@ -386,14 +431,17 @@ declare type GPUCompareFunction =
   | "greater-equal"
   | "always";
 
+/** @category WebGPU */
 declare class GPUBindGroupLayout implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
   entries: GPUBindGroupLayoutEntry[];
 }
 
+/** @category WebGPU */
 declare interface GPUBindGroupLayoutEntry {
   binding: number;
   visibility: GPUShaderStageFlags;
@@ -404,36 +452,45 @@ declare interface GPUBindGroupLayoutEntry {
   storageTexture?: GPUStorageTextureBindingLayout;
 }
 
+/** @category WebGPU */
 declare type GPUShaderStageFlags = number;
+
+/** @category WebGPU */
 declare class GPUShaderStage {
   static VERTEX: 0x1;
   static FRAGMENT: 0x2;
   static COMPUTE: 0x4;
 }
 
+/** @category WebGPU */
 declare interface GPUBufferBindingLayout {
   type?: GPUBufferBindingType;
   hasDynamicOffset?: boolean;
   minBindingSize?: number;
 }
 
+/** @category WebGPU */
 declare type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
 
+/** @category WebGPU */
 declare interface GPUSamplerBindingLayout {
   type?: GPUSamplerBindingType;
 }
 
+/** @category WebGPU */
 declare type GPUSamplerBindingType =
   | "filtering"
   | "non-filtering"
   | "comparison";
 
+/** @category WebGPU */
 declare interface GPUTextureBindingLayout {
   sampleType?: GPUTextureSampleType;
   viewDimension?: GPUTextureViewDimension;
   multisampled?: boolean;
 }
 
+/** @category WebGPU */
 declare type GPUTextureSampleType =
   | "float"
   | "unfilterable-float"
@@ -441,49 +498,60 @@ declare type GPUTextureSampleType =
   | "sint"
   | "uint";
 
+/** @category WebGPU */
 declare type GPUStorageTextureAccess = "write-only";
 
+/** @category WebGPU */
 declare interface GPUStorageTextureBindingLayout {
   access: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
 }
 
+/** @category WebGPU */
 declare class GPUBindGroup implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
   layout: GPUBindGroupLayout;
   entries: GPUBindGroupEntry[];
 }
 
+/** @category WebGPU */
 declare type GPUBindingResource =
   | GPUSampler
   | GPUTextureView
   | GPUBufferBinding;
 
+/** @category WebGPU */
 declare interface GPUBindGroupEntry {
   binding: number;
   resource: GPUBindingResource;
 }
 
+/** @category WebGPU */
 declare interface GPUBufferBinding {
   buffer: GPUBuffer;
   offset?: number;
   size?: number;
 }
 
+/** @category WebGPU */
 declare class GPUPipelineLayout implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
   bindGroupLayouts: GPUBindGroupLayout[];
 }
 
+/** @category WebGPU */
 declare type GPUCompilationMessageType = "error" | "warning" | "info";
 
+/** @category WebGPU */
 declare interface GPUCompilationMessage {
   readonly message: string;
   readonly type: GPUCompilationMessageType;
@@ -491,51 +559,64 @@ declare interface GPUCompilationMessage {
   readonly linePos: number;
 }
 
+/** @category WebGPU */
 declare interface GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
 
+/** @category WebGPU */
 declare class GPUShaderModule implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   compilationInfo(): Promise<GPUCompilationInfo>;
 }
 
+/** @category WebGPU */
 declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
   code: string;
   sourceMap?: any;
 }
 
+/** @category WebGPU */
+declare type GPUAutoLayoutMode = "auto";
+
+/** @category WebGPU */
 declare interface GPUPipelineDescriptorBase extends GPUObjectDescriptorBase {
-  layout?: GPUPipelineLayout;
+  layout: GPUPipelineLayout | GPUAutoLayoutMode;
 }
 
+/** @category WebGPU */
 declare interface GPUPipelineBase {
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
 
+/** @category WebGPU */
 declare interface GPUProgrammableStage {
   module: GPUShaderModule;
   entryPoint: string;
 }
 
+/** @category WebGPU */
 declare class GPUComputePipeline implements GPUObjectBase, GPUPipelineBase {
-  label: string | null;
+  label: string;
 
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
 
+/** @category WebGPU */
 declare interface GPUComputePipelineDescriptor
   extends GPUPipelineDescriptorBase {
   compute: GPUProgrammableStage;
 }
 
+/** @category WebGPU */
 declare class GPURenderPipeline implements GPUObjectBase, GPUPipelineBase {
-  label: string | null;
+  label: string;
 
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
 
+/** @category WebGPU */
 declare interface GPURenderPipelineDescriptor
   extends GPUPipelineDescriptorBase {
   vertex: GPUVertexState;
@@ -545,13 +626,7 @@ declare interface GPURenderPipelineDescriptor
   fragment?: GPUFragmentState;
 }
 
-declare type GPUPrimitiveTopology =
-  | "point-list"
-  | "line-list"
-  | "line-strip"
-  | "triangle-list"
-  | "triangle-strip";
-
+/** @category WebGPU */
 declare interface GPUPrimitiveState {
   topology?: GPUPrimitiveTopology;
   stripIndexFormat?: GPUIndexFormat;
@@ -560,20 +635,33 @@ declare interface GPUPrimitiveState {
   unclippedDepth?: boolean;
 }
 
+/** @category WebGPU */
+declare type GPUPrimitiveTopology =
+  | "point-list"
+  | "line-list"
+  | "line-strip"
+  | "triangle-list"
+  | "triangle-strip";
+
+/** @category WebGPU */
 declare type GPUFrontFace = "ccw" | "cw";
 
+/** @category WebGPU */
 declare type GPUCullMode = "none" | "front" | "back";
 
+/** @category WebGPU */
 declare interface GPUMultisampleState {
   count?: number;
   mask?: number;
   alphaToCoverageEnabled?: boolean;
 }
 
+/** @category WebGPU */
 declare interface GPUFragmentState extends GPUProgrammableStage {
-  targets: GPUColorTargetState[];
+  targets: (GPUColorTargetState | null)[];
 }
 
+/** @category WebGPU */
 declare interface GPUColorTargetState {
   format: GPUTextureFormat;
 
@@ -581,12 +669,16 @@ declare interface GPUColorTargetState {
   writeMask?: GPUColorWriteFlags;
 }
 
+/** @category WebGPU */
 declare interface GPUBlendState {
   color: GPUBlendComponent;
   alpha: GPUBlendComponent;
 }
 
+/** @category WebGPU */
 declare type GPUColorWriteFlags = number;
+
+/** @category WebGPU */
 declare class GPUColorWrite {
   static RED: 0x1;
   static GREEN: 0x2;
@@ -595,12 +687,14 @@ declare class GPUColorWrite {
   static ALL: 0xF;
 }
 
+/** @category WebGPU */
 declare interface GPUBlendComponent {
   operation?: GPUBlendOperation;
   srcFactor?: GPUBlendFactor;
   dstFactor?: GPUBlendFactor;
 }
 
+/** @category WebGPU */
 declare type GPUBlendFactor =
   | "zero"
   | "one"
@@ -616,6 +710,7 @@ declare type GPUBlendFactor =
   | "constant"
   | "one-minus-constant";
 
+/** @category WebGPU */
 declare type GPUBlendOperation =
   | "add"
   | "subtract"
@@ -623,6 +718,7 @@ declare type GPUBlendOperation =
   | "min"
   | "max";
 
+/** @category WebGPU */
 declare interface GPUDepthStencilState {
   format: GPUTextureFormat;
 
@@ -640,6 +736,7 @@ declare interface GPUDepthStencilState {
   depthBiasClamp?: number;
 }
 
+/** @category WebGPU */
 declare interface GPUStencilFaceState {
   compare?: GPUCompareFunction;
   failOp?: GPUStencilOperation;
@@ -647,6 +744,7 @@ declare interface GPUStencilFaceState {
   passOp?: GPUStencilOperation;
 }
 
+/** @category WebGPU */
 declare type GPUStencilOperation =
   | "keep"
   | "zero"
@@ -657,8 +755,10 @@ declare type GPUStencilOperation =
   | "increment-wrap"
   | "decrement-wrap";
 
+/** @category WebGPU */
 declare type GPUIndexFormat = "uint16" | "uint32";
 
+/** @category WebGPU */
 declare type GPUVertexFormat =
   | "uint8x2"
   | "uint8x4"
@@ -690,18 +790,23 @@ declare type GPUVertexFormat =
   | "sint32x2"
   | "sint32x3"
   | "sint32x4";
+
+/** @category WebGPU */
 declare type GPUVertexStepMode = "vertex" | "instance";
 
+/** @category WebGPU */
 declare interface GPUVertexState extends GPUProgrammableStage {
   buffers?: (GPUVertexBufferLayout | null)[];
 }
 
+/** @category WebGPU */
 declare interface GPUVertexBufferLayout {
   arrayStride: number;
   stepMode?: GPUVertexStepMode;
   attributes: GPUVertexAttribute[];
 }
 
+/** @category WebGPU */
 declare interface GPUVertexAttribute {
   format: GPUVertexFormat;
   offset: number;
@@ -709,14 +814,17 @@ declare interface GPUVertexAttribute {
   shaderLocation: number;
 }
 
+/** @category WebGPU */
 declare class GPUCommandBuffer implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
+/** @category WebGPU */
 declare class GPUCommandEncoder implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
   beginComputePass(
@@ -751,8 +859,8 @@ declare class GPUCommandEncoder implements GPUObjectBase {
 
   clearBuffer(
     destination: GPUBuffer,
-    destinationOffset: number,
-    size: number,
+    destinationOffset?: number,
+    size?: number,
   ): undefined;
 
   pushDebugGroup(groupLabel: string): undefined;
@@ -772,18 +880,22 @@ declare class GPUCommandEncoder implements GPUObjectBase {
   finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
 }
 
+/** @category WebGPU */
 declare interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
 
+/** @category WebGPU */
 declare interface GPUImageDataLayout {
   offset?: number;
   bytesPerRow?: number;
   rowsPerImage?: number;
 }
 
+/** @category WebGPU */
 declare interface GPUImageCopyBuffer extends GPUImageDataLayout {
   buffer: GPUBuffer;
 }
 
+/** @category WebGPU */
 declare interface GPUImageCopyTexture {
   texture: GPUTexture;
   mipLevel?: number;
@@ -791,6 +903,7 @@ declare interface GPUImageCopyTexture {
   aspect?: GPUTextureAspect;
 }
 
+/** @category WebGPU */
 interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
@@ -811,9 +924,10 @@ interface GPUProgrammablePassEncoder {
   insertDebugMarker(markerLabel: string): undefined;
 }
 
+/** @category WebGPU */
 declare class GPUComputePassEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder {
-  label: string | null;
+  label: string;
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -830,8 +944,8 @@ declare class GPUComputePassEncoder
   popDebugGroup(): undefined;
   insertDebugMarker(markerLabel: string): undefined;
   setPipeline(pipeline: GPUComputePipeline): undefined;
-  dispatch(x: number, y?: number, z?: number): undefined;
-  dispatchIndirect(
+  dispatchWorkgroups(x: number, y?: number, z?: number): undefined;
+  dispatchWorkgroupsIndirect(
     indirectBuffer: GPUBuffer,
     indirectOffset: number,
   ): undefined;
@@ -844,11 +958,13 @@ declare class GPUComputePassEncoder
 
   writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
 
-  endPass(): undefined;
+  end(): undefined;
 }
 
+/** @category WebGPU */
 declare interface GPUComputePassDescriptor extends GPUObjectDescriptorBase {}
 
+/** @category WebGPU */
 interface GPURenderEncoderBase {
   setPipeline(pipeline: GPURenderPipeline): undefined;
 
@@ -886,9 +1002,10 @@ interface GPURenderEncoderBase {
   ): undefined;
 }
 
+/** @category WebGPU */
 declare class GPURenderPassEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
-  label: string | null;
+  label: string;
   setBindGroup(
     index: number,
     bindGroup: GPUBindGroup,
@@ -967,48 +1084,59 @@ declare class GPURenderPassEncoder
   writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
 
   executeBundles(bundles: GPURenderBundle[]): undefined;
-  endPass(): undefined;
+  end(): undefined;
 }
 
+/** @category WebGPU */
 declare interface GPURenderPassDescriptor extends GPUObjectDescriptorBase {
-  colorAttachments: GPURenderPassColorAttachment[];
+  colorAttachments: (GPURenderPassColorAttachment | null)[];
   depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
   occlusionQuerySet?: GPUQuerySet;
 }
 
+/** @category WebGPU */
 declare interface GPURenderPassColorAttachment {
   view: GPUTextureView;
   resolveTarget?: GPUTextureView;
 
-  loadValue: GPULoadOp | GPUColor;
-  storeOp?: GPUStoreOp;
+  clearValue?: GPUColor;
+  loadOp: GPULoadOp;
+  storeOp: GPUStoreOp;
 }
 
+/** @category WebGPU */
 declare interface GPURenderPassDepthStencilAttachment {
   view: GPUTextureView;
 
-  depthLoadValue: GPULoadOp | number;
-  depthStoreOp: GPUStoreOp;
+  depthClearValue?: number;
+  depthLoadOp?: GPULoadOp;
+  depthStoreOp?: GPUStoreOp;
   depthReadOnly?: boolean;
 
-  stencilLoadValue: GPULoadOp | number;
-  stencilStoreOp: GPUStoreOp;
+  stencilClearValue?: number;
+  stencilLoadOp?: GPULoadOp;
+  stencilStoreOp?: GPUStoreOp;
   stencilReadOnly?: boolean;
 }
 
-declare type GPULoadOp = "load";
+/** @category WebGPU */
+declare type GPULoadOp = "load" | "clear";
 
+/** @category WebGPU */
 declare type GPUStoreOp = "store" | "discard";
 
+/** @category WebGPU */
 declare class GPURenderBundle implements GPUObjectBase {
-  label: string | null;
+  label: string;
 }
 
+/** @category WebGPU */
 declare interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
+/** @category WebGPU */
 declare class GPURenderBundleEncoder
   implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
-  label: string | null;
+  label: string;
   draw(
     vertexCount: number,
     instanceCount?: number,
@@ -1059,19 +1187,22 @@ declare class GPURenderBundleEncoder
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
 
+/** @category WebGPU */
 declare interface GPURenderPassLayout extends GPUObjectDescriptorBase {
-  colorFormats: GPUTextureFormat[];
+  colorFormats: (GPUTextureFormat | null)[];
   depthStencilFormat?: GPUTextureFormat;
   sampleCount?: number;
 }
 
+/** @category WebGPU */
 declare interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
   depthReadOnly?: boolean;
   stencilReadOnly?: boolean;
 }
 
+/** @category WebGPU */
 declare class GPUQueue implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   submit(commandBuffers: GPUCommandBuffer[]): undefined;
 
@@ -1093,20 +1224,24 @@ declare class GPUQueue implements GPUObjectBase {
   ): undefined;
 }
 
+/** @category WebGPU */
 declare class GPUQuerySet implements GPUObjectBase {
-  label: string | null;
+  label: string;
 
   destroy(): undefined;
 }
 
+/** @category WebGPU */
 declare interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
   type: GPUQueryType;
   count: number;
   pipelineStatistics?: GPUPipelineStatisticName[];
 }
 
+/** @category WebGPU */
 declare type GPUQueryType = "occlusion" | "pipeline-statistics" | "timestamp";
 
+/** @category WebGPU */
 declare type GPUPipelineStatisticName =
   | "vertex-shader-invocations"
   | "clipper-invocations"
@@ -1114,26 +1249,34 @@ declare type GPUPipelineStatisticName =
   | "fragment-shader-invocations"
   | "compute-shader-invocations";
 
+/** @category WebGPU */
 declare type GPUDeviceLostReason = "destroyed";
 
+/** @category WebGPU */
 declare interface GPUDeviceLostInfo {
   readonly reason: GPUDeviceLostReason | undefined;
   readonly message: string;
 }
 
-declare type GPUErrorFilter = "out-of-memory" | "validation";
-
-declare class GPUOutOfMemoryError {
-  constructor();
-}
-
-declare class GPUValidationError {
-  constructor(message: string);
+/** @category WebGPU */
+declare class GPUError {
   readonly message: string;
 }
 
-declare type GPUError = GPUOutOfMemoryError | GPUValidationError;
+/** @category WebGPU */
+declare type GPUErrorFilter = "out-of-memory" | "validation";
 
+/** @category WebGPU */
+declare class GPUOutOfMemoryError extends GPUError {
+  constructor(message: string);
+}
+
+/** @category WebGPU */
+declare class GPUValidationError extends GPUError {
+  constructor(message: string);
+}
+
+/** @category WebGPU */
 declare class GPUUncapturedErrorEvent extends Event {
   constructor(
     type: string,
@@ -1142,10 +1285,12 @@ declare class GPUUncapturedErrorEvent extends Event {
   readonly error: GPUError;
 }
 
+/** @category WebGPU */
 declare interface GPUUncapturedErrorEventInit extends EventInit {
   error?: GPUError;
 }
 
+/** @category WebGPU */
 declare interface GPUColorDict {
   r: number;
   g: number;
@@ -1153,20 +1298,25 @@ declare interface GPUColorDict {
   a: number;
 }
 
+/** @category WebGPU */
 declare type GPUColor = number[] | GPUColorDict;
 
+/** @category WebGPU */
 declare interface GPUOrigin3DDict {
   x?: number;
   y?: number;
   z?: number;
 }
 
+/** @category WebGPU */
 declare type GPUOrigin3D = number[] | GPUOrigin3DDict;
 
+/** @category WebGPU */
 declare interface GPUExtent3DDict {
   width: number;
   height?: number;
   depthOrArrayLayers?: number;
 }
 
+/** @category WebGPU */
 declare type GPUExtent3D = number[] | GPUExtent3DDict;

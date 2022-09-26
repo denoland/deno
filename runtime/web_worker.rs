@@ -3,8 +3,10 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::ops;
+use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
-use crate::tokio_util::run_basic;
+use crate::tokio_util::run_local;
+use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
@@ -22,13 +24,14 @@ use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
-use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
+use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -38,7 +41,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
@@ -91,12 +93,18 @@ impl Serialize for WorkerControlEvent {
       WorkerControlEvent::TerminalError(error)
       | WorkerControlEvent::Error(error) => {
         let value = match error.downcast_ref::<JsError>() {
-          Some(js_error) => json!({
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }),
+          Some(js_error) => {
+            let frame = js_error.frames.iter().find(|f| match &f.file_name {
+              Some(s) => !s.trim_start_matches('[').starts_with("deno:"),
+              None => false,
+            });
+            json!({
+              "message": js_error.exception_message,
+              "fileName": frame.map(|f| f.file_name.as_ref()),
+              "lineNumber": frame.map(|f| f.line_number.as_ref()),
+              "columnNumber": frame.map(|f| f.column_number.as_ref()),
+            })
+          }
           None => json!({
             "message": error.to_string(),
           }),
@@ -119,6 +127,7 @@ pub struct WebWorkerInternalHandle {
   has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
+  pub name: String,
   pub worker_type: WebWorkerType,
 }
 
@@ -264,6 +273,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  name: String,
   worker_type: WebWorkerType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
@@ -272,13 +282,14 @@ fn create_handles(
   let has_terminated = Arc::new(AtomicBool::new(false));
   let terminate_waker = Arc::new(AtomicWaker::new());
   let internal_handle = WebWorkerInternalHandle {
-    sender: ctrl_tx,
+    name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
     has_terminated: has_terminated.clone(),
     terminate_waker: terminate_waker.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
+    sender: ctrl_tx,
     worker_type,
   };
   let external_handle = SendableWebWorkerHandle {
@@ -301,7 +312,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
@@ -312,13 +322,14 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
-  pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
-  pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-  pub use_deno_namespace: bool,
+  pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+  pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub get_error_class_fn: Option<GetErrorClassFn>,
@@ -326,7 +337,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
-  pub maybe_exit_code: Option<Arc<AtomicI32>>,
+  pub stdio: Stdio,
 }
 
 impl WebWorker {
@@ -373,7 +384,7 @@ impl WebWorker {
         Some(main_module.clone()),
       ),
       deno_fetch::init::<Permissions>(deno_fetch::Options {
-        user_agent: options.user_agent.clone(),
+        user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store: options.root_cert_store.clone(),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
@@ -382,7 +393,7 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_websocket::init::<Permissions>(
-        options.user_agent.clone(),
+        options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -398,31 +409,30 @@ impl WebWorker {
       ops::worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
+        options.pre_execute_module_cb.clone(),
+        options.format_js_error_fn.clone(),
       ),
       // Extensions providing Deno.* features
-      ops::fs_events::init().enabled(options.use_deno_namespace),
-      ops::fs::init().enabled(options.use_deno_namespace),
+      ops::fs_events::init(),
+      ops::fs::init(),
       ops::io::init(),
-      ops::io::init_stdio().enabled(options.use_deno_namespace),
-      deno_tls::init().enabled(options.use_deno_namespace),
+      ops::io::init_stdio(options.stdio),
+      deno_tls::init(),
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
-      )
-      .enabled(options.use_deno_namespace),
-      ops::os::init(Some(
-        options
-          .maybe_exit_code
-          .expect("Worker has access to OS ops but exit code was not passed."),
-      ))
-      .enabled(options.use_deno_namespace),
-      ops::permissions::init().enabled(options.use_deno_namespace),
-      ops::process::init().enabled(options.use_deno_namespace),
-      ops::signal::init().enabled(options.use_deno_namespace),
-      ops::tty::init().enabled(options.use_deno_namespace),
-      deno_http::init().enabled(options.use_deno_namespace),
-      ops::http::init().enabled(options.use_deno_namespace),
+      ),
+      deno_node::init::<Permissions>(unstable, options.npm_resolver),
+      ops::os::init_for_worker(),
+      ops::permissions::init(),
+      ops::process::init(),
+      ops::spawn::init(),
+      ops::signal::init(),
+      ops::tty::init(),
+      deno_http::init(),
+      deno_flash::init::<Permissions>(unstable),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
@@ -433,7 +443,7 @@ impl WebWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
-      js_error_create_fn: options.js_error_create_fn.clone(),
+      source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
@@ -452,7 +462,7 @@ impl WebWorker {
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
       let (internal_handle, external_handle) =
-        create_handles(handle, options.worker_type);
+        create_handles(handle, name.clone(), options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
@@ -465,7 +475,6 @@ impl WebWorker {
         js_runtime,
         name,
         internal_handle,
-        use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
@@ -478,10 +487,9 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
+      "bootstrap.workerRuntime({}, \"{}\", \"{}\")",
       options.as_json(),
       self.name,
-      self.use_deno_namespace,
       self.id
     );
     self
@@ -511,24 +519,26 @@ impl WebWorker {
     Ok(())
   }
 
-  /// Loads and instantiates specified JavaScript module
-  /// as "main" or "side" module.
-  pub async fn preload_module(
+  /// Loads and instantiates specified JavaScript module as "main" module.
+  pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-    main: bool,
   ) -> Result<ModuleId, AnyError> {
-    if main {
-      self
-        .js_runtime
-        .load_main_module(module_specifier, None)
-        .await
-    } else {
-      self
-        .js_runtime
-        .load_side_module(module_specifier, None)
-        .await
-    }
+    self
+      .js_runtime
+      .load_main_module(module_specifier, None)
+      .await
+  }
+
+  /// Loads and instantiates specified JavaScript module as "side" module.
+  pub async fn preload_side_module(
+    &mut self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, AnyError> {
+    self
+      .js_runtime
+      .load_side_module(module_specifier, None)
+      .await
   }
 
   /// Loads, instantiates and executes specified JavaScript module.
@@ -539,9 +549,11 @@ impl WebWorker {
     &mut self,
     module_specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    let id = self.preload_module(module_specifier, false).await?;
+    let id = self.preload_side_module(module_specifier).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")
@@ -564,6 +576,8 @@ impl WebWorker {
   ) -> Result<(), AnyError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
+      biased;
+
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
@@ -629,11 +643,23 @@ impl WebWorker {
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
     let undefined = v8::undefined(scope);
-    fn_.call(scope, undefined.into(), &[]).unwrap();
+    // This call may return `None` if worker is terminated.
+    fn_.call(scope, undefined.into(), &[]);
   }
 }
 
-fn print_worker_error(error_str: String, name: &str) {
+fn print_worker_error(
+  error: &AnyError,
+  name: &str,
+  format_js_error_fn: Option<&FormatJsErrorFn>,
+) {
+  let error_str = match format_js_error_fn {
+    Some(format_js_error_fn) => match error.downcast_ref::<JsError>() {
+      Some(js_error) => format_js_error_fn(js_error),
+      None => error.to_string(),
+    },
+    None => error.to_string(),
+  };
   eprintln!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
@@ -648,7 +674,9 @@ pub fn run_web_worker(
   worker: WebWorker,
   specifier: ModuleSpecifier,
   maybe_source_code: Option<String>,
-  preload_module_cb: Arc<ops::worker_host::PreloadModuleCb>,
+  preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
+  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
 
@@ -662,7 +690,7 @@ pub fn run_web_worker(
     let mut worker = match result {
       Ok(worker) => worker,
       Err(e) => {
-        print_worker_error(e.to_string(), &name);
+        print_worker_error(&e, &name, format_js_error_fn.as_deref());
         internal_handle
           .post_event(WorkerControlEvent::TerminalError(e))
           .expect("Failed to post message to host");
@@ -680,8 +708,20 @@ pub fn run_web_worker(
     } else {
       // TODO(bartlomieju): add "type": "classic", ie. ability to load
       // script instead of module
-      match worker.preload_module(&specifier, true).await {
+      match worker.preload_main_module(&specifier).await {
         Ok(id) => {
+          worker = match (pre_execute_module_cb)(worker).await {
+            Ok(worker) => worker,
+            Err(e) => {
+              print_worker_error(&e, &name, format_js_error_fn.as_deref());
+              internal_handle
+                .post_event(WorkerControlEvent::TerminalError(e))
+                .expect("Failed to post message to host");
+
+              // Failure to execute script is a terminal error, bye, bye.
+              return Ok(());
+            }
+          };
           worker.start_polling_for_messages();
           worker.execute_main_module(id).await
         }
@@ -702,7 +742,7 @@ pub fn run_web_worker(
     };
 
     if let Err(e) = result {
-      print_worker_error(e.to_string(), &name);
+      print_worker_error(&e, &name, format_js_error_fn.as_deref());
       internal_handle
         .post_event(WorkerControlEvent::TerminalError(e))
         .expect("Failed to post message to host");
@@ -714,5 +754,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_basic(fut)
+  run_local(fut)
 }

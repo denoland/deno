@@ -1,0 +1,15 @@
+[WILDCARD]
+error: Uncaught Error: foo
+  throw new Error("foo", { cause: new Error("bar", { cause: "deno" as any }) });
+        ^
+    at a (file:///[WILDCARD]/error_cause.ts:3:9)
+    at b (file:///[WILDCARD]/error_cause.ts:7:3)
+    at c (file:///[WILDCARD]/error_cause.ts:11:3)
+    at file:///[WILDCARD]/error_cause.ts:14:1
+Caused by: Error: bar
+    at a (file:///[WILDCARD]/error_cause.ts:3:35)
+    at b (file:///[WILDCARD]/error_cause.ts:7:3)
+    at c (file:///[WILDCARD]/error_cause.ts:11:3)
+    at file:///[WILDCARD]/error_cause.ts:14:1
+Caused by: "deno"
+[WILDCARD]

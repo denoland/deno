@@ -70,13 +70,13 @@ where
   pub async fn read(
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     let mut rd = self.rd_borrow_mut().await;
     let nread = rd
       .read(&mut buf)
       .try_or_cancel(self.cancel_handle())
       .await?;
-    Ok(nread)
+    Ok((nread, buf))
   }
 
   pub async fn write(
@@ -103,7 +103,10 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 
@@ -133,6 +136,7 @@ impl TcpStreamResource {
       .map_socket(Box::new(move |socket| Ok(socket.set_keepalive(keepalive)?)))
   }
 
+  #[allow(clippy::type_complexity)]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), AnyError>>,
@@ -160,7 +164,7 @@ impl UnixStreamResource {
   pub async fn read(
     self: Rc<Self>,
     _buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
     unreachable!()
   }
   pub async fn write(
@@ -182,7 +186,10 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn read_return(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
     Box::pin(self.read(buf))
   }
 

@@ -44,7 +44,7 @@ Deno.test(async function opsAsyncBadResource() {
 Deno.test(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
-    Deno.core.opSync("op_read_sync", nonExistingRid, new Uint8Array(0));
+    Deno.core.ops.op_read_sync(nonExistingRid, new Uint8Array(0));
   } catch (e) {
     if (!(e instanceof Deno.errors.BadResource)) {
       throw e;

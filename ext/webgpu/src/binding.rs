@@ -2,11 +2,11 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::convert::{TryFrom, TryInto};
 
 use super::error::WebGpuResult;
 
@@ -122,7 +122,7 @@ impl From<GpuStorageTextureAccess> for wgpu_types::StorageTextureAccess {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GpuBindGroupLayoutEntry {
+pub struct GpuBindGroupLayoutEntry {
   binding: u32,
   visibility: u32,
   #[serde(flatten)]
@@ -138,13 +138,9 @@ enum GpuBindingType {
   StorageTexture(GpuStorageTextureBindingLayout),
 }
 
-impl TryFrom<GpuBindingType> for wgpu_types::BindingType {
-  type Error = AnyError;
-
-  fn try_from(
-    binding_type: GpuBindingType,
-  ) -> Result<wgpu_types::BindingType, Self::Error> {
-    let binding_type = match binding_type {
+impl From<GpuBindingType> for wgpu_types::BindingType {
+  fn from(binding_type: GpuBindingType) -> wgpu_types::BindingType {
+    match binding_type {
       GpuBindingType::Buffer(buffer) => wgpu_types::BindingType::Buffer {
         ty: buffer.r#type.into(),
         has_dynamic_offset: buffer.has_dynamic_offset,
@@ -165,44 +161,38 @@ impl TryFrom<GpuBindingType> for wgpu_types::BindingType {
           view_dimension: storage_texture.view_dimension,
         }
       }
-    };
-    Ok(binding_type)
+    }
   }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateBindGroupLayoutArgs {
-  device_rid: ResourceId,
-  label: Option<String>,
-  entries: Vec<GpuBindGroupLayoutEntry>,
 }
 
 #[op]
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
-  args: CreateBindGroupLayoutArgs,
+  device_rid: ResourceId,
+  label: Option<String>,
+  entries: Vec<GpuBindGroupLayoutEntry>,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.0;
 
-  let mut entries = vec![];
-
-  for entry in args.entries {
-    entries.push(wgpu_types::BindGroupLayoutEntry {
-      binding: entry.binding,
-      visibility: wgpu_types::ShaderStages::from_bits(entry.visibility)
-        .unwrap(),
-      ty: entry.binding_type.try_into()?,
-      count: None, // native-only
-    });
-  }
+  let entries = entries
+    .into_iter()
+    .map(|entry| {
+      wgpu_types::BindGroupLayoutEntry {
+        binding: entry.binding,
+        visibility: wgpu_types::ShaderStages::from_bits(entry.visibility)
+          .unwrap(),
+        ty: entry.binding_type.into(),
+        count: None, // native-only
+      }
+    })
+    .collect::<Vec<_>>();
 
   let descriptor = wgpu_core::binding_model::BindGroupLayoutDescriptor {
-    label: args.label.map(Cow::from),
+    label: label.map(Cow::from),
     entries: Cow::from(entries),
   };
 
@@ -213,35 +203,30 @@ pub fn op_webgpu_create_bind_group_layout(
   ) => state, WebGpuBindGroupLayout)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreatePipelineLayoutArgs {
-  device_rid: ResourceId,
-  label: Option<String>,
-  bind_group_layouts: Vec<u32>,
-}
-
 #[op]
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
-  args: CreatePipelineLayoutArgs,
+  device_rid: ResourceId,
+  label: Option<String>,
+  bind_group_layouts: Vec<u32>,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.0;
 
-  let mut bind_group_layouts = vec![];
-
-  for rid in &args.bind_group_layouts {
-    let bind_group_layout =
-      state.resource_table.get::<WebGpuBindGroupLayout>(*rid)?;
-    bind_group_layouts.push(bind_group_layout.0);
-  }
+  let bind_group_layouts = bind_group_layouts
+    .into_iter()
+    .map(|rid| {
+      let bind_group_layout =
+        state.resource_table.get::<WebGpuBindGroupLayout>(rid)?;
+      Ok(bind_group_layout.0)
+    })
+    .collect::<Result<Vec<_>, AnyError>>()?;
 
   let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
-    label: args.label.map(Cow::from),
+    label: label.map(Cow::from),
     bind_group_layouts: Cow::from(bind_group_layouts),
     push_constant_ranges: Default::default(),
   };
@@ -255,7 +240,7 @@ pub fn op_webgpu_create_pipeline_layout(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GpuBindGroupEntry {
+pub struct GpuBindGroupEntry {
   binding: u32,
   kind: String,
   resource: ResourceId,
@@ -263,73 +248,68 @@ struct GpuBindGroupEntry {
   size: Option<u64>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateBindGroupArgs {
+#[op]
+pub fn op_webgpu_create_bind_group(
+  state: &mut OpState,
   device_rid: ResourceId,
   label: Option<String>,
   layout: ResourceId,
   entries: Vec<GpuBindGroupEntry>,
-}
-
-#[op]
-pub fn op_webgpu_create_bind_group(
-  state: &mut OpState,
-  args: CreateBindGroupArgs,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.0;
 
-  let mut entries = vec![];
+  let entries = entries
+    .into_iter()
+    .map(|entry| {
+      Ok(wgpu_core::binding_model::BindGroupEntry {
+        binding: entry.binding,
+        resource: match entry.kind.as_str() {
+          "GPUSampler" => {
+            let sampler_resource =
+              state
+                .resource_table
+                .get::<super::sampler::WebGpuSampler>(entry.resource)?;
+            wgpu_core::binding_model::BindingResource::Sampler(
+              sampler_resource.0,
+            )
+          }
+          "GPUTextureView" => {
+            let texture_view_resource =
+              state
+                .resource_table
+                .get::<super::texture::WebGpuTextureView>(entry.resource)?;
+            wgpu_core::binding_model::BindingResource::TextureView(
+              texture_view_resource.0,
+            )
+          }
+          "GPUBufferBinding" => {
+            let buffer_resource =
+              state
+                .resource_table
+                .get::<super::buffer::WebGpuBuffer>(entry.resource)?;
+            wgpu_core::binding_model::BindingResource::Buffer(
+              wgpu_core::binding_model::BufferBinding {
+                buffer_id: buffer_resource.0,
+                offset: entry.offset.unwrap_or(0),
+                size: std::num::NonZeroU64::new(entry.size.unwrap_or(0)),
+              },
+            )
+          }
+          _ => unreachable!(),
+        },
+      })
+    })
+    .collect::<Result<Vec<_>, AnyError>>()?;
 
-  for entry in &args.entries {
-    let e = wgpu_core::binding_model::BindGroupEntry {
-      binding: entry.binding,
-      resource: match entry.kind.as_str() {
-        "GPUSampler" => {
-          let sampler_resource =
-            state
-              .resource_table
-              .get::<super::sampler::WebGpuSampler>(entry.resource)?;
-          wgpu_core::binding_model::BindingResource::Sampler(sampler_resource.0)
-        }
-        "GPUTextureView" => {
-          let texture_view_resource =
-            state
-              .resource_table
-              .get::<super::texture::WebGpuTextureView>(entry.resource)?;
-          wgpu_core::binding_model::BindingResource::TextureView(
-            texture_view_resource.0,
-          )
-        }
-        "GPUBufferBinding" => {
-          let buffer_resource =
-            state
-              .resource_table
-              .get::<super::buffer::WebGpuBuffer>(entry.resource)?;
-          wgpu_core::binding_model::BindingResource::Buffer(
-            wgpu_core::binding_model::BufferBinding {
-              buffer_id: buffer_resource.0,
-              offset: entry.offset.unwrap_or(0),
-              size: std::num::NonZeroU64::new(entry.size.unwrap_or(0)),
-            },
-          )
-        }
-        _ => unreachable!(),
-      },
-    };
-    entries.push(e);
-  }
-
-  let bind_group_layout = state
-    .resource_table
-    .get::<WebGpuBindGroupLayout>(args.layout)?;
+  let bind_group_layout =
+    state.resource_table.get::<WebGpuBindGroupLayout>(layout)?;
 
   let descriptor = wgpu_core::binding_model::BindGroupDescriptor {
-    label: args.label.map(Cow::from),
+    label: label.map(Cow::from),
     layout: bind_group_layout.0,
     entries: Cow::from(entries),
   };

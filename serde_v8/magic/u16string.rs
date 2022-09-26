@@ -8,13 +8,20 @@ impl_magic!(U16String);
 
 impl ToV8 for U16String {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    let v =
-      v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal)
-        .unwrap();
-    Ok(v.into())
+    let maybe_v =
+      v8::String::new_from_two_byte(scope, self, v8::NewStringType::Normal);
+
+    // 'new_from_two_byte' can return 'None' if buffer length > kMaxLength.
+    if let Some(v) = maybe_v {
+      Ok(v.into())
+    } else {
+      Err(Error::Message(String::from(
+        "Cannot allocate String from UTF-16: buffer exceeds maximum length.",
+      )))
+    }
   }
 }
 
@@ -27,9 +34,9 @@ impl FromV8 for U16String {
       .map_err(|_| Error::ExpectedString)?;
     let len = v8str.length();
     let mut buffer = Vec::with_capacity(len);
+    #[allow(clippy::uninit_vec)]
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
-    #[allow(clippy::uninit_vec)]
     unsafe {
       buffer.set_len(len);
       let written = v8str.write(

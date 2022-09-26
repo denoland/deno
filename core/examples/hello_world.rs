@@ -5,7 +5,6 @@
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
-use deno_core::OpState;
 use deno_core::RuntimeOptions;
 
 // This is a hack to make the `#[op]` macro work with
@@ -54,11 +53,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.opSync('op_sum', arr));
+print(Deno.core.ops.op_sum(arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.opSync('op_sum', 0));
+  print(Deno.core.ops.op_sum(0));
 } catch(e) {
   print('Exception:');
   print(e);

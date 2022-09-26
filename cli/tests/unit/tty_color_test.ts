@@ -6,12 +6,10 @@ import { assertEquals } from "./test_util.ts";
 Deno.test(
   { permissions: { run: true, read: true } },
   async function noColorIfNotTty() {
-    const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "console.log(1)"],
-      stdout: "piped",
+    const { stdout } = await Deno.spawn(Deno.execPath(), {
+      args: ["eval", "console.log(1)"],
     });
-    const output = new TextDecoder().decode(await p.output());
+    const output = new TextDecoder().decode(stdout);
     assertEquals(output, "1\n");
-    p.close();
   },
 );

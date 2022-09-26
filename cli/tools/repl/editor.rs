@@ -14,10 +14,16 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::Cmd;
 use rustyline::CompletionType;
 use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
+use rustyline::EventHandler;
+use rustyline::KeyCode;
+use rustyline::KeyEvent;
+use rustyline::Modifiers;
+use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -179,7 +185,7 @@ impl Completer for EditorHelper {
     if !lsp_completions.is_empty() {
       // assumes all lsp completions have the same start position
       return Ok((
-        lsp_completions[0].span.lo.0 as usize,
+        lsp_completions[0].range.start,
         lsp_completions.into_iter().map(|c| c.new_text).collect(),
       ));
     }
@@ -298,47 +304,57 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in deno_ast::lex(line, deno_ast::MediaType::TypeScript) {
+    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
+      .into_iter()
+      .peekable();
+    while let Some(item) = lexed_items.next() {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
-      let span = std::ops::Range {
-        start: item.span.lo.0 as usize,
-        end: item.span.hi.0 as usize,
-      };
+      let range = item.range;
 
       out_line.replace_range(
-        span.start + offset..span.end + offset,
+        range.start + offset..range.end + offset,
         &match item.inner {
           deno_ast::TokenOrComment::Token(token) => match token {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[span]).to_string()
+              colors::green(&line[range]).to_string()
             }
-            Token::Regex(_, _) => colors::red(&line[span]).to_string(),
-            Token::Num(_) | Token::BigInt(_) => {
-              colors::yellow(&line[span]).to_string()
+            Token::Regex(_, _) => colors::red(&line[range]).to_string(),
+            Token::Num { .. } | Token::BigInt { .. } => {
+              colors::yellow(&line[range]).to_string()
             }
             Token::Word(word) => match word {
               Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[span]).to_string()
+                colors::yellow(&line[range]).to_string()
               }
-              Word::Keyword(_) => colors::cyan(&line[span]).to_string(),
+              Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
               Word::Ident(ident) => {
                 if ident == *"undefined" {
-                  colors::gray(&line[span]).to_string()
+                  colors::gray(&line[range]).to_string()
                 } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[span]).to_string()
+                  colors::yellow(&line[range]).to_string()
                 } else if ident == *"async" || ident == *"of" {
-                  colors::cyan(&line[span]).to_string()
+                  colors::cyan(&line[range]).to_string()
                 } else {
-                  line[span].to_string()
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
+                    // We're looking for something that looks like a function
+                    // We use a simple heuristic: 'ident' followed by 'LParen'
+                    colors::intense_blue(&line[range]).to_string()
+                  } else {
+                    line[range].to_string()
+                  }
                 }
               }
             },
-            _ => line[span].to_string(),
+            _ => line[range].to_string(),
           },
           deno_ast::TokenOrComment::Comment { .. } => {
-            colors::gray(&line[span]).to_string()
+            colors::gray(&line[range]).to_string()
           }
         },
       );
@@ -360,9 +376,18 @@ impl ReplEditor {
       .completion_type(CompletionType::List)
       .build();
 
-    let mut editor = Editor::with_config(editor_config);
+    let mut editor =
+      Editor::with_config(editor_config).expect("Failed to create editor.");
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
+      EventHandler::Simple(Cmd::Newline),
+    );
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Tab, Modifiers::NONE),
+      EventHandler::Conditional(Box::new(TabEventHandler)),
+    );
 
     ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
@@ -383,5 +408,44 @@ impl ReplEditor {
 
     self.inner.lock().save_history(&self.history_file_path)?;
     Ok(())
+  }
+}
+
+/// A custom tab key event handler
+/// It uses a heuristic to determine if the user is requesting completion or if they want to insert an actual tab
+/// The heuristic goes like this:
+///   - If the last character before the cursor is whitespace, the the user wants to insert a tab
+///   - Else the user is requesting completion
+struct TabEventHandler;
+impl ConditionalEventHandler for TabEventHandler {
+  fn handle(
+    &self,
+    evt: &Event,
+    n: RepeatCount,
+    _: bool,
+    ctx: &EventContext,
+  ) -> Option<Cmd> {
+    debug_assert_eq!(
+      *evt,
+      Event::from(KeyEvent(KeyCode::Tab, Modifiers::NONE))
+    );
+    if ctx.line().is_empty()
+      || ctx.line()[..ctx.pos()]
+        .chars()
+        .rev()
+        .next()
+        .filter(|c| c.is_whitespace())
+        .is_some()
+    {
+      if cfg!(target_os = "windows") {
+        // Inserting a tab is broken in windows with rustyline
+        // use 4 spaces as a workaround for now
+        Some(Cmd::Insert(n, "    ".into()))
+      } else {
+        Some(Cmd::Insert(n, "\t".into()))
+      }
+    } else {
+      None // default complete
+    }
   }
 }

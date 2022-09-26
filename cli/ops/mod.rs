@@ -4,20 +4,10 @@ use crate::proc_state::ProcState;
 use deno_core::Extension;
 
 pub mod bench;
-mod errors;
-mod runtime_compiler;
 pub mod testing;
 
-pub fn cli_exts(ps: ProcState, enable_compiler: bool) -> Vec<Extension> {
-  if enable_compiler {
-    vec![
-      init_proc_state(ps),
-      errors::init(),
-      runtime_compiler::init(),
-    ]
-  } else {
-    vec![init_proc_state(ps), errors::init()]
-  }
+pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
+  vec![init_proc_state(ps)]
 }
 
 fn init_proc_state(ps: ProcState) -> Extension {

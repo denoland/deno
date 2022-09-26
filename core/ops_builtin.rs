@@ -1,3 +1,5 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+use crate::error::format_file_name;
 use crate::error::type_error;
 use crate::include_js_files;
 use crate::ops_metrics::OpMetrics;
@@ -29,38 +31,41 @@ pub(crate) fn init_builtins() -> Extension {
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
+      op_add::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
       op_read::decl(),
       op_write::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
+      op_format_file_name::decl(),
+      op_is_proxy::decl(),
+      op_str_byte_length::decl(),
     ])
+    .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
 }
 
 /// Return map of resources with id as key
 /// and string representation as value.
 #[op]
-pub fn op_resources(
-  state: &mut OpState,
-) -> Result<Vec<(ResourceId, String)>, Error> {
-  let serialized_resources = state
+pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
+  state
     .resource_table
     .names()
     .map(|(rid, name)| (rid, name.to_string()))
-    .collect();
-  Ok(serialized_resources)
+    .collect()
 }
 
-#[op]
-pub fn op_void_sync() -> Result<(), Error> {
-  Ok(())
+#[op(fast)]
+fn op_add(a: i32, b: i32) -> i32 {
+  a + b
 }
 
+#[op(fast)]
+pub fn op_void_sync() {}
+
 #[op]
-pub async fn op_void_async() -> Result<(), Error> {
-  Ok(())
-}
+pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
 #[op]
@@ -90,12 +95,10 @@ pub fn op_try_close(
 }
 
 #[op]
-pub fn op_metrics(
-  state: &mut OpState,
-) -> Result<(OpMetrics, Vec<OpMetrics>), Error> {
+pub fn op_metrics(state: &mut OpState) -> (OpMetrics, Vec<OpMetrics>) {
   let aggregate = state.tracker.aggregate();
   let per_op = state.tracker.per_op();
-  Ok((aggregate, per_op))
+  (aggregate, per_op)
 }
 
 /// Builtin utility to print to stdout/stderr
@@ -131,12 +134,12 @@ impl Resource for WasmStreamingResource {
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
-  bytes: ZeroCopyBuf,
+  bytes: &[u8],
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(bytes);
 
   Ok(())
 }
@@ -182,4 +185,26 @@ async fn op_shutdown(
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.shutdown().await
+}
+
+#[op]
+fn op_format_file_name(file_name: String) -> String {
+  format_file_name(&file_name)
+}
+
+#[op(fast)]
+fn op_is_proxy(value: serde_v8::Value) -> bool {
+  value.v8_value.is_proxy()
+}
+
+#[op(v8)]
+fn op_str_byte_length(
+  scope: &mut v8::HandleScope,
+  value: serde_v8::Value,
+) -> u32 {
+  if let Ok(string) = v8::Local::<v8::String>::try_from(value.v8_value) {
+    string.utf8_length(scope) as u32
+  } else {
+    0
+  }
 }

@@ -104,17 +104,25 @@ macro_rules! sertest_polluted {
   };
 }
 
+sertest!(ser_char, 'é', "x === 'é'");
 sertest!(ser_option_some, Some(true), "x === true");
 sertest!(ser_option_null, None as Option<bool>, "x === null");
 sertest!(ser_unit_null, (), "x === null");
 sertest!(ser_bool, true, "x === true");
-sertest!(ser_u64, 32, "x === 32");
+sertest!(ser_u64, 9007199254740991_u64, "x === 9007199254740991");
+sertest!(ser_big_int, 9007199254740992_i64, "x === 9007199254740992n");
+sertest!(
+  ser_neg_big_int,
+  -9007199254740992_i64,
+  "x === -9007199254740992n"
+);
 sertest!(ser_f64, 12345.0, "x === 12345.0");
-sertest!(ser_string, "Hello".to_owned(), "x === 'Hello'");
+sertest!(ser_string, "Hello", "x === 'Hello'");
+sertest!(ser_bytes, b"\x01\x02\x03", "arrEqual(x, [1, 2, 3])");
 sertest!(ser_vec_u64, vec![1, 2, 3, 4, 5], "arrEqual(x, [1,2,3,4,5])");
 sertest!(
   ser_vec_string,
-  vec!["hello".to_owned(), "world".to_owned(),],
+  vec!["hello", "world"],
   "arrEqual(x, ['hello', 'world'])"
 );
 sertest!(ser_tuple, (123, true, ()), "arrEqual(x, [123, true, null])");
@@ -143,7 +151,21 @@ sertest!(
 ////
 sertest!(ser_json_bool, json!(true), "x === true");
 sertest!(ser_json_null, json!(null), "x === null");
-sertest!(ser_json_int, json!(123), "x === 123");
+sertest!(
+  ser_json_int,
+  json!(9007199254740991_u64),
+  "x === 9007199254740991"
+);
+sertest!(
+  ser_json_big_int,
+  json!(9007199254740992_i64),
+  "x === 9007199254740992n"
+);
+sertest!(
+  ser_json_neg_big_int,
+  json!(-9007199254740992_i64),
+  "x === -9007199254740992n"
+);
 sertest!(ser_json_f64, json!(123.45), "x === 123.45");
 sertest!(ser_json_string, json!("Hello World"), "x === 'Hello World'");
 sertest!(ser_json_obj_empty, json!({}), "objEqual(x, {})");

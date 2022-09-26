@@ -39,7 +39,7 @@ fn op_worker_post_message(
   Ok(())
 }
 
-#[op]
+#[op(deferred)]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
 ) -> Result<Option<JsMessageData>, AnyError> {
@@ -55,16 +55,15 @@ async fn op_worker_recv_message(
 }
 
 #[op]
-fn op_worker_close(state: &mut OpState) -> Result<(), AnyError> {
+fn op_worker_close(state: &mut OpState) {
   // Notify parent that we're finished
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 
   handle.terminate();
-  Ok(())
 }
 
 #[op]
-fn op_worker_get_type(state: &mut OpState) -> Result<WebWorkerType, AnyError> {
+fn op_worker_get_type(state: &mut OpState) -> WebWorkerType {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  Ok(handle.worker_type)
+  handle.worker_type
 }

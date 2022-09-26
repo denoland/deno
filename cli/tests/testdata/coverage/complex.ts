@@ -69,3 +69,6 @@ export function ƒ(): number {
 
 // This arrow function should also show up as uncovered.
 console.log("%s", () => 1);
+
+// Make sure emojis work properly
+console.log("📣❓");

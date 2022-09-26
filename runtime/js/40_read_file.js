@@ -3,44 +3,70 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { open, openSync } = window.__bootstrap.files;
-  const { readAllSync, readAll, readAllSyncSized, readAllInnerSized } =
-    window.__bootstrap.io;
+  const ops = core.ops;
+  const { pathFromURL } = window.__bootstrap.util;
+  const { abortSignal } = window.__bootstrap;
 
   function readFileSync(path) {
-    const file = openSync(path);
-    try {
-      const { size } = file.statSync();
-      if (size === 0) {
-        return readAllSync(file);
-      } else {
-        return readAllSyncSized(file, size);
-      }
-    } finally {
-      file.close();
-    }
+    return ops.op_readfile_sync(pathFromURL(path));
   }
 
   async function readFile(path, options) {
-    const file = await open(path);
+    let cancelRid;
+    let abortHandler;
+    if (options?.signal) {
+      options.signal.throwIfAborted();
+      cancelRid = ops.op_cancel_handle();
+      abortHandler = () => core.tryClose(cancelRid);
+      options.signal[abortSignal.add](abortHandler);
+    }
+
     try {
-      const { size } = await file.stat();
-      if (size === 0) {
-        return await readAll(file);
-      } else {
-        return await readAllInnerSized(file, size, options);
-      }
+      const read = await core.opAsync(
+        "op_readfile_async",
+        pathFromURL(path),
+        cancelRid,
+      );
+      return read;
     } finally {
-      file.close();
+      if (options?.signal) {
+        options.signal[abortSignal.remove](abortHandler);
+
+        // always throw the abort error when aborted
+        options.signal.throwIfAborted();
+      }
     }
   }
 
   function readTextFileSync(path) {
-    return core.decode(readFileSync(path));
+    return ops.op_readfile_text_sync(pathFromURL(path));
   }
 
   async function readTextFile(path, options) {
-    return core.decode(await readFile(path, options));
+    let cancelRid;
+    let abortHandler;
+    if (options?.signal) {
+      options.signal.throwIfAborted();
+      cancelRid = ops.op_cancel_handle();
+      abortHandler = () => core.tryClose(cancelRid);
+      options.signal[abortSignal.add](abortHandler);
+    }
+
+    try {
+      const read = await core.opAsync(
+        "op_readfile_text_async",
+        pathFromURL(path),
+        cancelRid,
+      );
+      return read;
+    } finally {
+      if (options?.signal) {
+        options.signal[abortSignal.remove](abortHandler);
+
+        // always throw the abort error when aborted
+        options.signal.throwIfAborted();
+      }
+    }
   }
 
   window.__bootstrap.readFile = {

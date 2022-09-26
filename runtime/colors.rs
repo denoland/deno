@@ -114,12 +114,21 @@ pub fn bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
 
 pub fn gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
-  style_spec.set_fg(Some(Ansi256(8)));
+  style_spec.set_fg(Some(Ansi256(245)));
   style(s, style_spec)
 }
 
 pub fn intense_blue<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Blue)).set_intense(true);
+  style(s, style_spec)
+}
+
+pub fn white_bold_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec
+    .set_bold(true)
+    .set_bg(Some(Red))
+    .set_fg(Some(White));
   style(s, style_spec)
 }

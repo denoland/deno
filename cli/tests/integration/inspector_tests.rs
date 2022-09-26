@@ -561,7 +561,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   assert_eq!(
     &stdout_lines.next().unwrap(),
-    "exit using ctrl+d or close()"
+    "exit using ctrl+d, ctrl+c, or close()"
   );
 
   assert_inspector_messages(
@@ -783,6 +783,7 @@ async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
   let mut child = util::deno_cmd()
     .arg("run")
+    .arg("--check")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .stdout(std::process::Stdio::piped())

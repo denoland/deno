@@ -1,8 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::flags::Flags;
-use crate::flags::InstallFlags;
-use crate::flags::TypecheckMode;
+use crate::args::ConfigFlag;
+use crate::args::Flags;
+use crate::args::InstallFlags;
+use crate::args::TypeCheckMode;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -306,12 +307,10 @@ fn resolve_shim_data(
 
   // we should avoid a default branch here to ensure we continue to cover any
   // changes to this flag.
-  match flags.typecheck_mode {
-    TypecheckMode::All => (),
-    TypecheckMode::None => executable_args.push("--no-check".to_string()),
-    TypecheckMode::Local => {
-      executable_args.push("--no-check=remote".to_string())
-    }
+  match flags.type_check_mode {
+    TypeCheckMode::All => executable_args.push("--check=all".to_string()),
+    TypeCheckMode::None => {}
+    TypeCheckMode::Local => executable_args.push("--check".to_string()),
   }
 
   if flags.unstable {
@@ -320,6 +319,10 @@ fn resolve_shim_data(
 
   if flags.no_remote {
     executable_args.push("--no-remote".to_string());
+  }
+
+  if flags.no_npm {
+    executable_args.push("--no-npm".to_string());
   }
 
   if flags.lock_write {
@@ -357,7 +360,7 @@ fn resolve_shim_data(
     executable_args.push(import_map_url.to_string());
   }
 
-  if let Some(config_path) = &flags.config_path {
+  if let ConfigFlag::Path(config_path) = &flags.config_flag {
     let mut copy_path = file_path.clone();
     copy_path.set_extension("tsconfig.json");
     executable_args.push("--config".to_string());
@@ -400,6 +403,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -586,7 +590,7 @@ mod tests {
       &Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        typecheck_mode: TypecheckMode::None,
+        type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -608,7 +612,6 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--no-check",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]
@@ -765,7 +768,9 @@ mod tests {
 
     let result = install(
       Flags {
-        config_path: Some(config_file_path.to_string_lossy().to_string()),
+        config_flag: ConfigFlag::Path(
+          config_file_path.to_string_lossy().to_string(),
+        ),
         ..Flags::default()
       },
       InstallFlags {

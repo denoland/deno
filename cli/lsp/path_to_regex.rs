@@ -33,6 +33,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Write as _;
 use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
@@ -268,9 +269,9 @@ impl StringOrVec {
         let mut s = String::new();
         for (i, segment) in v.iter().enumerate() {
           if omit_initial_prefix && i == 0 {
-            s.push_str(&format!("{}{}", segment, suffix));
+            write!(s, "{}{}", segment, suffix).unwrap();
           } else {
-            s.push_str(&format!("{}{}{}", prefix, segment, suffix));
+            write!(s, "{}{}{}", prefix, segment, suffix).unwrap();
           }
         }
         s
@@ -618,10 +619,10 @@ pub fn tokens_to_regex(
 
   if end {
     if !strict {
-      route.push_str(&format!(r"{}?", delimiter));
+      write!(route, r"{}?", delimiter).unwrap();
     }
     if has_ends_with {
-      route.push_str(&format!(r"(?={})", ends_with));
+      write!(route, r"(?={})", ends_with).unwrap();
     } else {
       route.push('$');
     }
@@ -639,11 +640,11 @@ pub fn tokens_to_regex(
     };
 
     if !strict {
-      route.push_str(&format!(r"(?:{}(?={}))?", delimiter, ends_with));
+      write!(route, r"(?:{}(?={}))?", delimiter, ends_with).unwrap();
     }
 
     if !is_end_deliminated {
-      route.push_str(&format!(r"(?={}|{})", delimiter, ends_with));
+      write!(route, r"(?={}|{})", delimiter, ends_with).unwrap();
     }
   }
 
@@ -753,7 +754,7 @@ impl Compiler {
                       }
                     }
                   }
-                  path.push_str(&format!("{}{}{}", prefix, segment, suffix));
+                  write!(path, "{}{}{}", prefix, segment, suffix).unwrap();
                 }
               }
             }
@@ -772,7 +773,7 @@ impl Compiler {
               }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
-              path.push_str(&format!("{}{}{}", prefix, s, suffix));
+              write!(path, "{}{}{}", prefix, s, suffix).unwrap();
             }
             None => {
               if !optional {

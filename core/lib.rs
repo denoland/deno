@@ -13,9 +13,11 @@ mod modules;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
+mod ops_builtin_v8;
 mod ops_metrics;
 mod resources;
 mod runtime;
+mod source_map;
 
 // Re-exports
 pub use anyhow;
@@ -24,10 +26,12 @@ pub use parking_lot;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
-pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use serde_v8::ByteString;
+pub use serde_v8::DetachedBuffer;
 pub use serde_v8::StringOrBuffer;
 pub use serde_v8::U16String;
+pub use serde_v8::ZeroCopyBuf;
+pub use sourcemap;
 pub use url;
 pub use v8;
 
@@ -92,10 +96,14 @@ pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::CrossIsolateStore;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsErrorCreateFn;
+pub use crate::runtime::JsRealm;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
+pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
+pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
+pub use crate::source_map::SourceMapGetter;
 pub use deno_ops::op;
 
 pub fn v8_version() -> &'static str {
@@ -108,7 +116,10 @@ pub mod _ops {
   pub use super::bindings::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
+  pub use super::ops::OpCtx;
   pub use super::runtime::queue_async_op;
+  pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
+  pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be

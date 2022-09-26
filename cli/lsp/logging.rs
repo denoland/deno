@@ -21,7 +21,11 @@ pub fn set_lsp_log_level(level: log::Level) {
 
 pub fn lsp_log_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  unsafe { std::mem::transmute(level) }
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    std::mem::transmute(level)
+  }
 }
 
 /// Use this macro to do "info" logs in the lsp code. This allows

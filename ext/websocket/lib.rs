@@ -34,18 +34,22 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
 use tokio_rustls::TlsConnector;
-use tokio_tungstenite::client_async;
+use tokio_tungstenite::client_async_with_config;
 use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::tungstenite::protocol::Role;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
 
@@ -66,26 +70,36 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
+
 pub enum WebSocketStreamType {
   Client {
-    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<WsStream>>,
+    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
   },
   Server {
-    tx: AsyncRefCell<
-      SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>,
-    >,
-    rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
+    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
   },
 }
 
+pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
+
 pub async fn ws_create_server_stream(
   state: &Rc<RefCell<OpState>>,
-  transport: hyper::upgrade::Upgraded,
+  transport: Pin<Box<dyn Upgraded>>,
 ) -> Result<ResourceId, AnyError> {
-  let ws_stream =
-    WebSocketStream::from_raw_socket(transport, Role::Server, None).await;
+  let ws_stream = WebSocketStream::from_raw_socket(
+    transport,
+    Role::Server,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  )
+  .await;
   let (ws_tx, ws_rx) = ws_stream.split();
 
   let ws_resource = WsStreamResource {
@@ -136,6 +150,9 @@ impl WsStreamResource {
     match res {
       Ok(()) => Ok(()),
       Err(Error::ConnectionClosed) => Ok(()),
+      Err(tokio_tungstenite::tungstenite::Error::Protocol(
+        tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
+      )) => Ok(()),
       Err(err) => Err(err.into()),
     }
   }
@@ -214,15 +231,6 @@ where
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateArgs {
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
@@ -234,7 +242,10 @@ pub struct CreateResponse {
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  args: CreateArgs,
+  url: String,
+  protocols: String,
+  cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -242,13 +253,13 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&args.url)?)
+      .check_net_url(&url::Url::parse(&url)?)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
   }
 
-  let cancel_resource = if let Some(cancel_rid) = args.cancel_handle {
+  let cancel_resource = if let Some(cancel_rid) = cancel_handle {
     let r = state
       .borrow_mut()
       .resource_table
@@ -264,16 +275,16 @@ where
     .and_then(|it| it.0.clone());
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
-  let uri: Uri = args.url.parse()?;
+  let uri: Uri = url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
   request = request.header("User-Agent", user_agent);
 
-  if !args.protocols.is_empty() {
-    request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  if !protocols.is_empty() {
+    request = request.header("Sec-WebSocket-Protocol", protocols);
   }
 
-  if let Some(headers) = args.headers {
+  if let Some(headers) = headers {
     for (key, value) in headers {
       let name = HeaderName::from_bytes(&key)
         .map_err(|err| type_error(err.to_string()))?;
@@ -325,8 +336,16 @@ where
     _ => unreachable!(),
   };
 
-  let client = client_async(request, socket);
-  let (stream, response): (WsStream, Response) =
+  let client = client_async_with_config(
+    request,
+    socket,
+    Some(WebSocketConfig {
+      max_message_size: Some(128 << 20),
+      max_frame_size: Some(32 << 20),
+      ..Default::default()
+    }),
+  );
+  let (stream, response): (ClientWsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
       client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
@@ -339,7 +358,7 @@ where
       ))
     })?;
 
-  if let Some(cancel_rid) = args.cancel_handle {
+  if let Some(cancel_rid) = cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
@@ -401,23 +420,17 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CloseArgs {
+#[op(deferred)]
+pub async fn op_ws_close(
+  state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   code: Option<u16>,
   reason: Option<String>,
-}
-
-#[op]
-pub async fn op_ws_close(
-  state: Rc<RefCell<OpState>>,
-  args: CloseArgs,
 ) -> Result<(), AnyError> {
-  let rid = args.rid;
-  let msg = Message::Close(args.code.map(|c| CloseFrame {
+  let rid = rid;
+  let msg = Message::Close(code.map(|c| CloseFrame {
     code: CloseCode::from(c),
-    reason: match args.reason {
+    reason: match reason {
       Some(reason) => Cow::from(reason),
       None => Default::default(),
     },

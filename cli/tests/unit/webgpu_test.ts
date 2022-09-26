@@ -27,7 +27,7 @@ Deno.test({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/testdata/webgpu_computepass_shader.wgsl",
+    "cli/tests/testdata/webgpu/computepass_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -56,6 +56,7 @@ Deno.test({
   storageBuffer.unmap();
 
   const computePipeline = device.createComputePipeline({
+    layout: "auto",
     compute: {
       module: shaderModule,
       entryPoint: "main",
@@ -81,8 +82,8 @@ Deno.test({
   computePass.setPipeline(computePipeline);
   computePass.setBindGroup(0, bindGroup);
   computePass.insertDebugMarker("compute collatz iterations");
-  computePass.dispatch(numbers.length);
-  computePass.endPass();
+  computePass.dispatchWorkgroups(numbers.length);
+  computePass.end();
 
   encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
 
@@ -115,7 +116,7 @@ Deno.test({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/testdata/webgpu_hellotriangle_shader.wgsl",
+    "cli/tests/testdata/webgpu/hellotriangle_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -172,13 +173,14 @@ Deno.test({
       {
         view,
         storeOp: "store",
-        loadValue: [0, 1, 0, 1],
+        loadOp: "clear",
+        clearValue: [0, 1, 0, 1],
       },
     ],
   });
   renderPass.setPipeline(renderPipeline);
   renderPass.draw(3, 1);
-  renderPass.endPass();
+  renderPass.end();
 
   encoder.copyTextureToBuffer(
     {
@@ -200,7 +202,7 @@ Deno.test({
 
   assertEquals(
     data,
-    await Deno.readFile("cli/tests/testdata/webgpu_hellotriangle.out"),
+    await Deno.readFile("cli/tests/testdata/webgpu/hellotriangle.out"),
   );
 
   outputBuffer.unmap();

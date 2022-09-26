@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
+use deno_core::url::Url;
+use test_util as util;
 
 itest!(requires_unstable {
   args: "bench bench/requires_unstable.js",
@@ -74,6 +76,12 @@ itest!(only {
   output: "bench/only.out",
 });
 
+itest!(multifile_summary {
+  args: "bench --unstable bench/group_baseline.ts bench/pass.ts bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/multifile_summary.out",
+});
+
 itest!(no_check {
   args: "bench --unstable --no-check bench/no_check.ts",
   exit_code: 1,
@@ -110,6 +118,12 @@ itest!(finally_timeout {
   output: "bench/finally_timeout.out",
 });
 
+itest!(group_baseline {
+  args: "bench --unstable bench/group_baseline.ts",
+  exit_code: 0,
+  output: "bench/group_baseline.out",
+});
+
 itest!(unresolved_promise {
   args: "bench --unstable bench/unresolved_promise.ts",
   exit_code: 1,
@@ -129,13 +143,61 @@ itest!(filter {
 });
 
 itest!(no_prompt_by_default {
-  args: "bench --unstable bench/no_prompt_by_default.ts",
+  args: "bench --quiet --unstable bench/no_prompt_by_default.ts",
   exit_code: 1,
   output: "bench/no_prompt_by_default.out",
 });
 
 itest!(no_prompt_with_denied_perms {
-  args: "bench --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
+  args:
+    "bench --quiet --unstable --allow-read bench/no_prompt_with_denied_perms.ts",
   exit_code: 1,
   output: "bench/no_prompt_with_denied_perms.out",
 });
+
+itest!(check_local_by_default {
+  args: "bench --quiet --unstable bench/check_local_by_default.ts",
+  output: "bench/check_local_by_default.out",
+  http_server: true,
+});
+
+itest!(check_local_by_default2 {
+  args: "bench --quiet --unstable bench/check_local_by_default2.ts",
+  output: "bench/check_local_by_default2.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+#[test]
+fn recursive_permissions_pledge() {
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bench")
+    .arg("--unstable")
+    .arg("bench/recursive_permissions_pledge.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert!(String::from_utf8(output.stderr).unwrap().contains(
+    "pledge test permissions called before restoring previous pledge"
+  ));
+}
+
+#[test]
+fn file_protocol() {
+  let file_url =
+    Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
+      .unwrap()
+      .to_string();
+
+  (util::CheckOutputIntegrationTest {
+    args_vec: vec!["bench", "--unstable", &file_url],
+    exit_code: 0,
+    output: "bench/file_protocol.out",
+    ..Default::default()
+  })
+  .run();
+}

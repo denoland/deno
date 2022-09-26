@@ -72,18 +72,21 @@ contextual awareness, it is the author's opinion that it is best to spend the
      TypeScript now includes the type definitions that we forward support.
      Currently there are three:
 
-     - `lib.es2021.intl.d.ts` contains additional `Intl` APIs that were ratified
-       and included, but for some reason never added to the TypeScript libs. PR
-       https://github.com/microsoft/TypeScript/pull/47254 has been sitting there
-       for 15 months without being merged for some reason. 🤷 You will likely
-       need to revert the deletion of this code from `lib.es2021.intl.d.ts`.
      - `lib.esnext.array.d.ts` contains additional array APIs. These likely will
        be moved to ES2022 at some point, but currently only the
        `Array.prototype.at` has been added. You will likely need to revert the
        deletion of the lib from `lib.esnext.d.ts`.
-     - We add `lib.dom.asynciterables.d.ts` because for some reason TypeScript
+     - We add `lib.dom.asynciterable.d.ts` because for some reason TypeScript
        has not built these into the libraries. (See:
        https://github.com/microsoft/TypeScript/issues/29867)
+     - We add `lib.dom.extras.d.ts` because TypeScript is often behind
+       supporting some DOM standards that Deno supports and when people use
+       `lib: ["dom", "deno.ns"]` they will get error messages that are confusing
+       when using libraries that take advantage of these standards. We add the
+       library to `lib.dom.d.ts`, so it is automatically included when using the
+       `dom` lib under Deno.
+     - Response in cli/dts/lib.dom.d.ts gets an additional:
+       `json(data: unknown, init?: ResponseInit): Response;`
 
 7. Based on the changes to the lib files, you will need to edit the map of lib
    names to files in the TypeScript compiler (`deno/cli/tsc/00_typescript.js`).
@@ -104,7 +107,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
    maps `esnext.*` values to the ratified version of them to ensure they are
    less "breaking" so you will want to make sure, like for `esnext.array` that
    it points at `lib.esnext.array.d.ts`. You will also want to revert the
-   deletion of `dom.asynciterables`.
+   deletion of `dom.asynciterables` and `dom.extras`.
 
 8. For any new lib files that were added, but not included in the snapshot (e.g.
    `lib.es####.full.d.ts`) add them to `STATIC_ASSETS` in `deno/cli/tsc.rs`.

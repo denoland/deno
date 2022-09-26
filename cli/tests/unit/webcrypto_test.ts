@@ -716,27 +716,28 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 });
 
 Deno.test(async function testECDH() {
-  const namedCurve = "P-256";
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: "ECDH",
-      namedCurve,
-    },
-    true,
-    ["deriveBits"],
-  );
+  for (const keySize of [256, 384]) {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: "ECDH",
+        namedCurve: "P-" + keySize,
+      },
+      true,
+      ["deriveBits"],
+    );
 
-  const derivedKey = await crypto.subtle.deriveBits(
-    {
-      name: "ECDH",
-      public: keyPair.publicKey,
-    },
-    keyPair.privateKey,
-    256,
-  );
+    const derivedKey = await crypto.subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: keyPair.publicKey,
+      },
+      keyPair.privateKey,
+      keySize,
+    );
 
-  assert(derivedKey instanceof ArrayBuffer);
-  assertEquals(derivedKey.byteLength, 256 / 8);
+    assert(derivedKey instanceof ArrayBuffer);
+    assertEquals(derivedKey.byteLength, keySize / 8);
+  }
 });
 
 Deno.test(async function testWrapKey() {
@@ -1299,29 +1300,32 @@ Deno.test(async function testImportEcDhJwk() {
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
-    // deriveBits still not implemented for P384
-    if (size != 256) {
-      continue;
-    }
-
     const derivedKey = await subtle.deriveBits(
       {
         name: "ECDH",
         public: publicKeyECDH,
       },
       privateKeyECDH,
-      256,
+      size,
     );
 
     assert(derivedKey instanceof ArrayBuffer);
-    assertEquals(derivedKey.byteLength, 256 / 8);
+    assertEquals(derivedKey.byteLength, size / 8);
   }
 });
 
-const ecTestKeys = {
-  "256": {
+const ecTestKeys = [
+  {
     size: 256,
     namedCurve: "P-256",
+    // deno-fmt-ignore
+    raw: new Uint8Array([
+      4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128, 88, 180, 63, 164, 244,
+      113, 1, 133, 67, 187, 160, 12, 146, 80, 223, 146, 87, 194, 172, 174, 93,
+      209, 206, 3, 117, 82, 212, 129, 69, 12, 227, 155, 77, 16, 149, 112, 27,
+      23, 91, 250, 179, 75, 142, 108, 9, 158, 24, 241, 193, 152, 53, 131, 97,
+      232,
+    ]),
     // deno-fmt-ignore
     spki: new Uint8Array([
       48, 89, 48, 19, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 8, 42, 134, 72, 206,
@@ -1344,16 +1348,69 @@ const ecTestKeys = {
       131, 97, 232,
     ]),
   },
-};
+  {
+    size: 384,
+    namedCurve: "P-384",
+    // deno-fmt-ignore
+    raw: new Uint8Array([
+      4, 118, 64, 176, 165, 100, 177, 112, 49, 254, 58, 53, 158, 63, 73, 200,
+      148, 248, 242, 216, 186, 80, 92, 160, 53, 64, 232, 157, 19, 1, 12, 226,
+      115, 51, 42, 143, 98, 206, 55, 220, 108, 78, 24, 71, 157, 21, 120, 126,
+      104, 157, 86, 48, 226, 110, 96, 52, 48, 77, 170, 9, 231, 159, 26, 165,
+      200, 26, 164, 99, 46, 227, 169, 105, 172, 225, 60, 102, 141, 145, 139,
+      165, 47, 72, 53, 17, 17, 246, 161, 220, 26, 21, 23, 219, 1, 107, 185,
+      163, 215,
+    ]),
+    // deno-fmt-ignore
+    spki: new Uint8Array([
+      48, 118, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0,
+      34, 3, 98, 0, 4, 118, 64, 176, 165, 100, 177, 112, 49, 254, 58, 53, 158,
+      63, 73, 200, 148, 248, 242, 216, 186, 80, 92, 160, 53, 64, 232, 157, 19,
+      1, 12, 226, 115, 51, 42, 143, 98, 206, 55, 220, 108, 78, 24, 71, 157, 21,
+      120, 126, 104, 157, 86, 48, 226, 110, 96, 52, 48, 77, 170, 9, 231, 159,
+      26, 165, 200, 26, 164, 99, 46, 227, 169, 105, 172, 225, 60, 102, 141,
+      145, 139, 165, 47, 72, 53, 17, 17, 246, 161, 220, 26, 21, 23, 219, 1,
+      107, 185, 163, 215,
+    ]),
+    // deno-fmt-ignore
+    pkcs8: new Uint8Array([
+      48, 129, 182, 2, 1, 0, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43,
+      129, 4, 0, 34, 4, 129, 158, 48, 129, 155, 2, 1, 1, 4, 48, 202, 7, 195,
+      169, 124, 170, 81, 169, 253, 127, 56, 28, 98, 90, 255, 165, 72, 142, 133,
+      138, 237, 200, 176, 92, 179, 192, 83, 28, 47, 118, 157, 152, 47, 65, 133,
+      140, 50, 83, 182, 191, 224, 96, 216, 179, 59, 150, 15, 233, 161, 100, 3,
+      98, 0, 4, 118, 64, 176, 165, 100, 177, 112, 49, 254, 58, 53, 158, 63, 73,
+      200, 148, 248, 242, 216, 186, 80, 92, 160, 53, 64, 232, 157, 19, 1, 12,
+      226, 115, 51, 42, 143, 98, 206, 55, 220, 108, 78, 24, 71, 157, 21, 120,
+      126, 104, 157, 86, 48, 226, 110, 96, 52, 48, 77, 170, 9, 231, 159, 26,
+      165, 200, 26, 164, 99, 46, 227, 169, 105, 172, 225, 60, 102, 141, 145,
+      139, 165, 47, 72, 53, 17, 17, 246, 161, 220, 26, 21, 23, 219, 1, 107,
+      185, 163, 215,
+    ]),
+  },
+];
 
 Deno.test(async function testImportEcSpkiPkcs8() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
   for (
-    const [_key, keyData] of Object.entries(ecTestKeys)
+    const { namedCurve, raw, spki, pkcs8 } of ecTestKeys
   ) {
-    const { namedCurve, spki, pkcs8 } = keyData;
+    const rawPublicKeyECDSA = await subtle.importKey(
+      "raw",
+      raw,
+      { name: "ECDSA", namedCurve },
+      true,
+      ["verify"],
+    );
+
+    const expPublicKeyRaw = await subtle.exportKey(
+      "raw",
+      rawPublicKeyECDSA,
+    );
+
+    assertEquals(new Uint8Array(expPublicKeyRaw), raw);
 
     const privateKeyECDSA = await subtle.importKey(
       "pkcs8",
@@ -1749,4 +1806,24 @@ Deno.test(async function importJwkWithUse() {
   );
 
   assert(key instanceof CryptoKey);
+});
+
+// https://github.com/denoland/deno/issues/14215
+Deno.test(async function exportKeyNotExtractable() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-512",
+    },
+    false,
+    ["sign", "verify"],
+  );
+
+  assert(key);
+  assertEquals(key.extractable, false);
+
+  await assertRejects(async () => {
+    // Should fail
+    await crypto.subtle.exportKey("raw", key);
+  }, DOMException);
 });

@@ -51,6 +51,7 @@ pub fn ppid() -> i64 {
       CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
       TH32CS_SNAPPROCESS,
     };
+    // SAFETY: winapi calls
     unsafe {
       // Take a snapshot of system processes, one of which is ours
       // and contains our parent's pid

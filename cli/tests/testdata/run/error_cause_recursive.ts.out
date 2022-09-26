@@ -1,0 +1,10 @@
+[WILDCARD]
+error: Uncaught Error: bar
+const y = new Error("bar", { cause: x });
+          ^
+    at file:///[WILDCARD]/error_cause_recursive.ts:2:11
+Caused by: Error: foo
+    at file:///[WILDCARD]/error_cause_recursive.ts:1:11
+Caused by: Error: bar
+    at file:///[WILDCARD]/error_cause_recursive.ts:2:11
+[WILDCARD]

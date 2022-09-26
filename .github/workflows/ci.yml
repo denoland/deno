@@ -17,16 +17,16 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: fastci
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: release
-          - os: windows-2019
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}
             job: test
             profile: fastci
-          - os: windows-2019
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}
             job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
@@ -56,7 +56,6 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
-      RUSTC_FORCE_INCREMENTAL: 1
 
     steps:
       - name: Configure git
@@ -88,10 +87,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Deno
-        if: matrix.job == 'lint'
+        if: matrix.job == 'lint' || matrix.job == 'test'
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.19.3
+          deno-version: v1.x
 
       - name: Install Python
         uses: actions/setup-python@v1
@@ -141,9 +140,6 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
-      - name: Error on warning
-        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
-
       - name: Configure canary build
         if: |
           matrix.job == 'test' &&
@@ -160,15 +156,15 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang-13, lld-13, and debootstrap.
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-13.list
+          # Install clang-14, lld-14, and debootstrap.
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-focal-14.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           sudo apt-get install --no-install-recommends debootstrap     \
-                                                       clang-13 lld-13
+                                                       clang-14 lld-14
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -193,8 +189,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-13
-            -C link-arg=-fuse-ld=lld-13
+            -C linker=clang-14
+            -C link-arg=-fuse-ld=lld-14
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -203,15 +199,15 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-13
-            -C link-arg=-fuse-ld=lld-13
+            -C linker=clang-14
+            -C link-arg=-fuse-ld=lld-14
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang-13
+          CC=clang-14
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
 
@@ -236,7 +232,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 5-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -252,14 +248,14 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
-        if: github.ref != 'refs/heads/main'
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
         with:
           path: |
             ./target
@@ -268,13 +264,13 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            5-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
         shell: bash
-        if: github.ref != 'refs/heads/main'
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
 
       - name: Apply and update mtime cache
         if: matrix.profile == 'release'
@@ -434,12 +430,14 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                  --allow-write --unstable                         \
+                  --lock=tools/deno.lock.json                      \
+                  ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json              \
+                   ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
         if: |
@@ -448,15 +446,17 @@ jobs:
         env:
           DENO_BIN: ./target/release/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          ./tools/wpt.ts run --quiet --release             \
-                                             --binary="$DENO_BIN"          \
-                                             --json=wpt.json               \
-                                             --wptreport=wptreport.json
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts run --quiet --release             \
+                                      --binary="$DENO_BIN"          \
+                                      --json=wpt.json               \
+                                      --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true
@@ -486,7 +486,7 @@ jobs:
           WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          ./target/release/deno run --allow-all \
+          ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks

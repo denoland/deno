@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use super::code_lens;
+use super::completions::relative_specifier;
 use super::config;
 use super::documents::AssetOrDocument;
 use super::language_server;
@@ -13,12 +14,11 @@ use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
-use super::text;
 use super::text::LineIndex;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::config_file::TsConfig;
+use crate::args::TsConfig;
 use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -43,12 +43,12 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
-use log::error;
 use log::warn;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
-use std::borrow::Cow;
+use serde_repr::Deserialize_repr;
+use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -157,8 +157,7 @@ impl TsServer {
 #[derive(Debug, Clone)]
 struct AssetDocumentInner {
   specifier: ModuleSpecifier,
-  text: Arc<String>,
-  length: usize,
+  text: Arc<str>,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
@@ -173,8 +172,7 @@ impl AssetDocument {
     let text = text.as_ref();
     Self(Arc::new(AssetDocumentInner {
       specifier,
-      text: Arc::new(text.to_string()),
-      length: text.encode_utf16().count(),
+      text: text.into(),
       line_index: Arc::new(LineIndex::new(text)),
       maybe_navigation_tree: None,
     }))
@@ -194,16 +192,8 @@ impl AssetDocument {
     }))
   }
 
-  pub fn text(&self) -> Arc<String> {
+  pub fn text(&self) -> Arc<str> {
     self.0.text.clone()
-  }
-
-  pub fn text_str(&self) -> &str {
-    self.0.text.as_str()
-  }
-
-  pub fn length(&self) -> usize {
-    self.0.length
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
@@ -215,7 +205,7 @@ impl AssetDocument {
   }
 }
 
-type AssetsMap = HashMap<ModuleSpecifier, Option<AssetDocument>>;
+type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
 
 fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
   let assets = tsc::STATIC_ASSETS
@@ -224,7 +214,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
       let url_str = format!("asset:///{}", k);
       let specifier = resolve_url(&url_str).unwrap();
       let asset = AssetDocument::new(specifier.clone(), v);
-      (specifier, Some(asset))
+      (specifier, asset)
     })
     .collect();
   Arc::new(Mutex::new(assets))
@@ -245,10 +235,7 @@ impl AssetsSnapshot {
     self.0.lock().contains_key(k)
   }
 
-  pub fn get_cached(
-    &self,
-    k: &ModuleSpecifier,
-  ) -> Option<Option<AssetDocument>> {
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<AssetDocument> {
     self.0.lock().get(k).cloned()
   }
 }
@@ -269,47 +256,25 @@ impl Assets {
     }
   }
 
+  /// Initializes with the assets in the isolate.
+  pub async fn intitialize(&self, state_snapshot: Arc<StateSnapshot>) {
+    let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
+    let mut assets_map = self.assets.lock();
+    for asset in assets {
+      if !assets_map.contains_key(asset.specifier()) {
+        assets_map.insert(asset.specifier().clone(), asset);
+      }
+    }
+  }
+
   pub fn snapshot(&self) -> AssetsSnapshot {
     // it's ok to not make a complete copy for snapshotting purposes
     // because assets are static
     AssetsSnapshot(self.assets.clone())
   }
 
-  pub fn get_cached(
-    &self,
-    k: &ModuleSpecifier,
-  ) -> Option<Option<AssetDocument>> {
-    self.assets.lock().get(k).cloned()
-  }
-
-  pub async fn get(
-    &self,
-    specifier: &ModuleSpecifier,
-    // todo(dsherret): this shouldn't be a parameter, but instead retrieved via
-    // a constructor dependency
-    get_snapshot: impl Fn() -> Arc<StateSnapshot>,
-  ) -> LspResult<Option<AssetDocument>> {
-    // Race conditions are ok to happen here since the assets are static
-    if let Some(maybe_asset) = self.get_cached(specifier) {
-      Ok(maybe_asset)
-    } else {
-      let maybe_asset = get_asset(specifier, &self.ts_server, get_snapshot())
-        .await
-        .map_err(|err| {
-          error!("Error getting asset {}: {}", specifier, err);
-          LspError::internal_error()
-        })?;
-      // if another thread has inserted into the cache, return the asset
-      // that already exists in the cache so that we don't store duplicate
-      // assets in memory anywhere
-      let mut assets = self.assets.lock();
-      if let Some(maybe_asset) = assets.get(specifier) {
-        Ok(maybe_asset.clone())
-      } else {
-        assets.insert(specifier.clone(), maybe_asset.clone());
-        Ok(maybe_asset)
-      }
-    }
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<AssetDocument> {
+    self.assets.lock().get(specifier).cloned()
   }
 
   pub fn cache_navigation_tree(
@@ -318,38 +283,44 @@ impl Assets {
     navigation_tree: Arc<NavigationTree>,
   ) -> Result<(), AnyError> {
     let mut assets = self.assets.lock();
-    let maybe_doc = assets
+    let doc = assets
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
-    let doc = maybe_doc
-      .as_mut()
-      .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
     *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
 }
 
-/// Optionally returns an internal asset, first checking for any static assets
-/// in Rust, then checking any previously retrieved static assets from the
-/// isolate, and then finally, the tsc isolate itself.
-async fn get_asset(
-  specifier: &ModuleSpecifier,
+/// Get all the assets stored in the tsc isolate.
+async fn get_isolate_assets(
   ts_server: &TsServer,
   state_snapshot: Arc<StateSnapshot>,
-) -> Result<Option<AssetDocument>, AnyError> {
-  let specifier_str = specifier.to_string().replace("asset:///", "");
-  if let Some(text) = tsc::get_asset(&specifier_str) {
-    let maybe_asset = Some(AssetDocument::new(specifier.clone(), text));
-    Ok(maybe_asset)
-  } else {
-    let res = ts_server
-      .request(state_snapshot, RequestMethod::GetAsset(specifier.clone()))
-      .await?;
-    let maybe_text: Option<String> = serde_json::from_value(res)?;
-    let maybe_asset =
-      maybe_text.map(|text| AssetDocument::new(specifier.clone(), text));
-    Ok(maybe_asset)
+) -> Vec<AssetDocument> {
+  let res: Value = ts_server
+    .request(state_snapshot, RequestMethod::GetAssets)
+    .await
+    .unwrap();
+  let response_assets = match res {
+    Value::Array(value) => value,
+    _ => unreachable!(),
+  };
+  let mut assets = Vec::with_capacity(response_assets.len());
+
+  for asset in response_assets {
+    let mut obj = match asset {
+      Value::Object(obj) => obj,
+      _ => unreachable!(),
+    };
+    let specifier_str = obj.get("specifier").unwrap().as_str().unwrap();
+    let specifier = ModuleSpecifier::parse(specifier_str).unwrap();
+    let text = match obj.remove("text").unwrap() {
+      Value::String(text) => text,
+      _ => unreachable!(),
+    };
+    assets.push(AssetDocument::new(specifier, text));
   }
+
+  assets
 }
 
 fn get_tag_body_text(
@@ -541,7 +512,7 @@ pub enum ScriptElementKind {
   Link,
   #[serde(rename = "link name")]
   LinkName,
-  #[serde(rename = "link test")]
+  #[serde(rename = "link text")]
   LinkText,
 }
 
@@ -655,7 +626,7 @@ impl TextSpan {
   }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
@@ -666,7 +637,7 @@ pub struct SymbolDisplayPart {
   target: Option<DocumentSpan>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsDocTagInfo {
   name: String,
@@ -817,7 +788,7 @@ impl QuickInfo {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
@@ -829,16 +800,14 @@ pub struct DocumentSpan {
 }
 
 impl DocumentSpan {
-  pub async fn to_link(
+  pub fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = normalize_specifier(&self.file_name).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
     let target_uri = language_server
       .url_map
@@ -883,7 +852,7 @@ impl DocumentSpan {
   ) -> Option<ModuleSpecifier> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
     let asset_or_doc =
-      language_server.get_maybe_cached_asset_or_document(&specifier)?;
+      language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
     let mut target = language_server
@@ -927,15 +896,13 @@ pub struct NavigateToItem {
 }
 
 impl NavigateToItem {
-  pub async fn to_symbol_information(
+  pub fn to_symbol_information(
     &self,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let specifier = normalize_specifier(&self.file_name).ok()?;
-    let asset_or_doc = language_server
-      .get_asset_or_document(&specifier)
-      .await
-      .ok()?;
+    let asset_or_doc =
+      language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
     let uri = language_server
       .url_map
@@ -1148,15 +1115,12 @@ impl ImplementationLocation {
     }
   }
 
-  pub async fn to_link(
+  pub fn to_link(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    self
-      .document_span
-      .to_link(line_index, language_server)
-      .await
+    self.document_span.to_link(line_index, language_server)
   }
 }
 
@@ -1185,8 +1149,7 @@ impl RenameLocations {
     for location in self.locations.iter() {
       let specifier = normalize_specifier(&location.document_span.file_name)?;
       let uri = language_server.url_map.normalize_specifier(&specifier)?;
-      let asset_or_doc =
-        language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
       if text_document_edit_map.get(&uri).is_none() {
@@ -1276,7 +1239,6 @@ impl DefinitionInfoAndBoundSpan {
         if let Some(link) = di
           .document_span
           .to_link(line_index.clone(), language_server)
-          .await
         {
           location_links.push(link);
         }
@@ -1324,7 +1286,14 @@ pub struct TextChange {
 }
 
 impl TextChange {
-  pub fn as_text_edit(
+  pub fn as_text_edit(&self, line_index: Arc<LineIndex>) -> lsp::TextEdit {
+    lsp::TextEdit {
+      range: self.span.to_range(line_index),
+      new_text: self.new_text.clone(),
+    }
+  }
+
+  pub fn as_text_or_annotated_text_edit(
     &self,
     line_index: Arc<LineIndex>,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
@@ -1345,36 +1314,34 @@ pub struct FileTextChanges {
 }
 
 impl FileTextChanges {
-  pub async fn to_text_document_edit(
+  pub fn to_text_document_edit(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<lsp::TextDocumentEdit, AnyError> {
     let specifier = normalize_specifier(&self.file_name)?;
-    let asset_or_doc =
-      language_server.get_asset_or_document(&specifier).await?;
+    let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(asset_or_doc.line_index()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(asset_or_doc.line_index()))
       .collect();
     Ok(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: asset_or_doc.document_lsp_version(),
       },
       edits,
     })
   }
 
-  pub async fn to_text_document_change_ops(
+  pub fn to_text_document_change_ops(
     &self,
     language_server: &language_server::Inner,
   ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
     let specifier = normalize_specifier(&self.file_name)?;
     let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
-      let asset_or_doc =
-        language_server.get_asset_or_document(&specifier).await?;
+      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
       Some(asset_or_doc)
     } else {
       None
@@ -1400,11 +1367,11 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: specifier.clone(),
+        uri: specifier,
         version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
       },
       edits,
@@ -1609,7 +1576,7 @@ impl RefactorEditInfo {
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
     let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
     for edit in self.edits.iter() {
-      let ops = edit.to_text_document_change_ops(language_server).await?;
+      let ops = edit.to_text_document_change_ops(language_server)?;
       all_ops.extend(ops);
     }
 
@@ -1620,13 +1587,13 @@ impl RefactorEditInfo {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
-  // description: String,
-// changes: Vec<FileTextChanges>,
-// #[serde(skip_serializing_if = "Option::is_none")]
-// commands: Option<Vec<Value>>,
+  description: String,
+  changes: Vec<FileTextChanges>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  commands: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -1661,6 +1628,7 @@ pub struct CombinedCodeActions {
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
   // is_write_access: bool,
+  #[serde(default)]
   pub is_definition: bool,
   // is_in_string: Option<bool>,
   #[serde(flatten)]
@@ -1700,16 +1668,14 @@ pub struct CallHierarchyItem {
 }
 
 impl CallHierarchyItem {
-  pub async fn try_resolve_call_hierarchy_item(
+  pub fn try_resolve_call_hierarchy_item(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
     let target_specifier = normalize_specifier(&self.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(self.to_call_hierarchy_item(
       target_asset_or_doc.line_index(),
@@ -1801,16 +1767,14 @@ pub struct CallHierarchyIncomingCall {
 }
 
 impl CallHierarchyIncomingCall {
-  pub async fn try_resolve_call_hierarchy_incoming_call(
+  pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let target_specifier = normalize_specifier(&self.from.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(lsp::CallHierarchyIncomingCall {
       from: self.from.to_call_hierarchy_item(
@@ -1835,17 +1799,15 @@ pub struct CallHierarchyOutgoingCall {
 }
 
 impl CallHierarchyOutgoingCall {
-  pub async fn try_resolve_call_hierarchy_outgoing_call(
+  pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
     let target_specifier = normalize_specifier(&self.to.file).ok()?;
-    let target_asset_or_doc = language_server
-      .get_asset_or_document(&target_specifier)
-      .await
-      .ok()?;
+    let target_asset_or_doc =
+      language_server.get_maybe_asset_or_document(&target_specifier)?;
 
     Some(lsp::CallHierarchyOutgoingCall {
       to: self.to.to_call_hierarchy_item(
@@ -1862,25 +1824,97 @@ impl CallHierarchyOutgoingCall {
   }
 }
 
-#[derive(Debug, Deserialize)]
+/// Used to convert completion code actions into a command and additional text
+/// edits to pass in the completion item.
+fn parse_code_actions(
+  maybe_code_actions: Option<&Vec<CodeAction>>,
+  data: &CompletionItemData,
+  specifier: &ModuleSpecifier,
+  language_server: &language_server::Inner,
+) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
+  if let Some(code_actions) = maybe_code_actions {
+    let mut additional_text_edits: Vec<lsp::TextEdit> = Vec::new();
+    let mut has_remaining_commands_or_edits = false;
+    for ts_action in code_actions {
+      if ts_action.commands.is_some() {
+        has_remaining_commands_or_edits = true;
+      }
+
+      let asset_or_doc =
+        language_server.get_asset_or_document(&data.specifier)?;
+      for change in &ts_action.changes {
+        let change_specifier = normalize_specifier(&change.file_name)?;
+        if data.specifier == change_specifier {
+          additional_text_edits.extend(change.text_changes.iter().map(|tc| {
+            update_import_statement(
+              tc.as_text_edit(asset_or_doc.line_index()),
+              data,
+            )
+          }));
+        } else {
+          has_remaining_commands_or_edits = true;
+        }
+      }
+    }
+
+    let mut command: Option<lsp::Command> = None;
+    if has_remaining_commands_or_edits {
+      let actions: Vec<Value> = code_actions
+        .iter()
+        .map(|ca| {
+          let changes: Vec<FileTextChanges> = ca
+            .changes
+            .clone()
+            .into_iter()
+            .filter(|ch| {
+              normalize_specifier(&ch.file_name).unwrap() == data.specifier
+            })
+            .collect();
+          json!({
+            "commands": ca.commands,
+            "description": ca.description,
+            "changes": changes,
+          })
+        })
+        .collect();
+      command = Some(lsp::Command {
+        title: "".to_string(),
+        command: "_typescript.applyCompletionCodeAction".to_string(),
+        arguments: Some(vec![json!(specifier.to_string()), json!(actions)]),
+      });
+    }
+
+    if additional_text_edits.is_empty() {
+      Ok((command, None))
+    } else {
+      Ok((command, Some(additional_text_edits)))
+    }
+  } else {
+    Ok((None, None))
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
-  // name: String,
-  // kind: ScriptElementKind,
-  // kind_modifiers: String,
   display_parts: Vec<SymbolDisplayPart>,
   documentation: Option<Vec<SymbolDisplayPart>>,
   tags: Option<Vec<JsDocTagInfo>>,
-  // code_actions: Option<Vec<CodeAction>>,
-  // source: Option<Vec<SymbolDisplayPart>>,
+  name: String,
+  kind: ScriptElementKind,
+  kind_modifiers: String,
+  code_actions: Option<Vec<CodeAction>>,
+  source_display: Option<Vec<SymbolDisplayPart>>,
 }
 
 impl CompletionEntryDetails {
   pub fn as_completion_item(
     &self,
     original_item: &lsp::CompletionItem,
+    data: &CompletionItemData,
+    specifier: &ModuleSpecifier,
     language_server: &language_server::Inner,
-  ) -> lsp::CompletionItem {
+  ) -> Result<lsp::CompletionItem, AnyError> {
     let detail = if original_item.detail.is_some() {
       original_item.detail.clone()
     } else if !self.display_parts.is_empty() {
@@ -1908,15 +1942,22 @@ impl CompletionEntryDetails {
     } else {
       None
     };
-    // TODO(@kitsonk) add `self.code_actions`
+    let (command, additional_text_edits) = parse_code_actions(
+      self.code_actions.as_ref(),
+      data,
+      specifier,
+      language_server,
+    )?;
     // TODO(@kitsonk) add `use_code_snippet`
 
-    lsp::CompletionItem {
+    Ok(lsp::CompletionItem {
       data: None,
       detail,
       documentation,
+      command,
+      additional_text_edits,
       ..original_item.clone()
-    }
+    })
   }
 }
 
@@ -1924,6 +1965,9 @@ impl CompletionEntryDetails {
 #[serde(rename_all = "camelCase")]
 pub struct CompletionInfo {
   entries: Vec<CompletionEntry>,
+  // this is only used by Microsoft's telemetrics, which Deno doesn't use and
+  // there are issues with the value not matching the type definitions.
+  // flags: Option<CompletionInfoFlags>,
   is_global_completion: bool,
   is_member_completion: bool,
   is_new_identifier_location: bool,
@@ -1984,6 +2028,36 @@ pub struct CompletionItemData {
   pub use_code_snippet: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionEntryDataImport {
+  module_specifier: String,
+  file_name: String,
+}
+
+/// Modify an import statement text replacement to have the correct import
+/// specifier to work with Deno module resolution.
+fn update_import_statement(
+  mut text_edit: lsp::TextEdit,
+  item_data: &CompletionItemData,
+) -> lsp::TextEdit {
+  if let Some(data) = &item_data.data {
+    if let Ok(import_data) =
+      serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+    {
+      if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
+      {
+        let new_module_specifier =
+          relative_specifier(&import_specifier, &item_data.specifier);
+        text_edit.new_text = text_edit
+          .new_text
+          .replace(&import_data.module_specifier, &new_module_specifier);
+      }
+    }
+  }
+  text_edit
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntry {
@@ -1995,15 +2069,25 @@ pub struct CompletionEntry {
   #[serde(skip_serializing_if = "Option::is_none")]
   insert_text: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  is_snippet: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   replacement_span: Option<TextSpan>,
   #[serde(skip_serializing_if = "Option::is_none")]
   has_action: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  source_display: Option<Vec<SymbolDisplayPart>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  label_details: Option<CompletionEntryLabelDetails>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   is_recommended: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   is_from_unchecked_file: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_package_json_import: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
 }
@@ -2110,8 +2194,7 @@ impl CompletionEntry {
     let use_code_snippet = settings.complete_function_calls
       && (kind == Some(lsp::CompletionItemKind::FUNCTION)
         || kind == Some(lsp::CompletionItemKind::METHOD));
-    // TODO(@kitsonk) missing from types: https://github.com/gluon-lang/lsp-types/issues/204
-    let _commit_characters = self.get_commit_characters(info, settings);
+    let commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
     let range = self.replacement_span.clone();
     let mut filter_text = self.get_filter_text();
@@ -2181,12 +2264,20 @@ impl CompletionEntry {
       insert_text,
       detail,
       tags,
-      data: Some(json!({
-        "tsc": tsc,
-      })),
+      commit_characters,
+      data: Some(json!({ "tsc": tsc })),
       ..Default::default()
     }
   }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionEntryLabelDetails {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  detail: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2411,17 +2502,16 @@ struct Response {
   data: Value,
 }
 
-struct State<'a> {
+struct State {
   last_id: usize,
   performance: Arc<Performance>,
   response: Option<Response>,
   state_snapshot: Arc<StateSnapshot>,
-  snapshots: HashMap<(ModuleSpecifier, Cow<'a, str>), String>,
   specifiers: HashMap<String, String>,
   token: CancellationToken,
 }
 
-impl<'a> State<'a> {
+impl State {
   fn new(
     state_snapshot: Arc<StateSnapshot>,
     performance: Arc<Performance>,
@@ -2431,7 +2521,6 @@ impl<'a> State<'a> {
       performance,
       response: None,
       state_snapshot,
-      snapshots: HashMap::default(),
       specifiers: HashMap::default(),
       token: Default::default(),
     }
@@ -2463,31 +2552,37 @@ impl<'a> State<'a> {
     }
     ModuleSpecifier::parse(&specifier_str).map_err(|err| err.into())
   }
-}
 
-/// If a snapshot is missing from the state cache, add it.
-fn cache_snapshot(
-  state: &mut State,
-  specifier: &ModuleSpecifier,
-  version: String,
-) -> Result<(), AnyError> {
-  if !state
-    .snapshots
-    .contains_key(&(specifier.clone(), version.clone().into()))
-  {
-    let content = state
-      .state_snapshot
-      .documents
-      .get(specifier)
-      .ok_or_else(|| {
-        anyhow!("Specifier unexpectedly doesn't exist: {}", specifier)
-      })?
-      .content();
-    state
-      .snapshots
-      .insert((specifier.clone(), version.into()), content.to_string());
+  fn get_asset_or_document(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<AssetOrDocument> {
+    let snapshot = &self.state_snapshot;
+    if specifier.scheme() == "asset" {
+      snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
+    } else {
+      snapshot
+        .documents
+        .get(specifier)
+        .map(AssetOrDocument::Document)
+    }
   }
-  Ok(())
+
+  fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      if self.state_snapshot.assets.contains_key(specifier) {
+        Some("1".to_string())
+      } else {
+        None
+      }
+    } else {
+      self
+        .state_snapshot
+        .documents
+        .get(specifier)
+        .map(|d| d.script_version())
+    }
+  }
 }
 
 fn normalize_specifier<S: AsRef<str>>(
@@ -2499,37 +2594,12 @@ fn normalize_specifier<S: AsRef<str>>(
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SourceSnapshotArgs {
-  specifier: String,
-  version: String,
-}
-
-/// The language service is dropping a reference to a source file snapshot, and
-/// we can drop our version of that document.
-#[op]
-fn op_dispose(
-  state: &mut OpState,
-  args: SourceSnapshotArgs,
-) -> Result<bool, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_dispose", Some(&args));
-  let specifier = state.normalize_specifier(&args.specifier)?;
-  state.snapshots.remove(&(specifier, args.version.into()));
-  state.performance.measure(mark);
-  Ok(true)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct SpecifierArgs {
   specifier: String,
 }
 
 #[op]
-fn op_exists(
-  state: &mut OpState,
-  args: SpecifierArgs,
-) -> Result<bool, AnyError> {
+fn op_exists(state: &mut OpState, args: SpecifierArgs) -> bool {
   let state = state.borrow_mut::<State>();
   // we don't measure the performance of op_exists anymore because as of TS 4.5
   // it is noisy with all the checking for custom libs, that we can't see the
@@ -2541,141 +2611,37 @@ fn op_exists(
     // sometimes tsc tries to query invalid specifiers, especially when
     // something else isn't quite right, so instead of bubbling up the error
     // back to tsc, we simply swallow it and say the file doesn't exist
-    Err(_) => return Ok(false),
+    Err(_) => return false,
   };
-  let result = state.state_snapshot.documents.exists(&specifier);
-  Ok(result)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GetChangeRangeArgs {
-  specifier: String,
-  old_length: u32,
-  old_version: String,
-  version: String,
-}
-
-/// The language service wants to compare an old snapshot with a new snapshot to
-/// determine what source has changed.
-#[op]
-fn op_get_change_range(
-  state: &mut OpState,
-  args: GetChangeRangeArgs,
-) -> Result<Value, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_change_range", Some(&args));
-  let specifier = state.normalize_specifier(&args.specifier)?;
-  cache_snapshot(state, &specifier, args.version.clone())?;
-  let r = if let Some(current) = state
-    .snapshots
-    .get(&(specifier.clone(), args.version.clone().into()))
-  {
-    if let Some(prev) = state
-      .snapshots
-      .get(&(specifier, args.old_version.clone().into()))
-    {
-      Ok(text::get_range_change(prev, current))
-    } else {
-      let new_length = current.encode_utf16().count();
-      // when a local file is opened up in the editor, the compiler might
-      // already have a snapshot of it in memory, and will request it, but we
-      // now are working off in memory versions of the document, and so need
-      // to tell tsc to reset the whole document
-      Ok(json!({
-        "span": {
-          "start": 0,
-          "length": args.old_length,
-        },
-        "newLength": new_length,
-      }))
-    }
-  } else {
-    Err(custom_error(
-      "MissingSnapshot",
-      format!(
-        "The current snapshot version is missing.\n  Args: \"{:?}\"",
-        args
-      ),
-    ))
-  };
-
-  state.performance.measure(mark);
-  r
+  state.state_snapshot.documents.exists(&specifier)
 }
 
 #[op]
-fn op_get_length(
-  state: &mut OpState,
-  args: SourceSnapshotArgs,
-) -> Result<usize, AnyError> {
+fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_length", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
-  let r = if let Some(Some(asset)) =
-    state.state_snapshot.assets.get_cached(&specifier)
-  {
-    Ok(asset.length())
-  } else {
-    cache_snapshot(state, &specifier, args.version.clone())?;
-    let content = state
-      .snapshots
-      .get(&(specifier, args.version.into()))
-      .unwrap();
-    Ok(content.encode_utf16().count())
-  };
-  state.performance.measure(mark);
-  r
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GetTextArgs {
-  specifier: String,
-  version: String,
-  start: usize,
-  end: usize,
-}
-
-#[op]
-fn op_get_text(
-  state: &mut OpState,
-  args: GetTextArgs,
-) -> Result<String, AnyError> {
-  let state = state.borrow_mut::<State>();
-  let mark = state.performance.mark("op_get_text", Some(&args));
-  let specifier = state.normalize_specifier(args.specifier)?;
-  let maybe_asset = state.state_snapshot.assets.get_cached(&specifier);
-  let content = if let Some(Some(content)) = &maybe_asset {
-    content.text_str()
-  } else {
-    cache_snapshot(state, &specifier, args.version.clone())?;
-    state
-      .snapshots
-      .get(&(specifier, args.version.into()))
-      .unwrap()
-  };
-  state.performance.measure(mark);
-  Ok(text::slice(content, args.start..args.end).to_string())
-}
-
-#[op]
-fn op_is_cancelled(state: &mut OpState) -> Result<bool, AnyError> {
-  let state = state.borrow_mut::<State>();
-  Ok(state.token.is_cancelled())
+  state.token.is_cancelled()
 }
 
 #[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
-  let document = state.state_snapshot.documents.get(&specifier);
+  let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
-  Ok(document.map(|d| d.content().to_string()))
+  Ok(match asset_or_document {
+    Some(doc) => {
+      json!({
+        "data": doc.text(),
+        "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
+        "version": state.script_version(&specifier),
+      })
+    }
+    None => Value::Null,
+  })
 }
 
 #[op]
@@ -2715,27 +2681,22 @@ fn op_resolve(
 }
 
 #[op]
-fn op_respond(state: &mut OpState, args: Response) -> Result<bool, AnyError> {
+fn op_respond(state: &mut OpState, args: Response) -> bool {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
-  Ok(true)
+  true
 }
 
 #[op]
-fn op_script_names(
-  state: &mut OpState,
-  _args: Value,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
+fn op_script_names(state: &mut OpState) -> Vec<ModuleSpecifier> {
   let state = state.borrow_mut::<State>();
-  Ok(
-    state
-      .state_snapshot
-      .documents
-      .documents(true, true)
-      .into_iter()
-      .map(|d| d.specifier().clone())
-      .collect(),
-  )
+  state
+    .state_snapshot
+    .documents
+    .documents(true, true)
+    .into_iter()
+    .map(|d| d.specifier().clone())
+    .collect()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2753,20 +2714,7 @@ fn op_script_version(
   // this op is very "noisy" and measuring its performance is not useful, so we
   // don't measure it uniquely anymore.
   let specifier = state.normalize_specifier(args.specifier)?;
-  if specifier.scheme() == "asset" {
-    if state.state_snapshot.assets.contains_key(&specifier) {
-      Ok(Some("1".to_string()))
-    } else {
-      Ok(None)
-    }
-  } else {
-    let script_version = state
-      .state_snapshot
-      .documents
-      .get(&specifier)
-      .map(|d| d.script_version());
-    Ok(script_version)
-  }
+  Ok(state.script_version(&specifier))
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -2783,11 +2731,7 @@ fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
 fn init_extension(performance: Arc<Performance>) -> Extension {
   Extension::builder()
     .ops(vec![
-      op_dispose::decl(),
       op_exists::decl(),
-      op_get_change_range::decl(),
-      op_get_length::decl(),
-      op_get_text::decl(),
       op_is_cancelled::decl(),
       op_load::decl(),
       op_resolve::decl(),
@@ -2823,6 +2767,27 @@ fn start(
   Ok(())
 }
 
+#[derive(Debug, Deserialize_repr, Serialize_repr)]
+#[repr(u32)]
+pub enum CompletionTriggerKind {
+  Invoked = 1,
+  TriggerCharacter = 2,
+  TriggerForIncompleteCompletions = 3,
+}
+
+impl From<lsp::CompletionTriggerKind> for CompletionTriggerKind {
+  fn from(kind: lsp::CompletionTriggerKind) -> Self {
+    match kind {
+      lsp::CompletionTriggerKind::INVOKED => Self::Invoked,
+      lsp::CompletionTriggerKind::TRIGGER_CHARACTER => Self::TriggerCharacter,
+      lsp::CompletionTriggerKind::TRIGGER_FOR_INCOMPLETE_COMPLETIONS => {
+        Self::TriggerForIncompleteCompletions
+      }
+      _ => Self::Invoked,
+    }
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
@@ -2854,10 +2819,28 @@ pub enum ImportModuleSpecifierEnding {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
+pub enum IncludeInlayParameterNameHints {
+  None,
+  Literals,
+  All,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
 pub enum IncludePackageJsonAutoImports {
   Auto,
   On,
   Off,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[allow(dead_code)]
+pub enum JsxAttributeCompletionStyle {
+  Auto,
+  Braces,
+  None,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -2867,6 +2850,8 @@ pub struct GetCompletionsAtPositionOptions {
   pub user_preferences: UserPreferences,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub trigger_character: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub trigger_kind: Option<CompletionTriggerKind>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -2887,6 +2872,12 @@ pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_with_insert_text: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_class_member_snippets: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_object_literal_method_snippets: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub use_label_details_in_completion_entries: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub allow_incomplete_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub import_module_specifier_preference:
@@ -2901,6 +2892,24 @@ pub struct UserPreferences {
   pub include_package_json_auto_imports: Option<IncludePackageJsonAutoImports>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub provide_refactor_not_applicable_reason: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub jsx_attribute_completion_style: Option<JsxAttributeCompletionStyle>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_parameter_name_hints:
+    Option<IncludeInlayParameterNameHints>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_parameter_name_hints_when_argument_matches_name:
+    Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_function_parameter_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_variable_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_property_declaration_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_function_like_return_type_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_inlay_enum_member_value_hints: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2950,17 +2959,20 @@ pub struct GetCompletionDetailsArgs {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub preferences: Option<UserPreferences>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
 }
 
-impl From<CompletionItemData> for GetCompletionDetailsArgs {
-  fn from(item_data: CompletionItemData) -> Self {
+impl From<&CompletionItemData> for GetCompletionDetailsArgs {
+  fn from(item_data: &CompletionItemData) -> Self {
     Self {
-      specifier: item_data.specifier,
+      specifier: item_data.specifier.clone(),
       position: item_data.position,
-      name: item_data.name,
-      source: item_data.source,
-      data: item_data.data,
+      name: item_data.name.clone(),
+      source: item_data.source.clone(),
+      preferences: None,
+      data: item_data.data.clone(),
     }
   }
 }
@@ -2978,8 +2990,7 @@ pub enum RequestMethod {
     find_in_comments: bool,
     provide_prefix_and_suffix_text_for_rename: bool,
   },
-  /// Retrieve the text of an assets that exists in memory in the isolate.
-  GetAsset(ModuleSpecifier),
+  GetAssets,
   /// Retrieve the possible refactor info for a range of a file.
   GetApplicableRefactors((ModuleSpecifier, TextSpan, String)),
   /// Retrieve the refactor edit info for a range.
@@ -3033,6 +3044,9 @@ pub enum RequestMethod {
   ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
   /// Resolve outgoing call hierarchy items for a specific position.
   ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
+
+  // Special request, used only internally by the LSP
+  Restart,
 }
 
 impl RequestMethod {
@@ -3060,10 +3074,9 @@ impl RequestMethod {
           "providePrefixAndSuffixTextForRename": provide_prefix_and_suffix_text_for_rename
         })
       }
-      RequestMethod::GetAsset(specifier) => json!({
+      RequestMethod::GetAssets => json!({
         "id": id,
-        "method": "getAsset",
-        "specifier": specifier,
+        "method": "getAssets",
       }),
       RequestMethod::GetApplicableRefactors((specifier, span, kind)) => json!({
         "id": id,
@@ -3247,6 +3260,10 @@ impl RequestMethod {
           "position": position
         })
       }
+      RequestMethod::Restart => json!({
+        "id": id,
+        "method": "restart",
+      }),
     }
   }
 }
@@ -3312,7 +3329,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        Arc::new(source.to_string()),
+        (*source).into(),
       );
     }
     StateSnapshot {
@@ -3743,31 +3760,32 @@ mod tests {
   }
 
   #[test]
-  fn test_request_asset() {
+  fn test_request_assets() {
     let temp_dir = TempDir::new();
-    let (mut runtime, state_snapshot, _) = setup(
-      &temp_dir,
-      false,
-      json!({
-        "target": "esnext",
-        "module": "esnext",
-        "lib": ["deno.ns", "deno.window"],
-        "noEmit": true,
-      }),
-      &[],
-    );
-    let specifier =
-      resolve_url("asset:///lib.esnext.d.ts").expect("could not resolve url");
+    let (mut runtime, state_snapshot, _) =
+      setup(&temp_dir, false, json!({}), &[]);
     let result = request(
       &mut runtime,
       state_snapshot,
-      RequestMethod::GetAsset(specifier),
+      RequestMethod::GetAssets,
       Default::default(),
-    );
-    assert!(result.is_ok());
-    let response: Option<String> =
-      serde_json::from_value(result.unwrap()).unwrap();
-    assert!(response.is_some());
+    )
+    .unwrap();
+    let assets = result.as_array().unwrap();
+
+    // You might have found this assertion starts failing after upgrading TypeScript.
+    // Just update the new number of assets (declaration files) for this number.
+    assert_eq!(assets.len(), 70);
+
+    // get some notification when the size of the assets grows
+    let mut total_size = 0;
+    for asset in assets {
+      let obj = asset.as_object().unwrap();
+      let text = obj.get("text").unwrap().as_str().unwrap();
+      total_size += text.len();
+    }
+    assert!(total_size > 0);
+    assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
   }
 
   #[test]
@@ -3884,8 +3902,6 @@ mod tests {
         specifier: "/error/unknown:something/index.d.ts".to_string(),
       },
     );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
     assert!(!actual);
   }
 
@@ -3966,6 +3982,7 @@ mod tests {
             ..Default::default()
           },
           trigger_character: Some(".".to_string()),
+          trigger_kind: None,
         },
       )),
       Default::default(),
@@ -3982,6 +3999,7 @@ mod tests {
         position,
         name: "log".to_string(),
         source: None,
+        preferences: None,
         data: None,
       }),
       Default::default(),
@@ -4075,5 +4093,80 @@ mod tests {
         "documentation": []
       })
     );
+  }
+
+  #[test]
+  fn test_update_import_statement() {
+    let fixtures = vec![
+      (
+        "file:///a/a.ts",
+        "./b",
+        "file:///a/b.ts",
+        "import { b } from \"./b\";\n\n",
+        "import { b } from \"./b.ts\";\n\n",
+      ),
+      (
+        "file:///a/a.ts",
+        "../b/b",
+        "file:///b/b.ts",
+        "import { b } from \"../b/b\";\n\n",
+        "import { b } from \"../b/b.ts\";\n\n",
+      ),
+      ("file:///a/a.ts", "./b", "file:///a/b.ts", ", b", ", b"),
+    ];
+
+    for (
+      specifier_text,
+      module_specifier,
+      file_name,
+      orig_text,
+      expected_text,
+    ) in fixtures
+    {
+      let specifier = ModuleSpecifier::parse(specifier_text).unwrap();
+      let item_data = CompletionItemData {
+        specifier: specifier.clone(),
+        position: 0,
+        name: "b".to_string(),
+        source: None,
+        data: Some(json!({
+          "moduleSpecifier": module_specifier,
+          "fileName": file_name,
+        })),
+        use_code_snippet: false,
+      };
+      let actual = update_import_statement(
+        lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+          },
+          new_text: orig_text.to_string(),
+        },
+        &item_data,
+      );
+      assert_eq!(
+        actual,
+        lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 0,
+            },
+          },
+          new_text: expected_text.to_string(),
+        }
+      );
+    }
   }
 }
