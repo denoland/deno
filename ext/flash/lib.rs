@@ -37,6 +37,7 @@ use mio::Poll;
 use mio::Token;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Socket;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -57,7 +58,6 @@ use std::task::Context;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use socket2::Socket;
 
 mod chunked;
 mod request;
@@ -807,6 +807,7 @@ pub struct ListenOpts {
   key: Option<String>,
   hostname: String,
   port: u16,
+  reuseport: bool,
 }
 
 fn run_server(
@@ -816,6 +817,7 @@ fn run_server(
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
+  reuseport: bool,
 ) -> Result<(), AnyError> {
   let domain = if addr.is_ipv4() {
     socket2::Domain::IPV4
@@ -825,8 +827,9 @@ fn run_server(
   let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
 
   #[cfg(not(windows))]
-  {
-    socket.set_reuse_address(true)?;
+  socket.set_reuse_address(true)?;
+  if reuseport {
+    #[cfg(target_os = "linux")]
     socket.set_reuse_port(true)?;
   }
 
@@ -1177,8 +1180,17 @@ where
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
+  let reuseport = opts.reuseport;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, listening_tx, close_rx, addr, maybe_cert, maybe_key)
+    run_server(
+      tx,
+      listening_tx,
+      close_rx,
+      addr,
+      maybe_cert,
+      maybe_key,
+      reuseport,
+    )
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
