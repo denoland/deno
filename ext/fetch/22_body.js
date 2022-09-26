@@ -166,7 +166,6 @@
             TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
           } else {
             // slow path, content-length is not present
-            // or totalLength > content-length
             ArrayPrototypePush(chunks, chunk);
           }
           totalLength += chunk.byteLength;
