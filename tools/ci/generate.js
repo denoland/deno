@@ -75,7 +75,6 @@ const RESTORE_BUILD = (buildJobName, platform) => [
 const INSTALL_RUST = {
   name: "Install Rust",
   run: [
-    "rustup self update",
     "cargo --version",
     "rustc --version",
     "rustfmt --version",

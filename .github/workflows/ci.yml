@@ -43,7 +43,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -79,7 +78,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -162,7 +160,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -291,7 +288,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -379,7 +375,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -464,7 +459,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
@@ -550,7 +544,6 @@ jobs:
           deno-version: v1.25.4
       - name: Install Rust
         run: |-
-          rustup self update
           cargo --version
           rustc --version
           rustfmt --version
