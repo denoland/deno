@@ -389,6 +389,8 @@ pub async fn create_main_worker(
       .join(checksum::gen(&[key.as_bytes()]))
   });
   let cache_storage_dir = maybe_storage_key.map(|key| {
+    // TODO(@satyarohith): storage quota management
+    // Note: we currently use temp_dir() to avoid managing storage size.
     std::env::temp_dir()
       .join("deno_cache")
       .join(checksum::gen(&[key.as_bytes()]))
@@ -506,6 +508,8 @@ fn create_web_worker_callback(
 
     let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
     let cache_storage_dir = maybe_storage_key.map(|key| {
+      // TODO(@satyarohith): storage quota management
+      // Note: we currently use temp_dir() to avoid managing storage size.
       std::env::temp_dir()
         .join("deno_cache")
         .join(checksum::gen(&[key.as_bytes()]))

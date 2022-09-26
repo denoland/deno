@@ -172,7 +172,7 @@ where
   let state = state.borrow();
   let cache = state.try_borrow::<CA>().ok_or_else(|| {
     custom_error(
-      "NotSupported",
+      "DOMExceptionNotSupportedError",
       "Cache API is not supported in this context.",
     )
   })?;

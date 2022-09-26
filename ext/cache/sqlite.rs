@@ -82,6 +82,7 @@ impl Cache for SqliteBackedCache {
   /// of the cache.
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
     let db = self.connection.clone();
+    let cache_storage_dir = self.cache_storage_dir.clone();
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       db.execute(
@@ -96,6 +97,8 @@ impl Cache for SqliteBackedCache {
           Ok(id)
         },
       )?;
+      let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
+      std::fs::create_dir_all(&responses_dir)?;
       Ok::<i64, AnyError>(cache_id)
     })
     .await?
@@ -182,8 +185,7 @@ impl Cache for SqliteBackedCache {
         )?
       };
       if let Some(body_key) = maybe_response_body {
-        let responses_dir  = cache_storage_dir.join(request_response.cache_id.to_string()).join("responses");
-          std::fs::create_dir_all(&responses_dir)?;
+        let responses_dir  = get_responses_dir(cache_storage_dir, request_response.cache_id);
         let response_path = responses_dir.join(body_key);
         Ok::<Option<PathBuf>, AnyError>(Some(response_path))
       } else {
@@ -246,10 +248,9 @@ impl Cache for SqliteBackedCache {
             return Ok(None);
           }
         }
-        let response_path = cache_storage_dir
-          .join(request.cache_id.to_string())
-          .join("responses")
-          .join(response_body_key);
+        let response_path =
+          get_responses_dir(cache_storage_dir, request.cache_id)
+            .join(response_body_key);
         let file = tokio::fs::File::open(response_path).await?;
         return Ok(Some((
           cache_meta,
@@ -279,6 +280,13 @@ impl Cache for SqliteBackedCache {
     })
     .await?
   }
+}
+
+#[inline]
+fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
+  cache_storage_dir
+    .join(cache_id.to_string())
+    .join("responses")
 }
 
 /// Check if the headers provided in the vary_header match
