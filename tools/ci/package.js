@@ -37,14 +37,14 @@ artifacts.push(...cdylibs);
 const artifactsPerArchive = Math.ceil(artifacts.length / ARCHIVE_COUNT);
 
 for (let i = 0; i < ARCHIVE_COUNT; i += 1) {
-  const path = `artifacts_${i + 1}.tar`;
+  const path = `artifacts_${i + 1}.tar.gz`;
   const files = artifacts.slice(
     i * artifactsPerArchive,
     (i + 1) * artifactsPerArchive,
   );
   const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
   const proc = Deno.run({
-    cmd: [tar, "-cvf", path, ...files],
+    cmd: [tar, "-I=zstd", "-cvf", path, ...files],
   });
   const { success } = await proc.status();
   if (!success) {

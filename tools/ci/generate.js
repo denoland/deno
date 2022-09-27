@@ -67,7 +67,7 @@ const RESTORE_BUILD = (buildJobName, platform) => [
   {
     name: "Unpack artifacts",
     run: ARTIFACT_PATHS.map((path) =>
-      `${platform === "macos" ? "gtar" : "tar"} -xpf ${path}`
+      `${platform === "macos" ? "gtar" : "tar"} -I=unzstd -xpf ${path}`
     ).join("\n"),
   },
 ];
@@ -193,7 +193,7 @@ const MAIN_CONDITION =
 const ARCHIVE_COUNT = 5;
 const ARTIFACT_PATHS = Array.from(
   { length: ARCHIVE_COUNT },
-  (_, i) => `artifacts_${i + 1}.tar`,
+  (_, i) => `artifacts_${i + 1}.tar.gz`,
 );
 
 const releases = [];
@@ -386,7 +386,7 @@ for (const [jobId, platform] of releases) {
     run: ARTIFACT_PATHS.map((path) =>
       `${
         platform === "macos" ? "gtar" : "tar"
-      } -xpf ${platform}/${path} -C ${platform}`
+      } -I=unzstd -xpf ${platform}/${path} -C ${platform}`
     ).join("\n"),
   });
   uploadCanary.steps.push({

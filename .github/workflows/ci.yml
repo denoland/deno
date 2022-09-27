@@ -101,11 +101,11 @@ jobs:
         with:
           name: build-debug-linux
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-debug-linux:
     name: "test/linux (debug, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
@@ -141,11 +141,11 @@ jobs:
           name: build-debug-linux
       - name: Unpack artifacts
         run: |-
-          tar -xpf artifacts_1.tar
-          tar -xpf artifacts_2.tar
-          tar -xpf artifacts_3.tar
-          tar -xpf artifacts_4.tar
-          tar -xpf artifacts_5.tar
+          tar -I=unzstd -xpf artifacts_1.tar.gz
+          tar -I=unzstd -xpf artifacts_2.tar.gz
+          tar -I=unzstd -xpf artifacts_3.tar.gz
+          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar -I=unzstd -xpf artifacts_5.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 1"
   build-release-linux:
@@ -191,11 +191,11 @@ jobs:
         with:
           name: build-release-linux
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-release-linux:
     name: "test/linux (release, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
@@ -231,11 +231,11 @@ jobs:
           name: build-release-linux
       - name: Unpack artifacts
         run: |-
-          tar -xpf artifacts_1.tar
-          tar -xpf artifacts_2.tar
-          tar -xpf artifacts_3.tar
-          tar -xpf artifacts_4.tar
-          tar -xpf artifacts_5.tar
+          tar -I=unzstd -xpf artifacts_1.tar.gz
+          tar -I=unzstd -xpf artifacts_2.tar.gz
+          tar -I=unzstd -xpf artifacts_3.tar.gz
+          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar -I=unzstd -xpf artifacts_5.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 1"
   wpt-release-linux:
@@ -279,11 +279,11 @@ jobs:
           name: build-release-linux
       - name: Unpack artifacts
         run: |-
-          tar -xpf artifacts_1.tar
-          tar -xpf artifacts_2.tar
-          tar -xpf artifacts_3.tar
-          tar -xpf artifacts_4.tar
-          tar -xpf artifacts_5.tar
+          tar -I=unzstd -xpf artifacts_1.tar.gz
+          tar -I=unzstd -xpf artifacts_2.tar.gz
+          tar -I=unzstd -xpf artifacts_3.tar.gz
+          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar -I=unzstd -xpf artifacts_5.tar.gz
       - name: Set up WPT runner
         run: deno run -A --unstable ./tools/wpt.ts setup
       - name: Set up hosts file
@@ -336,11 +336,11 @@ jobs:
         with:
           name: build-debug-macos
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-debug-macos:
     name: "test/macos (debug, shard ${{ matrix.shard }})"
     runs-on: macos-11
@@ -378,11 +378,11 @@ jobs:
           name: build-debug-macos
       - name: Unpack artifacts
         run: |-
-          gtar -xpf artifacts_1.tar
-          gtar -xpf artifacts_2.tar
-          gtar -xpf artifacts_3.tar
-          gtar -xpf artifacts_4.tar
-          gtar -xpf artifacts_5.tar
+          gtar -I=unzstd -xpf artifacts_1.tar.gz
+          gtar -I=unzstd -xpf artifacts_2.tar.gz
+          gtar -I=unzstd -xpf artifacts_3.tar.gz
+          gtar -I=unzstd -xpf artifacts_4.tar.gz
+          gtar -I=unzstd -xpf artifacts_5.tar.gz
       - name: File info
         run: file target/debug/* target/debug/deps/*
       - name: Run tests
@@ -431,11 +431,11 @@ jobs:
         with:
           name: build-release-macos
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-release-macos:
     name: "test/macos (release, shard ${{ matrix.shard }})"
     runs-on: macos-11
@@ -473,11 +473,11 @@ jobs:
           name: build-release-macos
       - name: Unpack artifacts
         run: |-
-          gtar -xpf artifacts_1.tar
-          gtar -xpf artifacts_2.tar
-          gtar -xpf artifacts_3.tar
-          gtar -xpf artifacts_4.tar
-          gtar -xpf artifacts_5.tar
+          gtar -I=unzstd -xpf artifacts_1.tar.gz
+          gtar -I=unzstd -xpf artifacts_2.tar.gz
+          gtar -I=unzstd -xpf artifacts_3.tar.gz
+          gtar -I=unzstd -xpf artifacts_4.tar.gz
+          gtar -I=unzstd -xpf artifacts_5.tar.gz
       - name: File info
         run: file target/release/* target/release/deps/*
       - name: Run tests
@@ -530,11 +530,11 @@ jobs:
         with:
           name: build-debug-windows
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-debug-windows:
     name: "test/windows (debug, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
@@ -575,11 +575,11 @@ jobs:
           name: build-debug-windows
       - name: Unpack artifacts
         run: |-
-          tar -xpf artifacts_1.tar
-          tar -xpf artifacts_2.tar
-          tar -xpf artifacts_3.tar
-          tar -xpf artifacts_4.tar
-          tar -xpf artifacts_5.tar
+          tar -I=unzstd -xpf artifacts_1.tar.gz
+          tar -I=unzstd -xpf artifacts_2.tar.gz
+          tar -I=unzstd -xpf artifacts_3.tar.gz
+          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar -I=unzstd -xpf artifacts_5.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 3"
   build-release-windows:
@@ -629,11 +629,11 @@ jobs:
         with:
           name: build-release-windows
           path: |-
-            artifacts_1.tar
-            artifacts_2.tar
-            artifacts_3.tar
-            artifacts_4.tar
-            artifacts_5.tar
+            artifacts_1.tar.gz
+            artifacts_2.tar.gz
+            artifacts_3.tar.gz
+            artifacts_4.tar.gz
+            artifacts_5.tar.gz
   test-release-windows:
     name: "test/windows (release, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
@@ -674,11 +674,11 @@ jobs:
           name: build-release-windows
       - name: Unpack artifacts
         run: |-
-          tar -xpf artifacts_1.tar
-          tar -xpf artifacts_2.tar
-          tar -xpf artifacts_3.tar
-          tar -xpf artifacts_4.tar
-          tar -xpf artifacts_5.tar
+          tar -I=unzstd -xpf artifacts_1.tar.gz
+          tar -I=unzstd -xpf artifacts_2.tar.gz
+          tar -I=unzstd -xpf artifacts_3.tar.gz
+          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar -I=unzstd -xpf artifacts_5.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 3"
   upload_canary:
@@ -706,11 +706,11 @@ jobs:
           path: linux/
       - name: Unpack artifacts (linux)
         run: |-
-          tar -xpf linux/artifacts_1.tar -C linux
-          tar -xpf linux/artifacts_2.tar -C linux
-          tar -xpf linux/artifacts_3.tar -C linux
-          tar -xpf linux/artifacts_4.tar -C linux
-          tar -xpf linux/artifacts_5.tar -C linux
+          tar -I=unzstd -xpf linux/artifacts_1.tar.gz -C linux
+          tar -I=unzstd -xpf linux/artifacts_2.tar.gz -C linux
+          tar -I=unzstd -xpf linux/artifacts_3.tar.gz -C linux
+          tar -I=unzstd -xpf linux/artifacts_4.tar.gz -C linux
+          tar -I=unzstd -xpf linux/artifacts_5.tar.gz -C linux
       - name: Create zip (linux)
         run: cd linux/target/release && zip -r ../../../deno-x86_64-unknown-linux-gnu.zip deno
       - name: Upload zip to dl.deno.land (linux)
@@ -722,11 +722,11 @@ jobs:
           path: macos/
       - name: Unpack artifacts (macos)
         run: |-
-          gtar -xpf macos/artifacts_1.tar -C macos
-          gtar -xpf macos/artifacts_2.tar -C macos
-          gtar -xpf macos/artifacts_3.tar -C macos
-          gtar -xpf macos/artifacts_4.tar -C macos
-          gtar -xpf macos/artifacts_5.tar -C macos
+          gtar -I=unzstd -xpf macos/artifacts_1.tar.gz -C macos
+          gtar -I=unzstd -xpf macos/artifacts_2.tar.gz -C macos
+          gtar -I=unzstd -xpf macos/artifacts_3.tar.gz -C macos
+          gtar -I=unzstd -xpf macos/artifacts_4.tar.gz -C macos
+          gtar -I=unzstd -xpf macos/artifacts_5.tar.gz -C macos
       - name: Create zip (macos)
         run: cd macos/target/release && zip -r ../../../deno-x86_64-apple-darwin.zip deno
       - name: Upload zip to dl.deno.land (macos)
@@ -738,11 +738,11 @@ jobs:
           path: windows/
       - name: Unpack artifacts (windows)
         run: |-
-          tar -xpf windows/artifacts_1.tar -C windows
-          tar -xpf windows/artifacts_2.tar -C windows
-          tar -xpf windows/artifacts_3.tar -C windows
-          tar -xpf windows/artifacts_4.tar -C windows
-          tar -xpf windows/artifacts_5.tar -C windows
+          tar -I=unzstd -xpf windows/artifacts_1.tar.gz -C windows
+          tar -I=unzstd -xpf windows/artifacts_2.tar.gz -C windows
+          tar -I=unzstd -xpf windows/artifacts_3.tar.gz -C windows
+          tar -I=unzstd -xpf windows/artifacts_4.tar.gz -C windows
+          tar -I=unzstd -xpf windows/artifacts_5.tar.gz -C windows
       - name: Create zip (windows)
         run: cd windows/target/release && zip -r ../../../deno-x86_64-pc-windows-msvc.zip deno.exe
       - name: Upload zip to dl.deno.land (windows)
