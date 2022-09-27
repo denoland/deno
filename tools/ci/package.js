@@ -4,40 +4,50 @@
  *
  * The manifest is read from `./target/{profile}/cargo_build_manifest.json`. It
  * is generated with: `cargo test --locked --no-run --message-format=json`.
+ *
+ * It creates 3 archives packages:
+ *  - `./artifacts_[1-3].tar` - 3 numbered tar archives containing all other created artifacts
  */
 
 import { CargoBuildManifest } from "./_util.js";
 
+const ARCHIVE_COUNT = 3;
+
 const profile = Deno.args[0];
 const manifestPath = `./target/${profile}/cargo_build_manifest.json`;
 
+function relative(p) {
+  return p.replace(Deno.cwd(), ".");
+}
+
 const manifest = new CargoBuildManifest(manifestPath);
-const executables = [
-  ...new Set([...manifest.bins, ...manifest.tests, ...manifest.benches]),
-];
-const artifacts = executables.map((e) => e.executable.replace(Deno.cwd(), "."));
+const executables = new Set([
+  ...manifest.bins,
+  ...manifest.tests,
+  ...manifest.benches,
+]);
+
+const artifacts = [...executables].map((e) => relative(e.executable));
 artifacts.push(manifestPath);
 const cdylibs = manifest.cdylibs
   .filter((e) => e.manifest_path.startsWith(Deno.cwd()))
-  .flatMap((e) => e.filenames.map((path) => path.replace(Deno.cwd(), ".")));
+  .flatMap((e) => e.filenames.map((f) => relative(f)));
 artifacts.push(...cdylibs);
 
-if (Deno.build.os === "darwin") {
-  for (const artifact of artifacts) {
-    console.log(`$ file ${artifact}`);
-    await Deno.spawn("file", {
-      args: [artifact],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-  }
-}
+const artifactsPerArchive = Math.ceil(artifacts.length / ARCHIVE_COUNT);
 
-const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
-const proc = Deno.run({
-  cmd: [tar, "-cvf", "artifacts.tar", ...artifacts],
-});
-const { success } = await proc.status();
-if (!success) {
-  throw `Failed to package artifacts.tar`;
+for (let i = 0; i < 3; i += 1) {
+  const path = `artifacts_${i}.tar`;
+  const files = artifacts.slice(
+    i * artifactsPerArchive,
+    (i + 1) * artifactsPerArchive,
+  );
+  const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
+  const proc = Deno.run({
+    cmd: [tar, "-cvf", path, ...files],
+  });
+  const { success } = await proc.status();
+  if (!success) {
+    throw `Failed to package ${files}`;
+  }
 }

@@ -66,7 +66,9 @@ const RESTORE_BUILD = (buildJobName, platform) => [
   },
   {
     name: "Unpack artifacts",
-    run: `${platform === "macos" ? "gtar" : "tar"} -xpf artifacts.tar`,
+    run: ARTIFACT_PATHS.map((path) =>
+      `${platform === "macos" ? "gtar" : "tar"} -xpf ${path}`
+    ).join("\n"),
   },
 ];
 
@@ -188,6 +190,12 @@ const PLATFORMS = [
 const MAIN_CONDITION =
   "(github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))";
 
+const ARTIFACT_PATHS = [
+  "artifacts_1.tar",
+  "artifacts_2.tar",
+  "artifacts_3.tar",
+];
+
 const releases = [];
 const tests = [];
 
@@ -227,7 +235,7 @@ for (const platform of PLATFORMS) {
           uses: "actions/upload-artifact@v3",
           with: {
             name: BUILD_JOB_ID,
-            path: "artifacts.tar",
+            path: ARTIFACT_PATHS.join("\n"),
           },
         },
       ],
@@ -370,14 +378,16 @@ for (const [jobId, platform] of releases) {
     uses: "actions/download-artifact@v3",
     with: {
       name: jobId,
-      path: `${platform}.tar`,
+      path: `${platform}/`,
     },
   });
   uploadCanary.steps.push({
     name: `Unpack artifacts (${platform})`,
-    run: `${
-      platform === "macos" ? "gtar" : "tar"
-    } -xpf ${platform}.tar -C ${platform}`,
+    run: ARTIFACT_PATHS.map((path) =>
+      `${
+        platform === "macos" ? "gtar" : "tar"
+      } -xpf ${platform}/${path} -C ${platform}`
+    ).join("\n"),
   });
   uploadCanary.steps.push({
     name: `Create zip (${platform})`,
