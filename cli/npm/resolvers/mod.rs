@@ -29,35 +29,35 @@ use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
 
-const FORK_STATE_ENV_VAR_NAME: &str =
+const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
-static IS_CHILD_PROCESS_FORK: Lazy<bool> =
-  Lazy::new(|| std::env::var(FORK_STATE_ENV_VAR_NAME).is_ok());
+static IS_NPM_MAIN: Lazy<bool> =
+  Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
 
-/// State used for child_process.fork
+/// State provided to the process via an environment variable.
 #[derive(Debug, Serialize, Deserialize)]
-struct ForkNpmState {
+struct NpmProcessState {
   snapshot: NpmResolutionSnapshot,
   local_node_modules_path: Option<String>,
 }
 
-impl ForkNpmState {
+impl NpmProcessState {
   pub fn was_set() -> bool {
-    *IS_CHILD_PROCESS_FORK
+    *IS_NPM_MAIN
   }
 
-  pub fn take() -> Option<ForkNpmState> {
+  pub fn take() -> Option<NpmProcessState> {
     // initialize the lazy before we remove the env var below
     if !Self::was_set() {
       return None;
     }
 
-    let state = std::env::var(FORK_STATE_ENV_VAR_NAME).ok()?;
+    let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
     let state = serde_json::from_str(&state).ok()?;
     // remove the environment variable so that sub processes
     // that are spawned do not also use this.
-    std::env::remove_var(FORK_STATE_ENV_VAR_NAME);
+    std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
     Some(state)
   }
 }
@@ -78,13 +78,13 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    let fork_state = ForkNpmState::take();
+    let process_npm_state = NpmProcessState::take();
     let local_node_modules_path = local_node_modules_path.or_else(|| {
-      fork_state
+      process_npm_state
         .as_ref()
         .and_then(|s| s.local_node_modules_path.as_ref().map(PathBuf::from))
     });
-    let maybe_snapshot = fork_state.map(|s| s.snapshot);
+    let maybe_snapshot = process_npm_state.map(|s| s.snapshot);
     let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
     {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
@@ -188,13 +188,17 @@ impl NpmPackageResolver {
     self.inner.add_package_reqs(packages).await
   }
 
-  pub fn is_child_process_fork(&self) -> bool {
-    ForkNpmState::was_set()
+  // If the main module should be treated as being in an npm package.
+  // This is triggered via a secret environment variable which is used
+  // for functionality like child_process.fork. Users should NOT depend
+  // on this functionality.
+  pub fn is_npm_main(&self) -> bool {
+    NpmProcessState::was_set()
   }
 
-  /// Gets the state to use when doing a child_process.fork
-  pub fn get_fork_state(&self) -> String {
-    serde_json::to_string(&ForkNpmState {
+  /// Gets the state of npm for the process.
+  pub fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
       snapshot: self.inner.snapshot(),
       local_node_modules_path: self
         .local_node_modules_path

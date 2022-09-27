@@ -16,7 +16,7 @@ pub fn cli_exts(ps: ProcState) -> Vec<Extension> {
 
 fn init_proc_state(ps: ProcState) -> Extension {
   Extension::builder()
-    .ops(vec![op_child_process_fork_state::decl()])
+    .ops(vec![op_npm_process_state::decl()])
     .state(move |state| {
       state.put(ps.clone());
       Ok(())
@@ -25,14 +25,12 @@ fn init_proc_state(ps: ProcState) -> Extension {
 }
 
 #[op]
-fn op_child_process_fork_state(
-  state: &mut OpState,
-) -> Result<String, AnyError> {
+fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
   let proc_state = state.borrow_mut::<ProcState>();
   if !proc_state.options.unstable() {
     bail!(
-      "Unstable use of child process fork. The --unstable flag must be provided."
+      "Unstable use of npm process state. The --unstable flag must be provided."
     )
   }
-  Ok(proc_state.npm_resolver.get_fork_state())
+  Ok(proc_state.npm_resolver.get_npm_process_state())
 }

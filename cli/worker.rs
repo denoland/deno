@@ -362,7 +362,7 @@ pub async fn create_main_worker(
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
-  } else if ps.npm_resolver.is_child_process_fork() {
+  } else if ps.npm_resolver.is_npm_main() {
     let node_resolution =
       node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
     let is_main_cjs =
