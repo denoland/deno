@@ -1773,3 +1773,20 @@ Deno.test(
     listener.close();
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBlobUrl(): Promise<
+    void
+  > {
+    const blob = new Blob(["ok"], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const res = await fetch(url);
+    console.log(res);
+    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-length"), "2");
+    assertEquals(res.headers.get("content-type"), "text/plain");
+    assertEquals(await res.text(), "ok");
+  },
+);
