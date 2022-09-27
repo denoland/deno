@@ -37,7 +37,7 @@ artifacts.push(...cdylibs);
 const artifactsPerArchive = Math.ceil(artifacts.length / ARCHIVE_COUNT);
 
 for (let i = 0; i < 3; i += 1) {
-  const path = `artifacts_${i}.tar`;
+  const path = `artifacts_${i + 1}.tar`;
   const files = artifacts.slice(
     i * artifactsPerArchive,
     (i + 1) * artifactsPerArchive,
