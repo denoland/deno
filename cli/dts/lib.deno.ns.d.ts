@@ -3587,4 +3587,18 @@ declare namespace Deno {
     | SRVRecord[]
     | string[][]
   >;
+
+  /**
+   * Make the timer of the given `id` block the event loop from finishing.
+   *
+   * @category Timers
+   */
+  export function refTimer(id: number): void;
+
+  /**
+   * Make the timer of the given `id` not block the event loop from finishing.
+   *
+   * @category Timers
+   */
+  export function unrefTimer(id: number): void;
 }
