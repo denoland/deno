@@ -98,18 +98,22 @@
       "AES-GCM": "AesKeyGenParams",
       "AES-KW": "AesKeyGenParams",
       "HMAC": "HmacKeyGenParams",
+      "X25519": null,
+      "Ed25519": null,
     },
     "sign": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
       "ECDSA": "EcdsaParams",
       "HMAC": null,
+      "Ed25519": null,
     },
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
       "ECDSA": "EcdsaParams",
       "HMAC": null,
+      "Ed25519": null,
     },
     "importKey": {
       "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
@@ -124,11 +128,13 @@
       "AES-CBC": null,
       "AES-GCM": null,
       "AES-KW": null,
+      "X25519": null,
     },
     "deriveBits": {
       "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
       "ECDH": "EcdhKeyDeriveParams",
+      "X25519": "EcdhKeyDeriveParams",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
@@ -834,6 +840,26 @@
 
           return signature.buffer;
         }
+        case "Ed25519": {
+          // 1.
+          if (key[_type] !== "private") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
+          const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
+          const signature = new Uint8Array(SIGNATURE_LEN);
+          if (!ops.op_sign_ed25519(keyData, data, signature)) {
+            throw new DOMException(
+              "Failed to sign",
+              "OperationError",
+            );
+          }
+          return signature.buffer;
+        }
       }
 
       throw new TypeError("unreachable");
@@ -955,6 +981,22 @@
             ["wrapKey", "unwrapKey"],
           );
         }
+        case "X25519": {
+          return importKeyX25519(
+            format,
+            keyData,
+            extractable,
+            keyUsages,
+          );
+        }
+        case "Ed25519": {
+          return importKeyEd25519(
+            format,
+            keyData,
+            extractable,
+            keyUsages,
+          );
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -1001,6 +1043,10 @@
         case "ECDH":
         case "ECDSA": {
           result = exportKeyEC(format, key, innerKey);
+          break;
+        }
+        case "Ed25519": {
+          result = exportKeyEd25519(format, key, innerKey);
           break;
         }
         case "AES-CTR":
@@ -1282,6 +1328,17 @@
             signature,
             namedCurve: key[_algorithm].namedCurve,
           }, data);
+        }
+        case "Ed25519": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          return ops.op_verify_ed25519(keyData, data, signature);
         }
       }
 
@@ -1611,7 +1668,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
       const result = await generateKey(
         normalizedAlgorithm,
         extractable,
@@ -1910,6 +1966,95 @@
 
         return generateKeyAES(normalizedAlgorithm, extractable, usages);
       }
+      case "X25519": {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+        const privateKeyData = new Uint8Array(32);
+        const publicKeyData = new Uint8Array(32);
+        ops.op_generate_x25519_keypair(privateKeyData, publicKeyData);
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const publicHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: algorithmName,
+        };
+
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, []),
+          algorithm,
+          publicHandle,
+        );
+
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        return { publicKey, privateKey };
+      }
+      case "Ed25519": {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const ED25519_SEED_LEN = 32;
+        const ED25519_PUBLIC_KEY_LEN = 32;
+        const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
+        const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
+        if (
+          !ops.op_generate_ed25519_keypair(privateKeyData, publicKeyData)
+        ) {
+          throw new DOMException("Failed to generate key", "OperationError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const publicHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: algorithmName,
+        };
+
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, ["verify"]),
+          algorithm,
+          publicHandle,
+        );
+
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["sign"]),
+          algorithm,
+          handle,
+        );
+
+        return { publicKey, privateKey };
+      }
       case "HMAC": {
         // 1.
         if (
@@ -1964,6 +2109,439 @@
         // 14.
         return key;
       }
+    }
+  }
+
+  function importKeyEd25519(
+    format,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+
+        // 2-3.
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        // 4-6.
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "spki": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const publicKeyData = new Uint8Array(32);
+        if (!ops.op_import_spki_ed25519(keyData, publicKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "pkcs8": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["sign"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const privateKeyData = new Uint8Array(32);
+        if (!ops.op_import_pkcs8_ed25519(keyData, privateKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const algorithm = {
+          name: "Ed25519",
+        };
+
+        return constructKey(
+          "private",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+
+        // 2.
+        if (jwk.d !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  ["sign"],
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        } else {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  ["verify"],
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        }
+
+        // 3.
+        if (jwk.kty !== "OKP") {
+          throw new DOMException("Invalid key type", "DataError");
+        }
+
+        // 4.
+        if (jwk.crv !== "Ed25519") {
+          throw new DOMException("Invalid curve", "DataError");
+        }
+
+        // 5.
+        if (jwk.alg !== undefined && jwk.alg !== "EdDSA") {
+          throw new DOMException("Invalid algorithm", "DataError");
+        }
+
+        // 6.
+        if (
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
+        ) {
+          throw new DOMException("Invalid key usage", "DataError");
+        }
+
+        // 7.
+        if (jwk.key_ops !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+          throw new DOMException("Invalid key extractability", "DataError");
+        }
+
+        // 9.
+        if (jwk.d !== undefined) {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+          const algorithm = {
+            name: "Ed25519",
+          };
+
+          return constructKey(
+            "private",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        } else {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+          const algorithm = {
+            name: "Ed25519",
+          };
+
+          return constructKey(
+            "public",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        }
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function importKeyX25519(
+    format,
+    keyData,
+    extractable,
+    keyUsages,
+  ) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+
+        // 2-3.
+        const algorithm = {
+          name: "X25519",
+        };
+
+        // 4-6.
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "spki": {
+        // 1.
+        if (keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const publicKeyData = new Uint8Array(32);
+        if (!ops.op_import_spki_x25519(keyData, publicKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+        const algorithm = {
+          name: "X25519",
+        };
+
+        return constructKey(
+          "public",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "pkcs8": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        const privateKeyData = new Uint8Array(32);
+        if (!ops.op_import_pkcs8_x25519(keyData, privateKeyData)) {
+          throw new DOMException("Invalid key data", "DataError");
+        }
+
+        const handle = {};
+        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+        const algorithm = {
+          name: "X25519",
+        };
+
+        return constructKey(
+          "private",
+          extractable,
+          [],
+          algorithm,
+          handle,
+        );
+      }
+      case "jwk": {
+        // 1.
+        const jwk = keyData;
+
+        // 2.
+        if (jwk.d !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) =>
+                !ArrayPrototypeIncludes(
+                  SUPPORTED_KEY_USAGES["X25519"].private,
+                  u,
+                ),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+        }
+
+        // 3.
+        if (jwk.d === undefined && keyUsages.length > 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 4.
+        if (jwk.kty !== "OKP") {
+          throw new DOMException("Invalid key type", "DataError");
+        }
+
+        // 5.
+        if (jwk.crv !== "X25519") {
+          throw new DOMException("Invalid curve", "DataError");
+        }
+
+        // 6.
+        if (keyUsages.length > 0 && jwk.use !== undefined) {
+          if (jwk.use !== "enc") {
+            throw new DOMException("Invalid key use", "DataError");
+          }
+        }
+
+        // 7.
+        if (jwk.key_ops !== undefined) {
+          if (
+            ArrayPrototypeFind(
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+
+          if (
+            !ArrayPrototypeEvery(
+              jwk.key_ops,
+              (u) => ArrayPrototypeIncludes(keyUsages, u),
+            )
+          ) {
+            throw new DOMException(
+              "'key_ops' property of JsonWebKey is invalid",
+              "DataError",
+            );
+          }
+        }
+
+        // 8.
+        if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+          throw new DOMException("Invalid key extractability", "DataError");
+        }
+
+        // 9.
+        if (jwk.d !== undefined) {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+
+          const algorithm = {
+            name: "X25519",
+          };
+
+          return constructKey(
+            "private",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        } else {
+          // https://www.rfc-editor.org/rfc/rfc8037#section-2
+          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+
+          const algorithm = {
+            name: "X25519",
+          };
+
+          return constructKey(
+            "public",
+            extractable,
+            [],
+            algorithm,
+            handle,
+          );
+        }
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 
@@ -2732,6 +3310,9 @@
       private: ["deriveKey", "deriveBits"],
       jwkUse: "enc",
     },
+    "X25519": {
+      private: ["deriveKey", "deriveBits"],
+    },
   };
 
   function importKeyRSA(
@@ -3430,6 +4011,66 @@
     }
   }
 
+  function exportKeyEd25519(format, key, innerKey) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2-3.
+        return innerKey.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const spkiDer = ops.op_export_spki_ed25519(innerKey);
+        return spkiDer.buffer;
+      }
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const pkcs8Der = ops.op_export_pkcs8_ed25519(innerKey);
+        return pkcs8Der.buffer;
+      }
+      case "jwk": {
+        const x = key[_type] === "private"
+          ? ops.op_jwk_x_ed25519(innerKey)
+          : ops.op_crypto_base64url(innerKey);
+        const jwk = {
+          kty: "OKP",
+          alg: "EdDSA",
+          crv: "Ed25519",
+          x,
+          "key_ops": key.usages,
+          ext: key[_extractable],
+        };
+        if (key[_type] === "private") {
+          jwk.d = ops.op_crypto_base64url(innerKey);
+        }
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
   function exportKeyEC(format, key, innerKey) {
     switch (format) {
       case "raw": {
@@ -3712,6 +4353,49 @@
         }, normalizedAlgorithm.salt);
 
         return buf.buffer;
+      }
+      case "X25519": {
+        // 1.
+        if (baseKey[_type] !== "private") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 2.
+        const publicKey = normalizedAlgorithm.public;
+        // 3.
+        if (publicKey[_type] !== "public") {
+          throw new DOMException("Invalid key type", "InvalidAccessError");
+        }
+        // 4.
+        if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+          throw new DOMException(
+            "Algorithm mismatch",
+            "InvalidAccessError",
+          );
+        }
+
+        // 5.
+        const kHandle = baseKey[_handle];
+        const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
+
+        const uHandle = publicKey[_handle];
+        const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
+
+        const secret = new Uint8Array(32);
+        const isIdentity = ops.op_derive_bits_x25519(k, u, secret);
+
+        // 6.
+        if (isIdentity) {
+          throw new DOMException("Invalid key", "OperationError");
+        }
+
+        // 7.
+        if (length === null) {
+          return secret.buffer;
+        } else if (secret.length * 8 < length) {
+          throw new DOMException("Invalid length", "OperationError");
+        } else {
+          return secret.subarray(0, length / 8).buffer;
+        }
       }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");

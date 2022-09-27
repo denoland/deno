@@ -2209,13 +2209,13 @@ fn permission_prompt(
     };
     match ch.to_ascii_lowercase() {
       'y' => {
-        clear_n_lines(if api_name.is_some() { 5 } else { 4 });
+        clear_n_lines(if api_name.is_some() { 4 } else { 3 });
         let msg = format!("Granted {}.", message);
         eprintln!("✅ {}", colors::bold(&msg));
         return true;
       }
       'n' => {
-        clear_n_lines(if api_name.is_some() { 5 } else { 4 });
+        clear_n_lines(if api_name.is_some() { 4 } else { 3 });
         let msg = format!("Denied {}.", message);
         eprintln!("❌ {}", colors::bold(&msg));
         return false;
