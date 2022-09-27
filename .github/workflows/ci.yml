@@ -140,10 +140,10 @@ jobs:
           name: build-debug-linux
       - name: Unpack artifacts
         run: |-
-          tar -I=unzstd -xpf artifacts_1.tar.gz
-          tar -I=unzstd -xpf artifacts_2.tar.gz
-          tar -I=unzstd -xpf artifacts_3.tar.gz
-          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 1"
   build-release-linux:
@@ -228,10 +228,10 @@ jobs:
           name: build-release-linux
       - name: Unpack artifacts
         run: |-
-          tar -I=unzstd -xpf artifacts_1.tar.gz
-          tar -I=unzstd -xpf artifacts_2.tar.gz
-          tar -I=unzstd -xpf artifacts_3.tar.gz
-          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 1"
   wpt-release-linux:
@@ -275,10 +275,10 @@ jobs:
           name: build-release-linux
       - name: Unpack artifacts
         run: |-
-          tar -I=unzstd -xpf artifacts_1.tar.gz
-          tar -I=unzstd -xpf artifacts_2.tar.gz
-          tar -I=unzstd -xpf artifacts_3.tar.gz
-          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: Set up WPT runner
         run: deno run -A --unstable ./tools/wpt.ts setup
       - name: Set up hosts file
@@ -372,10 +372,10 @@ jobs:
           name: build-debug-macos
       - name: Unpack artifacts
         run: |-
-          gtar -I=unzstd -xpf artifacts_1.tar.gz
-          gtar -I=unzstd -xpf artifacts_2.tar.gz
-          gtar -I=unzstd -xpf artifacts_3.tar.gz
-          gtar -I=unzstd -xpf artifacts_4.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: File info
         run: file target/debug/* target/debug/deps/*
       - name: Run tests
@@ -465,10 +465,10 @@ jobs:
           name: build-release-macos
       - name: Unpack artifacts
         run: |-
-          gtar -I=unzstd -xpf artifacts_1.tar.gz
-          gtar -I=unzstd -xpf artifacts_2.tar.gz
-          gtar -I=unzstd -xpf artifacts_3.tar.gz
-          gtar -I=unzstd -xpf artifacts_4.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          gtar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: File info
         run: file target/release/* target/release/deps/*
       - name: Run tests
@@ -565,10 +565,10 @@ jobs:
           name: build-debug-windows
       - name: Unpack artifacts
         run: |-
-          tar -I=unzstd -xpf artifacts_1.tar.gz
-          tar -I=unzstd -xpf artifacts_2.tar.gz
-          tar -I=unzstd -xpf artifacts_3.tar.gz
-          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 3"
   build-release-windows:
@@ -662,10 +662,10 @@ jobs:
           name: build-release-windows
       - name: Unpack artifacts
         run: |-
-          tar -I=unzstd -xpf artifacts_1.tar.gz
-          tar -I=unzstd -xpf artifacts_2.tar.gz
-          tar -I=unzstd -xpf artifacts_3.tar.gz
-          tar -I=unzstd -xpf artifacts_4.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_1.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_2.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_3.tar.gz
+          tar --use-compress-program=unzstd -xpf artifacts_4.tar.gz
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 3"
   upload_canary:
@@ -693,10 +693,10 @@ jobs:
           path: linux/
       - name: Unpack artifacts (linux)
         run: |-
-          tar -I=unzstd -xpf linux/artifacts_1.tar.gz -C linux
-          tar -I=unzstd -xpf linux/artifacts_2.tar.gz -C linux
-          tar -I=unzstd -xpf linux/artifacts_3.tar.gz -C linux
-          tar -I=unzstd -xpf linux/artifacts_4.tar.gz -C linux
+          tar --use-compress-program=unzstd -xpf linux/artifacts_1.tar.gz -C linux
+          tar --use-compress-program=unzstd -xpf linux/artifacts_2.tar.gz -C linux
+          tar --use-compress-program=unzstd -xpf linux/artifacts_3.tar.gz -C linux
+          tar --use-compress-program=unzstd -xpf linux/artifacts_4.tar.gz -C linux
       - name: Create zip (linux)
         run: cd linux/target/release && zip -r ../../../deno-x86_64-unknown-linux-gnu.zip deno
       - name: Upload zip to dl.deno.land (linux)
@@ -708,10 +708,10 @@ jobs:
           path: macos/
       - name: Unpack artifacts (macos)
         run: |-
-          gtar -I=unzstd -xpf macos/artifacts_1.tar.gz -C macos
-          gtar -I=unzstd -xpf macos/artifacts_2.tar.gz -C macos
-          gtar -I=unzstd -xpf macos/artifacts_3.tar.gz -C macos
-          gtar -I=unzstd -xpf macos/artifacts_4.tar.gz -C macos
+          gtar --use-compress-program=unzstd -xpf macos/artifacts_1.tar.gz -C macos
+          gtar --use-compress-program=unzstd -xpf macos/artifacts_2.tar.gz -C macos
+          gtar --use-compress-program=unzstd -xpf macos/artifacts_3.tar.gz -C macos
+          gtar --use-compress-program=unzstd -xpf macos/artifacts_4.tar.gz -C macos
       - name: Create zip (macos)
         run: cd macos/target/release && zip -r ../../../deno-x86_64-apple-darwin.zip deno
       - name: Upload zip to dl.deno.land (macos)
@@ -723,10 +723,10 @@ jobs:
           path: windows/
       - name: Unpack artifacts (windows)
         run: |-
-          tar -I=unzstd -xpf windows/artifacts_1.tar.gz -C windows
-          tar -I=unzstd -xpf windows/artifacts_2.tar.gz -C windows
-          tar -I=unzstd -xpf windows/artifacts_3.tar.gz -C windows
-          tar -I=unzstd -xpf windows/artifacts_4.tar.gz -C windows
+          tar --use-compress-program=unzstd -xpf windows/artifacts_1.tar.gz -C windows
+          tar --use-compress-program=unzstd -xpf windows/artifacts_2.tar.gz -C windows
+          tar --use-compress-program=unzstd -xpf windows/artifacts_3.tar.gz -C windows
+          tar --use-compress-program=unzstd -xpf windows/artifacts_4.tar.gz -C windows
       - name: Create zip (windows)
         run: cd windows/target/release && zip -r ../../../deno-x86_64-pc-windows-msvc.zip deno.exe
       - name: Upload zip to dl.deno.land (windows)

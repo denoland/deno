@@ -9,7 +9,7 @@
  *  - `./artifacts_[1-3].tar` - 3 numbered tar archives containing all other created artifacts
  */
 
-import { CargoBuildManifest, ARCHIVE_COUNT } from "./_util.js";
+import { ARCHIVE_COUNT, CargoBuildManifest } from "./_util.js";
 
 const profile = Deno.args[0];
 const manifestPath = `./target/${profile}/cargo_build_manifest.json`;
@@ -42,7 +42,7 @@ for (let i = 0; i < ARCHIVE_COUNT; i += 1) {
   );
   const tar = Deno.build.os === "darwin" ? "gtar" : "tar";
   const proc = Deno.run({
-    cmd: [tar, "-I=zstd", "-cvf", path, ...files],
+    cmd: [tar, "--use-compress-program=zstd", "-cvf", path, ...files],
   });
   const { success } = await proc.status();
   if (!success) {
