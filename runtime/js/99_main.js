@@ -695,8 +695,8 @@ delete Intl.v8BreakIterator;
 
     runtimeStart(runtimeOptions);
 
-    numCpus = runtimeInfo.cpuCount;
-    userAgent = runtimeInfo.userAgentInfo;
+    numCpus = runtimeOptions.cpuCount;
+    userAgent = runtimeOptions.userAgentInfo;
 
     const internalSymbol = Symbol("Deno.internal");
 
