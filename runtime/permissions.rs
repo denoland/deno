@@ -2104,13 +2104,13 @@ fn permission_prompt(message: &str, name: &str) -> bool {
     };
     match ch.to_ascii_lowercase() {
       'y' => {
-        clear_n_lines(4);
+        clear_n_lines(3);
         let msg = format!("Granted {}.", message);
         eprintln!("✅ {}", colors::bold(&msg));
         return true;
       }
       'n' => {
-        clear_n_lines(4);
+        clear_n_lines(3);
         let msg = format!("Denied {}.", message);
         eprintln!("❌ {}", colors::bold(&msg));
         return false;
