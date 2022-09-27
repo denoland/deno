@@ -313,25 +313,25 @@ declare namespace Deno {
   export const noColor: boolean;
 
   /**
-   * Options which define the permissions within a test context.
+   * Options which define the permissions within a test or worker context.
    *
    * `"inherit"` would ensure that all permissions of the parent process will be
    * applied to the test context. `"none"` would ensure the test context has no
    * permissions. A `TestPermissionOptionsObject` would provide a more specific
    * set of permissions to the test context.
    *
-   * @category Testing */
-  export type TestPermissionOptions =
+   * @category Permissions */
+  export type PermissionOptions =
     | "inherit"
     | "none"
-    | TestPermissionOptionsObject;
+    | PermissionOptionsObject;
 
   /**
-   * An set of options which can define the permissions within a test context
-   * at a highly specific level.
+   * An set of options which can define the permissions within a test or worker
+   * context at a highly specific level.
    *
-   * @category Testing */
-  export interface TestPermissionOptionsObject {
+   * @category Permissions */
+  export interface PermissionOptionsObject {
     /** Specifies if the `env` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
      * If set to `true`, the global `env` permission will be requested.
@@ -539,9 +539,13 @@ declare namespace Deno {
      * function can take an argument which will provide information about the
      * current step's context. */
     fn: (t: TestContext) => void | Promise<void>;
-    /** The current test name. */
+    /** The name of the step. */
     name: string;
-    /** If truthy the current test step will be ignored. */
+    /** If truthy the current test step will be ignored.
+     *
+     * It is a quick way to skip over a step, but also can be used for
+     * conditional logic, like determining if an environment feature is present.
+     */
     ignore?: boolean;
     /** Check that the number of async completed operations after the test step
      * is the same as number of dispatched operations.  This ensures that the
@@ -557,7 +561,7 @@ declare namespace Deno {
      * Defaults to the parent test or step's value. */
     sanitizeResources?: boolean;
     /** Ensure the test step does not prematurely cause the process to exit,
-     * for example via a call to {@link Deno.exit}.
+     * for example via a call to {@linkcode Deno.exit}.
      *
      * Defaults to the parent test or step's value. */
     sanitizeExit?: boolean;
@@ -566,43 +570,55 @@ declare namespace Deno {
   /** @category Testing */
   export interface TestDefinition {
     fn: (t: TestContext) => void | Promise<void>;
-    /**
-     * The current test name.
-     */
+    /** The name of the test. */
     name: string;
+    /** If truthy the current test step will be ignored.
+     *
+     * It is a quick way to skip over a step, but also can be used for
+     * conditional logic, like determining if an environment feature is present.
+     */
     ignore?: boolean;
-    /** If at least one test has `only` set to true, only run tests that have
-     * `only` set to true and fail the test suite. */
+    /** If at least one test has `only` set to `true`, only run tests that have
+     * `only` set to `true` and fail the test suite. */
     only?: boolean;
-    /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true. */
+    /** Check that the number of async completed operations after the test step
+     * is the same as number of dispatched operations.  This ensures that the
+     * code tested is not leaving requests outside of the JavaScript runtime
+     * unmanaged, helping ensure that memory leaks are less likely.
+     *
+     * Defaults to `true`. */
     sanitizeOps?: boolean;
     /** Ensure the test case does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test. Defaults
-     * to true. */
+     * after the test has exactly the same contents as before the test.
+     *
+     * Defaults to `true`. */
     sanitizeResources?: boolean;
     /** Ensure the test case does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to true. */
-    sanitizeExit?: boolean;
-
-    /** Specifies the permissions that should be used to run the test.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
+     * for example via a call to {@linkcode Deno.exit}.
      *
-     * Defaults to "inherit".
-     */
-    permissions?: TestPermissionOptions;
+     * Defaults to `true`. */
+    sanitizeExit?: boolean;
+    /** Specifies the permissions that should be used to run the test.
+     *
+     * Set this to "inherit" to keep the calling runtime permissions, set this
+     * to "none" to revoke all permissions, or set a more specific set of
+     * permissions using a {@linkcode TestPermissionOptionsObject}.
+     *
+     * Defaults to `"inherit"`. */
+    permissions?: PermissionOptions;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required.
+   *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
    * Deno.test({
    *   name: "example test",
-   *   fn(): void {
+   *   fn() {
    *     assertEquals("world", "world");
    *   },
    * });
@@ -610,7 +626,7 @@ declare namespace Deno {
    * Deno.test({
    *   name: "example ignored test",
    *   ignore: Deno.build.os === "windows",
-   *   fn(): void {
+   *   fn() {
    *     // This test is ignored only on Windows machines
    *   },
    * });
@@ -631,20 +647,27 @@ declare namespace Deno {
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test("My test description", (): void => {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.test(
+   *   "My test description",
+   *   () => {
+   *     assertEquals("hello", "hello");
+   *   },
+   * );
    *
-   * Deno.test("My async test description", async (): Promise<void> => {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.test(
+   *   "My async test description",
+   *   async () => {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   },
+   * );
    * ```
    *
    * @category Testing
@@ -656,16 +679,17 @@ declare namespace Deno {
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required. Declared function must have a name.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test(function myTestName(): void {
+   * Deno.test(function myTestName() {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.test(async function myOtherTestName(): Promise<void> {
+   * Deno.test(async function myOtherTestName() {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
@@ -678,6 +702,7 @@ declare namespace Deno {
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required.
    *
    * ```ts
@@ -704,20 +729,33 @@ declare namespace Deno {
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test({ name: "My test description", permissions: { read: true } }, (): void => {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.test(
+   *   {
+   *     name: "My test description",
+   *     permissions: { read: true },
+   *   },
+   *   () => {
+   *     assertEquals("hello", "hello");
+   *   },
+   * );
    *
-   * Deno.test({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.test(
+   *   {
+   *     name: "My async test description",
+   *     permissions: { read: false },
+   *   },
+   *   async () => {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   },
+   * );
    * ```
    *
    * @category Testing
@@ -729,20 +767,27 @@ declare namespace Deno {
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
+   *
    * `fn` can be async if required. Declared function must have a name.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test({ permissions: { read: true } }, function myTestName(): void {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.test(
+   *   { permissions: { read: true } },
+   *   function myTestName() {
+   *     assertEquals("hello", "hello");
+   *   },
+   * );
    *
-   * Deno.test({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.test(
+   *   { permissions: { read: false } },
+   *   async function myOtherTestName() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   },
+   * );
    * ```
    *
    * @category Testing
@@ -752,8 +797,9 @@ declare namespace Deno {
     fn: (t: TestContext) => void | Promise<void>,
   ): void;
 
-  /** Exit the Deno process with optional exit code. If no exit code is supplied
-   * then Deno will exit with return code of 0.
+  /** Exit the Deno process with optional exit code.
+   *
+   * If no exit code is supplied then Deno will exit with return code of `0`.
    *
    * In worker contexts this is an alias to `self.close();`.
    *
@@ -765,18 +811,23 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /**
+  /** An interface to interface with the runtime environment, allowing the
+   * ability to read and set the environment variables for the current runtime
+   * context.
+   *
    * @tags allow-env
    * @category Runtime Environment
    */
-  export const env: {
-    /** Retrieve the value of an environment variable. Returns `undefined` if that
-     * key doesn't exist.
+  export interface Env {
+    /** Retrieve the value of an environment variable.
+     *
+     * Returns `undefined` if the supplied environment variable is not defined.
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
      * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
+     *
      * Requires `allow-env` permission.
      *
      * @tags allow-env
@@ -809,7 +860,8 @@ declare namespace Deno {
      */
     delete(key: string): void;
 
-    /** Returns a snapshot of the environment variables at invocation.
+    /** Returns a snapshot of the environment variables at invocation as a
+     * simple object of keys and values.
      *
      * ```ts
      * Deno.env.set("TEST_VAR", "A");
@@ -824,7 +876,16 @@ declare namespace Deno {
      * @tags allow-env
      */
     toObject(): { [index: string]: string };
-  };
+  }
+
+  /** An interface to interface with the runtime environment, allowing the
+   * ability to read and set the environment variables for the current runtime
+   * context.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
+   */
+  export const env: Env;
 
   /**
    * Returns the path to the current deno executable.
@@ -849,11 +910,12 @@ declare namespace Deno {
    * Deno.chdir("C:\\Program Files (x86)\\Java");
    * ```
    *
-   * Throws `Deno.errors.NotFound` if directory not found.
-   * Throws `Deno.errors.PermissionDenied` if the user does not have access
-   * rights
+   * Throws {@linkcode Deno.errors.NotFound} if directory not found.
    *
-   * Requires --allow-read.
+   * Throws {@linkcode Deno.errors.PermissionDenied} if the user does not have
+   * operating system file access rights.
+   *
+   * Requires `allow-read` permission.
    *
    * @tags allow-read
    * @category Runtime Environment
@@ -870,28 +932,14 @@ declare namespace Deno {
    * const currentWorkingDirectory = Deno.cwd();
    * ```
    *
-   * Throws `Deno.errors.NotFound` if directory not available.
+   * Throws {@linkcode Deno.errors.NotFound} if directory not available.
    *
-   * Requires --allow-read
+   * Requires `allow-read` permission.
    *
    * @tags allow-read
    * @category Runtime Environment
    */
   export function cwd(): string;
-
-  /**
-   * Synchronously creates `newpath` as a hard link to `oldpath`.
-   *
-   * ```ts
-   * Deno.linkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permissions.
-   *
-   * @tags allow-read
-   * @category File System
-   */
-  export function linkSync(oldpath: string, newpath: string): void;
 
   /**
    * Creates `newpath` as a hard link to `oldpath`.
@@ -902,19 +950,44 @@ declare namespace Deno {
    *
    * Requires `allow-read` and `allow-write` permissions.
    *
-   * @tags allow-read
+   * @tags allow-read, allow-write
    * @category File System
    */
   export function link(oldpath: string, newpath: string): Promise<void>;
 
-  /** @category I/O */
+  /**
+   * Synchronously creates `newpath` as a hard link to `oldpath`.
+   *
+   * ```ts
+   * Deno.linkSync("old/name", "new/name");
+   * ```
+   *
+   * Requires `allow-read` and `allow-write` permissions.
+   *
+   * @tags allow-read, allow-write
+   * @category File System
+   */
+  export function linkSync(oldpath: string, newpath: string): void;
+
+  /**
+   * A enum which defines the seek mode for IO related APIs that support
+   * seeking.
+   *
+   * @category I/O */
   export enum SeekMode {
+    /* Seek from the start of the file/resource. */
     Start = 0,
+    /* Seek from the current position within the file/resource. */
     Current = 1,
+    /* Seek from the end of the current file/resource. */
     End = 2,
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to read
+   * bytes into an array buffer asynchronously.
+   *
+   * @category I/O */
   export interface Reader {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number of
      * bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -935,13 +1008,20 @@ declare namespace Deno {
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use `itereateReader` from from https://deno.land/std/streams/conversion.ts to
-     * turn a Reader into an AsyncIterator.
+     * Use
+     * [`itereateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+     * from from
+     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * to turn a `Reader` into an {@linkcode AsyncIterator}.
      */
     read(p: Uint8Array): Promise<number | null>;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to read
+   * bytes into an array buffer synchronously.
+   *
+   * @category I/O */
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
@@ -956,18 +1036,26 @@ declare namespace Deno {
      * When `readSync()` encounters an error, it throws with an error.
      *
      * Callers should always process the `n` > `0` bytes returned before
-     * considering the EOF (`null`). Doing so correctly handles I/O errors that happen
-     * after reading some bytes and also both of the allowed EOF behaviors.
+     * considering the EOF (`null`). Doing so correctly handles I/O errors that
+     * happen after reading some bytes and also both of the allowed EOF
+     * behaviors.
      *
      * Implementations should not retain a reference to `p`.
      *
-     * Use `iterateReaderSync()` from from https://deno.land/std/streams/conversion.ts
-     * to turn a ReaderSync into an Iterator.
+     * Use
+     * [`itereateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+     * from from
+     * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+     * to turn a `ReaderSync` into an {@linkcode Iterator}.
      */
     readSync(p: Uint8Array): number | null;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to write
+   * bytes from an array buffer to a file/resource asynchronously.
+   *
+   * @category I/O */
   export interface Writer {
     /** Writes `p.byteLength` bytes from `p` to the underlying data stream. It
      * resolves to the number of bytes written from `p` (`0` <= `n` <=
@@ -981,7 +1069,11 @@ declare namespace Deno {
     write(p: Uint8Array): Promise<number>;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to write
+   * bytes from an array buffer to a file/resource synchronously.
+   *
+   * @category I/O */
   export interface WriterSync {
     /** Writes `p.byteLength` bytes from `p` to the underlying data
      * stream. It returns the number of bytes written from `p` (`0` <= `n`
@@ -995,12 +1087,21 @@ declare namespace Deno {
     writeSync(p: Uint8Array): number;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to close
+   * files/resources that were previously opened.
+   *
+   * @category I/O */
   export interface Closer {
+    /** Closes the resource, "freeing" the backing file/resource. */
     close(): void;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to seek
+   * within an open file/resource asynchronously.
+   *
+   * @category I/O */
   export interface Seeker {
     /** Seek sets the offset for the next `read()` or `write()` to offset,
      * interpreted according to `whence`: `Start` means relative to the
@@ -1011,12 +1112,17 @@ declare namespace Deno {
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
-     * It returns the number of cursor position.
+     *
+     * It resolves with the updated offset.
      */
     seek(offset: number, whence: SeekMode): Promise<number>;
   }
 
-  /** @category I/O */
+  /**
+   * An abstract interface which when implemented provides an interface to seek
+   * within an open file/resource synchronously.
+   *
+   * @category I/O */
   export interface SeekerSync {
     /** Seek sets the offset for the next `readSync()` or `writeSync()` to
      * offset, interpreted according to `whence`: `Start` means relative
@@ -1026,6 +1132,8 @@ declare namespace Deno {
      * Seeking to an offset before the start of the file is an error. Seeking to
      * any positive offset is legal, but the behavior of subsequent I/O
      * operations on the underlying object is implementation-dependent.
+     *
+     * It returns the updated offset.
      */
     seekSync(offset: number, whence: SeekMode): number;
   }
@@ -1042,8 +1150,10 @@ declare namespace Deno {
    * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
    *
-   * @deprecated Use `copy` from https://deno.land/std/streams/conversion.ts
-   * instead. `Deno.copy` will be removed in Deno 2.0.
+   * @deprecated Use
+   * [`copy`](https://deno.land/std/streams/conversion.ts?s=copy) from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead. `Deno.copy` will be removed in the future.
    *
    * @category I/O
    *
@@ -1054,9 +1164,7 @@ declare namespace Deno {
   export function copy(
     src: Reader,
     dst: Writer,
-    options?: {
-      bufSize?: number;
-    },
+    options?: { bufSize?: number },
   ): Promise<number>;
 
   /**
@@ -1071,6 +1179,7 @@ declare namespace Deno {
    * ```
    *
    * Second argument can be used to tune size of a buffer.
+   *
    * Default size of the buffer is 32kB.
    *
    * ```ts
@@ -1089,17 +1198,17 @@ declare namespace Deno {
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    *
-   * @deprecated Use `iterateReader` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.iter` will be
-   * removed in Deno 2.0.
+   * @deprecated Use
+   * [`iterateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
+   * from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead. `Deno.iter` will be removed in the future.
    *
    * @category I/O
    */
   export function iter(
     r: Reader,
-    options?: {
-      bufSize?: number;
-    },
+    options?: { bufSize?: number },
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
@@ -1114,6 +1223,7 @@ declare namespace Deno {
    * ```
    *
    * Second argument can be used to tune size of a buffer.
+   *
    * Default size of the buffer is 32kB.
    *
    * ```ts
@@ -1132,9 +1242,11 @@ declare namespace Deno {
    * responsibility to copy contents of the buffer if needed; otherwise the
    * next iteration will overwrite contents of previously returned chunk.
    *
-   * @deprecated Use `iterateReaderSync` from
-   * https://deno.land/std/streams/conversion.ts instead. `Deno.iterSync` will
-   * be removed in Deno 2.0.
+   * @deprecated Use
+   * [`iterateReaderSync`](https://deno.land/std/streams/conversion.ts?s=iterateReaderSync)
+   * from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead. `Deno.iterSync` will be removed in the future.
    *
    * @category I/O
    */
@@ -1145,28 +1257,10 @@ declare namespace Deno {
     },
   ): IterableIterator<Uint8Array>;
 
-  /** Synchronously open a file and return an instance of `Deno.FsFile`.  The
+  /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}.  The
    * file does not need to previously exist if using the `create` or `createNew`
-   * open options.  It is the callers responsibility to close the file when finished
-   * with it.
-   *
-   * ```ts
-   * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
-   * // Do work with file
-   * Deno.close(file.rid);
-   * ```
-   *
-   * Requires `allow-read` and/or `allow-write` permissions depending on options.
-   *
-   * @tags allow-read, allow-write
-   * @category File System
-   */
-  export function openSync(path: string | URL, options?: OpenOptions): FsFile;
-
-  /** Open a file and resolve to an instance of `Deno.FsFile`.  The
-   * file does not need to previously exist if using the `create` or `createNew`
-   * open options.  It is the callers responsibility to close the file when finished
-   * with it.
+   * open options.  It is the caller's responsibility to close the file when
+   * finished with it.
    *
    * ```ts
    * const file = await Deno.open("/foo/bar.txt", { read: true, write: true });
@@ -1174,7 +1268,8 @@ declare namespace Deno {
    * Deno.close(file.rid);
    * ```
    *
-   * Requires `allow-read` and/or `allow-write` permissions depending on options.
+   * Requires `allow-read` and/or `allow-write` permissions depending on
+   * options.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -1184,22 +1279,27 @@ declare namespace Deno {
     options?: OpenOptions,
   ): Promise<FsFile>;
 
-  /** Creates a file if none exists or truncates an existing file and returns
-   *  an instance of `Deno.FsFile`.
+  /** Synchronously open a file and return an instance of
+   * {@linkcode Deno.FsFile}.  The file does not need to previously exist if
+   * using the `create` or `createNew` open options.  It is the caller's
+   * responsibility to close the file when finished with it.
    *
    * ```ts
-   * const file = Deno.createSync("/foo/bar.txt");
+   * const file = Deno.openSync("/foo/bar.txt", { read: true, write: true });
+   * // Do work with file
+   * Deno.close(file.rid);
    * ```
    *
-   * Requires `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and/or `allow-write` permissions depending on
+   * options.
    *
    * @tags allow-read, allow-write
    * @category File System
    */
-  export function createSync(path: string | URL): FsFile;
+  export function openSync(path: string | URL, options?: OpenOptions): FsFile;
 
   /** Creates a file if none exists or truncates an existing file and resolves to
-   *  an instance of `Deno.FsFile`.
+   *  an instance of {@linkcode Deno.FsFile}.
    *
    * ```ts
    * const file = await Deno.create("/foo/bar.txt");
@@ -1212,32 +1312,19 @@ declare namespace Deno {
    */
   export function create(path: string | URL): Promise<FsFile>;
 
-  /** Synchronously read from a resource ID (`rid`) into an array buffer (`buffer`).
-   *
-   * Returns either the number of bytes read during the operation or EOF
-   * (`null`) if there was nothing more to read.
-   *
-   * It is possible for a read to successfully return with `0` bytes. This does
-   * not indicate EOF.
-   *
-   * This function is one of the lowest level APIs and most users should not
-   * work with this directly, but rather use
-   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
-   *
-   * **It is not guaranteed that the full buffer will be read in a single call.**
+  /** Creates a file if none exists or truncates an existing file and returns
+   *  an instance of {@linkcode Deno.FsFile}.
    *
    * ```ts
-   * // if "/foo/bar.txt" contains the text "hello world":
-   * const file = Deno.openSync("/foo/bar.txt");
-   * const buf = new Uint8Array(100);
-   * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
-   * const text = new TextDecoder().decode(buf);  // "hello world"
-   * Deno.close(file.rid);
+   * const file = Deno.createSync("/foo/bar.txt");
    * ```
    *
-   * @category I/O
+   * Requires `allow-read` and `allow-write` permissions.
+   *
+   * @tags allow-read, allow-write
+   * @category File System
    */
-  export function readSync(rid: number, buffer: Uint8Array): number | null;
+  export function createSync(path: string | URL): FsFile;
 
   /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
@@ -1266,27 +1353,34 @@ declare namespace Deno {
    */
   export function read(rid: number, buffer: Uint8Array): Promise<number | null>;
 
-  /** Synchronously write to the resource ID (`rid`) the contents of the array
-   * buffer (`data`).
+  /** Synchronously read from a resource ID (`rid`) into an array buffer
+   * (`buffer`).
    *
-   * Returns the number of bytes written.  This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather use
-   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
+   * Returns either the number of bytes read during the operation or EOF
+   * (`null`) if there was nothing more to read.
    *
-   * **It is not guaranteed that the full buffer will be written in a single
+   * It is possible for a read to successfully return with `0` bytes. This does
+   * not indicate EOF.
+   *
+   * This function is one of the lowest level APIs and most users should not
+   * work with this directly, but rather use
+   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
+   *
+   * **It is not guaranteed that the full buffer will be read in a single
    * call.**
    *
    * ```ts
-   * const encoder = new TextEncoder();
-   * const data = encoder.encode("Hello world");
-   * const file = Deno.openSync("/foo/bar.txt", {write: true});
-   * const bytesWritten = Deno.writeSync(file.rid, data); // 11
+   * // if "/foo/bar.txt" contains the text "hello world":
+   * const file = Deno.openSync("/foo/bar.txt");
+   * const buf = new Uint8Array(100);
+   * const numberOfBytesRead = Deno.readSync(file.rid, buf); // 11 bytes
+   * const text = new TextDecoder().decode(buf);  // "hello world"
    * Deno.close(file.rid);
    * ```
    *
    * @category I/O
    */
-  export function writeSync(rid: number, data: Uint8Array): number;
+  export function readSync(rid: number, buffer: Uint8Array): number | null;
 
   /** Write to the resource ID (`rid`) the contents of the array buffer (`data`).
    *
@@ -1309,51 +1403,37 @@ declare namespace Deno {
    */
   export function write(rid: number, data: Uint8Array): Promise<number>;
 
-  /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
-   * given by `whence`.  The new position within the resource (bytes from the
-   * start) is returned.
+  /** Synchronously write to the resource ID (`rid`) the contents of the array
+   * buffer (`data`).
+   *
+   * Returns the number of bytes written.  This function is one of the lowest
+   * level APIs and most users should not work with this directly, but rather use
+   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
+   *
+   * **It is not guaranteed that the full buffer will be written in a single
+   * call.**
    *
    * ```ts
-   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
-   *
-   * // advance cursor 6 bytes
-   * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
-   * console.log(cursorPosition);  // 6
-   * const buf = new Uint8Array(100);
-   * file.readSync(buf);
-   * console.log(new TextDecoder().decode(buf)); // "world"
-   * ```
-   *
-   * The seek modes work as follows:
-   *
-   * ```ts
-   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
-   *
-   * // Seek 6 bytes from the start of the file
-   * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
-   * // Seek 2 more bytes from the current position
-   * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
-   * // Seek backwards 2 bytes from the end of the file
-   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * const encoder = new TextEncoder();
+   * const data = encoder.encode("Hello world");
+   * const file = Deno.openSync("/foo/bar.txt", { write: true });
+   * const bytesWritten = Deno.writeSync(file.rid, data); // 11
+   * Deno.close(file.rid);
    * ```
    *
    * @category I/O
    */
-  export function seekSync(
-    rid: number,
-    offset: number,
-    whence: SeekMode,
-  ): number;
+  export function writeSync(rid: number, data: Uint8Array): number;
 
   /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
    * The call resolves to the new position within the resource (bytes from the start).
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * const file = await Deno.open(
+   *   "hello.txt",
+   *   { read: true, write: true, truncate: true, create: true },
+   * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
    *
    * // advance cursor 6 bytes
@@ -1368,7 +1448,10 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
-   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * const file = await Deno.open(
+   *   "hello.txt",
+   *   { read: true, write: true, truncate: true, create: true },
+   * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
    *
    * // Seek 6 bytes from the start of the file
@@ -1386,6 +1469,51 @@ declare namespace Deno {
     offset: number,
     whence: SeekMode,
   ): Promise<number>;
+
+  /** Synchronously seek a resource ID (`rid`) to the given `offset` under mode
+   * given by `whence`.  The new position within the resource (bytes from the
+   * start) is returned.
+   *
+   * ```ts
+   * const file = Deno.openSync(
+   *   "hello.txt",
+   *   { read: true, write: true, truncate: true, create: true },
+   * );
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
+   * // advance cursor 6 bytes
+   * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
+   * console.log(cursorPosition);  // 6
+   * const buf = new Uint8Array(100);
+   * file.readSync(buf);
+   * console.log(new TextDecoder().decode(buf)); // "world"
+   * ```
+   *
+   * The seek modes work as follows:
+   *
+   * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = Deno.openSync(
+   *   "hello.txt",
+   *   { read: true, write: true, truncate: true, create: true },
+   * );
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
+   * // Seek 6 bytes from the start of the file
+   * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
+   * // Seek 2 more bytes from the current position
+   * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
+   * // Seek backwards 2 bytes from the end of the file
+   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * ```
+   *
+   * @category I/O
+   */
+  export function seekSync(
+    rid: number,
+    offset: number,
+    whence: SeekMode,
+  ): number;
 
   /**
    * Synchronously flushes any pending data and metadata operations of the given
