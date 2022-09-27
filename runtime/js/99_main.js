@@ -654,12 +654,12 @@ delete Intl.v8BreakIterator;
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
     // writable, so that they can mock it themselves if they like. If the flag was
     // set, define `globalThis.location`, using the provided value.
-    if (runtimeOptions.locationHref == null) {
+    if (runtimeOptions.location == null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
       };
     } else {
-      location.setLocationHref(runtimeOptions.locationHref);
+      location.setLocationHref(runtimeOptions.location);
     }
 
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
@@ -696,7 +696,7 @@ delete Intl.v8BreakIterator;
     runtimeStart(runtimeOptions);
 
     numCpus = runtimeOptions.cpuCount;
-    userAgent = runtimeOptions.userAgentInfo;
+    userAgent = runtimeOptions.userAgent;
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -783,7 +783,7 @@ delete Intl.v8BreakIterator;
       internalName ?? name,
     );
 
-    location.setLocationHref(runtimeOptions.locationHref);
+    location.setLocationHref(runtimeOptions.location);
     numCpus = runtimeOptions.cpuCount;
 
     globalThis.pollForMessages = pollForMessages;
