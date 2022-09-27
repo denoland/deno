@@ -141,9 +141,7 @@ impl CliMainWorker {
         };
         self.pending_unload = false;
 
-        if let Err(err) = result {
-          return Err(err);
-        }
+        result?;
 
         self
           .inner

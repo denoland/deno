@@ -335,6 +335,7 @@
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
+          resp.contentLength,
         );
       }
     }
