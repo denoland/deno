@@ -759,7 +759,54 @@ Deno.test(function consoleTestStringifyIterable() {
     `[ <4 empty items>, 0, 0, <4 empty items> ]`,
   );
 
-  /* TODO(ry) Fix this test
+  const emptyArray = Array(5000);
+  assertEquals(
+    stringify(emptyArray),
+    `[ <5000 empty items> ]`,
+  );
+
+  assertEquals(
+    stringify(Array(1)),
+    `[ <1 empty item> ]`,
+  );
+
+  const withEmptyElAndMoreItems = Array(500);
+  withEmptyElAndMoreItems.fill(0, 50, 80);
+  withEmptyElAndMoreItems.fill(2, 100, 120);
+  withEmptyElAndMoreItems.fill(3, 140, 160);
+  withEmptyElAndMoreItems.fill(4, 180);
+  assertEquals(
+    stringify(withEmptyElAndMoreItems),
+    `[
+  <50 empty items>, 0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, 0,
+  0,                0,                0, <20 empty items>,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  2,                2,                2, 2,
+  <20 empty items>, 3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                3,                3, 3,
+  3,                <20 empty items>, 4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  4,                4,                4, 4,
+  ... 294 more items
+]`,
+  );
+
   const lWithEmptyEl = Array(200);
   lWithEmptyEl.fill(0, 50, 80);
   assertEquals(
@@ -776,9 +823,8 @@ Deno.test(function consoleTestStringifyIterable() {
   0,                0,                 0,
   0,                0,                 0,
   0,                <120 empty items>
-]`
+]`,
   );
-  */
 });
 
 Deno.test(function consoleTestStringifyIterableWhenGrouped() {
@@ -1629,6 +1675,15 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
     const proxiedMap = new Proxy(new Map(), {});
     console.log(proxiedMap);
     assertEquals(stripColor(out.toString()), "Map {}\n");
+  });
+});
+
+// console.log(new Proxy(new Date(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
+  mockConsole((console, out) => {
+    const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
+    console.log(proxiedDate);
+    assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
   });
 });
 

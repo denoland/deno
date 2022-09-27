@@ -837,7 +837,6 @@ fn op_copy_file_sync(
 
   #[cfg(target_os = "macos")]
   {
-    use libc::chmod;
     use libc::clonefile;
     use libc::stat;
     use libc::unlink;
