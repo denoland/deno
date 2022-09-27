@@ -929,171 +929,174 @@ fn run_server(
 
           debug_assert!(event.is_readable());
 
-          trace!("Socket readable: {}", token.0);
-          if let Some(tx) = &socket.read_tx {
-            {
-              let _l = socket.read_lock.lock().unwrap();
-            }
-            trace!("Sending readiness notification: {}", token.0);
-            let _ = tx.blocking_send(());
-
-            continue;
-          }
-
-          let mut headers = vec![httparse::EMPTY_HEADER; 40];
-          let mut req = httparse::Request::new(&mut headers);
-          let body_offset;
-          let body_len;
           loop {
-            // SAFETY: It is safe for the read buf to be mutable here.
-            let buffer = unsafe { &mut *socket.buffer.get() };
-            let offset = match socket.parse_done {
-              ParseStatus::None => 0,
-              ParseStatus::Ongoing(offset) => offset,
-            };
-            if offset >= buffer.len() {
-              buffer.resize(offset * 2, 0);
-            }
-            let nread = socket.read(&mut buffer[offset..]);
-
-            match nread {
-              Ok(0) => {
-                trace!("Socket closed: {}", token.0);
-                // FIXME: don't remove while JS is writing!
-                // sockets.remove(&token);
-                continue 'events;
+            trace!("Socket readable: {}", token.0);
+            if let Some(tx) = &socket.read_tx {
+              {
+                let _l = socket.read_lock.lock().unwrap();
               }
-              Ok(read) => match req.parse(&buffer[..offset + read]) {
-                Ok(httparse::Status::Complete(n)) => {
-                  body_offset = n;
-                  body_len = offset + read;
-                  socket.parse_done = ParseStatus::None;
-                  break;
-                }
-                Ok(httparse::Status::Partial) => {
-                  socket.parse_done = ParseStatus::Ongoing(offset + read);
-                  continue;
-                }
-                Err(_) => {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+              trace!("Sending readiness notification: {}", token.0);
+              let _ = tx.blocking_send(());
+
+              continue;
+            }
+
+            let mut headers = vec![httparse::EMPTY_HEADER; 40];
+            let mut req = httparse::Request::new(&mut headers);
+            let body_offset;
+            let body_len;
+            loop {
+              // SAFETY: It is safe for the read buf to be mutable here.
+              let buffer = unsafe { &mut *socket.buffer.get() };
+              let offset = match socket.parse_done {
+                ParseStatus::None => 0,
+                ParseStatus::Ongoing(offset) => offset,
+              };
+              if offset >= buffer.len() {
+                buffer.resize(offset * 2, 0);
+              }
+              let nread = socket.read(&mut buffer[offset..]);
+
+              match nread {
+                Ok(0) => {
+                  trace!("Socket closed: {}", token.0);
+                  // FIXME: don't remove while JS is writing!
+                  // sockets.remove(&token);
                   continue 'events;
                 }
-              },
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                break 'events
-              }
-              Err(_) => break 'events,
-            }
-          }
-
-          debug_assert_eq!(socket.parse_done, ParseStatus::None);
-          if let Some(method) = &req.method {
-            if method == &"POST" || method == &"PUT" {
-              let (tx, rx) = mpsc::channel(100);
-              socket.read_tx = Some(tx);
-              socket.read_rx = Some(rx);
-            }
-          }
-
-          // SAFETY: It is safe for the read buf to be mutable here.
-          let buffer = unsafe { &mut *socket.buffer.get() };
-          let inner_req = InnerRequest {
-            // SAFETY: backing buffer is pinned and lives as long as the request.
-            req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
-            // SAFETY: backing buffer is pinned and lives as long as the request.
-            _headers: unsafe {
-              transmute::<Vec<httparse::Header<'_>>, _>(headers)
-            },
-            buffer: Pin::new(
-              replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
-            ),
-            body_offset,
-            body_len,
-          };
-          // h1
-          // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
-          // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
-          let mut keep_alive = inner_req.req.version.unwrap() == 1;
-          let mut expect_continue = false;
-          let mut te = false;
-          let mut te_chunked = false;
-          let mut content_length = None;
-          for header in inner_req.req.headers.iter() {
-            match HeaderName::from_bytes(header.name.as_bytes()) {
-              Ok(CONNECTION) => {
-                // SAFETY: illegal bytes are validated by httparse.
-                let value = unsafe {
-                  HeaderValue::from_maybe_shared_unchecked(header.value)
-                };
-                if keep_alive {
-                  // 1.1
-                  keep_alive = !connection_has(&value, "close");
-                } else {
-                  // 1.0
-                  keep_alive = connection_has(&value, "keep-alive");
-                }
-              }
-              Ok(TRANSFER_ENCODING) => {
-                // https://tools.ietf.org/html/rfc7230#section-3.3.3
-                debug_assert!(inner_req.req.version.unwrap() == 1);
-                // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
-                te = true;
-                content_length = None;
-                // SAFETY: illegal bytes are validated by httparse.
-                let value = unsafe {
-                  HeaderValue::from_maybe_shared_unchecked(header.value)
-                };
-                if let Ok(Some(encoding)) =
-                  value.to_str().map(|s| s.rsplit(',').next())
-                {
-                  // Chunked must always be the last encoding
-                  if encoding.trim().eq_ignore_ascii_case("chunked") {
-                    te_chunked = true;
+                Ok(read) => match req.parse(&buffer[..offset + read]) {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    body_len = offset + read;
+                    socket.parse_done = ParseStatus::None;
+                    break;
                   }
-                }
-              }
-              // Transfer-Encoding overrides the Content-Length.
-              Ok(CONTENT_LENGTH) if !te => {
-                if let Some(len) = from_digits(header.value) {
-                  if let Some(prev) = content_length {
-                    if prev != len {
-                      let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                      continue 'events;
-                    }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
                     continue;
                   }
-                  content_length = Some(len);
-                } else {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
+                  Err(_) => {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
+                },
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break 'events;
                 }
+                Err(_) => break 'events,
               }
-              Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
-                expect_continue =
-                  header.value.eq_ignore_ascii_case(b"100-continue");
-              }
-              _ => {}
             }
-          }
 
-          // There is Transfer-Encoding but its not chunked.
-          if te && !te_chunked {
-            let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-            continue 'events;
-          }
+            debug_assert_eq!(socket.parse_done, ParseStatus::None);
+            if let Some(method) = &req.method {
+              if method == &"POST" || method == &"PUT" {
+                let (tx, rx) = mpsc::channel(100);
+                socket.read_tx = Some(tx);
+                socket.read_rx = Some(rx);
+              }
+            }
 
-          tx.blocking_send(Request {
-            socket: sock_ptr,
-            // SAFETY: headers backing buffer outlives the mio event loop ('static)
-            inner: inner_req,
-            keep_alive,
-            te_chunked,
-            remaining_chunk_size: None,
-            content_read: 0,
-            content_length,
-            expect_continue,
-          })
-          .ok();
+            // SAFETY: It is safe for the read buf to be mutable here.
+            let buffer = unsafe { &mut *socket.buffer.get() };
+            let inner_req = InnerRequest {
+              // SAFETY: backing buffer is pinned and lives as long as the request.
+              req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
+              // SAFETY: backing buffer is pinned and lives as long as the request.
+              _headers: unsafe {
+                transmute::<Vec<httparse::Header<'_>>, _>(headers)
+              },
+              buffer: Pin::new(
+                replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
+              ),
+              body_offset,
+              body_len,
+            };
+            // h1
+            // https://github.com/tiny-http/tiny-http/blob/master/src/client.rs#L177
+            // https://github.com/hyperium/hyper/blob/4545c3ef191ce9b5f5d250ee27c4c96f9b71d2c6/src/proto/h1/role.rs#L127
+            let mut keep_alive = inner_req.req.version.unwrap() == 1;
+            let mut expect_continue = false;
+            let mut te = false;
+            let mut te_chunked = false;
+            let mut content_length = None;
+            for header in inner_req.req.headers.iter() {
+              match HeaderName::from_bytes(header.name.as_bytes()) {
+                Ok(CONNECTION) => {
+                  // SAFETY: illegal bytes are validated by httparse.
+                  let value = unsafe {
+                    HeaderValue::from_maybe_shared_unchecked(header.value)
+                  };
+                  if keep_alive {
+                    // 1.1
+                    keep_alive = !connection_has(&value, "close");
+                  } else {
+                    // 1.0
+                    keep_alive = connection_has(&value, "keep-alive");
+                  }
+                }
+                Ok(TRANSFER_ENCODING) => {
+                  // https://tools.ietf.org/html/rfc7230#section-3.3.3
+                  debug_assert!(inner_req.req.version.unwrap() == 1);
+                  // Two states for Transfer-Encoding because we want to make sure Content-Length handling knows it.
+                  te = true;
+                  content_length = None;
+                  // SAFETY: illegal bytes are validated by httparse.
+                  let value = unsafe {
+                    HeaderValue::from_maybe_shared_unchecked(header.value)
+                  };
+                  if let Ok(Some(encoding)) =
+                    value.to_str().map(|s| s.rsplit(',').next())
+                  {
+                    // Chunked must always be the last encoding
+                    if encoding.trim().eq_ignore_ascii_case("chunked") {
+                      te_chunked = true;
+                    }
+                  }
+                }
+                // Transfer-Encoding overrides the Content-Length.
+                Ok(CONTENT_LENGTH) if !te => {
+                  if let Some(len) = from_digits(header.value) {
+                    if let Some(prev) = content_length {
+                      if prev != len {
+                        let _ =
+                          socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                        continue 'events;
+                      }
+                      continue;
+                    }
+                    content_length = Some(len);
+                  } else {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
+                }
+                Ok(EXPECT) if inner_req.req.version.unwrap() != 0 => {
+                  expect_continue =
+                    header.value.eq_ignore_ascii_case(b"100-continue");
+                }
+                _ => {}
+              }
+            }
+
+            // There is Transfer-Encoding but its not chunked.
+            if te && !te_chunked {
+              let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+              continue 'events;
+            }
+
+            tx.blocking_send(Request {
+              socket: sock_ptr,
+              // SAFETY: headers backing buffer outlives the mio event loop ('static)
+              inner: inner_req,
+              keep_alive,
+              te_chunked,
+              remaining_chunk_size: None,
+              content_read: 0,
+              content_length,
+              expect_continue,
+            })
+            .ok();
+          }
         }
       }
     }
