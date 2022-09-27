@@ -6,6 +6,8 @@ import * as YAML from "https://deno.land/std@0.137.0/encoding/yaml.ts";
 import prettier from "https://unpkg.com/prettier@2.7.1/esm/standalone.mjs";
 import prettierYaml from "https://unpkg.com/prettier@2.7.1/esm/parser-yaml.mjs";
 
+import { ARCHIVE_COUNT } from "./_util.js";
+
 const CI = {
   name: "ci",
   on: {
@@ -190,7 +192,6 @@ const PLATFORMS = [
 const MAIN_CONDITION =
   "(github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))";
 
-const ARCHIVE_COUNT = 5;
 const ARTIFACT_PATHS = Array.from(
   { length: ARCHIVE_COUNT },
   (_, i) => `artifacts_${i + 1}.tar.gz`,

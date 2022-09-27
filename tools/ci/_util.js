@@ -1,3 +1,5 @@
+export const ARCHIVE_COUNT = 4;
+
 export class CargoBuildManifest {
   #artifacts;
 

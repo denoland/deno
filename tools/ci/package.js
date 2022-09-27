@@ -9,9 +9,7 @@
  *  - `./artifacts_[1-3].tar` - 3 numbered tar archives containing all other created artifacts
  */
 
-import { CargoBuildManifest } from "./_util.js";
-
-const ARCHIVE_COUNT = 5;
+import { CargoBuildManifest, ARCHIVE_COUNT } from "./_util.js";
 
 const profile = Deno.args[0];
 const manifestPath = `./target/${profile}/cargo_build_manifest.json`;
