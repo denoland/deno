@@ -856,12 +856,22 @@ Deno.test(
       }
       main();
     `);
-    // TODO(kt3k): This is racy. Find a correct way to
-    // wait for the server to be ready
-    setTimeout(async () => {
-      const conn = await Deno.connect({ port: 3500 });
-      conn.close();
-    }, 200);
+    let err;
+    for (let i = 0; i < 10; i++) {
+      err = undefined;
+      try {
+        const conn = await Deno.connect({ port: 3500 });
+        conn.close();
+        break;
+      } catch (newErr) {
+        err = newErr;
+      }
+      await delay(100);
+    }
+    if (err) {
+      console.log("Test timed out.");
+      throw err;
+    }
     const [statusCode, output] = await p;
     assertEquals(statusCode, 0);
     assertEquals(output.trim(), "accepted");
