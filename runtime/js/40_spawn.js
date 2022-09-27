@@ -208,7 +208,7 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      ops.op_kill(this.#pid, signo, "Child.kill()");
+      ops.op_kill(this.#pid, signo, "Deno.Child.kill()");
     }
 
     ref() {
