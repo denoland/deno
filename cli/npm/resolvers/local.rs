@@ -351,8 +351,7 @@ fn junction_or_symlink_dir(
         Err(symlink_err) => bail!(
           concat!(
             "Failed creating junction and fallback symlink in node_modules folder.\n\n",
-            "{:#}\n\n{:#}\n\n",
-            "Maybe try enabling developer mode on Windows?"
+            "{:#}\n\n{:#}",
           ),
           junction_err,
           symlink_err,
