@@ -16,16 +16,18 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_core::futures;
+use tokio::task::JoinHandle;
 
 use crate::fs_util;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
+use crate::npm::resolvers::common::should_sync_download;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
 
-use super::common::cache_packages;
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
 
@@ -161,19 +163,14 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      cache_packages(
-        resolver.resolution.all_packages(),
-        &resolver.cache,
-        &resolver.registry_url,
-      )
-      .await?;
 
       sync_resolution_with_fs(
         &resolver.resolution.snapshot(),
         &resolver.cache,
         &resolver.registry_url,
         &resolver.root_node_modules_path,
-      )?;
+      )
+      .await?;
 
       Ok(())
     }
@@ -186,7 +183,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 }
 
 /// Creates a pnpm style folder structure.
-fn sync_resolution_with_fs(
+async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &NpmCache,
   registry_url: &Url,
@@ -205,22 +202,50 @@ fn sync_resolution_with_fs(
   //
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_id>/node_modules/<package_name>
-  let all_packages = snapshot.all_packages();
+  let sync_download = should_sync_download();
+  let mut all_packages = snapshot.all_packages();
+  if sync_download {
+    // we're running the tests not with --quiet
+    // and we want the output to be deterministic
+    all_packages.sort_by(|a, b| a.id.cmp(&b.id));
+  }
+  let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
+    Vec::with_capacity(all_packages.len());
   for package in &all_packages {
     let folder_name = get_package_folder_name(&package.id);
     let folder_path = deno_local_registry_dir.join(&folder_name);
     let initialized_file = folder_path.join("deno_initialized");
     if !initialized_file.exists() {
-      let sub_node_modules = folder_path.join("node_modules");
-      let package_path = join_package_name(&sub_node_modules, &package.id.name);
-      fs::create_dir_all(&package_path)
-        .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-      let cache_folder = cache.package_folder(&package.id, registry_url);
-      // for now copy, but in the future consider hard linking
-      fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
-      // write out a file that indicates this folder has been initialized
-      fs::write(initialized_file, "")?;
+      let cache = cache.clone();
+      let registry_url = registry_url.clone();
+      let package = package.clone();
+      let handle = tokio::task::spawn(async move {
+        cache
+          .ensure_package(&package.id, &package.dist, &registry_url)
+          .await?;
+        let sub_node_modules = folder_path.join("node_modules");
+        let package_path =
+          join_package_name(&sub_node_modules, &package.id.name);
+        fs::create_dir_all(&package_path)
+          .with_context(|| format!("Creating '{}'", folder_path.display()))?;
+        let cache_folder = cache.package_folder(&package.id, &registry_url);
+        // for now copy, but in the future consider hard linking
+        fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
+        // write out a file that indicates this folder has been initialized
+        fs::write(initialized_file, "")?;
+        Ok(())
+      });
+      if sync_download {
+        handle.await??;
+      } else {
+        handles.push(handle);
+      }
     }
+  }
+
+  let results = futures::future::join_all(handles).await;
+  for result in results {
+    result??; // surface the first error
   }
 
   // 2. Symlink all the dependencies into the .deno directory.
