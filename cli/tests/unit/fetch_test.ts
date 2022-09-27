@@ -8,7 +8,6 @@ import {
   unimplemented,
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
-import { consoleSize } from "../../../test_util/std/_deno_unstable.ts";
 
 Deno.test(
   { permissions: { net: true } },
