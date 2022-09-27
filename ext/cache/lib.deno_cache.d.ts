@@ -35,7 +35,10 @@ declare interface Cache {
    * 1. You cannot match cache objects using by relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
-  match(request: RequestInfo | URL): Promise<Response | undefined>;
+  match(
+    request: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<Response | undefined>;
   /**
    * Delete cache object matching the provided request.
    *
@@ -43,7 +46,10 @@ declare interface Cache {
    * 1. You cannot delete cache objects using by relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
-  delete(request: RequestInfo | URL): Promise<boolean>;
+  delete(
+    request: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<boolean>;
 }
 
 /** @category Cache API */
@@ -57,3 +63,10 @@ declare var CacheStorage: {
   prototype: CacheStorage;
   new (): CacheStorage;
 };
+
+/** @category Cache API */
+interface CacheQueryOptions {
+  ignoreMethod?: boolean;
+  ignoreSearch?: boolean;
+  ignoreVary?: boolean;
+}
