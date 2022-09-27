@@ -95,7 +95,7 @@
     }
 
     kill(signo) {
-      opKill(this.pid, signo, "Process.kill()");
+      opKill(this.pid, signo, "Deno.Process.kill()");
     }
   }
 
