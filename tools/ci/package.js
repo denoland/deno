@@ -11,7 +11,7 @@
 
 import { CargoBuildManifest } from "./_util.js";
 
-const ARCHIVE_COUNT = 3;
+const ARCHIVE_COUNT = 5;
 
 const profile = Deno.args[0];
 const manifestPath = `./target/${profile}/cargo_build_manifest.json`;
@@ -36,7 +36,7 @@ artifacts.push(...cdylibs);
 
 const artifactsPerArchive = Math.ceil(artifacts.length / ARCHIVE_COUNT);
 
-for (let i = 0; i < 3; i += 1) {
+for (let i = 0; i < ARCHIVE_COUNT; i += 1) {
   const path = `artifacts_${i + 1}.tar`;
   const files = artifacts.slice(
     i * artifactsPerArchive,

@@ -104,6 +104,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-debug-linux:
     name: "test/linux (debug, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
@@ -142,6 +144,8 @@ jobs:
           tar -xpf artifacts_1.tar
           tar -xpf artifacts_2.tar
           tar -xpf artifacts_3.tar
+          tar -xpf artifacts_4.tar
+          tar -xpf artifacts_5.tar
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 1"
   build-release-linux:
@@ -190,6 +194,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-release-linux:
     name: "test/linux (release, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}"
@@ -228,6 +234,8 @@ jobs:
           tar -xpf artifacts_1.tar
           tar -xpf artifacts_2.tar
           tar -xpf artifacts_3.tar
+          tar -xpf artifacts_4.tar
+          tar -xpf artifacts_5.tar
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 1"
   wpt-release-linux:
@@ -274,6 +282,8 @@ jobs:
           tar -xpf artifacts_1.tar
           tar -xpf artifacts_2.tar
           tar -xpf artifacts_3.tar
+          tar -xpf artifacts_4.tar
+          tar -xpf artifacts_5.tar
       - name: Set up WPT runner
         run: deno run -A --unstable ./tools/wpt.ts setup
       - name: Set up hosts file
@@ -329,6 +339,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-debug-macos:
     name: "test/macos (debug, shard ${{ matrix.shard }})"
     runs-on: macos-11
@@ -369,6 +381,8 @@ jobs:
           gtar -xpf artifacts_1.tar
           gtar -xpf artifacts_2.tar
           gtar -xpf artifacts_3.tar
+          gtar -xpf artifacts_4.tar
+          gtar -xpf artifacts_5.tar
       - name: File info
         run: file target/debug/* target/debug/deps/*
       - name: Run tests
@@ -420,6 +434,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-release-macos:
     name: "test/macos (release, shard ${{ matrix.shard }})"
     runs-on: macos-11
@@ -460,6 +476,8 @@ jobs:
           gtar -xpf artifacts_1.tar
           gtar -xpf artifacts_2.tar
           gtar -xpf artifacts_3.tar
+          gtar -xpf artifacts_4.tar
+          gtar -xpf artifacts_5.tar
       - name: File info
         run: file target/release/* target/release/deps/*
       - name: Run tests
@@ -515,6 +533,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-debug-windows:
     name: "test/windows (debug, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
@@ -558,6 +578,8 @@ jobs:
           tar -xpf artifacts_1.tar
           tar -xpf artifacts_2.tar
           tar -xpf artifacts_3.tar
+          tar -xpf artifacts_4.tar
+          tar -xpf artifacts_5.tar
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js debug ${{ matrix.shard }} 3"
   build-release-windows:
@@ -610,6 +632,8 @@ jobs:
             artifacts_1.tar
             artifacts_2.tar
             artifacts_3.tar
+            artifacts_4.tar
+            artifacts_5.tar
   test-release-windows:
     name: "test/windows (release, shard ${{ matrix.shard }})"
     runs-on: "${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}"
@@ -653,6 +677,8 @@ jobs:
           tar -xpf artifacts_1.tar
           tar -xpf artifacts_2.tar
           tar -xpf artifacts_3.tar
+          tar -xpf artifacts_4.tar
+          tar -xpf artifacts_5.tar
       - name: Run tests
         run: "deno run --allow-read --allow-run ./tools/ci/test.js release ${{ matrix.shard }} 3"
   upload_canary:
@@ -683,6 +709,8 @@ jobs:
           tar -xpf linux/artifacts_1.tar -C linux
           tar -xpf linux/artifacts_2.tar -C linux
           tar -xpf linux/artifacts_3.tar -C linux
+          tar -xpf linux/artifacts_4.tar -C linux
+          tar -xpf linux/artifacts_5.tar -C linux
       - name: Create zip (linux)
         run: cd linux/target/release && zip -r ../../../deno-x86_64-unknown-linux-gnu.zip deno
       - name: Upload zip to dl.deno.land (linux)
@@ -697,6 +725,8 @@ jobs:
           gtar -xpf macos/artifacts_1.tar -C macos
           gtar -xpf macos/artifacts_2.tar -C macos
           gtar -xpf macos/artifacts_3.tar -C macos
+          gtar -xpf macos/artifacts_4.tar -C macos
+          gtar -xpf macos/artifacts_5.tar -C macos
       - name: Create zip (macos)
         run: cd macos/target/release && zip -r ../../../deno-x86_64-apple-darwin.zip deno
       - name: Upload zip to dl.deno.land (macos)
@@ -711,6 +741,8 @@ jobs:
           tar -xpf windows/artifacts_1.tar -C windows
           tar -xpf windows/artifacts_2.tar -C windows
           tar -xpf windows/artifacts_3.tar -C windows
+          tar -xpf windows/artifacts_4.tar -C windows
+          tar -xpf windows/artifacts_5.tar -C windows
       - name: Create zip (windows)
         run: cd windows/target/release && zip -r ../../../deno-x86_64-pc-windows-msvc.zip deno.exe
       - name: Upload zip to dl.deno.land (windows)

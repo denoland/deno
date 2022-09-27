@@ -190,11 +190,11 @@ const PLATFORMS = [
 const MAIN_CONDITION =
   "(github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')))";
 
-const ARTIFACT_PATHS = [
-  "artifacts_1.tar",
-  "artifacts_2.tar",
-  "artifacts_3.tar",
-];
+const ARCHIVE_COUNT = 5;
+const ARTIFACT_PATHS = Array.from(
+  { length: ARCHIVE_COUNT },
+  (_, i) => `artifacts_${i + 1}.tar`,
+);
 
 const releases = [];
 const tests = [];
