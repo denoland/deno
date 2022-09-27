@@ -55,12 +55,14 @@ use std::path::PathBuf;
 pub use rand; // Re-export rand
 
 mod decrypt;
+mod ed25519;
 mod encrypt;
 mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
 mod shared;
+mod x25519;
 
 pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::encrypt::op_crypto_encrypt;
@@ -98,6 +100,19 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       op_crypto_random_uuid::decl(),
       op_crypto_wrap_key::decl(),
       op_crypto_unwrap_key::decl(),
+      op_crypto_base64url::decl(),
+      x25519::op_generate_x25519_keypair::decl(),
+      x25519::op_derive_bits_x25519::decl(),
+      x25519::op_import_spki_x25519::decl(),
+      x25519::op_import_pkcs8_x25519::decl(),
+      ed25519::op_generate_ed25519_keypair::decl(),
+      ed25519::op_import_spki_ed25519::decl(),
+      ed25519::op_import_pkcs8_ed25519::decl(),
+      ed25519::op_sign_ed25519::decl(),
+      ed25519::op_verify_ed25519::decl(),
+      ed25519::op_export_spki_ed25519::decl(),
+      ed25519::op_export_pkcs8_ed25519::decl(),
+      ed25519::op_jwk_x_ed25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -106,6 +121,13 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       Ok(())
     })
     .build()
+}
+
+#[op]
+pub fn op_crypto_base64url(data: String) -> ZeroCopyBuf {
+  let data: Vec<u8> =
+    base64::encode_config(data, base64::URL_SAFE_NO_PAD).into();
+  data.into()
 }
 
 #[op]
