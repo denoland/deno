@@ -207,9 +207,9 @@ fn visit_modules(
   for module in modules {
     if module.media_type == MediaType::Json {
       // skip visiting Json modules as they are leaves
-      continue; 
+      continue;
     }
-    
+
     let text_info =
       match parsed_source_cache.get_parsed_source_from_module(module)? {
         Some(source) => source.text_info().clone(),
