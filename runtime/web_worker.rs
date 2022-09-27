@@ -9,6 +9,7 @@ use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -375,7 +376,10 @@ impl WebWorker {
         Ok(())
       })
       .build();
-    let cache = options.cache_storage_dir.map(SqliteBackedCache::new);
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(Box::new(create_cache_fn)))
+    });
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -395,7 +399,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(cache),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

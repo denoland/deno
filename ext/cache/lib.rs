@@ -4,7 +4,6 @@ mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
 use async_trait::async_trait;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
@@ -18,6 +17,7 @@ use deno_core::ResourceId;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -172,17 +172,23 @@ pub fn get_cache<CA>(state: &Rc<RefCell<OpState>>) -> Result<CA, AnyError>
 where
   CA: Cache + 'static,
 {
-  let state = state.borrow();
-  let cache = state.try_borrow::<CA>().ok_or_else(|| {
-    custom_error(
-      "DOMExceptionNotSupportedError",
-      "Cache API is not supported in this context.",
-    )
-  })?;
-  Ok(cache.clone())
+  let mut state = state.borrow_mut();
+  if let Some(cache) = state.try_borrow::<CA>() {
+    Ok(cache.clone())
+  } else {
+    let create_cache = state.borrow::<CreateCache<CA>>().clone();
+    let cache = create_cache.0();
+    state.put(cache);
+    Ok(state.borrow::<CA>().clone())
+  }
 }
 
-pub fn init<CA: Cache + 'static>(maybe_cache: Option<CA>) -> Extension {
+#[derive(Clone)]
+pub struct CreateCache<C: Cache + 'static>(pub Arc<Box<dyn Fn() -> C>>);
+
+pub fn init<CA: Cache + 'static>(
+  maybe_create_cache: Option<CreateCache<CA>>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/cache",
@@ -197,8 +203,8 @@ pub fn init<CA: Cache + 'static>(maybe_cache: Option<CA>) -> Extension {
       op_cache_delete::decl::<CA>(),
     ])
     .state(move |state| {
-      if let Some(cache) = &maybe_cache {
-        state.put(cache.clone())
+      if let Some(create_cache) = maybe_create_cache.clone() {
+        state.put(create_cache);
       }
       Ok(())
     })

@@ -7,6 +7,7 @@ use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -133,7 +134,10 @@ impl MainWorker {
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
-    let cache = options.cache_storage_dir.map(SqliteBackedCache::new);
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(Box::new(create_cache_fn)))
+    });
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -154,7 +158,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
-      deno_cache::init::<SqliteBackedCache>(cache),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
