@@ -165,6 +165,7 @@
 
       const body = new InnerBody(req.blobUrlEntry.stream());
       terminator[abortSignal.add](() => body.error(terminator.reason));
+      processUrlList(req.urlList, req.urlListProcessed);
 
       return {
         headerList: [
@@ -179,7 +180,9 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
+        urlList: recursive
+          ? []
+          : [...new SafeArrayIterator(req.urlListProcessed)],
       };
     }
 
