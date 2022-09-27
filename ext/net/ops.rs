@@ -252,8 +252,10 @@ where
     } if transport == "udp" => {
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<NP>()
-          .check_net(&(&args.hostname, Some(args.port)), "Deno.DatagramConn.send()")?;
+        s.borrow_mut::<NP>().check_net(
+          &(&args.hostname, Some(args.port)),
+          "Deno.DatagramConn.send()",
+        )?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
