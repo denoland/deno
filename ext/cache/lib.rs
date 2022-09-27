@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 mod sqlite;
+use deno_core::ByteString;
 pub use sqlite::SqliteBackedCache;
 
 use async_trait::async_trait;
@@ -24,11 +25,8 @@ use std::sync::Arc;
 pub struct CachePutRequest {
   pub cache_id: i64,
   pub request_url: String,
-  // TODO(@satyarohith): use ByteString for headers.
-  // Note: ByteString cannot be stored as JSON in sqlite.
-  // Serialize into a buffer with V8 serializer.
-  pub request_headers: Vec<(String, String)>,
-  pub response_headers: Vec<(String, String)>,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+  pub response_headers: Vec<(ByteString, ByteString)>,
   pub response_has_body: bool,
   pub response_status: u16,
   pub response_status_text: String,
@@ -39,7 +37,7 @@ pub struct CachePutRequest {
 pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
-  pub request_headers: Vec<(String, String)>,
+  pub request_headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -51,8 +49,8 @@ pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
 pub struct CacheMatchResponseMeta {
   pub response_status: u16,
   pub response_status_text: String,
-  pub request_headers: Vec<(String, String)>,
-  pub response_headers: Vec<(String, String)>,
+  pub request_headers: Vec<(ByteString, ByteString)>,
+  pub response_headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]

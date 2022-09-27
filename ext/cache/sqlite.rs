@@ -3,9 +3,9 @@
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::ByteString;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use rusqlite::params;
@@ -57,8 +57,8 @@ impl SqliteBackedCache {
                     id                     INTEGER PRIMARY KEY,
                     cache_id               INTEGER NOT NULL,
                     request_url            TEXT NOT NULL,
-                    request_headers        TEXT NOT NULL,
-                    response_headers       TEXT NOT NULL,
+                    request_headers        BLOB NOT NULL,
+                    response_headers       BLOB NOT NULL,
                     response_status        INTEGER NOT NULL,
                     response_status_text   TEXT,
                     response_body_key      TEXT,
@@ -206,12 +206,12 @@ impl Cache for SqliteBackedCache {
         (request.cache_id, &request.request_url),
         |row| {
           let response_body_key: Option<String> = row.get(0)?;
-          let response_headers: String = row.get(1)?;
+          let response_headers: Vec<u8> = row.get(1)?;
           let response_status: u16 = row.get(2)?;
           let response_status_text: String = row.get(3)?;
-          let request_headers: String = row.get(4)?;
-          let response_headers: Vec<(String, String)> = serde_json::from_str(&response_headers).expect("malformed response headers from db");
-          let request_headers: Vec<(String, String)> = serde_json::from_str(&request_headers).expect("malformed request headers from db");
+          let request_headers: Vec<u8> = row.get(4)?;
+          let response_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&response_headers);
+          let request_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&request_headers);
           Ok((CacheMatchResponseMeta {request_headers, response_headers,response_status,response_status_text}, response_body_key))
         },
       );
@@ -304,8 +304,8 @@ async fn insert_cache_asset(
         (
           put.cache_id,
           put.request_url,
-          serde_json::to_string(&put.request_headers)?,
-          serde_json::to_string(&put.response_headers)?,
+          serialize_headers(&put.request_headers),
+          serialize_headers(&put.response_headers),
           response_body_key,
           put.response_status,
           put.response_status_text,
@@ -331,10 +331,14 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
 /// Check if the headers provided in the vary_header match
 /// the query request headers and the cached request headers.
 fn vary_header_matches(
-  vary_header: &str,
-  query_request_headers: &[(String, String)],
-  cached_request_headers: &[(String, String)],
+  vary_header: &ByteString,
+  query_request_headers: &[(ByteString, ByteString)],
+  cached_request_headers: &[(ByteString, ByteString)],
 ) -> bool {
+  let vary_header = match std::str::from_utf8(&vary_header) {
+    Ok(vary_header) => vary_header,
+    Err(_) => return false,
+  };
   let headers = get_headers_from_vary_header(vary_header);
   for header in headers {
     let query_header = get_header(&header, query_request_headers);
@@ -353,10 +357,19 @@ fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
     .collect()
 }
 
-fn get_header(name: &str, headers: &[(String, String)]) -> Option<String> {
+fn get_header(
+  name: &str,
+  headers: &[(ByteString, ByteString)],
+) -> Option<ByteString> {
   headers
     .iter()
-    .find(|(k, _)| k.to_lowercase() == name.to_lowercase())
+    .find(|(k, _)| {
+      if let Ok(k) = std::str::from_utf8(&k) {
+        k.eq_ignore_ascii_case(name)
+      } else {
+        false
+      }
+    })
     .map(|(_, v)| v.to_owned())
 }
 
@@ -449,4 +462,42 @@ impl Resource for CacheResponseResource {
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
+}
+
+fn serialize_headers(headers: &[(ByteString, ByteString)]) -> Vec<u8> {
+  let mut serialized_headers = Vec::new();
+  for (name, value) in headers {
+    serialized_headers.extend_from_slice(&name);
+    serialized_headers.extend_from_slice(b"\r\n");
+    serialized_headers.extend_from_slice(&value);
+    serialized_headers.extend_from_slice(b"\r\n");
+  }
+  serialized_headers
+}
+
+fn deserialize_headers(
+  serialized_headers: &[u8],
+) -> Vec<(ByteString, ByteString)> {
+  let mut headers = Vec::new();
+  let mut piece = None;
+  let mut start = 0;
+  for (i, byte) in serialized_headers.iter().enumerate() {
+    if byte == &b'\r' && serialized_headers.get(i + 1) == Some(&b'\n') {
+      if piece.is_none() {
+        piece = Some(start..i);
+      } else {
+        let name = piece.unwrap();
+        let value = start..i;
+        headers.push((
+          ByteString::from(&serialized_headers[name]),
+          ByteString::from(&serialized_headers[value]),
+        ));
+        piece = None;
+      }
+      start = i + 2;
+    }
+  }
+  assert!(piece.is_none());
+  assert_eq!(start, serialized_headers.len());
+  headers
 }
