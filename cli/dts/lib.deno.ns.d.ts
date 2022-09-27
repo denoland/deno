@@ -11,7 +11,21 @@
  * @category ES Modules
  */
 declare interface ImportMeta {
-  /** A string representation of the fully qualified module URL. */
+  /** A string representation of the fully qualified module URL. When the
+   * module is loaded locally, the value will be a file URL (e.g.
+   * `file:///path/module.ts`).
+   *
+   * You can also parse the string as a URL to determine more information about
+   * how the current module was loaded. For example to determine if a module was
+   * local or not:
+   *
+   * ```ts
+   * const url = new URL(import.meta.url);
+   * if (url.protocol === "file:") {
+   *   console.log("this module was loaded locally");
+   * }
+   * ```
+   */
   url: string;
 
   /** A flag that indicates if the current module is the main module that was
@@ -36,10 +50,12 @@ declare interface ImportMeta {
   resolve(specifier: string): string;
 }
 
-/** Deno supports user timing Level 3 (see: https://w3c.github.io/user-timing)
- * which is not widely supported yet in other runtimes.  These types are here
- * so that these features are still available when using the Deno namespace
- * in conjunction with other type libs, like `dom`.
+/** Deno supports user [timing Level 3](https://w3c.github.io/user-timing)
+ * which is not widely supported yet in other runtimes.
+ *
+ * Check out the
+ * [Performance API](https://developer.mozilla.org/en-US/docs/Web/API/Performance)
+ * documentation on MDN for further information about how to use the API.
  *
  * @category Performance API
  */
@@ -56,6 +72,11 @@ declare interface Performance {
 }
 
 /**
+ * Options which are used in conjunction with `performance.mark`.  Check out the
+ * MDN
+ * [`performance.mark()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark#markoptions)
+ * documentation for more details.
+ *
  * @category Performance API
  */
 declare interface PerformanceMarkOptions {
@@ -68,6 +89,11 @@ declare interface PerformanceMarkOptions {
 }
 
 /**
+ * Options which are used in conjunction with `performance.measure`.  Check out the
+ * MDN
+ * [`performance.mark()`](https://developer.mozilla.org/en-US/docs/Web/API/Performance/measure#measureoptions)
+ * documentation for more details.
+ *
  * @category Performance API
  */
 declare interface PerformanceMeasureOptions {
@@ -86,60 +112,167 @@ declare interface PerformanceMeasureOptions {
   end?: string | number;
 }
 
+/** The global namespace where Deno specific, non-standard APIs are located. */
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs.
+   *
+   * The can be used to provide more specific handling of failures within code
+   * which is using Deno APIs.  For example, handling attempting to open a file:
+   *
+   * ```ts
+   * try {
+   *   const file = await Deno.open("./some/file.txt");
+   * } catch (error) {
+   *   if (error instanceof Deno.errors.NotFound) {
+   *     console.error("the file was not found");
+   *   } else {
+   *     // otherwise re-throw
+   *     throw error;
+   *   }
+   * }
+   * ```
    *
    * @category Errors
    */
   export namespace errors {
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system indicates that the file
+     * was not found.
+     *
+     * @category Errors */
     export class NotFound extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system indicates the current user
+     * which the Deno process is running under does not have the appropriate
+     * permissions to a file or resource.
+     *
+     * @category Errors */
     export class PermissionDenied extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports that a connection to
+     * a resource is refused.
+     *
+     * @category Errors */
     export class ConnectionRefused extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports that a connection has
+     * been reset. With network servers, it can be a _normal_ occurrence where a
+     * client will abort a connection instead of properly tearing down the
+     * connection.
+     *
+     * @category Errors */
     export class ConnectionReset extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports an `ECONNABORTED`
+     * error.
+     *
+     * @category Errors */
     export class ConnectionAborted extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports an `ENOTCONN` error.
+     *
+     * @category Errors */
     export class NotConnected extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when attempting to open a server listener on an address and port
+     * that already has a listener.
+     *
+     * @category Errors */
     export class AddrInUse extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports an `EADDRNOTAVAIL`
+     * error.
+     *
+     * @category Errors */
     export class AddrNotAvailable extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when trying to write to a resource and a broken pipe error occurs.
+     * This can happen when trying to write directly to `stdout` or `stderr`
+     * and the operating system is unable to pipe the output for a reason
+     * external to the Deno runtime.
+     *
+     * @category Errors */
     export class BrokenPipe extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when trying to create a resource, like a file, that already
+     * exits.
+     *
+     * @category Errors */
     export class AlreadyExists extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when trying to internally convert data from an resource into a
+     * string. Deno expects source data to be encoded as UTF-8 and will error
+     * if the data is not valid UTF-8.
+     *
+     * @category Errors */
     export class InvalidData extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports that an I/O operation
+     * has timed out (`ETIMEDOUT`).
+     *
+     * @category Errors */
     export class TimedOut extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying operating system reports an `EINTR` error. In
+     * many cases, this underlying IO error will be handled internally within
+     * Deno, or result in an @{link BadResource} error instead.
+     *
+     * @category Errors */
     export class Interrupted extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when expecting to write to a IO buffer resulted in zero bytes
+     * being written.
+     *
+     * @category Errors */
     export class WriteZero extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when attempting to read bytes from a resource, but the EOF was
+     * unexpectedly encountered.
+     *
+     * @category Errors */
     export class UnexpectedEof extends Error {}
-    /** @category Errors */
+    /**
+     * The underlying IO resource is invalid or closed, and so the operation
+     * could not be performed.
+     *
+     * @category Errors */
     export class BadResource extends Error {}
-    /** @category Errors */
+    /**
+     * Raised in situations where when attempting to load a dynamic import,
+     * too many redirects were encountered.
+     *
+     * @category Errors */
     export class Http extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying IO resource is not available because it is
+     * being awaited on in another block of code.
+     *
+     * @category Errors */
     export class Busy extends Error {}
-    /** @category Errors */
+    /**
+     * Raised when the underlying Deno API is asked to perform a function that
+     * is not currently supported.
+     *
+     * @category Errors */
     export class NotSupported extends Error {}
   }
 
-  /** The current process id of the runtime.
+  /** The current process ID of this instance of the Deno CLI.
+   *
+   * ```ts
+   * console.log(Deno.pid);
+   * ```
    *
    * @category Runtime Environment
    */
   export const pid: number;
 
   /**
-   * The pid of the current process's parent.
+   * The process ID of parent process of this instance of the Deno CLI.
+   *
+   * ```ts
+   * console.log(Deno.ppid);
+   * ```
    *
    * @category Runtime Environment
    */
@@ -147,15 +280,21 @@ declare namespace Deno {
 
   /** @category Runtime Environment */
   export interface MemoryUsage {
+    /** The number of bytes of the current Deno's process resident set size,
+     * which is the amount of memory occupied in main memory (RAM). */
     rss: number;
+    /** The total size of the heap for V8, in bytes. */
     heapTotal: number;
+    /** The amount of the heap used for V8, in bytes. */
     heapUsed: number;
+    /** Memory, in bytes, associated with JavaScript objects outside of the
+     * JavaScript isolate. */
     external: number;
   }
 
   /**
-   * Returns an object describing the memory usage of the Deno process measured
-   * in bytes.
+   * Returns an object describing the memory usage of the Deno process and the
+   * V8 subsystem measured in bytes.
    *
    * @category Runtime Environment
    */
@@ -163,17 +302,36 @@ declare namespace Deno {
 
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
+   * When the value is `true`, the Deno CLI will attempt to not send color codes
+   * to `stderr` or `stdout` and other command line programs should also attempt
+   * to respect this value.
+   *
    * See: https://no-color.org/
    *
    * @category Runtime Environment
    */
   export const noColor: boolean;
 
-  /** @category Permissions */
-  export type PermissionOptions = "inherit" | "none" | PermissionOptionsObject;
+  /**
+   * Options which define the permissions within a test context.
+   *
+   * `"inherit"` would ensure that all permissions of the parent process will be
+   * applied to the test context. `"none"` would ensure the test context has no
+   * permissions. A `TestPermissionOptionsObject` would provide a more specific
+   * set of permissions to the test context.
+   *
+   * @category Testing */
+  export type TestPermissionOptions =
+    | "inherit"
+    | "none"
+    | TestPermissionOptionsObject;
 
-  /** @category Permissions */
-  export interface PermissionOptionsObject {
+  /**
+   * An set of options which can define the permissions within a test context
+   * at a highly specific level.
+   *
+   * @category Testing */
+  export interface TestPermissionOptionsObject {
     /** Specifies if the `env` permission should be requested or revoked.
      * If set to `"inherit"`, the current `env` permission will be inherited.
      * If set to `true`, the global `env` permission will be requested.
@@ -306,32 +464,68 @@ declare namespace Deno {
     write?: "inherit" | boolean | Array<string | URL>;
   }
 
-  /** @category Testing */
+  /**
+   * Context that is passed to a testing function, which can be used to either
+   * gain information about the current test, or register additional test
+   * steps within the current test.
+   *
+   * @category Testing */
   export interface TestContext {
-    /**
-     * The current test name.
-     */
+    /** The current test name. */
     name: string;
-    /**
-     * File Uri of the current test code.
-     */
+    /** The string URL of the current test. */
     origin: string;
-    /**
-     * Parent test context.
-     */
+    /** If the current test is a step of another test, the parent test context
+     * will be set here. */
     parent?: TestContext;
 
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
+     *
      * The returned promise never rejects unless the arguments are invalid.
+     *
      * If the test was ignored the promise returns `false`.
+     *
+     * ```ts
+     * Deno.test({
+     *   name: "a parent test",
+     *   fn(t) {
+     *     console.log("before the step");
+     *     await t.step({
+     *       name: "step 1",
+     *       fn(t) {
+     *         console.log("current step:", t.name);
+     *       }
+     *     });
+     *     console.log("after the step");
+     *   }
+     * });
+     * ```
      */
-    step(t: TestStepDefinition): Promise<boolean>;
+    step(definition: TestStepDefinition): Promise<boolean>;
 
     /** Run a sub step of the parent test or step. Returns a promise
      * that resolves to a boolean signifying if the step completed successfully.
+     *
      * The returned promise never rejects unless the arguments are invalid.
+     *
      * If the test was ignored the promise returns `false`.
+     *
+     * ```ts
+     * Deno.test(
+     *   "a parent test",
+     *   (t) => {
+     *     console.log("before the step");
+     *     await t.step(
+     *       "step 1",
+     *       (t) => {
+     *         console.log("current step:", t.name);
+     *       }
+     *     );
+     *     console.log("after the step");
+     *   }
+     * );
+     * ```
      */
     step(
       name: string,
@@ -341,22 +535,31 @@ declare namespace Deno {
 
   /** @category Testing */
   export interface TestStepDefinition {
+    /** The test function that will be tested when this step is executed.  The
+     * function can take an argument which will provide information about the
+     * current step's context. */
     fn: (t: TestContext) => void | Promise<void>;
-    /**
-     * The current test name.
-     */
+    /** The current test name. */
     name: string;
+    /** If truthy the current test step will be ignored. */
     ignore?: boolean;
-    /** Check that the number of async completed ops after the test step is the same
-     * as number of dispatched ops. Defaults to the parent test or step's value. */
+    /** Check that the number of async completed operations after the test step
+     * is the same as number of dispatched operations.  This ensures that the
+     * code tested is not leaving requests outside of the JavaScript runtime
+     * unmanaged, helping ensure that memory leaks are less likely.
+     *
+     * Defaults to the parent test or step's value. */
     sanitizeOps?: boolean;
-    /** Ensure the test step does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test. Defaults
-     * to the parent test or step's value. */
+    /** Ensure the test step does not "leak" resources, like open files or
+     * network connections by ensuring the open resources at the start of the
+     * test is the same as at the end of the test.
+     *
+     * Defaults to the parent test or step's value. */
     sanitizeResources?: boolean;
     /** Ensure the test step does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to the parent test or
-     * step's value. */
+     * for example via a call to {@link Deno.exit}.
+     *
+     * Defaults to the parent test or step's value. */
     sanitizeExit?: boolean;
   }
 
@@ -388,7 +591,7 @@ declare namespace Deno {
      *
      * Defaults to "inherit".
      */
-    permissions?: PermissionOptions;
+    permissions?: TestPermissionOptions;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
