@@ -279,7 +279,7 @@ where
       {
         let mut s = state.borrow_mut();
         s.borrow_mut::<NP>()
-          .check_write(address_path, "Datagram.send()")?;
+          .check_write(address_path, "Deno.DatagramConn.send()")?;
       }
       let resource = state
         .borrow()
