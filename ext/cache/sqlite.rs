@@ -159,8 +159,13 @@ impl Cache for SqliteBackedCache {
   ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
     let response_body_key = if request_response.response_has_body {
-      Some(hash(&request_response.request_url))
+      Some(hash(&format!(
+        "{}_{}",
+        &request_response.request_url,
+        now.as_nanos()
+      )))
     } else {
       None
     };
@@ -170,16 +175,12 @@ impl Cache for SqliteBackedCache {
         get_responses_dir(cache_storage_dir, request_response.cache_id);
       let response_path = responses_dir.join(&body_key);
       let file = tokio::fs::File::create(response_path).await?;
-      let duration_since_epoch = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
-      let start_time = duration_since_epoch.as_secs();
       Ok(Some(Rc::new(CachePutResource {
         file: AsyncRefCell::new(file),
         db,
         put_request: request_response,
         response_body_key: body_key,
-        start_time,
+        start_time: now.as_secs(),
       })))
     } else {
       insert_cache_asset(db, request_response, None).await?;
@@ -386,13 +387,12 @@ impl CachePutResource {
     let mut file = resource.borrow_mut().await;
     file.flush().await?;
     file.sync_all().await?;
-    let response_body_key = insert_cache_asset(
+    insert_cache_asset(
       self.db.clone(),
       self.put_request.clone(),
       Some((self.response_body_key.clone(), self.start_time)),
     )
     .await?;
-    assert!(response_body_key.is_some());
     Ok(())
   }
 }
