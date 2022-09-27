@@ -340,16 +340,22 @@ fn junction_or_symlink_dir(
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
+      if cfg!(debug) {
+        // When running the tests, junctions should be created, but if not then
+        // surface this error.
+        log::warn!("Error creating junction. {:#}", junction_err);
+      }
+
       match fs_util::symlink_dir(old_path, new_path) {
         Ok(()) => Ok(()),
         Err(symlink_err) => bail!(
           concat!(
-            "Attempted to junction and failed. Then attempted to symlink and also failed.\n\n",
-            "Junction error:\n{:#}\n\nSymlink error:\n{:#}\n\n",
-            "Maybe try enabling developer mode on your machine?"
-           ),
-           junction_err,
-           symlink_err,
+            "Failed creating junction and fallback symlink in node_modules folder.\n\n",
+            "{:#}\n\n{:#}\n\n",
+            "Maybe try enabling developer mode on Windows?"
+          ),
+          junction_err,
+          symlink_err,
         ),
       }
     }
