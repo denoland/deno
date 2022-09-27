@@ -323,7 +323,37 @@ fn symlink_package_dir(
 
   // need to delete the previous symlink before creating a new one
   let _ignore = fs::remove_dir_all(new_path);
+
+  #[cfg(windows)]
+  return junction_or_symlink_dir(old_path, new_path);
+  #[cfg(not(windows))]
   fs_util::symlink_dir(old_path, new_path)
+}
+
+#[cfg(windows)]
+fn junction_or_symlink_dir(
+  old_path: &Path,
+  new_path: &Path,
+) -> Result<(), AnyError> {
+  // Use junctions because they're supported on ntfs file systems without
+  // needing to elevate privileges on Windows
+  match junction::create(old_path, new_path) {
+    Ok(()) => Ok(()),
+    Err(junction_err) => {
+      match fs_util::symlink_dir(old_path, new_path) {
+        Ok(()) => Ok(()),
+        Err(symlink_err) => bail!(
+          concat!(
+            "Attempted to junction and failed. Then attempted to symlink and also failed.\n\n",
+            "Junction error:\n{:#}\n\nSymlink error:\n{:#}\n\n",
+            "Maybe try enabling developer mode on your machine?"
+           ),
+           junction_err,
+           symlink_err,
+        ),
+      }
+    }
+  }
 }
 
 fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
