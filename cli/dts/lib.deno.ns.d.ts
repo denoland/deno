@@ -1331,6 +1331,13 @@ declare namespace Deno {
     readonly writable: WritableStream<Uint8Array>;
   }
 
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   *  @category I/O */
+  export interface SetRawOptions {
+    cbreak: boolean;
+  }
+
   /** A handle for `stdin`.
    *
    * @category I/O
@@ -1338,6 +1345,26 @@ declare namespace Deno {
   export const stdin: Reader & ReaderSync & Closer & {
     readonly rid: number;
     readonly readable: ReadableStream<Uint8Array>;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Set TTY to be under raw mode or not. In raw mode, characters are read and
+     * returned as is, without being processed. All special processing of
+     * characters by the terminal is disabled, including echoing input
+     * characters. Reading from a TTY device in raw mode is faster than reading
+     * from a TTY device in canonical mode.
+     *
+     * The `cbreak` option can be used to indicate that characters that
+     * correspond to a signal should still be generated. When disabling raw
+     * mode, this option is ignored. This functionality currently only works on
+     * Linux and Mac OS.
+     *
+     * ```ts
+     * Deno.stdin.setRaw(true, { cbreak: true });
+     * ```
+     *
+     * @category I/O
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
   };
   /** A handle for `stdout`.
    *

@@ -880,39 +880,7 @@ declare namespace Deno {
     symbols: S,
   ): DynamicLibrary<S>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category I/O
-   */
-  export type SetRawOptions = {
-    cbreak: boolean;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Set TTY to be under raw mode or not. In raw mode, characters are read and
-   * returned as is, without being processed. All special processing of
-   * characters by the terminal is disabled, including echoing input characters.
-   * Reading from a TTY device in raw mode is faster than reading from a TTY
-   * device in canonical mode.
-   *
-   * The `cbreak` option can be used to indicate that characters that correspond
-   * to a signal should still be generated. When disabling raw mode, this option
-   * is ignored. This functionality currently only works on Linux and Mac OS.
-   *
-   * ```ts
-   * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
-   * ```
-   *
-   * @category I/O
-   */
-  export function setRaw(
-    rid: number,
-    mode: boolean,
-    options?: SetRawOptions,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
+  /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
