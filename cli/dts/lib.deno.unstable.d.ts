@@ -942,23 +942,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Get the `hostname` of the machine the Deno process is running on.
-   *
-   * ```ts
-   * console.log(Deno.hostname());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   * Additional consideration is still necessary around the permissions
-   * required.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function hostname(): string;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
@@ -1368,6 +1351,9 @@ declare namespace Deno {
   export interface ServeOptions extends Partial<Deno.ListenOptions> {
     /** An AbortSignal to close the server and all connections. */
     signal?: AbortSignal;
+
+    /** Sets SO_REUSEPORT on Linux. */
+    reusePort?: boolean;
 
     /** The handler to invoke when route handlers throw an error. */
     onError?: (error: unknown) => Response | Promise<Response>;

@@ -459,6 +459,7 @@
     const listenOpts = {
       hostname: options.hostname ?? "127.0.0.1",
       port: options.port ?? 9000,
+      reuseport: options.reusePort ?? false,
     };
     if (options.cert || options.key) {
       if (!options.cert || !options.key) {

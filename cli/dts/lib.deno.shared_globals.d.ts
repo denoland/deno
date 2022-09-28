@@ -542,10 +542,10 @@ declare class Worker extends EventTarget {
   terminate(): void;
 }
 
-/** @category Performance API */
+/** @category Performance */
 declare type PerformanceEntryList = PerformanceEntry[];
 
-/** @category Performance API */
+/** @category Performance */
 declare class Performance extends EventTarget {
   /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
@@ -595,10 +595,10 @@ declare class Performance extends EventTarget {
   toJSON(): any;
 }
 
-/** @category Performance API */
+/** @category Performance */
 declare var performance: Performance;
 
-/** @category Performance API */
+/** @category Performance */
 declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
   detail?: any;
@@ -627,7 +627,7 @@ declare interface PerformanceMeasureOptions {
  * mark or measure (for example by calling the `.mark()` method) at an explicit
  * point in an application.
  *
- * @category Performance API
+ * @category Performance
  */
 declare class PerformanceEntry {
   readonly duration: number;
@@ -642,7 +642,7 @@ declare class PerformanceEntry {
  * `performance.mark()` to add a named `DOMHighResTimeStamp` (the mark) to the
  * performance timeline.
  *
- * @category Performance API
+ * @category Performance
  */
 declare class PerformanceMark extends PerformanceEntry {
   readonly detail: any;
@@ -655,7 +655,7 @@ declare class PerformanceMark extends PerformanceEntry {
  * `performance.measure()` to add a named `DOMHighResTimeStamp` (the measure)
  * between two marks to the performance timeline.
  *
- * @category Performance API
+ * @category Performance
  */
 declare class PerformanceMeasure extends PerformanceEntry {
   readonly detail: any;
