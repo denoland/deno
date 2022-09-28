@@ -12,6 +12,9 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::node::node_resolve_npm_reference;
+use crate::node::NodeResolution;
+use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
@@ -929,9 +932,15 @@ impl Documents {
     for specifier in specifiers {
       // handle npm:<package> urls
       if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
-        results.push(
-          resolve_npm_package_reference_types(&npm_ref, npm_resolver).ok(),
-        );
+        results.push(Some(NodeResolution::into_media_type_and_specifier(
+          node_resolve_npm_reference(
+            &npm_ref,
+            NodeResolutionMode::Types,
+            npm_resolver,
+          )
+          .ok()
+          .flatten(),
+        )));
       } else if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);

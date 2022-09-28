@@ -3,6 +3,7 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;

@@ -30,6 +30,7 @@ use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
+use deno_runtime::deno_node::TYPES_CONDITIONS;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -57,9 +58,48 @@ impl NodeResolution {
       _ => unreachable!(),
     }
   }
+
+  pub fn into_media_type_and_specifier(
+    resolution: Option<Self>,
+  ) -> (ModuleSpecifier, MediaType) {
+    match resolution {
+      Some(NodeResolution::CommonJs(specifier)) => {
+        let media_type = MediaType::from(&specifier);
+        (
+          specifier,
+          match media_type {
+            MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
+            MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
+            _ => media_type,
+          },
+        )
+      }
+      Some(NodeResolution::Esm(specifier)) => {
+        let media_type = MediaType::from(&specifier);
+        (
+          specifier,
+          match media_type {
+            MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
+            MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
+            _ => media_type,
+          },
+        )
+      }
+      maybe_response => {
+        let specifier = match maybe_response {
+          Some(response) => response.into_url(),
+          None => {
+            ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
+          }
+        };
+        let media_type = MediaType::from(&specifier);
+        (specifier, media_type)
+      }
+    }
+  }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeResolutionMode {
   Execution,
   Types,
@@ -423,9 +463,8 @@ pub fn node_resolve(
     }
   }
 
-  let conditions = DEFAULT_CONDITIONS;
-  let url =
-    module_resolve(specifier, referrer, conditions, mode, npm_resolver)?;
+  let conditions = mode_conditions(mode);
+  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
@@ -452,7 +491,7 @@ pub fn node_resolve_npm_reference(
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
     NodeModuleKind::Esm,
-    mode,
+    mode_conditions(mode),
     npm_resolver,
   )
   .with_context(|| {
@@ -464,6 +503,13 @@ pub fn node_resolve_npm_reference(
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
   // "preserveSymlinksMain"/"preserveSymlinks" options.
   Ok(Some(resolve_response))
+}
+
+fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
+  match mode {
+    NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
+    NodeResolutionMode::Types => TYPES_CONDITIONS,
+  }
 }
 
 pub fn node_resolve_binary_export(
@@ -564,7 +610,7 @@ fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
   referrer_kind: NodeModuleKind,
-  mode: NodeResolutionMode,
+  conditions: &[&str],
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
@@ -578,13 +624,12 @@ fn package_config_resolve(
       exports,
       &referrer,
       referrer_kind,
-      DEFAULT_CONDITIONS,
-      mode,
+      conditions,
       npm_resolver,
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind, mode);
+    return legacy_main_resolve(&package_config, referrer_kind, conditions);
   }
 
   Ok(package_dir.join(package_subpath))
@@ -664,7 +709,6 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
-  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
@@ -678,7 +722,6 @@ fn module_resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
-        mode,
         npm_resolver,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,

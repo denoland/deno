@@ -513,6 +513,7 @@ impl ProcState {
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
+            node::NodeResolutionMode::Execution,
             &self.npm_resolver,
           ))
           .with_context(|| {
@@ -536,6 +537,7 @@ impl ProcState {
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
+                node::NodeResolutionMode::Execution,
                 &self.npm_resolver,
               ))
               .with_context(|| format!("Could not resolve '{}'.", reference));

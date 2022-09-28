@@ -66,6 +66,14 @@ impl NpmPackageResolver {
     }
   }
 
+  pub fn new_for_lsp(snapshot: Arc<NpmResolutionSnapshot>) -> Self {
+    Self {
+      unstable: true,
+      no_npm: false,
+      inner: snapshot,
+    }
+  }
+
   /// Resolves an npm package folder path from a Deno module.
   pub fn resolve_package_folder_from_deno_module(
     &self,

@@ -710,10 +710,10 @@ pub fn legacy_main_resolve(
   conditions: &[&str],
 ) -> Result<PathBuf, AnyError> {
   let is_types = conditions.len() == 1 && conditions[0] == "types";
-  let maybe_main = if !is_types {
-    package_json.main(referrer_kind)
-  } else {
+  let maybe_main = if is_types {
     package_json.types.as_ref()
+  } else {
+    package_json.main(referrer_kind)
   };
   let mut guess;
 
@@ -725,7 +725,21 @@ pub fn legacy_main_resolve(
 
     let mut found = false;
     // todo(dsherret): investigate exactly how node handles this
-    let endings = if !is_types {
+    let endings = if is_types {
+      match referrer_kind {
+        NodeModuleKind::Cjs => {
+          vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
+        }
+        NodeModuleKind::Esm => vec![
+          ".d.ts",
+          ".d.mts",
+          "/index.d.ts",
+          "/index.d.mts",
+          ".d.cts",
+          "/index.d.cts",
+        ],
+      }
+    } else {
       match referrer_kind {
         NodeModuleKind::Cjs => vec![
           ".js",
@@ -750,20 +764,6 @@ pub fn legacy_main_resolve(
           "/index.node",
         ],
       }
-    } else {
-      match referrer_kind {
-        NodeModuleKind::Cjs => {
-          vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
-        }
-        NodeModuleKind::Esm => vec![
-          ".d.ts",
-          ".d.mts",
-          "/index.d.ts",
-          "/index.d.mts",
-          ".d.cts",
-          "/index.d.cts",
-        ],
-      }
     };
     for ending in endings {
       guess = package_json
@@ -784,7 +784,12 @@ pub fn legacy_main_resolve(
     }
   }
 
-  let index_file_names = if !is_types {
+  let index_file_names = if is_types {
+    match referrer_kind {
+      NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],
+      NodeModuleKind::Esm => vec!["index.d.ts", "index.d.mts", "index.d.cts"],
+    }
+  } else {
     match referrer_kind {
       NodeModuleKind::Cjs => {
         vec!["index.js", "index.cjs", "index.json", "index.node"]
@@ -796,11 +801,6 @@ pub fn legacy_main_resolve(
         "index.json",
         "index.node",
       ],
-    }
-  } else {
-    match referrer_kind {
-      NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],
-      NodeModuleKind::Esm => vec!["index.d.ts", "index.d.mts", "index.d.cts"],
     }
   };
   for index_file_name in index_file_names {
