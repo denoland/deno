@@ -44,7 +44,7 @@ itest!(json {
 
 itest!(compact {
   args:
-    "lint --compact lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.tss",
+    "lint --compact lint/without_config/file1.js lint/without_config/ignored_file.tss",
     output: "lint/expected_compact.out",
     exit_code: 1,
 });
