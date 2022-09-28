@@ -50,6 +50,7 @@ delete Intl.v8BreakIterator;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const caches = window.__bootstrap.caches;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
   const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
@@ -469,6 +470,13 @@ delete Intl.v8BreakIterator;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
+    caches: {
+      enumerable: true,
+      configurable: true,
+      get: caches.cacheStorage,
+    },
+    CacheStorage: util.nonEnumerable(caches.CacheStorage),
+    Cache: util.nonEnumerable(caches.Cache),
     console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
