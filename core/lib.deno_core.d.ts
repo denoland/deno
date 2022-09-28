@@ -164,5 +164,26 @@ declare namespace Deno {
      * enabled.
      */
     const opCallTraces: Map<number, OpCallTrace>;
+
+    /**
+     * Adds a callback for the given Promise event. If this function is called
+     * multiple times, the callbacks are called in the order they were added.
+     * - `init_hook` is called when a new promise is created. When a new promise
+     *   is created as part of the chain in the case of `Promise.then` or in the
+     *   intermediate promises created by `Promise.{race, all}`/`AsyncFunctionAwait`,
+     *   we pass the parent promise otherwise we pass undefined.
+     * - `before_hook` is called at the beginning of the promise reaction.
+     * - `after_hook` is called at the end of the promise reaction.
+     * - `resolve_hook` is called at the beginning of resolve or reject function.
+     */
+    function setPromiseHooks(
+      init_hook?: (
+        promise: Promise<unknown>,
+        parentPromise?: Promise<unknown>,
+      ) => void,
+      before_hook?: (promise: Promise<unknown>) => void,
+      after_hook?: (promise: Promise<unknown>) => void,
+      resolve_hook?: (promise: Promise<unknown>) => void,
+    ): void;
   }
 }

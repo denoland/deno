@@ -231,27 +231,27 @@ fn bundle_js() {
 #[test]
 fn bundle_dynamic_import() {
   let _g = util::http_server();
-  let dynamic_import = util::testdata_path().join("bundle_dynamic_import.ts");
+  let dynamic_import = util::testdata_path().join("bundle/dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("bundle_dynamic_import.bundle.js");
+  let output_path = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(dynamic_import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--allow-net")
     .arg("--quiet")
-    .arg(&bundle)
+    .arg(&output_path)
     .output()
     .unwrap();
   // check the output of the test.ts program.
@@ -264,23 +264,24 @@ fn bundle_dynamic_import() {
 
 #[test]
 fn bundle_import_map() {
-  let import = util::testdata_path().join("bundle_im.ts");
-  let import_map_path = util::testdata_path().join("bundle_im.json");
+  let import = util::testdata_path().join("bundle/import_map/main.ts");
+  let import_map_path =
+    util::testdata_path().join("bundle/import_map/import_map.json");
   assert!(import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("import_map.bundle.js");
+  let output_path = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   // Now we try to use that bundle from another module.
   let test = t.path().join("test.js");
@@ -309,23 +310,24 @@ fn bundle_import_map() {
 
 #[test]
 fn bundle_import_map_no_check() {
-  let import = util::testdata_path().join("bundle_im.ts");
-  let import_map_path = util::testdata_path().join("bundle_im.json");
+  let import = util::testdata_path().join("bundle/import_map/main.ts");
+  let import_map_path =
+    util::testdata_path().join("bundle/import_map/import_map.json");
   assert!(import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("import_map.bundle.js");
+  let output_path = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   // Now we try to use that bundle from another module.
   let test = t.path().join("test.js");
@@ -414,32 +416,32 @@ fn bundle_json_module_escape_sub() {
   );
 }
 
-itest!(lock_check_err_with_bundle {
-  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/subdir/mod1.ts",
-  output: "lock_check_err_with_bundle.out",
+itest!(lockfile_check_error {
+  args: "bundle --lock=bundle/lockfile/check_error.json http://127.0.0.1:4545/subdir/mod1.ts",
+  output: "bundle/lockfile/check_error.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
-  output: "bundle.test.out",
+  output: "bundle/bundle.test.out",
 });
 
 itest!(bundle_jsx {
-  args: "bundle jsx_import_from_ts.ts",
-  output: "bundle_jsx.out",
+  args: "bundle run/jsx_import_from_ts.ts",
+  output: "bundle/jsx.out",
 });
 
-itest!(error_027_bundle_with_bare_import {
-  args: "bundle error_027_bundle_with_bare_import.ts",
-  output: "error_027_bundle_with_bare_import.ts.out",
+itest!(error_bundle_with_bare_import {
+  args: "bundle bundle/bare_imports/error_with_bare_import.ts",
+  output: "bundle/bare_imports/error_with_bare_import.ts.out",
   exit_code: 1,
 });
 
 itest!(ts_decorators_bundle {
-  args: "bundle ts_decorators_bundle.ts",
-  output: "ts_decorators_bundle.out",
+  args: "bundle bundle/decorators/ts_decorators.ts",
+  output: "bundle/decorators/ts_decorators.out",
 });
 
 itest!(bundle_export_specifier_with_alias {
@@ -449,18 +451,18 @@ itest!(bundle_export_specifier_with_alias {
 
 itest!(bundle_ignore_directives {
   args: "bundle subdir/mod1.ts",
-  output: "bundle_ignore_directives.test.out",
+  output: "bundle/ignore_directives.test.out",
 });
 
-itest!(check_local_by_default {
-  args: "bundle --quiet bundle/check_local_by_default.ts",
-  output: "bundle/check_local_by_default.out",
+itest!(check_local_by_default_no_errors {
+  args: "bundle --quiet bundle/check_local_by_default/no_errors.ts",
+  output: "bundle/check_local_by_default/no_errors.out",
   http_server: true,
 });
 
-itest!(check_local_by_default2 {
-  args: "bundle --quiet bundle/check_local_by_default2.ts",
-  output: "bundle/check_local_by_default2.out",
+itest!(check_local_by_default_type_error {
+  args: "bundle --quiet bundle/check_local_by_default/type_error.ts",
+  output: "bundle/check_local_by_default/type_error.out",
   http_server: true,
   exit_code: 1,
 });

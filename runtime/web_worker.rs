@@ -9,6 +9,8 @@ use crate::tokio_util::run_local;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -31,7 +33,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
-use deno_node::DenoDirNpmResolver;
+use deno_node::RequireNpmResolver;
 use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -324,7 +326,7 @@ pub struct WebWorkerOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn DenoDirNpmResolver>>,
+  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -337,6 +339,7 @@ pub struct WebWorkerOptions {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
 }
 
@@ -373,6 +376,10 @@ impl WebWorker {
         Ok(())
       })
       .build();
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
@@ -392,6 +399,7 @@ impl WebWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),

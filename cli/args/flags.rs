@@ -45,30 +45,30 @@ static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
     .to_string()
 });
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BenchFlags {
   pub ignore: Vec<PathBuf>,
   pub include: Option<Vec<String>>,
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct BundleFlags {
   pub source_file: String,
   pub out_file: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CheckFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<PathBuf>,
@@ -76,12 +76,12 @@ pub struct CompileFlags {
   pub target: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CoverageFlags {
   pub files: Vec<PathBuf>,
   pub output: Option<PathBuf>,
@@ -91,7 +91,7 @@ pub struct CoverageFlags {
   pub lcov: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
@@ -99,14 +99,14 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
   pub ext: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct FmtFlags {
   pub check: bool,
   pub files: Vec<PathBuf>,
@@ -119,18 +119,18 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InitFlags {
   pub dir: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct InstallFlags {
   pub module_url: String,
   pub args: Vec<String>,
@@ -139,13 +139,13 @@ pub struct InstallFlags {
   pub force: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct LintFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
@@ -157,13 +157,13 @@ pub struct LintFlags {
   pub compact: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RunFlags {
   pub script: String,
 }
@@ -174,13 +174,13 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TestFlags {
   pub ignore: Vec<PathBuf>,
   pub doc: bool,
@@ -194,7 +194,7 @@ pub struct TestFlags {
   pub trace_ops: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
@@ -204,14 +204,14 @@ pub struct UpgradeFlags {
   pub ca_file: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct VendorFlags {
   pub specifiers: Vec<String>,
   pub output_path: Option<PathBuf>,
   pub force: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -247,7 +247,7 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -265,7 +265,7 @@ impl Default for TypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConfigFlag {
   Discover,
   Path(String),
@@ -278,7 +278,7 @@ impl Default for ConfigFlag {
   }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -292,6 +292,7 @@ pub struct Flags {
   pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
+  pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
@@ -302,6 +303,7 @@ pub struct Flags {
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
+  pub node_modules_dir: bool,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
@@ -413,6 +415,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.allow_sys {
+      Some(sys_allowlist) if sys_allowlist.is_empty() => {
+        args.push("--allow-sys".to_string());
+      }
+      Some(sys_allowlist) => {
+        let s = format!("--allow-sys={}", sys_allowlist.join(","));
+        args.push(s)
+      }
+      _ => {}
+    }
+
     match &self.allow_ffi {
       Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
         args.push("--allow-ffi".to_string());
@@ -470,6 +483,7 @@ impl Flags {
       allow_ffi: self.allow_ffi.clone(),
       allow_read: self.allow_read.clone(),
       allow_run: self.allow_run.clone(),
+      allow_sys: self.allow_sys.clone(),
       allow_write: self.allow_write.clone(),
       prompt: !self.no_prompt,
     }
@@ -529,8 +543,8 @@ To evaluate code in the shell:
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   let version = crate::version::deno();
-  let app = clap_root(&version);
-  let matches = app.clone().try_get_matches_from(&args)?;
+  let mut app = clap_root(&version);
+  let matches = app.try_get_matches_from_mut(&args)?;
 
   let mut flags = Flags::default();
 
@@ -590,6 +604,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -1742,6 +1757,7 @@ fn compile_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
+    .arg(local_npm_arg())
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(no_check_arg())
@@ -1757,6 +1773,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
+    .arg(local_npm_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -1810,6 +1827,27 @@ fn permission_args(app: Command) -> Command {
           for key in keys.split(',') {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
               return Err(format!("invalid key \"{}\"", key));
+            }
+          }
+          Ok(())
+        }),
+    )
+    .arg(
+      Arg::new("allow-sys")
+        .long("allow-sys")
+        .min_values(0)
+        .takes_value(true)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .help("Allow access to system info")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            match key {
+              "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+              | "systemMemoryInfo" | "getUid" | "getGid" => {}
+              _ => {
+                return Err(format!("unknown system info kind \"{}\"", key));
+              }
             }
           }
           Ok(())
@@ -1945,7 +1983,11 @@ fn reload_arg<'a>() -> Arg<'a> {
 --reload=https://deno.land/std
   Reload only standard modules
 --reload=https://deno.land/std/fs/utils.ts,https://deno.land/std/fmt/colors.ts
-  Reloads specific modules",
+  Reloads specific modules
+--reload=npm:
+  Reload all npm modules
+--reload=npm:chalk
+  Reload specific npm module",
     )
     .value_hint(ValueHint::FilePath)
     .validator(reload_arg_validate)
@@ -2157,6 +2199,12 @@ fn no_npm_arg<'a>() -> Arg<'a> {
     .help("Do not resolve npm modules")
 }
 
+fn local_npm_arg<'a>() -> Arg<'a> {
+  Arg::new("node-modules-dir")
+    .long("node-modules-dir")
+    .help("Creates a local node_modules folder")
+}
+
 fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
   Arg::new("unsafely-ignore-certificate-errors")
     .long("unsafely-ignore-certificate-errors")
@@ -2362,6 +2410,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -2805,6 +2854,7 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
@@ -2820,6 +2870,7 @@ fn compile_args_without_no_check_parse(
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -2865,6 +2916,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
+  if let Some(sys_wl) = matches.values_of("allow-sys") {
+    let sys_allowlist: Vec<String> = sys_wl.map(ToString::to_string).collect();
+    flags.allow_sys = Some(sys_allowlist);
+    debug!("sys info allowlist: {:#?}", &flags.allow_sys);
+  }
+
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
     let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
@@ -2881,6 +2938,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
+    flags.allow_sys = Some(vec![]);
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
@@ -3064,6 +3122,12 @@ fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-npm") {
     flags.no_npm = true;
+  }
+}
+
+fn local_npm_args_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.is_present("node-modules-dir") {
+    flags.node_modules_dir = true;
   }
 }
 
@@ -3340,6 +3404,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4001,6 +4066,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4024,6 +4090,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4048,6 +4115,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4085,6 +4153,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4115,6 +4184,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4138,6 +4208,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4174,6 +4245,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4198,6 +4270,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4226,6 +4299,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4349,6 +4423,81 @@ mod tests {
     assert!(r.is_err());
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn allow_sys() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-sys", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname", "osRelease"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=foo", "script.ts"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,foo",
+      "script.ts"
+    ]);
     assert!(r.is_err());
   }
 
@@ -4954,6 +5103,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -5035,6 +5185,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -5069,6 +5220,22 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         no_npm: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn local_npm() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        node_modules_dir: true,
         ..Flags::default()
       }
     );

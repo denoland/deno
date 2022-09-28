@@ -18,10 +18,10 @@ use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::progress_bar::ProgressBar;
 
+use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
-use super::NpmPackageVersionDistInfo;
 
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
@@ -199,11 +199,24 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    self
+      .ensure_package_inner(id, dist, registry_url)
+      .await
+      .with_context(|| format!("Failed caching npm package '{}'.", id))
+  }
+
+  async fn ensure_package_inner(
+    &self,
+    id: &NpmPackageId,
+    dist: &NpmPackageVersionDistInfo,
+    registry_url: &Url,
+  ) -> Result<(), AnyError> {
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && self.cache_setting.should_use_for_npm_package(&id.name)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {

@@ -141,9 +141,7 @@ impl CliMainWorker {
         };
         self.pending_unload = false;
 
-        if let Err(err) = result {
-          return Err(err);
-        }
+        result?;
 
         self
           .inner
@@ -356,8 +354,6 @@ pub async fn create_main_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    ps.npm_resolver.cache_packages().await?;
-    ps.prepare_node_std_graph().await?;
     let node_resolution = node::node_resolve_binary_export(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
@@ -366,9 +362,20 @@ pub async fn create_main_worker(
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
+  } else if ps.npm_resolver.is_npm_main() {
+    let node_resolution =
+      node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
+    let is_main_cjs =
+      matches!(node_resolution, node::NodeResolution::CommonJs(_));
+    (node_resolution.into_url(), is_main_cjs)
   } else {
     (main_module, false)
   };
+
+  if ps.npm_resolver.has_packages() {
+    ps.prepare_node_std_graph().await?;
+  }
+
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -382,11 +389,18 @@ pub async fn create_main_worker(
     create_web_worker_pre_execute_module_callback(ps.clone());
 
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
-  let origin_storage_dir = maybe_storage_key.map(|key| {
+  let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
       .root
       // TODO(@crowlKats): change to origin_data for 2.0
       .join("location_data")
+      .join(checksum::gen(&[key.as_bytes()]))
+  });
+  let cache_storage_dir = maybe_storage_key.map(|key| {
+    // TODO(@satyarohith): storage quota management
+    // Note: we currently use temp_dir() to avoid managing storage size.
+    std::env::temp_dir()
+      .join("deno_cache")
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
@@ -411,6 +425,7 @@ pub async fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.options.unstable(),
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps
@@ -429,6 +444,7 @@ pub async fn create_main_worker(
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
+    cache_storage_dir,
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
@@ -498,6 +514,15 @@ fn create_web_worker_callback(
 
     let extensions = ops::cli_exts(ps.clone());
 
+    let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
+    let cache_storage_dir = maybe_storage_key.map(|key| {
+      // TODO(@satyarohith): storage quota management
+      // Note: we currently use temp_dir() to avoid managing storage size.
+      std::env::temp_dir()
+        .join("deno_cache")
+        .join(checksum::gen(&[key.as_bytes()]))
+    });
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.options.argv().clone(),
@@ -516,6 +541,7 @@ fn create_web_worker_callback(
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.options.unstable(),
         user_agent: version::get_user_agent(),
+        inspect: ps.options.is_inspecting(),
       },
       extensions,
       unsafely_ignore_certificate_errors: ps
@@ -539,6 +565,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
+      cache_storage_dir,
     };
 
     WebWorker::bootstrap_from_options(
