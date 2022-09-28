@@ -384,9 +384,7 @@
       type: "bytes",
       async pull(controller) {
         try {
-          // This is the largest possible size for a single packet on a TLS
-          // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
+          const chunk = new Uint8Array(64 * 1024);
           const read = await readRequest(streamRid, chunk);
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
