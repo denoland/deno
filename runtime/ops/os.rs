@@ -161,7 +161,10 @@ fn op_exit(state: &mut OpState) {
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow_mut::<Permissions>().sys.check("loadavg")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("loadavg", Some("Deno.loadavg()"))?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
@@ -171,7 +174,10 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 #[op]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state.borrow_mut::<Permissions>().sys.check("hostname")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("hostname", Some("Deno.hostname()"))?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
@@ -179,7 +185,10 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow_mut::<Permissions>().sys.check("osRelease")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("osRelease", Some("Deno.osRelease()"))?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }
@@ -192,7 +201,7 @@ fn op_network_interfaces(
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("networkInterfaces")?;
+    .check("networkInterfaces", Some("Deno.networkInterfaces()"))?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
@@ -261,7 +270,7 @@ fn op_system_memory_info(
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("systemMemoryInfo")?;
+    .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
   match sys_info::mem_info() {
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,
@@ -280,7 +289,10 @@ fn op_system_memory_info(
 #[op]
 fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getGid");
-  state.borrow_mut::<Permissions>().sys.check("getGid")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getGid", Some("Deno.getGid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -292,7 +304,10 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getGid");
-  state.borrow_mut::<Permissions>().sys.check("getGid")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getGid", Some("Deno.getGid()"))?;
   Ok(None)
 }
 
@@ -300,7 +315,10 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
-  state.borrow_mut::<Permissions>().sys.check("getUid")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getUid", Some("Deno.getUid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -312,6 +330,9 @@ fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
-  state.borrow_mut::<Permissions>().sys.check("getUid")?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getUid", Some("Deno.getUid()"))?;
   Ok(None)
 }

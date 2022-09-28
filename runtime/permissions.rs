@@ -1002,10 +1002,14 @@ impl UnaryPermission<SysDescriptor> {
     self.query(kind)
   }
 
-  pub fn check(&mut self, kind: &str) -> Result<(), AnyError> {
+  pub fn check(
+    &mut self,
+    kind: &str,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     let (result, prompted) = self.query(Some(kind)).check(
       self.name,
-      None,
+      api_name,
       Some(&format!("\"{}\"", kind)),
       self.prompt,
     );
@@ -2049,7 +2053,7 @@ pub fn create_child_permissions(
         .sys
         .granted_list
         .iter()
-        .all(|desc| main_perms.sys.check(&desc.0).is_ok())
+        .all(|desc| main_perms.sys.check(&desc.0, None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -3081,12 +3085,12 @@ mod tests {
     assert!(perms.env.check("PATH").is_ok());
 
     prompt_value.set(false);
-    assert!(perms.sys.check("hostname").is_err());
+    assert!(perms.sys.check("hostname", None).is_err());
     prompt_value.set(true);
-    assert!(perms.sys.check("hostname").is_err());
-    assert!(perms.sys.check("osRelease").is_ok());
+    assert!(perms.sys.check("hostname", None).is_err());
+    assert!(perms.sys.check("osRelease", None).is_ok());
     prompt_value.set(false);
-    assert!(perms.sys.check("osRelease").is_ok());
+    assert!(perms.sys.check("osRelease", None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.hrtime.check().is_err());
