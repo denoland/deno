@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
+  use deno_cache::SqliteBackedCache;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -175,6 +176,7 @@ mod not_docs {
         Default::default(),
       ),
       deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init::<SqliteBackedCache>(None),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),

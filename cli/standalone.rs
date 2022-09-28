@@ -300,6 +300,7 @@ pub async fn run(
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,
