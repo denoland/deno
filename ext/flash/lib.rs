@@ -964,31 +964,35 @@ fn run_server(
                 continue 'events;
               }
               Ok(read) => {
-                // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
-                //
-                // Mio tries to emulate edge triggered events on Windows.
-                // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
-                // https://github.com/denoland/deno/issues/15549
-                #[cfg(target_os = "windows")]
-                match &mut socket.inner {
-                  InnerStream::Tcp(ref mut socket) => {
-                    poll
-                      .registry()
-                      .reregister(socket, token, Interest::READABLE)
-                      .unwrap();
-                  }
-                  InnerStream::Tls(ref mut socket) => {
-                    poll
-                      .registry()
-                      .reregister(&mut socket.sock, token, Interest::READABLE)
-                      .unwrap();
-                  }
-                };
                 match req.parse(&buffer[..offset + read]) {
                   Ok(httparse::Status::Complete(n)) => {
                     body_offset = n;
                     body_len = offset + read;
                     socket.parse_done = ParseStatus::None;
+                    // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+                    //
+                    // Mio tries to emulate edge triggered events on Windows.
+                    // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+                    // https://github.com/denoland/deno/issues/15549
+                    #[cfg(target_os = "windows")]
+                    match &mut socket.inner {
+                      InnerStream::Tcp(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(socket, token, Interest::READABLE)
+                          .unwrap();
+                      }
+                      InnerStream::Tls(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(
+                            &mut socket.sock,
+                            token,
+                            Interest::READABLE,
+                          )
+                          .unwrap();
+                      }
+                    };
                     break;
                   }
                   Ok(httparse::Status::Partial) => {
