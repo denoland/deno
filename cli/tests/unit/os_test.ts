@@ -188,47 +188,47 @@ Deno.test({ permissions: { read: false } }, function execPathPerm() {
 });
 
 Deno.test(
-  { permissions: { "sys-info": ["loadavg"] } },
+  { permissions: { sys: ["loadavg"] } },
   function loadavgSuccess() {
     const load = Deno.loadavg();
     assertEquals(load.length, 3);
   },
 );
 
-Deno.test({ permissions: { "sys-info": false } }, function loadavgPerm() {
+Deno.test({ permissions: { sys: false } }, function loadavgPerm() {
   assertThrows(() => {
     Deno.loadavg();
   }, Deno.errors.PermissionDenied);
 });
 
 Deno.test(
-  { permissions: { "sys-info": ["hostname"] } },
+  { permissions: { sys: ["hostname"] } },
   function hostnameDir() {
     assertNotEquals(Deno.hostname(), "");
   },
 );
 
-Deno.test({ permissions: { "sys-info": false } }, function hostnamePerm() {
+Deno.test({ permissions: { sys: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
   }, Deno.errors.PermissionDenied);
 });
 
 Deno.test(
-  { permissions: { "sys-info": ["osRelease"] } },
+  { permissions: { sys: ["osRelease"] } },
   function releaseDir() {
     assertNotEquals(Deno.osRelease(), "");
   },
 );
 
-Deno.test({ permissions: { "sys-info": false } }, function releasePerm() {
+Deno.test({ permissions: { sys: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
   }, Deno.errors.PermissionDenied);
 });
 
 Deno.test(
-  { permissions: { "sys-info": ["systemMemoryInfo"] } },
+  { permissions: { sys: ["systemMemoryInfo"] } },
   function systemMemoryInfo() {
     const info = Deno.systemMemoryInfo();
     assert(info.total >= 0);
@@ -241,7 +241,7 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { "sys-info": ["getUid"] } }, function getUid() {
+Deno.test({ permissions: { sys: ["getUid"] } }, function getUid() {
   if (Deno.build.os === "windows") {
     assertEquals(Deno.getUid(), null);
   } else {
@@ -251,7 +251,7 @@ Deno.test({ permissions: { "sys-info": ["getUid"] } }, function getUid() {
   }
 });
 
-Deno.test({ permissions: { "sys-info": ["getGid"] } }, function getGid() {
+Deno.test({ permissions: { sys: ["getGid"] } }, function getGid() {
   if (Deno.build.os === "windows") {
     assertEquals(Deno.getGid(), null);
   } else {

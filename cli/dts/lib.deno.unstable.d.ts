@@ -255,11 +255,11 @@ declare namespace Deno {
    * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    * There are questions around which permission this needs. And maybe should be
    * renamed (loadAverage?).
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Observability
    */
   export function loadavg(): number[];
@@ -272,11 +272,11 @@ declare namespace Deno {
    * console.log(Deno.osRelease());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    * Under consideration to possibly move to Deno.build or Deno.versions and if
    * it should depend sys-info, which may not be desirable.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function osRelease(): string;
@@ -292,9 +292,9 @@ declare namespace Deno {
    * console.log(Deno.systemMemoryInfo());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
@@ -355,9 +355,9 @@ declare namespace Deno {
    * console.log(Deno.networkInterfaces());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Network
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
@@ -370,9 +370,9 @@ declare namespace Deno {
    * console.log(Deno.getUid());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getUid(): number | null;
@@ -385,9 +385,9 @@ declare namespace Deno {
    * console.log(Deno.getGid());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getGid(): number | null;
@@ -980,11 +980,11 @@ declare namespace Deno {
    * console.log(Deno.hostname());
    * ```
    *
-   * Requires `allow-sys-info` permission.
+   * Requires `allow-sys` permission.
    * Additional consideration is still necessary around the permissions
    * required.
    *
-   * @tags allow-sys-info
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function hostname(): string;

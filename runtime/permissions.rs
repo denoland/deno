@@ -298,7 +298,7 @@ impl ToString for RunDescriptor {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct SysInfoDescriptor(pub String);
+pub struct SysDescriptor(pub String);
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FfiDescriptor(pub PathBuf);
@@ -878,23 +878,23 @@ impl Default for UnaryPermission<EnvDescriptor> {
   }
 }
 
-impl UnaryPermission<SysInfoDescriptor> {
-  pub fn query(&self, sys_info: Option<&str>) -> PermissionState {
+impl UnaryPermission<SysDescriptor> {
+  pub fn query(&self, kind: Option<&str>) -> PermissionState {
     if self.global_state == PermissionState::Denied
-      && match sys_info {
+      && match kind {
         None => true,
-        Some(sys_info) => self
+        Some(kind) => self
           .denied_list
-          .contains(&SysInfoDescriptor(sys_info.to_string())),
+          .contains(&SysDescriptor(kind.to_string())),
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
-      || match sys_info {
+      || match kind {
         None => false,
-        Some(sys_info) => self
+        Some(kind) => self
           .granted_list
-          .contains(&SysInfoDescriptor(sys_info.to_string())),
+          .contains(&SysDescriptor(kind.to_string())),
       }
     {
       PermissionState::Granted
@@ -903,15 +903,15 @@ impl UnaryPermission<SysInfoDescriptor> {
     }
   }
 
-  pub fn request(&mut self, sys_info: Option<&str>) -> PermissionState {
-    let state = self.query(sys_info);
+  pub fn request(&mut self, kind: Option<&str>) -> PermissionState {
+    let state = self.query(kind);
     if state != PermissionState::Prompt {
       return state;
     }
-    if let Some(sys_info) = sys_info {
-      let desc = SysInfoDescriptor(sys_info.to_string());
+    if let Some(kind) = kind {
+      let desc = SysDescriptor(kind.to_string());
       if permission_prompt(
-        &format!("system info access to {}", sys_info),
+        &format!("system info access to {}", kind),
         self.name,
       ) {
         self.granted_list.insert(desc);
@@ -932,35 +932,35 @@ impl UnaryPermission<SysInfoDescriptor> {
     }
   }
 
-  pub fn revoke(&mut self, sys_info: Option<&str>) -> PermissionState {
-    if let Some(sys_info) = sys_info {
+  pub fn revoke(&mut self, kind: Option<&str>) -> PermissionState {
+    if let Some(kind) = kind {
       self
         .granted_list
-        .remove(&SysInfoDescriptor(sys_info.to_string()));
+        .remove(&SysDescriptor(kind.to_string()));
     } else {
       self.granted_list.clear();
     }
     if self.global_state == PermissionState::Granted {
       self.global_state = PermissionState::Prompt;
     }
-    self.query(sys_info)
+    self.query(kind)
   }
 
-  pub fn check(&mut self, sys_info: &str) -> Result<(), AnyError> {
-    let (result, prompted) = self.query(Some(sys_info)).check(
+  pub fn check(&mut self, kind: &str) -> Result<(), AnyError> {
+    let (result, prompted) = self.query(Some(kind)).check(
       self.name,
-      Some(&format!("\"{}\"", sys_info)),
+      Some(&format!("\"{}\"", kind)),
       self.prompt,
     );
     if prompted {
       if result.is_ok() {
         self
           .granted_list
-          .insert(SysInfoDescriptor(sys_info.to_string()));
+          .insert(SysDescriptor(kind.to_string()));
       } else {
         self
           .denied_list
-          .insert(SysInfoDescriptor(sys_info.to_string()));
+          .insert(SysDescriptor(kind.to_string()));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -981,10 +981,10 @@ impl UnaryPermission<SysInfoDescriptor> {
   }
 }
 
-impl Default for UnaryPermission<SysInfoDescriptor> {
+impl Default for UnaryPermission<SysDescriptor> {
   fn default() -> Self {
-    UnaryPermission::<SysInfoDescriptor> {
-      name: "sys-info",
+    UnaryPermission::<SysDescriptor> {
+      name: "sys",
       description: "system information",
       global_state: Default::default(),
       granted_list: Default::default(),
@@ -1264,7 +1264,7 @@ pub struct Permissions {
   pub write: UnaryPermission<WriteDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnaryPermission<EnvDescriptor>,
-  pub sys_info: UnaryPermission<SysInfoDescriptor>,
+  pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
   pub ffi: UnaryPermission<FfiDescriptor>,
   pub hrtime: UnitPermission,
@@ -1277,7 +1277,7 @@ impl Default for Permissions {
       write: Permissions::new_write(&None, false).unwrap(),
       net: Permissions::new_net(&None, false).unwrap(),
       env: Permissions::new_env(&None, false).unwrap(),
-      sys_info: Permissions::new_sys_info(&None, false).unwrap(),
+      sys: Permissions::new_sys(&None, false).unwrap(),
       run: Permissions::new_run(&None, false).unwrap(),
       ffi: Permissions::new_ffi(&None, false).unwrap(),
       hrtime: Permissions::new_hrtime(false),
@@ -1293,7 +1293,7 @@ pub struct PermissionsOptions {
   pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
-  pub allow_sys_info: Option<Vec<String>>,
+  pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub prompt: bool,
 }
@@ -1367,11 +1367,11 @@ impl Permissions {
     })
   }
 
-  pub fn new_sys_info(
+  pub fn new_sys(
     state: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission<SysInfoDescriptor>, AnyError> {
-    Ok(UnaryPermission::<SysInfoDescriptor> {
+  ) -> Result<UnaryPermission<SysDescriptor>, AnyError> {
+    Ok(UnaryPermission::<SysDescriptor> {
       global_state: global_state_from_option(state),
       granted_list: state.as_ref().map_or_else(
         || Ok(HashSet::new()),
@@ -1381,7 +1381,7 @@ impl Permissions {
               if x.is_empty() {
                 Err(AnyError::msg("emtpy"))
               } else {
-                Ok(SysInfoDescriptor(x.to_string()))
+                Ok(SysDescriptor(x.to_string()))
               }
             })
             .collect()
@@ -1444,7 +1444,7 @@ impl Permissions {
       write: Permissions::new_write(&opts.allow_write, opts.prompt)?,
       net: Permissions::new_net(&opts.allow_net, opts.prompt)?,
       env: Permissions::new_env(&opts.allow_env, opts.prompt)?,
-      sys_info: Permissions::new_sys_info(&opts.allow_sys_info, opts.prompt)?,
+      sys: Permissions::new_sys(&opts.allow_sys, opts.prompt)?,
       run: Permissions::new_run(&opts.allow_run, opts.prompt)?,
       ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt)?,
       hrtime: Permissions::new_hrtime(opts.allow_hrtime),
@@ -1457,7 +1457,7 @@ impl Permissions {
       write: Permissions::new_write(&Some(vec![]), false).unwrap(),
       net: Permissions::new_net(&Some(vec![]), false).unwrap(),
       env: Permissions::new_env(&Some(vec![]), false).unwrap(),
-      sys_info: Permissions::new_sys_info(&Some(vec![]), false).unwrap(),
+      sys: Permissions::new_sys(&Some(vec![]), false).unwrap(),
       run: Permissions::new_run(&Some(vec![]), false).unwrap(),
       ffi: Permissions::new_ffi(&Some(vec![]), false).unwrap(),
       hrtime: Permissions::new_hrtime(true),
@@ -1773,7 +1773,7 @@ pub struct ChildPermissionsArg {
   ffi: ChildUnaryPermissionArg,
   read: ChildUnaryPermissionArg,
   run: ChildUnaryPermissionArg,
-  sys_info: ChildUnaryPermissionArg,
+  sys: ChildUnaryPermissionArg,
   write: ChildUnaryPermissionArg,
 }
 
@@ -1786,7 +1786,7 @@ impl ChildPermissionsArg {
       ffi: ChildUnaryPermissionArg::Inherit,
       read: ChildUnaryPermissionArg::Inherit,
       run: ChildUnaryPermissionArg::Inherit,
-      sys_info: ChildUnaryPermissionArg::Inherit,
+      sys: ChildUnaryPermissionArg::Inherit,
       write: ChildUnaryPermissionArg::Inherit,
     }
   }
@@ -1799,7 +1799,7 @@ impl ChildPermissionsArg {
       ffi: ChildUnaryPermissionArg::NotGranted,
       read: ChildUnaryPermissionArg::NotGranted,
       run: ChildUnaryPermissionArg::NotGranted,
-      sys_info: ChildUnaryPermissionArg::NotGranted,
+      sys: ChildUnaryPermissionArg::NotGranted,
       write: ChildUnaryPermissionArg::NotGranted,
     }
   }
@@ -1876,10 +1876,10 @@ impl<'de> Deserialize<'de> for ChildPermissionsArg {
             child_permissions_arg.run = arg.map_err(|e| {
               de::Error::custom(format!("(deno.permissions.run) {}", e))
             })?;
-          } else if key == "sys-info" {
+          } else if key == "sys" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
-            child_permissions_arg.sys_info = arg.map_err(|e| {
-              de::Error::custom(format!("(deno.permissions.sys-info) {}", e))
+            child_permissions_arg.sys = arg.map_err(|e| {
+              de::Error::custom(format!("(deno.permissions.sys) {}", e))
             })?;
           } else if key == "write" {
             let arg = serde_json::from_value::<ChildUnaryPermissionArg>(value);
@@ -1931,35 +1931,35 @@ pub fn create_child_permissions(
     worker_perms.env.global_state = PermissionState::Denied;
   }
   worker_perms.env.prompt = main_perms.env.prompt;
-  match child_permissions_arg.sys_info {
+  match child_permissions_arg.sys {
     ChildUnaryPermissionArg::Inherit => {
-      worker_perms.sys_info = main_perms.sys_info.clone();
+      worker_perms.sys = main_perms.sys.clone();
     }
     ChildUnaryPermissionArg::Granted => {
-      if main_perms.sys_info.check_all().is_err() {
+      if main_perms.sys.check_all().is_err() {
         return Err(escalation_error());
       }
-      worker_perms.sys_info.global_state = PermissionState::Granted;
+      worker_perms.sys.global_state = PermissionState::Granted;
     }
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.sys_info.granted_list =
-        Permissions::new_sys_info(&Some(granted_list), false)?.granted_list;
+      worker_perms.sys.granted_list =
+        Permissions::new_sys(&Some(granted_list), false)?.granted_list;
       if !worker_perms
-        .sys_info
+        .sys
         .granted_list
         .iter()
-        .all(|desc| main_perms.sys_info.check(&desc.0).is_ok())
+        .all(|desc| main_perms.sys.check(&desc.0).is_ok())
       {
         return Err(escalation_error());
       }
     }
   }
-  worker_perms.sys_info.denied_list = main_perms.sys_info.denied_list.clone();
-  if main_perms.sys_info.global_state == PermissionState::Denied {
-    worker_perms.sys_info.global_state = PermissionState::Denied;
+  worker_perms.sys.denied_list = main_perms.sys.denied_list.clone();
+  if main_perms.sys.global_state == PermissionState::Denied {
+    worker_perms.sys.global_state = PermissionState::Denied;
   }
-  worker_perms.sys_info.prompt = main_perms.sys_info.prompt;
+  worker_perms.sys.prompt = main_perms.sys.prompt;
   match child_permissions_arg.hrtime {
     ChildUnitPermissionArg::Inherit => {
       worker_perms.hrtime = main_perms.hrtime.clone();
@@ -2673,9 +2673,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
       },
-      sys_info: UnaryPermission {
+      sys: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_sys_info(&Some(svec!["hostname"]), false).unwrap()
+        ..Permissions::new_sys(&Some(svec!["hostname"]), false).unwrap()
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -2711,10 +2711,10 @@ mod tests {
       assert_eq!(perms1.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
       assert_eq!(perms2.env.query(Some("HOME")), PermissionState::Granted);
-      assert_eq!(perms1.sys_info.query(None), PermissionState::Granted);
-      assert_eq!(perms1.sys_info.query(Some("HOME")), PermissionState::Granted);
+      assert_eq!(perms1.sys.query(None), PermissionState::Granted);
+      assert_eq!(perms1.sys.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.sys_info.query(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms2.sys.query(Some("hostname")), PermissionState::Granted);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
       assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
@@ -2754,10 +2754,10 @@ mod tests {
       prompt_value.set(false);
       assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       prompt_value.set(true);
-      assert_eq!(perms.sys_info.request(Some("hostname")), PermissionState::Granted);
-      assert_eq!(perms.sys_info.query(None), PermissionState::Prompt);
+      assert_eq!(perms.sys.request(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms.sys.query(None), PermissionState::Prompt);
       prompt_value.set(false);
-      assert_eq!(perms.sys_info.request(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms.sys.request(Some("hostname")), PermissionState::Granted);
       prompt_value.set(true);
       assert_eq!(perms.run.request(Some("deno")), PermissionState::Granted);
       assert_eq!(perms.run.query(None), PermissionState::Prompt);
@@ -2806,9 +2806,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
       },
-      sys_info: UnaryPermission {
+      sys: UnaryPermission {
         global_state: PermissionState::Prompt,
-        ..Permissions::new_sys_info(&Some(svec!["hostname"]), false).unwrap()
+        ..Permissions::new_sys(&Some(svec!["hostname"]), false).unwrap()
       },
       run: UnaryPermission {
         global_state: PermissionState::Prompt,
@@ -2850,7 +2850,7 @@ mod tests {
       write: Permissions::new_write(&None, true).unwrap(),
       net: Permissions::new_net(&None, true).unwrap(),
       env: Permissions::new_env(&None, true).unwrap(),
-      sys_info: Permissions::new_sys_info(&None, true).unwrap(),
+      sys: Permissions::new_sys(&None, true).unwrap(),
       run: Permissions::new_run(&None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, true).unwrap(),
       hrtime: Permissions::new_hrtime(false),
@@ -2907,7 +2907,7 @@ mod tests {
       write: Permissions::new_write(&None, true).unwrap(),
       net: Permissions::new_net(&None, true).unwrap(),
       env: Permissions::new_env(&None, true).unwrap(),
-      sys_info: Permissions::new_sys_info(&None, true).unwrap(),
+      sys: Permissions::new_sys(&None, true).unwrap(),
       run: Permissions::new_run(&None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, true).unwrap(),
       hrtime: Permissions::new_hrtime(false),
@@ -2958,12 +2958,12 @@ mod tests {
     assert!(perms.env.check("PATH").is_ok());
 
     prompt_value.set(false);
-    assert!(perms.sys_info.check("hostname").is_err());
+    assert!(perms.sys.check("hostname").is_err());
     prompt_value.set(true);
-    assert!(perms.sys_info.check("hostname").is_err());
-    assert!(perms.sys_info.check("osRelease").is_ok());
+    assert!(perms.sys.check("hostname").is_err());
+    assert!(perms.sys.check("osRelease").is_ok());
     prompt_value.set(false);
-    assert!(perms.sys_info.check("osRelease").is_ok());
+    assert!(perms.sys.check("osRelease").is_ok());
 
     prompt_value.set(false);
     assert!(perms.hrtime.check().is_err());
@@ -3001,7 +3001,7 @@ mod tests {
         ffi: ChildUnaryPermissionArg::Inherit,
         read: ChildUnaryPermissionArg::Inherit,
         run: ChildUnaryPermissionArg::Inherit,
-        sys_info: ChildUnaryPermissionArg::Inherit,
+        sys: ChildUnaryPermissionArg::Inherit,
         write: ChildUnaryPermissionArg::Inherit,
       }
     );
@@ -3014,7 +3014,7 @@ mod tests {
         ffi: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
-        sys_info: ChildUnaryPermissionArg::NotGranted,
+        sys: ChildUnaryPermissionArg::NotGranted,
         write: ChildUnaryPermissionArg::NotGranted,
       }
     );
@@ -3067,7 +3067,7 @@ mod tests {
         "ffi": true,
         "read": true,
         "run": true,
-        "sys-info": true,
+        "sys": true,
         "write": true,
       }))
       .unwrap(),
@@ -3077,7 +3077,7 @@ mod tests {
         ffi: ChildUnaryPermissionArg::Granted,
         read: ChildUnaryPermissionArg::Granted,
         run: ChildUnaryPermissionArg::Granted,
-        sys_info: ChildUnaryPermissionArg::Granted,
+        sys: ChildUnaryPermissionArg::Granted,
         write: ChildUnaryPermissionArg::Granted,
         ..ChildPermissionsArg::none()
       }
@@ -3089,7 +3089,7 @@ mod tests {
         "ffi": false,
         "read": false,
         "run": false,
-        "sys-info": false,
+        "sys": false,
         "write": false,
       }))
       .unwrap(),
@@ -3099,7 +3099,7 @@ mod tests {
         ffi: ChildUnaryPermissionArg::NotGranted,
         read: ChildUnaryPermissionArg::NotGranted,
         run: ChildUnaryPermissionArg::NotGranted,
-        sys_info: ChildUnaryPermissionArg::NotGranted,
+        sys: ChildUnaryPermissionArg::NotGranted,
         write: ChildUnaryPermissionArg::NotGranted,
         ..ChildPermissionsArg::none()
       }
@@ -3111,7 +3111,7 @@ mod tests {
         "ffi": ["foo", "file:///bar/baz"],
         "read": ["foo", "file:///bar/baz"],
         "run": ["foo", "file:///bar/baz", "./qux"],
-        "sys-info": ["hostname", "osRelease"],
+        "sys": ["hostname", "osRelease"],
         "write": ["foo", "file:///bar/baz"],
       }))
       .unwrap(),
@@ -3131,7 +3131,7 @@ mod tests {
           "file:///bar/baz",
           "./qux"
         ]),
-        sys_info: ChildUnaryPermissionArg::GrantedList(svec![
+        sys: ChildUnaryPermissionArg::GrantedList(svec![
           "hostname",
           "osRelease"
         ]),
@@ -3240,7 +3240,7 @@ mod tests {
     assert!(Permissions::new_read(&Some(vec![PathBuf::new()]), false).is_err());
     assert!(Permissions::new_env(&Some(vec![String::new()]), false).is_err());
     assert!(
-      Permissions::new_sys_info(&Some(vec![String::new()]), false).is_err()
+      Permissions::new_sys(&Some(vec![String::new()]), false).is_err()
     );
     assert!(Permissions::new_run(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_ffi(&Some(vec![PathBuf::new()]), false).is_err());

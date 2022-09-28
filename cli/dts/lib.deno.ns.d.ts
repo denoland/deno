@@ -183,14 +183,14 @@ declare namespace Deno {
      */
     env?: "inherit" | boolean | string[];
 
-    /** Specifies if the `sys-info` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `sys-info` permission will be inherited.
-     * If set to `true`, the global `sys-info` permission will be requested.
-     * If set to `false`, the global `sys-info` permission will be revoked.
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
      *
      * Defaults to `false`.
      */
-    "sys-info"?: "inherit" | boolean | string[];
+    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `hrtime` permission should be requested or revoked.
      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -2922,7 +2922,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
-    | "sys-info"
+    | "sys"
     | "ffi"
     | "hrtime";
 
@@ -2968,8 +2968,8 @@ declare namespace Deno {
   }
 
   /** @category Permissions */
-  export interface SysInfoPermissionDescriptor {
-    name: "sys-info";
+  export interface SysPermissionDescriptor {
+    name: "sys";
     info?: string;
   }
 
@@ -2995,7 +2995,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | SysInfoPermissionDescriptor
+    | SysPermissionDescriptor
     | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 

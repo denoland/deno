@@ -3,7 +3,7 @@ import { assert } from "./test_util.ts";
 Deno.test(
   {
     name: "Deno.networkInterfaces",
-    permissions: { "sys-info": ["networkInterfaces"] },
+    permissions: { sys: ["networkInterfaces"] },
   },
   () => {
     const networkInterfaces = Deno.networkInterfaces();
