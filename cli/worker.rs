@@ -354,7 +354,6 @@ pub async fn create_main_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    ps.prepare_node_std_graph().await?;
     let node_resolution = node::node_resolve_binary_export(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
@@ -363,9 +362,20 @@ pub async fn create_main_worker(
     let is_main_cjs =
       matches!(node_resolution, node::NodeResolution::CommonJs(_));
     (node_resolution.into_url(), is_main_cjs)
+  } else if ps.npm_resolver.is_npm_main() {
+    let node_resolution =
+      node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
+    let is_main_cjs =
+      matches!(node_resolution, node::NodeResolution::CommonJs(_));
+    (node_resolution.into_url(), is_main_cjs)
   } else {
     (main_module, false)
   };
+
+  if ps.npm_resolver.has_packages() {
+    ps.prepare_node_std_graph().await?;
+  }
+
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();

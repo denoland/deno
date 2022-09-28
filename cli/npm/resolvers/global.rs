@@ -13,6 +13,7 @@ use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 
 use crate::npm::resolution::NpmResolution;
+use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
@@ -32,9 +33,13 @@ pub struct GlobalNpmPackageResolver {
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn new(cache: NpmCache, api: NpmRegistryApi) -> Self {
+  pub fn new(
+    cache: NpmCache,
+    api: NpmRegistryApi,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
+  ) -> Self {
     let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api));
+    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
 
     Self {
       cache,

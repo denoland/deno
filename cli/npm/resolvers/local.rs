@@ -47,9 +47,10 @@ impl LocalNpmPackageResolver {
     cache: NpmCache,
     api: NpmRegistryApi,
     node_modules_folder: PathBuf,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api));
+    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
 
     Self {
       cache,

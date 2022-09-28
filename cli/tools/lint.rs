@@ -49,12 +49,14 @@ static STDIN_FILE_NAME: &str = "_stdin.ts";
 pub enum LintReporterKind {
   Pretty,
   Json,
+  Compact,
 }
 
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
     LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
     LintReporterKind::Json => Box::new(JsonLintReporter::new()),
+    LintReporterKind::Compact => Box::new(CompactLintReporter::new()),
   }
 }
 
@@ -66,6 +68,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     files: args,
     ignore,
     json,
+    compact,
     ..
   } = lint_flags;
   // First, prepare final configuration.
@@ -104,6 +107,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
   let reporter_kind = if json {
     LintReporterKind::Json
+  } else if compact {
+    LintReporterKind::Compact
   } else {
     LintReporterKind::Pretty
   };
@@ -391,6 +396,50 @@ impl LintReporter for PrettyLintReporter {
     );
 
     eprintln!("{}\n", message);
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
+    eprintln!("Error linting: {}", file_path);
+    eprintln!("   {}", err);
+  }
+
+  fn close(&mut self, check_count: usize) {
+    match self.lint_count {
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+
+    match check_count {
+      n if n <= 1 => info!("Checked {} file", n),
+      n if n > 1 => info!("Checked {} files", n),
+      _ => unreachable!(),
+    }
+  }
+}
+
+struct CompactLintReporter {
+  lint_count: u32,
+}
+
+impl CompactLintReporter {
+  fn new() -> CompactLintReporter {
+    CompactLintReporter { lint_count: 0 }
+  }
+}
+
+impl LintReporter for CompactLintReporter {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
+    self.lint_count += 1;
+
+    eprintln!(
+      "{}: line {}, col {} - {} ({})",
+      d.filename,
+      d.range.start.line_index + 1,
+      d.range.start.column_index + 1,
+      d.message,
+      d.code
+    )
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {

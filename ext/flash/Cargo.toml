@@ -26,4 +26,5 @@ mio = { version = "0.8.1", features = ["os-poll", "net"] }
 rustls = { version = "0.20" }
 rustls-pemfile = "1.0"
 serde = { version = "1.0.136", features = ["derive"] }
+socket2 = "0.4.7"
 tokio = { version = "1.21", features = ["full"] }
