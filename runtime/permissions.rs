@@ -966,6 +966,7 @@ impl UnaryPermission<SysDescriptor> {
       if permission_prompt(
         &format!("system info access to {}", kind),
         self.name,
+        Some("Deno.permissions.query()"),
       ) {
         self.granted_list.insert(desc);
         PermissionState::Granted
@@ -975,7 +976,11 @@ impl UnaryPermission<SysDescriptor> {
         PermissionState::Denied
       }
     } else {
-      if permission_prompt("system info access", self.name) {
+      if permission_prompt(
+        "system info access",
+        self.name,
+        Some("Deno.permissions.query()"),
+      ) {
         self.global_state = PermissionState::Granted;
       } else {
         self.granted_list.clear();
@@ -1000,6 +1005,7 @@ impl UnaryPermission<SysDescriptor> {
   pub fn check(&mut self, kind: &str) -> Result<(), AnyError> {
     let (result, prompted) = self.query(Some(kind)).check(
       self.name,
+      None,
       Some(&format!("\"{}\"", kind)),
       self.prompt,
     );
@@ -1016,7 +1022,9 @@ impl UnaryPermission<SysDescriptor> {
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
     let (result, prompted) =
-      self.query(None).check(self.name, Some("all"), self.prompt);
+      self
+        .query(None)
+        .check(self.name, None, Some("all"), self.prompt);
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
