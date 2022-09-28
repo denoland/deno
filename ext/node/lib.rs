@@ -28,6 +28,7 @@ pub use resolution::package_imports_resolve;
 pub use resolution::package_resolve;
 pub use resolution::NodeModuleKind;
 pub use resolution::DEFAULT_CONDITIONS;
+pub use resolution::TYPES_CONDITIONS;
 
 pub trait NodePermissions {
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;

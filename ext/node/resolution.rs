@@ -19,6 +19,7 @@ use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
+pub static TYPES_CONDITIONS: &[&str] = &["types"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeModuleKind {
@@ -648,7 +649,7 @@ pub fn package_resolve(
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind);
+    return legacy_main_resolve(&package_json, referrer_kind, conditions);
   }
 
   Ok(package_json.path.parent().unwrap().join(&package_subpath))
@@ -706,8 +707,14 @@ fn file_exists(path: &Path) -> bool {
 pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
+  conditions: &[&str],
 ) -> Result<PathBuf, AnyError> {
-  let maybe_main = package_json.main(referrer_kind);
+  let is_types = conditions.len() == 1 && conditions[0] == "types";
+  let maybe_main = if !is_types {
+    package_json.main(referrer_kind)
+  } else {
+    package_json.types.as_ref()
+  };
   let mut guess;
 
   if let Some(main) = maybe_main {
@@ -718,29 +725,45 @@ pub fn legacy_main_resolve(
 
     let mut found = false;
     // todo(dsherret): investigate exactly how node handles this
-    let endings = match referrer_kind {
-      NodeModuleKind::Cjs => vec![
-        ".js",
-        ".cjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
-      NodeModuleKind::Esm => vec![
-        ".js",
-        ".mjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.mjs",
-        ".cjs",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
+    let endings = if !is_types {
+      match referrer_kind {
+        NodeModuleKind::Cjs => vec![
+          ".js",
+          ".cjs",
+          ".json",
+          ".node",
+          "/index.js",
+          "/index.cjs",
+          "/index.json",
+          "/index.node",
+        ],
+        NodeModuleKind::Esm => vec![
+          ".js",
+          ".mjs",
+          ".json",
+          ".node",
+          "/index.js",
+          "/index.mjs",
+          ".cjs",
+          "/index.cjs",
+          "/index.json",
+          "/index.node",
+        ],
+      }
+    } else {
+      match referrer_kind {
+        NodeModuleKind::Cjs => {
+          vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
+        }
+        NodeModuleKind::Esm => vec![
+          ".d.ts",
+          ".d.mts",
+          "/index.d.ts",
+          "/index.d.mts",
+          ".d.cts",
+          "/index.d.cts",
+        ],
+      }
     };
     for ending in endings {
       guess = package_json
@@ -761,17 +784,24 @@ pub fn legacy_main_resolve(
     }
   }
 
-  let index_file_names = match referrer_kind {
-    NodeModuleKind::Cjs => {
-      vec!["index.js", "index.cjs", "index.json", "index.node"]
+  let index_file_names = if !is_types {
+    match referrer_kind {
+      NodeModuleKind::Cjs => {
+        vec!["index.js", "index.cjs", "index.json", "index.node"]
+      }
+      NodeModuleKind::Esm => vec![
+        "index.js",
+        "index.mjs",
+        "index.cjs",
+        "index.json",
+        "index.node",
+      ],
     }
-    NodeModuleKind::Esm => vec![
-      "index.js",
-      "index.mjs",
-      "index.cjs",
-      "index.json",
-      "index.node",
-    ],
+  } else {
+    match referrer_kind {
+      NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],
+      NodeModuleKind::Esm => vec!["index.d.ts", "index.d.mts", "index.d.cts"],
+    }
   };
   for index_file_name in index_file_names {
     guess = package_json

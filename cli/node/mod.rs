@@ -386,6 +386,7 @@ pub async fn initialize_binary_command(
 pub fn node_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
   // Note: if we are here, then the referrer is an esm module
@@ -423,7 +424,8 @@ pub fn node_resolve(
   }
 
   let conditions = DEFAULT_CONDITIONS;
-  let url = module_resolve(specifier, referrer, conditions, npm_resolver)?;
+  let url =
+    module_resolve(specifier, referrer, conditions, mode, npm_resolver)?;
   let url = match url {
     Some(url) => url,
     None => return Ok(None),
@@ -437,6 +439,7 @@ pub fn node_resolve(
 
 pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
+  mode: NodeResolutionMode,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
@@ -448,8 +451,9 @@ pub fn node_resolve_npm_reference(
       .map(|s| format!("./{}", s))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
-    npm_resolver,
     NodeModuleKind::Esm,
+    mode,
+    npm_resolver,
   )
   .with_context(|| {
     format!("Error resolving package config for '{}'.", reference)
@@ -559,8 +563,9 @@ pub fn load_cjs_module_from_ext_node(
 fn package_config_resolve(
   package_subpath: &str,
   package_dir: &Path,
-  npm_resolver: &dyn RequireNpmResolver,
   referrer_kind: NodeModuleKind,
+  mode: NodeResolutionMode,
+  npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<PathBuf, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
@@ -574,11 +579,12 @@ fn package_config_resolve(
       &referrer,
       referrer_kind,
       DEFAULT_CONDITIONS,
+      mode,
       npm_resolver,
     );
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_config, referrer_kind);
+    return legacy_main_resolve(&package_config, referrer_kind, mode);
   }
 
   Ok(package_dir.join(package_subpath))
@@ -658,6 +664,7 @@ fn module_resolve(
   specifier: &str,
   referrer: &ModuleSpecifier,
   conditions: &[&str],
+  mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<ModuleSpecifier>, AnyError> {
   // note: if we're here, the referrer is an esm module
@@ -671,6 +678,7 @@ fn module_resolve(
         referrer,
         NodeModuleKind::Esm,
         conditions,
+        mode,
         npm_resolver,
       )
       .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
