@@ -50,7 +50,7 @@ declare interface ImportMeta {
   resolve(specifier: string): string;
 }
 
-/** Deno supports user [timing Level 3](https://w3c.github.io/user-timing)
+/** Deno supports [User Timing Level 3](https://w3c.github.io/user-timing)
  * which is not widely supported yet in other runtimes.
  *
  * Check out the
@@ -116,7 +116,7 @@ declare interface PerformanceMeasureOptions {
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs.
    *
-   * The can be used to provide more specific handling of failures within code
+   * Can be used to provide more specific handling of failures within code
    * which is using Deno APIs. For example, handling attempting to open a file:
    *
    * ```ts
@@ -144,7 +144,8 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system indicates the current user
      * which the Deno process is running under does not have the appropriate
-     * permissions to a file or resource.
+     * permissions to a file or resource, or the user _did not_ provide required
+     * `--allow-*` flag.
      *
      * @category Errors */
     export class PermissionDenied extends Error {}
@@ -331,7 +332,7 @@ declare namespace Deno {
    *
    * `"inherit"` would ensure that all permissions of the parent process will be
    * applied to the test context. `"none"` would ensure the test context has no
-   * permissions. A `TestPermissionOptionsObject` would provide a more specific
+   * permissions. A `PermissionOptionsObject` would provide a more specific
    * set of permissions to the test context.
    *
    * @category Permissions */
@@ -341,7 +342,7 @@ declare namespace Deno {
     | PermissionOptionsObject;
 
   /**
-   * An set of options which can define the permissions within a test or worker
+   * A set of options which can define the permissions within a test or worker
    * context at a highly specific level.
    *
    * @category Permissions */
@@ -625,7 +626,7 @@ declare namespace Deno {
      *
      * Set this to "inherit" to keep the calling runtime permissions, set this
      * to "none" to revoke all permissions, or set a more specific set of
-     * permissions using a {@linkcode TestPermissionOptionsObject}.
+     * permissions using a {@linkcode PermissionOptionsObject}.
      *
      * Defaults to `"inherit"`. */
     permissions?: PermissionOptions;
@@ -834,7 +835,7 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** An interface to interface with the runtime environment, allowing the
+  /** An interface allowing the
    * ability to read and set the environment variables for the current runtime
    * context.
    *
@@ -1033,7 +1034,7 @@ declare namespace Deno {
      *
      * Use
      * [`itereateReader`](https://deno.land/std/streams/conversion.ts?s=iterateReader)
-     * from from
+     * from
      * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
      * to turn a `Reader` into an {@linkcode AsyncIterator}.
      */
