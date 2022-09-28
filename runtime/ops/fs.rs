@@ -1043,8 +1043,8 @@ create_struct_writer! {
 
 #[inline(always)]
 fn get_stat(metadata: std::fs::Metadata) -> FsStat {
-  // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
+    // Unix stat Metadata member (number types only). 0 if not on unix.
     ($member:ident; md) => {{
       #[cfg(unix)]
       {
@@ -1056,6 +1056,7 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
       }
     }};
 
+    // Unix stat FileType member (boolean types only). false if not on unix.
     ($member:ident; ft) => {{
       #[cfg(unix)]
       {
