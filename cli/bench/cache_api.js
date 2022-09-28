@@ -6,7 +6,6 @@ const req = "https://deno.com";
 
 Deno.bench(
   `cache_storage_open`,
-  { n: 5e2 },
   async () => {
     await caches.open("cache-v2");
   },
@@ -14,7 +13,6 @@ Deno.bench(
 
 Deno.bench(
   `cache_storage_has`,
-  { n: 5e2 },
   async () => {
     await caches.has("cache-v2");
   },
@@ -22,7 +20,6 @@ Deno.bench(
 
 Deno.bench(
   `cache_storage_delete`,
-  { n: 5e2 },
   async () => {
     await caches.delete("cache-v2");
   },
@@ -38,23 +35,22 @@ for (let index = 1; index <= 110; index++) {
 
 Deno.bench(
   `cache_put_body_${Math.floor(body.length / 1024)}_KiB`,
-  { n: 5e2 },
   async () => {
     await cache.put(req, new Response(body));
   },
 );
 
-Deno.bench("cache_put_no_body", { n: 5e2 }, async () => {
+Deno.bench("cache_put_no_body", async () => {
   await cache.put(
     "https://deno.land/redirect",
     Response.redirect("https://deno.com"),
   );
 });
 
-Deno.bench("cache_match", { n: 5e2 }, async () => {
+Deno.bench("cache_match", async () => {
   await cache.match(req);
 });
 
-Deno.bench("cache_delete", { n: 5e2 }, async () => {
+Deno.bench("cache_delete", async () => {
   await cache.delete(req);
 });
