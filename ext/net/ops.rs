@@ -252,8 +252,10 @@ where
     } if transport == "udp" => {
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<NP>()
-          .check_net(&(&args.hostname, Some(args.port)))?;
+        s.borrow_mut::<NP>().check_net(
+          &(&args.hostname, Some(args.port)),
+          "Deno.DatagramConn.send()",
+        )?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -278,7 +280,8 @@ where
       let address_path = Path::new(&args.path);
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<NP>().check_write(address_path)?;
+        s.borrow_mut::<NP>()
+          .check_write(address_path, "Deno.DatagramConn.send()")?;
       }
       let resource = state
         .borrow()
@@ -319,7 +322,7 @@ where
         let mut state_ = state.borrow_mut();
         state_
           .borrow_mut::<NP>()
-          .check_net(&(&args.hostname, Some(args.port)))?;
+          .check_net(&(&args.hostname, Some(args.port)), "Deno.connect()")?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -354,8 +357,12 @@ where
       super::check_unstable2(&state, "Deno.connect");
       {
         let mut state_ = state.borrow_mut();
-        state_.borrow_mut::<NP>().check_read(address_path)?;
-        state_.borrow_mut::<NP>().check_write(address_path)?;
+        state_
+          .borrow_mut::<NP>()
+          .check_read(address_path, "Deno.connect()")?;
+        state_
+          .borrow_mut::<NP>()
+          .check_write(address_path, "Deno.connect()")?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -494,9 +501,10 @@ where
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        state
-          .borrow_mut::<NP>()
-          .check_net(&(&args.hostname, Some(args.port)))?;
+        state.borrow_mut::<NP>().check_net(
+          &(&args.hostname, Some(args.port)),
+          "Deno.listenDatagram()",
+        )?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -540,9 +548,14 @@ where
         if transport == "unixpacket" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
+        let api_name = if transport == "unix" {
+          "Deno.listen()"
+        } else {
+          "Deno.listenDatagram()"
+        };
         let permissions = state.borrow_mut::<NP>();
-        permissions.check_read(address_path)?;
-        permissions.check_write(address_path)?;
+        permissions.check_read(address_path, api_name)?;
+        permissions.check_write(address_path, api_name)?;
       }
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(state, address_path)?
@@ -678,7 +691,7 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)))?;
+      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
     }
   }
 
@@ -1010,15 +1023,24 @@ mod tests {
     fn check_net<T: AsRef<str>>(
       &mut self,
       _host: &(T, Option<u16>),
+      _api_name: &str,
     ) -> Result<(), AnyError> {
       Ok(())
     }
 
-    fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
+    fn check_read(
+      &mut self,
+      _p: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
       Ok(())
     }
 
-    fn check_write(&mut self, _p: &Path) -> Result<(), AnyError> {
+    fn check_write(
+      &mut self,
+      _p: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
       Ok(())
     }
   }

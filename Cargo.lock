@@ -849,6 +849,7 @@ dependencies = [
  "indexmap",
  "indicatif",
  "jsonc-parser",
+ "junction",
  "libc",
  "log 0.4.17",
  "mitata",
@@ -2505,6 +2506,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a1853e40333206f9a685358046d13ab200169e3ee573019bddf0ede0dc29307"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "junction"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be39922b087cecaba4e2d5592dedfc8bda5d4a5a1231f143337cca207950b61d"
+dependencies = [
+ "scopeguard",
+ "winapi 0.3.9",
 ]
 
 [[package]]

@@ -144,7 +144,10 @@ struct RunInfo {
 #[op]
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
-  state.borrow_mut::<Permissions>().run.check(&args[0])?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check(&args[0], Some("Deno.run()"))?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -348,8 +351,12 @@ fn op_kill(
   state: &mut OpState,
   pid: i32,
   signal: String,
+  api_name: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().run.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
 }

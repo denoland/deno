@@ -73,6 +73,7 @@ mod not_docs {
     fn check_net_url(
       &mut self,
       _url: &deno_core::url::Url,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -80,6 +81,7 @@ mod not_docs {
     fn check_read(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -89,6 +91,7 @@ mod not_docs {
     fn check_net_url(
       &mut self,
       _url: &deno_core::url::Url,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -121,6 +124,7 @@ mod not_docs {
     fn check_net<T: AsRef<str>>(
       &mut self,
       _host: &(T, Option<u16>),
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -139,6 +143,7 @@ mod not_docs {
     fn check_net<T: AsRef<str>>(
       &mut self,
       _host: &(T, Option<u16>),
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -146,6 +151,7 @@ mod not_docs {
     fn check_read(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
@@ -153,6 +159,7 @@ mod not_docs {
     fn check_write(
       &mut self,
       _p: &Path,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
