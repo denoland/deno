@@ -81,6 +81,7 @@ fn create_compiler_snapshot(
 ) {
   // libs that are being provided by op crates.
   let mut op_crate_libs = HashMap::new();
+  op_crate_libs.insert("deno.cache", deno_cache::get_declaration());
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
@@ -371,6 +372,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
     deno_webstorage::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_CACHE_LIB_PATH={}",
+    deno_cache::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",
