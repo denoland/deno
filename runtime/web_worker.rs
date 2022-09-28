@@ -378,7 +378,7 @@ impl WebWorker {
       .build();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(Box::new(create_cache_fn)))
+      CreateCache(Arc::new(create_cache_fn))
     });
 
     let mut extensions: Vec<Extension> = vec![

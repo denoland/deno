@@ -335,7 +335,7 @@ fn vary_header_matches(
   query_request_headers: &[(ByteString, ByteString)],
   cached_request_headers: &[(ByteString, ByteString)],
 ) -> bool {
-  let vary_header = match std::str::from_utf8(&vary_header) {
+  let vary_header = match std::str::from_utf8(vary_header) {
     Ok(vary_header) => vary_header,
     Err(_) => return false,
   };
@@ -364,7 +364,7 @@ fn get_header(
   headers
     .iter()
     .find(|(k, _)| {
-      if let Ok(k) = std::str::from_utf8(&k) {
+      if let Ok(k) = std::str::from_utf8(k) {
         k.eq_ignore_ascii_case(name)
       } else {
         false
@@ -467,9 +467,9 @@ pub fn hash(token: &str) -> String {
 fn serialize_headers(headers: &[(ByteString, ByteString)]) -> Vec<u8> {
   let mut serialized_headers = Vec::new();
   for (name, value) in headers {
-    serialized_headers.extend_from_slice(&name);
+    serialized_headers.extend_from_slice(name);
     serialized_headers.extend_from_slice(b"\r\n");
-    serialized_headers.extend_from_slice(&value);
+    serialized_headers.extend_from_slice(value);
     serialized_headers.extend_from_slice(b"\r\n");
   }
   serialized_headers

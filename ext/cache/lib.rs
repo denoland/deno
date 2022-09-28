@@ -182,7 +182,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct CreateCache<C: Cache + 'static>(pub Arc<Box<dyn Fn() -> C>>);
+pub struct CreateCache<C: Cache + 'static>(pub Arc<dyn Fn() -> C>);
 
 pub fn init<CA: Cache + 'static>(
   maybe_create_cache: Option<CreateCache<CA>>,
