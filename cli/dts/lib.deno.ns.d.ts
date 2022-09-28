@@ -117,7 +117,8 @@ declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs.
    *
    * Can be used to provide more specific handling of failures within code
-   * which is using Deno APIs. For example, handling attempting to open a file:
+   * which is using Deno APIs. For example, handling attempting to open a file
+   * which does not exist:
    *
    * ```ts
    * try {
@@ -158,8 +159,7 @@ declare namespace Deno {
     /**
      * Raised when the underlying operating system reports that a connection has
      * been reset. With network servers, it can be a _normal_ occurrence where a
-     * client will abort a connection instead of properly tearing down the
-     * connection.
+     * client will abort a connection instead of properly shutting it down.
      *
      * @category Errors */
     export class ConnectionReset extends Error {}
@@ -330,9 +330,9 @@ declare namespace Deno {
   /**
    * Options which define the permissions within a test or worker context.
    *
-   * `"inherit"` would ensure that all permissions of the parent process will be
-   * applied to the test context. `"none"` would ensure the test context has no
-   * permissions. A `PermissionOptionsObject` would provide a more specific
+   * `"inherit"` ensures that all permissions of the parent process will be
+   * applied to the test context. `"none"` ensures the test context has no
+   * permissions. A `PermissionOptionsObject` provides a more specific
    * set of permissions to the test context.
    *
    * @category Permissions */
@@ -567,20 +567,21 @@ declare namespace Deno {
     name: string;
     /** If truthy the current test step will be ignored.
      *
-     * It is a quick way to skip over a step, but also can be used for
+     * This is a quick way to skip over a step, but also can be used for
      * conditional logic, like determining if an environment feature is present.
      */
     ignore?: boolean;
     /** Check that the number of async completed operations after the test step
      * is the same as number of dispatched operations. This ensures that the
-     * code tested is not leaving requests outside of the JavaScript runtime
-     * unmanaged, helping ensure that memory leaks are less likely.
+     * code tested does not start async operations which it then does
+     * not await. This helps in preventing logic errors and memory leaks
+     * in the application code.
      *
      * Defaults to the parent test or step's value. */
     sanitizeOps?: boolean;
-    /** Ensure the test step does not "leak" resources, like open files or
-     * network connections by ensuring the open resources at the start of the
-     * test is the same as at the end of the test.
+    /** Ensure the test step does not "leak" resources - like open files or
+     * network connections - by ensuring the open resources at the start of the
+     * step match the open resources at the end of the step.
      *
      * Defaults to the parent test or step's value. */
     sanitizeResources?: boolean;
@@ -607,13 +608,15 @@ declare namespace Deno {
     only?: boolean;
     /** Check that the number of async completed operations after the test step
      * is the same as number of dispatched operations. This ensures that the
-     * code tested is not leaving requests outside of the JavaScript runtime
-     * unmanaged, helping ensure that memory leaks are less likely.
+     * code tested does not start async operations which it then does
+     * not await. This helps in preventing logic errors and memory leaks
+     * in the application code.
      *
      * Defaults to `true`. */
     sanitizeOps?: boolean;
-    /** Ensure the test case does not "leak" resources - ie. the resource table
-     * after the test has exactly the same contents as before the test.
+    /** Ensure the test step does not "leak" resources - like open files or
+     * network connections - by ensuring the open resources at the start of the
+     * test match the open resources at the end of the test.
      *
      * Defaults to `true`. */
     sanitizeResources?: boolean;
@@ -677,21 +680,15 @@ declare namespace Deno {
    * ```ts
    * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.test(
-   *   "My test description",
-   *   () => {
-   *     assertEquals("hello", "hello");
-   *   },
-   * );
+   * Deno.test("My test description", () => {
+   *   assertEquals("hello", "hello");
+   * });
    *
-   * Deno.test(
-   *   "My async test description",
-   *   async () => {
-   *     const decoder = new TextDecoder("utf-8");
-   *     const data = await Deno.readFile("hello_world.txt");
-   *     assertEquals(decoder.decode(data), "Hello world");
-   *   },
-   * );
+   * Deno.test("My async test description", async () => {
+   *   const decoder = new TextDecoder("utf-8");
+   *   const data = await Deno.readFile("hello_world.txt");
+   *   assertEquals(decoder.decode(data), "Hello world");
+   * });
    * ```
    *
    * @category Testing
@@ -835,9 +832,8 @@ declare namespace Deno {
    */
   export function exit(code?: number): never;
 
-  /** An interface allowing the
-   * ability to read and set the environment variables for the current runtime
-   * context.
+  /** An interface containing methods to interact with the process environment
+   * variables.
    *
    * @tags allow-env
    * @category Runtime Environment
@@ -902,9 +898,8 @@ declare namespace Deno {
     toObject(): { [index: string]: string };
   }
 
-  /** An interface to interface with the runtime environment, allowing the
-   * ability to read and set the environment variables for the current runtime
-   * context.
+  /** An interface containing methods to interact with the process environment
+   * variables.
    *
    * @tags allow-env
    * @category Runtime Environment
@@ -1607,9 +1602,9 @@ declare namespace Deno {
     /** The resource ID associated with the file instance. The resource ID
      * should be considered an opaque reference to resource. */
     readonly rid: number;
-    /** A {@linkcode ReadableStream} interface to the byte contents of the
-     * file. This makes it easy to interoperate with other web streams based
-     * APIs.
+    /** A {@linkcode ReadableStream} instance representing to the byte contents
+     * of the file. This makes it easy to interoperate with other web streams
+     * based APIs.
      *
      * ```ts
      * const file = await Deno.open("my_file.txt", { read: true });
@@ -1621,7 +1616,7 @@ declare namespace Deno {
      * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
-    /** A {@linkcode WritableStream} interface to write the contents of the
+    /** A {@linkcode WritableStream} instance to write the contents of the
      * file. This makes it easy to interoperate with other web streams based
      * APIs.
      *
