@@ -1068,9 +1068,9 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
     }};
   }
 
-  use std::os::unix::fs::FileTypeExt;
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
+  use std::os::unix::fs::FileTypeExt;
   let (mtime, mtime_set) = to_msec(metadata.modified());
   let (atime, atime_set) = to_msec(metadata.accessed());
   let (birthtime, birthtime_set) = to_msec(metadata.created());
