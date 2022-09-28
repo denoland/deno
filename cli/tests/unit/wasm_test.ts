@@ -79,7 +79,7 @@ Deno.test(async function wasmInstantiateStreaming() {
 Deno.test(
   { permissions: { read: true } },
   async function wasmFileStreaming() {
-    const url = import.meta.resolve("../testdata/unreachable.wasm");
+    const url = import.meta.resolve("../testdata/assets/unreachable.wasm");
     assert(url.startsWith("file://"));
 
     const { module } = await WebAssembly.instantiateStreaming(fetch(url));
@@ -96,7 +96,7 @@ Deno.test(
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(
-      "http://localhost:4545/deno_dom_0.1.3-alpha2.wasm",
+      "http://localhost:4545/assets/deno_dom_0.1.3-alpha2.wasm",
     ));
   },
 );

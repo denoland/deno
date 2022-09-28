@@ -267,6 +267,117 @@ fn cached_only_after_first_run() {
 }
 
 #[test]
+fn reload_flag() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:chalk")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:foobar")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert!(stderr.is_empty());
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+}
+
+#[test]
 fn no_npm_after_first_run() {
   let _server = http_server();
 
@@ -422,6 +533,85 @@ itest!(builtin_module_module {
   envs: env_vars(),
   http_server: true,
 });
+
+itest!(node_modules_dir_require_added_node_modules_folder {
+  args:
+    "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+  output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_with_deps {
+  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+#[test]
+fn node_modules_dir_cache() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("cache")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let node_modules = deno_dir.path().join("node_modules");
+  assert!(node_modules
+    .join(
+      ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
+    )
+    .exists());
+  assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
+
+  // now try deleting the folder with the package source in the npm cache dir
+  let package_global_cache_dir = deno_dir
+    .path()
+    .join("npm")
+    .join("localhost_4545")
+    .join("npm")
+    .join("registry")
+    .join("@denotest")
+    .join("dual-cjs-esm")
+    .join("1.0.0");
+  assert!(package_global_cache_dir.exists());
+  std::fs::remove_dir_all(&package_global_cache_dir).unwrap();
+
+  // run the output, and it shouldn't bother recreating the directory
+  // because it already has everything cached locally in the node_modules folder
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg("-A")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  // this won't exist, but actually the parent directory
+  // will because it still re-downloads the registry information
+  assert!(!package_global_cache_dir.exists());
+}
 
 #[test]
 fn ensure_registry_files_local() {

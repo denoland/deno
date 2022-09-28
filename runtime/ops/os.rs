@@ -61,10 +61,11 @@ fn noop_op() -> Result<(), AnyError> {
 #[op]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<Permissions>()
-    .read
-    .check_blind(&current_exe, "exec_path")?;
+  state.borrow_mut::<Permissions>().read.check_blind(
+    &current_exe,
+    "exec_path",
+    "Deno.execPath()",
+  )?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -80,10 +81,20 @@ fn op_set_env(
   value: String,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
-  let invalid_key = key.is_empty() || key.contains(&['=', '\0'] as &[char]);
-  let invalid_value = value.contains('\0');
-  if invalid_key || invalid_value {
-    return Err(type_error("Key or value contains invalid characters."));
+  if key.is_empty() {
+    return Err(type_error("Key is an empty string."));
+  }
+  if key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error(format!(
+      "Key contains invalid characters: {:?}",
+      key
+    )));
+  }
+  if value.contains('\0') {
+    return Err(type_error(format!(
+      "Value contains invalid characters: {:?}",
+      value
+    )));
   }
   env::set_var(key, value);
   Ok(())
@@ -108,9 +119,17 @@ fn op_get_env(
     state.borrow_mut::<Permissions>().env.check(&key)?;
   }
 
-  if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error("Key contains invalid characters."));
+  if key.is_empty() {
+    return Err(type_error("Key is an empty string."));
   }
+
+  if key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error(format!(
+      "Key contains invalid characters: {:?}",
+      key
+    )));
+  }
+
   let r = match env::var(key) {
     Err(env::VarError::NotPresent) => None,
     v => Some(v?),

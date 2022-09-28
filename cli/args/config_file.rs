@@ -63,7 +63,7 @@ pub struct CompilerOptions {
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct IgnoredCompilerOptions {
   pub items: Vec<String>,
   pub maybe_specifier: Option<ModuleSpecifier>,
@@ -524,6 +524,20 @@ impl ConfigFile {
     } else {
       std::env::current_dir()?.join(path_ref)
     };
+
+    // perf: Check if the config file exists before canonicalizing path.
+    if !config_file.exists() {
+      return Err(
+        std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          format!(
+            "Could not find the config file: {}",
+            config_file.to_string_lossy()
+          ),
+        )
+        .into(),
+      );
+    }
 
     let config_path = canonicalize_path(&config_file).map_err(|_| {
       std::io::Error::new(

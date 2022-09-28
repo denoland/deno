@@ -1,4 +1,4 @@
-const m = Deno[Deno.internal].require.moduleExports;
+const m = Deno[Deno.internal].require.Module;
 export const _cache = m._cache;
 export const _extensions = m._extensions;
 export const _findPath = m._findPath;

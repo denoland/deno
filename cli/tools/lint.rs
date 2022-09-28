@@ -128,7 +128,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files

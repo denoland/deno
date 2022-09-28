@@ -1085,24 +1085,27 @@ Deno.test("upgradeHttpRaw tcp", async () => {
   const promise2 = deferred();
   const ac = new AbortController();
   const signal = ac.signal;
-  const handler = async (req: Request) => {
-    const [conn, _] = Deno.upgradeHttpRaw(req);
+  let conn: Deno.Conn;
+  let _head;
+  const handler = (req: Request) => {
+    [conn, _head] = Deno.upgradeHttpRaw(req);
 
-    await conn.write(
-      new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
-    );
+    (async () => {
+      await conn.write(
+        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
+      );
 
-    promise.resolve();
+      promise.resolve();
 
-    const buf = new Uint8Array(1024);
-    const n = await conn.read(buf);
+      const buf = new Uint8Array(1024);
+      const n = await conn.read(buf);
 
-    assert(n != null);
-    const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-    assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+      assert(n != null);
+      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
 
-    promise2.resolve();
-    conn.close();
+      promise2.resolve();
+    })();
   };
   const server = Deno.serve({
     // NOTE: `as any` is used to bypass type checking for the return value
@@ -1131,6 +1134,7 @@ Deno.test("upgradeHttpRaw tcp", async () => {
   );
 
   await promise2;
+  conn!.close();
   tcpConn.close();
 
   ac.abort();

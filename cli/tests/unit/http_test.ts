@@ -1214,7 +1214,9 @@ Deno.test(
     async function client() {
       const socket = new WebSocket(`ws://${hostname}:${port}/`);
       socket.onopen = () => socket.send("bla bla");
-      const { data } = await new Promise((res) => socket.onmessage = res);
+      const { data } = await new Promise<MessageEvent<string>>((res) =>
+        socket.onmessage = res
+      );
       assertStrictEquals(data, "bla bla");
       socket.close();
     }
