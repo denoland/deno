@@ -257,6 +257,7 @@
     rdev: "?u64",
     blksize: "?u64",
     blocks: "?u64",
+    isBlockDevice: "bool",
   });
 
   function parseFileInfo(response) {
@@ -281,6 +282,7 @@
       rdev: unix ? response.rdev : null,
       blksize: unix ? response.blksize : null,
       blocks: unix ? response.blocks : null,
+      isBlockDevice: unix ? response.isBlockDevice : null,
     };
   }
 

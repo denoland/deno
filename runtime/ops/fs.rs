@@ -1037,6 +1037,7 @@ create_struct_writer! {
     rdev: u64,
     blksize: u64,
     blocks: u64,
+    is_block_device: bool,
   }
 }
 
@@ -1044,7 +1045,7 @@ create_struct_writer! {
 fn get_stat(metadata: std::fs::Metadata) -> FsStat {
   // Unix stat member (number types only). 0 if not on unix.
   macro_rules! usm {
-    ($member:ident) => {{
+    ($member:ident; md) => {{
       #[cfg(unix)]
       {
         metadata.$member()
@@ -1054,8 +1055,20 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
         0
       }
     }};
+
+    ($member:ident; ft) => {{
+      #[cfg(unix)]
+      {
+        metadata.file_type().$member()
+      }
+      #[cfg(not(unix))]
+      {
+        0
+      }
+    }};
   }
 
+  use std::os::unix::fs::FileTypeExt;
   #[cfg(unix)]
   use std::os::unix::fs::MetadataExt;
   let (mtime, mtime_set) = to_msec(metadata.modified());
@@ -1075,15 +1088,16 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
     birthtime_set,
     birthtime,
     // Following are only valid under Unix.
-    dev: usm!(dev),
-    ino: usm!(ino),
-    mode: usm!(mode),
-    nlink: usm!(nlink),
-    uid: usm!(uid),
-    gid: usm!(gid),
-    rdev: usm!(rdev),
-    blksize: usm!(blksize),
-    blocks: usm!(blocks),
+    dev: usm!(dev; md),
+    ino: usm!(ino; md),
+    mode: usm!(mode; md),
+    nlink: usm!(nlink; md),
+    uid: usm!(uid; md),
+    gid: usm!(gid; md),
+    rdev: usm!(rdev; md),
+    blksize: usm!(blksize; md),
+    blocks: usm!(blocks; md),
+    is_block_device: usm!(is_block_device; ft),
   }
 }
 
