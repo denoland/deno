@@ -161,10 +161,7 @@ fn op_exit(state: &mut OpState) {
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state
-    .borrow_mut::<Permissions>()
-    .sys
-    .check("loadavg")?;
+  state.borrow_mut::<Permissions>().sys.check("loadavg")?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
@@ -174,10 +171,7 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 #[op]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state
-    .borrow_mut::<Permissions>()
-    .sys
-    .check("hostname")?;
+  state.borrow_mut::<Permissions>().sys.check("hostname")?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
@@ -185,10 +179,7 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state
-    .borrow_mut::<Permissions>()
-    .sys
-    .check("osRelease")?;
+  state.borrow_mut::<Permissions>().sys.check("osRelease")?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }

@@ -2895,8 +2895,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 
   if let Some(sys_wl) = matches.values_of("allow-sys") {
-    let sys_allowlist: Vec<String> =
-      sys_wl.map(ToString::to_string).collect();
+    let sys_allowlist: Vec<String> = sys_wl.map(ToString::to_string).collect();
     flags.allow_sys = Some(sys_allowlist);
     debug!("sys info allowlist: {:#?}", &flags.allow_sys);
   }
@@ -4373,8 +4372,7 @@ mod tests {
 
   #[test]
   fn allow_sys() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--allow-sys", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "--allow-sys", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4389,12 +4387,8 @@ mod tests {
 
   #[test]
   fn allow_sys_allowlist() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--allow-sys=hostname",
-      "script.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {

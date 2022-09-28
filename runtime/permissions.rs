@@ -936,18 +936,18 @@ impl UnaryPermission<SysDescriptor> {
     if self.global_state == PermissionState::Denied
       && match kind {
         None => true,
-        Some(kind) => self
-          .denied_list
-          .contains(&SysDescriptor(kind.to_string())),
+        Some(kind) => {
+          self.denied_list.contains(&SysDescriptor(kind.to_string()))
+        }
       }
     {
       PermissionState::Denied
     } else if self.global_state == PermissionState::Granted
       || match kind {
         None => false,
-        Some(kind) => self
-          .granted_list
-          .contains(&SysDescriptor(kind.to_string())),
+        Some(kind) => {
+          self.granted_list.contains(&SysDescriptor(kind.to_string()))
+        }
       }
     {
       PermissionState::Granted
@@ -987,9 +987,7 @@ impl UnaryPermission<SysDescriptor> {
 
   pub fn revoke(&mut self, kind: Option<&str>) -> PermissionState {
     if let Some(kind) = kind {
-      self
-        .granted_list
-        .remove(&SysDescriptor(kind.to_string()));
+      self.granted_list.remove(&SysDescriptor(kind.to_string()));
     } else {
       self.granted_list.clear();
     }
@@ -1007,13 +1005,9 @@ impl UnaryPermission<SysDescriptor> {
     );
     if prompted {
       if result.is_ok() {
-        self
-          .granted_list
-          .insert(SysDescriptor(kind.to_string()));
+        self.granted_list.insert(SysDescriptor(kind.to_string()));
       } else {
-        self
-          .denied_list
-          .insert(SysDescriptor(kind.to_string()));
+        self.denied_list.insert(SysDescriptor(kind.to_string()));
         self.global_state = PermissionState::Denied;
       }
     }
@@ -3360,9 +3354,7 @@ mod tests {
   fn test_handle_empty_value() {
     assert!(Permissions::new_read(&Some(vec![PathBuf::new()]), false).is_err());
     assert!(Permissions::new_env(&Some(vec![String::new()]), false).is_err());
-    assert!(
-      Permissions::new_sys(&Some(vec![String::new()]), false).is_err()
-    );
+    assert!(Permissions::new_sys(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_run(&Some(vec![String::new()]), false).is_err());
     assert!(Permissions::new_ffi(&Some(vec![PathBuf::new()]), false).is_err());
     assert!(Permissions::new_net(&Some(svec![String::new()]), false).is_err());
