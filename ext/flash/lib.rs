@@ -963,22 +963,44 @@ fn run_server(
                 // sockets.remove(&token);
                 continue 'events;
               }
-              Ok(read) => match req.parse(&buffer[..offset + read]) {
-                Ok(httparse::Status::Complete(n)) => {
-                  body_offset = n;
-                  body_len = offset + read;
-                  socket.parse_done = ParseStatus::None;
-                  break;
+              Ok(read) => {
+                // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+                //
+                // Mio tries to emulate edge triggered events on Windows.
+                // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+                // https://github.com/denoland/deno/issues/15549
+                #[cfg(target_os = "windows")]
+                match &mut socket.inner {
+                  InnerStream::Tcp(ref mut socket) => {
+                    poll
+                      .registry()
+                      .reregister(socket, token, Interest::READABLE)
+                      .unwrap();
+                  }
+                  InnerStream::Tls(ref mut socket) => {
+                    poll
+                      .registry()
+                      .reregister(&mut socket.sock, token, Interest::READABLE)
+                      .unwrap();
+                  }
+                };
+                match req.parse(&buffer[..offset + read]) {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    body_len = offset + read;
+                    socket.parse_done = ParseStatus::None;
+                    break;
+                  }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
+                    continue;
+                  }
+                  Err(_) => {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
                 }
-                Ok(httparse::Status::Partial) => {
-                  socket.parse_done = ParseStatus::Ongoing(offset + read);
-                  continue;
-                }
-                Err(_) => {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
-                }
-              },
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
               }
