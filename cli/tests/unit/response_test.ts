@@ -94,10 +94,9 @@ Deno.test(function customInspectFunction() {
 Deno.test(async function responseBodyUsed() {
   const response = new Response("body");
   assert(!response.bodyUsed);
-  await response.text(); // consume body
+  await response.text();
   assert(response.bodyUsed);
-  // .body getter is needed so we can test the faulty
-  // code path
+  // .body getter is needed so we can test the faulty code path
   response.body;
   assert(response.bodyUsed);
 });
