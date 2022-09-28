@@ -13,6 +13,7 @@ use deno_core::url::Url;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
+use crate::npm::NpmResolutionSnapshot;
 
 pub trait InnerNpmPackageResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(
@@ -39,6 +40,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+
+  fn snapshot(&self) -> NpmResolutionSnapshot;
 }
 
 /// Caches all the packages in parallel.

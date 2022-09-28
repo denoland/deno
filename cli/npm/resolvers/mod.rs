@@ -23,12 +23,23 @@ use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
+use super::NpmResolutionSnapshot;
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
   unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
+}
+
+impl std::fmt::Debug for NpmPackageResolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("NpmPackageResolver")
+      .field("unstable", &self.unstable)
+      .field("no_npm", &self.no_npm)
+      .field("inner", &"<omitted>")
+      .finish()
+  }
 }
 
 impl NpmPackageResolver {
@@ -136,6 +147,11 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await
+  }
+
+  /// Gets a resolution snapshot.
+  pub fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.inner.snapshot()
   }
 }
 

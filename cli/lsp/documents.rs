@@ -12,6 +12,8 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
 use crate::text_encoding;
@@ -920,11 +922,17 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer: &ModuleSpecifier,
+    npm_resolver: &NpmPackageResolver,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
     let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
     for specifier in specifiers {
-      if specifier.starts_with("asset:") {
+      // handle npm:<package> urls
+      if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
+        results.push(
+          resolve_npm_package_reference_types(&npm_ref, npm_resolver).ok(),
+        );
+      } else if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));

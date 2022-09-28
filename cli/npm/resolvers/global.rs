@@ -18,6 +18,7 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
+use crate::npm::NpmResolutionSnapshot;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
@@ -104,5 +105,9 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
     ensure_registry_read_permission(&registry_path, path)
+  }
+
+  fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.resolution.snapshot()
   }
 }

@@ -4,6 +4,10 @@ use crate::args::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::node::node_resolve_npm_reference;
+use crate::node::NodeResolution;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -557,7 +561,21 @@ fn op_resolve(
               }
               _ => Some((specifier, media_type)),
             },
-            _ => None,
+            _ => {
+              // handle npm:<package> urls
+              if let Ok(npm_ref) =
+                NpmPackageReference::from_specifier(&specifier)
+              {
+                let (specifier, media_type) =
+                  resolve_npm_package_reference_types(
+                    &npm_ref,
+                    &state.npm_snapshot,
+                  )?;
+                Some((specifier, media_type))
+              } else {
+                None
+              }
+            }
           }
         }
         _ => None,
@@ -597,6 +615,57 @@ fn op_resolve(
   }
 
   Ok(resolved)
+}
+
+pub fn resolve_npm_package_reference_types(
+  npm_ref: &NpmPackageReference,
+  npm_resolver: &NpmPackageResolver,
+) -> Result<(ModuleSpecifier, MediaType), AnyError> {
+  let maybe_response = node_resolve_npm_reference(
+    &npm_ref,
+    npm_resolver,
+    NodeResolutionMode::Types,
+  )?;
+  maybe_node_response_to_media_type_and_specifier(maybe_response)
+}
+
+pub fn maybe_node_response_to_media_type_and_specifier(
+  maybe_response: Option<NodeResolution>,
+) -> Result<(ModuleSpecifier, MediaType), AnyError> {
+  Ok(match maybe_response {
+    Some(NodeResolution::CommonJs(specifier)) => {
+      let media_type = MediaType::from(&specifier);
+      (
+        specifier,
+        match media_type {
+          MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
+          MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
+          _ => media_type,
+        },
+      )
+    }
+    Some(NodeResolution::Esm(specifier)) => {
+      let media_type = MediaType::from(&specifier);
+      (
+        specifier,
+        match media_type {
+          MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
+          MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
+          _ => media_type,
+        },
+      )
+    }
+    maybe_response => {
+      let specifier = match maybe_response {
+        Some(response) => response.to_result()?,
+        None => {
+          ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
+        }
+      };
+      let media_type = MediaType::from(&specifier);
+      (specifier, media_type)
+    }
+  })
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]

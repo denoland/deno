@@ -59,6 +59,12 @@ impl NodeResolution {
   }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum NodeResolutionMode {
+  Execution,
+  Types,
+}
+
 struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
   name: &'static str,

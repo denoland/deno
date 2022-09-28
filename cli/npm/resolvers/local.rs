@@ -180,6 +180,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     ensure_registry_read_permission(&self.root_node_modules_path, path)
   }
+
+  fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.resolution.snapshot()
+  }
 }
 
 /// Creates a pnpm style folder structure.

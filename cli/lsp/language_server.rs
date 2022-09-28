@@ -67,6 +67,8 @@ use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -86,6 +88,7 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
+  pub npm_snapshot: NpmResolutionSnapshot,
 }
 
 #[derive(Debug)]
@@ -124,6 +127,8 @@ pub struct Inner {
   pub maybe_lint_config: Option<LintConfig>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
+  /// Resolver for npm packages.
+  npm_resolver: NpmPackageResolver,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -242,6 +247,7 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
+    let npm_resolver = NpmPackageResolver::new();
 
     Self {
       assets,
@@ -259,6 +265,7 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
+      npm_resolver,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -427,6 +434,7 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
+      npm_snapshot: self.npm_resolver.snapshot(),
       root_uri: self.config.root_uri.clone(),
     })
   }
