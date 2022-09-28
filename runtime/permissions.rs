@@ -964,7 +964,7 @@ impl UnaryPermission<SysDescriptor> {
     if let Some(kind) = kind {
       let desc = SysDescriptor(kind.to_string());
       if permission_prompt(
-        &format!("system info access to {}", kind),
+        &format!("sys access to \"{}\"", kind),
         self.name,
         Some("Deno.permissions.query()"),
       ) {
@@ -977,7 +977,7 @@ impl UnaryPermission<SysDescriptor> {
       }
     } else {
       if permission_prompt(
-        "system info access",
+        "sys access",
         self.name,
         Some("Deno.permissions.query()"),
       ) {

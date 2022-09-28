@@ -1831,7 +1831,19 @@ fn permission_args(app: Command) -> Command {
         .takes_value(true)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow access to system info"),
+        .help("Allow access to system info")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            match key {
+              "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+              | "systemMemoryInfo" | "getUid" | "getGid" => {}
+              _ => {
+                return Err(format!("unknown system info kind \"{}\"", key));
+              }
+            }
+          }
+          Ok(())
+        }),
     )
     .arg(
       Arg::new("allow-run")
@@ -4419,6 +4431,30 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=foo", "script.ts"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,foo",
+      "script.ts"
+    ]);
+    assert!(r.is_err());
   }
 
   #[test]

@@ -2970,7 +2970,14 @@ declare namespace Deno {
   /** @category Permissions */
   export interface SysPermissionDescriptor {
     name: "sys";
-    info?: string;
+    kind?:
+      | "loadavg"
+      | "hostname"
+      | "systemMemoryInfo"
+      | "networkInterfaces"
+      | "osRelease"
+      | "getUid"
+      | "getGid";
   }
 
   /** @category Permissions */
