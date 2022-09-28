@@ -55,6 +55,7 @@ async fn main() -> Result<(), AnyError> {
     module_loader,
     npm_resolver: None,
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),

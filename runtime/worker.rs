@@ -7,6 +7,8 @@ use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -85,6 +87,7 @@ pub struct WorkerOptions {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -131,6 +134,10 @@ impl MainWorker {
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -151,6 +158,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -527,6 +535,7 @@ mod tests {
       module_loader: Rc::new(deno_core::FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
+      cache_storage_dir: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),

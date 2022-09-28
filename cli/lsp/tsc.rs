@@ -3775,7 +3775,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 70);
+    assert_eq!(assets.len(), 71);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;

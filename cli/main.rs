@@ -217,6 +217,7 @@ pub fn get_types(unstable: bool) -> String {
     tsc::DENO_BROADCAST_CHANNEL_LIB,
     tsc::DENO_NET_LIB,
     tsc::SHARED_GLOBALS_LIB,
+    tsc::DENO_CACHE_LIB,
     tsc::WINDOW_LIB,
   ];
 

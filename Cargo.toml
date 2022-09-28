@@ -12,6 +12,7 @@ members = [
   "test_ffi",
   "test_util",
   "ext/broadcast_channel",
+  "ext/cache",
   "ext/console",
   "ext/crypto",
   "ext/fetch",
@@ -34,14 +35,14 @@ exclude = ["test_util/std/hash/_wasm"]
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 3 # Optimize for speed
+opt-level = 'z' # Optimize for size
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1
 incremental = true
 lto = true
-opt-level = 3 # Optimize for speed
+opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
 [profile.dev.package.num-bigint-dig]
