@@ -255,11 +255,11 @@ declare namespace Deno {
    * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    * There are questions around which permission this needs. And maybe should be
    * renamed (loadAverage?).
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Observability
    */
   export function loadavg(): number[];
@@ -272,11 +272,11 @@ declare namespace Deno {
    * console.log(Deno.osRelease());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    * Under consideration to possibly move to Deno.build or Deno.versions and if
    * it should depend sys-info, which may not be desirable.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function osRelease(): string;
@@ -292,9 +292,9 @@ declare namespace Deno {
    * console.log(Deno.systemMemoryInfo());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
@@ -355,9 +355,9 @@ declare namespace Deno {
    * console.log(Deno.networkInterfaces());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Network
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
@@ -370,9 +370,9 @@ declare namespace Deno {
    * console.log(Deno.getUid());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getUid(): number | null;
@@ -385,9 +385,9 @@ declare namespace Deno {
    * console.log(Deno.getGid());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getGid(): number | null;
@@ -1363,22 +1363,6 @@ declare namespace Deno {
    * @category File System
    */
   export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Make the timer of the given id blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function refTimer(id: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Make the timer of the given id not blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function unrefTimer(id: number): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

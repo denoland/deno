@@ -231,7 +231,6 @@ impl ProcState {
     let api = NpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
-      cli_options.reload_flag(),
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
@@ -242,6 +241,9 @@ impl ProcState {
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
@@ -514,15 +516,7 @@ impl ProcState {
             &self.npm_resolver,
           ))
           .with_context(|| {
-            format!(
-              "Could not resolve '{}' from '{}'.",
-              specifier,
-              self
-                .npm_resolver
-                .resolve_package_from_specifier(&referrer)
-                .unwrap()
-                .id
-            )
+            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
           });
       }
 

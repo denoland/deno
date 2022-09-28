@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
@@ -158,6 +159,7 @@ pub struct OpState {
   pub resource_table: ResourceTable,
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
+  pub last_fast_op_error: Option<AnyError>,
   gotham_state: GothamState,
 }
 
@@ -167,6 +169,7 @@ impl OpState {
       resource_table: Default::default(),
       get_error_class_fn: &|_| "Error",
       gotham_state: Default::default(),
+      last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
     }
   }

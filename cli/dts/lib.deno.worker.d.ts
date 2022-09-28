@@ -5,6 +5,7 @@
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.cache" />
 
 /** @category Web Workers */
 interface WorkerGlobalScopeEventMap {
@@ -51,6 +52,7 @@ declare class WorkerGlobalScope extends EventTarget {
   ): void;
 
   Deno: typeof Deno;
+  caches: CacheStorage;
 }
 
 /** @category Web APIs */

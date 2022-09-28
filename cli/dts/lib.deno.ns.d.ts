@@ -168,9 +168,9 @@ declare namespace Deno {
    * console.log(Deno.hostname());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function hostname(): string;
@@ -196,6 +196,15 @@ declare namespace Deno {
      * Defaults to `false`.
      */
     env?: "inherit" | boolean | string[];
+
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
+     *
+     * Defaults to `false`.
+     */
+    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `hrtime` permission should be requested or revoked.
      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -2927,6 +2936,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
+    | "sys"
     | "ffi"
     | "hrtime";
 
@@ -2972,6 +2982,19 @@ declare namespace Deno {
   }
 
   /** @category Permissions */
+  export interface SysPermissionDescriptor {
+    name: "sys";
+    kind?:
+      | "loadavg"
+      | "hostname"
+      | "systemMemoryInfo"
+      | "networkInterfaces"
+      | "osRelease"
+      | "getUid"
+      | "getGid";
+  }
+
+  /** @category Permissions */
   export interface FfiPermissionDescriptor {
     name: "ffi";
     path?: string | URL;
@@ -2993,6 +3016,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
+    | SysPermissionDescriptor
     | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
@@ -3574,4 +3598,18 @@ declare namespace Deno {
     | SRVRecord[]
     | string[][]
   >;
+
+  /**
+   * Make the timer of the given `id` block the event loop from finishing.
+   *
+   * @category Timers
+   */
+  export function refTimer(id: number): void;
+
+  /**
+   * Make the timer of the given `id` not block the event loop from finishing.
+   *
+   * @category Timers
+   */
+  export function unrefTimer(id: number): void;
 }

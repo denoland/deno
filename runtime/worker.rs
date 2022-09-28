@@ -7,6 +7,8 @@ use crate::ops::io::Stdio;
 use crate::permissions::Permissions;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -85,6 +87,7 @@ pub struct WorkerOptions {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
@@ -131,6 +134,10 @@ impl MainWorker {
       })
       .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
+      CreateCache(Arc::new(create_cache_fn))
+    });
 
     // Internal modules
     let mut extensions: Vec<Extension> = vec![
@@ -151,6 +158,7 @@ impl MainWorker {
         file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
         ..Default::default()
       }),
+      deno_cache::init::<SqliteBackedCache>(create_cache),
       deno_websocket::init::<Permissions>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store.clone(),
@@ -511,6 +519,7 @@ mod tests {
         ts_version: "x".to_string(),
         unstable: false,
         user_agent: "x".to_string(),
+        inspect: false,
       },
       extensions: vec![],
       unsafely_ignore_certificate_errors: None,
@@ -526,6 +535,7 @@ mod tests {
       module_loader: Rc::new(deno_core::FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
+      cache_storage_dir: None,
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
@@ -539,7 +549,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = test_util::testdata_path().join("esm_imports_a.js");
+    let p = test_util::testdata_path().join("runtime/esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_main_module(&module_specifier).await;
@@ -582,7 +592,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = test_util::testdata_path().join("001_hello.js");
+    let p = test_util::testdata_path().join("run/001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_ok());
