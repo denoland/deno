@@ -257,7 +257,7 @@
     rdev: "?u64",
     blksize: "?u64",
     blocks: "?u64",
-    isBlockDevice: "bool",
+    isBlockDevice: "?bool",
   });
 
   function parseFileInfo(response) {
