@@ -270,7 +270,7 @@
   }
 
   function readableStreamFromRid(rid) {
-    new ReadableStream({
+    return new ReadableStream({
       type: "bytes",
       async pull(controller) {
         try {
