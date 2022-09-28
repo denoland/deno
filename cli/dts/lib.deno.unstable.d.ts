@@ -1383,22 +1383,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Make the timer of the given id blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function refTimer(id: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Make the timer of the given id not blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function unrefTimer(id: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact

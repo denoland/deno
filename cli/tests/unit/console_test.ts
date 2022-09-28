@@ -1678,6 +1678,15 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedMap() {
   });
 });
 
+// console.log(new Proxy(new Date(), {}))
+Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedDate() {
+  mockConsole((console, out) => {
+    const proxiedDate = new Proxy(new Date("2022-09-24T15:59:39.529Z"), {});
+    console.log(proxiedDate);
+    assertEquals(stripColor(out.toString()), "2022-09-24T15:59:39.529Z\n");
+  });
+});
+
 // console.dir test
 Deno.test(function consoleDir() {
   mockConsole((console, out) => {
