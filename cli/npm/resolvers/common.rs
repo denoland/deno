@@ -3,7 +3,6 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -15,7 +14,6 @@ use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
-use crate::npm::NpmResolutionSnapshot;
 
 pub trait InnerNpmPackageResolver: Send + Sync {
   fn resolve_package_folder_from_deno_module(

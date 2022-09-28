@@ -24,7 +24,6 @@ use crate::fs_util;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
-use super::resolution::NpmResolutionSnapshot;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
@@ -69,6 +68,8 @@ pub struct NpmPackageResolver {
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
+  api: NpmRegistryApi,
+  cache: NpmCache,
 }
 
 impl std::fmt::Debug for NpmPackageResolver {
@@ -77,6 +78,7 @@ impl std::fmt::Debug for NpmPackageResolver {
       .field("unstable", &self.unstable)
       .field("no_npm", &self.no_npm)
       .field("inner", &"<omitted>")
+      .field("local_node_modules_path", &self.local_node_modules_path)
       .finish()
   }
 }
@@ -89,38 +91,53 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
+    Self::new_with_maybe_snapshot(
+      cache,
+      api,
+      unstable,
+      no_npm,
+      local_node_modules_path,
+      None,
+    )
+  }
+
+  fn new_with_maybe_snapshot(
+    cache: NpmCache,
+    api: NpmRegistryApi,
+    unstable: bool,
+    no_npm: bool,
+    local_node_modules_path: Option<PathBuf>,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
+  ) -> Self {
     let process_npm_state = NpmProcessState::take();
     let local_node_modules_path = local_node_modules_path.or_else(|| {
       process_npm_state
         .as_ref()
         .and_then(|s| s.local_node_modules_path.as_ref().map(PathBuf::from))
     });
-    let maybe_snapshot = process_npm_state.map(|s| s.snapshot);
+    let maybe_snapshot =
+      initial_snapshot.or_else(|| process_npm_state.map(|s| s.snapshot));
     let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
     {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
-        cache,
-        api,
+        cache.clone(),
+        api.clone(),
         node_modules_folder.clone(),
         maybe_snapshot,
       )),
-      None => {
-        Arc::new(GlobalNpmPackageResolver::new(cache, api, maybe_snapshot))
-      }
+      None => Arc::new(GlobalNpmPackageResolver::new(
+        cache.clone(),
+        api.clone(),
+        maybe_snapshot,
+      )),
     };
     Self {
       unstable,
       no_npm,
       inner,
       local_node_modules_path,
-    }
-  }
-
-  pub fn new_for_lsp(snapshot: Arc<NpmResolutionSnapshot>) -> Self {
-    Self {
-      unstable: true,
-      no_npm: false,
-      inner: snapshot,
+      api,
+      cache,
     }
   }
 
@@ -227,9 +244,16 @@ impl NpmPackageResolver {
     .unwrap()
   }
 
-  /// Gets a resolution snapshot.
-  pub fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.inner.snapshot()
+  /// Gets a new resolver with a new snapshotted state.
+  pub fn snapshotted(&self) -> Self {
+    Self::new_with_maybe_snapshot(
+      self.cache.clone(),
+      self.api.clone(),
+      self.unstable,
+      self.no_npm,
+      self.local_node_modules_path.clone(),
+      Some(self.inner.snapshot()),
+    )
   }
 }
 

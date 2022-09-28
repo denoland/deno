@@ -18,6 +18,7 @@ use crate::cache::TypeCheckCache;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::npm::NpmPackageResolver;
 use crate::tsc;
 use crate::tsc::Stats;
 use crate::version;
@@ -58,6 +59,7 @@ pub fn check(
   graph_data: Arc<RwLock<GraphData>>,
   cache: &TypeCheckCache,
   options: CheckOptions,
+  npm_resolver: NpmPackageResolver,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
   let segment_graph_data = {
@@ -106,6 +108,7 @@ pub fn check(
     graph_data,
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
+    maybe_npm_resolver: Some(npm_resolver),
     maybe_tsbuildinfo,
     root_names,
   })?;

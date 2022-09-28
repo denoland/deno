@@ -176,7 +176,7 @@ fn get_maybe_hash(
 }
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
-fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
+fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
   let hash = crate::checksum::gen(&[specifier.path().as_bytes()]);
   format!(
     "{}:///{}{}",
@@ -192,7 +192,7 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: &MediaType) -> String {
 /// think a `.js` version exists, when it doesn't.
 fn maybe_remap_specifier(
   specifier: &ModuleSpecifier,
-  media_type: &MediaType,
+  media_type: MediaType,
 ) -> Option<String> {
   let path = if specifier.scheme() == "file" {
     if let Ok(path) = specifier.to_file_path() {
@@ -284,6 +284,7 @@ pub struct Request {
   pub graph_data: Arc<RwLock<GraphData>>,
   pub hash_data: Vec<Vec<u8>>,
   pub maybe_config_specifier: Option<ModuleSpecifier>,
+  pub maybe_npm_resolver: Option<NpmPackageResolver>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -300,13 +301,14 @@ pub struct Response {
   pub stats: Stats,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct State {
   hash_data: Vec<Vec<u8>>,
   graph_data: Arc<RwLock<GraphData>>,
   maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
+  maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
 }
@@ -316,6 +318,7 @@ impl State {
     graph_data: Arc<RwLock<GraphData>>,
     hash_data: Vec<Vec<u8>>,
     maybe_config_specifier: Option<ModuleSpecifier>,
+    maybe_npm_resolver: Option<NpmPackageResolver>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -324,6 +327,7 @@ impl State {
       hash_data,
       graph_data,
       maybe_config_specifier,
+      maybe_npm_resolver,
       maybe_tsbuildinfo,
       maybe_response: None,
       remapped_specifiers,
@@ -555,24 +559,28 @@ fn op_resolve(
                 let types = graph_data.follow_redirect(specifier);
                 match graph_data.get(&types) {
                   Some(ModuleEntry::Module { media_type, .. }) => {
-                    Some((types, media_type))
+                    Some((types, *media_type))
                   }
                   _ => None,
                 }
               }
-              _ => Some((specifier, media_type)),
+              _ => Some((specifier, *media_type)),
             },
             _ => {
               // handle npm:<package> urls
               if let Ok(npm_ref) =
                 NpmPackageReference::from_specifier(&specifier)
               {
-                let (specifier, media_type) =
-                  resolve_npm_package_reference_types(
-                    &npm_ref,
-                    &state.npm_snapshot,
-                  )?;
-                Some((specifier, media_type))
+                if let Some(npm_resolver) = &state.maybe_npm_resolver {
+                  let (specifier, media_type) =
+                    resolve_npm_package_reference_types(
+                      &npm_ref,
+                      npm_resolver,
+                    )?;
+                  Some((specifier, media_type))
+                } else {
+                  None
+                }
               } else {
                 None
               }
@@ -662,13 +670,13 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .iter()
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
-        let specifier_str = hash_url(s, mt);
+        let specifier_str = hash_url(s, *mt);
         remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
       _ => {
         let ext_media_type = get_tsc_media_type(s);
-        if mt != &ext_media_type {
+        if *mt != ext_media_type {
           let new_specifier = format!("{}{}", s, mt.as_ts_extension());
           root_map.insert(new_specifier.clone(), s.clone());
           new_specifier
@@ -695,6 +703,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           request.graph_data.clone(),
           request.hash_data.clone(),
           request.maybe_config_specifier.clone(),
+          request.maybe_npm_resolver.clone(),
           request.maybe_tsbuildinfo.clone(),
           root_map.clone(),
           remapped_specifiers.clone(),
@@ -804,6 +813,7 @@ mod tests {
       Arc::new(RwLock::new((&graph).into())),
       hash_data,
       None,
+      None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
@@ -853,6 +863,7 @@ mod tests {
       graph_data: Arc::new(RwLock::new((&graph).into())),
       hash_data,
       maybe_config_specifier: None,
+      maybe_npm_resolver: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
     };
@@ -898,7 +909,7 @@ mod tests {
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_url(&specifier, &MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(hash_url(&specifier, MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
   }
 
   #[test]

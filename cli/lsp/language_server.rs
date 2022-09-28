@@ -68,7 +68,6 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
@@ -88,7 +87,7 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
-  pub npm_snapshot: NpmResolutionSnapshot,
+  pub maybe_npm_resolver: Option<NpmPackageResolver>,
 }
 
 #[derive(Debug)]
@@ -434,7 +433,7 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
-      npm_snapshot: self.npm_resolver.snapshot(),
+      maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
       root_uri: self.config.root_uri.clone(),
     })
   }

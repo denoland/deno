@@ -853,16 +853,17 @@ fn diagnose_resolved(
         }
       } else if let Ok(pkg_ref) = NpmPackageReference::from_specifier(specifier)
       {
-        // show diagnostics for npm package references that aren't cached
-        if !snapshot
-          .npm_snapshot
-          .resolve_package_from_deno_module(&pkg_ref.req)
-          .is_ok()
-        {
-          diagnostics.push(
-            DenoDiagnostic::NoCacheNpm(pkg_ref.clone(), specifier.clone())
-              .to_lsp_diagnostic(&range),
-          );
+        if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+          // show diagnostics for npm package references that aren't cached
+          if !npm_resolver
+            .resolve_package_folder_from_deno_module(&pkg_ref.req)
+            .is_ok()
+          {
+            diagnostics.push(
+              DenoDiagnostic::NoCacheNpm(pkg_ref.clone(), specifier.clone())
+                .to_lsp_diagnostic(&range),
+            );
+          }
         }
       } else {
         // When the document is not available, it means that it cannot be found

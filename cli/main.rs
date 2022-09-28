@@ -520,6 +520,7 @@ async fn create_graph_and_maybe_check(
         log_checks: true,
         reload: ps.options.reload_flag(),
       },
+      ps.npm_resolver.clone(),
     )?;
     debug!("{}", check_result.stats);
     if !check_result.diagnostics.is_empty() {

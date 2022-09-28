@@ -925,22 +925,24 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer: &ModuleSpecifier,
-    npm_resolver: &NpmPackageResolver,
+    maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
     let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
     for specifier in specifiers {
       // handle npm:<package> urls
       if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
-        results.push(Some(NodeResolution::into_media_type_and_specifier(
-          node_resolve_npm_reference(
-            &npm_ref,
-            NodeResolutionMode::Types,
-            npm_resolver,
+        results.push(maybe_npm_resolver.map(|npm_resolver| {
+          NodeResolution::into_media_type_and_specifier(
+            node_resolve_npm_reference(
+              &npm_ref,
+              NodeResolutionMode::Types,
+              npm_resolver,
+            )
+            .ok()
+            .flatten(),
           )
-          .ok()
-          .flatten(),
-        )));
+        }));
       } else if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);

@@ -453,8 +453,13 @@ impl ProcState {
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
-      let check_result =
-        check::check(&roots, graph_data, &check_cache, options)?;
+      let check_result = check::check(
+        &roots,
+        graph_data,
+        &check_cache,
+        options,
+        self.npm_resolver.clone(),
+      )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }

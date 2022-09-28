@@ -19,7 +19,6 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolutionSnapshot;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;

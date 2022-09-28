@@ -2653,11 +2653,11 @@ fn op_resolve(
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
-  let result = if let Some(resolved) = state
-    .state_snapshot
-    .documents
-    .resolve(args.specifiers, &referrer)
-  {
+  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
+    args.specifiers,
+    &referrer,
+    state.state_snapshot.maybe_npm_resolver.as_ref(),
+  ) {
     Ok(
       resolved
         .into_iter()
