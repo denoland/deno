@@ -1,7 +1,10 @@
 import { assert } from "./test_util.ts";
 
 Deno.test(
-  { name: "Deno.networkInterfaces", permissions: { env: true } },
+  {
+    name: "Deno.networkInterfaces",
+    permissions: { sys: ["networkInterfaces"] },
+  },
   () => {
     const networkInterfaces = Deno.networkInterfaces();
     assert(Array.isArray(networkInterfaces));

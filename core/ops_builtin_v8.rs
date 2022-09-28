@@ -37,6 +37,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_decode::decl(),
     op_serialize::decl(),
     op_deserialize::decl(),
+    op_set_promise_hooks::decl(),
     op_get_promise_details::decl(),
     op_get_proxy_details::decl(),
     op_memory_usage::decl(),
@@ -573,6 +574,33 @@ fn op_get_promise_details<'a>(
       Ok(PromiseDetails(2, Some(promise.result(scope).into())))
     }
   }
+}
+
+#[op(v8)]
+fn op_set_promise_hooks<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  init_cb: serde_v8::Value,
+  before_cb: serde_v8::Value,
+  after_cb: serde_v8::Value,
+  resolve_cb: serde_v8::Value,
+) -> Result<(), Error> {
+  let init_hook_global = to_v8_fn(scope, init_cb)?;
+  let before_hook_global = to_v8_fn(scope, before_cb)?;
+  let after_hook_global = to_v8_fn(scope, after_cb)?;
+  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
+  let init_hook = v8::Local::new(scope, init_hook_global);
+  let before_hook = v8::Local::new(scope, before_hook_global);
+  let after_hook = v8::Local::new(scope, after_hook_global);
+  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+
+  scope.get_current_context().set_promise_hooks(
+    init_hook,
+    before_hook,
+    after_hook,
+    resolve_hook,
+  );
+
+  Ok(())
 }
 
 // Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc

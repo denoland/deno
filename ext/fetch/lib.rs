@@ -167,8 +167,12 @@ impl FetchHandler for DefaultFileFetchHandler {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -215,7 +219,7 @@ where
         type_error("NetworkError when attempting to fetch resource.")
       })?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path)?;
+      permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
         return Err(type_error(format!(
@@ -240,7 +244,7 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_net_url(&url)?;
+      permissions.check_net_url(&url, "fetch()")?;
 
       let mut request = client.request(method.clone(), url);
 
@@ -535,7 +539,7 @@ where
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url)?;
+    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
   let client_cert_chain_and_key = {

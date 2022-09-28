@@ -118,7 +118,10 @@ fn op_fs_events_open(
   };
   for path in &args.paths {
     let path = PathBuf::from(path);
-    state.borrow_mut::<Permissions>().read.check(&path)?;
+    state
+      .borrow_mut::<Permissions>()
+      .read
+      .check(&path, Some("Deno.watchFs()"))?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {

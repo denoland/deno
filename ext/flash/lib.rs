@@ -1138,7 +1138,7 @@ where
   check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
-    .check_net(&(&opts.hostname, Some(opts.port)))?;
+    .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
 
   let addr = resolve_addr_sync(&opts.hostname, opts.port)?
     .next()
@@ -1380,6 +1380,7 @@ pub trait FlashPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     _host: &(T, Option<u16>),
+    _api_name: &str,
   ) -> Result<(), AnyError>;
 }
 
