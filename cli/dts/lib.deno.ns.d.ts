@@ -201,9 +201,8 @@ declare namespace Deno {
      * @category Errors */
     export class AlreadyExists extends Error {}
     /**
-     * Raised when trying to internally convert data from an resource into a
-     * string. Deno expects source data to be encoded as UTF-8 and will error
-     * if the data is not valid UTF-8.
+     * Raised when an operation to returns data that is invalid for the
+     * operation being performed.
      *
      * @category Errors */
     export class InvalidData extends Error {}
