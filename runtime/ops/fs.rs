@@ -1063,7 +1063,7 @@ fn get_stat(metadata: std::fs::Metadata) -> FsStat {
       }
       #[cfg(not(unix))]
       {
-        0
+        false
       }
     }};
   }
