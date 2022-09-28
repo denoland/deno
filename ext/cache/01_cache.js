@@ -250,33 +250,8 @@
           const [meta, responseBodyRid] = matchResult;
           let body = null;
           if (responseBodyRid !== null) {
-            body = new ReadableStream({
-              type: "bytes",
-              async pull(controller) {
-                try {
-                  // This is the largest possible size for a single packet on a TLS
-                  // stream.
-                  const chunk = new Uint8Array(16 * 1024 + 256);
-                  const read = await core.read(responseBodyRid, chunk);
-                  if (read > 0) {
-                    // We read some data. Enqueue it onto the stream.
-                    controller.enqueue(chunk.subarray(0, read));
-                  } else {
-                    // We have reached the end of the body, so we close the stream.
-                    core.close(responseBodyRid);
-                    controller.close();
-                  }
-                } catch (err) {
-                  // There was an error while reading a chunk of the body, so we
-                  // error.
-                  controller.error(err);
-                  controller.close();
-                  core.close(responseBodyRid);
-                }
-              },
-            });
+            body = readableStreamFromRid(responseBodyRid);
           }
-
           const response = new Response(
             body,
             {
@@ -292,6 +267,34 @@
 
       return responses;
     }
+  }
+
+  function readableStreamFromRid(rid) {
+    new ReadableStream({
+      type: "bytes",
+      async pull(controller) {
+        try {
+          // This is the largest possible size for a single packet on a TLS
+          // stream.
+          const chunk = new Uint8Array(16 * 1024 + 256);
+          const read = await core.read(rid, chunk);
+          if (read > 0) {
+            // We read some data. Enqueue it onto the stream.
+            controller.enqueue(chunk.subarray(0, read));
+          } else {
+            // We have reached the end of the body, so we close the stream.
+            core.close(rid);
+            controller.close();
+          }
+        } catch (err) {
+          // There was an error while reading a chunk of the body, so we
+          // error.
+          controller.error(err);
+          controller.close();
+          core.close(rid);
+        }
+      },
+    });
   }
 
   webidl.configurePrototype(CacheStorage);
