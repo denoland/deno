@@ -161,6 +161,20 @@ declare namespace Deno {
    */
   export function memoryUsage(): MemoryUsage;
 
+  /**
+   * Get the `hostname` of the machine the Deno process is running on.
+   *
+   * ```ts
+   * console.log(Deno.hostname());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function hostname(): string;
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/
@@ -182,6 +196,15 @@ declare namespace Deno {
      * Defaults to `false`.
      */
     env?: "inherit" | boolean | string[];
+
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
+     *
+     * Defaults to `false`.
+     */
+    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `hrtime` permission should be requested or revoked.
      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -1322,6 +1345,13 @@ declare namespace Deno {
     readonly writable: WritableStream<Uint8Array>;
   }
 
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   *  @category I/O */
+  export interface SetRawOptions {
+    cbreak: boolean;
+  }
+
   /** A handle for `stdin`.
    *
    * @category I/O
@@ -1329,6 +1359,26 @@ declare namespace Deno {
   export const stdin: Reader & ReaderSync & Closer & {
     readonly rid: number;
     readonly readable: ReadableStream<Uint8Array>;
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Set TTY to be under raw mode or not. In raw mode, characters are read and
+     * returned as is, without being processed. All special processing of
+     * characters by the terminal is disabled, including echoing input
+     * characters. Reading from a TTY device in raw mode is faster than reading
+     * from a TTY device in canonical mode.
+     *
+     * The `cbreak` option can be used to indicate that characters that
+     * correspond to a signal should still be generated. When disabling raw
+     * mode, this option is ignored. This functionality currently only works on
+     * Linux and Mac OS.
+     *
+     * ```ts
+     * Deno.stdin.setRaw(true, { cbreak: true });
+     * ```
+     *
+     * @category I/O
+     */
+    setRaw(mode: boolean, options?: SetRawOptions): void;
   };
   /** A handle for `stdout`.
    *
@@ -2913,6 +2963,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
+    | "sys"
     | "ffi"
     | "hrtime";
 
@@ -2958,6 +3009,19 @@ declare namespace Deno {
   }
 
   /** @category Permissions */
+  export interface SysPermissionDescriptor {
+    name: "sys";
+    kind?:
+      | "loadavg"
+      | "hostname"
+      | "systemMemoryInfo"
+      | "networkInterfaces"
+      | "osRelease"
+      | "getUid"
+      | "getGid";
+  }
+
+  /** @category Permissions */
   export interface FfiPermissionDescriptor {
     name: "ffi";
     path?: string | URL;
@@ -2979,6 +3043,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
+    | SysPermissionDescriptor
     | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
