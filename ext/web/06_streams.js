@@ -5905,6 +5905,7 @@
   window.__bootstrap.streams = {
     // Non-Public
     _state,
+    _disturbed,
     isReadableStreamDisturbed,
     errorReadableStream,
     createProxy,
