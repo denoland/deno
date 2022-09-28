@@ -942,23 +942,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Get the `hostname` of the machine the Deno process is running on.
-   *
-   * ```ts
-   * console.log(Deno.hostname());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   * Additional consideration is still necessary around the permissions
-   * required.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function hostname(): string;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts

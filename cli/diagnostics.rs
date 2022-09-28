@@ -40,7 +40,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "createHttpClient",
   "futime",
   "futimeSync",
-  "hostname",
   "kill",
   "listen",
   "listenDatagram",
