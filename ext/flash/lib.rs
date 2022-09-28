@@ -37,6 +37,7 @@ use mio::Poll;
 use mio::Token;
 use serde::Deserialize;
 use serde::Serialize;
+use socket2::Socket;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -806,6 +807,7 @@ pub struct ListenOpts {
   key: Option<String>,
   hostname: String,
   port: u16,
+  reuseport: bool,
 }
 
 fn run_server(
@@ -815,8 +817,29 @@ fn run_server(
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
+  reuseport: bool,
 ) -> Result<(), AnyError> {
-  let mut listener = TcpListener::bind(addr)?;
+  let domain = if addr.is_ipv4() {
+    socket2::Domain::IPV4
+  } else {
+    socket2::Domain::IPV6
+  };
+  let socket = Socket::new(domain, socket2::Type::STREAM, None)?;
+
+  #[cfg(not(windows))]
+  socket.set_reuse_address(true)?;
+  if reuseport {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
+
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket.bind(&socket_addr)?;
+  socket.listen(128)?;
+  socket.set_nonblocking(true)?;
+  let std_listener: std::net::TcpListener = socket.into();
+  let mut listener = TcpListener::from_std(std_listener);
+
   let mut poll = Poll::new()?;
   let token = Token(0);
   poll
@@ -875,6 +898,7 @@ fn run_server(
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
                 .unwrap();
+
               let socket = match tls_context {
                 Some(ref tls_conf) => {
                   let connection =
@@ -1156,8 +1180,17 @@ where
   let tx = ctx.tx.clone();
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
+  let reuseport = opts.reuseport;
   let join_handle = tokio::task::spawn_blocking(move || {
-    run_server(tx, listening_tx, close_rx, addr, maybe_cert, maybe_key)
+    run_server(
+      tx,
+      listening_tx,
+      close_rx,
+      addr,
+      maybe_cert,
+      maybe_key,
+      reuseport,
+    )
   });
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let server_id = flash_ctx.next_server_id;
