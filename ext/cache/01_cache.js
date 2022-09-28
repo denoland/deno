@@ -7,7 +7,6 @@
   const {
     Symbol,
     TypeError,
-    Uint8Array,
     ObjectPrototypeIsPrototypeOf,
   } = window.__bootstrap.primordials;
   const {
@@ -18,6 +17,7 @@
   const { URLPrototype } = window.__bootstrap.url;
   const RequestPrototype = Request.prototype;
   const { getHeader } = window.__bootstrap.headers;
+  const { readableStreamForRid } = window.__bootstrap.streams;
 
   class CacheStorage {
     constructor() {
@@ -250,7 +250,7 @@
           const [meta, responseBodyRid] = matchResult;
           let body = null;
           if (responseBodyRid !== null) {
-            body = readableStreamFromRid(responseBodyRid);
+            body = readableStreamForRid(responseBodyRid);
           }
           const response = new Response(
             body,
@@ -267,34 +267,6 @@
 
       return responses;
     }
-  }
-
-  function readableStreamFromRid(rid) {
-    return new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        try {
-          // This is the largest possible size for a single packet on a TLS
-          // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await core.read(rid, chunk);
-          if (read > 0) {
-            // We read some data. Enqueue it onto the stream.
-            controller.enqueue(chunk.subarray(0, read));
-          } else {
-            // We have reached the end of the body, so we close the stream.
-            core.close(rid);
-            controller.close();
-          }
-        } catch (err) {
-          // There was an error while reading a chunk of the body, so we
-          // error.
-          controller.error(err);
-          controller.close();
-          core.close(rid);
-        }
-      },
-    });
   }
 
   webidl.configurePrototype(CacheStorage);
