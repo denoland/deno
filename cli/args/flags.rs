@@ -291,6 +291,7 @@ pub struct Flags {
   pub allow_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
+  pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
@@ -413,6 +414,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.allow_sys {
+      Some(sys_allowlist) if sys_allowlist.is_empty() => {
+        args.push("--allow-sys".to_string());
+      }
+      Some(sys_allowlist) => {
+        let s = format!("--allow-sys={}", sys_allowlist.join(","));
+        args.push(s)
+      }
+      _ => {}
+    }
+
     match &self.allow_ffi {
       Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
         args.push("--allow-ffi".to_string());
@@ -470,6 +482,7 @@ impl Flags {
       allow_ffi: self.allow_ffi.clone(),
       allow_read: self.allow_read.clone(),
       allow_run: self.allow_run.clone(),
+      allow_sys: self.allow_sys.clone(),
       allow_write: self.allow_write.clone(),
       prompt: !self.no_prompt,
     }
@@ -590,6 +603,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -1811,6 +1825,27 @@ fn permission_args(app: Command) -> Command {
         }),
     )
     .arg(
+      Arg::new("allow-sys")
+        .long("allow-sys")
+        .min_values(0)
+        .takes_value(true)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .help("Allow access to system info")
+        .validator(|keys| {
+          for key in keys.split(',') {
+            match key {
+              "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+              | "systemMemoryInfo" | "getUid" | "getGid" => {}
+              _ => {
+                return Err(format!("unknown system info kind \"{}\"", key));
+              }
+            }
+          }
+          Ok(())
+        }),
+    )
+    .arg(
       Arg::new("allow-run")
         .long("allow-run")
         .min_values(0)
@@ -2367,6 +2402,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
+  flags.allow_sys = Some(vec![]);
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
@@ -2870,6 +2906,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
+  if let Some(sys_wl) = matches.values_of("allow-sys") {
+    let sys_allowlist: Vec<String> = sys_wl.map(ToString::to_string).collect();
+    flags.allow_sys = Some(sys_allowlist);
+    debug!("sys info allowlist: {:#?}", &flags.allow_sys);
+  }
+
   if let Some(ffi_wl) = matches.values_of("allow-ffi") {
     let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
     flags.allow_ffi = Some(ffi_allowlist);
@@ -2886,6 +2928,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
+    flags.allow_sys = Some(vec![]);
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
@@ -3351,6 +3394,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -3978,6 +4022,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4001,6 +4046,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4025,6 +4071,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4062,6 +4109,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4092,6 +4140,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4115,6 +4164,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4151,6 +4201,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4175,6 +4226,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4203,6 +4255,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -4326,6 +4379,81 @@ mod tests {
     assert!(r.is_err());
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn allow_sys() {
+    let r = flags_from_vec(svec!["deno", "run", "--allow-sys", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        allow_sys: Some(svec!["hostname", "osRelease"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn allow_sys_allowlist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert!(r.is_ok());
+    let r =
+      flags_from_vec(svec!["deno", "run", "--allow-sys=foo", "script.ts"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--allow-sys=hostname,foo",
+      "script.ts"
+    ]);
     assert!(r.is_err());
   }
 
@@ -4931,6 +5059,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
@@ -5012,6 +5141,7 @@ mod tests {
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
+        allow_sys: Some(vec![]),
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
