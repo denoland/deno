@@ -1336,7 +1336,9 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * `readAll()` from https://deno.land/std/streams/conversion.ts instead.
+   * [`readAll()`](https://deno.land/std/streams/conversion.ts?s=readAll) from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single call.**
    *
@@ -1364,7 +1366,10 @@ declare namespace Deno {
    *
    * This function is one of the lowest level APIs and most users should not
    * work with this directly, but rather use
-   * `readAllSync()` from https://deno.land/std/streams/conversion.ts instead.
+   * [`readAllSync()`](https://deno.land/std/streams/conversion.ts?s=readAllSync)
+   * from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead.
    *
    * **It is not guaranteed that the full buffer will be read in a single
    * call.**
@@ -1386,7 +1391,9 @@ declare namespace Deno {
    *
    * Resolves to the number of bytes written.  This function is one of the lowest
    * level APIs and most users should not work with this directly, but rather use
-   * `writeAll()` from https://deno.land/std/streams/conversion.ts instead.
+   * [`writeAll()`](https://deno.land/std/streams/conversion.ts?s=writeAll) from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -1407,8 +1414,12 @@ declare namespace Deno {
    * buffer (`data`).
    *
    * Returns the number of bytes written.  This function is one of the lowest
-   * level APIs and most users should not work with this directly, but rather use
-   * `writeAllSync()` from https://deno.land/std/streams/conversion.ts instead.
+   * level APIs and most users should not work with this directly, but rather
+   * use
+   * [`writeAllSync()`](https://deno.land/std/streams/conversion.ts?s=writeAllSync)
+   * from
+   * [`std/streams/conversion.ts`](https://deno.land/std/streams/conversion.ts)
+   * instead.
    *
    * **It is not guaranteed that the full buffer will be written in a single
    * call.**
@@ -1442,6 +1453,7 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * await file.read(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
+   * file.close();
    * ```
    *
    * The seek modes work as follows:
@@ -1460,6 +1472,7 @@ declare namespace Deno {
    * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * file.close();
    * ```
    *
    * @category I/O
@@ -1487,6 +1500,7 @@ declare namespace Deno {
    * const buf = new Uint8Array(100);
    * file.readSync(buf);
    * console.log(new TextDecoder().decode(buf)); // "world"
+   * file.close();
    * ```
    *
    * The seek modes work as follows:
@@ -1505,6 +1519,7 @@ declare namespace Deno {
    * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
    * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * file.close();
    * ```
    *
    * @category I/O
@@ -1516,27 +1531,14 @@ declare namespace Deno {
   ): number;
 
   /**
-   * Synchronously flushes any pending data and metadata operations of the given
-   * file stream to disk.
-   *
-   * ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
-   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 1);
-   * Deno.fsyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
-   * ```
-   *
-   * @category I/O
-   */
-  export function fsyncSync(rid: number): void;
-
-  /**
    * Flushes any pending data and metadata operations of the given file stream
    * to disk.
    *
    * ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true },
+   * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 1);
    * await Deno.fsync(file.rid);
@@ -1548,24 +1550,31 @@ declare namespace Deno {
   export function fsync(rid: number): Promise<void>;
 
   /**
-   * Synchronously flushes any pending data operations of the given file stream
-   * to disk.
+   * Synchronously flushes any pending data and metadata operations of the given
+   * file stream to disk.
    *
-   *  ```ts
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * ```ts
+   * const file = Deno.openSync(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true },
+   * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.fdatasyncSync(file.rid);
-   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * Deno.ftruncateSync(file.rid, 1);
+   * Deno.fsyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // H
    * ```
    *
    * @category I/O
    */
-  export function fdatasyncSync(rid: number): void;
+  export function fsyncSync(rid: number): void;
 
   /**
    * Flushes any pending data operations of the given file stream to disk.
    *  ```ts
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true },
+   * );
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.fdatasync(file.rid);
    * console.log(new TextDecoder().decode(await Deno.readFile("my_file.txt"))); // Hello World
@@ -1575,8 +1584,26 @@ declare namespace Deno {
    */
   export function fdatasync(rid: number): Promise<void>;
 
-  /** Close the given resource ID (rid) which has been previously opened, such
-   * as via opening or creating a file.  Closing a file when you are finished
+  /**
+   * Synchronously flushes any pending data operations of the given file stream
+   * to disk.
+   *
+   *  ```ts
+   * const file = Deno.openSync(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true },
+   * );
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
+   * Deno.fdatasyncSync(file.rid);
+   * console.log(new TextDecoder().decode(Deno.readFileSync("my_file.txt"))); // Hello World
+   * ```
+   *
+   * @category I/O
+   */
+  export function fdatasyncSync(rid: number): void;
+
+  /** Close the given resource ID (`rid`) which has been previously opened, such
+   * as via opening or creating a file. Closing a file when you are finished
    * with it is important to avoid leaking resources.
    *
    * ```ts
@@ -1591,6 +1618,20 @@ declare namespace Deno {
 
   /** The Deno abstraction for reading and writing files.
    *
+   * This is the most straight forward way of handling files within Deno and is
+   * recommended over using the discreet functions within the `Deno` namespace.
+   *
+   * ```ts
+   * const file = await Deno.open("/foo/bar.txt", { read: true });
+   * const fileInfo = await file.stat();
+   * if (fileInfo.isFile) {
+   *   const buf = new Uint8Array(100);
+   *   const numberOfBytesRead = await file.read(buf); // 11 bytes
+   *   const text = new TextDecoder().decode(buf);  // "hello world"
+   * }
+   * file.close();
+   * ```
+   *
    * @category File System
    */
   export class FsFile
@@ -1602,56 +1643,289 @@ declare namespace Deno {
       Seeker,
       SeekerSync,
       Closer {
+    /** The resource ID associated with the file instance. The resource ID
+     * should be considered an opaque reference to resource. */
     readonly rid: number;
-    constructor(rid: number);
-    write(p: Uint8Array): Promise<number>;
-    writeSync(p: Uint8Array): number;
-    truncate(len?: number): Promise<void>;
-    truncateSync(len?: number): void;
-    read(p: Uint8Array): Promise<number | null>;
-    readSync(p: Uint8Array): number | null;
-    seek(offset: number, whence: SeekMode): Promise<number>;
-    seekSync(offset: number, whence: SeekMode): number;
-    stat(): Promise<FileInfo>;
-    statSync(): FileInfo;
-    close(): void;
-
+    /** A {@linkcode ReadableStream} interface to the byte contents of the
+     * file. This makes it easy to interoperate with other web streams based
+     * APIs.
+     *
+     * ```ts
+     * const file = Deno.open("my_file.txt", { read: true });
+     * const decoder = new TextDecoder();
+     * for await (const chunk of file.readable) {
+     *   console.log(decoder.decode(chunk));
+     * }
+     * file.close();
+     * ```
+     */
     readonly readable: ReadableStream<Uint8Array>;
+    /** A {@linkcode WritableStream} interface to write the contents of the
+     * file. This makes it easy to interoperate with other web streams based
+     * APIs.
+     *
+     * ```ts
+     * const items = ["hello", "world"];
+     * const file = Deno.open("my_file.txt", { write: true });
+     * const encoder = new TextEncoder();
+     * for (const item of items) {
+     *   await file.writable.write(encoder.encode(item));
+     * }
+     * file.close();
+     * ```
+     */
     readonly writable: WritableStream<Uint8Array>;
+    /** The constructor which takes a resource ID. Generally `FsFile` should
+     * not be constructed directly. Instead use {@linkcode Deno.open} or
+     * {@linkcode Deno.openSync} to create a new instance of `FsFile`. */
+    constructor(rid: number);
+    /** Write the contents of the array buffer (`p`) to the file.
+     *
+     * Resolves to the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const file = await Deno.open("/foo/bar.txt", { write: true });
+     * const bytesWritten = await file.write(data); // 11
+     * file.close();
+     * ```
+     *
+     * @category I/O
+     */
+    write(p: Uint8Array): Promise<number>;
+    /** Synchronously write the contents of the array buffer (`p`) to the file.
+     *
+     * Returns the number of bytes written.
+     *
+     * **It is not guaranteed that the full buffer will be written in a single
+     * call.**
+     *
+     * ```ts
+     * const encoder = new TextEncoder();
+     * const data = encoder.encode("Hello world");
+     * const file = Deno.openSync("/foo/bar.txt", { write: true });
+     * const bytesWritten = file.writeSync(data); // 11
+     * file.close();
+     * ```
+     */
+    writeSync(p: Uint8Array): number;
+    /** Truncates (or extends) the file to reach the specified `len`. If `len`
+     * is not specified, then the entire file contents are truncated.
+     *
+     * ### Truncate the entire file
+     *
+     * ```ts
+     * const file = await Deno.open("my_file.txt", { write: true });
+     * await file.truncate();
+     * file.close();
+     * ```
+     *
+     * ### Truncate part of the file
+     *
+     * ```ts
+     * // if "my_file.txt" contains the text "hello world":
+     * const file = await Deno.open("my_file.txt", { write: true });
+     * await file.truncate(7);
+     * const buf = new Uint8Array(100);
+     * await file.read(buf);
+     * const text = new TextDecoder().decode(buf); // "hello w"
+     * file.close();
+     * ```
+     */
+    truncate(len?: number): Promise<void>;
+    /** Synchronously truncates (or extends) the file to reach the specified
+     * `len`. If `len` is not specified, then the entire file contents are
+     * truncated.
+     *
+     * ### Truncate the entire file
+     *
+     * ```ts
+     * const file = Deno.openSync("my_file.txt", { write: true });
+     * file.truncateSync();
+     * file.close();
+     * ```
+     *
+     * ### Truncate part of the file
+     *
+     * ```ts
+     * // if "my_file.txt" contains the text "hello world":
+     * const file = Deno.openSync("my_file.txt", { write: true });
+     * file.truncateSync(7);
+     * const buf = new Uint8Array(100);
+     * file.readSync(buf);
+     * const text = new TextDecoder().decode(buf); // "hello w"
+     * file.close();
+     * ```
+     */
+    truncateSync(len?: number): void;
+    /** Read the file into an array buffer (`p`).
+     *
+     * Resolves to either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // if "/foo/bar.txt" contains the text "hello world":
+     * const file = await Deno.open("/foo/bar.txt");
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = await file.read(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * file.close();
+     * ```
+     */
+    read(p: Uint8Array): Promise<number | null>;
+    /** Synchronously read from the file into an array buffer (`p`).
+     *
+     * Returns either the number of bytes read during the operation or EOF
+     * (`null`) if there was nothing more to read.
+     *
+     * It is possible for a read to successfully return with `0` bytes. This
+     * does not indicate EOF.
+     *
+     * **It is not guaranteed that the full buffer will be read in a single
+     * call.**
+     *
+     * ```ts
+     * // if "/foo/bar.txt" contains the text "hello world":
+     * const file = Deno.openSync("/foo/bar.txt");
+     * const buf = new Uint8Array(100);
+     * const numberOfBytesRead = file.readSync(buf); // 11 bytes
+     * const text = new TextDecoder().decode(buf);  // "hello world"
+     * file.close();
+     * ```
+     */
+    readSync(p: Uint8Array): number | null;
+    /** Seek to the given `offset` under mode given by `whence`. The call
+     * resolves to the new position within the resource (bytes from the start).
+     *
+     * ```ts
+     * // Given file pointing to file with "Hello world", which is 11 bytes long:
+     * const file = await Deno.open(
+     *   "hello.txt",
+     *   { read: true, write: true, truncate: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello world"));
+     *
+     * // advance cursor 6 bytes
+     * const cursorPosition = await file.seek(6, Deno.SeekMode.Start);
+     * console.log(cursorPosition);  // 6
+     * const buf = new Uint8Array(100);
+     * await file.read(buf);
+     * console.log(new TextDecoder().decode(buf)); // "world"
+     * file.close();
+     * ```
+     *
+     * The seek modes work as follows:
+     *
+     * ```ts
+     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * const file = await Deno.open(
+     *   "hello.txt",
+     *   { read: true, write: true, truncate: true, create: true },
+     * );
+     * await file.write(new TextEncoder().encode("Hello world"));
+     *
+     * // Seek 6 bytes from the start of the file
+     * console.log(await file.seek(6, Deno.SeekMode.Start)); // "6"
+     * // Seek 2 more bytes from the current position
+     * console.log(await file.seek(2, Deno.SeekMode.Current)); // "8"
+     * // Seek backwards 2 bytes from the end of the file
+     * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+     * ```
+     */
+    seek(offset: number, whence: SeekMode): Promise<number>;
+    /** Synchronously seek to the given `offset` under mode given by `whence`.
+     * The new position within the resource (bytes from the start) is returned.
+     *
+     * ```ts
+     * const file = Deno.openSync(
+     *   "hello.txt",
+     *   { read: true, write: true, truncate: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello world"));
+     *
+     * // advance cursor 6 bytes
+     * const cursorPosition = file.seekSync(6, Deno.SeekMode.Start);
+     * console.log(cursorPosition);  // 6
+     * const buf = new Uint8Array(100);
+     * file.readSync(buf);
+     * console.log(new TextDecoder().decode(buf)); // "world"
+     * file.close();
+     * ```
+     *
+     * The seek modes work as follows:
+     *
+     * ```ts
+     * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+     * const file = Deno.openSync(
+     *   "hello.txt",
+     *   { read: true, write: true, truncate: true, create: true },
+     * );
+     * file.writeSync(new TextEncoder().encode("Hello world"));
+     *
+     * // Seek 6 bytes from the start of the file
+     * console.log(file.seekSync(6, Deno.SeekMode.Start)); // "6"
+     * // Seek 2 more bytes from the current position
+     * console.log(file.seekSync(2, Deno.SeekMode.Current)); // "8"
+     * // Seek backwards 2 bytes from the end of the file
+     * console.log(file.seekSync(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+     * file.close();
+     * ```
+     */
+    seekSync(offset: number, whence: SeekMode): number;
+    /** Resolves to a {@linkcode Deno.FileInfo} for the file.
+     *
+     * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * const file = await Deno.open("hello.txt");
+     * const fileInfo = await file.stat();
+     * assert(fileInfo.isFile);
+     * file.close();
+     * ```
+     */
+    stat(): Promise<FileInfo>;
+    /** Synchronously returns a {@linkcode Deno.FileInfo} for the file.
+     *
+     * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * const file = Deno.openSync("hello.txt")
+     * const fileInfo = file.statSync("hello.txt");
+     * assert(fileInfo.isFile);
+     * file.close();
+     * ```
+     */
+    statSync(): FileInfo;
+    /** Close the file. Closing a file when you are finished with it is
+     * important to avoid leaking resources.
+     *
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * // do work with "file" object
+     * file.close();
+     * ```
+     */
+    close(): void;
   }
 
   /**
    * The Deno abstraction for reading and writing files.
    *
-   * @deprecated Use `Deno.FsFile` instead. `Deno.File` will be removed in Deno 2.0.
+   * @deprecated Use {@linkcode Deno.FsFile} instead. `Deno.File` will be
+   *   removed in the future.
    * @category File System
    */
-  export class File
-    implements
-      Reader,
-      ReaderSync,
-      Writer,
-      WriterSync,
-      Seeker,
-      SeekerSync,
-      Closer {
-    readonly rid: number;
-    constructor(rid: number);
-    write(p: Uint8Array): Promise<number>;
-    writeSync(p: Uint8Array): number;
-    truncate(len?: number): Promise<void>;
-    truncateSync(len?: number): void;
-    read(p: Uint8Array): Promise<number | null>;
-    readSync(p: Uint8Array): number | null;
-    seek(offset: number, whence: SeekMode): Promise<number>;
-    seekSync(offset: number, whence: SeekMode): number;
-    stat(): Promise<FileInfo>;
-    statSync(): FileInfo;
-    close(): void;
-
-    readonly readable: ReadableStream<Uint8Array>;
-    readonly writable: WritableStream<Uint8Array>;
-  }
+  export const File: typeof FsFile;
 
   /** A handle for `stdin`.
    *
@@ -1680,16 +1954,18 @@ declare namespace Deno {
 
   /** @category File System */
   export interface OpenOptions {
-    /** Sets the option for read access. This option, when `true`, means that the
-     * file should be read-able if opened. */
+    /** Sets the option for read access. This option, when `true`, means that
+     * the file should be read-able if opened. */
     read?: boolean;
     /** Sets the option for write access. This option, when `true`, means that
      * the file should be write-able if opened. If the file already exists,
      * any write calls on it will overwrite its contents, by default without
      * truncating it. */
     write?: boolean;
-    /** Sets the option for the append mode. This option, when `true`, means that
-     * writes will append to a file instead of overwriting previous contents.
+    /** Sets the option for the append mode. This option, when `true`, means
+     * that writes will append to a file instead of overwriting previous
+     * contents.
+     *
      * Note that setting `{ write: true, append: true }` has the same effect as
      * setting only `{ append: true }`. */
     append?: boolean;
@@ -2627,8 +2903,8 @@ declare namespace Deno {
    */
   export function lstatSync(path: string | URL): FileInfo;
 
-  /** Resolves to a `Deno.FileInfo` for the specified `path`. Will always
-   * follow symlinks.
+  /** Resolves to a {@linkcode Deno.FileInfo} for the specified `path`. Will
+   * always follow symlinks.
    *
    * ```ts
    * import { assert } from "https://deno.land/std/testing/asserts.ts";
@@ -2763,6 +3039,28 @@ declare namespace Deno {
     options?: WriteFileOptions,
   ): Promise<void>;
 
+  /** Truncates or extends the specified file, to reach the specified `len`. If
+   * `len` is not specified then the entire file contents are truncated.
+   *
+   * ```ts
+   * // truncate the entire file
+   * await Deno.truncate("my_file.txt");
+   *
+   * // truncate part of the file
+   * const file = await Deno.makeTempFile();
+   * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
+   * await Deno.truncate(file, 7);
+   * const data = await Deno.readFile(file);
+   * console.log(new TextDecoder().decode(data));  // "Hello W"
+   * ```
+   *
+   * Requires `allow-write` permission.
+   *
+   * @tags allow-write
+   * @category File System
+   */
+  export function truncate(name: string, len?: number): Promise<void>;
+
   /** Synchronously truncates or extends the specified file, to reach the
    * specified `len`.  If `len` is not specified then the entire file contents
    * are truncated.
@@ -2785,28 +3083,6 @@ declare namespace Deno {
    * @category File System
    */
   export function truncateSync(name: string, len?: number): void;
-
-  /** Truncates or extends the specified file, to reach the specified `len`. If
-   * `len` is not specified then the entire file contents are truncated.
-   *
-   * ```ts
-   * // truncate the entire file
-   * await Deno.truncate("my_file.txt");
-   *
-   * // truncate part of the file
-   * const file = await Deno.makeTempFile();
-   * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
-   * await Deno.truncate(file, 7);
-   * const data = await Deno.readFile(file);
-   * console.log(new TextDecoder().decode(data));  // "Hello W"
-   * ```
-   *
-   * Requires `allow-write` permission.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function truncate(name: string, len?: number): Promise<void>;
 
   /** @category Observability */
   export interface OpMetrics {
