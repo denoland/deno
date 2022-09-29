@@ -1,13 +1,14 @@
 use std::path::Path;
 
 use deno_ast::CjsAnalysis;
-// use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
 
 use super::common::run_sqlite_pragma;
 use super::FastInsecureHasher;
@@ -20,7 +21,7 @@ struct CjsAnalysisData {
 }
 
 pub struct NodeAnalysisCache {
-  conn: Connection,
+  conn: Arc<Mutex<Connection>>,
 }
 
 impl NodeAnalysisCache {
@@ -42,7 +43,9 @@ impl NodeAnalysisCache {
     run_sqlite_pragma(&conn)?;
     create_tables(&conn, cli_version)?;
 
-    Ok(Self { conn })
+    Ok(Self {
+      conn: Arc::new(Mutex::new(conn)),
+    })
   }
 
   pub fn get_cjs_analysis(
@@ -50,6 +53,7 @@ impl NodeAnalysisCache {
     specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<CjsAnalysis>, AnyError> {
+    let conn = self.conn.lock();
     let query = "
       SELECT
         data
@@ -59,7 +63,7 @@ impl NodeAnalysisCache {
         specifier=?1
         AND source_hash=?2
       LIMIT 1";
-    let mut stmt = self.conn.prepare_cached(query)?;
+    let mut stmt = conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
     if let Some(row) = rows.next()? {
       let analysis_info: String = row.get(0)?;
@@ -80,12 +84,13 @@ impl NodeAnalysisCache {
     source_hash: &str,
     cjs_analysis: &CjsAnalysis,
   ) -> Result<(), AnyError> {
+    let conn = self.conn.lock();
     let sql = "
       INSERT OR REPLACE INTO
       cjsanalysiscache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
-    let mut stmt = self.conn.prepare_cached(sql)?;
+    let mut stmt = conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
       &source_hash.to_string(),
@@ -103,6 +108,7 @@ impl NodeAnalysisCache {
     specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<Vec<String>>, AnyError> {
+    let conn = self.conn.lock();
     let query = "
       SELECT
         data
@@ -112,7 +118,7 @@ impl NodeAnalysisCache {
         specifier=?1
         AND source_hash=?2
       LIMIT 1";
-    let mut stmt = self.conn.prepare_cached(query)?;
+    let mut stmt = conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
     if let Some(row) = rows.next()? {
       let top_level_decls: String = row.get(0)?;
@@ -129,12 +135,13 @@ impl NodeAnalysisCache {
     source_hash: &str,
     top_level_decls: Vec<String>,
   ) -> Result<(), AnyError> {
+    let conn = self.conn.lock();
     let sql = "
       INSERT OR REPLACE INTO
       esmglobalscache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
-    let mut stmt = self.conn.prepare_cached(sql)?;
+    let mut stmt = conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
       &source_hash.to_string(),

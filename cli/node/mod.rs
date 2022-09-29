@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::cache::node::NodeAnalysisCache;
 use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
@@ -734,19 +735,17 @@ pub fn translate_cjs_to_esm(
   code: String,
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
+  npm_analysis_cache: &NodeAnalysisCache,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
-    npm_resolver: &NpmPackageResolver,
+    analysis_cache: &NodeAnalysisCache,
     specifier: &str,
     media_type: MediaType,
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
     let source_hash = crate::cache::node::compute_source_hash(&code);
-    if let Ok(Some(analysis)) = npm_resolver
-      .analysis_cache
-      .lock()
-      .unwrap()
-      .get_cjs_analysis(specifier, &source_hash)
+    if let Ok(Some(analysis)) =
+      analysis_cache.get_cjs_analysis(specifier, &source_hash)
     {
       return Ok(analysis);
     }
@@ -759,10 +758,7 @@ pub fn translate_cjs_to_esm(
       maybe_syntax: None,
     })?;
     let analysis = parsed_source.analyze_cjs();
-    npm_resolver
-      .analysis_cache
-      .lock()
-      .unwrap()
+    analysis_cache
       .set_cjs_analysis(specifier, &source_hash, &analysis)
       .unwrap();
 
@@ -776,8 +772,12 @@ pub fn translate_cjs_to_esm(
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
-  let analysis =
-    perform_cjs_analysis(npm_resolver, specifier.as_str(), media_type, code)?;
+  let analysis = perform_cjs_analysis(
+    npm_analysis_cache,
+    specifier.as_str(),
+    media_type,
+    code,
+  )?;
 
   let mut all_exports = analysis
     .exports
@@ -823,7 +823,7 @@ pub fn translate_cjs_to_esm(
 
     {
       let analysis = perform_cjs_analysis(
-        npm_resolver,
+        npm_analysis_cache,
         reexport_specifier.as_str(),
         reexport_file.media_type,
         reexport_file.source.to_string(),

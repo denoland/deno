@@ -11,8 +11,6 @@ use deno_ast::SourceRanged;
 use deno_core::error::AnyError;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use std::fmt::Write;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 use crate::cache::node::NodeAnalysisCache;
 
@@ -36,15 +34,14 @@ static NODE_GLOBALS: &[&str] = &[
 // `var` decls are taken into consideration.
 
 pub fn esm_code_with_node_globals(
-  analysis_cache: Arc<Mutex<NodeAnalysisCache>>,
+  analysis_cache: &NodeAnalysisCache,
   specifier: &ModuleSpecifier,
   code: String,
 ) -> Result<String, AnyError> {
-  let cache = analysis_cache.lock().unwrap();
   let source_hash = crate::cache::node::compute_source_hash(&code);
   let text_info = deno_ast::SourceTextInfo::from_string(code);
   let top_level_decls = if let Ok(Some(decls)) =
-    cache.get_esm_analysis(specifier.as_str(), &source_hash)
+    analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
   {
     HashSet::from_iter(decls)
   } else {
@@ -57,7 +54,7 @@ pub fn esm_code_with_node_globals(
       maybe_syntax: None,
     })?;
     let top_level_decls = analyze_top_level_decls(&parsed_source)?;
-    cache
+    analysis_cache
       .set_esm_analysis(
         specifier.as_str(),
         &source_hash,
@@ -171,6 +168,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None, "1".to_string()).unwrap(),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
@@ -186,6 +184,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None, "1".to_string()).unwrap(),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )

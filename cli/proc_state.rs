@@ -5,6 +5,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::cache;
+use crate::cache::node::NodeAnalysisCache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
@@ -91,6 +92,7 @@ pub struct Inner {
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
+  pub npm_analysis_cache: NodeAnalysisCache,
   progress_bar: ProgressBar,
 }
 
@@ -244,8 +246,10 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
-      &dir,
     );
+    let path = dir.root.join("npm/analysis.sqlite");
+    let npm_analysis_cache =
+      NodeAnalysisCache::new(Some(&path), crate::version::deno())?;
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
@@ -272,6 +276,7 @@ impl ProcState {
       npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
+      npm_analysis_cache,
       progress_bar,
     })))
   }

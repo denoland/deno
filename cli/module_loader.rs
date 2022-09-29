@@ -156,11 +156,12 @@ impl CliModuleLoader {
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
+          &self.ps.npm_analysis_cache,
         )?
       } else {
         // only inject node globals for esm
         node::esm_code_with_node_globals(
-          self.ps.npm_resolver.analysis_cache.clone(),
+          &self.ps.npm_analysis_cache,
           specifier,
           code,
         )?
