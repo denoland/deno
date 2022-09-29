@@ -159,7 +159,11 @@ impl CliModuleLoader {
         )?
       } else {
         // only inject node globals for esm
-        node::esm_code_with_node_globals(specifier, code)?
+        node::esm_code_with_node_globals(
+          self.ps.npm_resolver.analysis_cache.clone(),
+          specifier,
+          code,
+        )?
       };
       ModuleCodeSource {
         code,

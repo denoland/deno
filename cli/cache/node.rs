@@ -97,6 +97,51 @@ impl NodeAnalysisCache {
     ])?;
     Ok(())
   }
+
+  pub fn get_esm_analysis(
+    &self,
+    specifier: &str,
+    expected_source_hash: &str,
+  ) -> Result<Option<Vec<String>>, AnyError> {
+    let query = "
+      SELECT
+        data
+      FROM
+        esmglobalscache
+      WHERE
+        specifier=?1
+        AND source_hash=?2
+      LIMIT 1";
+    let mut stmt = self.conn.prepare_cached(query)?;
+    let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
+    if let Some(row) = rows.next()? {
+      let top_level_decls: String = row.get(0)?;
+      let decls: Vec<String> = serde_json::from_str(&top_level_decls)?;
+      Ok(Some(decls))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn set_esm_analysis(
+    &self,
+    specifier: &str,
+    source_hash: &str,
+    top_level_decls: Vec<String>,
+  ) -> Result<(), AnyError> {
+    let sql = "
+      INSERT OR REPLACE INTO
+      esmglobalscache (specifier, source_hash, data)
+      VALUES
+        (?1, ?2, ?3)";
+    let mut stmt = self.conn.prepare_cached(sql)?;
+    stmt.execute(params![
+      specifier,
+      &source_hash.to_string(),
+      &serde_json::to_string(&top_level_decls)?,
+    ])?;
+    Ok(())
+  }
 }
 
 fn create_tables(
