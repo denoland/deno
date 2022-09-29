@@ -109,11 +109,9 @@
       // Step 7.
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
-        const fieldValues = varyHeader.split(",").map((field) => field.trim());
-        for (const fieldValue of fieldValues) {
-          if (
-            fieldValue === "*"
-          ) {
+        const fieldValues = varyHeader.split(",");
+        for (const field of fieldValues) {
+          if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }
         }
