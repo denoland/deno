@@ -1424,12 +1424,7 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
 });
 
 Deno.test(
-  {
-    // FIXME(bartlomieju): this test is hanging on Windows, needs to be
-    // investigated and fixed
-    ignore: Deno.build.os === "windows",
-    permissions: { net: true },
-  },
+  { permissions: { net: true } },
   async function httpServerGetChunkedResponseWithKa() {
     const promises = [deferred(), deferred()];
     let reqCount = 0;
