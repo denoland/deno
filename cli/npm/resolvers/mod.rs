@@ -96,7 +96,6 @@ impl NpmPackageResolver {
         Arc::new(GlobalNpmPackageResolver::new(cache, api, maybe_snapshot))
       }
     };
-
     Self {
       unstable,
       no_npm,

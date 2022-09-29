@@ -12,7 +12,7 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use std::fmt::Write;
 
-use crate::cache::node::NodeAnalysisCache;
+use crate::cache::NodeAnalysisCache;
 
 static NODE_GLOBALS: &[&str] = &[
   "Buffer",

@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::cache::node::NodeAnalysisCache;
+use crate::cache::NodeAnalysisCache;
 use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
