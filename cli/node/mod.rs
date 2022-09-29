@@ -578,7 +578,7 @@ fn package_config_resolve(
   Ok(package_dir.join(package_subpath))
 }
 
-fn url_to_node_resolution(
+pub fn url_to_node_resolution(
   url: ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {

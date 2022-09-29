@@ -2232,6 +2232,35 @@ Deno.test(
   },
 );
 
+// https://github.com/denoland/deno/issues/15549
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue15549() {
+    const ac = new AbortController();
+    const promise = deferred();
+    let count = 0;
+    const server = Deno.serve(() => {
+      count++;
+      return new Response(`hello world ${count}`);
+    }, {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals(await res1.text(), "hello world 1");
+
+        const res2 = await fetch("http://localhost:9000/");
+        assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
+    await server;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
