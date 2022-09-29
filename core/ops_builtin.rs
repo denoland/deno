@@ -173,11 +173,9 @@ async fn op_read(
 async fn op_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut size: usize,
 ) -> Result<ZeroCopyBuf, Error> {
-  if size == 0 {
-    size = 64 * 1024;
-  }
+  let (min, maximum) = state.borrow().resource_table.get_any(rid)?.size_hint();
+  let size = maximum.unwrap_or(min) as usize;
 
   let mut buffer = Vec::with_capacity(size);
   loop {

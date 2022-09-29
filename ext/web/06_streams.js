@@ -48,6 +48,7 @@
     SymbolAsyncIterator,
     SymbolFor,
     TypeError,
+    TypedArrayPrototypeSet,
     Uint8Array,
     Uint8ArrayPrototype,
     Uint16ArrayPrototype,
@@ -657,22 +658,25 @@
    * @param {unrefCallback=} unrefCallback
    * @returns {ReadableStream<Uint8Array>}
    */
-  function readableStreamForRid(rid, unrefCallback) {
+  function readableStreamForRid(rid, unrefCallback, closeRid) {
     const stream = webidl.createBranded(ReadableStream);
     stream[_maybeRid] = rid;
+    stream[_closeRid] = closeRid ?? true;
+
+    const tryClose = (rid) => stream[_closeRid] && core.tryClose(rid);
+
     const underlyingSource = {
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
-          const promise = core.read(rid, v);
+          const promise = core.opAsync(stream[_readOp], rid, v);
 
           unrefCallback?.(promise);
 
           const bytesRead = await promise;
-
           if (bytesRead === 0) {
-            core.tryClose(rid);
+            tryClose(rid);
             controller.close();
             controller.byobRequest.respond(0);
           } else {
@@ -680,11 +684,11 @@
           }
         } catch (e) {
           controller.error(e);
-          core.tryClose(rid);
+          tryClose(rid);
         }
       },
       cancel() {
-        core.tryClose(rid);
+        tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
     };
@@ -701,6 +705,68 @@
 
   function getReadableStreamRid(stream) {
     return stream[_maybeRid];
+  }
+
+  async function readableStreamCollectIntoUint8Array(stream, cloned) {
+    const rid = stream[_maybeRid];
+
+    const op = `${stream[_readOp]}_all`;
+    const closeRid = stream[_closeRid];
+
+    const reader = acquireReadableStreamDefaultReader(stream);
+
+    // TODO(marcosc90): support fast path when teeing
+    // and remove cloned arg
+    if (rid && !cloned) {
+      // fast path, read whole body in a single op call
+      try {
+        readableStreamDisturb(stream);
+        const buf = await core.opAsync(
+          op,
+          rid,
+        );
+
+        if (stream[_state] === "errored") {
+          throw stream[_storedError];
+        }
+
+        readableStreamClose(stream);
+
+        return buf;
+      } catch (err) {
+        if (stream[_state] === "errored") {
+          throw stream[_storedError];
+        }
+
+        throw err;
+      } finally {
+        if (closeRid) {
+          core.tryClose(rid);
+        }
+      }
+    }
+
+    // slow path
+    /** @type {Uint8Array[]} */
+    const chunks = [];
+    let totalLength = 0;
+    while (true) {
+      const { value: chunk, done } = await reader.read();
+      if (done) break;
+
+      // slow path, content-length is not present
+      ArrayPrototypePush(chunks, chunk);
+
+      totalLength += chunk.byteLength;
+    }
+
+    const finalBuffer = new Uint8Array(totalLength);
+    let i = 0;
+    for (const chunk of chunks) {
+      TypedArrayPrototypeSet(finalBuffer, chunk, i);
+      i += chunk.byteLength;
+    }
+    return finalBuffer;
   }
 
   /**
@@ -4363,6 +4429,8 @@
   }
 
   const _maybeRid = Symbol("[[maybeRid]]");
+  const _closeRid = Symbol("[[closeRid]]");
+  const _readOp = Symbol("[[readOp]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
@@ -5922,6 +5990,7 @@
     readableStreamClose,
     readableStreamDisturb,
     readableStreamForRid,
+    readableStreamCollectIntoUint8Array,
     getReadableStreamRid,
     Deferred,
     // Exposed in global runtime scope

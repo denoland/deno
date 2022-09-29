@@ -26,25 +26,22 @@
   const mimesniff = globalThis.__bootstrap.mimesniff;
   const { BlobPrototype } = globalThis.__bootstrap.file;
   const {
-    _disturbed,
     isReadableStreamDisturbed,
-    readableStreamClose,
     errorReadableStream,
     readableStreamClose,
     readableStreamDisturb,
+    readableStreamCollectIntoUint8Array,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
-    TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -68,17 +65,12 @@
   }
 
   class InnerBody {
-    #knownExactLength = null;
-    #rid = null;
-    #op = null;
     #cloned = false;
-    #closeRid = false;
-    #terminator = null;
 
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, opts) {
+    constructor(stream) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -86,13 +78,6 @@
       this.source = null;
       /** @type {null | number} */
       this.length = null;
-
-      // used for fast paths when possible
-      this.#knownExactLength = opts?.knownExactLength;
-      this.#rid = opts?.rid;
-      this.#op = opts?.op; // to be called with (rid, buf)
-      this.#closeRid = opts?.closeRid;
-      this.#terminator = opts?.terminator;
     }
 
     get stream() {
@@ -156,7 +141,7 @@
      * https://fetch.spec.whatwg.org/#concept-body-consume-body
      * @returns {Promise<Uint8Array>}
      */
-    async consume() {
+    consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
@@ -164,77 +149,7 @@
           this.streamOrStatic,
         )
       ) {
-        const reader = this.stream.getReader();
-
-        if (this.#op && !this.#cloned) {
-          // fast path, read whole body in a single op call
-          // op must have following signature: (rid, usize = 0): Uint8Array
-
-          const closeStream = (err) => {
-            if (this.#closeRid) {
-              core.tryClose(this.#rid);
-            }
-            if (err) {
-              throw err;
-            }
-            readableStreamClose(this.stream);
-          };
-
-          try {
-            // We need to mimic stream behavior, set to disturbed
-            this.stream[_disturbed] = true;
-            const buf = await core.opAsync(
-              this.#op,
-              this.#rid,
-              this.#knownExactLength || 0,
-            );
-            if (this.#terminator?.aborted) {
-              throw this.#terminator.reason;
-            }
-
-            closeStream();
-
-            return buf;
-          } catch (err) {
-            closeStream(this.#terminator?.reason || err);
-            throw err;
-          }
-        }
-
-        // slow path
-        /** @type {Uint8Array[]} */
-        const chunks = [];
-
-        let finalBuffer = this.#knownExactLength
-          ? new Uint8Array(this.#knownExactLength)
-          : null;
-
-        let totalLength = 0;
-        while (true) {
-          const { value: chunk, done } = await reader.read();
-          if (done) break;
-
-          if (finalBuffer) {
-            // fast path, content-length is present
-            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
-          } else {
-            // slow path, content-length is not present
-            ArrayPrototypePush(chunks, chunk);
-          }
-          totalLength += chunk.byteLength;
-        }
-
-        if (finalBuffer) {
-          return finalBuffer;
-        }
-
-        finalBuffer = new Uint8Array(totalLength);
-        let i = 0;
-        for (const chunk of chunks) {
-          TypedArrayPrototypeSet(finalBuffer, chunk, i);
-          i += chunk.byteLength;
-        }
-        return finalBuffer;
+        return readableStreamCollectIntoUint8Array(this.stream, this.#cloned);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
@@ -274,7 +189,7 @@
       this.#cloned = true;
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
-      const second = new InnerBody(out2, this.#knownExactLength);
+      const second = new InnerBody(out2);
       second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;

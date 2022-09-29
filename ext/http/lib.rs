@@ -166,8 +166,7 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<(HttpStreamResource, String, String, Option<u64>)>, AnyError>
-  {
+  ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
     let fut = async {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
@@ -206,9 +205,14 @@ impl HttpConnResource {
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let stream =
-        HttpStreamResource::new(self, request, response_tx, accept_encoding);
-      Some((stream, method, url, content_length))
+      let stream = HttpStreamResource::new(
+        self,
+        request,
+        response_tx,
+        accept_encoding,
+        content_length,
+      );
+      Some((stream, method, url))
     };
 
     async {
@@ -327,6 +331,7 @@ pub struct HttpStreamResource {
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
   cancel_handle: CancelHandle,
+  size: Option<u64>,
 }
 
 impl HttpStreamResource {
@@ -335,12 +340,14 @@ impl HttpStreamResource {
     request: Request<Body>,
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
+    size: Option<u64>,
   ) -> Self {
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
+      size,
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -353,6 +360,11 @@ impl Resource for HttpStreamResource {
 
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    // TLS max packet size is 16kb, so we use that as a default.
+    (16 * 1024 + 256, self.size)
   }
 }
 
@@ -395,8 +407,6 @@ struct NextRequestResponse(
   String,
   // url:
   String,
-  // Content Length
-  Option<u64>,
 );
 
 #[op]
@@ -407,10 +417,10 @@ async fn op_http_accept(
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
-    Ok(Some((stream, method, url, content_length))) => {
+    Ok(Some((stream, method, url))) => {
       let stream_rid =
         state.borrow_mut().resource_table.add_rc(Rc::new(stream));
-      let r = NextRequestResponse(stream_rid, method, url, content_length);
+      let r = NextRequestResponse(stream_rid, method, url);
       Ok(Some(r))
     }
     Ok(None) => Ok(None),
@@ -888,7 +898,6 @@ async fn op_http_read(
 async fn op_http_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut size: usize,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let stream = state
     .borrow_mut()
@@ -911,10 +920,13 @@ async fn op_http_read_all(
     };
   };
 
-  if size == 0 {
-    size = 64 * 1024;
-  }
+  let (min, maximum) = state
+    .borrow_mut()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?
+    .size_hint();
 
+  let size = maximum.unwrap_or(min) as usize;
   let mut buffer = Vec::with_capacity(size);
   let fut = async {
     let mut body = Pin::new(body);
