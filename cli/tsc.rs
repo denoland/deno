@@ -4,6 +4,7 @@ use crate::args::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::graph_util::GraphData;
 use crate::graph_util::ModuleEntry;
+use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::node::NodeResolutionMode;
@@ -587,7 +588,25 @@ fn op_resolve(
             }
           }
         }
-        _ => None,
+        _ => {
+          state.maybe_npm_resolver.as_ref().and_then(|npm_resolver| {
+            if npm_resolver.in_npm_package(&referrer) {
+              // we're in an npm package, so use node resolution
+              Some(NodeResolution::into_media_type_and_specifier(
+                node::node_resolve(
+                  specifier,
+                  &referrer,
+                  node::NodeResolutionMode::Types,
+                  npm_resolver,
+                )
+                .ok()
+                .flatten(),
+              ))
+            } else {
+              None
+            }
+          })
+        }
       };
       let result = match maybe_result {
         Some((specifier, media_type)) => {

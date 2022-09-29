@@ -55,7 +55,13 @@ impl NodeResolution {
     match self {
       Self::Esm(u) => u,
       Self::CommonJs(u) => u,
-      _ => unreachable!(),
+      Self::BuiltIn(specifier) => {
+        if specifier.starts_with("node:") {
+          ModuleSpecifier::parse(&specifier).unwrap()
+        } else {
+          ModuleSpecifier::parse(&format!("node:{}", specifier)).unwrap()
+        }
+      }
     }
   }
 
@@ -469,6 +475,16 @@ pub fn node_resolve(
     Some(url) => url,
     None => return Ok(None),
   };
+  let url = match mode {
+    NodeResolutionMode::Execution => url,
+    NodeResolutionMode::Types => {
+      let path = url.to_file_path().unwrap();
+      // todo: the module kind is not correct here. I think we need
+      // typescript to tell us if the referrer is esm or cjs
+      let path = path_to_declaration_path(path, NodeModuleKind::Esm);
+      ModuleSpecifier::from_file_path(path).unwrap()
+    }
+  };
 
   let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -483,6 +499,7 @@ pub fn node_resolve_npm_reference(
 ) -> Result<Option<NodeResolution>, AnyError> {
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
+  let node_module_kind = NodeModuleKind::Esm;
   let resolved_path = package_config_resolve(
     &reference
       .sub_path
@@ -490,14 +507,19 @@ pub fn node_resolve_npm_reference(
       .map(|s| format!("./{}", s))
       .unwrap_or_else(|| ".".to_string()),
     &package_folder,
-    NodeModuleKind::Esm,
+    node_module_kind,
     mode_conditions(mode),
     npm_resolver,
   )
   .with_context(|| {
     format!("Error resolving package config for '{}'.", reference)
   })?;
-
+  let resolved_path = match mode {
+    NodeResolutionMode::Execution => resolved_path,
+    NodeResolutionMode::Types => {
+      path_to_declaration_path(resolved_path, node_module_kind)
+    }
+  };
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
   let resolve_response = url_to_node_resolution(url, npm_resolver)?;
   // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -509,6 +531,34 @@ fn mode_conditions(mode: NodeResolutionMode) -> &'static [&'static str] {
   match mode {
     NodeResolutionMode::Execution => DEFAULT_CONDITIONS,
     NodeResolutionMode::Types => TYPES_CONDITIONS,
+  }
+}
+
+/// Checks if the resolved file has a corresponding declaration file.
+fn path_to_declaration_path(
+  path: PathBuf,
+  referrer_kind: NodeModuleKind,
+) -> PathBuf {
+  let lowercase_path = path.to_string_lossy().to_lowercase();
+  if lowercase_path.ends_with(".d.ts")
+    || lowercase_path.ends_with(".d.cts")
+    || lowercase_path.ends_with(".d.ts")
+  {
+    return path;
+  }
+  let specific_dts_path = match referrer_kind {
+    NodeModuleKind::Cjs => path.with_extension("d.cts"),
+    NodeModuleKind::Esm => path.with_extension("d.mts"),
+  };
+  if specific_dts_path.exists() {
+    specific_dts_path
+  } else {
+    let dts_path = path.with_extension("d.ts");
+    if dts_path.exists() {
+      dts_path
+    } else {
+      path
+    }
   }
 }
 

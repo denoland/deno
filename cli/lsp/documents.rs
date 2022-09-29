@@ -13,6 +13,7 @@ use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::lsp::logging::lsp_log;
+use crate::node;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::node::NodeResolutionMode;
@@ -944,6 +945,22 @@ impl Documents {
     let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
     for specifier in specifiers {
+      if let Some(npm_resolver) = maybe_npm_resolver {
+        if npm_resolver.in_npm_package(&referrer) {
+          // we're in an npm package, so use node resolution
+          results.push(Some(NodeResolution::into_media_type_and_specifier(
+            node::node_resolve(
+              &specifier,
+              &referrer,
+              node::NodeResolutionMode::Types,
+              npm_resolver,
+            )
+            .ok()
+            .flatten(),
+          )));
+          continue;
+        }
+      }
       // handle npm:<package> urls
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
