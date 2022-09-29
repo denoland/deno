@@ -10,11 +10,11 @@ use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use path_clean::PathClean;
 use regex::Regex;
 
 use crate::errors;
 use crate::package_json::PackageJson;
+use crate::path::PathClean;
 use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];

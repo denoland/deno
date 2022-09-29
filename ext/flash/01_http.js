@@ -459,6 +459,7 @@
     const listenOpts = {
       hostname: options.hostname ?? "127.0.0.1",
       port: options.port ?? 9000,
+      reuseport: options.reusePort ?? false,
     };
     if (options.cert || options.key) {
       if (!options.cert || !options.key) {
@@ -541,7 +542,7 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || typeof resp.then === "function") {
+              if (resp instanceof Promise || typeof resp?.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,

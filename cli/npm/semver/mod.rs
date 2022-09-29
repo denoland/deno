@@ -6,6 +6,8 @@ use std::fmt;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::npm::resolution::NpmVersionMatcher;
 
@@ -25,7 +27,9 @@ mod specifier;
 // A lot of the below is a re-implementation of parts of https://github.com/npm/node-semver
 // which is Copyright (c) Isaac Z. Schlueter and Contributors (ISC License)
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Hash)]
+#[derive(
+  Clone, Debug, PartialEq, Eq, Default, Hash, Serialize, Deserialize,
+)]
 pub struct NpmVersion {
   pub major: u64,
   pub minor: u64,
