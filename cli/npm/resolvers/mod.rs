@@ -8,9 +8,13 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use global::GlobalNpmPackageResolver;
+use once_cell::sync::Lazy;
+use serde::Deserialize;
+use serde::Serialize;
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -20,15 +24,50 @@ use crate::fs_util;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
+use super::resolution::NpmResolutionSnapshot;
 use super::NpmCache;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
+
+const RESOLUTION_STATE_ENV_VAR_NAME: &str =
+  "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
+
+static IS_NPM_MAIN: Lazy<bool> =
+  Lazy::new(|| std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).is_ok());
+
+/// State provided to the process via an environment variable.
+#[derive(Debug, Serialize, Deserialize)]
+struct NpmProcessState {
+  snapshot: NpmResolutionSnapshot,
+  local_node_modules_path: Option<String>,
+}
+
+impl NpmProcessState {
+  pub fn was_set() -> bool {
+    *IS_NPM_MAIN
+  }
+
+  pub fn take() -> Option<NpmProcessState> {
+    // initialize the lazy before we remove the env var below
+    if !Self::was_set() {
+      return None;
+    }
+
+    let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+    let state = serde_json::from_str(&state).ok()?;
+    // remove the environment variable so that sub processes
+    // that are spawned do not also use this.
+    std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+    Some(state)
+  }
+}
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
   unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
+  local_node_modules_path: Option<PathBuf>,
 }
 
 impl NpmPackageResolver {
@@ -39,19 +78,30 @@ impl NpmPackageResolver {
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
-    let inner: Arc<dyn InnerNpmPackageResolver> = match local_node_modules_path
+    let process_npm_state = NpmProcessState::take();
+    let local_node_modules_path = local_node_modules_path.or_else(|| {
+      process_npm_state
+        .as_ref()
+        .and_then(|s| s.local_node_modules_path.as_ref().map(PathBuf::from))
+    });
+    let maybe_snapshot = process_npm_state.map(|s| s.snapshot);
+    let inner: Arc<dyn InnerNpmPackageResolver> = match &local_node_modules_path
     {
       Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
         cache,
         api,
-        node_modules_folder,
+        node_modules_folder.clone(),
+        maybe_snapshot,
       )),
-      None => Arc::new(GlobalNpmPackageResolver::new(cache, api)),
+      None => {
+        Arc::new(GlobalNpmPackageResolver::new(cache, api, maybe_snapshot))
+      }
     };
     Self {
       unstable,
       no_npm,
       inner,
+      local_node_modules_path,
     }
   }
 
@@ -136,6 +186,26 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await
+  }
+
+  // If the main module should be treated as being in an npm package.
+  // This is triggered via a secret environment variable which is used
+  // for functionality like child_process.fork. Users should NOT depend
+  // on this functionality.
+  pub fn is_npm_main(&self) -> bool {
+    NpmProcessState::was_set()
+  }
+
+  /// Gets the state of npm for the process.
+  pub fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      snapshot: self.inner.snapshot(),
+      local_node_modules_path: self
+        .local_node_modules_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
+    })
+    .unwrap()
   }
 }
 

@@ -134,6 +134,10 @@ impl ResourceTable {
   /// Returns a unique resource ID, which acts as a key for this resource.
   pub fn add_rc<T: Resource>(&mut self, resource: Rc<T>) -> ResourceId {
     let resource = resource as Rc<dyn Resource>;
+    self.add_rc_dyn(resource)
+  }
+
+  pub fn add_rc_dyn(&mut self, resource: Rc<dyn Resource>) -> ResourceId {
     let rid = self.next_rid;
     let removed_resource = self.index.insert(rid, resource);
     assert!(removed_resource.is_none());
