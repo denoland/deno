@@ -21,14 +21,8 @@
     return !!isattyBuffer[0];
   }
 
-  const DEFAULT_CBREAK = false;
-  function setRaw(rid, mode, options = {}) {
-    ops.op_set_raw(rid, mode, options.cbreak || DEFAULT_CBREAK);
-  }
-
   window.__bootstrap.tty = {
     consoleSize,
     isatty,
-    setRaw,
   };
 })(this);

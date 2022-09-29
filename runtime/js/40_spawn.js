@@ -21,7 +21,7 @@
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChild(command, {
+  function spawnChildInner(command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -44,11 +44,15 @@
       stdin,
       stdout,
       stderr,
-    });
+    }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
       signal,
     });
+  }
+
+  function spawnChild(command, options = {}) {
+    return spawnChildInner(command, "Deno.spawnChild()", options);
   }
 
   async function collectOutput(readableStream) {
@@ -204,7 +208,7 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      ops.op_kill(this.#pid, signo);
+      ops.op_kill(this.#pid, signo, "Deno.Child.kill()");
     }
 
     ref() {
@@ -228,7 +232,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    return spawnChild(command, options).output();
+    return spawnChildInner(command, "Deno.spawn()", options).output();
   }
 
   function spawnSync(command, {

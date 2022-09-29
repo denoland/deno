@@ -61,7 +61,11 @@ pub struct WsRootStore(pub Option<RootCertStore>);
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    _url: &url::Url,
+    _api_name: &str,
+  ) -> Result<(), AnyError>;
 }
 
 /// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
@@ -211,6 +215,7 @@ impl Resource for WsCancelResource {
 #[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
+  api_name: String,
   url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
@@ -219,7 +224,7 @@ where
 {
   state
     .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?)?;
+    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
 
   if cancel_handle {
     let rid = state
@@ -242,6 +247,7 @@ pub struct CreateResponse {
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
+  api_name: String,
   url: String,
   protocols: String,
   cancel_handle: Option<ResourceId>,
@@ -253,7 +259,7 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&url)?)
+      .check_net_url(&url::Url::parse(&url)?, &api_name)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
