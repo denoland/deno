@@ -16,8 +16,12 @@
     PromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
-  const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streamUtils;
+  const {
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+  } = window.__bootstrap.streams;
+  const { writableStreamForRid } = window.__bootstrap.streamUtils;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
@@ -136,18 +140,12 @@
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
-          this.#stdoutPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stdoutPromiseId);
-        });
+        this.#stdout = readableStreamForRidUnrefable(stdoutRid);
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
-          this.#stderrPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stderrPromiseId);
-        });
+        this.#stderr = readableStreamForRidUnrefable(stderrRid);
       }
 
       const onAbort = () => this.kill("SIGTERM");
@@ -214,15 +212,15 @@
     ref() {
       this.#unrefed = false;
       core.refOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
     }
 
     unref() {
       this.#unrefed = true;
       core.unrefOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
     }
   }
 
