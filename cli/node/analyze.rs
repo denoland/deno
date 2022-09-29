@@ -38,7 +38,7 @@ pub fn esm_code_with_node_globals(
   specifier: &ModuleSpecifier,
   code: String,
 ) -> Result<String, AnyError> {
-  let source_hash = crate::cache::node::compute_source_hash(&code);
+  let source_hash = NodeAnalysisCache::compute_source_hash(&code);
   let text_info = deno_ast::SourceTextInfo::from_string(code);
   let top_level_decls = if let Ok(Some(decls)) =
     analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)

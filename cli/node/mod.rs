@@ -743,7 +743,7 @@ pub fn translate_cjs_to_esm(
     media_type: MediaType,
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
-    let source_hash = crate::cache::node::compute_source_hash(&code);
+    let source_hash = NodeAnalysisCache::compute_source_hash(&code);
     if let Ok(Some(analysis)) =
       analysis_cache.get_cjs_analysis(specifier, &source_hash)
     {

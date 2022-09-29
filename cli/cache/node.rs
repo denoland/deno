@@ -48,6 +48,13 @@ impl NodeAnalysisCache {
     })
   }
 
+  pub fn compute_source_hash(text: &str) -> String {
+    FastInsecureHasher::new()
+      .write_str(text)
+      .finish()
+      .to_string()
+  }
+
   pub fn get_cjs_analysis(
     &self,
     specifier: &str,
@@ -197,11 +204,4 @@ fn create_tables(
   }
 
   Ok(())
-}
-
-pub fn compute_source_hash(text: &str) -> String {
-  FastInsecureHasher::new()
-    .write_str(text)
-    .finish()
-    .to_string()
 }
