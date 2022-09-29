@@ -307,14 +307,6 @@ Deno.test(
     assert(s.rdev === null);
     assert(s.blksize === null);
     assert(s.blocks === null);
-    console.log(
-      s,
-      "||||||||||||||||||||||||||||||||||||||||||||||||||||||||\n",
-    );
-    console.log(
-      s.isBlockDevice,
-      "==========================================================\n",
-    );
     assert(s.isBlockDevice === null);
   },
 );
