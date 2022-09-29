@@ -244,6 +244,7 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
+      &dir,
     );
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();

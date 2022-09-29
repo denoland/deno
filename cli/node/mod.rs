@@ -736,10 +736,20 @@ pub fn translate_cjs_to_esm(
   npm_resolver: &NpmPackageResolver,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
+    npm_resolver: &NpmPackageResolver,
     specifier: &str,
     media_type: MediaType,
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
+    let source_hash = crate::cache::node::compute_source_hash(&code);
+    if let Ok(Some(analysis)) = npm_resolver
+      .analysis_cache
+      .lock()
+      .unwrap()
+      .get_cjs_analysis(specifier, &source_hash)
+    {
+      return Ok(analysis);
+    }
     let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: deno_ast::SourceTextInfo::new(code.into()),
@@ -748,7 +758,15 @@ pub fn translate_cjs_to_esm(
       scope_analysis: false,
       maybe_syntax: None,
     })?;
-    Ok(parsed_source.analyze_cjs())
+    let analysis = parsed_source.analyze_cjs();
+    npm_resolver
+      .analysis_cache
+      .lock()
+      .unwrap()
+      .set_cjs_analysis(specifier, &source_hash, &analysis)
+      .unwrap();
+
+    Ok(analysis)
   }
 
   let mut temp_var_count = 0;
@@ -758,7 +776,8 @@ pub fn translate_cjs_to_esm(
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
-  let analysis = perform_cjs_analysis(specifier.as_str(), media_type, code)?;
+  let analysis =
+    perform_cjs_analysis(npm_resolver, specifier.as_str(), media_type, code)?;
 
   let mut all_exports = analysis
     .exports
@@ -804,6 +823,7 @@ pub fn translate_cjs_to_esm(
 
     {
       let analysis = perform_cjs_analysis(
+        npm_resolver,
         reexport_specifier.as_str(),
         reexport_file.media_type,
         reexport_file.source.to_string(),

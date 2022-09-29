@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use deno_ast::CjsAnalysis;
-use deno_ast::ModuleSpecifier;
+// use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_webstorage::rusqlite::params;
@@ -47,7 +47,7 @@ impl NodeAnalysisCache {
 
   pub fn get_cjs_analysis(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<CjsAnalysis>, AnyError> {
     let query = "
@@ -60,8 +60,7 @@ impl NodeAnalysisCache {
         AND source_hash=?2
       LIMIT 1";
     let mut stmt = self.conn.prepare_cached(query)?;
-    let mut rows =
-      stmt.query(params![&specifier.as_str(), &expected_source_hash])?;
+    let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
     if let Some(row) = rows.next()? {
       let analysis_info: String = row.get(0)?;
       let analysis_info: CjsAnalysisData =
@@ -77,7 +76,7 @@ impl NodeAnalysisCache {
 
   pub fn set_cjs_analysis(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &str,
     source_hash: &str,
     cjs_analysis: &CjsAnalysis,
   ) -> Result<(), AnyError> {
@@ -88,7 +87,7 @@ impl NodeAnalysisCache {
         (?1, ?2, ?3)";
     let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
-      specifier.as_str(),
+      specifier,
       &source_hash.to_string(),
       &serde_json::to_string(&CjsAnalysisData {
         // temporary clones until upgrading deno_ast
@@ -148,7 +147,7 @@ fn create_tables(
   Ok(())
 }
 
-fn compute_source_hash(text: &str) -> String {
+pub fn compute_source_hash(text: &str) -> String {
   FastInsecureHasher::new()
     .write_str(text)
     .finish()

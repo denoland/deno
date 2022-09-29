@@ -15,11 +15,13 @@ use global::GlobalNpmPackageResolver;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
+use crate::cache::node::NodeAnalysisCache;
+use crate::deno_dir::DenoDir;
 use crate::fs_util;
 
 use self::common::InnerNpmPackageResolver;
@@ -68,6 +70,7 @@ pub struct NpmPackageResolver {
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
+  pub(crate) analysis_cache: Arc<Mutex<NodeAnalysisCache>>,
 }
 
 impl NpmPackageResolver {
@@ -77,6 +80,7 @@ impl NpmPackageResolver {
     unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
+    dir: &DenoDir,
   ) -> Self {
     let process_npm_state = NpmProcessState::take();
     let local_node_modules_path = local_node_modules_path.or_else(|| {
@@ -97,11 +101,17 @@ impl NpmPackageResolver {
         Arc::new(GlobalNpmPackageResolver::new(cache, api, maybe_snapshot))
       }
     };
+
+    let path = dir.root.join("npm/analysis.sqlite");
+    let analysis_cache = Arc::new(Mutex::new(
+      NodeAnalysisCache::new(Some(&path), crate::version::deno()).unwrap(),
+    ));
     Self {
       unstable,
       no_npm,
       inner,
       local_node_modules_path,
+      analysis_cache,
     }
   }
 

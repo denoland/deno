@@ -19,7 +19,7 @@ mod common;
 mod disk_cache;
 mod emit;
 mod incremental;
-mod node;
+pub mod node;
 mod parsed_source;
 
 pub use check::TypeCheckCache;
