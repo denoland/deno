@@ -26,8 +26,12 @@
   const mimesniff = globalThis.__bootstrap.mimesniff;
   const { BlobPrototype } = globalThis.__bootstrap.file;
   const {
+    _disturbed,
     isReadableStreamDisturbed,
+    readableStreamClose,
     errorReadableStream,
+    readableStreamClose,
+    readableStreamDisturb,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
@@ -65,11 +69,16 @@
 
   class InnerBody {
     #knownExactLength = null;
+    #rid = null;
+    #op = null;
+    #cloned = false;
+    #closeRid = false;
+    #terminator = null;
 
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, knownExactLength) {
+    constructor(stream, opts) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -78,7 +87,12 @@
       /** @type {null | number} */
       this.length = null;
 
-      this.#knownExactLength = knownExactLength;
+      // used for fast paths when possible
+      this.#knownExactLength = opts?.knownExactLength;
+      this.#rid = opts?.rid;
+      this.#op = opts?.op; // to be called with (rid, buf)
+      this.#closeRid = opts?.closeRid;
+      this.#terminator = opts?.terminator;
     }
 
     get stream() {
@@ -92,6 +106,8 @@
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
           this.streamOrStatic.getReader();
+          readableStreamDisturb(this.streamOrStatic);
+          readableStreamClose(this.streamOrStatic);
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
@@ -149,6 +165,43 @@
         )
       ) {
         const reader = this.stream.getReader();
+
+        if (this.#op && !this.#cloned) {
+          // fast path, read whole body in a single op call
+          // op must have following signature: (rid, usize = 0): Uint8Array
+
+          const closeStream = (err) => {
+            if (this.#closeRid) {
+              core.tryClose(this.#rid);
+            }
+            if (err) {
+              throw err;
+            }
+            readableStreamClose(this.stream);
+          };
+
+          try {
+            // We need to mimic stream behavior, set to disturbed
+            this.stream[_disturbed] = true;
+            const buf = await core.opAsync(
+              this.#op,
+              this.#rid,
+              this.#knownExactLength || 0,
+            );
+            if (this.#terminator?.aborted) {
+              throw this.#terminator.reason;
+            }
+
+            closeStream();
+
+            return buf;
+          } catch (err) {
+            closeStream(this.#terminator?.reason || err);
+            throw err;
+          }
+        }
+
+        // slow path
         /** @type {Uint8Array[]} */
         const chunks = [];
 
@@ -218,6 +271,7 @@
      * @returns {InnerBody}
      */
     clone() {
+      this.#cloned = true;
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
       const second = new InnerBody(out2, this.#knownExactLength);

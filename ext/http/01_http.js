@@ -112,7 +112,7 @@
         return null;
       }
 
-      const [streamRid, method, url] = nextRequest;
+      const [streamRid, method, url, contentLength] = nextRequest;
       SetPrototypeAdd(this.managedResources, streamRid);
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
@@ -128,7 +128,16 @@
         () => method,
         url,
         () => ops.op_http_headers(streamRid),
-        body !== null ? new InnerBody(body) : null,
+        body !== null
+          ? new InnerBody(
+            body,
+            {
+              knownExactLength: contentLength,
+              rid: streamRid,
+              op: "op_http_read_all",
+            },
+          )
+          : null,
         false,
       );
       const signal = abortSignal.newSignal();

@@ -79,6 +79,7 @@ pub fn init() -> Extension {
     .ops(vec![
       op_http_accept::decl(),
       op_http_read::decl(),
+      op_http_read_all::decl(),
       op_http_write_headers::decl(),
       op_http_headers::decl(),
       op_http_write::decl(),
@@ -165,7 +166,8 @@ impl HttpConnResource {
   // Accepts a new incoming HTTP request.
   async fn accept(
     self: &Rc<Self>,
-  ) -> Result<Option<(HttpStreamResource, String, String)>, AnyError> {
+  ) -> Result<Option<(HttpStreamResource, String, String, Option<u64>)>, AnyError>
+  {
     let fut = async {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
@@ -187,11 +189,26 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
+      // get content-length if content-encoding is empty
+      let content_length = if request
+        .headers()
+        .get(hyper::header::CONTENT_ENCODING)
+        .is_none()
+      {
+        request
+          .headers()
+          .get(hyper::header::CONTENT_LENGTH)
+          .and_then(|v| v.to_str().ok())
+          .and_then(|v| v.parse::<u64>().ok())
+      } else {
+        None
+      };
+
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
       let stream =
         HttpStreamResource::new(self, request, response_tx, accept_encoding);
-      Some((stream, method, url))
+      Some((stream, method, url, content_length))
     };
 
     async {
@@ -378,6 +395,8 @@ struct NextRequestResponse(
   String,
   // url:
   String,
+  // Content Length
+  Option<u64>,
 );
 
 #[op]
@@ -388,10 +407,10 @@ async fn op_http_accept(
   let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
-    Ok(Some((stream, method, url))) => {
+    Ok(Some((stream, method, url, content_length))) => {
       let stream_rid =
         state.borrow_mut().resource_table.add_rc(Rc::new(stream));
-      let r = NextRequestResponse(stream_rid, method, url);
+      let r = NextRequestResponse(stream_rid, method, url, content_length);
       Ok(Some(r))
     }
     Ok(None) => Ok(None),
@@ -857,6 +876,58 @@ async fn op_http_read(
           Err(err) => break Err(AnyError::from(err)),
         },
         None => break Ok(0),
+      }
+    }
+  };
+
+  let cancel_handle = RcRef::map(&stream, |r| &r.cancel_handle);
+  fut.try_or_cancel(cancel_handle).await
+}
+
+#[op]
+async fn op_http_read_all(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  mut size: usize,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let stream = state
+    .borrow_mut()
+    .resource_table
+    .get::<HttpStreamResource>(rid)?;
+  let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
+
+  let body = loop {
+    match &mut *rd {
+      HttpRequestReader::Headers(_) => {}
+      HttpRequestReader::Body(_, body) => break body,
+      HttpRequestReader::Closed => return Err(http_error("request is closed")),
+    }
+    match take(&mut *rd) {
+      HttpRequestReader::Headers(request) => {
+        let (parts, body) = request.into_parts();
+        *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+      }
+      _ => unreachable!(),
+    };
+  };
+
+  if size == 0 {
+    size = 64 * 1024;
+  }
+
+  let mut buffer = Vec::with_capacity(size);
+  let fut = async {
+    let mut body = Pin::new(body);
+    loop {
+      match body.as_mut().peek_mut().await {
+        Some(Ok(chunk)) if !chunk.is_empty() => {
+          buffer.extend_from_slice(&chunk.split_to(chunk.len()));
+        }
+        Some(_) => match body.as_mut().next().await.unwrap() {
+          Ok(chunk) => assert!(chunk.is_empty()),
+          Err(err) => break Err(AnyError::from(err)),
+        },
+        None => break Ok(buffer.into()),
       }
     }
   };

@@ -338,7 +338,13 @@
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
-          resp.contentLength,
+          {
+            knownExactLength: resp.contentLength,
+            rid: resp.responseRid,
+            op: "op_read_all",
+            closeRid: true,
+            terminator,
+          },
         );
       }
     }

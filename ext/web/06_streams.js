@@ -1153,6 +1153,15 @@
     reader[_closedPromise].resolve(undefined);
   }
 
+  /**
+   * @template R
+   * @param {ReadableStream<R>} stream
+   * @returns {void}
+   */
+  function readableStreamDisturb(stream) {
+    stream[_disturbed] = true;
+  }
+
   /** @param {ReadableStreamDefaultController<any>} controller */
   function readableStreamDefaultControllerCallPullIfNeeded(controller) {
     const shouldPull = readableStreamDefaultcontrollerShouldCallPull(
@@ -5904,12 +5913,14 @@
 
   window.__bootstrap.streams = {
     // Non-Public
+    _disturbed,
     _state,
     isReadableStreamDisturbed,
     errorReadableStream,
     createProxy,
     writableStreamClose,
     readableStreamClose,
+    readableStreamDisturb,
     readableStreamForRid,
     getReadableStreamRid,
     Deferred,

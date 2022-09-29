@@ -1789,3 +1789,19 @@ Deno.test(
     assertEquals(await res.text(), "ok");
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchResponseStreamIsLockedWhileReading() {
+    const response = await fetch("http://localhost:4545/echo_server", {
+      body: new Uint8Array(5000),
+      method: "POST",
+    });
+
+    assertEquals(response.body!.locked, false);
+    const promise = response.arrayBuffer();
+    assertEquals(response.body!.locked, true);
+
+    await promise;
+  },
+);
