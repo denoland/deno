@@ -709,7 +709,7 @@ pub fn legacy_main_resolve(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
 ) -> Result<PathBuf, AnyError> {
-  let is_types = conditions.len() == 1 && conditions[0] == "types";
+  let is_types = conditions == TYPES_CONDITIONS;
   let maybe_main = if is_types {
     package_json.types.as_ref()
   } else {

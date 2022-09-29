@@ -65,11 +65,15 @@ use crate::args::LintConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
+use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
+use crate::progress_bar::ProgressBar;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -246,7 +250,22 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let npm_resolver = NpmPackageResolver::new();
+    let registry_url = NpmRegistryApi::default_url();
+    let cache_setting = CacheSetting::Only;
+    let progress_bar = ProgressBar::default();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cache_setting.clone(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      cache_setting,
+      progress_bar.clone(),
+    );
+    let npm_resolver =
+      NpmPackageResolver::new(npm_cache, api, true, false, None);
 
     Self {
       assets,
@@ -885,6 +904,10 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          let _ = self
+            .npm_resolver
+            .add_package_reqs(document.npm_package_reqs())
+            .await;
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
@@ -2467,6 +2490,10 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
       if document.is_diagnosable() {
+        let _ = inner
+          .npm_resolver
+          .add_package_reqs(document.npm_package_reqs())
+          .await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings

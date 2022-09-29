@@ -618,6 +618,14 @@ fn package_config_resolve(
   let package_config =
     PackageJson::load(npm_resolver, package_json_path.clone())?;
   if let Some(exports) = &package_config.exports {
+    let is_types = conditions == TYPES_CONDITIONS;
+    if is_types && package_subpath == "." {
+      if let Ok(path) =
+        legacy_main_resolve(&package_config, referrer_kind, conditions)
+      {
+        return Ok(path);
+      }
+    }
     return package_exports_resolve(
       &package_json_path,
       package_subpath.to_string(),

@@ -198,7 +198,9 @@ impl NpmPackageResolver {
     &self,
     packages: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    assert!(!packages.is_empty());
+    if packages.is_empty() {
+      return Ok(());
+    }
 
     if !self.unstable {
       bail!(

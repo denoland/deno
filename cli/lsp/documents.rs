@@ -12,10 +12,12 @@ use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::fs_util::specifier_to_file_path;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
+use crate::lsp::logging::lsp_log;
 use crate::node::node_resolve_npm_reference;
 use crate::node::NodeResolution;
 use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -465,6 +467,18 @@ impl Document {
   /// Returns the current language server client version if any.
   pub fn maybe_lsp_version(&self) -> Option<i32> {
     self.0.maybe_lsp_version
+  }
+
+  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
+    let mut reqs = Vec::with_capacity(self.0.dependencies.len());
+    for dep in self.0.dependencies.values() {
+      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
+        if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
+          reqs.push(reference.req);
+        }
+      }
+    }
+    reqs
   }
 
   fn maybe_module(
@@ -931,19 +945,7 @@ impl Documents {
     let mut results = Vec::new();
     for specifier in specifiers {
       // handle npm:<package> urls
-      if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
-        results.push(maybe_npm_resolver.map(|npm_resolver| {
-          NodeResolution::into_media_type_and_specifier(
-            node_resolve_npm_reference(
-              &npm_ref,
-              NodeResolutionMode::Types,
-              npm_resolver,
-            )
-            .ok()
-            .flatten(),
-          )
-        }));
-      } else if specifier.starts_with("asset:") {
+      if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from(&specifier);
           results.push(Some((specifier, media_type)));
@@ -952,9 +954,9 @@ impl Documents {
         }
       } else if let Some(dep) = dependencies.get(&specifier) {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
-          results.push(self.resolve_dependency(specifier));
+          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
-          results.push(self.resolve_dependency(specifier));
+          results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else {
           results.push(None);
         }
@@ -963,11 +965,12 @@ impl Documents {
       {
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
-        results.push(self.resolve_dependency(&specifier));
+        results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
       } else {
         results.push(None);
       }
     }
+    lsp_log!("RESOLVED: {:?}", results);
     Some(results)
   }
 
@@ -1097,7 +1100,21 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_npm_resolver: Option<&NpmPackageResolver>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
+      return maybe_npm_resolver.map(|npm_resolver| {
+        NodeResolution::into_media_type_and_specifier(
+          node_resolve_npm_reference(
+            &npm_ref,
+            NodeResolutionMode::Types,
+            npm_resolver,
+          )
+          .ok()
+          .flatten(),
+        )
+      });
+    }
     let doc = self.get(specifier)?;
     let maybe_module = doc.maybe_module().and_then(|r| r.as_ref().ok());
     let maybe_types_dependency = maybe_module.and_then(|m| {
@@ -1106,7 +1123,7 @@ impl Documents {
         .map(|(_, resolved)| resolved.clone())
     });
     if let Some(Resolved::Ok { specifier, .. }) = maybe_types_dependency {
-      self.resolve_dependency(&specifier)
+      self.resolve_dependency(&specifier, maybe_npm_resolver)
     } else {
       let media_type = doc.media_type();
       Some((specifier.clone(), media_type))
