@@ -6,6 +6,44 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.26.0 / 2022.09.28
+
+- feat: add --allow-sys permission flag (#16028)
+- feat: add --no-npm flag to disable npm: imports (#15673)
+- feat: Add requesting API name to permission prompt (#15936)
+- feat: allow exiting on two consecutive ctrl+c presses (#15981)
+- feat: download progress bar (#15814)
+- feat: implement Web Cache API (#15829)
+- feat: Refresh interactive permission prompt (#15907)
+- feat: Stabilize Deno.hostname() API (#15932)
+- feat: Stabilize Deno.refTimer() and Deno.unrefTimer() APIs (#16036)
+- feat: TypeScript 4.8 update (#16040)
+- feat(cli): update to TypeScript 4.8 (#15064)
+- feat(core): add Deno.core.setPromiseHooks (#15475)
+- feat(ext/crypto): add x25519 and Ed25519 CFRG curves (#14119)
+- feat(ext/flash): add `reuseport` option on Linux (#16022)
+- feat(info): add information about npm modules cache (#15750)
+- feat(lint): add --compact flag for terse output (#15926)
+- feat(npm): functionality to support child_process.fork (#15891)
+- feat(ops): Fallible fast ops (#15989)
+- feat(unstable): Deno.setRaw -> Deno.stdin.setRaw (#15797)
+- fix(cli/bench): strace numeric format (#16055)
+- fix(cli/vendor): handle assert type json during vendoring (#16059)
+- fix(ext/console): fix error when logging a proxied Date (#16018)
+- fix(ext/fetch): blob url (#16057)
+- fix(ext/flash): reregister socket on partial read on Windows (#16076)
+- fix(fmt): keep type args in type queries and keep empty array expr element's
+  trailing comma (#16034)
+- fix(npm): use ntfs junctions in node_modules folder on Windows (#16061)
+- fix(require): tryPackage uses optional chaining (#16020)
+- fix(runtime): refresh perm prompt 3 lines instead of 4 (#16049)
+- perf: don't re-download package tarball to global cache if local node_modules
+  folder exists for package (#16005)
+- perf: use fast ops for tty (#15976)
+- perf(ext/console): break on iterableLimit & better sparse array handling
+  (#15935)
+- perf(ext/fetch): use content-length in InnerBody.consume (#15925)
+
 ### 1.25.4 / 2022.09.22
 
 - feat(unstable/npm): add flag for creating and resolving npm packages to a
