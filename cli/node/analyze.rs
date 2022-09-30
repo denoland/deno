@@ -54,13 +54,11 @@ pub fn esm_code_with_node_globals(
       maybe_syntax: None,
     })?;
     let top_level_decls = analyze_top_level_decls(&parsed_source)?;
-    analysis_cache
-      .set_esm_analysis(
-        specifier.as_str(),
-        &source_hash,
-        top_level_decls.clone().into_iter().collect(),
-      )
-      .unwrap();
+    let _ = analysis_cache.set_esm_analysis(
+      specifier.as_str(),
+      &source_hash,
+      top_level_decls.clone().into_iter().collect(),
+    );
     top_level_decls
   };
 

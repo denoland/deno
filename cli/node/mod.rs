@@ -758,9 +758,7 @@ pub fn translate_cjs_to_esm(
       maybe_syntax: None,
     })?;
     let analysis = parsed_source.analyze_cjs();
-    analysis_cache
-      .set_cjs_analysis(specifier, &source_hash, &analysis)
-      .unwrap();
+    let _ = analysis_cache.set_cjs_analysis(specifier, &source_hash, &analysis);
 
     Ok(analysis)
   }
