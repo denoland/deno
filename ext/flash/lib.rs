@@ -207,19 +207,18 @@ async fn op_flash_write_resource(
   resource_id: deno_core::ResourceId,
   auto_close: bool,
 ) -> Result<(), AnyError> {
-  let resource = if auto_close {
-    op_state.borrow_mut().resource_table.take_any(resource_id)?
-  } else {
-    op_state.borrow_mut().resource_table.get_any(resource_id)?
-  };
-  let sock = {
+  let (resource, sock) = {
     let op_state = &mut op_state.borrow_mut();
+    let resource = if auto_close {
+      op_state.resource_table.take_any(resource_id)?
+    } else {
+      op_state.resource_table.get_any(resource_id)?
+    };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx.requests.remove(&token).unwrap().socket()
+    (resource, ctx.requests.remove(&token).unwrap().socket())
   };
 
-  drop(op_state);
   let _ = sock.write(&response);
 
   #[cfg(unix)]
