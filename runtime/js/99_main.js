@@ -332,7 +332,7 @@ delete Intl.v8BreakIterator;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus, userAgent, languages;
+  let numCpus, userAgent, language;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -364,7 +364,7 @@ delete Intl.v8BreakIterator;
       enumerable: true,
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
-        return languages[0];
+        return language;
       },
     },
     languages: {
@@ -372,7 +372,7 @@ delete Intl.v8BreakIterator;
       enumerable: true,
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
-        return languages;
+        return [language];
       },
     },
   });
@@ -411,7 +411,7 @@ delete Intl.v8BreakIterator;
         enumerable: true,
         get() {
           webidl.assertBranded(this, WorkerNavigatorPrototype);
-          return languages[0];
+          return language;
         },
       },
       languages: {
@@ -419,7 +419,7 @@ delete Intl.v8BreakIterator;
         enumerable: true,
         get() {
           webidl.assertBranded(this, WorkerNavigatorPrototype);
-          return languages;
+          return [language];
         },
       },
     },
@@ -741,8 +741,7 @@ delete Intl.v8BreakIterator;
 
     colors.setNoColor(noColor || !isTty);
     numCpus = cpuCount;
-    languages = locale;
-    ObjectFreeze(languages);
+    language = locale;
     userAgent = userAgentInfo;
     registerErrors();
 

@@ -493,7 +493,6 @@ impl MainWorker {
 mod tests {
   use super::*;
   use deno_core::resolve_url_or_path;
-  use locale_config::Locale;
 
   fn create_test_worker() -> MainWorker {
     let main_module = resolve_url_or_path("./hello.js").unwrap();
@@ -505,10 +504,7 @@ mod tests {
         cpu_count: 1,
         debug_flag: false,
         enable_testing_features: false,
-        locale: Locale::user_default()
-          .tags()
-          .map(|(_, l)| l.to_string())
-          .collect(),
+        locale: std::str::from_utf8(deno_core::v8::icu::get_default_locale()).unwrap().to_string(),
         location: None,
         no_color: true,
         is_tty: false,

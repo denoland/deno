@@ -2390,12 +2390,12 @@ fn navigator_language_unix() {
     "run navigator_language.ts",
     None,
     Some(vec![
-      ("LANG".to_owned(), "en-US".to_owned()),
-      ("LANGUAGE".to_owned(), "en_US:en".to_owned()),
+      ("LANG".to_owned(), "pl-PL".to_owned()),
+      ("LANGUAGE".to_owned(), "pl_PL".to_owned()),
     ]),
     false,
   );
-  assert_eq!(res, "en-US\n")
+  assert_eq!(res, "pl-PL\n")
 }
 
 #[test]
@@ -2418,12 +2418,12 @@ fn navigator_languages_unix() {
     "run navigator_languages.ts",
     None,
     Some(vec![
-      ("LC_ALL".to_owned(), "en_US.UTF-8:en".to_owned()),
+      ("LC_ALL".to_owned(), "pl_PL".to_owned()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
   );
-  assert_eq!(res, "[ \"en-US\", \"en\" ]\n")
+  assert_eq!(res, "[ \"pl-PL\" ]\n")
 }
 
 #[test]

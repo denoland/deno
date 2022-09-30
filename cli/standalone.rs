@@ -31,7 +31,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use import_map::parse_from_json;
-use locale_config::Locale;
 use log::Level;
 use std::env::current_exe;
 use std::io::BufReader;
@@ -277,10 +276,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
-      locale: Locale::user_default()
-        .tags()
-        .map(|(_, l)| l.to_string())
-        .collect(),
+      locale: std::str::from_utf8(deno_core::v8::icu::get_default_locale()).unwrap().to_string(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),

@@ -79,7 +79,6 @@ indexmap = "=1.9.1"
 indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
-locale_config = "0.3.0"
 log = { version = "=0.4.17", features = ["serde"] }
 mitata = "=0.0.7"
 monch = "=0.2.0"

@@ -73,7 +73,6 @@ fs3 = "0.5.0"
 http = "0.2.6"
 hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
 libc = "0.2.126"
-locale_config = "0.3.0"
 log = "0.4.16"
 lzzzz = '1.0'
 netif = "0.1.6"

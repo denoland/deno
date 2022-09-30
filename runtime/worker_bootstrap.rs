@@ -11,7 +11,7 @@ pub struct BootstrapOptions {
   pub cpu_count: usize,
   pub debug_flag: bool,
   pub enable_testing_features: bool,
-  pub locale: Vec<String>,
+  pub locale: String,
   pub location: Option<ModuleSpecifier>,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
