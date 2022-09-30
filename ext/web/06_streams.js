@@ -648,6 +648,10 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
+  // A finalization registry to clean up underlying resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    core.tryClose(rid);
+  });
   /**
    * Create a new ReadableStream object that is backed by a Resource that
    * implements `Resource::read_return`. This object contains enough metadata to
@@ -661,6 +665,17 @@
   function readableStreamForRid(rid, autoClose = true) {
     const stream = webidl.createBranded(ReadableStream);
     stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
     const underlyingSource = {
       type: "bytes",
       async pull(controller) {
@@ -668,7 +683,7 @@
         try {
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
-            if (autoClose) core.tryClose(rid);
+            tryClose();
             controller.close();
             controller.byobRequest.respond(0);
           } else {
@@ -676,11 +691,11 @@
           }
         } catch (e) {
           controller.error(e);
-          if (autoClose) core.tryClose(rid);
+          tryClose();
         }
       },
       cancel() {
-        if (autoClose) core.tryClose(rid);
+        tryClose();
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
     };
