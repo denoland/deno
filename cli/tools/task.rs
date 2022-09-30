@@ -71,7 +71,7 @@ pub async fn execute_script(
     let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
 
-    // get the starting env vars (the CWD env var will be set by deno_task_shell)
+    // get the starting env vars (the PWD env var will be set by deno_task_shell)
     let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
     const INIT_CWD_NAME: &str = "INIT_CWD";
     if !env_vars.contains_key(INIT_CWD_NAME) {
