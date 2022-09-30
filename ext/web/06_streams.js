@@ -14,20 +14,20 @@
     window.__bootstrap.abortSignal;
   const {
     ArrayBuffer,
-    ArrayBufferPrototype,
     ArrayBufferIsView,
+    ArrayBufferPrototype,
     ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeShift,
     BigInt64ArrayPrototype,
     BigUint64ArrayPrototype,
     DataView,
-    Int8ArrayPrototype,
     Int16ArrayPrototype,
     Int32ArrayPrototype,
+    Int8ArrayPrototype,
+    MathMin,
     NumberIsInteger,
     NumberIsNaN,
-    MathMin,
     ObjectCreate,
     ObjectDefineProperties,
     ObjectDefineProperty,
@@ -47,11 +47,12 @@
     Symbol,
     SymbolAsyncIterator,
     SymbolFor,
+    TypedArrayPrototypeSubarray,
     TypeError,
-    Uint8Array,
-    Uint8ArrayPrototype,
     Uint16ArrayPrototype,
     Uint32ArrayPrototype,
+    Uint8Array,
+    Uint8ArrayPrototype,
     Uint8ClampedArrayPrototype,
     WeakMap,
     WeakMapPrototypeGet,
@@ -762,7 +763,64 @@
     }
   }
 
+  /**
+   * @param {ReadableStream<Uint8Array>} stream
+   * @returns {{ rid: number, autoClose: boolean }}
+   */
   function getReadableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
+  }
+
+  /**
+   * Create a new WritableStream object that is backed by a Resource that
+   * implements `Resource::write`. This object contains enough metadata to allow
+   * callers to bypass the JavaScript WritableStream implementation and write
+   * directly to the underlying resource if they so choose (FastStream).
+   * @param {number} rid The resource ID to write to.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+   * @returns {WritableStream<Uint8Array>}
+   */
+  function writableStreamForRid(rid, autoClose) {
+    const stream = webidl.createBranded(WritableStream);
+    stream[_resourceBacking] = { rid, autoClose };
+    const underlyingSink = {
+      async write(chunk, controller) {
+        try {
+          let nwritten = 0;
+          while (nwritten < chunk.length) {
+            nwritten += await core.write(
+              rid,
+              TypedArrayPrototypeSubarray(chunk, nwritten),
+            );
+          }
+        } catch (e) {
+          controller.error(e);
+          if (autoClose) core.tryClose(rid);
+        }
+      },
+      close() {
+        if (autoClose) core.tryClose(rid);
+      },
+      abort() {
+        if (autoClose) core.tryClose(rid);
+      },
+    };
+    initializeWritableStream(stream);
+    setUpWritableStreamDefaultControllerFromUnderlyingSink(
+      stream,
+      underlyingSink,
+      underlyingSink,
+      0,
+      () => 1,
+    );
+    return stream;
+  }
+
+  /**
+   * @param {WritableStream<Uint8Array>} stream
+   * @returns {{ rid: number, autoClose: boolean }}
+   */
+  function getWritableStreamResourceBacking(stream) {
     return stream[_resourceBacking];
   }
 
@@ -5988,6 +6046,8 @@
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
     getReadableStreamResourceBacking,
+    writableStreamForRid,
+    getWritableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
