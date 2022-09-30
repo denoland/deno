@@ -535,15 +535,12 @@ impl StdFileResource {
     self: Rc<Self>,
     mut buf: ZeroCopyBuf,
   ) -> Result<(usize, ZeroCopyBuf), AnyError> {
-    let nread = self
-      .with_inner_blocking_task(
-        move |inner| -> Result<(usize, ZeroCopyBuf), AnyError> {
-          let nread = inner.read(&mut buf)?;
-          Ok((nread, buf))
-        },
-      )
-      .await?;
-    Ok(nread)
+    self
+      .with_inner_blocking_task(move |inner| {
+        let nread = inner.read(&mut buf)?;
+        Ok((nread, buf))
+      })
+      .await
   }
 
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {

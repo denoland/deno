@@ -738,7 +738,7 @@ async fn op_http_write_resource(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
   let resource = state.borrow().resource_table.get_any(stream)?;
-  let mut buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
+  let mut cached_buf = None; // 64KB
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
@@ -749,9 +749,10 @@ async fn op_http_write_resource(
       }
       _ => {}
     };
-
-    let (nread, new_buf) = resource.clone().read_owned(buf).await?;
-    buf = new_buf;
+    let buf = cached_buf
+      .take()
+      .unwrap_or_else(|| ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024])); // 64KB
+    let (nread, buf) = resource.clone().read_owned(buf).await?;
     if nread == 0 {
       break;
     }
@@ -766,10 +767,10 @@ async fn op_http_write_resource(
           // If there was no connection error, drop body_tx.
           *wr = HttpResponseWriter::Closed;
         }
+        cached_buf = Some(buf);
       }
       HttpResponseWriter::BodyUncompressed(body) => {
         let mut vec = buf.to_temp();
-        buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
         vec.truncate(nread);
         if let Err(err) = body.send_data(Bytes::from(vec)).await {
           assert!(err.is_closed());
