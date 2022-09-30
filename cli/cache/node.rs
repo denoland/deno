@@ -216,8 +216,8 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
     )
     .ok();
   if data_cli_version != Some(cli_version.to_string()) {
-    conn.execute("DELETE FROM cjsanalysiscache", params![])?;
-    conn.execute("DELETE FROM esmglobalscache", params![])?;
+    conn.execute("DELETE FROM cjs_analysis_cache", params![])?;
+    conn.execute("DELETE FROM esm_globals_cache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
     stmt.execute(params!["CLI_VERSION", &cli_version])?;
