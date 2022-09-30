@@ -10,6 +10,7 @@ use deno_runtime::deno_webstorage::rusqlite::params;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use serde::Deserialize;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::common::run_sqlite_pragma;
@@ -23,31 +24,33 @@ struct CjsAnalysisData {
 }
 
 pub struct NodeAnalysisCache {
-  conn: Arc<Mutex<Connection>>,
+  db_file_path: Option<PathBuf>,
+  version: String,
+  conn: Arc<Mutex<Option<Connection>>>,
 }
 
 impl NodeAnalysisCache {
-  pub fn new(
-    db_file_path: Option<&Path>,
-    cli_version: String,
-  ) -> Result<Self, AnyError> {
-    let conn = match db_file_path {
+  pub fn new(db_file_path: Option<&Path>, version: &str) -> Self {
+    Self {
+      db_file_path: db_file_path.map(|p| p.to_owned()),
+      version: version.to_string(),
+      conn: Arc::new(Mutex::new(None)),
+    }
+  }
+
+  fn lazy_create(&self) -> Result<(), AnyError> {
+    if self.conn.lock().is_some() {
+      return Ok(());
+    }
+
+    let conn = match self.db_file_path.as_ref() {
       Some(path) => Connection::open(path)?,
       None => Connection::open_in_memory()?,
     };
-    Self::from_connection(conn, cli_version)
-  }
-
-  fn from_connection(
-    conn: Connection,
-    cli_version: String,
-  ) -> Result<Self, AnyError> {
     run_sqlite_pragma(&conn)?;
-    create_tables(&conn, cli_version)?;
-
-    Ok(Self {
-      conn: Arc::new(Mutex::new(conn)),
-    })
+    create_tables(&conn, &self.version)?;
+    self.conn.lock().replace(conn);
+    Ok(())
   }
 
   pub fn compute_source_hash(text: &str) -> String {
@@ -62,7 +65,9 @@ impl NodeAnalysisCache {
     specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<CjsAnalysis>, AnyError> {
-    let conn = self.conn.lock();
+    self.lazy_create()?;
+    let guard = self.conn.lock();
+    let conn = guard.as_ref().unwrap();
     let query = "
       SELECT
         data
@@ -93,7 +98,9 @@ impl NodeAnalysisCache {
     source_hash: &str,
     cjs_analysis: &CjsAnalysis,
   ) -> Result<(), AnyError> {
-    let conn = self.conn.lock();
+    self.lazy_create()?;
+    let guard = self.conn.lock();
+    let conn = guard.as_ref().unwrap();
     let sql = "
       INSERT OR REPLACE INTO
       cjs_analysis_cache (specifier, source_hash, data)
@@ -117,7 +124,9 @@ impl NodeAnalysisCache {
     specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<Vec<String>>, AnyError> {
-    let conn = self.conn.lock();
+    self.lazy_create()?;
+    let guard = self.conn.lock();
+    let conn = guard.as_ref().unwrap();
     let query = "
       SELECT
         data
@@ -144,7 +153,9 @@ impl NodeAnalysisCache {
     source_hash: &str,
     top_level_decls: Vec<String>,
   ) -> Result<(), AnyError> {
-    let conn = self.conn.lock();
+    self.lazy_create()?;
+    let guard = self.conn.lock();
+    let conn = guard.as_ref().unwrap();
     let sql = "
       INSERT OR REPLACE INTO
       esm_globals_cache (specifier, source_hash, data)
@@ -160,10 +171,7 @@ impl NodeAnalysisCache {
   }
 }
 
-fn create_tables(
-  conn: &Connection,
-  cli_version: String,
-) -> Result<(), AnyError> {
+fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for source_hash
   conn.execute(
     "CREATE TABLE IF NOT EXISTS cjs_analysis_cache (

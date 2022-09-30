@@ -249,7 +249,7 @@ impl ProcState {
     );
     let path = dir.root.join("npm/analysis.sqlite");
     let npm_analysis_cache =
-      NodeAnalysisCache::new(Some(&path), crate::version::deno())?;
+      NodeAnalysisCache::new(Some(&path), &crate::version::deno());
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {

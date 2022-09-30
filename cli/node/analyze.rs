@@ -168,7 +168,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new(None, "1".to_string()).unwrap(),
+      &NodeAnalysisCache::new(None, "1"),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
@@ -184,7 +184,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
-      &NodeAnalysisCache::new(None, "1".to_string()).unwrap(),
+      &NodeAnalysisCache::new(None, "1"),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )
