@@ -186,7 +186,6 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
-      // get content-length if content-encoding is empty
       let content_length = if request
         .headers()
         .get(hyper::header::CONTENT_ENCODING)

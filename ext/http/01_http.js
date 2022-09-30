@@ -130,11 +130,7 @@
         () => method,
         url,
         () => ops.op_http_headers(streamRid),
-        body !== null
-          ? new InnerBody(
-            body,
-          )
-          : null,
+        body !== null ? new InnerBody(body) : null,
         false,
       );
       const signal = abortSignal.newSignal();
@@ -274,7 +270,7 @@
           }
           const resourceBacking = getReadableStreamResourceBacking(respBody);
           let reader;
-          if (resourceBacking && resourceBacking.rid !== streamRid) {
+          if (resourceBacking) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }

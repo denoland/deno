@@ -97,11 +97,10 @@
     const readable = readableStreamForRid(responseBodyRid);
 
     function onAbort() {
-      if (readable) {
-        errorReadableStream(readable, terminator.reason);
-      }
+      errorReadableStream(readable, terminator.reason);
       core.tryClose(responseBodyRid);
     }
+
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
 
@@ -295,13 +294,6 @@
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
-          {
-            knownExactLength: resp.contentLength,
-            rid: resp.responseRid,
-            op: "op_read_all",
-            closeRid: true,
-            terminator,
-          },
         );
       }
     }
