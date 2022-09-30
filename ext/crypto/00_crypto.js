@@ -1983,7 +1983,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
 
         const publicHandle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+        WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
 
         const algorithm = {
           name: algorithmName,
@@ -2031,7 +2031,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
 
         const publicHandle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+        WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
 
         const algorithm = {
           name: algorithmName,
