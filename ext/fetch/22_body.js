@@ -28,6 +28,8 @@
   const {
     isReadableStreamDisturbed,
     errorReadableStream,
+    readableStreamClose,
+    readableStreamDisturb,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
@@ -92,6 +94,8 @@
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
           this.streamOrStatic.getReader();
+          readableStreamDisturb(this.streamOrStatic);
+          readableStreamClose(this.streamOrStatic);
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
