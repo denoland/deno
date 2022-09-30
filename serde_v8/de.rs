@@ -372,13 +372,32 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;
-        visitor.visit_map(StructAccess {
-          obj,
-          scope: self.scope,
-          keys: fields.iter(),
-          next_value: None,
-        })
+        let obj: v8::Local<v8::Object> =
+          self.input.try_into().or(Err(Error::ExpectedObject))?;
+
+        // Fields names are a hint and must be inferred when not provided
+        if fields.is_empty() {
+          let prop_names =
+            obj.get_own_property_names(self.scope, Default::default());
+          let keys: Vec<magic::Value> = match prop_names {
+            Some(names) => from_v8(self.scope, names.into()).unwrap(),
+            None => vec![],
+          };
+
+          visitor.visit_map(MapObjectAccess {
+            obj,
+            scope: self.scope,
+            keys: keys.into_iter(),
+            next_value: None,
+          })
+        } else {
+          visitor.visit_map(StructAccess {
+            obj,
+            scope: self.scope,
+            keys: fields.iter(),
+            next_value: None,
+          })
+        }
       }
     }
   }
@@ -488,8 +507,7 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
       }
       self.next_value = Some(v8_val);
       let mut deserializer = Deserializer::new(self.scope, key.v8_value, None);
-      let k = seed.deserialize(&mut deserializer)?;
-      return Ok(Some(k));
+      return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
   }
@@ -498,7 +516,10 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: V,
   ) -> Result<V::Value> {
-    let v8_val = self.next_value.take().unwrap();
+    let v8_val = self
+      .next_value
+      .take()
+      .expect("Call next_key_seed before next_value_seed");
     let mut deserializer = Deserializer::new(self.scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
