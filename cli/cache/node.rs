@@ -26,7 +26,6 @@ struct CjsAnalysisData {
 
 pub struct NodeAnalysisCache {
   db_file_path: Option<PathBuf>,
-  version: String,
   inner: Arc<Mutex<Option<Option<NodeAnalysisCacheInner>>>>,
 }
 
@@ -34,7 +33,6 @@ impl NodeAnalysisCache {
   pub fn new(db_file_path: Option<PathBuf>) -> Self {
     Self {
       db_file_path,
-      version: crate::version::deno(),
       inner: Default::default(),
     }
   }
@@ -103,7 +101,7 @@ impl NodeAnalysisCache {
       None => {
         let maybe_inner = match NodeAnalysisCacheInner::new(
           self.db_file_path.as_deref(),
-          self.version.clone(),
+          crate::version::deno(),
         ) {
           Ok(cache) => Some(cache),
           Err(err) => {
