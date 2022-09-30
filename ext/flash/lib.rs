@@ -252,14 +252,14 @@ async fn op_flash_write_resource(
         stream
           .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
           .await?;
+        let mut buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
         loop {
-          let buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
-          let (nread, buf) = resource.clone().read_owned(buf).await?;
+          let (nread, new_buf) = resource.clone().read_owned(buf).await?;
+          buf = new_buf;
           if nread == 0 {
             stream.write_all(b"0\r\n\r\n").await?;
             break;
           }
-
           let response = &buf[..nread];
           // TODO(@littledivy): use vectored writes.
           stream

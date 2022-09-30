@@ -738,6 +738,7 @@ async fn op_http_write_resource(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
   let resource = state.borrow().resource_table.get_any(stream)?;
+  let mut buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
@@ -749,12 +750,11 @@ async fn op_http_write_resource(
       _ => {}
     };
 
-    let buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
-    let (nread, buf) = resource.clone().read_owned(buf).await?;
+    let (nread, new_buf) = resource.clone().read_owned(buf).await?;
+    buf = new_buf;
     if nread == 0 {
       break;
     }
-    let mut buf = buf.to_temp();
 
     match &mut *wr {
       HttpResponseWriter::Body(body) => {
@@ -768,8 +768,10 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        buf.truncate(nread);
-        if let Err(err) = body.send_data(Bytes::from(buf)).await {
+        let mut vec = buf.to_temp();
+        buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
+        vec.truncate(nread);
+        if let Err(err) = body.send_data(Bytes::from(vec)).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
