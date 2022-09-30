@@ -90,7 +90,6 @@
     "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
     "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
     "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
-    "op_http_read": ["read the body of a HTTP request", "consuming the entire request body"],
     "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],

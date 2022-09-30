@@ -654,11 +654,12 @@
    * read directly from the underlying resource if they so choose (FastStream).
    *
    * @param {number} rid The resource ID to read from.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
    * @returns {ReadableStream<Uint8Array>}
    */
-  function readableStreamForRid(rid) {
+  function readableStreamForRid(rid, autoClose = true) {
     const stream = webidl.createBranded(ReadableStream);
-    stream[_maybeRid] = rid;
+    stream[_resourceBacking] = { rid, autoClose };
     const underlyingSource = {
       type: "bytes",
       async pull(controller) {
@@ -666,7 +667,7 @@
         try {
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
-            core.tryClose(rid);
+            if (autoClose) core.tryClose(rid);
             controller.close();
             controller.byobRequest.respond(0);
           } else {
@@ -674,11 +675,11 @@
           }
         } catch (e) {
           controller.error(e);
-          core.tryClose(rid);
+          if (autoClose) core.tryClose(rid);
         }
       },
       cancel() {
-        core.tryClose(rid);
+        if (autoClose) core.tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
     };
@@ -761,8 +762,8 @@
     }
   }
 
-  function getReadableStreamRid(stream) {
-    return stream[_maybeRid];
+  function getReadableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
   }
 
   /**
@@ -4424,7 +4425,7 @@
     WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
-  const _maybeRid = Symbol("[[maybeRid]]");
+  const _resourceBacking = Symbol("[[resourceBacking]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
@@ -4439,8 +4440,8 @@
     [_state];
     /** @type {any} */
     [_storedError];
-    /** @type {number | null} */
-    [_maybeRid] = null;
+    /** @type {{ rid: number, autoClose: boolean } | null} */
+    [_resourceBacking] = null;
 
     /**
      * @param {UnderlyingSource<R>=} underlyingSource
@@ -5986,7 +5987,7 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
-    getReadableStreamRid,
+    getReadableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
