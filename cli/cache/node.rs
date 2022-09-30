@@ -31,10 +31,10 @@ pub struct NodeAnalysisCache {
 }
 
 impl NodeAnalysisCache {
-  pub fn new(db_file_path: Option<&Path>, version: &str) -> Self {
+  pub fn new(db_file_path: Option<PathBuf>) -> Self {
     Self {
-      db_file_path: db_file_path.map(|p| p.to_owned()),
-      version: version.to_string(),
+      db_file_path,
+      version: crate::version::deno(),
       inner: Default::default(),
     }
   }

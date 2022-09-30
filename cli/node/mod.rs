@@ -735,7 +735,7 @@ pub fn translate_cjs_to_esm(
   code: String,
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
-  npm_analysis_cache: &NodeAnalysisCache,
+  node_analysis_cache: &NodeAnalysisCache,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
     analysis_cache: &NodeAnalysisCache,
@@ -771,7 +771,7 @@ pub fn translate_cjs_to_esm(
   ];
 
   let analysis = perform_cjs_analysis(
-    npm_analysis_cache,
+    node_analysis_cache,
     specifier.as_str(),
     media_type,
     code,
@@ -821,7 +821,7 @@ pub fn translate_cjs_to_esm(
 
     {
       let analysis = perform_cjs_analysis(
-        npm_analysis_cache,
+        node_analysis_cache,
         reexport_specifier.as_str(),
         reexport_file.media_type,
         reexport_file.source.to_string(),

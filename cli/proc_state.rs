@@ -89,10 +89,10 @@ pub struct Inner {
   pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
-  pub npm_analysis_cache: NodeAnalysisCache,
   progress_bar: ProgressBar,
 }
 
@@ -247,9 +247,8 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
-    let path = dir.root.join("npm/analysis.sqlite");
-    let npm_analysis_cache =
-      NodeAnalysisCache::new(Some(&path), &crate::version::deno());
+    let node_analysis_cache =
+      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
@@ -273,10 +272,10 @@ impl ProcState {
       parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      node_analysis_cache,
       npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
-      npm_analysis_cache,
       progress_bar,
     })))
   }
