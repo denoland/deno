@@ -780,7 +780,7 @@
    * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
    * @returns {WritableStream<Uint8Array>}
    */
-  function writableStreamForRid(rid, autoClose) {
+  function writableStreamForRid(rid, autoClose = true) {
     const stream = webidl.createBranded(WritableStream);
     stream[_resourceBacking] = { rid, autoClose };
     const underlyingSink = {
