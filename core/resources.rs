@@ -35,14 +35,7 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
-  /// Resources may implement `read()` to be a readable stream
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(async move {
-      let (nread, _) = self.read_return(buf).await?;
-      Ok(nread)
-    })
-  }
-
+  /// Resources may implement `read_return()` to be a readable stream
   fn read_return(
     self: Rc<Self>,
     _buf: ZeroCopyBuf,

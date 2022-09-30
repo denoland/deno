@@ -10,7 +10,7 @@
   const {
     ReadableStream,
     ReadableStreamPrototype,
-    getReadableStreamRid,
+    getReadableStreamResourceBacking,
     readableStreamClose,
     _state,
   } = window.__bootstrap.streams;
@@ -333,8 +333,8 @@
       }
 
       if (isStreamingResponseBody === true) {
-        const resourceRid = getReadableStreamRid(respBody);
-        if (resourceRid) {
+        const resourceBacking = getReadableStreamResourceBacking(respBody);
+        if (resourceBacking) {
           if (respBody.locked) {
             throw new TypeError("ReadableStream is locked.");
           }
@@ -352,7 +352,8 @@
               ),
               serverId,
               i,
-              resourceRid,
+              resourceBacking.rid,
+              resourceBacking.autoClose,
             ).then(() => {
               // Release JS lock.
               readableStreamClose(respBody);

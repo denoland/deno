@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 #[cfg(test)]
@@ -303,6 +304,14 @@ impl ToString for RunDescriptor {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SysDescriptor(pub String);
+
+pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
+  match kind {
+    "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+    | "systemMemoryInfo" | "getUid" | "getGid" => Ok(kind),
+    _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
+  }
+}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FfiDescriptor(pub PathBuf);

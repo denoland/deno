@@ -34,9 +34,9 @@
   const { TlsConn } = window.__bootstrap.tls;
   const {
     Deferred,
-    getReadableStreamRid,
-    readableStreamClose,
+    getReadableStreamResourceBacking,
     readableStreamForRid,
+    readableStreamClose,
   } = window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
@@ -123,7 +123,7 @@
       // It will be closed automatically once the request has been handled and
       // the response has been sent.
       if (method !== "GET" && method !== "HEAD") {
-        body = readableStreamForRid(streamRid, null, false, "op_http_read");
+        body = readableStreamForRid(streamRid, false);
       }
 
       const innerRequest = newInnerRequest(
@@ -272,9 +272,9 @@
           ) {
             throw new TypeError("Unreachable");
           }
-          const resourceRid = getReadableStreamRid(respBody);
+          const resourceBacking = getReadableStreamResourceBacking(respBody);
           let reader;
-          if (resourceRid && resourceRid !== streamRid) {
+          if (resourceBacking && resourceBacking.rid !== streamRid) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
@@ -283,9 +283,9 @@
               await core.opAsync(
                 "op_http_write_resource",
                 streamRid,
-                resourceRid,
+                resourceBacking.rid,
               );
-              core.tryClose(resourceRid);
+              if (resourceBacking.autoClose) core.tryClose(resourceBacking.rid);
               readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
