@@ -32,7 +32,7 @@ async fn main() -> Result<(), AnyError> {
       cpu_count: 1,
       debug_flag: false,
       enable_testing_features: false,
-      locale: std::str::from_utf8(deno_core::v8::icu::get_default_locale()).unwrap().to_string(),
+      locale: deno_core::v8::icu::get_language_tag(),
       location: None,
       no_color: false,
       is_tty: false,

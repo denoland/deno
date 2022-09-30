@@ -276,7 +276,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
-      locale: std::str::from_utf8(deno_core::v8::icu::get_default_locale()).unwrap().to_string(),
+      locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
