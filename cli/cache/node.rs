@@ -67,7 +67,7 @@ impl NodeAnalysisCache {
       SELECT
         data
       FROM
-        cjsanalysiscache
+        cjs_analysis_cache
       WHERE
         specifier=?1
         AND source_hash=?2
@@ -96,7 +96,7 @@ impl NodeAnalysisCache {
     let conn = self.conn.lock();
     let sql = "
       INSERT OR REPLACE INTO
-      cjsanalysiscache (specifier, source_hash, data)
+      cjs_analysis_cache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
     let mut stmt = conn.prepare_cached(sql)?;
@@ -122,7 +122,7 @@ impl NodeAnalysisCache {
       SELECT
         data
       FROM
-        esmglobalscache
+        esm_globals_cache
       WHERE
         specifier=?1
         AND source_hash=?2
@@ -147,7 +147,7 @@ impl NodeAnalysisCache {
     let conn = self.conn.lock();
     let sql = "
       INSERT OR REPLACE INTO
-      esmglobalscache (specifier, source_hash, data)
+      esm_globals_cache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
     let mut stmt = conn.prepare_cached(sql)?;
@@ -166,7 +166,7 @@ fn create_tables(
 ) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for source_hash
   conn.execute(
-    "CREATE TABLE IF NOT EXISTS cjsanalysiscache (
+    "CREATE TABLE IF NOT EXISTS cjs_analysis_cache (
         specifier TEXT PRIMARY KEY,
         source_hash TEXT NOT NULL,
         data TEXT NOT NULL
@@ -174,11 +174,21 @@ fn create_tables(
     [],
   )?;
   conn.execute(
-    "CREATE TABLE IF NOT EXISTS esmglobalscache (
+    "CREATE UNIQUE INDEX IF NOT EXISTS cjs_analysis_cache_idx
+    ON cjsanalysiscache(specifier, source_hash)",
+    [],
+  )?;
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS esm_globals_cache (
         specifier TEXT PRIMARY KEY,
         source_hash TEXT NOT NULL,
         data TEXT NOT NULL
       )",
+    [],
+  )?;
+  conn.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS esm_globals_cache_idx
+    ON esmglobalscache(specifier, source_hash)",
     [],
   )?;
   conn.execute(
