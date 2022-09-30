@@ -10,7 +10,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::env;
 use std::net::SocketAddr;
@@ -83,36 +82,30 @@ struct TcpStream {
 }
 
 impl TcpStream {
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), Error> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel = RcRef::map(self, |r| &r.cancel);
     let nread = rd
-      .read(&mut buf)
+      .read(data)
       .try_or_cancel(cancel)
       .await
       .map_err(Error::from)?;
-    Ok((nread, buf))
+    Ok(nread)
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, Error> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    wr.write(&buf).await.map_err(Error::from)
+    wr.write(data).await.map_err(Error::from)
   }
 }
 
 impl Resource for TcpStream {
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn write<'a>(self: Rc<Self>, data: &[u8]) -> AsyncResult<usize> {
+    Box::pin(self.write(data))
   }
 
   fn close(self: Rc<Self>) {

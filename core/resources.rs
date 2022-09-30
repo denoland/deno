@@ -8,9 +8,9 @@
 
 use crate::error::bad_resource_id;
 use crate::error::not_supported;
-use crate::ZeroCopyBuf;
 use anyhow::Error;
 use futures::Future;
+use serde_v8::ZeroCopyBuf;
 use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
@@ -21,7 +21,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 /// Returned by resource read/write/shutdown methods
-pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Error>>>>;
+pub type AsyncResult<'a, T> =
+  Pin<Box<dyn Future<Output = Result<T, Error>> + 'a>>;
 
 /// All objects that can be store in the resource table should implement the
 /// `Resource` trait.
@@ -35,21 +36,62 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
-  /// Resources may implement `read_return()` to be a readable stream
-  fn read_return(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  /// Resources may implement `read()` to be a readable stream
+  ///
+  /// Callers should prefer calling `read_owned` if doing so does not result in
+  /// any additional allocations on the caller's side.
+  fn read<'a>(self: Rc<Self>, _data: &'a mut [u8]) -> AsyncResult<'a, usize> {
     Box::pin(futures::future::err(not_supported()))
+  }
+
+  /// A variant of `read()` that takes an owned buffer instead of a borrowed
+  /// slice. This is useful for resources that need to move the data to a
+  /// block thread, such as `StdFileResource`.
+  ///
+  /// If this method is not implemented, the default implementation will fall
+  /// back to using `read()`.
+  ///
+  /// Callers should prefer calling `read_owned` if doing so does not result in
+  /// any additional allocations on the caller's side.
+  fn read_owned(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> AsyncResult<'static, (usize, ZeroCopyBuf)> {
+    Box::pin(async move {
+      let nread = self.read(&mut buf).await?;
+      Ok((nread, buf))
+    })
   }
 
   /// Resources may implement `write()` to be a writable stream
-  fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  ///
+  /// Callers should prefer calling `write_owned` if doing so does not result in
+  /// any additional allocations on the caller's side.
+  fn write<'a>(self: Rc<Self>, _data: &'a [u8]) -> AsyncResult<'a, usize> {
     Box::pin(futures::future::err(not_supported()))
   }
 
+  /// A variant of `write()` that takes an owned buffer instead of a borrowed
+  /// slice. This is useful for resources that need to move the data to a
+  /// block thread, such as `StdFileResource`.
+  ///
+  /// If this method is not implemented, the default implementation will fall
+  /// back to using `write()`.
+  ///
+  /// Callers should prefer calling `write_owned` if doing so does not result in
+  /// any additional allocations on the caller's side.
+  fn write_owned(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<'static, (usize, ZeroCopyBuf)> {
+    Box::pin(async move {
+      let nwritten = self.write(&buf).await?;
+      Ok((nwritten, buf))
+    })
+  }
+
   /// Resources may implement `shutdown()` for graceful async shutdowns
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<'static, ()> {
     Box::pin(futures::future::err(not_supported()))
   }
 

@@ -9,7 +9,6 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use socket2::SockRef;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -69,22 +68,16 @@ where
 
   pub async fn read(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    data: &mut [u8],
+  ) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(self.cancel_handle())
-      .await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
   }
 
-  pub async fn write(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let mut wr = self.wr_borrow_mut().await;
-    let nwritten = wr.write(&buf).await?;
+    let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
@@ -103,18 +96,15 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.write(data))
   }
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<'static, ()> {
     Box::pin(self.shutdown())
   }
 
@@ -161,16 +151,10 @@ pub struct UnixStreamResource;
 
 #[cfg(not(unix))]
 impl UnixStreamResource {
-  pub async fn read(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
     unreachable!()
   }
-  pub async fn write(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
     unreachable!()
   }
   pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
@@ -186,18 +170,15 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.write(data))
   }
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<'static, ()> {
     Box::pin(self.shutdown())
   }
 

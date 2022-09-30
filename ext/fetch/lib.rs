@@ -454,16 +454,15 @@ impl Resource for FetchRequestBodyResource {
     "fetchRequestBody".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
+  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
     Box::pin(async move {
-      let data = buf.to_vec();
+      let data = data.to_owned();
       let len = data.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
       body.send(Ok(data)).or_cancel(cancel).await?.map_err(|_| {
         type_error("request body receiver not connected (request closed)")
       })?;
-
       Ok(len)
     })
   }
@@ -486,15 +485,12 @@ impl Resource for FetchResponseBodyResource {
     "fetchResponseBody".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
     Box::pin(async move {
       let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-      Ok((read, buf))
+      let read = reader.read(data).try_or_cancel(cancel).await?;
+      Ok(read)
     })
   }
 

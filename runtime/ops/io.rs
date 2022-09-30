@@ -196,9 +196,9 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let mut stream = self.borrow_mut().await;
-    let nwritten = stream.write(&buf).await?;
+    let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
@@ -244,16 +244,10 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(self.cancel_handle())
-      .await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
   }
 
   pub fn into_inner(self) -> S {
@@ -268,11 +262,11 @@ impl Resource for ChildStdinResource {
     "childStdin".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn write<'a>(self: Rc<Self>, data: &[u8]) -> AsyncResult<usize> {
+    Box::pin(self.write(data))
   }
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<'static, ()> {
     Box::pin(self.shutdown())
   }
 }
@@ -284,11 +278,8 @@ impl Resource for ChildStdoutResource {
     "childStdout".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
   fn close(self: Rc<Self>) {
@@ -303,11 +294,8 @@ impl Resource for ChildStderrResource {
     "childStderr".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
   fn close(self: Rc<Self>) {
@@ -528,20 +516,45 @@ impl StdFileResource {
     result
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
-    self
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+    // TODO: use a pool of pre-allocated buffers for this
+    let mut buf = vec![0; data.len()];
+    let (nread, buf) = self
       .with_inner_blocking_task(
-        move |inner| -> Result<(usize, ZeroCopyBuf), AnyError> {
-          Ok((inner.read(&mut buf)?, buf))
+        move |inner| -> Result<(usize, Vec<u8>), AnyError> {
+          let nread = inner.read(&mut buf)?;
+          Ok((nread, buf))
         },
       )
+      .await?;
+    data[..nread].copy_from_slice(&buf[..nread]);
+    Ok(nread)
+  }
+
+  async fn read_owned(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
+    let nread = self
+      .with_inner_blocking_task(move |inner| -> Result<usize, AnyError> {
+        let nread = inner.read(&mut buf)?;
+        Ok(nread)
+      })
+      .await?;
+    Ok(nread)
+  }
+
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+    let buf = data.to_owned();
+    self
+      .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
       .await
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write_owned(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> Result<usize, AnyError> {
     self
       .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
       .await
@@ -635,15 +648,26 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn read_owned(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<'static, usize> {
+    Box::pin(self.read_owned(buf))
+  }
+
+  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.write(data))
+  }
+
+  fn write_owned(
+    self: Rc<Self>,
+    buf: ZeroCopyBuf,
+  ) -> AsyncResult<'static, usize> {
+    Box::pin(self.write_owned(buf))
   }
 
   #[cfg(unix)]

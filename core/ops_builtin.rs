@@ -165,7 +165,7 @@ async fn op_read(
   buf: ZeroCopyBuf,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  resource.read_return(buf).await.map(|(n, _)| n as u32)
+  resource.read_owned(buf).await.map(|(n, _)| n as u32)
 }
 
 #[op]
@@ -175,7 +175,7 @@ async fn op_write(
   buf: ZeroCopyBuf,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  resource.write(buf).await.map(|n| n as u32)
+  resource.write_owned(buf).await.map(|(n, _)| n as u32)
 }
 
 #[op]

@@ -23,6 +23,7 @@ use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -329,17 +330,14 @@ impl HttpStreamResource {
 }
 
 impl HttpStreamResource {
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
 
     let body = loop {
       match &mut *rd {
         HttpRequestReader::Headers(_) => {}
         HttpRequestReader::Body(_, body) => break body,
-        HttpRequestReader::Closed => return Ok((0, buf)),
+        HttpRequestReader::Closed => return Ok(0),
       }
       match take(&mut *rd) {
         HttpRequestReader::Headers(request) => {
@@ -355,15 +353,15 @@ impl HttpStreamResource {
       loop {
         match body.as_mut().peek_mut().await {
           Some(Ok(chunk)) if !chunk.is_empty() => {
-            let len = min(buf.len(), chunk.len());
-            buf[..len].copy_from_slice(&chunk.split_to(len));
-            break Ok((len, buf));
+            let len = min(data.len(), chunk.len());
+            data[..len].copy_from_slice(&chunk.split_to(len));
+            break Ok(len);
           }
           Some(_) => match body.as_mut().next().await.unwrap() {
             Ok(chunk) => assert!(chunk.is_empty()),
             Err(err) => break Err(AnyError::from(err)),
           },
-          None => break Ok((0, buf)),
+          None => break Ok(0),
         }
       }
     };
@@ -378,11 +376,8 @@ impl Resource for HttpStreamResource {
     "httpStream".into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> deno_core::AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(_buf))
+  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+    Box::pin(self.read(data))
   }
 
   fn close(self: Rc<Self>) {
@@ -754,12 +749,12 @@ async fn op_http_write_resource(
       _ => {}
     };
 
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
+    let buf = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]); // 64KB
+    let (nread, buf) = resource.clone().read_owned(buf).await?;
     if nread == 0 {
       break;
     }
+    let mut buf = buf.to_temp();
 
     match &mut *wr {
       HttpResponseWriter::Body(body) => {
@@ -773,7 +768,6 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        let mut buf = buf.to_temp();
         buf.truncate(nread);
         if let Err(err) = body.send_data(Bytes::from(buf)).await {
           assert!(err.is_closed());
