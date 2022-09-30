@@ -17,6 +17,7 @@ use super::common::run_sqlite_pragma;
 use super::FastInsecureHasher;
 
 // todo(dsherret): use deno_ast::CjsAnalysisData directly when upgrading deno_ast
+// See https://github.com/denoland/deno_ast/pull/117
 #[derive(Serialize, Deserialize)]
 struct CjsAnalysisData {
   pub exports: Vec<String>,
@@ -26,7 +27,7 @@ struct CjsAnalysisData {
 pub struct NodeAnalysisCache {
   db_file_path: Option<PathBuf>,
   version: String,
-  conn: Arc<Mutex<Option<Connection>>>,
+  inner: Arc<Mutex<Option<Option<NodeAnalysisCacheInner>>>>,
 }
 
 impl NodeAnalysisCache {
@@ -34,23 +35,8 @@ impl NodeAnalysisCache {
     Self {
       db_file_path: db_file_path.map(|p| p.to_owned()),
       version: version.to_string(),
-      conn: Arc::new(Mutex::new(None)),
+      inner: Default::default(),
     }
-  }
-
-  fn lazy_create(&self) -> Result<(), AnyError> {
-    if self.conn.lock().is_some() {
-      return Ok(());
-    }
-
-    let conn = match self.db_file_path.as_ref() {
-      Some(path) => Connection::open(path)?,
-      None => Connection::open_in_memory()?,
-    };
-    run_sqlite_pragma(&conn)?;
-    create_tables(&conn, &self.version)?;
-    self.conn.lock().replace(conn);
-    Ok(())
   }
 
   pub fn compute_source_hash(text: &str) -> String {
@@ -64,20 +50,132 @@ impl NodeAnalysisCache {
     &self,
     specifier: &str,
     expected_source_hash: &str,
+  ) -> Option<CjsAnalysis> {
+    self
+      .with_inner(|inner| {
+        inner.get_cjs_analysis(specifier, expected_source_hash)
+      })
+      .flatten()
+  }
+
+  pub fn set_cjs_analysis(
+    &self,
+    specifier: &str,
+    source_hash: &str,
+    cjs_analysis: &CjsAnalysis,
+  ) {
+    self.with_inner(|inner| {
+      inner.set_cjs_analysis(specifier, source_hash, cjs_analysis)
+    });
+  }
+
+  pub fn get_esm_analysis(
+    &self,
+    specifier: &str,
+    expected_source_hash: &str,
+  ) -> Option<Vec<String>> {
+    self
+      .with_inner(|inner| {
+        inner.get_esm_analysis(specifier, expected_source_hash)
+      })
+      .flatten()
+  }
+
+  pub fn set_esm_analysis(
+    &self,
+    specifier: &str,
+    source_hash: &str,
+    top_level_decls: &Vec<String>,
+  ) {
+    self.with_inner(|inner| {
+      inner.set_esm_analysis(specifier, source_hash, top_level_decls)
+    });
+  }
+
+  fn with_inner<TResult>(
+    &self,
+    action: impl FnOnce(&NodeAnalysisCacheInner) -> Result<TResult, AnyError>,
+  ) -> Option<TResult> {
+    // lazily create the cache in order to not
+    let mut maybe_created = self.inner.lock();
+    let inner = match maybe_created.as_ref() {
+      Some(maybe_inner) => maybe_inner.as_ref(),
+      None => {
+        let maybe_inner = match NodeAnalysisCacheInner::new(
+          self.db_file_path.as_deref(),
+          self.version.clone(),
+        ) {
+          Ok(cache) => Some(cache),
+          Err(err) => {
+            // should never error here, but if it ever does don't fail
+            if cfg!(debug_assertions) {
+              panic!("Error creating node analysis cache: {:#}", err);
+            } else {
+              log::debug!("Error creating node analysis cache: {:#}", err);
+              None
+            }
+          }
+        };
+        *maybe_created = Some(maybe_inner);
+        maybe_created.as_ref().and_then(|p| p.as_ref())
+      }
+    }?;
+    match action(inner) {
+      Ok(result) => Some(result),
+      Err(err) => {
+        // should never error here, but if it ever does don't fail
+        if cfg!(debug_assertions) {
+          panic!("Error using esm analysis: {:#}", err);
+        } else {
+          log::debug!("Error using esm analysis: {:#}", err);
+        }
+        None
+      }
+    }
+  }
+}
+
+struct NodeAnalysisCacheInner {
+  conn: Connection,
+}
+
+impl NodeAnalysisCacheInner {
+  pub fn new(
+    db_file_path: Option<&Path>,
+    version: String,
+  ) -> Result<Self, AnyError> {
+    let conn = match db_file_path {
+      Some(path) => Connection::open(path)?,
+      None => Connection::open_in_memory()?,
+    };
+    Self::from_connection(conn, version)
+  }
+
+  fn from_connection(
+    conn: Connection,
+    version: String,
+  ) -> Result<Self, AnyError> {
+    run_sqlite_pragma(&conn)?;
+    create_tables(&conn, &version)?;
+
+    Ok(Self { conn })
+  }
+
+  pub fn get_cjs_analysis(
+    &self,
+    specifier: &str,
+    expected_source_hash: &str,
   ) -> Result<Option<CjsAnalysis>, AnyError> {
-    self.lazy_create()?;
-    let guard = self.conn.lock();
-    let conn = guard.as_ref().unwrap();
     let query = "
       SELECT
         data
       FROM
-        cjs_analysis_cache
+        cjsanalysiscache
       WHERE
         specifier=?1
         AND source_hash=?2
       LIMIT 1";
-    let mut stmt = conn.prepare_cached(query)?;
+    let mut stmt = self.conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
     if let Some(row) = rows.next()? {
       let analysis_info: String = row.get(0)?;
@@ -98,15 +196,12 @@ impl NodeAnalysisCache {
     source_hash: &str,
     cjs_analysis: &CjsAnalysis,
   ) -> Result<(), AnyError> {
-    self.lazy_create()?;
-    let guard = self.conn.lock();
-    let conn = guard.as_ref().unwrap();
     let sql = "
       INSERT OR REPLACE INTO
-      cjs_analysis_cache (specifier, source_hash, data)
+        cjsanalysiscache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
-    let mut stmt = conn.prepare_cached(sql)?;
+    let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
       &source_hash.to_string(),
@@ -124,19 +219,16 @@ impl NodeAnalysisCache {
     specifier: &str,
     expected_source_hash: &str,
   ) -> Result<Option<Vec<String>>, AnyError> {
-    self.lazy_create()?;
-    let guard = self.conn.lock();
-    let conn = guard.as_ref().unwrap();
     let query = "
       SELECT
         data
       FROM
-        esm_globals_cache
+        esmglobalscache
       WHERE
         specifier=?1
         AND source_hash=?2
       LIMIT 1";
-    let mut stmt = conn.prepare_cached(query)?;
+    let mut stmt = self.conn.prepare_cached(query)?;
     let mut rows = stmt.query(params![specifier, &expected_source_hash])?;
     if let Some(row) = rows.next()? {
       let top_level_decls: String = row.get(0)?;
@@ -151,21 +243,18 @@ impl NodeAnalysisCache {
     &self,
     specifier: &str,
     source_hash: &str,
-    top_level_decls: Vec<String>,
+    top_level_decls: &Vec<String>,
   ) -> Result<(), AnyError> {
-    self.lazy_create()?;
-    let guard = self.conn.lock();
-    let conn = guard.as_ref().unwrap();
     let sql = "
       INSERT OR REPLACE INTO
-      esm_globals_cache (specifier, source_hash, data)
+        esmglobalscache (specifier, source_hash, data)
       VALUES
         (?1, ?2, ?3)";
-    let mut stmt = conn.prepare_cached(sql)?;
+    let mut stmt = self.conn.prepare_cached(sql)?;
     stmt.execute(params![
       specifier,
       &source_hash.to_string(),
-      &serde_json::to_string(&top_level_decls)?,
+      &serde_json::to_string(top_level_decls)?,
     ])?;
     Ok(())
   }
@@ -174,7 +263,7 @@ impl NodeAnalysisCache {
 fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
   // INT doesn't store up to u64, so use TEXT for source_hash
   conn.execute(
-    "CREATE TABLE IF NOT EXISTS cjs_analysis_cache (
+    "CREATE TABLE IF NOT EXISTS cjsanalysiscache (
         specifier TEXT PRIMARY KEY,
         source_hash TEXT NOT NULL,
         data TEXT NOT NULL
@@ -182,12 +271,12 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
     [],
   )?;
   conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS cjs_analysis_cache_idx
-    ON cjsanalysiscache(specifier, source_hash)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS cjsanalysiscacheidx
+    ON cjsanalysiscache(specifier)",
     [],
   )?;
   conn.execute(
-    "CREATE TABLE IF NOT EXISTS esm_globals_cache (
+    "CREATE TABLE IF NOT EXISTS esmglobalscache (
         specifier TEXT PRIMARY KEY,
         source_hash TEXT NOT NULL,
         data TEXT NOT NULL
@@ -195,8 +284,8 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
     [],
   )?;
   conn.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS esm_globals_cache_idx
-    ON esmglobalscache(specifier, source_hash)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS esmglobalscacheidx
+      ON esmglobalscache(specifier)",
     [],
   )?;
   conn.execute(
@@ -216,12 +305,78 @@ fn create_tables(conn: &Connection, cli_version: &str) -> Result<(), AnyError> {
     )
     .ok();
   if data_cli_version != Some(cli_version.to_string()) {
-    conn.execute("DELETE FROM cjs_analysis_cache", params![])?;
-    conn.execute("DELETE FROM esm_globals_cache", params![])?;
+    conn.execute("DELETE FROM cjsanalysiscache", params![])?;
+    conn.execute("DELETE FROM esmglobalscache", params![])?;
     let mut stmt = conn
       .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
     stmt.execute(params!["CLI_VERSION", &cli_version])?;
   }
 
   Ok(())
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  pub fn node_analysis_cache_general_use() {
+    let conn = Connection::open_in_memory().unwrap();
+    let cache =
+      NodeAnalysisCacheInner::from_connection(conn, "1.0.0".to_string())
+        .unwrap();
+
+    assert!(cache.get_cjs_analysis("file.js", "2").unwrap().is_none());
+    let cjs_analysis = CjsAnalysis {
+      exports: vec!["export1".to_string()],
+      reexports: vec!["re-export1".to_string()],
+    };
+    cache
+      .set_cjs_analysis("file.js", "2", &cjs_analysis)
+      .unwrap();
+    assert!(cache.get_cjs_analysis("file.js", "3").unwrap().is_none()); // different hash
+    let actual_cjs_analysis =
+      cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
+    assert_eq!(actual_cjs_analysis.exports, cjs_analysis.exports);
+    assert_eq!(actual_cjs_analysis.reexports, cjs_analysis.reexports);
+
+    assert!(cache.get_esm_analysis("file.js", "2").unwrap().is_none());
+    let esm_analysis = vec!["esm1".to_string()];
+    cache
+      .set_esm_analysis("file.js", "2", &esm_analysis)
+      .unwrap();
+    assert!(cache.get_esm_analysis("file.js", "3").unwrap().is_none()); // different hash
+    let actual_esm_analysis =
+      cache.get_esm_analysis("file.js", "2").unwrap().unwrap();
+    assert_eq!(actual_esm_analysis, esm_analysis);
+
+    // adding when already exists should not cause issue
+    cache
+      .set_cjs_analysis("file.js", "2", &cjs_analysis)
+      .unwrap();
+    cache
+      .set_esm_analysis("file.js", "2", &esm_analysis)
+      .unwrap();
+
+    // recreating with same cli version should still have it
+    let conn = cache.conn;
+    let cache =
+      NodeAnalysisCacheInner::from_connection(conn, "1.0.0".to_string())
+        .unwrap();
+    let actual_analysis =
+      cache.get_cjs_analysis("file.js", "2").unwrap().unwrap();
+    assert_eq!(actual_analysis.exports, cjs_analysis.exports);
+    assert_eq!(actual_analysis.reexports, cjs_analysis.reexports);
+    let actual_esm_analysis =
+      cache.get_esm_analysis("file.js", "2").unwrap().unwrap();
+    assert_eq!(actual_esm_analysis, esm_analysis);
+
+    // now changing the cli version should clear it
+    let conn = cache.conn;
+    let cache =
+      NodeAnalysisCacheInner::from_connection(conn, "2.0.0".to_string())
+        .unwrap();
+    assert!(cache.get_cjs_analysis("file.js", "2").unwrap().is_none());
+    assert!(cache.get_esm_analysis("file.js", "2").unwrap().is_none());
+  }
 }

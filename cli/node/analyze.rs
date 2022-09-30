@@ -40,7 +40,7 @@ pub fn esm_code_with_node_globals(
 ) -> Result<String, AnyError> {
   let source_hash = NodeAnalysisCache::compute_source_hash(&code);
   let text_info = deno_ast::SourceTextInfo::from_string(code);
-  let top_level_decls = if let Ok(Some(decls)) =
+  let top_level_decls = if let Some(decls) =
     analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
   {
     HashSet::from_iter(decls)
@@ -54,10 +54,10 @@ pub fn esm_code_with_node_globals(
       maybe_syntax: None,
     })?;
     let top_level_decls = analyze_top_level_decls(&parsed_source)?;
-    let _ = analysis_cache.set_esm_analysis(
+    analysis_cache.set_esm_analysis(
       specifier.as_str(),
       &source_hash,
-      top_level_decls.clone().into_iter().collect(),
+      &top_level_decls.clone().into_iter().collect(),
     );
     top_level_decls
   };

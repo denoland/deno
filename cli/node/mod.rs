@@ -744,7 +744,7 @@ pub fn translate_cjs_to_esm(
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
     let source_hash = NodeAnalysisCache::compute_source_hash(&code);
-    if let Ok(Some(analysis)) =
+    if let Some(analysis) =
       analysis_cache.get_cjs_analysis(specifier, &source_hash)
     {
       return Ok(analysis);
@@ -758,7 +758,7 @@ pub fn translate_cjs_to_esm(
       maybe_syntax: None,
     })?;
     let analysis = parsed_source.analyze_cjs();
-    let _ = analysis_cache.set_cjs_analysis(specifier, &source_hash, &analysis);
+    analysis_cache.set_cjs_analysis(specifier, &source_hash, &analysis);
 
     Ok(analysis)
   }
