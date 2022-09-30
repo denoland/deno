@@ -40,7 +40,7 @@ pub trait Resource: Any + 'static {
   ///
   /// Callers should prefer calling `read_owned` if doing so does not result in
   /// any additional allocations on the caller's side.
-  fn read<'a>(self: Rc<Self>, _data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+  fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<'_, usize> {
     Box::pin(futures::future::err(not_supported()))
   }
 
@@ -67,7 +67,7 @@ pub trait Resource: Any + 'static {
   ///
   /// Callers should prefer calling `write_owned` if doing so does not result in
   /// any additional allocations on the caller's side.
-  fn write<'a>(self: Rc<Self>, _data: &'a [u8]) -> AsyncResult<'a, usize> {
+  fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<'_, usize> {
     Box::pin(futures::future::err(not_supported()))
   }
 

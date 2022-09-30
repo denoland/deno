@@ -390,7 +390,7 @@ impl CachePutResource {
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    file.write_all(&data).await?;
+    file.write_all(data).await?;
     Ok(data.len())
   }
 
@@ -447,7 +447,7 @@ impl Resource for CacheResponseResource {
     "CacheResponseResource".into()
   }
 
-  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<usize> {
+  fn read(self: Rc<Self>, data: &mut [u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.read(data))
   }
 }

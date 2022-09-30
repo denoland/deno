@@ -736,11 +736,11 @@ impl Resource for TlsStreamResource {
     "tlsStream".into()
   }
 
-  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+  fn read(self: Rc<Self>, data: &mut [u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.read(data))
   }
 
-  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+  fn write(self: Rc<Self>, data: &[u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.write(data))
   }
 

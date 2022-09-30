@@ -96,11 +96,11 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+  fn read(self: Rc<Self>, data: &mut [u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.read(data))
   }
 
-  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+  fn write(self: Rc<Self>, data: &[u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.write(data))
   }
 
@@ -151,7 +151,7 @@ pub struct UnixStreamResource;
 
 #[cfg(not(unix))]
 impl UnixStreamResource {
-  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+  fn read(self: Rc<Self>, data: &mut [u8]) -> AsyncResult<'_, usize> {
     unreachable!()
   }
   fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
@@ -170,11 +170,11 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn read<'a>(self: Rc<Self>, data: &'a mut [u8]) -> AsyncResult<'a, usize> {
+  fn read(self: Rc<Self>, data: &mut [u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.read(data))
   }
 
-  fn write<'a>(self: Rc<Self>, data: &'a [u8]) -> AsyncResult<'a, usize> {
+  fn write(self: Rc<Self>, data: &[u8]) -> AsyncResult<'_, usize> {
     Box::pin(self.write(data))
   }
 
