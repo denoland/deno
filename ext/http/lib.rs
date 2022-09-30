@@ -78,7 +78,6 @@ pub fn init() -> Extension {
     ))
     .ops(vec![
       op_http_accept::decl(),
-      op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_headers::decl(),
       op_http_write::decl(),
@@ -329,9 +328,61 @@ impl HttpStreamResource {
   }
 }
 
+impl HttpStreamResource {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+
+    let body = loop {
+      match &mut *rd {
+        HttpRequestReader::Headers(_) => {}
+        HttpRequestReader::Body(_, body) => break body,
+        HttpRequestReader::Closed => return Ok((0, buf)),
+      }
+      match take(&mut *rd) {
+        HttpRequestReader::Headers(request) => {
+          let (parts, body) = request.into_parts();
+          *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+        }
+        _ => unreachable!(),
+      };
+    };
+
+    let fut = async {
+      let mut body = Pin::new(body);
+      loop {
+        match body.as_mut().peek_mut().await {
+          Some(Ok(chunk)) if !chunk.is_empty() => {
+            let len = min(buf.len(), chunk.len());
+            buf[..len].copy_from_slice(&chunk.split_to(len));
+            break Ok((len, buf));
+          }
+          Some(_) => match body.as_mut().next().await.unwrap() {
+            Ok(chunk) => assert!(chunk.is_empty()),
+            Err(err) => break Err(AnyError::from(err)),
+          },
+          None => break Ok((0, buf)),
+        }
+      }
+    };
+
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    fut.try_or_cancel(cancel_handle).await
+  }
+}
+
 impl Resource for HttpStreamResource {
   fn name(&self) -> Cow<str> {
     "httpStream".into()
+  }
+
+  fn read_return(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> deno_core::AsyncResult<(usize, ZeroCopyBuf)> {
+    Box::pin(self.read(_buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -814,55 +865,6 @@ async fn op_http_shutdown(
     }
   }
   Ok(())
-}
-
-#[op]
-async fn op_http_read(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
-) -> Result<usize, AnyError> {
-  let stream = state
-    .borrow_mut()
-    .resource_table
-    .get::<HttpStreamResource>(rid)?;
-  let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
-
-  let body = loop {
-    match &mut *rd {
-      HttpRequestReader::Headers(_) => {}
-      HttpRequestReader::Body(_, body) => break body,
-      HttpRequestReader::Closed => return Ok(0),
-    }
-    match take(&mut *rd) {
-      HttpRequestReader::Headers(request) => {
-        let (parts, body) = request.into_parts();
-        *rd = HttpRequestReader::Body(parts.headers, body.peekable());
-      }
-      _ => unreachable!(),
-    };
-  };
-
-  let fut = async {
-    let mut body = Pin::new(body);
-    loop {
-      match body.as_mut().peek_mut().await {
-        Some(Ok(chunk)) if !chunk.is_empty() => {
-          let len = min(buf.len(), chunk.len());
-          buf[..len].copy_from_slice(&chunk.split_to(len));
-          break Ok(len);
-        }
-        Some(_) => match body.as_mut().next().await.unwrap() {
-          Ok(chunk) => assert!(chunk.is_empty()),
-          Err(err) => break Err(AnyError::from(err)),
-        },
-        None => break Ok(0),
-      }
-    }
-  };
-
-  let cancel_handle = RcRef::map(&stream, |r| &r.cancel_handle);
-  fut.try_or_cancel(cancel_handle).await
 }
 
 #[op]
