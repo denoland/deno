@@ -181,6 +181,13 @@ itest!(nonexistent_file {
   exit_code: 1,
 });
 
+itest!(invalid_package_name {
+  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  output: "npm/invalid_package_name/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
