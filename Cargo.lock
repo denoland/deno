@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "deno_core",
