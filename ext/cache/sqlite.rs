@@ -21,6 +21,8 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use crate::get_header;
+use crate::vary_header_matches;
 use crate::Cache;
 use crate::CacheDeleteRequest;
 use crate::CacheMatchRequest;
@@ -326,51 +328,6 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
   cache_storage_dir
     .join(cache_id.to_string())
     .join("responses")
-}
-
-/// Check if the headers provided in the vary_header match
-/// the query request headers and the cached request headers.
-fn vary_header_matches(
-  vary_header: &ByteString,
-  query_request_headers: &[(ByteString, ByteString)],
-  cached_request_headers: &[(ByteString, ByteString)],
-) -> bool {
-  let vary_header = match std::str::from_utf8(vary_header) {
-    Ok(vary_header) => vary_header,
-    Err(_) => return false,
-  };
-  let headers = get_headers_from_vary_header(vary_header);
-  for header in headers {
-    let query_header = get_header(&header, query_request_headers);
-    let cached_header = get_header(&header, cached_request_headers);
-    if query_header != cached_header {
-      return false;
-    }
-  }
-  true
-}
-
-fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
-  vary_header
-    .split(',')
-    .map(|s| s.trim().to_lowercase())
-    .collect()
-}
-
-fn get_header(
-  name: &str,
-  headers: &[(ByteString, ByteString)],
-) -> Option<ByteString> {
-  headers
-    .iter()
-    .find(|(k, _)| {
-      if let Ok(k) = std::str::from_utf8(k) {
-        k.eq_ignore_ascii_case(name)
-      } else {
-        false
-      }
-    })
-    .map(|(_, v)| v.to_owned())
 }
 
 impl deno_core::Resource for SqliteBackedCache {
