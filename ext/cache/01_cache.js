@@ -92,7 +92,11 @@
       }
       // Step 4.
       const reqUrl = new URL(innerRequest.url());
-      if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
+      if (
+        reqUrl.protocol !== "http:" &&
+        reqUrl.protocol !== "https:" &&
+        reqUrl.protocol !== "http+unix:"
+      ) {
         throw new TypeError(
           "Request url protocol must be 'http:' or 'https:'",
         );
