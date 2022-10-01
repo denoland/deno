@@ -321,3 +321,43 @@ fn test_get_header() {
   let value = get_header("vary", &headers);
   assert_eq!(value, Some(ByteString::from("accept-encoding")));
 }
+
+/// Serialize headers into bytes.
+pub fn serialize_headers(headers: &[(ByteString, ByteString)]) -> Vec<u8> {
+  let mut serialized_headers = Vec::new();
+  for (name, value) in headers {
+    serialized_headers.extend_from_slice(name);
+    serialized_headers.extend_from_slice(b"\r\n");
+    serialized_headers.extend_from_slice(value);
+    serialized_headers.extend_from_slice(b"\r\n");
+  }
+  serialized_headers
+}
+
+/// Deserialize bytes into headers.
+pub fn deserialize_headers(
+  serialized_headers: &[u8],
+) -> Vec<(ByteString, ByteString)> {
+  let mut headers = Vec::new();
+  let mut piece = None;
+  let mut start = 0;
+  for (i, byte) in serialized_headers.iter().enumerate() {
+    if byte == &b'\r' && serialized_headers.get(i + 1) == Some(&b'\n') {
+      if piece.is_none() {
+        piece = Some(start..i);
+      } else {
+        let name = piece.unwrap();
+        let value = start..i;
+        headers.push((
+          ByteString::from(&serialized_headers[name]),
+          ByteString::from(&serialized_headers[value]),
+        ));
+        piece = None;
+      }
+      start = i + 2;
+    }
+  }
+  assert!(piece.is_none());
+  assert_eq!(start, serialized_headers.len());
+  headers
+}
