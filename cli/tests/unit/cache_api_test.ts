@@ -99,7 +99,7 @@ Deno.test(async function cachePutReaderLock() {
   const cacheName = "cache-v1";
   const cache = await caches.open(cacheName);
 
-  const response = new Response('consumed');
+  const response = new Response("consumed");
 
   const promise = cache.put(
     new Request("https://example.com/"),
@@ -115,5 +115,4 @@ Deno.test(async function cachePutReaderLock() {
   );
 
   await promise;
-
 });
