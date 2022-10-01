@@ -293,6 +293,59 @@ async fn init_command(
   Ok(0)
 }
 
+use crate::npm::NpmPackageResolver;
+
+fn add_npm_packages_to_deno_info(
+  json: &mut serde_json::Value,
+  npm_resolver: &NpmPackageResolver,
+) {
+  let json = json.as_object_mut().unwrap();
+  let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
+  if let Some(modules) = modules {
+    for module in modules.iter_mut() {
+      let dependencies = module
+        .get_mut("dependencies")
+        .and_then(|d| d.as_array_mut());
+      if let Some(dependencies) = dependencies {
+        for dep in dependencies.iter_mut() {
+          if let serde_json::Value::Object(dep) = dep {
+            let specifier = dep.get("specifier").and_then(|s| s.as_str());
+            if let Some(specifier) = specifier {
+              if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+                if let Ok(pkg) =
+                  npm_resolver.resolve_package_from_deno_module(&npm_ref.req)
+                {
+                  dep.insert(
+                    "npmPackage".to_string(),
+                    format!("{}", pkg.id).into(),
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let mut packages = serde_json::Map::new();
+  for pkg in npm_resolver.all_packages() {
+    let mut kv = serde_json::Map::new();
+    kv.insert("name".to_string(), pkg.id.name.to_string().into());
+    kv.insert("version".to_string(), pkg.id.version.to_string().into());
+    let deps = pkg
+      .dependencies
+      .values()
+      .map(|id| serde_json::Value::String(format!("{}", id)))
+      .collect::<Vec<_>>();
+    kv.insert("dependencies".to_string(), deps.into());
+
+    packages.insert(format!("{}", &pkg.id), kv.into());
+  }
+
+  json.insert("npmPackages".to_string(), packages.into());
+}
+
 async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
@@ -305,7 +358,13 @@ async fn info_command(
       .await?;
 
     if info_flags.json {
-      write_json_to_stdout(&json!(graph))?;
+      let mut json = json!(graph);
+
+      if ps.npm_resolver.has_packages() {
+        add_npm_packages_to_deno_info(&mut json, &ps.npm_resolver);
+      }
+
+      write_json_to_stdout(&json)?;
     } else {
       write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
     }

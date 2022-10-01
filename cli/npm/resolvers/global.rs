@@ -52,7 +52,16 @@ impl GlobalNpmPackageResolver {
   }
 }
 
+use crate::npm::NpmResolutionPackage;
+
 impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
+  fn resolve_package_from_deno_module(
+    &self,
+    package: &NpmPackageReq,
+  ) -> Result<NpmResolutionPackage, AnyError>{
+    self.resolution.resolve_package_from_deno_module(package)
+  }
+
   fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
@@ -87,6 +96,10 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
 
   fn has_packages(&self) -> bool {
     self.resolution.has_packages()
+  }
+
+  fn all_packages(&self) -> Vec<NpmResolutionPackage> {
+    self.resolution.all_packages()
   }
 
   fn add_package_reqs(

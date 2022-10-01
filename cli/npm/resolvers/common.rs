@@ -16,6 +16,11 @@ use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 
 pub trait InnerNpmPackageResolver: Send + Sync {
+  fn resolve_package_from_deno_module(
+    &self,
+    package: &NpmPackageReq,
+  ) -> Result<NpmResolutionPackage, AnyError>;
+
   fn resolve_package_folder_from_deno_module(
     &self,
     pkg_req: &NpmPackageReq,
@@ -33,6 +38,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   ) -> Result<PathBuf, AnyError>;
 
   fn has_packages(&self) -> bool;
+
+  fn all_packages(&self) -> Vec<NpmResolutionPackage>;
 
   fn add_package_reqs(
     &self,

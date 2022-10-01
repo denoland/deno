@@ -62,6 +62,9 @@ impl NpmProcessState {
   }
 }
 
+use crate::npm::NpmResolutionPackage;
+
+
 #[derive(Clone)]
 pub struct NpmPackageResolver {
   unstable: bool,
@@ -116,6 +119,17 @@ impl NpmPackageResolver {
     let path = fs_util::canonicalize_path_maybe_not_exists(&path)?;
     log::debug!("Resolved {} to {}", pkg_req, path.display());
     Ok(path)
+  }
+  
+  pub fn resolve_package_from_deno_module(
+    &self,
+    package: &NpmPackageReq,
+  ) -> Result<NpmResolutionPackage, AnyError>{
+    self.inner.resolve_package_from_deno_module(package)
+  }
+  
+  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
+    self.inner.all_packages()
   }
 
   /// Resolves an npm package folder path from an npm package referrer.
