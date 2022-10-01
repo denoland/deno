@@ -119,8 +119,10 @@
 
       // Step 8.
       if (innerResponse.body !== null && innerResponse.body.unusable()) {
-        throw new TypeError("Response body must not already used");
+        throw new TypeError("Response body is already used");
       }
+      // acquire lock before async op
+      const reader = innerResponse.body?.stream.getReader();
 
       // Remove fragment from request URL before put.
       reqUrl.hash = "";
@@ -138,8 +140,7 @@
           responseStatusText: innerResponse.statusMessage,
         },
       );
-      if (innerResponse.body) {
-        const reader = innerResponse.body.stream.getReader();
+      if (reader) {
         while (true) {
           const { value, done } = await reader.read();
           if (done) {
