@@ -27,7 +27,6 @@ impl std::fmt::Display for SpecifierVersionReq {
 
 impl SpecifierVersionReq {
   pub fn parse(text: &str) -> Result<Self, AnyError> {
-    eprintln!("SpecifierVersionReq::parse {}", text);
     with_failure_handling(parse_npm_specifier)(text).with_context(|| {
       format!("Invalid npm specifier version requirement '{}'.", text)
     })
