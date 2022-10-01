@@ -98,7 +98,7 @@
         reqUrl.protocol !== "http+unix:"
       ) {
         throw new TypeError(
-          "Request url protocol must be 'http:' or 'https:'",
+          "Request url protocol must be 'http:', 'https:', or 'http+unix:'",
         );
       }
       if (innerRequest.method !== "GET") {
