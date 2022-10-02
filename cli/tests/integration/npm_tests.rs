@@ -181,6 +181,13 @@ itest!(nonexistent_file {
   exit_code: 1,
 });
 
+itest!(require_json {
+  args: "run --unstable -A --quiet npm/require_json/main.js",
+  output: "npm/require_json/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(

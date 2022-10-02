@@ -749,6 +749,14 @@ pub fn translate_cjs_to_esm(
     {
       return Ok(analysis);
     }
+
+    if media_type == MediaType::Json {
+      return Ok(CjsAnalysis {
+        exports: vec![],
+        reexports: vec![],
+      });
+    }
+
     let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: deno_ast::SourceTextInfo::new(code.into()),
