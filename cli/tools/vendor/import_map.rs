@@ -4,6 +4,7 @@ use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
+use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
@@ -204,6 +205,11 @@ fn visit_modules(
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<(), AnyError> {
   for module in modules {
+    if module.media_type == MediaType::Json {
+      // skip visiting Json modules as they are leaves
+      continue;
+    }
+
     let text_info =
       match parsed_source_cache.get_parsed_source_from_module(module)? {
         Some(source) => source.text_info().clone(),

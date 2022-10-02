@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::cache::NodeAnalysisCache;
 use crate::deno_std::CURRENT_STD_URL;
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
@@ -26,11 +27,11 @@ use deno_runtime::deno_node::package_imports_resolve;
 use deno_runtime::deno_node::package_resolve;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
 use deno_runtime::deno_node::DEFAULT_CONDITIONS;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use once_cell::sync::Lazy;
-use path_clean::PathClean;
 use regex::Regex;
 
 use crate::file_fetcher::FileFetcher;
@@ -433,9 +434,8 @@ pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
-  let package_folder = npm_resolver
-    .resolve_package_from_deno_module(&reference.req)?
-    .folder_path;
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
   let resolved_path = package_config_resolve(
     &reference
       .sub_path
@@ -462,15 +462,28 @@ pub fn node_resolve_binary_export(
   bin_name: Option<&str>,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<NodeResolution, AnyError> {
-  let pkg = npm_resolver.resolve_package_from_deno_module(pkg_req)?;
-  let package_folder = pkg.folder_path;
+  fn get_package_display_name(package_json: &PackageJson) -> String {
+    package_json
+      .name
+      .as_ref()
+      .and_then(|name| {
+        package_json
+          .version
+          .as_ref()
+          .map(|version| format!("{}@{}", name, version))
+      })
+      .unwrap_or_else(|| format!("{}", package_json.path.display()))
+  }
+
+  let package_folder =
+    npm_resolver.resolve_package_folder_from_deno_module(pkg_req)?;
   let package_json_path = package_folder.join("package.json");
   let package_json = PackageJson::load(npm_resolver, package_json_path)?;
   let bin = match &package_json.bin {
     Some(bin) => bin,
     None => bail!(
       "package {} did not have a 'bin' property in its package.json",
-      pkg.id
+      get_package_display_name(&package_json),
     ),
   };
   let bin_entry = match bin {
@@ -490,13 +503,13 @@ pub fn node_resolve_binary_export(
         o.get(&pkg_req.name)
       }
     },
-    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", pkg.id),
+    _ => bail!("package {} did not have a 'bin' property with a string or object value in its package.json", get_package_display_name(&package_json)),
   };
   let bin_entry = match bin_entry {
     Some(e) => e,
     None => bail!(
       "package {} did not have a 'bin' entry for {} in its package.json",
-      pkg.id,
+      get_package_display_name(&package_json),
       bin_name.unwrap_or(&pkg_req.name),
     ),
   };
@@ -504,7 +517,7 @@ pub fn node_resolve_binary_export(
     Value::String(s) => s,
     _ => bail!(
       "package {} had a non-string sub property of 'bin' in its package.json",
-      pkg.id
+      get_package_display_name(&package_json),
     ),
   };
 
@@ -566,7 +579,7 @@ fn package_config_resolve(
   Ok(package_dir.join(package_subpath))
 }
 
-fn url_to_node_resolution(
+pub fn url_to_node_resolution(
   url: ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {
@@ -722,12 +735,28 @@ pub fn translate_cjs_to_esm(
   code: String,
   media_type: MediaType,
   npm_resolver: &NpmPackageResolver,
+  node_analysis_cache: &NodeAnalysisCache,
 ) -> Result<String, AnyError> {
   fn perform_cjs_analysis(
+    analysis_cache: &NodeAnalysisCache,
     specifier: &str,
     media_type: MediaType,
     code: String,
   ) -> Result<CjsAnalysis, AnyError> {
+    let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+    if let Some(analysis) =
+      analysis_cache.get_cjs_analysis(specifier, &source_hash)
+    {
+      return Ok(analysis);
+    }
+
+    if media_type == MediaType::Json {
+      return Ok(CjsAnalysis {
+        exports: vec![],
+        reexports: vec![],
+      });
+    }
+
     let parsed_source = deno_ast::parse_script(deno_ast::ParseParams {
       specifier: specifier.to_string(),
       text_info: deno_ast::SourceTextInfo::new(code.into()),
@@ -736,7 +765,10 @@ pub fn translate_cjs_to_esm(
       scope_analysis: false,
       maybe_syntax: None,
     })?;
-    Ok(parsed_source.analyze_cjs())
+    let analysis = parsed_source.analyze_cjs();
+    analysis_cache.set_cjs_analysis(specifier, &source_hash, &analysis);
+
+    Ok(analysis)
   }
 
   let mut temp_var_count = 0;
@@ -746,7 +778,12 @@ pub fn translate_cjs_to_esm(
     r#"const require = Deno[Deno.internal].require.Module.createRequire(import.meta.url);"#.to_string(),
   ];
 
-  let analysis = perform_cjs_analysis(specifier.as_str(), media_type, code)?;
+  let analysis = perform_cjs_analysis(
+    node_analysis_cache,
+    specifier.as_str(),
+    media_type,
+    code,
+  )?;
 
   let mut all_exports = analysis
     .exports
@@ -792,6 +829,7 @@ pub fn translate_cjs_to_esm(
 
     {
       let analysis = perform_cjs_analysis(
+        node_analysis_cache,
         reexport_specifier.as_str(),
         reexport_file.media_type,
         reexport_file.source.to_string(),

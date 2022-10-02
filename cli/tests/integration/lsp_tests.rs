@@ -987,7 +987,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -998,7 +998,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -1360,7 +1360,7 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent.",
+        "The process ID of parent process of this instance of the Deno CLI.\n\n```ts\nconsole.log(Deno.ppid);\n```",
         "\n\n*@category* - Runtime Environment",
       ],
       "range":{
@@ -2810,7 +2810,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2822,7 +2822,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -4107,8 +4107,8 @@ fn lsp_diagnostics_warn_redirect() {
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
           ..Default::default()
         }
       ],

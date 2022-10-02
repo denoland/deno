@@ -8,7 +8,7 @@ use test_util::TempDir;
 #[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
-  let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
+  let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
   let t = TempDir::new();
 
   let mut deno = util::deno_cmd()
@@ -37,79 +37,79 @@ fn info_with_compiled_source() {
   assert_eq!(output.stderr, b"");
 }
 
-itest!(_022_info_flag_script {
-  args: "info http://127.0.0.1:4545/019_media_types.ts",
-  output: "022_info_flag_script.out",
+itest!(multiple_imports {
+  args: "info http://127.0.0.1:4545/run/019_media_types.ts",
+  output: "info/multiple_imports.out",
   http_server: true,
 });
 
-itest!(_031_info_ts_error {
-  args: "info 031_info_ts_error.ts",
-  output: "031_info_ts_error.out",
+itest!(info_ts_error {
+  args: "info info/031_info_ts_error.ts",
+  output: "info/031_info_ts_error.out",
 });
 
-itest!(_041_info_flag {
+itest!(info_flag {
   args: "info",
-  output: "041_info_flag.out",
+  output: "info/041_info_flag.out",
 });
 
-itest!(_042_info_flag_location {
+itest!(info_flag_location {
   args: "info --location https://deno.land",
-  output: "041_info_flag_location.out",
+  output: "info/041_info_flag_location.out",
 });
 
 itest!(info_json {
   args: "info --json --unstable",
-  output: "info_json.out",
+  output: "info/info_json.out",
 });
 
 itest!(info_json_location {
   args: "info --json --unstable --location https://deno.land",
-  output: "info_json_location.out",
+  output: "info/info_json_location.out",
 });
 
-itest!(_049_info_flag_script_jsx {
-  args: "info http://127.0.0.1:4545/048_media_types_jsx.ts",
-  output: "049_info_flag_script_jsx.out",
+itest!(info_flag_script_jsx {
+  args: "info http://127.0.0.1:4545/run/048_media_types_jsx.ts",
+  output: "info/049_info_flag_script_jsx.out",
   http_server: true,
 });
 
-itest!(_055_info_file_json {
-  args: "info --quiet --json --unstable 005_more_imports.ts",
-  output: "055_info_file_json.out",
+itest!(json_file {
+  args: "info --quiet --json --unstable info/json_output/main.ts",
+  output: "info/json_output/main.out",
   exit_code: 0,
 });
 
-itest!(_065_import_map_info {
+itest!(import_map_info {
   args:
     "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "065_import_map_info.out",
+  output: "info/065_import_map_info.out",
 });
 
-itest!(_076_info_json_deps_order {
-  args: "info --unstable --json 076_info_json_deps_order.ts",
-  output: "076_info_json_deps_order.out",
+itest!(info_json_deps_order {
+  args: "info --unstable --json info/076_info_json_deps_order.ts",
+  output: "info/076_info_json_deps_order.out",
 });
 
 itest!(info_missing_module {
-  args: "info error_009_missing_js_module.js",
-  output: "info_missing_module.out",
+  args: "info info/error_009_missing_js_module.js",
+  output: "info/info_missing_module.out",
 });
 
 itest!(info_recursive_modules {
-  args: "info --quiet info_recursive_imports_test.ts",
-  output: "info_recursive_imports_test.out",
+  args: "info --quiet info/info_recursive_imports_test.ts",
+  output: "info/info_recursive_imports_test.out",
   exit_code: 0,
 });
 
 itest!(info_type_import {
-  args: "info info_type_import.ts",
-  output: "info_type_import.out",
+  args: "info info/info_type_import.ts",
+  output: "info/info_type_import.out",
 });
 
 itest!(_054_info_local_imports {
-  args: "info --quiet 005_more_imports.ts",
-  output: "054_info_local_imports.out",
+  args: "info --quiet run/005_more_imports.ts",
+  output: "info/054_info_local_imports.out",
   exit_code: 0,
 });
 
@@ -120,13 +120,13 @@ itest!(data_null_error {
   output: "info/data_null_error/data_null_error.out",
 });
 
-itest!(deno_info_types_header_direct {
-  args: "info --reload type_directives_01.ts",
+itest!(types_header_direct {
+  args: "info --reload run/type_directives_01.ts",
   output: "info/types_header.out",
   http_server: true,
 });
 
-itest!(deno_info_with_config_override {
+itest!(with_config_override {
   args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
   output: "info/with_config/with_config.out",
 });

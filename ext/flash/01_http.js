@@ -10,7 +10,7 @@
   const {
     ReadableStream,
     ReadableStreamPrototype,
-    getReadableStreamRid,
+    getReadableStreamResourceBacking,
     readableStreamClose,
     _state,
   } = window.__bootstrap.streams;
@@ -333,8 +333,8 @@
       }
 
       if (isStreamingResponseBody === true) {
-        const resourceRid = getReadableStreamRid(respBody);
-        if (resourceRid) {
+        const resourceBacking = getReadableStreamResourceBacking(respBody);
+        if (resourceBacking) {
           if (respBody.locked) {
             throw new TypeError("ReadableStream is locked.");
           }
@@ -352,7 +352,8 @@
               ),
               serverId,
               i,
-              resourceRid,
+              resourceBacking.rid,
+              resourceBacking.autoClose,
             ).then(() => {
               // Release JS lock.
               readableStreamClose(respBody);
@@ -459,6 +460,7 @@
     const listenOpts = {
       hostname: options.hostname ?? "127.0.0.1",
       port: options.port ?? 9000,
+      reuseport: options.reusePort ?? false,
     };
     if (options.cert || options.key) {
       if (!options.cert || !options.key) {
@@ -541,7 +543,7 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || typeof resp.then === "function") {
+              if (resp instanceof Promise || typeof resp?.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,
