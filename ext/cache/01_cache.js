@@ -141,15 +141,17 @@
         },
       );
       if (reader) {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await core.shutdown(rid);
-            core.close(rid);
-            break;
-          } else {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
             await core.write(rid, value);
           }
+        } finally {
+          await core.shutdown(rid);
+          core.close(rid);
         }
       }
       // Step 12-19: TODO(@satyarohith): do the insertion in background.
