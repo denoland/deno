@@ -452,10 +452,10 @@ pub fn node_resolve_npm_reference(
 
     if let Some(sub_path) = &reference.sub_path {
       if let Some(at_index) = sub_path.rfind('@') {
-        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let (sub_path, version) = sub_path.split_at(at_index);
         msg = format!(
-          "{} Did you mean to write '{}@{}/{}'?",
-          msg, reference.req, version, new_sub_path
+          "{} Did you mean to write '{}{}/{}'?",
+          msg, reference.req, version, sub_path
         );
       }
     }
