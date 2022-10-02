@@ -35,7 +35,6 @@
     ObjectKeys,
     ObjectPrototypeIsPrototypeOf,
     RegExpPrototypeTest,
-    SafeArrayIterator,
     Symbol,
     SymbolFor,
     TypeError,
