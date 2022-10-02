@@ -447,7 +447,20 @@ pub fn node_resolve_npm_reference(
     NodeModuleKind::Esm,
   )
   .with_context(|| {
-    format!("Error resolving package config for '{}'.", reference)
+    let mut msg =
+      format!("Error resolving package config for '{}'.", reference);
+
+    if let Some(sub_path) = &reference.sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        msg = format!(
+          "{} Did you mean to write '{}@{}/{}'?",
+          msg, reference.req, version, new_sub_path
+        );
+      }
+    }
+
+    msg
   })?;
 
   let url = ModuleSpecifier::from_file_path(resolved_path).unwrap();
