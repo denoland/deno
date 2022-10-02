@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use serde_v8::utils::{js_exec, v8_do};
 use serde_v8::ByteString;
@@ -231,6 +231,63 @@ fn de_buffers() {
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+}
+
+// Structs
+#[derive(Debug, PartialEq, Deserialize)]
+struct StructUnit;
+
+#[derive(Debug, PartialEq)]
+struct StructPayload {
+  a: u64,
+  b: u64,
+}
+
+struct StructVisitor;
+
+impl<'de> serde::de::Visitor<'de> for StructVisitor {
+  type Value = StructPayload;
+  fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    formatter.write_str("struct StructPayload")
+  }
+  fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+  where
+    A: serde::de::MapAccess<'de>,
+  {
+    let mut payload = StructPayload { a: 0, b: 0 };
+    while let Some(key) = map.next_key::<String>()? {
+      match key.as_ref() {
+        "a" => payload.a = map.next_value()?,
+        "b" => payload.b = map.next_value()?,
+        f => panic!("Unknown field {}", f),
+      }
+    }
+    Ok(payload)
+  }
+}
+
+detest!(de_unit_struct, StructUnit, "'StructUnit'", StructUnit);
+
+#[test]
+fn de_struct() {
+  dedo("({ a: 1, b: 2 })", |scope, v| {
+    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let payload = de
+      .deserialize_struct("StructPayload", &[], StructVisitor)
+      .unwrap();
+    assert_eq!(payload, StructPayload { a: 1, b: 2 })
+  })
+}
+
+#[test]
+fn de_struct_hint() {
+  dedo("({ a: 1, b: 2 })", |scope, v| {
+    let mut de = serde_v8::Deserializer::new(scope, v, None);
+    let payload = de
+      .deserialize_struct("StructPayload", &["a", "b"], StructVisitor)
+      .unwrap();
+    assert_eq!(payload, StructPayload { a: 1, b: 2 })
+  })
 }
 
 ////

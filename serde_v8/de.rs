@@ -372,14 +372,32 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj = self.input.try_into().or(Err(Error::ExpectedObject))?;
-        visitor.visit_seq(StructAccess {
-          fields,
-          obj,
-          pos: 0,
-          scope: self.scope,
-          _cache: None,
-        })
+        let obj: v8::Local<v8::Object> =
+          self.input.try_into().or(Err(Error::ExpectedObject))?;
+
+        // Fields names are a hint and must be inferred when not provided
+        if fields.is_empty() {
+          let prop_names =
+            obj.get_own_property_names(self.scope, Default::default());
+          let keys: Vec<magic::Value> = match prop_names {
+            Some(names) => from_v8(self.scope, names.into()).unwrap(),
+            None => vec![],
+          };
+
+          visitor.visit_map(MapObjectAccess {
+            obj,
+            scope: self.scope,
+            keys: keys.into_iter(),
+            next_value: None,
+          })
+        } else {
+          visitor.visit_map(StructAccess {
+            obj,
+            scope: self.scope,
+            keys: fields.iter(),
+            next_value: None,
+          })
+        }
       }
     }
   }
@@ -489,8 +507,7 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
       }
       self.next_value = Some(v8_val);
       let mut deserializer = Deserializer::new(self.scope, key.v8_value, None);
-      let k = seed.deserialize(&mut deserializer)?;
-      return Ok(Some(k));
+      return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
   }
@@ -499,7 +516,10 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: V,
   ) -> Result<V::Value> {
-    let v8_val = self.next_value.take().unwrap();
+    let v8_val = self
+      .next_value
+      .take()
+      .expect("Call next_key_seed before next_value_seed");
     let mut deserializer = Deserializer::new(self.scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
@@ -553,36 +573,41 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_> {
 struct StructAccess<'a, 'b, 's> {
   obj: v8::Local<'a, v8::Object>,
   scope: &'b mut v8::HandleScope<'s>,
-  fields: &'static [&'static str],
-  pos: usize,
-  _cache: Option<&'b mut KeyCache>,
+  keys: std::slice::Iter<'static, &'static str>,
+  next_value: Option<v8::Local<'b, v8::Value>>,
 }
 
-impl<'de> de::SeqAccess<'de> for StructAccess<'_, '_, '_> {
+impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
   type Error = Error;
 
-  fn next_element_seed<T: de::DeserializeSeed<'de>>(
-    &mut self,
-    seed: T,
-  ) -> Result<Option<T::Value>> {
-    if self.pos >= self.fields.len() {
-      return Ok(None);
+  fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+  where
+    K: de::DeserializeSeed<'de>,
+  {
+    for field in self.keys.by_ref() {
+      let key = v8_struct_key(self.scope, field).into();
+      let val = self.obj.get(self.scope, key).unwrap();
+      if val.is_undefined() {
+        // Historically keys/value pairs with undefined values are not added to the output
+        continue;
+      }
+      self.next_value = Some(val);
+      let mut deserializer = Deserializer::new(self.scope, key, None);
+      return seed.deserialize(&mut deserializer).map(Some);
     }
+    Ok(None)
+  }
 
-    let pos = self.pos;
-    self.pos += 1;
-
-    let field = self.fields[pos];
-    let key = v8_struct_key(self.scope, field).into();
-    let val = self.obj.get(self.scope, key).unwrap();
+  fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+  where
+    V: de::DeserializeSeed<'de>,
+  {
+    let val = self
+      .next_value
+      .take()
+      .expect("Call next_key_seed before next_value_seed");
     let mut deserializer = Deserializer::new(self.scope, val, None);
-    match seed.deserialize(&mut deserializer) {
-      Ok(val) => Ok(Some(val)),
-      // Fallback to Ok(None) for #[serde(Default)] at cost of error quality ...
-      // TODO(@AaronO): double check that there's no better solution
-      Err(_) if val.is_undefined() => Ok(None),
-      Err(e) => Err(e),
-    }
+    seed.deserialize(&mut deserializer)
   }
 }
 
