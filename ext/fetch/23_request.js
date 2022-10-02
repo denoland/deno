@@ -159,11 +159,11 @@
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
-    const headerList = [
-      ...new SafeArrayIterator(
-        ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
-      ),
-    ];
+    const headerList = ArrayPrototypeMap(
+      request.headerList,
+      (x) => [x[0], x[1]],
+    );
+
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
