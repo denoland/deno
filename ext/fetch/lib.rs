@@ -501,7 +501,6 @@ impl Resource for FetchResponseBodyResource {
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
-    // TLS max packet size is 16kb, so we use that as a default.
     (0, self.size)
   }
 
