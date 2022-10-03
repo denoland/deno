@@ -1,5 +1,2 @@
-error: Could not resolve 'react-dom/server@18.2.0'.
-
-Caused by:
-    0: Error resolving package config for 'react-dom/server@18.2.0'. Did you mean to write 'react-dom@18.2.0/server'?
-    1: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './server@18.2.0' is not defined by "exports" in [WILDCARD]
+error: Invalid package specifier 'npm:react-dom/server@18.2.0'. Did you mean to write 'npm:react-dom@18.2.0/server'?
+    at [WILDCARD]/npm/error_version_after_subpath/main.js:1:8
