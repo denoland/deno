@@ -782,31 +782,21 @@
     return stream[_resourceBacking];
   }
 
-  async function readableStreamCollectIntoUint8Array(stream, cloned) {
+  async function readableStreamCollectIntoUint8Array(stream) {
     const resourceBacking = getReadableStreamResourceBacking(stream);
     const reader = acquireReadableStreamDefaultReader(stream);
 
-    // TODO(marcosc90): support fast path when cloning a request
-    // and remove cloned arg
-    if (resourceBacking && !cloned) {
+    if (resourceBacking) {
       // fast path, read whole body in a single op call
       try {
         readableStreamDisturb(stream);
         const buf = await core.opAsync("op_read_all", resourceBacking.rid);
-
-        if (stream[_state] === "errored") {
-          throw stream[_storedError];
-        }
-
+        readableStreamThrowIfErrored(stream);
         readableStreamClose(stream);
         return buf;
       } catch (err) {
-        if (stream[_state] === "errored") {
-          // The stream could've been aborted
-          // throw that error instead
-          throw stream[_storedError];
-        }
-
+        readableStreamThrowIfErrored(stream);
+        readableStreamError(stream, err);
         throw err;
       } finally {
         if (resourceBacking.autoClose) {
@@ -834,6 +824,15 @@
       i += chunk.byteLength;
     }
     return finalBuffer;
+  }
+
+  /*
+   * @param {ReadableStream} stream
+   */
+  function readableStreamThrowIfErrored(stream) {
+    if (stream[_state] === "errored") {
+      throw stream[_storedError];
+    }
   }
 
   /**

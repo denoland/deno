@@ -412,8 +412,7 @@ impl Resource for HttpStreamResource {
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
-    // TLS max packet size is 16kb, so we use that as a default.
-    (16 * 1024 + 256, self.size)
+    (0, self.size)
   }
 }
 

@@ -65,8 +65,6 @@
   }
 
   class InnerBody {
-    #cloned = false;
-
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
@@ -149,7 +147,7 @@
           this.streamOrStatic,
         )
       ) {
-        return readableStreamCollectIntoUint8Array(this.stream, this.#cloned);
+        return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
@@ -186,7 +184,6 @@
      * @returns {InnerBody}
      */
     clone() {
-      this.#cloned = true;
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
       const second = new InnerBody(out2);

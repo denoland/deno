@@ -66,7 +66,7 @@ pub trait Resource: Any + 'static {
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
-    (64 * 1024, None)
+    (0, None)
   }
 }
 
