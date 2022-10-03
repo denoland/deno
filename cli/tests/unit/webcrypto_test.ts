@@ -1827,3 +1827,30 @@ Deno.test(async function exportKeyNotExtractable() {
     await crypto.subtle.exportKey("raw", key);
   }, DOMException);
 });
+
+// https://github.com/denoland/deno/issues/15126
+Deno.test(async function testImportLeadingZeroesKey() {
+  const alg = { name: "ECDSA", namedCurve: "P-256" };
+
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    alg: "ES256",
+    x: "EvidcdFB1xC6tgfakqZsU9aIURxAJkcX62zHe1Nt6xU",
+    y: "AHsk6BioGM7MZWeXOE_49AGmtuaXFT3Ill3DYtz9uYg",
+    d: "WDeYo4o1heCF9l_2VIaClRyIeO16zsMlN8UG6Le9dU8",
+    "key_ops": ["sign"],
+    ext: true,
+  };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    alg,
+    true,
+    ["sign"],
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "private");
+});
