@@ -898,6 +898,12 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+    if npm_resolver.in_npm_package(referrer) {
+      return; // ignore
+    }
+  }
+
   if let Some(import_map) = &snapshot.maybe_import_map {
     if let Resolved::Ok {
       specifier, range, ..

@@ -39,6 +39,7 @@ pub trait RequireNpmResolver {
     &self,
     specifier: &str,
     referrer: &Path,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_path(
@@ -305,6 +306,7 @@ fn op_require_resolve_deno_dir(
     .resolve_package_folder_from_package(
       &request,
       &PathBuf::from(parent_filename),
+      DEFAULT_CONDITIONS,
     )
     .ok()
     .map(|p| p.to_string_lossy().to_string())

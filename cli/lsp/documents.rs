@@ -471,9 +471,14 @@ impl Document {
   }
 
   pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
-    let mut reqs = Vec::with_capacity(self.0.dependencies.len());
+    let mut reqs = Vec::with_capacity(self.0.dependencies.len() * 2);
     for dep in self.0.dependencies.values() {
-      if let Some(specifier) = dep.get_type().or_else(|| dep.get_code()) {
+      if let Some(specifier) = dep.get_code() {
+        if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
+          reqs.push(reference.req);
+        }
+      }
+      if let Some(specifier) = dep.get_type() {
         if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
           reqs.push(reference.req);
         }
@@ -944,6 +949,9 @@ impl Documents {
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
     let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
+    lsp_log!("Specifiers: {:?}", specifiers);
+    lsp_log!("Referrer: {}", referrer);
+    lsp_log!("Dependencies: {:?}", dependencies);
     for specifier in specifiers {
       if let Some(npm_resolver) = maybe_npm_resolver {
         if npm_resolver.in_npm_package(&referrer) {
@@ -980,10 +988,24 @@ impl Documents {
       } else if let Some(Resolved::Ok { specifier, .. }) =
         self.resolve_imports_dependency(&specifier)
       {
+        lsp_log!("B");
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
+      } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
+        results.push(maybe_npm_resolver.map(|npm_resolver| {
+          NodeResolution::into_media_type_and_specifier(
+            node_resolve_npm_reference(
+              &npm_ref,
+              NodeResolutionMode::Types,
+              npm_resolver,
+            )
+            .ok()
+            .flatten(),
+          )
+        }));
       } else {
+        lsp_log!("A");
         results.push(None);
       }
     }

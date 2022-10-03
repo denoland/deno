@@ -159,10 +159,11 @@ impl NpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .inner
-      .resolve_package_folder_from_package(name, referrer)?;
+      .resolve_package_folder_from_package(name, referrer, conditions)?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -264,9 +265,10 @@ impl RequireNpmResolver for NpmPackageResolver {
     &self,
     specifier: &str,
     referrer: &std::path::Path,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError> {
     let referrer = path_to_specifier(referrer)?;
-    self.resolve_package_folder_from_package(specifier, &referrer)
+    self.resolve_package_folder_from_package(specifier, &referrer, conditions)
   }
 
   fn resolve_package_folder_from_path(

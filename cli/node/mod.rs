@@ -994,6 +994,7 @@ fn resolve(
   let module_dir = npm_resolver.resolve_package_folder_from_package(
     package_specifier.as_str(),
     &referrer_path,
+    conditions,
   )?;
 
   let package_json_path = module_dir.join("package.json");

@@ -25,6 +25,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(

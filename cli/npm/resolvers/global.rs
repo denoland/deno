@@ -11,6 +11,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::TYPES_CONDITIONS;
 
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
@@ -65,14 +67,35 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
       .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
-    let pkg = self
+    let pkg_result = self
       .resolution
-      .resolve_package_from_package(name, &referrer_pkg_id)?;
-    Ok(self.package_folder(&pkg.id))
+      .resolve_package_from_package(name, &referrer_pkg_id);
+    if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+      // When doing types resolution, the package must contain a "types"
+      // entry, or else it will then search for a @types package
+      if let Ok(pkg) = pkg_result {
+        let package_folder = self.package_folder(&pkg.id);
+        let package_json = PackageJson::load_skip_read_permission(
+          package_folder.join("package.json"),
+        )?;
+        if package_json.types.is_some() {
+          return Ok(package_folder);
+        }
+      }
+
+      let name = format!("@types/{}", name);
+      let pkg = self
+        .resolution
+        .resolve_package_from_package(&name, &referrer_pkg_id)?;
+      Ok(self.package_folder(&pkg.id))
+    } else {
+      Ok(self.package_folder(&pkg_result?.id))
+    }
   }
 
   fn resolve_package_folder_from_specifier(

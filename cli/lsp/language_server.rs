@@ -2878,6 +2878,7 @@ impl Inner {
         ca_stores: None,
         ca_file: None,
         unsafely_ignore_certificate_errors: None,
+        unstable: true,
         ..Default::default()
       },
       self.maybe_config_file.clone(),
