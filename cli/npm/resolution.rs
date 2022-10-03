@@ -77,6 +77,18 @@ impl NpmPackageReference {
     } else {
       Some(parts[name_part_len..].join("/"))
     };
+
+    if let Some(sub_path) = &sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let msg = format!(
+          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
+          name, sub_path, name, version, new_sub_path
+        );
+        return Err(generic_error(msg));
+      }
+    }
+
     Ok(NpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,
