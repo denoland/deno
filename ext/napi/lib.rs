@@ -588,7 +588,7 @@ where
         })
       }
     };
-    // Don't run the `Drop` handler on Library.    
+    // Don't run the `Drop` handler on Library.
     std::mem::forget(library);
     obj
   })
