@@ -93,6 +93,7 @@ detest!(de_bool, bool, "true", true);
 detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
+detest!(de_vec_empty, Vec<u64>, "[]", vec![0; 0]);
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
 detest!(
   de_vec_str,
@@ -100,6 +101,8 @@ detest!(
   "['hello', 'world']",
   vec!["hello".to_owned(), "world".to_owned()]
 );
+defail!(de_vec_wrong_len, (u64, bool, String), "[123, true]", |e| e
+  == Err(Error::LengthMismatch));
 detest!(
   de_tuple,
   (u64, bool, ()),
