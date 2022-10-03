@@ -93,6 +93,7 @@ detest!(de_bool, bool, "true", true);
 detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
+detest!(de_vec_empty, Vec<u64>, "[]", vec![0; 0]);
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
 detest!(
   de_vec_str,
@@ -107,7 +108,13 @@ detest!(
   (123, true, ())
 );
 defail!(
-  de_tuple_wrong_len,
+  de_tuple_wrong_len_short,
+  (u64, bool, ()),
+  "[123, true]",
+  |e| e == Err(Error::LengthMismatch)
+);
+defail!(
+  de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
   |e| e == Err(Error::LengthMismatch)
@@ -182,6 +189,29 @@ fn de_map() {
     assert_eq!(map.get("c").cloned(), Some(3));
     assert_eq!(map.get("nada"), None);
   })
+}
+
+#[test]
+fn de_obj_with_numeric_keys() {
+  dedo(
+    r#"({
+  lines: {
+    100: {
+      unit: "m"
+    },
+    200: {
+      unit: "cm"
+    }
+  }
+})"#,
+    |scope, v| {
+      let json: serde_json::Value = serde_v8::from_v8(scope, v).unwrap();
+      assert_eq!(
+        json.to_string(),
+        r#"{"lines":{"100":{"unit":"m"},"200":{"unit":"cm"}}}"#
+      );
+    },
+  )
 }
 
 #[test]

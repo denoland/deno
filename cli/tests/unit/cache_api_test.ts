@@ -106,7 +106,7 @@ Deno.test(async function cachePutReaderLock() {
     response,
   );
 
-  assertRejects(
+  await assertRejects(
     async () => {
       await response.arrayBuffer();
     },
@@ -115,4 +115,26 @@ Deno.test(async function cachePutReaderLock() {
   );
 
   await promise;
+});
+
+Deno.test(async function cachePutResourceLeak() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new Error("leak"));
+    },
+  });
+
+  await assertRejects(
+    async () => {
+      await cache.put(
+        new Request("https://example.com/"),
+        new Response(stream),
+      );
+    },
+    Error,
+    "leak",
+  );
 });

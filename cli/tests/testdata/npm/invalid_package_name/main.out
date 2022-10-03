@@ -1,0 +1,2 @@
+error: Not a valid package: @foo
+    at [WILDCARD]/invalid_package_name/main.js:1:22
