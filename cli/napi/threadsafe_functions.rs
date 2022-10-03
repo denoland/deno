@@ -43,7 +43,7 @@ impl TsFn {
       let context = self.context;
       let env = self.env;
       let call = Box::new(move || {
-        let scope = &mut unsafe { (&*env).scope() };
+        let scope = &mut unsafe { (*env).scope() };
         match js_func {
           Some(func) => {
             let func: v8::Local<v8::Value> =
