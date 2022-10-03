@@ -30,6 +30,9 @@ members = [
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
+[patch.crates-io]
+deno_graph = { path = '../deno_graph' }
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
