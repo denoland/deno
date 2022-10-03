@@ -203,6 +203,13 @@ itest!(error_version_after_subpath {
   exit_code: 1,
 });
 
+itest!(deno_cache {
+  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  output: "npm/deno_cache.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
