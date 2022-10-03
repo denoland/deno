@@ -81,7 +81,6 @@ impl GraphData {
         continue;
       }
       if specifier.scheme() == "npm" {
-        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
         if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
           self.npm_packages.insert(reference.req);
           continue;

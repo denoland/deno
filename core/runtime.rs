@@ -3217,6 +3217,90 @@ assertEquals(1, notify_return_value);
   }
 
   #[tokio::test]
+  async fn test_sync_op_serialize_object_with_numbers_as_keys() {
+    #[op]
+    fn op_sync_serialize_object_with_numbers_as_keys(
+      value: serde_json::Value,
+    ) -> Result<(), Error> {
+      assert_eq!(
+        value.to_string(),
+        r#"{"lines":{"100":{"unit":"m"},"200":{"unit":"cm"}}}"#
+      );
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![op_sync_serialize_object_with_numbers_as_keys::decl()])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "op_sync_serialize_object_with_numbers_as_keys.js",
+        r#"
+Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
+  lines: {
+    100: {
+      unit: "m"
+    },
+    200: {
+      unit: "cm"
+    }
+  }
+})
+"#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn test_async_op_serialize_object_with_numbers_as_keys() {
+    #[op]
+    async fn op_async_serialize_object_with_numbers_as_keys(
+      value: serde_json::Value,
+    ) -> Result<(), Error> {
+      assert_eq!(
+        value.to_string(),
+        r#"{"lines":{"100":{"unit":"m"},"200":{"unit":"cm"}}}"#
+      );
+      Ok(())
+    }
+
+    let extension = Extension::builder()
+      .ops(vec![op_async_serialize_object_with_numbers_as_keys::decl()])
+      .build();
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![extension],
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "op_async_serialize_object_with_numbers_as_keys.js",
+        r#"
+Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
+  lines: {
+    100: {
+      unit: "m"
+    },
+    200: {
+      unit: "cm"
+    }
+  }
+})
+"#,
+      )
+      .unwrap();
+    runtime.run_event_loop(false).await.unwrap();
+  }
+
+  #[tokio::test]
   async fn test_set_macrotask_callback_set_next_tick_callback() {
     #[op]
     async fn op_async_sleep() -> Result<(), Error> {
