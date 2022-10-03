@@ -21,6 +21,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use crate::deserialize_headers;
+use crate::get_header;
+use crate::serialize_headers;
+use crate::vary_header_matches;
 use crate::Cache;
 use crate::CacheDeleteRequest;
 use crate::CacheMatchRequest;
@@ -328,51 +332,6 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
     .join("responses")
 }
 
-/// Check if the headers provided in the vary_header match
-/// the query request headers and the cached request headers.
-fn vary_header_matches(
-  vary_header: &ByteString,
-  query_request_headers: &[(ByteString, ByteString)],
-  cached_request_headers: &[(ByteString, ByteString)],
-) -> bool {
-  let vary_header = match std::str::from_utf8(vary_header) {
-    Ok(vary_header) => vary_header,
-    Err(_) => return false,
-  };
-  let headers = get_headers_from_vary_header(vary_header);
-  for header in headers {
-    let query_header = get_header(&header, query_request_headers);
-    let cached_header = get_header(&header, cached_request_headers);
-    if query_header != cached_header {
-      return false;
-    }
-  }
-  true
-}
-
-fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
-  vary_header
-    .split(',')
-    .map(|s| s.trim().to_lowercase())
-    .collect()
-}
-
-fn get_header(
-  name: &str,
-  headers: &[(ByteString, ByteString)],
-) -> Option<ByteString> {
-  headers
-    .iter()
-    .find(|(k, _)| {
-      if let Ok(k) = std::str::from_utf8(k) {
-        k.eq_ignore_ascii_case(name)
-      } else {
-        false
-      }
-    })
-    .map(|(_, v)| v.to_owned())
-}
-
 impl deno_core::Resource for SqliteBackedCache {
   fn name(&self) -> std::borrow::Cow<str> {
     "SqliteBackedCache".into()
@@ -462,42 +421,4 @@ impl Resource for CacheResponseResource {
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
-}
-
-fn serialize_headers(headers: &[(ByteString, ByteString)]) -> Vec<u8> {
-  let mut serialized_headers = Vec::new();
-  for (name, value) in headers {
-    serialized_headers.extend_from_slice(name);
-    serialized_headers.extend_from_slice(b"\r\n");
-    serialized_headers.extend_from_slice(value);
-    serialized_headers.extend_from_slice(b"\r\n");
-  }
-  serialized_headers
-}
-
-fn deserialize_headers(
-  serialized_headers: &[u8],
-) -> Vec<(ByteString, ByteString)> {
-  let mut headers = Vec::new();
-  let mut piece = None;
-  let mut start = 0;
-  for (i, byte) in serialized_headers.iter().enumerate() {
-    if byte == &b'\r' && serialized_headers.get(i + 1) == Some(&b'\n') {
-      if piece.is_none() {
-        piece = Some(start..i);
-      } else {
-        let name = piece.unwrap();
-        let value = start..i;
-        headers.push((
-          ByteString::from(&serialized_headers[name]),
-          ByteString::from(&serialized_headers[value]),
-        ));
-        piece = None;
-      }
-      start = i + 2;
-    }
-  }
-  assert!(piece.is_none());
-  assert_eq!(start, serialized_headers.len());
-  headers
 }
