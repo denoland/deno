@@ -619,10 +619,7 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_> {
     seed: T,
   ) -> Result<Option<T::Value>> {
     for pos in self.range.by_ref() {
-      let val = self
-        .obj
-        .get_index(self.scope, pos)
-        .ok_or(Error::LengthMismatch)?;
+      let val = self.obj.get_index(self.scope, pos).unwrap();
       let mut deserializer = Deserializer::new(self.scope, val, None);
       return seed.deserialize(&mut deserializer).map(Some);
     }
