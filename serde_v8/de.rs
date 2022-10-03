@@ -618,12 +618,13 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_> {
     &mut self,
     seed: T,
   ) -> Result<Option<T::Value>> {
-    for pos in self.range.by_ref() {
+    if let Some(pos) = self.range.next() {
       let val = self.obj.get_index(self.scope, pos).unwrap();
       let mut deserializer = Deserializer::new(self.scope, val, None);
-      return seed.deserialize(&mut deserializer).map(Some);
+      seed.deserialize(&mut deserializer).map(Some)
+    } else {
+      Ok(None)
     }
-    Ok(None)
   }
 
   fn size_hint(&self) -> Option<usize> {
