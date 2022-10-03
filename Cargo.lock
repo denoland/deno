@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "deno_core",
  "deno_ffi",
@@ -2972,7 +2972,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "proc-macro2 1.0.43",
  "quote 1.0.21",

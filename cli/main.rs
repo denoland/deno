@@ -22,7 +22,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
-pub mod napi;
+mod napi;
 mod node;
 mod npm;
 mod ops;
