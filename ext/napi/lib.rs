@@ -89,7 +89,7 @@ pub struct NapiModule {
   reserved: [*mut c_void; 4],
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
   InvalidArg,
   ObjectExpected,
