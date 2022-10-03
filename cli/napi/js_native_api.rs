@@ -405,9 +405,15 @@ fn napi_create_function(
       std::ffi::CStr::from_ptr(name as *const _).to_str().unwrap()
     } else {
       let name = std::slice::from_raw_parts(name, length as usize);
-      std::str::from_utf8(name).unwrap()
+      // If ends with NULL
+      if name[name.len() - 1] == 0 {
+        std::str::from_utf8(&name[0..name.len() - 1]).unwrap()
+      } else {
+        std::str::from_utf8(name).unwrap()
+      }
     }
   });
+
   let function = create_function(env_ptr, name, cb, cb_info);
   let value: v8::Local<v8::Value> = function.into();
   *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
@@ -1121,13 +1127,13 @@ fn napi_define_class(
         && setter.is_some()
         && (p.attributes & napi_writable) == 0
       {
-        accessor_property = accessor_property + v8::READ_ONLY;
+        accessor_property = accessor_property | v8::READ_ONLY;
       }
       if p.attributes & napi_enumerable == 0 {
-        accessor_property = accessor_property + v8::DONT_ENUM;
+        accessor_property = accessor_property | v8::DONT_ENUM;
       }
       if p.attributes & napi_configurable == 0 {
-        accessor_property = accessor_property + v8::DONT_DELETE;
+        accessor_property = accessor_property | v8::DONT_DELETE;
       }
 
       let proto = tpl.prototype_template(scope);
@@ -1537,7 +1543,7 @@ fn napi_get_property_names(
   let array: v8::Local<v8::Array> = object
     .to_object(&mut env.scope())
     .unwrap()
-    .get_property_names(&mut env.scope())
+    .get_property_names(&mut env.scope(), Default::default())
     .unwrap();
   let value: v8::Local<v8::Value> = array.into();
   *result = transmute::<v8::Local<v8::Value>, napi_value>(value);

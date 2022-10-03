@@ -1383,7 +1383,7 @@ version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
 dependencies = [
- "convert_case",
+ "convert_case 0.4.0",
  "proc-macro2 1.0.43",
  "quote 1.0.21",
  "rustc_version 0.4.0",
@@ -2942,9 +2942,9 @@ checksum = "1be75210f300e9fbf386ccac1c8eaaed23410e2f7f7aa9295b78c436a172ef51"
 dependencies = [
  "convert_case 0.5.0",
  "napi-derive-backend",
- "proc-macro2 1.0.39",
- "quote 1.0.18",
- "syn 1.0.96",
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
+ "syn 1.0.99",
 ]
 
 [[package]]
@@ -2955,10 +2955,10 @@ checksum = "92ba4800264fac8a7726b208d5dd4c6d637d1027d73b026061a69d3339a0a930"
 dependencies = [
  "convert_case 0.5.0",
  "once_cell",
- "proc-macro2 1.0.39",
- "quote 1.0.18",
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
  "regex",
- "syn 1.0.96",
+ "syn 1.0.99",
 ]
 
 [[package]]
@@ -2974,11 +2974,11 @@ dependencies = [
 name = "napi_sym"
 version = "0.0.1"
 dependencies = [
- "proc-macro2 1.0.39",
- "quote 1.0.18",
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
  "serde",
  "serde_json",
- "syn 1.0.96",
+ "syn 1.0.99",
 ]
 
 [[package]]
