@@ -181,6 +181,13 @@ itest!(nonexistent_file {
   exit_code: 1,
 });
 
+itest!(invalid_package_name {
+  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  output: "npm/invalid_package_name/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
 itest!(require_json {
   args: "run --unstable -A --quiet npm/require_json/main.js",
   output: "npm/require_json/main.out",

@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
@@ -52,7 +53,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      bail!("Not a valid package: {}", specifier);
+      return Err(generic_error(format!("Not a valid package: {}", specifier)));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
