@@ -544,7 +544,7 @@ where
 
   MODULE.with(|cell| {
     let slot = *cell.borrow();
-    match slot {
+    let obj = match slot {
       Some(nm) => {
         // SAFETY: napi_register_module guarantees that `nm` is valid.
         let nm = unsafe { &*nm };
@@ -587,6 +587,9 @@ where
           v8_value: exports.into(),
         })
       }
-    }
+    };
+    // Don't run the `Drop` handler on Library.    
+    std::mem::forget(library);
+    obj
   })
 }
