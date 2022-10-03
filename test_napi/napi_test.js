@@ -1,6 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import {
+  assert,
+  assertEquals,
+  fromFileUrl,
+  loadTestLibrary,
+} from "./common.js";
 
 const lib = loadTestLibrary();
 
@@ -69,8 +74,9 @@ Deno.test("napi_tsfn", async function () {
 
 Deno.test("napi_read_file_async", async function () {
   const url = new URL("./common.js", import.meta.url);
-  const buf = await lib.readFileAsync(url.pathname);
+  const file = fromFileUrl(url);
+  const buf = await lib.readFileAsync(file);
   assert(buf instanceof Uint8Array);
-  const actual = await Deno.readFile(url.pathname);
+  const actual = await Deno.readFile(file);
   assertEquals(buf, actual);
 });
