@@ -101,8 +101,6 @@ detest!(
   "['hello', 'world']",
   vec!["hello".to_owned(), "world".to_owned()]
 );
-defail!(de_vec_wrong_len, (u64, bool, String), "[123, true]", |e| e
-  == Err(Error::LengthMismatch));
 detest!(
   de_tuple,
   (u64, bool, ()),
@@ -110,13 +108,17 @@ detest!(
   (123, true, ())
 );
 defail!(
-  de_tuple_wrong_len_a,
+  de_tuple_wrong_len_short,
+  (u64, bool, ()),
+  "[123, true]",
+  |e| e == Err(Error::LengthMismatch)
+);
+defail!(
+  de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
   |e| e == Err(Error::LengthMismatch)
 );
-defail!(de_tuple_wrong_len_b, (u64, bool, ()), "[123, true]", |e| e
-  == Err(Error::LengthMismatch));
 detest!(
   de_mathop,
   MathOp,
