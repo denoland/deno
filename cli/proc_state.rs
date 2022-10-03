@@ -294,8 +294,6 @@ impl ProcState {
   ) -> Result<(), AnyError> {
     let roots = roots.into_iter().map(|s| (s, ModuleKind::Esm)).collect::<Vec<_>>();
 
-    // TODO(bartlomieju): this is very make-shift, is there an existing API
-    // that we could include it like with "maybe_imports"?
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
