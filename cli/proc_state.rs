@@ -292,7 +292,10 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
-    let roots = roots.into_iter().map(|s| (s, ModuleKind::Esm)).collect::<Vec<_>>();
+    let roots = roots
+      .into_iter()
+      .map(|s| (s, ModuleKind::Esm))
+      .collect::<Vec<_>>();
 
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
