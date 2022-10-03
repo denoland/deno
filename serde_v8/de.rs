@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use serde::de::{self, Visitor};
+use serde::de::{self, SeqAccess as _, Visitor};
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
@@ -259,15 +259,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     let arr = v8::Local::<v8::Array>::try_from(self.input)
       .map_err(|_| Error::ExpectedArray)?;
-    let len = arr.length();
-    let obj = v8::Local::<v8::Object>::from(arr);
-    let seq = SeqAccess {
-      pos: 0,
-      len,
-      obj,
-      scope: self.scope,
-    };
-    visitor.visit_seq(seq)
+    visitor.visit_seq(SeqAccess::new(arr.into(), self.scope, 0..arr.length()))
   }
 
   // Like deserialize_seq except it prefers tuple's length over input array's length
@@ -283,13 +275,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         return Err(Error::LengthMismatch);
       }
     }
-    let seq = SeqAccess {
-      pos: 0,
-      len: len as u32,
-      obj,
-      scope: self.scope,
-    };
-    visitor.visit_seq(seq)
+    visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
   }
 
   // Tuple structs look just like sequences in JSON.
@@ -325,24 +311,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       };
       visitor.visit_map(map)
     } else {
-      let prop_names = obj.get_own_property_names(
-        self.scope,
-        v8::GetPropertyNamesArgsBuilder::new()
-          .key_conversion(v8::KeyConversionMode::ConvertToString)
-          .build(),
-      );
-      let keys: Vec<magic::Value> = match prop_names {
-        Some(names) => from_v8(self.scope, names.into()).unwrap(),
-        None => vec![],
-      };
-
-      let map = MapObjectAccess {
-        obj,
-        keys: keys.into_iter(),
-        next_value: None,
-        scope: self.scope,
-      };
-      visitor.visit_map(map)
+      visitor.visit_map(MapObjectAccess::new(obj, self.scope))
     }
   }
 
@@ -376,24 +345,12 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       }
       _ => {
         // Regular struct
-        let obj: v8::Local<v8::Object> =
-          self.input.try_into().or(Err(Error::ExpectedObject))?;
+        let obj = v8::Local::<v8::Object>::try_from(self.input)
+          .or(Err(Error::ExpectedObject))?;
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
-          let prop_names =
-            obj.get_own_property_names(self.scope, Default::default());
-          let keys: Vec<magic::Value> = match prop_names {
-            Some(names) => from_v8(self.scope, names.into()).unwrap(),
-            None => vec![],
-          };
-
-          visitor.visit_map(MapObjectAccess {
-            obj,
-            scope: self.scope,
-            keys: keys.into_iter(),
-            next_value: None,
-          })
+          visitor.visit_map(MapObjectAccess::new(obj, self.scope))
         } else {
           visitor.visit_map(StructAccess {
             obj,
@@ -491,9 +448,31 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
 
 struct MapObjectAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'a mut v8::HandleScope<'s>,
-  keys: std::vec::IntoIter<magic::Value<'a>>,
-  next_value: Option<v8::Local<'a, v8::Value>>,
+  keys: SeqAccess<'a, 's>,
+  next_value: Option<v8::Local<'s, v8::Value>>,
+}
+
+impl<'a, 's> MapObjectAccess<'a, 's> {
+  pub fn new(
+    obj: v8::Local<'a, v8::Object>,
+    scope: &'a mut v8::HandleScope<'s>,
+  ) -> Self {
+    let keys = match obj.get_own_property_names(
+      scope,
+      v8::GetPropertyNamesArgsBuilder::new()
+        .key_conversion(v8::KeyConversionMode::ConvertToString)
+        .build(),
+    ) {
+      Some(keys) => SeqAccess::new(keys.into(), scope, 0..keys.length()),
+      None => SeqAccess::new(obj, scope, 0..0),
+    };
+
+    Self {
+      obj,
+      keys,
+      next_value: None,
+    }
+  }
 }
 
 impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
@@ -503,14 +482,15 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
     &mut self,
     seed: K,
   ) -> Result<Option<K::Value>> {
-    for key in self.keys.by_ref() {
-      let v8_val = self.obj.get(self.scope, key.v8_value).unwrap();
+    while let Some(key) = self.keys.next_element::<magic::Value>()? {
+      let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
       if v8_val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(v8_val);
-      let mut deserializer = Deserializer::new(self.scope, key.v8_value, None);
+      let mut deserializer =
+        Deserializer::new(self.keys.scope, key.v8_value, None);
       return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
@@ -524,12 +504,12 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_> {
       .next_value
       .take()
       .expect("Call next_key_seed before next_value_seed");
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let mut deserializer = Deserializer::new(self.keys.scope, v8_val, None);
     seed.deserialize(&mut deserializer)
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some(self.keys.len())
+    self.keys.size_hint()
   }
 }
 
@@ -574,14 +554,14 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_> {
   }
 }
 
-struct StructAccess<'a, 'b, 's> {
+struct StructAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'b mut v8::HandleScope<'s>,
+  scope: &'a mut v8::HandleScope<'s>,
   keys: std::slice::Iter<'static, &'static str>,
-  next_value: Option<v8::Local<'b, v8::Value>>,
+  next_value: Option<v8::Local<'s, v8::Value>>,
 }
 
-impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
+impl<'de> de::MapAccess<'de> for StructAccess<'_, '_> {
   type Error = Error;
 
   fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
@@ -615,34 +595,40 @@ impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
   }
 }
 
-struct SeqAccess<'a, 'b, 's> {
+struct SeqAccess<'a, 's> {
   obj: v8::Local<'a, v8::Object>,
-  scope: &'b mut v8::HandleScope<'s>,
-  len: u32,
-  pos: u32,
+  scope: &'a mut v8::HandleScope<'s>,
+  range: std::ops::Range<u32>,
 }
 
-impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
+impl<'a, 's> SeqAccess<'a, 's> {
+  pub fn new(
+    obj: v8::Local<'a, v8::Object>,
+    scope: &'a mut v8::HandleScope<'s>,
+    range: std::ops::Range<u32>,
+  ) -> Self {
+    Self { obj, scope, range }
+  }
+}
+
+impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_> {
   type Error = Error;
 
   fn next_element_seed<T: de::DeserializeSeed<'de>>(
     &mut self,
     seed: T,
   ) -> Result<Option<T::Value>> {
-    let pos = self.pos;
-    self.pos += 1;
-
-    if pos < self.len {
+    if let Some(pos) = self.range.next() {
       let val = self.obj.get_index(self.scope, pos).unwrap();
       let mut deserializer = Deserializer::new(self.scope, val, None);
-      Ok(Some(seed.deserialize(&mut deserializer)?))
+      seed.deserialize(&mut deserializer).map(Some)
     } else {
       Ok(None)
     }
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some((self.len - self.pos) as usize)
+    self.range.size_hint().1
   }
 }
 
