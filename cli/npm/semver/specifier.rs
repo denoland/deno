@@ -3,6 +3,8 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use monch::*;
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::errors::with_failure_handling;
 use super::range::Partial;
@@ -11,7 +13,7 @@ use super::range::XRange;
 use super::NpmVersion;
 
 /// Version requirement found in npm specifiers.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SpecifierVersionReq {
   raw_text: String,
   range: VersionRange,

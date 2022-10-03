@@ -7,6 +7,7 @@ use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
 use crate::deno_dir;
@@ -22,9 +23,10 @@ use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
 use crate::node;
 use crate::node::NodeResolution;
-use crate::npm::GlobalNpmPackageResolver;
+use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
 use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
@@ -87,7 +89,9 @@ pub struct Inner {
   pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  pub npm_resolver: GlobalNpmPackageResolver,
+  pub node_analysis_cache: NodeAnalysisCache,
+  pub npm_cache: NpmCache,
+  pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
 }
@@ -220,16 +224,31 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let npm_resolver = GlobalNpmPackageResolver::from_deno_dir(
+    let registry_url = NpmRegistryApi::default_url();
+    let npm_cache = NpmCache::from_deno_dir(
       &dir,
-      cli_options.reload_flag(),
       cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let npm_resolver = NpmPackageResolver::new(
+      npm_cache.clone(),
+      api,
       cli_options.unstable()
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
-      progress_bar.clone(),
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
     );
+    let node_analysis_cache =
+      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
     let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
@@ -253,6 +272,8 @@ impl ProcState {
       parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      node_analysis_cache,
+      npm_cache,
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
@@ -413,7 +434,6 @@ impl ProcState {
         .npm_resolver
         .add_package_reqs(npm_package_references)
         .await?;
-      self.npm_resolver.cache_packages().await?;
       self.prepare_node_std_graph().await?;
     }
 
@@ -501,15 +521,7 @@ impl ProcState {
             &self.npm_resolver,
           ))
           .with_context(|| {
-            format!(
-              "Could not resolve '{}' from '{}'.",
-              specifier,
-              self
-                .npm_resolver
-                .resolve_package_from_specifier(&referrer)
-                .unwrap()
-                .id
-            )
+            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
           });
       }
 
@@ -650,7 +662,6 @@ impl ProcState {
     }
     if !package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(package_reqs).await?;
-      self.npm_resolver.cache_packages().await?;
     }
 
     Ok(graph)

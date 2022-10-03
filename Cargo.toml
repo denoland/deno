@@ -14,6 +14,7 @@ members = [
   "test_napi",
   "test_util",
   "ext/broadcast_channel",
+  "ext/cache",
   "ext/console",
   "ext/crypto",
   "ext/fetch",

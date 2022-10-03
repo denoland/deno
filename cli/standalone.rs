@@ -283,6 +283,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
@@ -299,6 +300,7 @@ pub async fn run(
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,

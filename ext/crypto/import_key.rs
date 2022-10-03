@@ -637,7 +637,15 @@ fn decode_b64url_to_field_bytes<C: elliptic_curve::Curve>(
   jwt_b64_int_or_err!(val, b64, "invalid b64 coordinate");
 
   let mut bytes = elliptic_curve::FieldBytes::<C>::default();
-  let val = val.as_bytes();
+  let original_bytes = val.as_bytes();
+  let mut new_bytes: Vec<u8> = vec![];
+  if original_bytes.len() < bytes.len() {
+    new_bytes = vec![0; bytes.len() - original_bytes.len()];
+  }
+  new_bytes.extend_from_slice(original_bytes);
+
+  let val = new_bytes.as_slice();
+
   if val.len() != bytes.len() {
     return Err(data_error("invalid b64 coordinate"));
   }
@@ -754,19 +762,19 @@ fn import_key_ec(
         EcNamedCurve::P256 => {
           // 1-2.
           let point = p256::EncodedPoint::from_bytes(&data)
-            .map_err(|_| data_error("invalid P-256 eliptic curve point"))?;
+            .map_err(|_| data_error("invalid P-256 elliptic curve point"))?;
           // 3.
           if point.is_identity() {
-            return Err(data_error("invalid P-256 eliptic curve point"));
+            return Err(data_error("invalid P-256 elliptic curve point"));
           }
         }
         EcNamedCurve::P384 => {
           // 1-2.
           let point = p384::EncodedPoint::from_bytes(&data)
-            .map_err(|_| data_error("invalid P-384 eliptic curve point"))?;
+            .map_err(|_| data_error("invalid P-384 elliptic curve point"))?;
           // 3.
           if point.is_identity() {
-            return Err(data_error("invalid P-384 eliptic curve point"));
+            return Err(data_error("invalid P-384 elliptic curve point"));
           }
         }
         _ => return Err(not_supported_error("Unsupported named curve")),
@@ -874,10 +882,10 @@ fn import_key_ec(
           EcNamedCurve::P256 => {
             let point =
               p256::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
-                data_error("invalid P-256 eliptic curve SPKI data")
+                data_error("invalid P-256 elliptic curve SPKI data")
               })?;
             if point.is_identity() {
-              return Err(data_error("invalid P-256 eliptic curve point"));
+              return Err(data_error("invalid P-256 elliptic curve point"));
             }
 
             point.as_bytes().len()
@@ -885,11 +893,11 @@ fn import_key_ec(
           EcNamedCurve::P384 => {
             let point =
               p384::EncodedPoint::from_bytes(&*encoded_key).map_err(|_| {
-                data_error("invalid P-384 eliptic curve SPKI data")
+                data_error("invalid P-384 elliptic curve SPKI data")
               })?;
 
             if point.is_identity() {
-              return Err(data_error("invalid P-384 eliptic curve point"));
+              return Err(data_error("invalid P-384 elliptic curve point"));
             }
 
             point.as_bytes().len()
