@@ -6,10 +6,10 @@ use deno_runtime::deno_napi::*;
 use v8::BackingStore;
 use v8::UniqueRef;
 
+use super::util::get_array_buffer_ptr;
 use deno_runtime::deno_napi::function::create_function;
 use deno_runtime::deno_napi::function::create_function_template;
 use deno_runtime::deno_napi::function::CallbackInfo;
-use super::util::get_array_buffer_ptr;
 use std::ptr::NonNull;
 
 // Macro to check napi arguments.
