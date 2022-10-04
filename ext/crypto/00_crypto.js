@@ -27,6 +27,7 @@
     Int8ArrayPrototype,
     JSONParse,
     JSONStringify,
+    MathCeil,
     ObjectAssign,
     ObjectPrototypeIsPrototypeOf,
     StringPrototypeToLowerCase,
@@ -4396,14 +4397,11 @@
           // 8.
           if (length === null) {
             return buf.buffer;
-          }
-          if (
-            length === 0 || buf.buffer.byteLength * 8 < length ||
-            length % 8 !== 0
-          ) {
+          } else if (buf.buffer.byteLength * 8 < length) {
             throw new DOMException("Invalid length", "OperationError");
+          } else {
+            return buf.buffer.slice(0, MathCeil(length / 8));
           }
-          return buf.buffer.slice(0, length / 8);
         } else {
           throw new DOMException("Not implemented", "NotSupportedError");
         }
@@ -4469,12 +4467,11 @@
         if (length === null) {
           return secret.buffer;
         } else if (
-          length === 0 || secret.buffer.byteLength * 8 < length ||
-          secret.length * 8 < length
+          secret.buffer.byteLength * 8 < length
         ) {
           throw new DOMException("Invalid length", "OperationError");
         } else {
-          return secret.subarray(0, length / 8).buffer;
+          return secret.buffer.slice(0, MathCeil(length / 8));
         }
       }
       default:
