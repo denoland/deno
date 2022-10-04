@@ -491,13 +491,14 @@ async fn create_graph_and_maybe_check(
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![(root, deno_graph::ModuleKind::Esm)],
-      false,
-      maybe_imports,
       &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      deno_graph::GraphOptions {
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        ..Default::default()
+      },
     )
     .await,
   );

@@ -758,13 +758,8 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
       vec![(specifier, ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      None,
-      None,
+      Default::default(),
     )
     .await;
     let state = State::new(
@@ -788,13 +783,8 @@ mod tests {
     let mut loader = MockLoader { fixtures };
     let graph = deno_graph::create_graph(
       vec![(specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      None,
-      None,
+      Default::default(),
     )
     .await;
     let config = TsConfig::new(json!({

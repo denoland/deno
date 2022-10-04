@@ -49,6 +49,7 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::GraphOptions;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -292,7 +293,10 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
-    let roots = roots.into_iter().map(|s| (s, ModuleKind::Esm)).collect::<Vec<_>>();
+    let roots = roots
+      .into_iter()
+      .map(|s| (s, ModuleKind::Esm))
+      .collect::<Vec<_>>();
 
     if !reload_on_watch {
       let graph_data = self.graph_data.read();
@@ -366,13 +370,15 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
-      is_dynamic,
-      maybe_imports,
       &mut loader,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      maybe_file_watcher_reporter,
+      GraphOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
     )
     .await;
 
@@ -615,13 +621,14 @@ impl ProcState {
 
     let graph = create_graph(
       roots,
-      false,
-      maybe_imports,
       &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      GraphOptions {
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        ..Default::default()
+      },
     )
     .await;
 

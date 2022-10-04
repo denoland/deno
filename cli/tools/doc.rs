@@ -13,6 +13,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
+use deno_graph::GraphOptions;
 use deno_graph::ModuleKind;
 use deno_graph::ModuleSpecifier;
 use std::path::PathBuf;
@@ -44,13 +45,11 @@ pub async fn print_docs(
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![(source_file_specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      Some(&analyzer),
-      None,
+      GraphOptions {
+        module_analyzer: Some(&analyzer),
+        ..Default::default()
+      },
     )
     .await;
     let doc_parser = doc::DocParser::new(
