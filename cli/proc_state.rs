@@ -208,6 +208,7 @@ impl ProcState {
     } else {
       None
     };
+    eprintln!("maybe resolver {:#?}", maybe_resolver);
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -343,6 +344,7 @@ impl ProcState {
         specifier: &ModuleSpecifier,
         is_dynamic: bool,
       ) -> LoadFuture {
+        eprintln!("ProcLoader::load {}", specifier.as_str());
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
@@ -405,6 +407,7 @@ impl ProcState {
     };
 
     if !npm_package_references.is_empty() {
+      eprintln!("npm package references {:?}", npm_package_references);
       self
         .npm_resolver
         .add_package_reqs(npm_package_references)
@@ -486,6 +489,7 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!("resolve {} {}", specifier, referrer);
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
