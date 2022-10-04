@@ -11,9 +11,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2.9.0", features = ["napi4", "tokio_rt"] }
-napi-derive = "2.9.0"
-tokio = { version = "1.19.2", features = ["full"] }
+napi-sys = "2.1.0"
 
 [dev-dependencies]
 test_util = { path = "../test_util" }
