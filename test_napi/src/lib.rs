@@ -58,6 +58,11 @@ unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   exports: napi_value,
 ) -> napi_value {
+  #[cfg(windows)]
+  {
+    napi_sys::setup();
+  }
+
   strings::init(env, exports);
   numbers::init(env, exports);
   typedarray::init(env, exports);
