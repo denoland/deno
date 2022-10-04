@@ -21,6 +21,7 @@ use std::ffi::CString;
 pub use std::mem::transmute;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::task::Poll;
@@ -399,9 +400,7 @@ impl Env {
   }
 }
 
-pub fn init<P: deno_ffi::FfiPermissions + 'static>(
-  unstable: bool,
-) -> Extension {
+pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .ops(vec![op_napi_open::decl::<P>()])
     .event_loop_middleware(|op_state_rc, cx| {
@@ -474,6 +473,11 @@ pub fn init<P: deno_ffi::FfiPermissions + 'static>(
     .build()
 }
 
+pub trait NapiPermissions {
+  fn check(&mut self, path: Option<&Path>)
+    -> std::result::Result<(), AnyError>;
+}
+
 pub struct Unstable(pub bool);
 
 fn check_unstable(state: &OpState) {
@@ -486,16 +490,16 @@ fn check_unstable(state: &OpState) {
 }
 
 #[op(v8)]
-fn op_napi_open<FP, 'scope>(
+fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
 where
-  FP: deno_ffi::FfiPermissions + 'static,
+  NP: NapiPermissions + 'static,
 {
   check_unstable(op_state);
-  let permissions = op_state.borrow_mut::<FP>();
+  let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
   let (async_work_sender, tsfn_sender, isolate_ptr) = {
