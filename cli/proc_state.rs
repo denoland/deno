@@ -37,6 +37,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -49,6 +50,7 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -60,6 +62,7 @@ use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
 use std::ops::Deref;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -93,6 +96,7 @@ pub struct Inner {
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
+  node_modules_dir: PathBuf,
 }
 
 impl Deref for ProcState {
@@ -208,7 +212,6 @@ impl ProcState {
     } else {
       None
     };
-    eprintln!("maybe resolver {:#?}", maybe_resolver);
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -236,6 +239,14 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
+    let local_node_modules_dir = cli_options
+      .resolve_local_node_modules_folder()
+      .with_context(|| "Resolving local node_modules folder.")?;
+    let node_modules_dir = if let Some(p) = local_node_modules_dir.clone() {
+      p
+    } else {
+      dir.root.join("npm")
+    };
     let npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
@@ -243,9 +254,7 @@ impl ProcState {
         // don't do the unstable error when in the lsp
         || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
       cli_options.no_npm(),
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
+      local_node_modules_dir,
     );
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
@@ -277,6 +286,7 @@ impl ProcState {
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
+      node_modules_dir,
     })))
   }
 
@@ -327,6 +337,11 @@ impl ProcState {
         None
       };
 
+    let deny_resolver = DenyDirectNpmImportsResolver {
+      maybe_inner_resolver: maybe_resolver,
+      node_modules_dir: &self.node_modules_dir,
+    };
+
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
       graph_data: Arc<RwLock<GraphData>>,
@@ -344,7 +359,6 @@ impl ProcState {
         specifier: &ModuleSpecifier,
         is_dynamic: bool,
       ) -> LoadFuture {
-        eprintln!("ProcLoader::load {}", specifier.as_str());
         let graph_data = self.graph_data.read();
         let found_specifier = graph_data.follow_redirect(specifier);
         match graph_data.get(&found_specifier) {
@@ -374,7 +388,7 @@ impl ProcState {
       is_dynamic,
       maybe_imports,
       &mut loader,
-      maybe_resolver,
+      Some(&deny_resolver),
       maybe_locker,
       Some(&*analyzer),
       maybe_file_watcher_reporter,
@@ -407,7 +421,6 @@ impl ProcState {
     };
 
     if !npm_package_references.is_empty() {
-      eprintln!("npm package references {:?}", npm_package_references);
       self
         .npm_resolver
         .add_package_reqs(npm_package_references)
@@ -489,7 +502,6 @@ impl ProcState {
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("resolve {} {}", specifier, referrer);
     if let Ok(referrer) = deno_core::resolve_url_or_path(referrer) {
       if self.npm_resolver.in_npm_package(&referrer) {
         // we're in an npm package, so use node resolution
@@ -693,4 +705,73 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
     }
   }
+}
+
+#[derive(Debug)]
+struct DenyDirectNpmImportsResolver<'resolver> {
+  maybe_inner_resolver: Option<&'resolver dyn deno_graph::source::Resolver>,
+  node_modules_dir: &'resolver Path,
+}
+
+impl deno_graph::source::Resolver for DenyDirectNpmImportsResolver<'_> {
+  // fn default_jsx_import_source(&self) -> Option<String> {
+  //   if let Some(resolver) = self.maybe_inner_resolver {
+  //     resolver.default_jsx_import_source()
+  //   } else {
+  //     deno_graph::source::Resolver::default_jsx_import_source(self)
+  //   }
+  // }
+
+  // fn jsx_import_source_module(&self) -> &str {
+  //   if let Some(resolver) = self.maybe_inner_resolver {
+  //     resolver.jsx_import_source_module()
+  //   } else {
+  //     deno_graph::source::Resolver::jsx_import_source_module(self)
+  //   }
+  // }
+
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> deno_graph::source::ResolveResponse {
+    eprintln!(
+      "resolve in DenyDirectNpmImportsResolver {} {}",
+      specifier, referrer
+    );
+    let r = if let Some(resolver) = self.maybe_inner_resolver {
+      resolver.resolve(specifier, referrer)
+    } else {
+      match deno_core::resolve_import(specifier, referrer.as_str()) {
+        Ok(specifier) => {
+          deno_graph::source::ResolveResponse::Specifier(specifier)
+        }
+        Err(err) => deno_graph::source::ResolveResponse::Err(err.into()),
+      }
+    };
+
+    if let ResolveResponse::Specifier(s) = &r {
+      if s.scheme() == "file" {
+        let p = s.to_file_path().unwrap();
+        if p.starts_with(self.node_modules_dir) {
+          return ResolveResponse::Err(generic_error(
+            "Can't import npm package directly",
+          ));
+        }
+      }
+    }
+
+    r
+  }
+
+  // fn resolve_types(
+  //   &self,
+  //   specifier: &ModuleSpecifier,
+  // ) -> deno_core::anyhow::Result<Option<(ModuleSpecifier, Option<deno_graph::Range>)>> {
+  //   if let Some(resolver) = self.maybe_inner_resolver {
+  //     resolver.resolve_types(specifier)
+  //   } else {
+  //     deno_graph::source::Resolver::resolve_types(self, specifier)
+  //   }
+  // }
 }
