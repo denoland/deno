@@ -383,21 +383,6 @@ Deno.test(async function generateImportHmacJwk() {
 const pkcs8TestVectors = [
   // rsaEncryption
   { pem: "cli/tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
-  // id-RSASSA-PSS (sha256)
-  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
-  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
-  // id-RSASSA-PSS (default parameters)
-  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
-  {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
-    hash: "SHA-1",
-  },
-  // id-RSASSA-PSS (default hash)
-  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
-  {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
-    hash: "SHA-1",
-  },
 ];
 
 Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
@@ -434,6 +419,57 @@ Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
     assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
   }
 });
+
+const nonInteroperableVectors = [
+  // id-RSASSA-PSS (sha256)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
+  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (default parameters)
+  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
+    hash: "SHA-1",
+  },
+  // id-RSASSA-PSS (default hash)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    hash: "SHA-1",
+  },
+];
+
+Deno.test(
+  { permissions: { read: true } },
+  async function importNonInteroperableRsaPkcs8() {
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    for (const { pem, hash } of nonInteroperableVectors) {
+      const keyFile = await Deno.readTextFile(pem);
+      const pemContents = keyFile.substring(
+        pemHeader.length,
+        keyFile.length - pemFooter.length,
+      );
+      const binaryDerString = atob(pemContents);
+      const binaryDer = new Uint8Array(binaryDerString.length);
+      for (let i = 0; i < binaryDerString.length; i++) {
+        binaryDer[i] = binaryDerString.charCodeAt(i);
+      }
+
+      await assertRejects(
+        () =>
+          crypto.subtle.importKey(
+            "pkcs8",
+            binaryDer,
+            { name: "RSA-PSS", hash },
+            true,
+            ["sign"],
+          ),
+        DOMException,
+        "unsupported algorithm",
+      );
+    }
+  },
+);
 
 // deno-fmt-ignore
 const asn1AlgorithmIdentifier = new Uint8Array([
