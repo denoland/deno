@@ -32,6 +32,8 @@ use libloading::os::unix::*;
 #[cfg(windows)]
 use libloading::os::windows::*;
 
+pub mod function;
+
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;
 pub type napi_value = *mut c_void;
@@ -377,9 +379,14 @@ impl Env {
     self.async_work_sender.unbounded_send(async_work).unwrap();
   }
 
-  // TODO(@littledivy): Painful hack. ouch.
+  #[inline]
+  pub fn isolate(&self) -> &mut v8::OwnedIsolate {
+    // SAFETY: Lifetime of `OwnedIsolate` is longer than `Env`.
+    unsafe { &mut *self.isolate_ptr }
+  }
+
+  #[inline]
   pub fn scope(&self) -> v8::CallbackScope {
-    assert!(!self.isolate_ptr.is_null(), "isolate_ptr is null");
     // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
     // already on the stack, but we don't have access to it.
     let context = unsafe {

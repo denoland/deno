@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-
-use deno_runtime::deno_napi::*;
+use crate::*;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -27,11 +26,10 @@ impl CallbackInfo {
   }
 }
 
-fn call_fn(
-  _: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
+extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
+  let args =
+    unsafe { v8::FunctionCallbackArguments::from_function_callback_info(info) };
+  let mut rv = unsafe { v8::ReturnValue::from_function_callback_info(info) };
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
     let external_value =
@@ -65,7 +63,7 @@ pub fn create_function<'a>(
     scope,
     CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
   );
-  let function = v8::Function::builder(call_fn)
+  let function = v8::Function::builder_raw(call_fn)
     .data(external.into())
     .build(scope)
     .unwrap();
@@ -92,7 +90,7 @@ pub fn create_function_template<'a>(
     scope,
     CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
   );
-  let function = v8::FunctionTemplate::builder(call_fn)
+  let function = v8::FunctionTemplate::builder_raw(call_fn)
     .data(external.into())
     .build(scope);
 

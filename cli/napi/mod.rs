@@ -17,7 +17,6 @@
 
 pub mod r#async;
 pub mod env;
-pub mod function;
 pub mod js_native_api;
 pub mod threadsafe_functions;
 pub mod util;
