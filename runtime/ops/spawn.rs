@@ -76,7 +76,7 @@ pub struct ChildStatus {
   signal: Option<String>,
 }
 
-impl TryFrom<std::process::ExitStatus> for ChildStatus {
+impl TryFrom<ExitStatus> for ChildStatus {
   type Error = AnyError;
 
   fn try_from(status: ExitStatus) -> Result<Self, Self::Error> {
@@ -122,9 +122,13 @@ pub struct SpawnOutput {
 fn create_command(
   state: &mut OpState,
   args: SpawnArgs,
+  api_name: &str,
 ) -> Result<std::process::Command, AnyError> {
   super::check_unstable(state, "Deno.spawn");
-  state.borrow_mut::<Permissions>().run.check(&args.cmd)?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check(&args.cmd, Some(api_name))?;
 
   let mut command = std::process::Command::new(args.cmd);
   command.args(args.args);
@@ -149,6 +153,8 @@ fn create_command(
     command.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     command.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
@@ -183,8 +189,10 @@ struct Child {
 fn op_spawn_child(
   state: &mut OpState,
   args: SpawnArgs,
+  api_name: String,
 ) -> Result<Child, AnyError> {
-  let mut command = tokio::process::Command::from(create_command(state, args)?);
+  let mut command =
+    tokio::process::Command::from(create_command(state, args, &api_name)?);
   // TODO(@crowlkats): allow detaching processes.
   //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
@@ -244,7 +252,7 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output = create_command(state, args)?.output()?;
+  let output = create_command(state, args, "Deno.spawnSync()")?.output()?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,

@@ -21,7 +21,7 @@ Deno.test("output", async () => {
   });
   await c.status;
   const worker = new Worker(
-    new URL("./captured_output.worker.js", import.meta.url).href,
+    import.meta.resolve("./captured_output.worker.js"),
     { type: "module" },
   );
 

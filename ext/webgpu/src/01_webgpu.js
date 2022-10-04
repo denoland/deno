@@ -10,6 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
@@ -24,7 +25,6 @@
     Error,
     MathMax,
     ObjectDefineProperty,
-    ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
     Promise,
     PromiseAll,
@@ -47,6 +47,31 @@
     Uint32ArrayPrototype,
     Uint8Array,
   } = window.__bootstrap.primordials;
+
+  const _rid = Symbol("[[rid]]");
+  const _size = Symbol("[[size]]");
+  const _usage = Symbol("[[usage]]");
+  const _state = Symbol("[[state]]");
+  const _mappingRange = Symbol("[[mapping_range]]");
+  const _mappedRanges = Symbol("[[mapped_ranges]]");
+  const _mapMode = Symbol("[[map_mode]]");
+  const _adapter = Symbol("[[adapter]]");
+  const _cleanup = Symbol("[[cleanup]]");
+  const _vendor = Symbol("[[vendor]]");
+  const _architecture = Symbol("[[architecture]]");
+  const _description = Symbol("[[description]]");
+  const _limits = Symbol("[[limits]]");
+  const _features = Symbol("[[features]]");
+  const _reason = Symbol("[[reason]]");
+  const _message = Symbol("[[message]]");
+  const _label = Symbol("[[label]]");
+  const _device = Symbol("[[device]]");
+  const _queue = Symbol("[[queue]]");
+  const _views = Symbol("[[views]]");
+  const _texture = Symbol("[[texture]]");
+  const _encoders = Symbol("[[encoders]]");
+  const _encoder = Symbol("[[encoder]]");
+  const _descriptor = Symbol("[[descriptor]]");
 
   /**
    * @param {any} self
@@ -154,15 +179,35 @@
     }
   }
 
-  class GPUOutOfMemoryError extends Error {
-    name = "GPUOutOfMemoryError";
+  class GPUError extends Error {
     constructor() {
-      super("device out of memory");
+      super();
+      webidl.illegalConstructor();
+    }
+
+    [_message];
+    get message() {
+      webidl.assertBranded(this, GPUErrorPrototype);
+      return this[_message];
+    }
+  }
+  const GPUErrorPrototype = GPUError.prototype;
+
+  class GPUOutOfMemoryError extends GPUError {
+    name = "GPUOutOfMemoryError";
+    constructor(message) {
+      const prefix = "Failed to construct 'GPUOutOfMemoryError'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      message = webidl.converters.DOMString(message, {
+        prefix,
+        context: "Argument 1",
+      });
+      super(message);
     }
   }
   const GPUOutOfMemoryErrorPrototype = GPUOutOfMemoryError.prototype;
 
-  class GPUValidationError extends Error {
+  class GPUValidationError extends GPUError {
     name = "GPUValidationError";
     /** @param {string} message */
     constructor(message) {
@@ -196,13 +241,14 @@
 
       const { err, ...data } = await core.opAsync(
         "op_webgpu_request_adapter",
-        { ...options },
+        options.powerPreference,
+        options.forceFallbackAdapter,
       );
 
       if (err) {
         return null;
       } else {
-        return createGPUAdapter(data.name, data);
+        return createGPUAdapter(data);
       }
     }
 
@@ -211,10 +257,6 @@
     }
   }
   const GPUPrototype = GPU.prototype;
-
-  const _name = Symbol("[[name]]");
-  const _adapter = Symbol("[[adapter]]");
-  const _cleanup = Symbol("[[cleanup]]");
 
   /**
    * @typedef InnerGPUAdapter
@@ -225,14 +267,12 @@
    */
 
   /**
-   * @param {string} name
    * @param {InnerGPUAdapter} inner
    * @returns {GPUAdapter}
    */
-  function createGPUAdapter(name, inner) {
+  function createGPUAdapter(inner) {
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
-    adapter[_name] = name;
     adapter[_adapter] = {
       ...inner,
       features: createGPUSupportedFeatures(inner.features),
@@ -242,16 +282,9 @@
   }
 
   class GPUAdapter {
-    /** @type {string} */
-    [_name];
     /** @type {InnerGPUAdapter} */
     [_adapter];
 
-    /** @returns {string} */
-    get name() {
-      webidl.assertBranded(this, GPUAdapterPrototype);
-      return this[_name];
-    }
     /** @returns {GPUSupportedFeatures} */
     get features() {
       webidl.assertBranded(this, GPUAdapterPrototype);
@@ -290,24 +323,28 @@
           );
         }
       }
-      const requiredLimits = descriptor.requiredLimits;
+      let requiredLimits = descriptor.requiredLimits;
+      if (requiredLimits) {
+        requiredLimits = {
+          ...this[_adapter].limits[_limits],
+          ...requiredLimits,
+        };
+      }
       // TODO(lucacasonato): validate requiredLimits
 
       const { rid, features, limits } = await core.opAsync(
         "op_webgpu_request_device",
-        {
-          adapterRid: this[_adapter].rid,
-          labe: descriptor.label,
-          requiredFeatures,
-          requiredLimits,
-        },
+        this[_adapter].rid,
+        descriptor.label,
+        requiredFeatures,
+        requiredLimits,
       );
 
       const inner = new InnerGPUDevice({
         rid,
         adapter: this,
-        features: ObjectFreeze(features),
-        limits: ObjectFreeze(limits),
+        features: createGPUSupportedFeatures(features),
+        limits: createGPUSupportedLimits(limits),
       });
       return createGPUDevice(
         descriptor.label ?? null,
@@ -316,10 +353,43 @@
       );
     }
 
+    /**
+     * @param {string[]} unmaskHints
+     * @returns {Promise<GPUAdapterInfo>}
+     */
+    async requestAdapterInfo(unmaskHints = []) {
+      webidl.assertBranded(this, GPUAdapterPrototype);
+      const prefix = "Failed to execute 'requestAdapterInfo' on 'GPUAdapter'";
+      unmaskHints = webidl.converters["sequence<DOMString>"](unmaskHints, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      const {
+        vendor,
+        architecture,
+        device,
+        description,
+      } = await core.opAsync(
+        "op_webgpu_request_adapter_info",
+        this[_adapter].rid,
+      );
+
+      const adapterInfo = webidl.createBranded(GPUAdapterInfo);
+      adapterInfo[_vendor] = unmaskHints.includes("vendor") ? vendor : "";
+      adapterInfo[_architecture] = unmaskHints.includes("architecture")
+        ? architecture
+        : "";
+      adapterInfo[_device] = unmaskHints.includes("device") ? device : "";
+      adapterInfo[_description] = unmaskHints.includes("description")
+        ? description
+        : "";
+      return adapterInfo;
+    }
+
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
-          name: this.name,
           features: this.features,
           limits: this.limits,
         })
@@ -328,7 +398,51 @@
   }
   const GPUAdapterPrototype = GPUAdapter.prototype;
 
-  const _limits = Symbol("[[limits]]");
+  class GPUAdapterInfo {
+    /** @type {string} */
+    [_vendor];
+    /** @returns {string} */
+    get vendor() {
+      webidl.assertBranded(this, GPUAdapterInfoPrototype);
+      return this[_vendor];
+    }
+
+    /** @type {string} */
+    [_architecture];
+    /** @returns {string} */
+    get architecture() {
+      webidl.assertBranded(this, GPUAdapterInfoPrototype);
+      return this[_architecture];
+    }
+
+    /** @type {string} */
+    [_device];
+    /** @returns {string} */
+    get device() {
+      webidl.assertBranded(this, GPUAdapterInfoPrototype);
+      return this[_device];
+    }
+
+    /** @type {string} */
+    [_description];
+    /** @returns {string} */
+    get description() {
+      webidl.assertBranded(this, GPUAdapterInfoPrototype);
+      return this[_description];
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          vendor: this.vendor,
+          architecture: this.architecture,
+          device: this.device,
+          description: this.description,
+        })
+      }`;
+    }
+  }
+  const GPUAdapterInfoPrototype = GPUAdapterInfo.prototype;
 
   function createGPUSupportedLimits(features) {
     /** @type {GPUSupportedLimits} */
@@ -485,8 +599,6 @@
   }
   const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 
-  const _features = Symbol("[[features]]");
-
   function createGPUSupportedFeatures(features) {
     /** @type {GPUSupportedFeatures} */
     const adapterFeatures = webidl.createBranded(GPUSupportedFeatures);
@@ -552,9 +664,6 @@
 
   const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
 
-  const _reason = Symbol("[[reason]]");
-  const _message = Symbol("[[message]]");
-
   /**
    * @param {string | undefined} reason
    * @param {string} message
@@ -596,8 +705,6 @@
 
   const GPUDeviceLostInfoPrototype = GPUDeviceLostInfo.prototype;
 
-  const _label = Symbol("[[label]]");
-
   /**
    * @param {string} name
    * @param {any} type
@@ -626,9 +733,6 @@
     });
   }
 
-  const _device = Symbol("[[device]]");
-  const _queue = Symbol("[[queue]]");
-
   /**
    * @typedef ErrorScope
    * @property {string} filter
@@ -639,8 +743,8 @@
    * @typedef InnerGPUDeviceOptions
    * @property {GPUAdapter} adapter
    * @property {number | undefined} rid
-   * @property {GPUFeatureName[]} features
-   * @property {object} limits
+   * @property {GPUSupportedFeatures} features
+   * @property {GPUSupportedLimits} limits
    */
 
   class InnerGPUDevice {
@@ -648,9 +752,9 @@
     adapter;
     /** @type {number | undefined} */
     rid;
-    /** @type {GPUFeatureName[]} */
+    /** @type {GPUSupportedFeatures} */
     features;
-    /** @type {object} */
+    /** @type {GPUSupportedLimits} */
     limits;
     /** @type {WeakRef<any>[]} */
     resources;
@@ -776,7 +880,6 @@
     return device;
   }
 
-  // TODO(@crowlKats): https://gpuweb.github.io/gpuweb/#errors-and-debugging
   class GPUDevice extends eventTarget.EventTarget {
     /** @type {InnerGPUDevice} */
     [_device];
@@ -837,10 +940,13 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_buffer", {
-        deviceRid: device.rid,
-        ...descriptor,
-      });
+      const { rid, err } = ops.op_webgpu_create_buffer(
+        device.rid,
+        descriptor.label,
+        descriptor.size,
+        descriptor.usage,
+        descriptor.mappedAtCreation,
+      );
       device.pushError(err);
       /** @type {CreateGPUBufferOptions} */
       let options;
@@ -884,7 +990,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_texture", {
+      const { rid, err } = ops.op_webgpu_create_texture({
         deviceRid: device.rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
@@ -912,7 +1018,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_sampler", {
+      const { rid, err } = ops.op_webgpu_create_sampler({
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -952,12 +1058,10 @@
         }
       }
 
-      const { rid, err } = core.opSync(
-        "op_webgpu_create_bind_group_layout",
-        {
-          deviceRid: device.rid,
-          ...descriptor,
-        },
+      const { rid, err } = ops.op_webgpu_create_bind_group_layout(
+        device.rid,
+        descriptor.label,
+        descriptor.entries,
       );
       device.pushError(err);
 
@@ -996,11 +1100,11 @@
           return rid;
         },
       );
-      const { rid, err } = core.opSync("op_webgpu_create_pipeline_layout", {
-        deviceRid: device.rid,
-        label: descriptor.label,
+      const { rid, err } = ops.op_webgpu_create_pipeline_layout(
+        device.rid,
+        descriptor.label,
         bindGroupLayouts,
-      });
+      );
       device.pushError(err);
 
       const pipelineLayout = createGPUPipelineLayout(
@@ -1090,12 +1194,12 @@
         }
       });
 
-      const { rid, err } = core.opSync("op_webgpu_create_bind_group", {
-        deviceRid: device.rid,
-        label: descriptor.label,
+      const { rid, err } = ops.op_webgpu_create_bind_group(
+        device.rid,
+        descriptor.label,
         layout,
         entries,
-      });
+      );
       device.pushError(err);
 
       const bindGroup = createGPUBindGroup(
@@ -1119,14 +1223,11 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync(
-        "op_webgpu_create_shader_module",
-        {
-          deviceRid: device.rid,
-          label: descriptor.label,
-          code: descriptor.code,
-          sourceMap: descriptor.sourceMap,
-        },
+      const { rid, err } = ops.op_webgpu_create_shader_module(
+        device.rid,
+        descriptor.label,
+        descriptor.code,
+        descriptor.sourceMap,
       );
       device.pushError(err);
 
@@ -1152,8 +1253,8 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      let layout = undefined;
-      if (descriptor.layout) {
+      let layout = descriptor.layout;
+      if (typeof descriptor.layout !== "string") {
         const context = "layout";
         layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {
@@ -1172,17 +1273,14 @@
         selfContext: "this",
       });
 
-      const { rid, err } = core.opSync(
-        "op_webgpu_create_compute_pipeline",
+      const { rid, err } = ops.op_webgpu_create_compute_pipeline(
+        device.rid,
+        descriptor.label,
+        layout,
         {
-          deviceRid: device.rid,
-          label: descriptor.label,
-          layout,
-          compute: {
-            module,
-            entryPoint: descriptor.compute.entryPoint,
-            constants: descriptor.compute.constants,
-          },
+          module,
+          entryPoint: descriptor.compute.entryPoint,
+          constants: descriptor.compute.constants,
         },
       );
       device.pushError(err);
@@ -1209,8 +1307,8 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      let layout = undefined;
-      if (descriptor.layout) {
+      let layout = descriptor.layout;
+      if (typeof descriptor.layout !== "string") {
         const context = "layout";
         layout = assertResource(descriptor.layout, { prefix, context });
         assertDeviceMatch(device, descriptor.layout, {
@@ -1246,7 +1344,7 @@
         };
       }
 
-      const { rid, err } = core.opSync("op_webgpu_create_render_pipeline", {
+      const { rid, err } = ops.op_webgpu_create_render_pipeline({
         deviceRid: device.rid,
         label: descriptor.label,
         layout,
@@ -1293,10 +1391,10 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_command_encoder", {
-        deviceRid: device.rid,
-        ...descriptor,
-      });
+      const { rid, err } = ops.op_webgpu_create_command_encoder(
+        device.rid,
+        descriptor.label,
+      );
       device.pushError(err);
 
       const commandEncoder = createGPUCommandEncoder(
@@ -1325,8 +1423,7 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync(
-        "op_webgpu_create_render_bundle_encoder",
+      const { rid, err } = ops.op_webgpu_create_render_bundle_encoder(
         {
           deviceRid: device.rid,
           ...descriptor,
@@ -1359,7 +1456,7 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_query_set", {
+      const { rid, err } = ops.op_webgpu_create_query_set({
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -1490,10 +1587,13 @@
           return rid;
         },
       );
-      const { err } = core.opSync("op_webgpu_queue_submit", {
-        queueRid: device.rid,
-        commandBuffers: commandBufferRids,
-      });
+      const { err } = ops.op_webgpu_queue_submit(
+        device.rid,
+        commandBufferRids,
+      );
+      for (const commandBuffer of commandBuffers) {
+        commandBuffer[_rid] = undefined;
+      }
       device.pushError(err);
     }
 
@@ -1545,15 +1645,12 @@
         selfContext: "this",
         resourceContext: "Argument 1",
       });
-      const { err } = core.opSync(
-        "op_webgpu_write_buffer",
-        {
-          queueRid: device.rid,
-          buffer: bufferRid,
-          bufferOffset,
-          dataOffset,
-          size,
-        },
+      const { err } = ops.op_webgpu_write_buffer(
+        device.rid,
+        bufferRid,
+        bufferOffset,
+        dataOffset,
+        size,
         new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
       );
       device.pushError(err);
@@ -1595,21 +1692,18 @@
         selfContext: "this",
         resourceContext: "texture",
       });
-      const { err } = core.opSync(
-        "op_webgpu_write_texture",
+      const { err } = ops.op_webgpu_write_texture(
+        device.rid,
         {
-          queueRid: device.rid,
-          destination: {
-            texture: textureRid,
-            mipLevel: destination.mipLevel,
-            origin: destination.origin
-              ? normalizeGPUOrigin3D(destination.origin)
-              : undefined,
-            aspect: destination.aspect,
-          },
-          dataLayout,
-          size: normalizeGPUExtent3D(size),
+          texture: textureRid,
+          mipLevel: destination.mipLevel,
+          origin: destination.origin
+            ? normalizeGPUOrigin3D(destination.origin)
+            : undefined,
+          aspect: destination.aspect,
         },
+        dataLayout,
+        normalizeGPUExtent3D(size),
         new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
       );
       device.pushError(err);
@@ -1628,15 +1722,6 @@
     }
   }
   GPUObjectBaseMixin("GPUQueue", GPUQueue);
-
-  const _rid = Symbol("[[rid]]");
-
-  const _size = Symbol("[[size]]");
-  const _usage = Symbol("[[usage]]");
-  const _state = Symbol("[[state]]");
-  const _mappingRange = Symbol("[[mapping_range]]");
-  const _mappedRanges = Symbol("[[mapped_ranges]]");
-  const _mapMode = Symbol("[[map_mode]]");
 
   /**
    * @typedef CreateGPUBufferOptions
@@ -1799,13 +1884,11 @@
       const promise = PromisePrototypeThen(
         core.opAsync(
           "op_webgpu_buffer_get_map_async",
-          {
-            bufferRid,
-            deviceRid: device.rid,
-            mode,
-            offset,
-            size: rangeSize,
-          },
+          bufferRid,
+          device.rid,
+          mode,
+          offset,
+          rangeSize,
         ),
         ({ err }) => err,
       );
@@ -1866,13 +1949,10 @@
       }
 
       const buffer = new ArrayBuffer(rangeSize);
-      const { rid } = core.opSync(
-        "op_webgpu_buffer_get_mapped_range",
-        {
-          bufferRid,
-          offset,
-          size,
-        },
+      const { rid } = ops.op_webgpu_buffer_get_mapped_range(
+        bufferRid,
+        offset,
+        size,
         new Uint8Array(buffer),
       );
 
@@ -1923,10 +2003,11 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (const [buffer, mappedRid] of mappedRanges) {
-          const { err } = core.opSync("op_webgpu_buffer_unmap", {
+          const { err } = ops.op_webgpu_buffer_unmap(
             bufferRid,
             mappedRid,
-          }, ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []));
+            ...new SafeArrayIterator(write ? [new Uint8Array(buffer)] : []),
+          );
           device.pushError(err);
           if (err) return;
         }
@@ -2002,8 +2083,6 @@
     }
   }
 
-  const _views = Symbol("[[views]]");
-
   /**
    * @param {string | null} label
    * @param {InnerGPUDevice} device
@@ -2061,7 +2140,7 @@
       });
       const device = assertDevice(this, { prefix, context: "this" });
       const textureRid = assertResource(this, { prefix, context: "this" });
-      const { rid, err } = core.opSync("op_webgpu_create_texture_view", {
+      const { rid, err } = ops.op_webgpu_create_texture_view({
         textureRid,
         ...descriptor,
       });
@@ -2112,8 +2191,6 @@
       return 0x10;
     }
   }
-
-  const _texture = Symbol("[[texture]]");
 
   /**
    * @param {string | null} label
@@ -2446,10 +2523,11 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.opSync(
-        "op_webgpu_compute_pipeline_get_bind_group_layout",
-        { computePipelineRid, index },
-      );
+      const { rid, label, err } = ops
+        .op_webgpu_compute_pipeline_get_bind_group_layout(
+          computePipelineRid,
+          index,
+        );
       device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
@@ -2522,10 +2600,11 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.opSync(
-        "op_webgpu_render_pipeline_get_bind_group_layout",
-        { renderPipelineRid, index },
-      );
+      const { rid, label, err } = ops
+        .op_webgpu_render_pipeline_get_bind_group_layout(
+          renderPipelineRid,
+          index,
+        );
       device.pushError(err);
 
       const bindGroupLayout = createGPUBindGroupLayout(
@@ -2569,8 +2648,6 @@
       return 0xF;
     }
   }
-
-  const _encoders = Symbol("[[encoders]]");
 
   /**
    * @param {string | null} label
@@ -2661,28 +2738,6 @@
           ...descriptor.depthStencilAttachment,
           view,
         };
-
-        if (
-          typeof descriptor.depthStencilAttachment.depthLoadValue === "string"
-        ) {
-          depthStencilAttachment.depthLoadOp =
-            descriptor.depthStencilAttachment.depthLoadValue;
-        } else {
-          depthStencilAttachment.depthLoadOp = {
-            clear: descriptor.depthStencilAttachment.depthLoadValue,
-          };
-        }
-
-        if (
-          typeof descriptor.depthStencilAttachment.stencilLoadValue === "string"
-        ) {
-          depthStencilAttachment.stencilLoadOp =
-            descriptor.depthStencilAttachment.stencilLoadValue;
-        } else {
-          depthStencilAttachment.stencilLoadOp = {
-            clear: descriptor.depthStencilAttachment.stencilLoadValue,
-          };
-        }
       }
       const colorAttachments = ArrayPrototypeMap(
         descriptor.colorAttachments,
@@ -2729,32 +2784,21 @@
               },
             );
           }
-          const attachment = {
+          return {
             view: view,
             resolveTarget,
             storeOp: colorAttachment.storeOp,
+            loadOp: colorAttachment.loadOp,
+            clearValue: normalizeGPUColor(colorAttachment.clearValue),
           };
-
-          if (typeof colorAttachment.loadValue === "string") {
-            attachment.loadOp = colorAttachment.loadValue;
-          } else {
-            attachment.loadOp = {
-              clear: normalizeGPUColor(colorAttachment.loadValue),
-            };
-          }
-
-          return attachment;
         },
       );
 
-      const { rid } = core.opSync(
-        "op_webgpu_command_encoder_begin_render_pass",
-        {
-          commandEncoderRid,
-          ...descriptor,
-          colorAttachments,
-          depthStencilAttachment,
-        },
+      const { rid } = ops.op_webgpu_command_encoder_begin_render_pass(
+        commandEncoderRid,
+        descriptor.label,
+        colorAttachments,
+        depthStencilAttachment,
       );
 
       const renderPassEncoder = createGPURenderPassEncoder(
@@ -2784,12 +2828,9 @@
         context: "this",
       });
 
-      const { rid } = core.opSync(
-        "op_webgpu_command_encoder_begin_compute_pass",
-        {
-          commandEncoderRid,
-          ...descriptor,
-        },
+      const { rid } = ops.op_webgpu_command_encoder_begin_compute_pass(
+        commandEncoderRid,
+        descriptor.label,
       );
 
       const computePassEncoder = createGPUComputePassEncoder(
@@ -2863,16 +2904,13 @@
         selfContext: "this",
       });
 
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_copy_buffer_to_buffer",
-        {
-          commandEncoderRid,
-          source: sourceRid,
-          sourceOffset,
-          destination: destinationRid,
-          destinationOffset,
-          size,
-        },
+      const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_buffer(
+        commandEncoderRid,
+        sourceRid,
+        sourceOffset,
+        destinationRid,
+        destinationOffset,
+        size,
       );
       device.pushError(err);
     }
@@ -2923,24 +2961,21 @@
         selfContext: "this",
       });
 
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_copy_buffer_to_texture",
+      const { err } = ops.op_webgpu_command_encoder_copy_buffer_to_texture(
+        commandEncoderRid,
         {
-          commandEncoderRid,
-          source: {
-            ...source,
-            buffer: sourceBufferRid,
-          },
-          destination: {
-            texture: destinationTextureRid,
-            mipLevel: destination.mipLevel,
-            origin: destination.origin
-              ? normalizeGPUOrigin3D(destination.origin)
-              : undefined,
-            aspect: destination.aspect,
-          },
-          copySize: normalizeGPUExtent3D(copySize),
+          ...source,
+          buffer: sourceBufferRid,
         },
+        {
+          texture: destinationTextureRid,
+          mipLevel: destination.mipLevel,
+          origin: destination.origin
+            ? normalizeGPUOrigin3D(destination.origin)
+            : undefined,
+          aspect: destination.aspect,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
@@ -2990,24 +3025,21 @@
         resourceContext: "buffer in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_copy_texture_to_buffer",
+      const { err } = ops.op_webgpu_command_encoder_copy_texture_to_buffer(
+        commandEncoderRid,
         {
-          commandEncoderRid,
-          source: {
-            texture: sourceTextureRid,
-            mipLevel: source.mipLevel,
-            origin: source.origin
-              ? normalizeGPUOrigin3D(source.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          destination: {
-            ...destination,
-            buffer: destinationBufferRid,
-          },
-          copySize: normalizeGPUExtent3D(copySize),
+          texture: sourceTextureRid,
+          mipLevel: source.mipLevel,
+          origin: source.origin
+            ? normalizeGPUOrigin3D(source.origin)
+            : undefined,
+          aspect: source.aspect,
         },
+        {
+          ...destination,
+          buffer: destinationBufferRid,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
@@ -3057,46 +3089,43 @@
         resourceContext: "texture in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_copy_texture_to_texture",
+      const { err } = ops.op_webgpu_command_encoder_copy_texture_to_texture(
+        commandEncoderRid,
         {
-          commandEncoderRid,
-          source: {
-            texture: sourceTextureRid,
-            mipLevel: source.mipLevel,
-            origin: source.origin
-              ? normalizeGPUOrigin3D(source.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          destination: {
-            texture: destinationTextureRid,
-            mipLevel: destination.mipLevel,
-            origin: destination.origin
-              ? normalizeGPUOrigin3D(destination.origin)
-              : undefined,
-            aspect: source.aspect,
-          },
-          copySize: normalizeGPUExtent3D(copySize),
+          texture: sourceTextureRid,
+          mipLevel: source.mipLevel,
+          origin: source.origin
+            ? normalizeGPUOrigin3D(source.origin)
+            : undefined,
+          aspect: source.aspect,
         },
+        {
+          texture: destinationTextureRid,
+          mipLevel: destination.mipLevel,
+          origin: destination.origin
+            ? normalizeGPUOrigin3D(destination.origin)
+            : undefined,
+          aspect: source.aspect,
+        },
+        normalizeGPUExtent3D(copySize),
       );
       device.pushError(err);
     }
 
     /**
-     * @param {GPUBuffer} destination
-     * @param {GPUSize64} destinationOffset
+     * @param {GPUBuffer} buffer
+     * @param {GPUSize64} offset
      * @param {GPUSize64} size
      */
-    clearBuffer(destination, destinationOffset, size) {
+    clearBuffer(buffer, offset = 0, size = undefined) {
       webidl.assertBranded(this, GPUCommandEncoderPrototype);
       const prefix = "Failed to execute 'clearBuffer' on 'GPUCommandEncoder'";
       webidl.requiredArguments(arguments.length, 3, { prefix });
-      destination = webidl.converters.GPUBuffer(destination, {
+      buffer = webidl.converters.GPUBuffer(buffer, {
         prefix,
         context: "Argument 1",
       });
-      destinationOffset = webidl.converters.GPUSize64(destinationOffset, {
+      offset = webidl.converters.GPUSize64(offset, {
         prefix,
         context: "Argument 2",
       });
@@ -3109,18 +3138,15 @@
         prefix,
         context: "this",
       });
-      const destinationRid = assertResource(destination, {
+      const bufferRid = assertResource(buffer, {
         prefix,
         context: "Argument 1",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_clear_buffer",
-        {
-          commandEncoderRid,
-          destinationRid,
-          destinationOffset,
-          size,
-        },
+      const { err } = ops.op_webgpu_command_encoder_clear_buffer(
+        commandEncoderRid,
+        bufferRid,
+        offset,
+        size,
       );
       device.pushError(err);
     }
@@ -3142,12 +3168,9 @@
         prefix,
         context: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_push_debug_group",
-        {
-          commandEncoderRid,
-          groupLabel,
-        },
+      const { err } = ops.op_webgpu_command_encoder_push_debug_group(
+        commandEncoderRid,
+        groupLabel,
       );
       device.pushError(err);
     }
@@ -3160,11 +3183,8 @@
         prefix,
         context: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_pop_debug_group",
-        {
-          commandEncoderRid,
-        },
+      const { err } = ops.op_webgpu_command_encoder_pop_debug_group(
+        commandEncoderRid,
       );
       device.pushError(err);
     }
@@ -3186,12 +3206,9 @@
         prefix,
         context: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_insert_debug_marker",
-        {
-          commandEncoderRid,
-          markerLabel,
-        },
+      const { err } = ops.op_webgpu_command_encoder_insert_debug_marker(
+        commandEncoderRid,
+        markerLabel,
       );
       device.pushError(err);
     }
@@ -3227,13 +3244,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_write_timestamp",
-        {
-          commandEncoderRid,
-          querySet: querySetRid,
-          queryIndex,
-        },
+      const { err } = ops.op_webgpu_command_encoder_write_timestamp(
+        commandEncoderRid,
+        querySetRid,
+        queryIndex,
       );
       device.pushError(err);
     }
@@ -3299,16 +3313,13 @@
         resourceContext: "Argument 3",
         selfContext: "this",
       });
-      const { err } = core.opSync(
-        "op_webgpu_command_encoder_resolve_query_set",
-        {
-          commandEncoderRid,
-          querySet: querySetRid,
-          firstQuery,
-          queryCount,
-          destination: destinationRid,
-          destinationOffset,
-        },
+      const { err } = ops.op_webgpu_command_encoder_resolve_query_set(
+        commandEncoderRid,
+        querySetRid,
+        firstQuery,
+        queryCount,
+        destinationRid,
+        destinationOffset,
       );
       device.pushError(err);
     }
@@ -3329,10 +3340,10 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.opSync("op_webgpu_command_encoder_finish", {
+      const { rid, err } = ops.op_webgpu_command_encoder_finish(
         commandEncoderRid,
-        ...descriptor,
-      });
+        descriptor.label,
+      );
       device.pushError(err);
       /** @type {number | undefined} */
       this[_rid] = undefined;
@@ -3356,8 +3367,6 @@
   }
   GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
   const GPUCommandEncoderPrototype = GPUCommandEncoder.prototype;
-
-  const _encoder = Symbol("[[encoder]]");
 
   /**
    * @param {string | null} label
@@ -3430,7 +3439,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_set_viewport", {
+      ops.op_webgpu_render_pass_set_viewport({
         renderPassRid,
         x,
         y,
@@ -3477,13 +3486,13 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_set_scissor_rect", {
+      ops.op_webgpu_render_pass_set_scissor_rect(
         renderPassRid,
         x,
         y,
         width,
         height,
-      });
+      );
     }
 
     /**
@@ -3507,10 +3516,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_set_blend_constant", {
+      ops.op_webgpu_render_pass_set_blend_constant(
         renderPassRid,
-        color: normalizeGPUColor(color),
-      });
+        normalizeGPUColor(color),
+      );
     }
 
     /**
@@ -3534,10 +3543,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_set_stencil_reference", {
+      ops.op_webgpu_render_pass_set_stencil_reference(
         renderPassRid,
         reference,
-      });
+      );
     }
 
     beginOcclusionQuery(_queryIndex) {
@@ -3583,11 +3592,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
+      ops.op_webgpu_render_pass_begin_pipeline_statistics_query(
         renderPassRid,
-        querySet: querySetRid,
+        querySetRid,
         queryIndex,
-      });
+      );
     }
 
     endPipelineStatisticsQuery() {
@@ -3603,9 +3612,9 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
+      ops.op_webgpu_render_pass_end_pipeline_statistics_query(
         renderPassRid,
-      });
+      );
     }
 
     /**
@@ -3643,11 +3652,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_write_timestamp", {
+      ops.op_webgpu_render_pass_write_timestamp(
         renderPassRid,
-        querySet: querySetRid,
+        querySetRid,
         queryIndex,
-      });
+      );
     }
 
     /**
@@ -3681,15 +3690,15 @@
         });
         return rid;
       });
-      core.opSync("op_webgpu_render_pass_execute_bundles", {
+      ops.op_webgpu_render_pass_execute_bundles(
         renderPassRid,
-        bundles: bundleRids,
-      });
+        bundleRids,
+      );
     }
 
-    endPass() {
+    end() {
       webidl.assertBranded(this, GPURenderPassEncoderPrototype);
-      const prefix = "Failed to execute 'endPass' on 'GPURenderPassEncoder'";
+      const prefix = "Failed to execute 'end' on 'GPURenderPassEncoder'";
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -3699,10 +3708,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.opSync("op_webgpu_render_pass_end_pass", {
+      const { err } = ops.op_webgpu_render_pass_end(
         commandEncoderRid,
         renderPassRid,
-      });
+      );
       device.pushError(err);
       this[_rid] = undefined;
     }
@@ -3746,14 +3755,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.opSync("op_webgpu_render_pass_set_bind_group", {
+      ops.op_webgpu_render_pass_set_bind_group(
         renderPassRid,
         index,
-        bindGroup: bindGroupRid,
+        bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      });
+      );
     }
 
     /**
@@ -3777,10 +3786,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_push_debug_group", {
+      ops.op_webgpu_render_pass_push_debug_group(
         renderPassRid,
         groupLabel,
-      });
+      );
     }
 
     popDebugGroup() {
@@ -3796,9 +3805,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_pop_debug_group", {
-        renderPassRid,
-      });
+      ops.op_webgpu_render_pass_pop_debug_group(renderPassRid);
     }
 
     /**
@@ -3822,10 +3829,10 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_insert_debug_marker", {
+      ops.op_webgpu_render_pass_insert_debug_marker(
         renderPassRid,
         markerLabel,
-      });
+      );
     }
 
     /**
@@ -3858,10 +3865,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_set_pipeline", {
+      ops.op_webgpu_render_pass_set_pipeline(
         renderPassRid,
-        pipeline: pipelineRid,
-      });
+        pipelineRid,
+      );
     }
 
     /**
@@ -3911,13 +3918,13 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_set_index_buffer", {
+      ops.op_webgpu_render_pass_set_index_buffer(
         renderPassRid,
-        buffer: bufferRid,
+        bufferRid,
         indexFormat,
         offset,
         size,
-      });
+      );
     }
 
     /**
@@ -3967,13 +3974,13 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_set_vertex_buffer", {
+      ops.op_webgpu_render_pass_set_vertex_buffer(
         renderPassRid,
         slot,
-        buffer: bufferRid,
+        bufferRid,
         offset,
         size,
-      });
+      );
     }
 
     /**
@@ -4011,13 +4018,13 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_draw", {
+      ops.op_webgpu_render_pass_draw(
         renderPassRid,
         vertexCount,
         instanceCount,
         firstVertex,
         firstInstance,
-      });
+      );
     }
 
     /**
@@ -4067,14 +4074,14 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_draw_indexed", {
+      ops.op_webgpu_render_pass_draw_indexed(
         renderPassRid,
         indexCount,
         instanceCount,
         firstIndex,
         baseVertex,
         firstInstance,
-      });
+      );
     }
 
     /**
@@ -4112,11 +4119,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_draw_indirect", {
+      ops.op_webgpu_render_pass_draw_indirect(
         renderPassRid,
-        indirectBuffer: indirectBufferRid,
+        indirectBufferRid,
         indirectOffset,
-      });
+      );
     }
 
     /**
@@ -4154,11 +4161,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_pass_draw_indexed_indirect", {
+      ops.op_webgpu_render_pass_draw_indexed_indirect(
         renderPassRid,
-        indirectBuffer: indirectBufferRid,
+        indirectBufferRid,
         indirectOffset,
-      });
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -4237,24 +4244,38 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_compute_pass_set_pipeline", {
+      ops.op_webgpu_compute_pass_set_pipeline(
         computePassRid,
-        pipeline: pipelineRid,
-      });
+        pipelineRid,
+      );
     }
 
     /**
-     * @param {number} x
-     * @param {number} y
-     * @param {number} z
+     * @param {number} workgroupCountX
+     * @param {number} workgroupCountY
+     * @param {number} workgroupCountZ
      */
-    dispatch(x, y = 1, z = 1) {
+    dispatchWorkgroups(
+      workgroupCountX,
+      workgroupCountY = 1,
+      workgroupCountZ = 1,
+    ) {
       webidl.assertBranded(this, GPUComputePassEncoderPrototype);
-      const prefix = "Failed to execute 'dispatch' on 'GPUComputePassEncoder'";
+      const prefix =
+        "Failed to execute 'dispatchWorkgroups' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      x = webidl.converters.GPUSize32(x, { prefix, context: "Argument 1" });
-      y = webidl.converters.GPUSize32(y, { prefix, context: "Argument 2" });
-      z = webidl.converters.GPUSize32(z, { prefix, context: "Argument 3" });
+      workgroupCountX = webidl.converters.GPUSize32(workgroupCountX, {
+        prefix,
+        context: "Argument 1",
+      });
+      workgroupCountY = webidl.converters.GPUSize32(workgroupCountY, {
+        prefix,
+        context: "Argument 2",
+      });
+      workgroupCountZ = webidl.converters.GPUSize32(workgroupCountZ, {
+        prefix,
+        context: "Argument 3",
+      });
       assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -4264,22 +4285,22 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_compute_pass_dispatch", {
+      ops.op_webgpu_compute_pass_dispatch_workgroups(
         computePassRid,
-        x,
-        y,
-        z,
-      });
+        workgroupCountX,
+        workgroupCountY,
+        workgroupCountZ,
+      );
     }
 
     /**
      * @param {GPUBuffer} indirectBuffer
      * @param {number} indirectOffset
      */
-    dispatchIndirect(indirectBuffer, indirectOffset) {
+    dispatchWorkgroupsIndirect(indirectBuffer, indirectOffset) {
       webidl.assertBranded(this, GPUComputePassEncoderPrototype);
       const prefix =
-        "Failed to execute 'dispatchIndirect' on 'GPUComputePassEncoder'";
+        "Failed to execute 'dispatchWorkgroupsIndirect' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       indirectBuffer = webidl.converters.GPUBuffer(indirectBuffer, {
         prefix,
@@ -4307,11 +4328,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_compute_pass_dispatch_indirect", {
-        computePassRid: computePassRid,
-        indirectBuffer: indirectBufferRid,
+      ops.op_webgpu_compute_pass_dispatch_workgroups_indirect(
+        computePassRid,
+        indirectBufferRid,
         indirectOffset,
-      });
+      );
     }
 
     /**
@@ -4349,13 +4370,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync(
-        "op_webgpu_compute_pass_begin_pipeline_statistics_query",
-        {
-          computePassRid,
-          querySet: querySetRid,
-          queryIndex,
-        },
+      ops.op_webgpu_compute_pass_begin_pipeline_statistics_query(
+        computePassRid,
+        querySetRid,
+        queryIndex,
       );
     }
 
@@ -4372,9 +4390,9 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
+      ops.op_webgpu_compute_pass_end_pipeline_statistics_query(
         computePassRid,
-      });
+      );
     }
 
     /**
@@ -4412,16 +4430,16 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_compute_pass_write_timestamp", {
+      ops.op_webgpu_compute_pass_write_timestamp(
         computePassRid,
-        querySet: querySetRid,
+        querySetRid,
         queryIndex,
-      });
+      );
     }
 
-    endPass() {
+    end() {
       webidl.assertBranded(this, GPUComputePassEncoderPrototype);
-      const prefix = "Failed to execute 'endPass' on 'GPUComputePassEncoder'";
+      const prefix = "Failed to execute 'end' on 'GPUComputePassEncoder'";
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -4431,10 +4449,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.opSync("op_webgpu_compute_pass_end_pass", {
+      const { err } = ops.op_webgpu_compute_pass_end(
         commandEncoderRid,
         computePassRid,
-      });
+      );
       device.pushError(err);
       this[_rid] = undefined;
     }
@@ -4478,14 +4496,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.opSync("op_webgpu_compute_pass_set_bind_group", {
+      ops.op_webgpu_compute_pass_set_bind_group(
         computePassRid,
         index,
-        bindGroup: bindGroupRid,
+        bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      });
+      );
     }
 
     /**
@@ -4509,10 +4527,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_compute_pass_push_debug_group", {
+      ops.op_webgpu_compute_pass_push_debug_group(
         computePassRid,
         groupLabel,
-      });
+      );
     }
 
     popDebugGroup() {
@@ -4528,9 +4546,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_compute_pass_pop_debug_group", {
-        computePassRid,
-      });
+      ops.op_webgpu_compute_pass_pop_debug_group(computePassRid);
     }
 
     /**
@@ -4554,10 +4570,10 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_compute_pass_insert_debug_marker", {
+      ops.op_webgpu_compute_pass_insert_debug_marker(
         computePassRid,
         markerLabel,
-      });
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -4664,12 +4680,9 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.opSync(
-        "op_webgpu_render_bundle_encoder_finish",
-        {
-          renderBundleEncoderRid,
-          ...descriptor,
-        },
+      const { rid, err } = ops.op_webgpu_render_bundle_encoder_finish(
+        renderBundleEncoderRid,
+        descriptor.label,
       );
       device.pushError(err);
       this[_rid] = undefined;
@@ -4718,14 +4731,14 @@
         dynamicOffsetsDataStart = 0;
         dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
-      core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
+      ops.op_webgpu_render_bundle_encoder_set_bind_group(
         renderBundleEncoderRid,
         index,
-        bindGroup: bindGroupRid,
+        bindGroupRid,
         dynamicOffsetsData,
         dynamicOffsetsDataStart,
         dynamicOffsetsDataLength,
-      });
+      );
     }
 
     /**
@@ -4745,10 +4758,10 @@
         prefix,
         context: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+      ops.op_webgpu_render_bundle_encoder_push_debug_group(
         renderBundleEncoderRid,
         groupLabel,
-      });
+      );
     }
 
     popDebugGroup() {
@@ -4760,9 +4773,9 @@
         prefix,
         context: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
+      ops.op_webgpu_render_bundle_encoder_pop_debug_group(
         renderBundleEncoderRid,
-      });
+      );
     }
 
     /**
@@ -4782,10 +4795,10 @@
         prefix,
         context: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+      ops.op_webgpu_render_bundle_encoder_insert_debug_marker(
         renderBundleEncoderRid,
         markerLabel,
-      });
+      );
     }
 
     /**
@@ -4814,10 +4827,10 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_set_pipeline", {
+      ops.op_webgpu_render_bundle_encoder_set_pipeline(
         renderBundleEncoderRid,
-        pipeline: pipelineRid,
-      });
+        pipelineRid,
+      );
     }
 
     /**
@@ -4861,13 +4874,13 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
+      ops.op_webgpu_render_bundle_encoder_set_index_buffer(
         renderBundleEncoderRid,
-        buffer: bufferRid,
+        bufferRid,
         indexFormat,
         offset,
         size,
-      });
+      );
     }
 
     /**
@@ -4911,13 +4924,13 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
+      ops.op_webgpu_render_bundle_encoder_set_vertex_buffer(
         renderBundleEncoderRid,
         slot,
-        buffer: bufferRid,
+        bufferRid,
         offset,
         size,
-      });
+      );
     }
 
     /**
@@ -4951,13 +4964,13 @@
         prefix,
         context: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_draw", {
+      ops.op_webgpu_render_bundle_encoder_draw(
         renderBundleEncoderRid,
         vertexCount,
         instanceCount,
         firstVertex,
         firstInstance,
-      });
+      );
     }
 
     /**
@@ -5003,14 +5016,14 @@
         prefix,
         context: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_draw_indexed", {
+      ops.op_webgpu_render_bundle_encoder_draw_indexed(
         renderBundleEncoderRid,
         indexCount,
         instanceCount,
         firstIndex,
         baseVertex,
         firstInstance,
-      });
+      );
     }
 
     /**
@@ -5044,11 +5057,11 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.opSync("op_webgpu_render_bundle_encoder_draw_indirect", {
+      ops.op_webgpu_render_bundle_encoder_draw_indirect(
         renderBundleEncoderRid,
-        indirectBuffer: indirectBufferRid,
+        indirectBufferRid,
         indirectOffset,
-      });
+      );
     }
 
     drawIndexedIndirect(_indirectBuffer, _indirectOffset) {
@@ -5108,8 +5121,6 @@
     }
   }
   GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
-
-  const _descriptor = Symbol("[[descriptor]]");
 
   /**
    * @param {string | null} label
@@ -5194,6 +5205,7 @@
     GPURenderBundleEncoder,
     GPURenderBundle,
     GPUQuerySet,
+    GPUError,
     GPUOutOfMemoryError,
     GPUValidationError,
   };

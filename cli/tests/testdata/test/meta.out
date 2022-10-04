@@ -1,7 +1,11 @@
 Check [WILDCARD]/test/meta.ts
+running 1 test from ./test/meta.ts
+check values ...
+------- output -------
 import.meta.main: false
 import.meta.url: [WILDCARD]/test/meta.ts
-running 0 tests from ./test/meta.ts
+----- output end -----
+check values ... ok ([WILDCARD])
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+ok | 1 passed | 0 failed ([WILDCARD])
 

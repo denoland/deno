@@ -1,9 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
-use crate::flags::Flags;
-use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
@@ -23,9 +22,9 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_tls::create_default_root_cert_store;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
@@ -224,8 +223,8 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let flags = metadata_to_flags(&metadata);
   let main_module = &metadata.entrypoint;
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let permissions = Permissions::from_options(&metadata.permissions);
+  let ps = ProcState::build(flags).await?;
+  let permissions = Permissions::from_options(&metadata.permissions)?;
   let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader {
@@ -239,10 +238,10 @@ pub async fn run(
     ),
   });
   let create_web_worker_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+    todo!("Workers are currently not supported in standalone binaries");
   });
-  let web_worker_preload_module_cb = Arc::new(|_| {
-    todo!("Worker are currently not supported in standalone binaries");
+  let web_worker_cb = Arc::new(|_| {
+    todo!("Workers are currently not supported in standalone binaries");
   });
 
   // Keep in sync with `main.rs`.
@@ -252,10 +251,7 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
-  let mut root_cert_store = ps
-    .root_cert_store
-    .clone()
-    .unwrap_or_else(create_default_root_cert_store);
+  let mut root_cert_store = ps.root_cert_store.clone();
 
   if let Some(cert) = metadata.ca_data {
     let reader = &mut BufReader::new(Cursor::new(cert));
@@ -278,7 +274,7 @@ pub async fn run(
       cpu_count: std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(1),
-      debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
+      debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
       location: metadata.location,
       no_color: !colors::use_color(),
@@ -287,6 +283,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
@@ -296,11 +293,14 @@ pub async fn run(
     source_map_getter: None,
     format_js_error_fn: Some(Arc::new(format_js_error)),
     create_web_worker_cb,
-    web_worker_preload_module_cb,
+    web_worker_preload_module_cb: web_worker_cb.clone(),
+    web_worker_pre_execute_module_cb: web_worker_cb,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
+    npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,
@@ -315,7 +315,14 @@ pub async fn run(
   );
   worker.execute_main_module(main_module).await?;
   worker.dispatch_load_event(&located_script_name!())?;
-  worker.run_event_loop(true).await?;
+
+  loop {
+    worker.run_event_loop(false).await?;
+    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
+      break;
+    }
+  }
+
   worker.dispatch_unload_event(&located_script_name!())?;
   std::process::exit(0);
 }

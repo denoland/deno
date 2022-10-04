@@ -11,5 +11,5 @@ test 7 ... ignored ([WILDCARD])
 test 8 ... ignored ([WILDCARD])
 test 9 ... ignored ([WILDCARD])
 
-test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out ([WILDCARD])
+ok | 0 passed | 0 failed | 10 ignored ([WILDCARD])
 

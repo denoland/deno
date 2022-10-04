@@ -25,7 +25,7 @@ struct DefaultExportFinder {
   has_default_export: bool,
 }
 
-impl<'a> Visit for DefaultExportFinder {
+impl Visit for DefaultExportFinder {
   noop_visit_type!();
 
   fn visit_export_default_decl(&mut self, _: &ExportDefaultDecl) {

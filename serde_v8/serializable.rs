@@ -12,7 +12,7 @@ use crate::ZeroCopyBuf;
 /// (and thus doesn't have to have generic outputs, etc...)
 pub trait Serializable {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error>;
 }
@@ -20,7 +20,7 @@ pub trait Serializable {
 /// Allows all implementors of `serde::Serialize` to implement Serializable
 impl<T: serde::Serialize> Serializable for T {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     crate::to_v8(scope, self)
@@ -36,10 +36,10 @@ pub enum SerializablePkg {
 
 impl SerializablePkg {
   pub fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    match &*self {
+    match self {
       Self::Primitive(x) => crate::to_v8(scope, x),
       Self::Serializable(x) => x.to_v8(scope),
     }
@@ -97,6 +97,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
   fn from(x: T) -> Self {
     #[inline(always)]
     fn tc<T, U>(src: T) -> U {
+      // SAFETY: the caller has ensured via the TypeId that the T and U types
+      // are the same.
       let x = unsafe { transmute_copy(&src) };
       std::mem::forget(src);
       x

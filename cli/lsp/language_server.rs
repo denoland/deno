@@ -8,11 +8,14 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_graph::ModuleKind;
+use deno_runtime::tokio_util::run_local;
 use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
 use std::env;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
@@ -54,14 +57,18 @@ use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
 use super::tsc::TsServer;
 use super::urls;
-use crate::config_file::ConfigFile;
-use crate::config_file::FmtConfig;
-use crate::config_file::LintConfig;
-use crate::config_file::TsConfig;
+use crate::args::CliOptions;
+use crate::args::ConfigFile;
+use crate::args::Flags;
+use crate::args::FmtConfig;
+use crate::args::LintConfig;
+use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
+use crate::graph_util::graph_valid;
 use crate::proc_state::import_map_from_text;
+use crate::proc_state::ProcState;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -77,6 +84,7 @@ pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
   pub documents: Documents,
+  pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
 }
 
@@ -103,8 +111,6 @@ pub struct Inner {
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_cache_path: Option<PathBuf>,
-  /// A lazily created "server" for handling cache requests.
-  maybe_cache_server: Option<cache::CacheServer>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -245,7 +251,6 @@ impl Inner {
       diagnostics_server,
       documents,
       maybe_cache_path: None,
-      maybe_cache_server: None,
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
@@ -364,8 +369,7 @@ impl Inner {
     if let Some(root_uri) = &self.config.root_uri {
       let root_path = fs_util::specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
-      let maybe_config =
-        crate::config_file::discover_from(&root_path, &mut checked)?;
+      let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
       Ok(maybe_config.map(|c| {
         lsp_log!("  Auto-resolved configuration file: \"{}\"", c.specifier);
         c
@@ -422,6 +426,7 @@ impl Inner {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
+      maybe_import_map: self.maybe_import_map.clone(),
       root_uri: self.config.root_uri.clone(),
     })
   }
@@ -429,7 +434,6 @@ impl Inner {
   pub fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
-    self.maybe_cache_server = None;
     let maybe_cache = self.config.get_workspace_settings().cache;
     let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
       lsp_log!("Setting cache path from: \"{}\"", cache_str);
@@ -489,7 +493,6 @@ impl Inner {
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
-    self.maybe_cache_server = None;
     let maybe_import_map_url = if let Some(import_map_str) =
       self.config.get_workspace_settings().import_map
     {
@@ -649,6 +652,7 @@ impl Inner {
       "jsx": "react",
       "lib": ["deno.ns", "deno.window"],
       "module": "esnext",
+      "moduleDetection": "force",
       "noEmit": true,
       "resolveJsonModule": true,
       "strict": true,
@@ -797,7 +801,7 @@ impl Inner {
       let watch_registration_options =
         DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
-            glob_pattern: "**/*.json{c}".to_string(),
+            glob_pattern: "**/*.{json,jsonc}".to_string(),
             kind: Some(WatchKind::Change),
           }],
         };
@@ -1762,11 +1766,15 @@ impl Inner {
       Some(response)
     } else {
       let line_index = asset_or_doc.line_index();
-      let trigger_character = if let Some(context) = &params.context {
-        context.trigger_character.clone()
-      } else {
-        None
-      };
+      let (trigger_character, trigger_kind) =
+        if let Some(context) = &params.context {
+          (
+            context.trigger_character.clone(),
+            Some(context.trigger_kind.into()),
+          )
+        } else {
+          (None, None)
+        };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
       let req = tsc::RequestMethod::GetCompletions((
@@ -1774,14 +1782,30 @@ impl Inner {
         position,
         tsc::GetCompletionsAtPositionOptions {
           user_preferences: tsc::UserPreferences {
-            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
-            include_automatic_optional_chain_completions: Some(true),
-            provide_refactor_not_applicable_reason: Some(true),
-            include_completions_with_insert_text: Some(true),
             allow_incomplete_completions: Some(true),
+            allow_text_changes_in_new_files: Some(specifier.scheme() == "file"),
+            import_module_specifier_ending: Some(
+              tsc::ImportModuleSpecifierEnding::Index,
+            ),
+            include_automatic_optional_chain_completions: Some(true),
+            include_completions_for_import_statements: Some(
+              self.config.get_workspace_settings().suggest.auto_imports,
+            ),
+            include_completions_for_module_exports: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(true),
+            include_completions_with_class_member_snippets: Some(true),
+            include_completions_with_insert_text: Some(true),
+            include_completions_with_snippet_text: Some(true),
+            jsx_attribute_completion_style: Some(
+              tsc::JsxAttributeCompletionStyle::Auto,
+            ),
+            provide_prefix_and_suffix_text_for_rename: Some(true),
+            provide_refactor_not_applicable_reason: Some(true),
+            use_label_details_in_completion_entries: Some(true),
             ..Default::default()
           },
           trigger_character,
+          trigger_kind,
         },
       ));
       let snapshot = self.snapshot();
@@ -1820,7 +1844,8 @@ impl Inner {
             "Could not decode data field of completion item.",
           )
         })?;
-      if let Some(data) = data.tsc {
+      if let Some(data) = &data.tsc {
+        let specifier = data.specifier.clone();
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
         let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
           self.ts_server.request(self.snapshot(), req).await.map_err(
@@ -1830,7 +1855,15 @@ impl Inner {
             },
           )?;
         if let Some(completion_info) = maybe_completion_info {
-          completion_info.as_completion_item(&params, self)
+          completion_info
+            .as_completion_item(&params, data, &specifier, self)
+            .map_err(|err| {
+              error!(
+                "Failed to serialize virtual_text_document response: {}",
+                err
+              );
+              LspError::internal_error()
+            })?
         } else {
           error!(
             "Received an undefined response from tsc for completion details."
@@ -2774,6 +2807,16 @@ impl Inner {
     &mut self,
     params: lsp_custom::CacheParams,
   ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      cli_options: CliOptions,
+      roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    ) -> Result<(), AnyError> {
+      let ps = ProcState::from_options(Arc::new(cli_options)).await?;
+      let graph = ps.create_graph(roots).await?;
+      graph_valid(&graph, true, false)?;
+      Ok(())
+    }
+
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !self.is_diagnosable(&referrer) {
       return Ok(None);
@@ -2795,27 +2838,39 @@ impl Inner {
       vec![(referrer.clone(), deno_graph::ModuleKind::Esm)]
     };
 
-    if self.maybe_cache_server.is_none() {
-      self.maybe_cache_server = Some(
-        cache::CacheServer::new(
-          self.maybe_cache_path.clone(),
-          self.maybe_import_map.clone(),
-          self.maybe_config_file.clone(),
-          None,
-          None,
-          None,
-        )
-        .await,
-      );
-    }
-    let cache_server = self.maybe_cache_server.as_ref().unwrap();
-    if let Err(err) = cache_server.cache(roots).await {
+    let mut cli_options = CliOptions::new(
+      Flags {
+        cache_path: self.maybe_cache_path.clone(),
+        ca_stores: None,
+        ca_file: None,
+        unsafely_ignore_certificate_errors: None,
+        ..Default::default()
+      },
+      self.maybe_config_file.clone(),
+    );
+    cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
+
+    // todo(dsherret): why is running this on a new thread necessary? It does
+    // a compile error otherwise.
+    let handle = tokio::task::spawn_blocking(|| {
+      run_local(
+        async move { create_graph_for_caching(cli_options, roots).await },
+      )
+    });
+    if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;
     }
 
-    // now that we have dependencies loaded, we need to re-analyze them and
-    // invalidate some diagnostics
-    self.diagnostics_server.invalidate(&[referrer]);
+    // Now that we have dependencies loaded, we need to re-analyze all the files.
+    // For that we're invalidating all the existing diagnostics and restarting
+    // the language server for TypeScript (as it might hold to some stale
+    // documents).
+    self.diagnostics_server.invalidate_all();
+    let _: bool = self
+      .ts_server
+      .request(self.snapshot(), tsc::RequestMethod::Restart)
+      .await
+      .unwrap();
     self.send_diagnostics_update();
     self.send_testing_update();
 
@@ -2871,7 +2926,8 @@ impl Inner {
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.get_workspace_settings();
 
-      contents.push_str(&format!(
+      write!(
+        contents,
         r#"# Deno Language Server Status
 
 ## Workspace Settings
@@ -2907,16 +2963,19 @@ impl Inner {
           .map(|m| m.to_string())
           .collect::<Vec<String>>()
           .join("\n    - ")
-      ));
+      )
+      .unwrap();
       contents
         .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
       let mut averages = self.performance.averages();
       averages.sort();
       for average in averages {
-        contents.push_str(&format!(
-          "|{}|{}ms|{}|\n",
+        writeln!(
+          contents,
+          "|{}|{}ms|{}|",
           average.name, average.average_duration, average.count
-        ));
+        )
+        .unwrap();
       }
       Some(contents)
     } else {

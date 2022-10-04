@@ -12,12 +12,15 @@ members = [
   "test_ffi",
   "test_util",
   "ext/broadcast_channel",
+  "ext/cache",
   "ext/console",
   "ext/crypto",
   "ext/fetch",
+  "ext/flash",
   "ext/ffi",
   "ext/http",
   "ext/net",
+  "ext/node",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -109,6 +112,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
+[profile.bench.package.base64-simd]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -130,6 +135,8 @@ opt-level = 3
 [profile.release.package.deno_runtime]
 opt-level = 3
 [profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_flash]
 opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3
@@ -172,4 +179,6 @@ opt-level = 3
 [profile.release.package.lzzzz]
 opt-level = 3
 [profile.release.package.zstd-sys]
+opt-level = 3
+[profile.release.package.base64-simd]
 opt-level = 3

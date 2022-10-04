@@ -7,16 +7,14 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::args::CliOptions;
+use crate::args::FmtFlags;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
 use crate::colors;
-use crate::config_file::FmtConfig;
-use crate::config_file::FmtOptionsConfig;
-use crate::config_file::ProseWrap;
-use crate::deno_dir::DenoDir;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::flags::Flags;
-use crate::flags::FmtFlags;
 use crate::fs_util::collect_files;
 use crate::fs_util::get_extension;
 use crate::fs_util::specifier_to_file_path;
@@ -41,15 +39,15 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use super::incremental_cache::IncrementalCache;
+use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  flags: &Flags,
+  config: &CliOptions,
   fmt_flags: FmtFlags,
-  maybe_fmt_config: Option<FmtConfig>,
-  deno_dir: &DenoDir,
 ) -> Result<(), AnyError> {
+  let maybe_fmt_config = config.to_fmt_config()?;
+  let deno_dir = config.resolve_deno_dir()?;
   let FmtFlags {
     files,
     ignore,
@@ -94,8 +92,11 @@ pub async fn format(
     maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
   );
 
-  let fmt_predicate =
-    |path: &Path| is_supported_ext_fmt(path) && !is_contain_git(path);
+  let fmt_predicate = |path: &Path| {
+    is_supported_ext_fmt(path)
+      && !contains_git(path)
+      && !contains_node_modules(path)
+  };
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -107,7 +108,7 @@ pub async fn format(
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files
@@ -135,6 +136,7 @@ pub async fn format(
       }
     }
   };
+  let deno_dir = &deno_dir;
   let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
     let incremental_cache = Arc::new(IncrementalCache::new(
       &deno_dir.fmt_incremental_cache_db_file_path(),
@@ -151,13 +153,13 @@ pub async fn format(
     Ok(())
   };
 
-  if flags.watch.is_some() {
+  if config.watch_paths().is_some() {
     file_watcher::watch_func(
       resolver,
       operation,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !flags.no_clear_screen,
+        clear_screen: !config.no_clear_screen(),
       },
     )
     .await?;
@@ -194,6 +196,10 @@ fn format_markdown(
           | "tsx"
           | "js"
           | "jsx"
+          | "cjs"
+          | "cts"
+          | "mjs"
+          | "mts"
           | "javascript"
           | "typescript"
           | "json"
@@ -312,6 +318,7 @@ async fn check_source_files(
           incremental_cache.update_file(&file_path, &file_text);
         }
         Err(e) => {
+          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
           let _g = output_lock.lock();
           eprintln!("Error checking: {}", file_path.to_string_lossy());
           eprintln!("   {}", e);
@@ -447,8 +454,9 @@ fn format_ensure_stable(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntatically correct. As a temporary ",
-                "workfaround you can ignore this file.\n\n{:#}"
+                "workfaround you can ignore this file ({}).\n\n{:#}"
               ),
+              file_path.display(),
               err,
             )
           }
@@ -458,10 +466,11 @@ fn format_ensure_stable(
           panic!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file differently each time. As a ",
+              "in the formatter where it formats the file ({}) differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
-            count
+            count,
+            file_path.display(),
           )
         }
       }
@@ -707,7 +716,10 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "tsx"
         | "js"
         | "jsx"
+        | "cjs"
+        | "cts"
         | "mjs"
+        | "mts"
         | "json"
         | "jsonc"
         | "md"
@@ -722,8 +734,12 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
   }
 }
 
-fn is_contain_git(path: &Path) -> bool {
+fn contains_git(path: &Path) -> bool {
   path.components().any(|c| c.as_os_str() == ".git")
+}
+
+fn contains_node_modules(path: &Path) -> bool {
+  path.components().any(|c| c.as_os_str() == "node_modules")
 }
 
 #[cfg(test)]
@@ -741,8 +757,8 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
     assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));
@@ -759,10 +775,22 @@ mod test {
 
   #[test]
   fn test_is_located_in_git() {
-    assert!(is_contain_git(Path::new("test/.git")));
-    assert!(is_contain_git(Path::new(".git/bad.json")));
-    assert!(is_contain_git(Path::new("test/.git/bad.json")));
-    assert!(!is_contain_git(Path::new("test/bad.git/bad.json")));
+    assert!(contains_git(Path::new("test/.git")));
+    assert!(contains_git(Path::new(".git/bad.json")));
+    assert!(contains_git(Path::new("test/.git/bad.json")));
+    assert!(!contains_git(Path::new("test/bad.git/bad.json")));
+  }
+
+  #[test]
+  fn test_is_located_in_node_modules() {
+    assert!(contains_node_modules(Path::new("test/node_modules")));
+    assert!(contains_node_modules(Path::new("node_modules/bad.json")));
+    assert!(contains_node_modules(Path::new(
+      "test/node_modules/bad.json"
+    )));
+    assert!(!contains_node_modules(Path::new(
+      "test/bad.node_modules/bad.json"
+    )));
   }
 
   #[test]

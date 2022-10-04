@@ -20,4 +20,4 @@ error: Error
 test 1 => ./test/fail_fast_with_val.ts:[WILDCARD]
 test 2 => ./test/fail_fast_with_val.ts:[WILDCARD]
 
-test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed | 2 failed ([WILDCARD])

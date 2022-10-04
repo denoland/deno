@@ -5,6 +5,8 @@ Available tasks:
     deno eval 'console.log(5)'
 - echo
     echo 1
+- echo_cwd
+    echo $(pwd)
 - exit_code_5
     echo $(echo 10 ; exit 2) && exit 5
 - piped

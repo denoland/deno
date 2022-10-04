@@ -3,7 +3,7 @@
 console.log("Starting the parent worker");
 
 new Worker(
-  new URL("./close_nested_child.js", import.meta.url),
+  import.meta.resolve("./close_nested_child.js"),
   { type: "module" },
 );
 

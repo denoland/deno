@@ -1,0 +1,43 @@
+name: bench
+
+on:
+  # Runs at minute 9 past hour 0, 6, 12, and 18.
+  schedule:
+    - cron: 9 0,6,12,18 * * *
+  workflow_dispatch:
+
+jobs:
+  bench:
+    name: bench / ${{ matrix.os }} / ${{ matrix.deno-version }}
+    if: github.repository == 'denoland/deno'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04-xl]
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      CI: true
+      GOOGLE_SVC_KEY: ${{ secrets.GOOGLE_SVC_KEY }}
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release
+        run: cargo build --release --locked --all-targets
+      
+      - name: Worker info
+        run: |
+          cat /proc/cpuinfo
+          cat /proc/meminfo
+
+      - name: Run and Post benchmarks
+        run: cargo bench --locked

@@ -108,7 +108,7 @@ async function checkFirstBlocksSecond(opts: {
 }
 
 function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
-  const path = "cli/tests/testdata/fixture.json";
+  const path = "cli/tests/testdata/assets/fixture.json";
   const scriptText = `
     const { rid } = Deno.openSync("${path}");
 
@@ -136,7 +136,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     // the lock so that the enter time of the next process doesn't
     // occur at the same time as this exit time
     const exitTime = new Date().getTime();
-    Deno.sleepSync(100);
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // release the lock
     ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}

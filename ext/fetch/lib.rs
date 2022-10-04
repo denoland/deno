@@ -167,8 +167,12 @@ impl FetchHandler for DefaultFileFetchHandler {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -215,7 +219,7 @@ where
         type_error("NetworkError when attempting to fetch resource.")
       })?;
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path)?;
+      permissions.check_read(&path, "fetch()")?;
 
       if method != Method::GET {
         return Err(type_error(format!(
@@ -240,7 +244,7 @@ where
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
-      permissions.check_net_url(&url)?;
+      permissions.check_net_url(&url, "fetch()")?;
 
       let mut request = client.request(method.clone(), url);
 
@@ -287,7 +291,7 @@ where
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
-        if name != HOST {
+        if !matches!(name, HOST | CONTENT_LENGTH) {
           request = request.header(name, v);
         }
       }
@@ -361,6 +365,7 @@ pub struct FetchResponse {
   headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
+  content_length: Option<u64>,
 }
 
 #[op]
@@ -391,6 +396,8 @@ pub async fn op_fetch_send(
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
+  let content_length = res.content_length();
+
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
     r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
   }));
@@ -409,6 +416,7 @@ pub async fn op_fetch_send(
     headers: res_headers,
     url,
     response_rid: rid,
+    content_length,
   })
 }
 
@@ -531,7 +539,7 @@ where
   if let Some(proxy) = args.proxy.clone() {
     let permissions = state.borrow_mut::<FP>();
     let url = Url::parse(&proxy.url)?;
-    permissions.check_net_url(&url)?;
+    permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
 
   let client_cert_chain_and_key = {

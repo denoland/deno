@@ -72,16 +72,11 @@ contextual awareness, it is the author's opinion that it is best to spend the
      TypeScript now includes the type definitions that we forward support.
      Currently there are three:
 
-     - `lib.es2021.intl.d.ts` contains additional `Intl` APIs that were ratified
-       and included, but for some reason never added to the TypeScript libs. PR
-       https://github.com/microsoft/TypeScript/pull/47254 has been sitting there
-       for 15 months without being merged for some reason. 🤷 You will likely
-       need to revert the deletion of this code from `lib.es2021.intl.d.ts`.
      - `lib.esnext.array.d.ts` contains additional array APIs. These likely will
        be moved to ES2022 at some point, but currently only the
        `Array.prototype.at` has been added. You will likely need to revert the
        deletion of the lib from `lib.esnext.d.ts`.
-     - We add `lib.dom.asynciterables.d.ts` because for some reason TypeScript
+     - We add `lib.dom.asynciterable.d.ts` because for some reason TypeScript
        has not built these into the libraries. (See:
        https://github.com/microsoft/TypeScript/issues/29867)
      - We add `lib.dom.extras.d.ts` because TypeScript is often behind
@@ -90,6 +85,8 @@ contextual awareness, it is the author's opinion that it is best to spend the
        when using libraries that take advantage of these standards. We add the
        library to `lib.dom.d.ts`, so it is automatically included when using the
        `dom` lib under Deno.
+     - Response in cli/dts/lib.dom.d.ts gets an additional:
+       `json(data: unknown, init?: ResponseInit): Response;`
 
 7. Based on the changes to the lib files, you will need to edit the map of lib
    names to files in the TypeScript compiler (`deno/cli/tsc/00_typescript.js`).

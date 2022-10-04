@@ -10,7 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { InterruptedPrototype } = core;
+  const { InterruptedPrototype, ops } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
@@ -128,7 +128,7 @@
       }
       const data = serializeJsMessageData(message, transfer);
       if (this[_id] === null) return;
-      core.opSync("op_message_port_post_message", this[_id], data);
+      ops.op_message_port_post_message(this[_id], data);
     }
 
     start() {
@@ -193,7 +193,7 @@
    * @returns {[number, number]}
    */
   function opCreateEntangledMessagePort() {
-    return core.opSync("op_message_port_create_entangled");
+    return ops.op_message_port_create_entangled();
   }
 
   /**
@@ -205,7 +205,7 @@
     const transferables = [];
     const hostObjects = [];
     const arrayBufferIdsInTransferables = [];
-    const transferedArrayBuffers = [];
+    const transferredArrayBuffers = [];
 
     for (const transferable of messageData.transferables) {
       switch (transferable.kind) {
@@ -216,7 +216,7 @@
           break;
         }
         case "arrayBuffer": {
-          ArrayPrototypePush(transferedArrayBuffers, transferable.data);
+          ArrayPrototypePush(transferredArrayBuffers, transferable.data);
           const i = ArrayPrototypePush(transferables, null);
           ArrayPrototypePush(arrayBufferIdsInTransferables, i);
           break;
@@ -228,12 +228,12 @@
 
     const data = core.deserialize(messageData.data, {
       hostObjects,
-      transferedArrayBuffers,
+      transferredArrayBuffers,
     });
 
     for (const i in arrayBufferIdsInTransferables) {
       const id = arrayBufferIdsInTransferables[i];
-      transferables[id] = transferedArrayBuffers[i];
+      transferables[id] = transferredArrayBuffers[i];
     }
 
     return [data, transferables];
@@ -247,12 +247,12 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    const transferedArrayBuffers = ArrayPrototypeFilter(
+    const transferredArrayBuffers = ArrayPrototypeFilter(
       transferables,
       (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
     );
 
-    for (const arrayBuffer of transferedArrayBuffers) {
+    for (const arrayBuffer of transferredArrayBuffers) {
       // This is hacky with both false positives and false negatives for
       // detecting detached array buffers. V8  needs to add a way to tell if a
       // buffer is detached or not.
@@ -270,7 +270,7 @@
         transferables,
         (a) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, a),
       ),
-      transferedArrayBuffers,
+      transferredArrayBuffers,
     }, (err) => {
       throw new DOMException(err, "DataCloneError");
     });
@@ -299,7 +299,7 @@
       ) {
         ArrayPrototypePush(serializedTransferables, {
           kind: "arrayBuffer",
-          data: transferedArrayBuffers[arrayBufferI],
+          data: transferredArrayBuffers[arrayBufferI],
         });
         arrayBufferI++;
       } else {

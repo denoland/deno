@@ -14,6 +14,6 @@ error: Error
 
 test 1 => ./test/fail_fast.ts:[WILDCARD]
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed | 1 failed ([WILDCARD])
 
 error: Test failed

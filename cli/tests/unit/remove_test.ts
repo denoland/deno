@@ -262,12 +262,12 @@ if (Deno.build.os === "windows") {
   Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeFileSymlink() {
-      const { status } = await Deno.spawn("cmd", {
+      const { success } = await Deno.spawn("cmd", {
         args: ["/c", "mklink", "file_link", "bar"],
         stdout: "null",
       });
 
-      assert(status.success);
+      assert(success);
       await Deno.remove("file_link");
       await assertRejects(async () => {
         await Deno.lstat("file_link");
@@ -278,12 +278,12 @@ if (Deno.build.os === "windows") {
   Deno.test(
     { permissions: { run: true, write: true, read: true } },
     async function removeDirSymlink() {
-      const { status } = await Deno.spawn("cmd", {
+      const { success } = await Deno.spawn("cmd", {
         args: ["/c", "mklink", "/d", "dir_link", "bar"],
         stdout: "null",
       });
 
-      assert(status.success);
+      assert(success);
       await Deno.remove("dir_link");
       await assertRejects(async () => {
         await Deno.lstat("dir_link");

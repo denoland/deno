@@ -35,14 +35,7 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
-  /// Resources may implement `read()` to be a readable stream
-  fn read(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(async move {
-      let (nread, _) = self.read_return(buf).await?;
-      Ok(nread)
-    })
-  }
-
+  /// Resources may implement `read_return()` to be a readable stream
   fn read_return(
     self: Rc<Self>,
     _buf: ZeroCopyBuf,
@@ -64,6 +57,13 @@ pub trait Resource: Any + 'static {
   /// resource specific clean-ups, such as cancelling pending futures, after a
   /// resource has been removed from the resource table.
   fn close(self: Rc<Self>) {}
+
+  /// Resources backed by a file descriptor can let ops know to allow for
+  /// low-level optimizations.
+  #[cfg(unix)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
+    None
+  }
 }
 
 impl dyn Resource {
@@ -77,6 +77,8 @@ impl dyn Resource {
   pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
+      // TODO(piscisaureus): safety comment
+      #[allow(clippy::undocumented_unsafe_blocks)]
       Some(unsafe { &*ptr })
     } else {
       None
@@ -125,6 +127,10 @@ impl ResourceTable {
   /// Returns a unique resource ID, which acts as a key for this resource.
   pub fn add_rc<T: Resource>(&mut self, resource: Rc<T>) -> ResourceId {
     let resource = resource as Rc<dyn Resource>;
+    self.add_rc_dyn(resource)
+  }
+
+  pub fn add_rc_dyn(&mut self, resource: Rc<dyn Resource>) -> ResourceId {
     let rid = self.next_rid;
     let removed_resource = self.index.insert(rid, resource);
     assert!(removed_resource.is_none());

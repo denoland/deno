@@ -39,8 +39,9 @@ declare global {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;
-    ops(): void;
-    print(msg: string, stderr: bool): void;
+    // deno-lint-ignore no-explicit-any
+    ops: Record<string, (...args: unknown[]) => any>;
+    print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,
@@ -50,6 +51,7 @@ declare global {
   }
 
   type LanguageServerRequest =
+    | Restart
     | ConfigureRequest
     | FindRenameLocationsRequest
     | GetAssets
@@ -138,7 +140,8 @@ declare global {
       position: number;
       name: string;
       source?: string;
-      data?: unknown;
+      preferences?: ts.UserPreferences;
+      data?: ts.CompletionEntryData;
     };
   }
 
@@ -250,5 +253,9 @@ declare global {
     method: "provideCallHierarchyOutgoingCalls";
     specifier: string;
     position: number;
+  }
+
+  interface Restart extends BaseLanguageServerRequest {
+    method: "restart";
   }
 }

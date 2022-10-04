@@ -1,7 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
+use crate::tools::test::TestFilter;
+use crate::tools::test::TestLocation;
+use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -12,18 +16,26 @@ use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
 use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::Permissions;
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-pub fn init(sender: TestEventSender) -> Extension {
+pub fn init(sender: TestEventSender, filter: TestFilter) -> Extension {
   Extension::builder()
     .ops(vec![
       op_pledge_test_permissions::decl(),
       op_restore_test_permissions::decl(),
       op_get_test_origin::decl(),
+      op_register_test::decl(),
+      op_register_test_step::decl(),
       op_dispatch_test_event::decl(),
     ])
     .state(move |state| {
       state.put(sender.clone());
+      state.put(filter.clone());
       Ok(())
     })
     .build()
@@ -74,6 +86,91 @@ pub fn op_restore_test_permissions(
 #[op]
 fn op_get_test_origin(state: &mut OpState) -> Result<String, AnyError> {
   Ok(state.borrow::<ModuleSpecifier>().to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestInfo {
+  name: String,
+  origin: String,
+  location: TestLocation,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TestRegisterResult {
+  id: usize,
+  filtered_out: bool,
+}
+
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+#[op]
+fn op_register_test(
+  state: &mut OpState,
+  info: TestInfo,
+) -> Result<TestRegisterResult, AnyError> {
+  let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+  let filter = state.borrow::<TestFilter>().clone();
+  let filtered_out = !filter.includes(&info.name);
+  let description = TestDescription {
+    id,
+    name: info.name,
+    origin: info.origin,
+    location: info.location,
+  };
+  let mut sender = state.borrow::<TestEventSender>().clone();
+  sender.send(TestEvent::Register(description)).ok();
+  Ok(TestRegisterResult { id, filtered_out })
+}
+
+fn deserialize_parent<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  struct Parent {
+    id: usize,
+  }
+  Ok(Parent::deserialize(deserializer)?.id)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestStepInfo {
+  name: String,
+  origin: String,
+  location: TestLocation,
+  level: usize,
+  #[serde(rename = "parent")]
+  #[serde(deserialize_with = "deserialize_parent")]
+  parent_id: usize,
+  root_id: usize,
+  root_name: String,
+}
+
+#[op]
+fn op_register_test_step(
+  state: &mut OpState,
+  info: TestStepInfo,
+) -> Result<TestRegisterResult, AnyError> {
+  let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+  let description = TestStepDescription {
+    id,
+    name: info.name,
+    origin: info.origin,
+    location: info.location,
+    level: info.level,
+    parent_id: info.parent_id,
+    root_id: info.root_id,
+    root_name: info.root_name,
+  };
+  let mut sender = state.borrow::<TestEventSender>().clone();
+  sender.send(TestEvent::StepRegister(description)).ok();
+  Ok(TestRegisterResult {
+    id,
+    filtered_out: false,
+  })
 }
 
 #[op]

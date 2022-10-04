@@ -8,6 +8,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
   const consoleInternal = window.__bootstrap.console;
@@ -917,6 +918,7 @@
   class EventTarget {
     constructor() {
       this[eventTargetData] = getDefaultTargetData();
+      this[webidl.brand] = webidl.brand;
     }
 
     addEventListener(
@@ -924,6 +926,8 @@
       callback,
       options,
     ) {
+      const self = this ?? globalThis;
+      webidl.assertBranded(self, EventTargetPrototype);
       const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
       webidl.requiredArguments(arguments.length, 2, {
@@ -939,7 +943,7 @@
         return;
       }
 
-      const { listeners } = (this ?? globalThis)[eventTargetData];
+      const { listeners } = self[eventTargetData];
 
       if (!(ReflectHas(listeners, type))) {
         listeners[type] = [];
@@ -965,7 +969,7 @@
           // If listener’s signal is not null, then add the following abort
           // abort steps to it: Remove an event listener.
           signal.addEventListener("abort", () => {
-            this.removeEventListener(type, callback, options);
+            self.removeEventListener(type, callback, options);
           });
         }
       }
@@ -978,11 +982,13 @@
       callback,
       options,
     ) {
+      const self = this ?? globalThis;
+      webidl.assertBranded(self, EventTargetPrototype);
       webidl.requiredArguments(arguments.length, 2, {
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const { listeners } = (this ?? globalThis)[eventTargetData];
+      const { listeners } = self[eventTargetData];
       if (callback !== null && ReflectHas(listeners, type)) {
         listeners[type] = ArrayPrototypeFilter(
           listeners[type],
@@ -1010,14 +1016,15 @@
     }
 
     dispatchEvent(event) {
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
-      });
       // If `this` is not present, then fallback to global scope. We don't use
       // `globalThis` directly here, because it could be deleted by user.
       // Instead use saved reference to global scope when the script was
       // executed.
       const self = this ?? window;
+      webidl.assertBranded(self, EventTargetPrototype);
+      webidl.requiredArguments(arguments.length, 1, {
+        prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
+      });
 
       const { listeners } = self[eventTargetData];
       if (!ReflectHas(listeners, event.type)) {
@@ -1042,6 +1049,7 @@
   }
 
   webidl.configurePrototype(EventTarget);
+  const EventTargetPrototype = EventTarget.prototype;
 
   defineEnumerableProps(EventTarget, [
     "addEventListener",
@@ -1082,7 +1090,7 @@
         filename = "",
         lineno = 0,
         colno = 0,
-        error = null,
+        error,
       } = {},
     ) {
       super(type, {
@@ -1271,6 +1279,58 @@
     [SymbolToStringTag] = "ProgressEvent";
   }
 
+  class PromiseRejectionEvent extends Event {
+    #promise = null;
+    #reason = null;
+
+    get promise() {
+      return this.#promise;
+    }
+    get reason() {
+      return this.#reason;
+    }
+
+    constructor(
+      type,
+      {
+        bubbles,
+        cancelable,
+        composed,
+        promise,
+        reason,
+      } = {},
+    ) {
+      super(type, {
+        bubbles: bubbles,
+        cancelable: cancelable,
+        composed: composed,
+      });
+
+      this.#promise = promise;
+      this.#reason = reason;
+    }
+
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof PromiseRejectionEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "promise",
+          "reason",
+        ],
+      }));
+    }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "PromiseRejectionEvent";
+  }
+
+  defineEnumerableProps(PromiseRejectionEvent, [
+    "promise",
+    "reason",
+  ]);
+
   const _eventHandlers = Symbol("eventHandlers");
 
   function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
@@ -1392,7 +1452,7 @@
     });
     // Avoid recursing `reportException()` via error handlers more than once.
     if (reportExceptionStackedCalls > 1 || window.dispatchEvent(event)) {
-      core.terminate(error);
+      ops.op_dispatch_exception(error);
     }
     reportExceptionStackedCalls--;
   }
@@ -1411,6 +1471,7 @@
     reportException(error);
   }
 
+  window[webidl.brand] = webidl.brand;
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
@@ -1418,6 +1479,7 @@
   window.MessageEvent = MessageEvent;
   window.CustomEvent = CustomEvent;
   window.ProgressEvent = ProgressEvent;
+  window.PromiseRejectionEvent = PromiseRejectionEvent;
   window.dispatchEvent = EventTarget.prototype.dispatchEvent;
   window.addEventListener = EventTarget.prototype.addEventListener;
   window.removeEventListener = EventTarget.prototype.removeEventListener;

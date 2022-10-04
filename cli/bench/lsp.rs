@@ -333,7 +333,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
 }
 
 /// Generate benchmarks for the LSP server.
-pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
+pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, i64>, AnyError> {
   println!("-> Start benchmarking lsp");
   let mut exec_times = HashMap::new();
 
@@ -343,7 +343,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_startup_shutdown(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("startup_shutdown".to_string(), mean);
 
@@ -353,7 +353,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_big_file_edits(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("big_file_edits".to_string(), mean);
 
@@ -363,7 +363,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_find_replace(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("find_replace".to_string(), mean);
 
@@ -373,7 +373,7 @@ pub fn benchmarks(deno_exe: &Path) -> Result<HashMap<String, u64>, AnyError> {
     times.push(bench_code_lens(deno_exe)?);
   }
   let mean =
-    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as i64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("code_lens".to_string(), mean);
 

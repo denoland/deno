@@ -2,6 +2,8 @@
 
 use crate::itest;
 use test_util as util;
+use test_util::assert_contains;
+use test_util::assert_ends_with;
 use test_util::TempDir;
 
 #[test]
@@ -34,16 +36,15 @@ fn bundle_exports() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -77,49 +78,51 @@ fn bundle_exports_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
 #[test]
 fn bundle_circular() {
   // First we have to generate a bundle of some module that has exports.
-  let circular1 = util::testdata_path().join("subdir/circular1.ts");
-  assert!(circular1.is_file());
+  let circular1_path = util::testdata_path().join("subdir/circular1.ts");
+  assert!(circular1_path.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("circular1.bundle.js");
-  let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("bundle")
-    .arg(circular1)
-    .arg(&bundle)
-    .spawn()
-    .unwrap();
-  let status = deno.wait().unwrap();
-  assert!(status.success());
-  assert!(bundle.is_file());
+  let bundle_path = t.path().join("circular1.bundle.js");
 
-  let output = util::deno_cmd()
+  // run this twice to ensure it works even when cached
+  for _ in 0..2 {
+    let mut deno = util::deno_cmd_with_deno_dir(&t)
+      .current_dir(util::testdata_path())
+      .arg("bundle")
+      .arg(&circular1_path)
+      .arg(&bundle_path)
+      .spawn()
+      .unwrap();
+    let status = deno.wait().unwrap();
+    assert!(status.success());
+    assert!(bundle_path.is_file());
+  }
+
+  let output = util::deno_cmd_with_deno_dir(&t)
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
-    .arg(&bundle)
+    .arg(&bundle_path)
     .output()
     .unwrap();
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("f2\nf1"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "f2\nf1",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -143,16 +146,15 @@ fn bundle_single_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
     .unwrap();
   // check the output of the the bundle program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello world!"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello world!",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -186,16 +188,15 @@ fn bundle_tla() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -219,7 +220,6 @@ fn bundle_js() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -231,56 +231,57 @@ fn bundle_js() {
 #[test]
 fn bundle_dynamic_import() {
   let _g = util::http_server();
-  let dynamic_import = util::testdata_path().join("bundle_dynamic_import.ts");
+  let dynamic_import = util::testdata_path().join("bundle/dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("bundle_dynamic_import.bundle.js");
+  let output_path = t.path().join("bundle_dynamic_import.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(dynamic_import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--allow-net")
     .arg("--quiet")
-    .arg(&bundle)
+    .arg(&output_path)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
 #[test]
 fn bundle_import_map() {
-  let import = util::testdata_path().join("bundle_im.ts");
-  let import_map_path = util::testdata_path().join("bundle_im.json");
+  let import = util::testdata_path().join("bundle/import_map/main.ts");
+  let import_map_path =
+    util::testdata_path().join("bundle/import_map/import_map.json");
   assert!(import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("import_map.bundle.js");
+  let output_path = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   // Now we try to use that bundle from another module.
   let test = t.path().join("test.js");
@@ -294,39 +295,39 @@ fn bundle_import_map() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg("--check")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
 #[test]
 fn bundle_import_map_no_check() {
-  let import = util::testdata_path().join("bundle_im.ts");
-  let import_map_path = util::testdata_path().join("bundle_im.json");
+  let import = util::testdata_path().join("bundle/import_map/main.ts");
+  let import_map_path =
+    util::testdata_path().join("bundle/import_map/import_map.json");
   assert!(import.is_file());
   let t = TempDir::new();
-  let bundle = t.path().join("import_map.bundle.js");
+  let output_path = t.path().join("import_map.bundle.js");
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--import-map")
     .arg(import_map_path)
     .arg(import)
-    .arg(&bundle)
+    .arg(&output_path)
     .spawn()
     .unwrap();
   let status = deno.wait().unwrap();
   assert!(status.success());
-  assert!(bundle.is_file());
+  assert!(output_path.is_file());
 
   // Now we try to use that bundle from another module.
   let test = t.path().join("test.js");
@@ -340,16 +341,15 @@ fn bundle_import_map_no_check() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&test)
     .output()
     .unwrap();
   // check the output of the test.ts program.
-  assert!(std::str::from_utf8(&output.stdout)
-    .unwrap()
-    .trim()
-    .ends_with("Hello"));
+  assert_ends_with!(
+    std::str::from_utf8(&output.stdout).unwrap().trim(),
+    "Hello",
+  );
   assert_eq!(output.stderr, b"");
 }
 
@@ -373,7 +373,6 @@ fn bundle_json_module() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -381,9 +380,7 @@ fn bundle_json_module() {
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
   // ensure the output looks right
-  assert!(String::from_utf8(output.stdout)
-    .unwrap()
-    .contains("with space"));
+  assert_contains!(String::from_utf8(output.stdout).unwrap(), "with space",);
 }
 
 #[test]
@@ -406,7 +403,6 @@ fn bundle_json_module_escape_sub() {
 
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
-    .env("DENO_FUTURE_CHECK", "1")
     .arg("run")
     .arg(&bundle)
     .output()
@@ -414,37 +410,38 @@ fn bundle_json_module_escape_sub() {
   // check that nothing went to stderr
   assert_eq!(output.stderr, b"");
   // make sure the output looks right and the escapes were effective
-  assert!(String::from_utf8(output.stdout)
-    .unwrap()
-    .contains("${globalThis}`and string literal`"));
+  assert_contains!(
+    String::from_utf8(output.stdout).unwrap(),
+    "${globalThis}`and string literal`",
+  );
 }
 
-itest!(lock_check_err_with_bundle {
-  args: "bundle --lock=lock_check_err_with_bundle.json http://127.0.0.1:4545/subdir/mod1.ts",
-  output: "lock_check_err_with_bundle.out",
+itest!(lockfile_check_error {
+  args: "bundle --lock=bundle/lockfile/check_error.json http://127.0.0.1:4545/subdir/mod1.ts",
+  output: "bundle/lockfile/check_error.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
-  output: "bundle.test.out",
+  output: "bundle/bundle.test.out",
 });
 
 itest!(bundle_jsx {
-  args: "bundle jsx_import_from_ts.ts",
-  output: "bundle_jsx.out",
+  args: "bundle run/jsx_import_from_ts.ts",
+  output: "bundle/jsx.out",
 });
 
-itest!(error_027_bundle_with_bare_import {
-  args: "bundle error_027_bundle_with_bare_import.ts",
-  output: "error_027_bundle_with_bare_import.ts.out",
+itest!(error_bundle_with_bare_import {
+  args: "bundle bundle/bare_imports/error_with_bare_import.ts",
+  output: "bundle/bare_imports/error_with_bare_import.ts.out",
   exit_code: 1,
 });
 
 itest!(ts_decorators_bundle {
-  args: "bundle ts_decorators_bundle.ts",
-  output: "ts_decorators_bundle.out",
+  args: "bundle bundle/decorators/ts_decorators.ts",
+  output: "bundle/decorators/ts_decorators.out",
 });
 
 itest!(bundle_export_specifier_with_alias {
@@ -454,18 +451,18 @@ itest!(bundle_export_specifier_with_alias {
 
 itest!(bundle_ignore_directives {
   args: "bundle subdir/mod1.ts",
-  output: "bundle_ignore_directives.test.out",
+  output: "bundle/ignore_directives.test.out",
 });
 
-itest!(check_local_by_default {
-  args: "bundle --quiet bundle/check_local_by_default.ts",
-  output: "bundle/check_local_by_default.out",
+itest!(check_local_by_default_no_errors {
+  args: "bundle --quiet bundle/check_local_by_default/no_errors.ts",
+  output: "bundle/check_local_by_default/no_errors.out",
   http_server: true,
 });
 
-itest!(check_local_by_default2 {
-  args: "bundle --quiet bundle/check_local_by_default2.ts",
-  output: "bundle/check_local_by_default2.out",
+itest!(check_local_by_default_type_error {
+  args: "bundle --quiet bundle/check_local_by_default/type_error.ts",
+  output: "bundle/check_local_by_default/type_error.out",
   http_server: true,
   exit_code: 1,
 });

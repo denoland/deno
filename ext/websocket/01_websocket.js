@@ -5,6 +5,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
@@ -189,8 +190,8 @@
 
       this[_url] = wsURL.href;
 
-      core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
+      ops.op_ws_check_permission_and_cancel_handle(
+        "WebSocket.abort()",
         this[_url],
         false,
       );
@@ -227,6 +228,7 @@
       PromisePrototypeThen(
         core.opAsync(
           "op_ws_create",
+          "new WebSocket()",
           wsURL.href,
           ArrayPrototypeJoin(protocols, ", "),
         ),
@@ -481,28 +483,36 @@
       if (this[_idleTimeoutDuration]) {
         clearTimeout(this[_idleTimeoutTimeout]);
         this[_idleTimeoutTimeout] = setTimeout(async () => {
-          await core.opAsync("op_ws_send", this[_rid], {
-            kind: "ping",
-          });
-          this[_idleTimeoutTimeout] = setTimeout(async () => {
-            this[_readyState] = CLOSING;
-            const reason = "No response from ping frame.";
-            await core.opAsync("op_ws_close", this[_rid], 1001, reason);
-            this[_readyState] = CLOSED;
-
-            const errEvent = new ErrorEvent("error", {
-              message: reason,
+          if (this[_readyState] === OPEN) {
+            await core.opAsync("op_ws_send", this[_rid], {
+              kind: "ping",
             });
-            this.dispatchEvent(errEvent);
+            this[_idleTimeoutTimeout] = setTimeout(async () => {
+              if (this[_readyState] === OPEN) {
+                this[_readyState] = CLOSING;
+                const reason = "No response from ping frame.";
+                await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+                this[_readyState] = CLOSED;
 
-            const event = new CloseEvent("close", {
-              wasClean: false,
-              code: 1001,
-              reason,
-            });
-            this.dispatchEvent(event);
-            core.tryClose(this[_rid]);
-          }, (this[_idleTimeoutDuration] / 2) * 1000);
+                const errEvent = new ErrorEvent("error", {
+                  message: reason,
+                });
+                this.dispatchEvent(errEvent);
+
+                const event = new CloseEvent("close", {
+                  wasClean: false,
+                  code: 1001,
+                  reason,
+                });
+                this.dispatchEvent(event);
+                core.tryClose(this[_rid]);
+              } else {
+                clearTimeout(this[_idleTimeoutTimeout]);
+              }
+            }, (this[_idleTimeoutDuration] / 2) * 1000);
+          } else {
+            clearTimeout(this[_idleTimeoutTimeout]);
+          }
         }, (this[_idleTimeoutDuration] / 2) * 1000);
       }
     }

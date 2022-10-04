@@ -11,6 +11,6 @@ error: PermissionDenied: Requires read access to "./some_file.txt", run again wi
 
 no prompt => ./test/no_prompt_with_denied_perms.ts:[WILDCARD]
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD]ms)
+FAILED | 0 passed | 1 failed ([WILDCARD]ms)
 
 error: Test failed

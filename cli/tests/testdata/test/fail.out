@@ -86,6 +86,6 @@ test 7 => ./test/fail.ts:22:6
 test 8 => ./test/fail.ts:25:6
 test 9 => ./test/fail.ts:28:6
 
-test result: FAILED. 0 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+FAILED | 0 passed | 10 failed ([WILDCARD])
 
 error: Test failed

@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
   const { BlobPrototype } = window.__bootstrap.file;
@@ -27,6 +28,7 @@
     nullBodyStatus,
     networkError,
     abortedNetworkError,
+    processUrlList,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
@@ -68,8 +70,7 @@
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
   function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
-    return core.opSync(
-      "op_fetch",
+    return ops.op_fetch(
       method,
       url,
       headers,
@@ -164,6 +165,7 @@
 
       const body = new InnerBody(req.blobUrlEntry.stream());
       terminator[abortSignal.add](() => body.error(terminator.reason));
+      processUrlList(req.urlList, req.urlListProcessed);
 
       return {
         headerList: [
@@ -178,7 +180,9 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
+        urlList: recursive
+          ? []
+          : [...new SafeArrayIterator(req.urlListProcessed)],
       };
     }
 
@@ -295,6 +299,8 @@
     }
     if (terminator.aborted) return abortedNetworkError();
 
+    processUrlList(req.urlList, req.urlListProcessed);
+
     /** @type {InnerResponse} */
     const response = {
       headerList: resp.headers,
@@ -306,7 +312,7 @@
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
-      urlList: req.urlList,
+      urlList: req.urlListProcessed,
     };
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
@@ -332,6 +338,7 @@
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
+          resp.contentLength,
         );
       }
     }
@@ -339,7 +346,8 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...new SafeArrayIterator(req.urlList)];
+      processUrlList(req.urlList, req.urlListProcessed);
+      response.urlList = [...new SafeArrayIterator(req.urlListProcessed)];
     }
 
     return response;
@@ -407,7 +415,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    ArrayPrototypePush(request.urlList, locationURL.href);
+    ArrayPrototypePush(request.urlList, () => locationURL.href);
     return mainFetch(request, true, terminator);
   }
 
@@ -450,6 +458,10 @@
 
       if (!requestObject.headers.has("Accept")) {
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
+      }
+
+      if (!requestObject.headers.has("Accept-Language")) {
+        ArrayPrototypePush(request.headerList, ["Accept-Language", "*"]);
       }
 
       // 12.
@@ -556,7 +568,7 @@
       }
 
       // Pass the resolved URL to v8.
-      core.opSync("op_wasm_streaming_set_url", rid, res.url);
+      ops.op_wasm_streaming_set_url(rid, res.url);
 
       if (res.body !== null) {
         // 2.6.
@@ -567,7 +579,7 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.opSync("op_wasm_streaming_feed", rid, chunk);
+            ops.op_wasm_streaming_feed(rid, chunk);
           }
         })().then(
           // 2.7

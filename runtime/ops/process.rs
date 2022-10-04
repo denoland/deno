@@ -32,7 +32,7 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[derive(Copy, Clone, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stdio {
   Inherit,
@@ -50,7 +50,7 @@ impl Stdio {
   }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum StdioOrRid {
   Stdio(Stdio),
   Rid(ResourceId),
@@ -144,7 +144,10 @@ struct RunInfo {
 #[op]
 fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
-  state.borrow_mut::<Permissions>().run.check(&args[0])?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check(&args[0], Some("Deno.run()"))?;
   let env = run_args.env;
   let cwd = run_args.cwd;
 
@@ -174,6 +177,8 @@ fn op_run(state: &mut OpState, run_args: RunArgs) -> Result<RunInfo, AnyError> {
     c.uid(uid);
   }
   #[cfg(unix)]
+  // TODO(bartlomieju):
+  #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     c.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
@@ -316,20 +321,26 @@ pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
   } else if pid <= 0 {
     Err(type_error("Invalid pid"))
   } else {
+    // SAFETY: winapi call
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+
     if handle.is_null() {
+      // SAFETY: winapi call
       let err = match unsafe { GetLastError() } {
         ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
         errno => Error::from_raw_os_error(errno as i32),
       };
       Err(err.into())
     } else {
-      let r = unsafe { TerminateProcess(handle, 1) };
-      unsafe { CloseHandle(handle) };
-      match r {
-        FALSE => Err(Error::last_os_error().into()),
-        TRUE => Ok(()),
-        _ => unreachable!(),
+      // SAFETY: winapi calls
+      unsafe {
+        let is_terminated = TerminateProcess(handle, 1);
+        CloseHandle(handle);
+        match is_terminated {
+          FALSE => Err(Error::last_os_error().into()),
+          TRUE => Ok(()),
+          _ => unreachable!(),
+        }
       }
     }
   }
@@ -340,8 +351,12 @@ fn op_kill(
   state: &mut OpState,
   pid: i32,
   signal: String,
+  api_name: String,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().run.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check_all(Some(&api_name))?;
   kill(pid, &signal)?;
   Ok(())
 }

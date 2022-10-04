@@ -774,35 +774,40 @@ fn lsp_import_map_import_completions() {
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": "."
+          "insertText": ".",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "..",
           "kind": 19,
           "detail": "(local)",
           "sortText": "1",
-          "insertText": ".."
+          "insertText": "..",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "std",
-          "insertText": "std"
+          "insertText": "std",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "fs",
           "kind": 17,
           "detail": "(import map)",
           "sortText": "fs",
-          "insertText": "fs"
+          "insertText": "fs",
+          "commitCharacters": ["\"", "'"],
         },
         {
           "label": "/~",
           "kind": 19,
           "detail": "(import map)",
           "sortText": "/~",
-          "insertText": "/~"
+          "insertText": "/~",
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -883,7 +888,8 @@ fn lsp_import_map_import_completions() {
               }
             },
             "newText": "/~/b.ts"
-          }
+          },
+          "commitCharacters": ["\"", "'"],
         }
       ]
     }))
@@ -929,7 +935,8 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
+        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range": {
         "start": {
@@ -980,7 +987,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -991,7 +998,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -1353,7 +1360,8 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent."
+        "The process ID of parent process of this instance of the Deno CLI.\n\n```ts\nconsole.log(Deno.ppid);\n```",
+        "\n\n*@category* - Runtime Environment",
       ],
       "range":{
         "start":{
@@ -2802,7 +2810,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2814,7 +2822,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -3490,6 +3498,7 @@ fn lsp_completions_optional() {
           "sortText": "11",
           "filterText": "b",
           "insertText": "b",
+          "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
               "specifier": "file:///a/file.ts",
@@ -3525,6 +3534,124 @@ fn lsp_completions_optional() {
     }))
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_completions_auto_import() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const foo = \"foo\";\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export {};\n\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 0,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    if !list.items.iter().any(|item| item.label == "foo") {
+      panic!("completions items missing 'foo' symbol");
+    }
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "foo",
+        "kind": 6,
+        "sortText": "￿16",
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/file.ts",
+            "position": 12,
+            "name": "foo",
+            "source": "./b",
+            "data": {
+              "exportName": "foo",
+              "moduleSpecifier": "./b",
+              "fileName": "file:///a/b.ts"
+            },
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "foo",
+      "kind": 6,
+      "detail": "const foo: \"foo\"",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 0
+            },
+            "end": {
+              "line": 0,
+              "character": 0
+            }
+          },
+          "newText": "import { foo } from \"./b.ts\";\n\n"
+        }
+      ],
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
 }
 
 #[test]
@@ -3980,8 +4107,8 @@ fn lsp_diagnostics_warn_redirect() {
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
           ..Default::default()
         }
       ],
