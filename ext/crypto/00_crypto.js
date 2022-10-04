@@ -1078,7 +1078,7 @@
     /**
      * @param {AlgorithmIdentifier} algorithm
      * @param {CryptoKey} baseKey
-     * @param {number} length
+     * @param {number | null} length
      * @returns {Promise<ArrayBuffer>}
      */
     async deriveBits(algorithm, baseKey, length) {
@@ -1093,10 +1093,12 @@
         prefix,
         context: "Argument 2",
       });
-      length = webidl.converters["unsigned long"](length, {
-        prefix,
-        context: "Argument 3",
-      });
+      if (length !== null) {
+        length = webidl.converters["unsigned long"](length, {
+          prefix,
+          context: "Argument 3",
+        });
+      }
 
       // 2.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
@@ -4391,7 +4393,17 @@
             length,
           });
 
-          return buf.buffer;
+          // 8.
+          if (length === null) {
+            return buf.buffer;
+          }
+          if (
+            length === 0 || buf.buffer.byteLength * 8 < length ||
+            length % 8 !== 0
+          ) {
+            throw new DOMException("Invalid length", "OperationError");
+          }
+          return buf.buffer.slice(0, length / 8);
         } else {
           throw new DOMException("Not implemented", "NotSupportedError");
         }

@@ -541,6 +541,71 @@ Deno.test(async function testHkdfDeriveBitsWithLargeKeySize() {
   );
 });
 
+Deno.test(async function testEcdhDeriveBitsWithShorterLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keypair.publicKey,
+    },
+    keypair.privateKey,
+    256,
+  );
+  assertEquals(result.byteLength * 8, 256);
+});
+
+Deno.test(async function testEcdhDeriveBitsWithLongerLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  await assertRejects(
+    () =>
+      crypto.subtle.deriveBits(
+        {
+          name: "ECDH",
+          public: keypair.publicKey,
+        },
+        keypair.privateKey,
+        512,
+      ),
+    DOMException,
+    "Invalid length",
+  );
+});
+
+Deno.test(async function testEcdhDeriveBitsWithNullLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keypair.publicKey,
+    },
+    keypair.privateKey,
+    // @ts-ignore: necessary until .d.ts file allows passing null (see https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1416)
+    null,
+  );
+  assertEquals(result.byteLength * 8, 384);
+});
+
 Deno.test(async function testDeriveKey() {
   // Test deriveKey
   const rawKey = await crypto.getRandomValues(new Uint8Array(16));
