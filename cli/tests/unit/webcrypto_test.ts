@@ -1919,3 +1919,13 @@ Deno.test(async function testImportLeadingZeroesKey() {
   assert(key instanceof CryptoKey);
   assertEquals(key.type, "private");
 });
+
+// https://github.com/denoland/deno/issues/15523
+Deno.test(async function testECspkiRoundTrip() {
+  const alg = { name: "ECDH", namedCurve: "P-256" };
+  const { publicKey } = await crypto.subtle.generateKey(alg, true, [
+    "deriveBits",
+  ]);
+  const spki = await crypto.subtle.exportKey("spki", publicKey);
+  await crypto.subtle.importKey("spki", spki, alg, true, []);
+});

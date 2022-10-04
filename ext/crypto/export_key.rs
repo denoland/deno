@@ -281,7 +281,7 @@ fn export_key_ec(
 
       let alg_id = match algorithm {
         ExportKeyAlgorithm::Ecdh { .. } => AlgorithmIdentifier {
-          oid: ObjectIdentifier::new_unwrap("1.3.132.1.12"),
+          oid: ObjectIdentifier::new_unwrap("1.2.840.10045.2.1"),
           parameters: alg_id.parameters,
         },
         _ => alg_id,
