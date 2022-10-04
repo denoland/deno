@@ -1,7 +1,5 @@
 use crate::key::CryptoNamedCurve;
 use crate::shared::*;
-use crate::OaepPrivateKeyParameters;
-use crate::PssPrivateKeyParameters;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ZeroCopyBuf;
@@ -52,11 +50,11 @@ pub enum KeyData {
 #[serde(rename_all = "camelCase", tag = "algorithm")]
 pub enum ImportKeyOptions {
   #[serde(rename = "RSASSA-PKCS1-v1_5")]
-  RsassaPkcs1v15 { hash: ShaHash },
+  RsassaPkcs1v15 {},
   #[serde(rename = "RSA-PSS")]
-  RsaPss { hash: ShaHash },
+  RsaPss {},
   #[serde(rename = "RSA-OAEP")]
-  RsaOaep { hash: ShaHash },
+  RsaOaep {},
   #[serde(rename = "ECDSA", rename_all = "camelCase")]
   Ecdsa { named_curve: EcNamedCurve },
   #[serde(rename = "ECDH", rename_all = "camelCase")]
@@ -91,11 +89,9 @@ pub fn op_crypto_import_key(
   key_data: KeyData,
 ) -> Result<ImportKeyResult, AnyError> {
   match opts {
-    ImportKeyOptions::RsassaPkcs1v15 { hash } => {
-      import_key_rsassa(key_data, hash)
-    }
-    ImportKeyOptions::RsaPss { hash } => import_key_rsapss(key_data, hash),
-    ImportKeyOptions::RsaOaep { hash } => import_key_rsaoaep(key_data, hash),
+    ImportKeyOptions::RsassaPkcs1v15 {} => import_key_rsassa(key_data),
+    ImportKeyOptions::RsaPss {} => import_key_rsapss(key_data),
+    ImportKeyOptions::RsaOaep {} => import_key_rsaoaep(key_data),
     ImportKeyOptions::Ecdsa { named_curve }
     | ImportKeyOptions::Ecdh { named_curve } => {
       import_key_ec(key_data, named_curve)
@@ -193,7 +189,6 @@ fn import_key_rsa_jwk(
 
 fn import_key_rsassa(
   key_data: KeyData,
-  hash: ShaHash,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
   match key_data {
     KeyData::Spki(data) => {
@@ -204,26 +199,9 @@ fn import_key_rsassa(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // sha1WithRSAEncryption
-        SHA1_RSA_ENCRYPTION_OID => Some(ShaHash::Sha1),
-        // sha256WithRSAEncryption
-        SHA256_RSA_ENCRYPTION_OID => Some(ShaHash::Sha256),
-        // sha384WithRSAEncryption
-        SHA384_RSA_ENCRYPTION_OID => Some(ShaHash::Sha384),
-        // sha512WithRSAEncryption
-        SHA512_RSA_ENCRYPTION_OID => Some(ShaHash::Sha512),
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
@@ -260,26 +238,9 @@ fn import_key_rsassa(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // sha1WithRSAEncryption
-        SHA1_RSA_ENCRYPTION_OID => Some(ShaHash::Sha1),
-        // sha256WithRSAEncryption
-        SHA256_RSA_ENCRYPTION_OID => Some(ShaHash::Sha256),
-        // sha384WithRSAEncryption
-        SHA384_RSA_ENCRYPTION_OID => Some(ShaHash::Sha384),
-        // sha512WithRSAEncryption
-        SHA512_RSA_ENCRYPTION_OID => Some(ShaHash::Sha512),
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
@@ -317,7 +278,6 @@ fn import_key_rsassa(
 
 fn import_key_rsapss(
   key_data: KeyData,
-  hash: ShaHash,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
   match key_data {
     KeyData::Spki(data) => {
@@ -328,47 +288,9 @@ fn import_key_rsapss(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // id-RSASSA-PSS
-        RSASSA_PSS_OID => {
-          let params = PssPrivateKeyParameters::try_from(
-            pk_info
-              .algorithm
-              .parameters
-              .ok_or_else(|| data_error("malformed parameters"))?,
-          )
-          .map_err(|_| data_error("malformed parameters"))?;
-
-          let hash_alg = params.hash_algorithm;
-          let hash = match hash_alg.oid {
-            // id-sha1
-            ID_SHA1_OID => Some(ShaHash::Sha1),
-            // id-sha256
-            ID_SHA256_OID => Some(ShaHash::Sha256),
-            // id-sha384
-            ID_SHA384_OID => Some(ShaHash::Sha384),
-            // id-sha256
-            ID_SHA512_OID => Some(ShaHash::Sha512),
-            _ => return Err(data_error("unsupported hash algorithm")),
-          };
-
-          if params.mask_gen_algorithm.oid != ID_MFG1 {
-            return Err(not_supported_error("unsupported hash algorithm"));
-          }
-
-          hash
-        }
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
@@ -405,42 +327,9 @@ fn import_key_rsapss(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // id-RSASSA-PSS
-        RSASSA_PSS_OID => {
-          let params = PssPrivateKeyParameters::try_from(
-            pk_info
-              .algorithm
-              .parameters
-              .ok_or_else(|| not_supported_error("malformed parameters"))?,
-          )
-          .map_err(|_| not_supported_error("malformed parameters"))?;
-
-          let hash_alg = params.hash_algorithm;
-          match hash_alg.oid {
-            // id-sha1
-            ID_SHA1_OID => Some(ShaHash::Sha1),
-            // id-sha256
-            ID_SHA256_OID => Some(ShaHash::Sha256),
-            // id-sha384
-            ID_SHA384_OID => Some(ShaHash::Sha384),
-            // id-sha256
-            ID_SHA512_OID => Some(ShaHash::Sha512),
-            _ => return Err(data_error("unsupported hash algorithm")),
-          }
-        }
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
@@ -478,7 +367,6 @@ fn import_key_rsapss(
 
 fn import_key_rsaoaep(
   key_data: KeyData,
-  hash: ShaHash,
 ) -> Result<ImportKeyResult, deno_core::anyhow::Error> {
   match key_data {
     KeyData::Spki(data) => {
@@ -489,41 +377,9 @@ fn import_key_rsaoaep(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // id-RSAES-OAEP
-        RSAES_OAEP_OID => {
-          let params = OaepPrivateKeyParameters::try_from(
-            pk_info
-              .algorithm
-              .parameters
-              .ok_or_else(|| data_error("malformed parameters"))?,
-          )
-          .map_err(|_| data_error("malformed parameters"))?;
-
-          let hash_alg = params.hash_algorithm;
-          match hash_alg.oid {
-            // id-sha1
-            ID_SHA1_OID => Some(ShaHash::Sha1),
-            // id-sha256
-            ID_SHA256_OID => Some(ShaHash::Sha256),
-            // id-sha384
-            ID_SHA384_OID => Some(ShaHash::Sha384),
-            // id-sha256
-            ID_SHA512_OID => Some(ShaHash::Sha512),
-            _ => return Err(data_error("unsupported hash algorithm")),
-          }
-        }
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
@@ -560,42 +416,9 @@ fn import_key_rsaoaep(
       // 4-5.
       let alg = pk_info.algorithm.oid;
 
-      // 6.
-      // 6.
-      let pk_hash = match alg {
-        // rsaEncryption
-        RSA_ENCRYPTION_OID => None,
-        // id-RSAES-OAEP
-        RSAES_OAEP_OID => {
-          let params = OaepPrivateKeyParameters::try_from(
-            pk_info
-              .algorithm
-              .parameters
-              .ok_or_else(|| not_supported_error("malformed parameters"))?,
-          )
-          .map_err(|_| not_supported_error("malformed parameters"))?;
-
-          let hash_alg = params.hash_algorithm;
-          match hash_alg.oid {
-            // id-sha1
-            ID_SHA1_OID => Some(ShaHash::Sha1),
-            // id-sha256
-            ID_SHA256_OID => Some(ShaHash::Sha256),
-            // id-sha384
-            ID_SHA384_OID => Some(ShaHash::Sha384),
-            // id-sha256
-            ID_SHA512_OID => Some(ShaHash::Sha512),
-            _ => return Err(data_error("unsupported hash algorithm")),
-          }
-        }
-        _ => return Err(data_error("unsupported algorithm")),
-      };
-
-      // 7.
-      if let Some(pk_hash) = pk_hash {
-        if pk_hash != hash {
-          return Err(data_error("hash mismatch"));
-        }
+      // 6-7. (skipped, only support rsaEncryption for interoperability)
+      if alg != RSA_ENCRYPTION_OID {
+        return Err(data_error("unsupported algorithm"));
       }
 
       // 8-9.
