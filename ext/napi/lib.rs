@@ -595,7 +595,8 @@ where
         })
       }
     };
-    // Don't run the `Drop` handler on Library.
+    // NAPI addons can't be unloaded, so we're going to "forget" the library
+    // object so it lives till the program exit.
     std::mem::forget(library);
     obj
   })
