@@ -39,6 +39,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
 use hyper::body::Bytes;
+use hyper::body::HttpBody;
+use hyper::body::SizeHint;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
@@ -309,6 +311,7 @@ pub struct HttpStreamResource {
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
   cancel_handle: CancelHandle,
+  size: SizeHint,
 }
 
 impl HttpStreamResource {
@@ -318,11 +321,13 @@ impl HttpStreamResource {
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
   ) -> Self {
+    let size = request.body().size_hint();
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
+      size,
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -387,6 +392,10 @@ impl Resource for HttpStreamResource {
 
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (self.size.lower(), self.size.upper())
   }
 }
 
