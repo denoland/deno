@@ -380,7 +380,7 @@ impl Env {
   }
 
   #[inline]
-  pub fn isolate(&self) -> &mut v8::OwnedIsolate {
+  pub fn isolate(&mut self) -> &mut v8::OwnedIsolate {
     // SAFETY: Lifetime of `OwnedIsolate` is longer than `Env`.
     unsafe { &mut *self.isolate_ptr }
   }
