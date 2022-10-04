@@ -39,6 +39,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
 use hyper::body::Bytes;
+use hyper::body::HttpBody;
+use hyper::body::SizeHint;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
@@ -186,29 +188,10 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
-      let content_length = if request
-        .headers()
-        .get(hyper::header::CONTENT_ENCODING)
-        .is_none()
-      {
-        request
-          .headers()
-          .get(hyper::header::CONTENT_LENGTH)
-          .and_then(|v| v.to_str().ok())
-          .and_then(|v| v.parse::<u64>().ok())
-      } else {
-        None
-      };
-
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let stream = HttpStreamResource::new(
-        self,
-        request,
-        response_tx,
-        accept_encoding,
-        content_length,
-      );
+      let stream =
+        HttpStreamResource::new(self, request, response_tx, accept_encoding);
       Some((stream, method, url))
     };
 
@@ -328,7 +311,7 @@ pub struct HttpStreamResource {
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
   cancel_handle: CancelHandle,
-  size: Option<u64>,
+  size: SizeHint,
 }
 
 impl HttpStreamResource {
@@ -337,8 +320,8 @@ impl HttpStreamResource {
     request: Request<Body>,
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
-    size: Option<u64>,
   ) -> Self {
+    let size = request.body().size_hint();
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
@@ -412,7 +395,7 @@ impl Resource for HttpStreamResource {
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
-    (0, self.size)
+    (self.size.lower(), self.size.upper())
   }
 }
 
