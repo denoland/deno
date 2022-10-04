@@ -14,30 +14,6 @@ use serde::Serialize;
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
-pub const SHA1_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.5");
-pub const SHA256_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
-pub const SHA384_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.12");
-pub const SHA512_RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.13");
-pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
-pub const ID_SHA1_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.3.14.3.2.26");
-pub const ID_SHA256_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1");
-pub const ID_SHA384_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.2");
-pub const ID_SHA512_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.3");
-pub const ID_MFG1: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
-pub const RSAES_OAEP_OID: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.7");
-pub const ID_P_SPECIFIED: const_oid::ObjectIdentifier =
-  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.9");
 
 pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");

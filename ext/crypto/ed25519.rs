@@ -66,6 +66,7 @@ pub fn op_import_spki_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
 #[op(fast)]
 pub fn op_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
   // 2-3.
+  // This should probably use OneAsymmetricKey instead
   let pk_info = match PrivateKeyInfo::from_der(key_data) {
     Ok(pk_info) => pk_info,
     Err(_) => return false,
@@ -81,10 +82,10 @@ pub fn op_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
   }
   // 6.
   // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 32 {
+  if pk_info.private_key.len() != 34 {
     return false;
   }
-  out.copy_from_slice(pk_info.private_key);
+  out.copy_from_slice(&pk_info.private_key[2..]);
   true
 }
 
@@ -103,6 +104,7 @@ pub fn op_export_spki_ed25519(pubkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
 
 #[op]
 pub fn op_export_pkcs8_ed25519(pkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+  // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
     public_key: None,
     algorithm: rsa::pkcs8::AlgorithmIdentifier {
