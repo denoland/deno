@@ -27,6 +27,7 @@
     Int8ArrayPrototype,
     JSONParse,
     JSONStringify,
+    MathCeil,
     ObjectAssign,
     ObjectPrototypeIsPrototypeOf,
     StringPrototypeToLowerCase,
@@ -128,6 +129,7 @@
       "AES-CBC": null,
       "AES-GCM": null,
       "AES-KW": null,
+      "Ed25519": null,
       "X25519": null,
     },
     "deriveBits": {
@@ -1049,6 +1051,10 @@
           result = exportKeyEd25519(format, key, innerKey);
           break;
         }
+        case "X25519": {
+          result = exportKeyX25519(format, key, innerKey);
+          break;
+        }
         case "AES-CTR":
         case "AES-CBC":
         case "AES-GCM":
@@ -1073,7 +1079,7 @@
     /**
      * @param {AlgorithmIdentifier} algorithm
      * @param {CryptoKey} baseKey
-     * @param {number} length
+     * @param {number | null} length
      * @returns {Promise<ArrayBuffer>}
      */
     async deriveBits(algorithm, baseKey, length) {
@@ -1088,10 +1094,12 @@
         prefix,
         context: "Argument 2",
       });
-      length = webidl.converters["unsigned long"](length, {
-        prefix,
-        context: "Argument 3",
-      });
+      if (length !== null) {
+        length = webidl.converters["unsigned long"](length, {
+          prefix,
+          context: "Argument 3",
+        });
+      }
 
       // 2.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
@@ -2142,7 +2150,7 @@
         return constructKey(
           "public",
           extractable,
-          [],
+          usageIntersection(keyUsages, recognisedUsages),
           algorithm,
           handle,
         );
@@ -2173,7 +2181,7 @@
         return constructKey(
           "public",
           extractable,
-          [],
+          usageIntersection(keyUsages, recognisedUsages),
           algorithm,
           handle,
         );
@@ -2204,7 +2212,7 @@
         return constructKey(
           "private",
           extractable,
-          [],
+          usageIntersection(keyUsages, recognisedUsages),
           algorithm,
           handle,
         );
@@ -2299,7 +2307,7 @@
         // 9.
         if (jwk.d !== undefined) {
           // https://www.rfc-editor.org/rfc/rfc8037#section-2
-          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+          const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2311,13 +2319,13 @@
           return constructKey(
             "private",
             extractable,
-            [],
+            usageIntersection(keyUsages, recognisedUsages),
             algorithm,
             handle,
           );
         } else {
           // https://www.rfc-editor.org/rfc/rfc8037#section-2
-          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+          const publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2329,7 +2337,7 @@
           return constructKey(
             "public",
             extractable,
-            [],
+            usageIntersection(keyUsages, recognisedUsages),
             algorithm,
             handle,
           );
@@ -2422,7 +2430,7 @@
         return constructKey(
           "private",
           extractable,
-          [],
+          usageIntersection(keyUsages, recognisedUsages),
           algorithm,
           handle,
         );
@@ -2438,7 +2446,7 @@
               keyUsages,
               (u) =>
                 !ArrayPrototypeIncludes(
-                  SUPPORTED_KEY_USAGES["X25519"].private,
+                  ["deriveKey", "deriveBits"],
                   u,
                 ),
             ) !== undefined
@@ -2504,7 +2512,7 @@
         // 9.
         if (jwk.d !== undefined) {
           // https://www.rfc-editor.org/rfc/rfc8037#section-2
-          const privateKeyData = ops.op_crypto_base64url(jwk.d);
+          const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2516,13 +2524,13 @@
           return constructKey(
             "private",
             extractable,
-            [],
+            usageIntersection(keyUsages, ["deriveKey", "deriveBits"]),
             algorithm,
             handle,
           );
         } else {
           // https://www.rfc-editor.org/rfc/rfc8037#section-2
-          const publicKeyData = ops.op_crypto_base64url(jwk.d);
+          const publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -3310,9 +3318,6 @@
       private: ["deriveKey", "deriveBits"],
       jwkUse: "enc",
     },
-    "X25519": {
-      private: ["deriveKey", "deriveBits"],
-    },
   };
 
   function importKeyRSA(
@@ -4046,13 +4051,16 @@
           );
         }
 
-        const pkcs8Der = ops.op_export_pkcs8_ed25519(innerKey);
+        const pkcs8Der = ops.op_export_pkcs8_ed25519(
+          new Uint8Array([0x04, 0x22, ...innerKey]),
+        );
+        pkcs8Der[15] = 0x20;
         return pkcs8Der.buffer;
       }
       case "jwk": {
         const x = key[_type] === "private"
           ? ops.op_jwk_x_ed25519(innerKey)
-          : ops.op_crypto_base64url(innerKey);
+          : ops.op_crypto_base64url_encode(innerKey);
         const jwk = {
           kty: "OKP",
           alg: "EdDSA",
@@ -4062,8 +4070,68 @@
           ext: key[_extractable],
         };
         if (key[_type] === "private") {
-          jwk.d = ops.op_crypto_base64url(innerKey);
+          jwk.d = ops.op_crypto_base64url_encode(innerKey);
         }
+        return jwk;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
+    }
+  }
+
+  function exportKeyX25519(format, key, innerKey) {
+    switch (format) {
+      case "raw": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        // 2-3.
+        return innerKey.buffer;
+      }
+      case "spki": {
+        // 1.
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const spkiDer = ops.op_export_spki_x25519(innerKey);
+        return spkiDer.buffer;
+      }
+      case "pkcs8": {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key is not a public key",
+            "InvalidAccessError",
+          );
+        }
+
+        const pkcs8Der = ops.op_export_pkcs8_x25519(
+          new Uint8Array([0x04, 0x22, ...innerKey]),
+        );
+        pkcs8Der[15] = 0x20;
+        return pkcs8Der.buffer;
+      }
+      case "jwk": {
+        if (key[_type] === "private") {
+          throw new DOMException("Not implemented", "NotSupportedError");
+        }
+        const x = ops.op_crypto_base64url_encode(innerKey);
+        const jwk = {
+          kty: "OKP",
+          crv: "X25519",
+          x,
+          "key_ops": key.usages,
+          ext: key[_extractable],
+        };
         return jwk;
       }
       default:
@@ -4326,7 +4394,14 @@
             length,
           });
 
-          return buf.buffer;
+          // 8.
+          if (length === null) {
+            return buf.buffer;
+          } else if (buf.buffer.byteLength * 8 < length) {
+            throw new DOMException("Invalid length", "OperationError");
+          } else {
+            return buf.buffer.slice(0, MathCeil(length / 8));
+          }
         } else {
           throw new DOMException("Not implemented", "NotSupportedError");
         }
@@ -4391,10 +4466,12 @@
         // 7.
         if (length === null) {
           return secret.buffer;
-        } else if (secret.length * 8 < length) {
+        } else if (
+          secret.buffer.byteLength * 8 < length
+        ) {
           throw new DOMException("Invalid length", "OperationError");
         } else {
-          return secret.subarray(0, length / 8).buffer;
+          return secret.buffer.slice(0, MathCeil(length / 8));
         }
       }
       default:

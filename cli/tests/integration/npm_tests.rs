@@ -195,6 +195,21 @@ itest!(require_json {
   http_server: true,
 });
 
+itest!(error_version_after_subpath {
+  args: "run --unstable -A --quiet npm/error_version_after_subpath/main.js",
+  output: "npm/error_version_after_subpath/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_cache {
+  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  output: "npm/deno_cache.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(

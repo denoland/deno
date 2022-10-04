@@ -408,6 +408,7 @@ pub async fn op_fetch_send(
     .add(FetchResponseBodyResource {
       reader: AsyncRefCell::new(stream_reader),
       cancel: CancelHandle::default(),
+      size: content_length,
     });
 
   Ok(FetchResponse {
@@ -479,6 +480,7 @@ type BytesStream =
 struct FetchResponseBodyResource {
   reader: AsyncRefCell<StreamReader<BytesStream, bytes::Bytes>>,
   cancel: CancelHandle,
+  size: Option<u64>,
 }
 
 impl Resource for FetchResponseBodyResource {
@@ -496,6 +498,10 @@ impl Resource for FetchResponseBodyResource {
       let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
       Ok((read, buf))
     })
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (0, self.size)
   }
 
   fn close(self: Rc<Self>) {

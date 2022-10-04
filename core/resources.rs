@@ -64,6 +64,10 @@ pub trait Resource: Any + 'static {
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
     None
   }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (0, None)
+  }
 }
 
 impl dyn Resource {

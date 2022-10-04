@@ -34,6 +34,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_add::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
       op_read::decl(),
+      op_read_all::decl(),
       op_write::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
@@ -166,6 +167,26 @@ async fn op_read(
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   resource.read_return(buf).await.map(|(n, _)| n as u32)
+}
+
+#[op]
+async fn op_read_all(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<ZeroCopyBuf, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  let (min, maximum) = resource.size_hint();
+  let size = maximum.unwrap_or(min) as usize;
+
+  let mut buffer = Vec::with_capacity(size);
+  loop {
+    let tmp = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]);
+    let (nread, tmp) = resource.clone().read_return(tmp).await?;
+    if nread == 0 {
+      return Ok(buffer.into());
+    }
+    buffer.extend_from_slice(&tmp[..nread]);
+  }
 }
 
 #[op]
