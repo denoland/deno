@@ -15,7 +15,6 @@ use global::GlobalNpmPackageResolver;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -101,7 +101,7 @@ impl LspUrlMap {
         specifier.clone()
       } else {
         let specifier_str = if specifier.scheme() == "asset" {
-          format!("deno:asset{}", specifier.path())
+          format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
           let data_url = DataUrl::process(specifier.as_str())
             .map_err(|e| uri_error(format!("{:?}", e)))?;

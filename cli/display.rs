@@ -52,6 +52,8 @@ mod tests {
       human_size((24_i64 * 1024 * 1024 * 1024 * 1024) as f64),
       "24TB"
     );
+    assert_eq!(human_size(0_f64), "0B");
+    assert_eq!(human_size(-10_f64), "-10B");
   }
 
   #[test]
