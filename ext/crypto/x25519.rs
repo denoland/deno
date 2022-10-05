@@ -1,10 +1,13 @@
 use curve25519_dalek::montgomery::MontgomeryPoint;
+use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use spki::der::Decode;
+use spki::der::Encode;
 
 #[op(fast)]
 pub fn op_generate_x25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
@@ -66,6 +69,7 @@ pub fn op_import_spki_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
 #[op(fast)]
 pub fn op_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
   // 2-3.
+  // This should probably use OneAsymmetricKey instead
   let pk_info = match PrivateKeyInfo::from_der(key_data) {
     Ok(pk_info) => pk_info,
     Err(_) => return false,
@@ -81,9 +85,38 @@ pub fn op_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
   }
   // 6.
   // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 32 {
+  if pk_info.private_key.len() != 34 {
     return false;
   }
-  out.copy_from_slice(pk_info.private_key);
+  out.copy_from_slice(&pk_info.private_key[2..]);
   true
+}
+
+#[op]
+pub fn op_export_spki_x25519(pubkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+  let key_info = spki::SubjectPublicKeyInfo {
+    algorithm: spki::AlgorithmIdentifier {
+      // id-X25519
+      oid: X25519_OID,
+      parameters: None,
+    },
+    subject_public_key: pubkey,
+  };
+  Ok(key_info.to_vec()?.into())
+}
+
+#[op]
+pub fn op_export_pkcs8_x25519(pkey: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+  // This should probably use OneAsymmetricKey instead
+  let pk_info = rsa::pkcs8::PrivateKeyInfo {
+    public_key: None,
+    algorithm: rsa::pkcs8::AlgorithmIdentifier {
+      // id-X25519
+      oid: X25519_OID,
+      parameters: None,
+    },
+    private_key: pkey, // OCTET STRING
+  };
+
+  Ok(pk_info.to_vec()?.into())
 }

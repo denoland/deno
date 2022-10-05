@@ -109,11 +109,9 @@
       // Step 7.
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
-        const fieldValues = varyHeader.split(",").map((field) => field.trim());
-        for (const fieldValue of fieldValues) {
-          if (
-            fieldValue === "*"
-          ) {
+        const fieldValues = varyHeader.split(",");
+        for (const field of fieldValues) {
+          if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }
         }
@@ -121,8 +119,10 @@
 
       // Step 8.
       if (innerResponse.body !== null && innerResponse.body.unusable()) {
-        throw new TypeError("Response body must not already used");
+        throw new TypeError("Response body is already used");
       }
+      // acquire lock before async op
+      const reader = innerResponse.body?.stream.getReader();
 
       // Remove fragment from request URL before put.
       reqUrl.hash = "";
@@ -140,17 +140,18 @@
           responseStatusText: innerResponse.statusMessage,
         },
       );
-      if (innerResponse.body) {
-        const reader = innerResponse.body.stream.getReader();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await core.shutdown(rid);
-            core.close(rid);
-            break;
-          } else {
+      if (reader) {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
             await core.write(rid, value);
           }
+        } finally {
+          await core.shutdown(rid);
+          core.close(rid);
         }
       }
       // Step 12-19: TODO(@satyarohith): do the insertion in background.

@@ -2292,6 +2292,87 @@ Deno.test("upgradeHttp unix", {
   await Promise.all([server, client()]);
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReadLargeBodyWithContentLength() {
+    const TLS_PACKET_SIZE = 16 * 1024 + 256;
+    // We want the body to be read in multiple packets
+    const body = "aa\n" + "deno.land large body\n".repeat(TLS_PACKET_SIZE) +
+      "zz";
+
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      assertEquals(await request.text(), body);
+      await respondWith(new Response(body));
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      headers: { "connection": "close" },
+      body,
+    });
+    const text = await resp.text();
+    assertEquals(text, body);
+    await promise;
+
+    httpConn!.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReadLargeBodyWithTransferChunked() {
+    const TLS_PACKET_SIZE = 16 * 1024 + 256;
+
+    // We want the body to be read in multiple packets
+    const chunks = [
+      "aa\n",
+      "deno.land large body\n".repeat(TLS_PACKET_SIZE),
+      "zz",
+    ];
+
+    const body = chunks.join("");
+
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    for (const chunk of chunks) {
+      writer.write(new TextEncoder().encode(chunk));
+    }
+    writer.close();
+
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      assertEquals(await request.text(), body);
+      await respondWith(new Response(body));
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      headers: { "connection": "close" },
+      body: stream.readable,
+    });
+    const text = await resp.text();
+    assertEquals(text, body);
+    await promise;
+
+    httpConn!.close();
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
