@@ -900,7 +900,7 @@ fn diagnose_dependency(
 ) {
   if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
     if npm_resolver.in_npm_package(referrer) {
-      return; // ignore
+      return; // ignore, surface typescript errors instead
     }
   }
 

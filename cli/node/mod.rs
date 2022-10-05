@@ -166,6 +166,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
     specifier: "node/dns.ts",
   },
   NodeModulePolyfill {
+    name: "dns/promises",
+    specifier: "node/dns/promises.ts",
+  },
+  NodeModulePolyfill {
     name: "domain",
     specifier: "node/domain.ts",
   },
@@ -235,6 +239,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "stream",
     specifier: "node/stream.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream/consumers",
+    specifier: "node/stream/consumers.mjs",
   },
   NodeModulePolyfill {
     name: "stream/promises",
@@ -436,6 +444,7 @@ pub fn node_resolve(
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
+  eprintln!("NODE RESOLVE - {} - {}", specifier, referrer);
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
@@ -773,7 +782,16 @@ fn module_resolve(
   // note: if we're here, the referrer is an esm module
   let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
     let resolved_specifier = referrer.join(specifier)?;
-    Some(resolved_specifier)
+    if conditions == TYPES_CONDITIONS {
+      let file_path = to_file_path(&resolved_specifier);
+      // todo(dsherret): the node module kind is not correct and we
+      // should use the value provided by typescript instead
+      let declaration_path =
+        path_to_declaration_path(file_path, NodeModuleKind::Esm);
+      Some(ModuleSpecifier::from_file_path(declaration_path).unwrap())
+    } else {
+      Some(resolved_specifier)
+    }
   } else if specifier.starts_with('#') {
     Some(
       package_imports_resolve(

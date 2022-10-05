@@ -426,6 +426,9 @@ delete Object.prototype.__proto__;
         const result = resolved.map((item) => {
           if (item) {
             const [resolvedFileName, extension] = item;
+            if (resolvedFileName.startsWith("node:")) {
+              return undefined; // resolve via @types/node
+            }
             return {
               resolvedFileName,
               extension,
