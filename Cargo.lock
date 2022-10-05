@@ -854,6 +854,7 @@ dependencies = [
  "log 0.4.17",
  "mitata",
  "monch",
+ "napi_sym",
  "nix",
  "notify",
  "once_cell",
@@ -1162,6 +1163,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_napi"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "libloading",
+]
+
+[[package]]
 name = "deno_net"
 version = "0.63.0"
 dependencies = [
@@ -1214,6 +1223,7 @@ dependencies = [
  "deno_ffi",
  "deno_flash",
  "deno_http",
+ "deno_napi",
  "deno_net",
  "deno_node",
  "deno_tls",
@@ -2895,6 +2905,32 @@ dependencies = [
  "termcolor",
  "thiserror",
  "unicode-xid 0.2.4",
+]
+
+[[package]]
+name = "napi-build"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebd4419172727423cf30351406c54f6cc1b354a2cfb4f1dba3e6cd07f6d5522b"
+
+[[package]]
+name = "napi-sys"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "529671ebfae679f2ce9630b62dd53c72c56b3eb8b2c852e7e2fa91704ff93d67"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
+name = "napi_sym"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
+ "serde",
+ "serde_json",
+ "syn 1.0.99",
 ]
 
 [[package]]
@@ -4780,6 +4816,15 @@ name = "test_ffi"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",
+ "test_util",
+]
+
+[[package]]
+name = "test_napi"
+version = "0.1.0"
+dependencies = [
+ "napi-build",
+ "napi-sys",
  "test_util",
 ]
 

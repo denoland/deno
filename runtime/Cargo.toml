@@ -40,6 +40,7 @@ deno_webgpu = { version = "0.72.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.71.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.76.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.66.0", path = "../ext/webstorage" }
+deno_napi = { version = "0.1.0", path = "../ext/napi" }
 
 lzzzz = '1.0'
 
@@ -57,6 +58,7 @@ deno_fetch = { version = "0.94.0", path = "../ext/fetch" }
 deno_ffi = { version = "0.58.0", path = "../ext/ffi" }
 deno_flash = { version = "0.7.0", path = "../ext/flash" }
 deno_http = { version = "0.65.0", path = "../ext/http" }
+deno_napi = { version = "0.1.0", path = "../ext/napi" }
 deno_net = { version = "0.63.0", path = "../ext/net" }
 deno_node = { version = "0.8.0", path = "../ext/node" }
 deno_tls = { version = "0.58.0", path = "../ext/tls" }

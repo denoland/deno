@@ -56,6 +56,7 @@ deno_graph = "0.34.0"
 deno_lint = { version = "0.33.0", features = ["docs"] }
 deno_runtime = { version = "0.79.0", path = "../runtime" }
 deno_task_shell = "0.5.2"
+napi_sym = { path = "./napi_sym", version = "0.1.0" }
 
 atty = "=0.2.14"
 base64 = "=0.13.0"

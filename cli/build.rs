@@ -331,6 +331,21 @@ fn main() {
   if target != host {
     panic!("Cross compiling with snapshot is not supported.");
   }
+
+  #[cfg(target_os = "windows")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=/DEF:{}",
+    std::path::Path::new("exports.def")
+      .canonicalize()
+      .expect(
+        "Missing exports.def! Generate using tools/napi/generate_link_win.js"
+      )
+      .display(),
+  );
+
+  #[cfg(not(target_os = "windows"))]
+  println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
+
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
