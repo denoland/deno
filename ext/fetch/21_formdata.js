@@ -401,6 +401,14 @@
     parse() {
       // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
       if (this.body.length < (this.boundary.length * 2) + 4) {
+        const decodedBody = core.decode(this.body);
+        const lastBoundary = this.boundary + "--";
+        if (
+          decodedBody === lastBoundary ||
+          decodedBody === lastBoundary + "\r\n"
+        ) {
+          return new FormData();
+        }
         throw new TypeError("Form data too short to be valid.");
       }
 
