@@ -953,7 +953,7 @@ impl Documents {
       if let Some(npm_resolver) = maybe_npm_resolver {
         if npm_resolver.in_npm_package(&referrer) {
           // we're in an npm package, so use node resolution
-          results.push(Some(NodeResolution::into_media_type_and_specifier(
+          results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
               &specifier,
               &referrer,
@@ -985,13 +985,12 @@ impl Documents {
       } else if let Some(Resolved::Ok { specifier, .. }) =
         self.resolve_imports_dependency(&specifier)
       {
-        lsp_log!("B");
         // clone here to avoid double borrow of self
         let specifier = specifier.clone();
         results.push(self.resolve_dependency(&specifier, maybe_npm_resolver));
       } else if let Ok(npm_ref) = NpmPackageReference::from_str(&specifier) {
         results.push(maybe_npm_resolver.map(|npm_resolver| {
-          NodeResolution::into_media_type_and_specifier(
+          NodeResolution::into_specifier_and_media_type(
             node_resolve_npm_reference(
               &npm_ref,
               NodeResolutionMode::Types,
@@ -1002,11 +1001,9 @@ impl Documents {
           )
         }));
       } else {
-        lsp_log!("A");
         results.push(None);
       }
     }
-    lsp_log!("RESOLVED: {:?}", results);
     Some(results)
   }
 
@@ -1140,7 +1137,7 @@ impl Documents {
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReference::from_specifier(specifier) {
       return maybe_npm_resolver.map(|npm_resolver| {
-        NodeResolution::into_media_type_and_specifier(
+        NodeResolution::into_specifier_and_media_type(
           node_resolve_npm_reference(
             &npm_ref,
             NodeResolutionMode::Types,

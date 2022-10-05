@@ -34,6 +34,7 @@ use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
 use deno_graph::Resolved;
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -312,6 +313,7 @@ struct State {
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
+  npm_media_type_cache: HashMap<ModuleSpecifier, MediaType>,
 }
 
 impl State {
@@ -333,6 +335,7 @@ impl State {
       maybe_response: None,
       remapped_specifiers,
       root_map,
+      npm_media_type_cache: Default::default(),
     }
   }
 }
@@ -456,19 +459,19 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let mut media_type = MediaType::Unknown;
   let graph_data = state.graph_data.read();
   let data = if &v.specifier == "deno:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.as_deref()
+    state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
     media_type = MediaType::Dts;
-    Some("declare const __: any;\nexport = __;\n")
+    Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
     let maybe_source = get_asset(&name);
     hash = get_maybe_hash(maybe_source, &state.hash_data);
     media_type = MediaType::from(&v.specifier);
-    maybe_source
+    maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.remapped_specifiers.get(&v.specifier)
@@ -487,12 +490,27 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       graph_data.get(&graph_data.follow_redirect(&specifier))
     {
       media_type = *mt;
-      Some(code as &str)
+      Some(Cow::Borrowed(code as &str))
+    } else if state
+      .maybe_npm_resolver
+      .as_ref()
+      .unwrap()
+      .in_npm_package(&specifier)
+    {
+      media_type = state
+        .npm_media_type_cache
+        .get(&specifier)
+        .map(|m| *m)
+        .unwrap_or(MediaType::Unknown);
+      let file_path = specifier.to_file_path().unwrap();
+      let code = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Unable to load {}", file_path.display()))?;
+      Some(Cow::Owned(code))
     } else {
       media_type = MediaType::Unknown;
       None
     };
-    hash = get_maybe_hash(maybe_source, &state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_deref(), &state.hash_data);
     maybe_source
   };
 
@@ -578,6 +596,9 @@ fn op_resolve(
                       &npm_ref,
                       npm_resolver,
                     )?;
+                  state
+                    .npm_media_type_cache
+                    .insert(specifier.clone(), media_type);
                   Some((specifier, media_type))
                 } else {
                   None
@@ -592,16 +613,21 @@ fn op_resolve(
           state.maybe_npm_resolver.as_ref().and_then(|npm_resolver| {
             if npm_resolver.in_npm_package(&referrer) {
               // we're in an npm package, so use node resolution
-              Some(NodeResolution::into_media_type_and_specifier(
-                node::node_resolve(
-                  specifier,
-                  &referrer,
-                  node::NodeResolutionMode::Types,
-                  npm_resolver,
-                )
-                .ok()
-                .flatten(),
-              ))
+              let (specifier, media_type) =
+                NodeResolution::into_specifier_and_media_type(
+                  node::node_resolve(
+                    specifier,
+                    &referrer,
+                    node::NodeResolutionMode::Types,
+                    npm_resolver,
+                  )
+                  .ok()
+                  .flatten(),
+                );
+              state
+                .npm_media_type_cache
+                .insert(specifier.clone(), media_type);
+              Some((specifier, media_type))
             } else {
               None
             }
@@ -654,7 +680,7 @@ pub fn resolve_npm_package_reference_types(
     NodeResolutionMode::Types,
     npm_resolver,
   )?;
-  Ok(NodeResolution::into_media_type_and_specifier(
+  Ok(NodeResolution::into_specifier_and_media_type(
     maybe_resolution,
   ))
 }

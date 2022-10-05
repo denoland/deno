@@ -66,7 +66,7 @@ impl NodeResolution {
     }
   }
 
-  pub fn into_media_type_and_specifier(
+  pub fn into_specifier_and_media_type(
     resolution: Option<Self>,
   ) -> (ModuleSpecifier, MediaType) {
     match resolution {
