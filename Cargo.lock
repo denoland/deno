@@ -5416,7 +5416,7 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.43.1"
+version = "0.51.0"
 dependencies = [
  "bitflags",
  "fslock",

@@ -354,10 +354,11 @@ impl JsRuntime {
         None
       };
       let snapshot_loaded = exisiting_blob.is_some();
-      let mut creator = v8::SnapshotCreator::new(
-        Some(&bindings::EXTERNAL_REFERENCES),
-        exisiting_blob.as_ref(),
-      );
+      let mut creator = if let Some(existing_blob) = exisiting_blob.as_ref() {
+        v8::SnapshotCreator::from_existing_snapshot(existing_blob, Some(&refs))
+      } else {
+        v8::SnapshotCreator::new(Some(&refs))
+      };
       // SAFETY: `get_owned_isolate` is unsafe because it may only be called
       // once. This is the only place we call this function, so this call is
       // safe.
