@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
@@ -52,7 +53,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      bail!("Not a valid package: {}", specifier);
+      return Err(generic_error(format!("Not a valid package: {}", specifier)));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -76,6 +77,18 @@ impl NpmPackageReference {
     } else {
       Some(parts[name_part_len..].join("/"))
     };
+
+    if let Some(sub_path) = &sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let msg = format!(
+          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
+          name, sub_path, name, version, new_sub_path
+        );
+        return Err(generic_error(msg));
+      }
+    }
+
     Ok(NpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,

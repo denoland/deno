@@ -1890,6 +1890,33 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServer204ResponseDoesntSendContentLength() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (_request) => new Response(null, { status: 204 }),
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
+      assertEquals(resp.headers.get("Content-Length"), null);
+    } finally {
+      ac.abort();
+      await server;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServer304ResponseDoesntSendBody() {
     const promise = deferred();
     const ac = new AbortController();

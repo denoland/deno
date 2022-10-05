@@ -35,11 +35,8 @@ use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
-use rsa::pkcs1::der::Decode;
-use rsa::pkcs1::der::Encode;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::pkcs8::der::asn1;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -74,10 +71,6 @@ use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
 use crate::shared::RawKeyData;
-use crate::shared::ID_MFG1;
-use crate::shared::ID_P_SPECIFIED;
-use crate::shared::ID_SHA1_OID;
-use once_cell::sync::Lazy;
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -100,7 +93,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       op_crypto_random_uuid::decl(),
       op_crypto_wrap_key::decl(),
       op_crypto_unwrap_key::decl(),
-      op_crypto_base64url::decl(),
+      op_crypto_base64url_decode::decl(),
+      op_crypto_base64url_encode::decl(),
       x25519::op_generate_x25519_keypair::decl(),
       x25519::op_derive_bits_x25519::decl(),
       x25519::op_import_spki_x25519::decl(),
@@ -113,6 +107,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ed25519::op_export_spki_ed25519::decl(),
       ed25519::op_export_pkcs8_ed25519::decl(),
       ed25519::op_jwk_x_ed25519::decl(),
+      x25519::op_export_spki_x25519::decl(),
+      x25519::op_export_pkcs8_x25519::decl(),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -124,10 +120,16 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
 }
 
 #[op]
-pub fn op_crypto_base64url(data: String) -> ZeroCopyBuf {
+pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {
   let data: Vec<u8> =
-    base64::encode_config(data, base64::URL_SAFE_NO_PAD).into();
+    base64::decode_config(data, base64::URL_SAFE_NO_PAD).unwrap();
   data.into()
+}
+
+#[op]
+pub fn op_crypto_base64url_encode(data: ZeroCopyBuf) -> String {
+  let data: String = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
+  data
 }
 
 #[op]
@@ -663,205 +665,6 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
     KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
   };
   Ok(public_key)
-}
-
-// The parameters field associated with OID id-RSASSA-PSS
-// Defined in RFC 3447, section A.2.3
-//
-// RSASSA-PSS-params ::= SEQUENCE {
-//   hashAlgorithm      [0] HashAlgorithm    DEFAULT sha1,
-//   maskGenAlgorithm   [1] MaskGenAlgorithm DEFAULT mgf1SHA1,
-//   saltLength         [2] INTEGER          DEFAULT 20,
-//   trailerField       [3] TrailerField     DEFAULT trailerFieldBC
-// }
-pub struct PssPrivateKeyParameters<'a> {
-  pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
-  pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
-  pub salt_length: u32,
-}
-
-// Context-specific tag number for hashAlgorithm.
-const HASH_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
-  rsa::pkcs8::der::TagNumber::new(0);
-
-// Context-specific tag number for maskGenAlgorithm.
-const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
-  rsa::pkcs8::der::TagNumber::new(1);
-
-// Context-specific tag number for saltLength.
-const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
-  rsa::pkcs8::der::TagNumber::new(2);
-
-// Context-specific tag number for pSourceAlgorithm
-const P_SOURCE_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
-  rsa::pkcs8::der::TagNumber::new(2);
-
-// Default HashAlgorithm for RSASSA-PSS-params (sha1)
-//
-// sha1 HashAlgorithm ::= {
-//   algorithm   id-sha1,
-//   parameters  SHA1Parameters : NULL
-// }
-//
-// SHA1Parameters ::= NULL
-static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
-  Lazy::new(|| {
-    rsa::pkcs8::AlgorithmIdentifier {
-      // id-sha1
-      oid: ID_SHA1_OID,
-      // NULL
-      parameters: Some(asn1::AnyRef::from(asn1::Null)),
-    }
-  });
-
-// TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
-static ENCODED_SHA1_HASH_ALGORITHM: Lazy<Vec<u8>> =
-  Lazy::new(|| SHA1_HASH_ALGORITHM.to_vec().unwrap());
-// Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
-//
-// mgf1SHA1 MaskGenAlgorithm ::= {
-//   algorithm   id-mgf1,
-//   parameters  HashAlgorithm : sha1
-// }
-static MGF1_SHA1_MASK_ALGORITHM: Lazy<
-  rsa::pkcs8::AlgorithmIdentifier<'static>,
-> = Lazy::new(|| {
-  rsa::pkcs8::AlgorithmIdentifier {
-    // id-mgf1
-    oid: ID_MFG1,
-    // sha1
-    parameters: Some(
-      asn1::AnyRef::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
-    ),
-  }
-});
-
-// Default PSourceAlgorithm for RSAES-OAEP-params
-// The default label is an empty string.
-//
-// pSpecifiedEmpty    PSourceAlgorithm ::= {
-//   algorithm   id-pSpecified,
-//   parameters  EncodingParameters : emptyString
-// }
-//
-// emptyString    EncodingParameters ::= ''H
-static P_SPECIFIED_EMPTY: Lazy<rsa::pkcs8::AlgorithmIdentifier<'static>> =
-  Lazy::new(|| {
-    rsa::pkcs8::AlgorithmIdentifier {
-      // id-pSpecified
-      oid: ID_P_SPECIFIED,
-      // EncodingParameters
-      parameters: Some(asn1::AnyRef::from(
-        asn1::OctetStringRef::new(b"").unwrap(),
-      )),
-    }
-  });
-
-fn decode_content_tag<'a, T>(
-  decoder: &mut rsa::pkcs8::der::SliceReader<'a>,
-  tag: rsa::pkcs8::der::TagNumber,
-) -> rsa::pkcs8::der::Result<Option<T>>
-where
-  T: rsa::pkcs8::der::Decode<'a>,
-{
-  Ok(
-    rsa::pkcs8::der::asn1::ContextSpecific::<T>::decode_explicit(decoder, tag)?
-      .map(|field| field.value),
-  )
-}
-
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
-  for PssPrivateKeyParameters<'a>
-{
-  type Error = rsa::pkcs8::der::Error;
-
-  fn try_from(
-    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
-  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters<'a>> {
-    any.sequence(|decoder| {
-      let hash_algorithm =
-        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
-          decoder,
-          HASH_ALGORITHM_TAG,
-        )?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*SHA1_HASH_ALGORITHM);
-
-      let mask_gen_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
-      >(decoder, MASK_GEN_ALGORITHM_TAG)?
-      .map(TryInto::try_into)
-      .transpose()?
-      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
-
-      let salt_length = decode_content_tag::<u32>(decoder, SALT_LENGTH_TAG)?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(20);
-
-      Ok(Self {
-        hash_algorithm,
-        mask_gen_algorithm,
-        salt_length,
-      })
-    })
-  }
-}
-
-// The parameters field associated with OID id-RSAES-OAEP
-// Defined in RFC 3447, section A.2.1
-//
-// RSAES-OAEP-params ::= SEQUENCE {
-//   hashAlgorithm     [0] HashAlgorithm    DEFAULT sha1,
-//   maskGenAlgorithm  [1] MaskGenAlgorithm DEFAULT mgf1SHA1,
-//   pSourceAlgorithm  [2] PSourceAlgorithm DEFAULT pSpecifiedEmpty
-// }
-pub struct OaepPrivateKeyParameters<'a> {
-  pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
-  pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
-  pub p_source_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
-}
-
-impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
-  for OaepPrivateKeyParameters<'a>
-{
-  type Error = rsa::pkcs8::der::Error;
-
-  fn try_from(
-    any: rsa::pkcs8::der::asn1::AnyRef<'a>,
-  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters<'a>> {
-    any.sequence(|decoder| {
-      let hash_algorithm =
-        decode_content_tag::<rsa::pkcs8::AlgorithmIdentifier>(
-          decoder,
-          HASH_ALGORITHM_TAG,
-        )?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*SHA1_HASH_ALGORITHM);
-
-      let mask_gen_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
-      >(decoder, MASK_GEN_ALGORITHM_TAG)?
-      .map(TryInto::try_into)
-      .transpose()?
-      .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
-
-      let p_source_algorithm = decode_content_tag::<
-        rsa::pkcs8::AlgorithmIdentifier,
-      >(decoder, P_SOURCE_ALGORITHM_TAG)?
-      .map(TryInto::try_into)
-      .transpose()?
-      .unwrap_or(*P_SPECIFIED_EMPTY);
-
-      Ok(Self {
-        hash_algorithm,
-        mask_gen_algorithm,
-        p_source_algorithm,
-      })
-    })
-  }
 }
 
 #[op]

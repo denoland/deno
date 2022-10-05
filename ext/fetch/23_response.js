@@ -97,11 +97,11 @@
    */
   function cloneInnerResponse(response) {
     const urlList = [...new SafeArrayIterator(response.urlList)];
-    const headerList = [
-      ...new SafeArrayIterator(
-        ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
-      ),
-    ];
+    const headerList = ArrayPrototypeMap(
+      response.headerList,
+      (x) => [x[0], x[1]],
+    );
+
     let body = null;
     if (response.body !== null) {
       body = response.body.clone();
