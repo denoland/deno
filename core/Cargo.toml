@@ -18,6 +18,7 @@ v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 
 [dependencies]
 anyhow = "1.0.57"
+bytes = "1"
 deno_ops = { path = "../ops", version = "0.32.0" }
 futures = "0.3.21"
 # Stay on 1.6 to avoid a dependency cycle in ahash https://github.com/tkaitchuck/aHash/issues/95

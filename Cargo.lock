@@ -967,6 +967,7 @@ name = "deno_core"
 version = "0.154.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "deno_ast",
  "deno_ops",
  "futures",
