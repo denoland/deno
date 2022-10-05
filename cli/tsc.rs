@@ -659,6 +659,19 @@ pub fn resolve_npm_package_reference_types(
   ))
 }
 
+#[op]
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+  let state = state.borrow::<State>();
+  match ModuleSpecifier::parse(&path) {
+    Ok(specifier) => state
+      .maybe_npm_resolver
+      .as_ref()
+      .map(|r| r.in_npm_package(&specifier))
+      .unwrap_or(false),
+    Err(_) => false,
+  }
+}
+
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
@@ -713,6 +726,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
         op_create_hash::decl(),
         op_emit::decl(),
         op_exists::decl(),
+        op_is_node_file::decl(),
         op_load::decl(),
         op_resolve::decl(),
         op_respond::decl(),

@@ -29,6 +29,7 @@ delete Object.prototype.__proto__;
   // This map stores that relationship, and the original can be restored by the
   // normalized specifier.
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
+  /** @type {Map<string, string>} */
   const normalizedToOriginalMap = new Map();
 
   /**
@@ -129,6 +130,20 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
+
+  /** @type {Map<string, boolean>} */
+  const isNodeSourceFileCache = new Map();
+
+  ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
+    const fileName = sourceFile.fileName;
+    let isNodeSourceFile = isNodeSourceFileCache.get(fileName);
+    if (isNodeSourceFile == null) {
+      const result = ops.op_is_node_file(fileName);
+      isNodeSourceFile = /** @type {boolean} */ (result);
+      isNodeSourceFileCache.set(fileName, isNodeSourceFile);
+    }
+    return isNodeSourceFile;
+  });
 
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
@@ -354,6 +369,49 @@ delete Object.prototype.__proto__;
     },
     getNewLine() {
       return "\n";
+    },
+    resolveTypeReferenceDirectives(
+      typeDirectiveNames,
+      containingFilePath,
+      redirectedReference,
+      options,
+      containingFileMode,
+    ) {
+      return typeDirectiveNames.map((arg) => {
+        /** @type {ts.FileReference} */
+        const fileReference = typeof arg === "string"
+          ? {
+            pos: -1,
+            end: -1,
+            fileName: arg,
+          }
+          : arg;
+        if (fileReference.fileName.startsWith("npm:")) {
+          /** @type {[string, ts.Extension] | undefined} */
+          const resolved = ops.op_resolve({
+            specifiers: [fileReference.fileName],
+            base: containingFilePath,
+          })?.[0];
+          if (resolved) {
+            return {
+              primary: true,
+              resolvedFileName: resolved[0],
+            };
+          } else {
+            return undefined;
+          }
+        } else {
+          return ts.resolveTypeReferenceDirective(
+            fileReference.fileName,
+            containingFilePath,
+            options,
+            host,
+            redirectedReference,
+            undefined,
+            containingFileMode ?? fileReference.resolutionMode,
+          ).resolvedTypeReferenceDirective;
+        }
+      });
     },
     resolveModuleNames(specifiers, base) {
       debug(`host.resolveModuleNames()`);

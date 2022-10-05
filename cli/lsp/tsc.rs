@@ -2623,6 +2623,20 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 }
 
 #[op]
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+  let state = state.borrow::<State>();
+  match ModuleSpecifier::parse(&path) {
+    Ok(specifier) => state
+      .state_snapshot
+      .maybe_npm_resolver
+      .as_ref()
+      .map(|r| r.in_npm_package(&specifier))
+      .unwrap_or(false),
+    Err(_) => false,
+  }
+}
+
+#[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
@@ -2733,6 +2747,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
+      op_is_node_file::decl(),
       op_load::decl(),
       op_resolve::decl(),
       op_respond::decl(),

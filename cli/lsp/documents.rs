@@ -949,9 +949,6 @@ impl Documents {
   ) -> Option<Vec<Option<(ModuleSpecifier, MediaType)>>> {
     let dependencies = self.get(referrer)?.0.dependencies.clone();
     let mut results = Vec::new();
-    lsp_log!("Specifiers: {:?}", specifiers);
-    lsp_log!("Referrer: {}", referrer);
-    lsp_log!("Dependencies: {:?}", dependencies);
     for specifier in specifiers {
       if let Some(npm_resolver) = maybe_npm_resolver {
         if npm_resolver.in_npm_package(&referrer) {
