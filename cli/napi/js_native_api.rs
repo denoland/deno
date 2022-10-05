@@ -1324,9 +1324,9 @@ fn napi_get_boolean(
   result: *mut napi_value,
 ) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let value: v8::Local<v8::Value> =
-    v8::Boolean::new(&mut env.scope(), value).into();
-  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(
+    v8::Boolean::new(env.isolate(), value).into(),
+  );
   Ok(())
 }
 
@@ -1511,9 +1511,9 @@ fn napi_get_new_target(
 #[napi_sym::napi_sym]
 fn napi_get_null(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-
-  let value: v8::Local<v8::Value> = v8::null(&mut env.scope()).into();
-  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(
+    v8::null(env.isolate()).into(),
+  );
   Ok(())
 }
 
@@ -1603,8 +1603,9 @@ fn napi_get_typedarray_info(
 #[napi_sym::napi_sym]
 fn napi_get_undefined(env: *mut Env, result: *mut napi_value) -> Result {
   let env: &mut Env = env.as_mut().ok_or(Error::InvalidArg)?;
-  let value: v8::Local<v8::Value> = v8::undefined(&mut env.scope()).into();
-  *result = transmute::<v8::Local<v8::Value>, napi_value>(value);
+  *result = transmute::<v8::Local<v8::Value>, napi_value>(
+    v8::undefined(env.isolate()).into(),
+  );
   Ok(())
 }
 
