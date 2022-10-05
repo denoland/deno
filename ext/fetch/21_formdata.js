@@ -333,8 +333,8 @@
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
     const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
-    for (const v of values) {
-      const entries = StringPrototypeSplit(StringPrototypeTrim(v), "=");
+    for (let i = 0; i < values.length; i++) {
+      const entries = StringPrototypeSplit(StringPrototypeTrim(values[i]), "=");
       if (entries.length > 1) {
         MapPrototypeSet(
           params,
