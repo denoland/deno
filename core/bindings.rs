@@ -98,6 +98,7 @@ pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -112,7 +113,7 @@ pub fn initialize_context<'s>(
   // TODO(@littledivy): This is extra complexity for
   // a really weird usecase. Remove this once all
   // tsc ops are static at snapshot time.
-  if snapshot_loaded {
+  if snapshot_loaded && !will_snapshot {
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");

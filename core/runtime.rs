@@ -343,21 +343,21 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
-      let exisiting_blob = if let Some(snapshot) = options.startup_snapshot {
-        let startup_data = match snapshot {
-          Snapshot::Static(data) => data.into(),
-          Snapshot::JustCreated(data) => data,
-          Snapshot::Boxed(data) => data.into(),
-        };
-        Some(startup_data)
+      let (mut creator, snapshot_loaded) = if let Some(snapshot) = options.startup_snapshot {
+        println!("1");
+        (match snapshot {
+          Snapshot::Static(data) => {
+            v8::SnapshotCreator::from_existing_snapshot(data, Some(&refs))
+          },
+          Snapshot::JustCreated(data) => {
+            v8::SnapshotCreator::from_existing_snapshot(data, Some(&refs))
+          }
+          Snapshot::Boxed(data) => {
+            v8::SnapshotCreator::from_existing_snapshot(data, Some(&refs))
+          }
+        }, true)
       } else {
-        None
-      };
-      let snapshot_loaded = exisiting_blob.is_some();
-      let mut creator = if let Some(existing_blob) = exisiting_blob.as_ref() {
-        v8::SnapshotCreator::from_existing_snapshot(existing_blob, Some(&refs))
-      } else {
-        v8::SnapshotCreator::new(Some(&refs))
+        (v8::SnapshotCreator::new(Some(&refs)), false)
       };
       // SAFETY: `get_owned_isolate` is unsafe because it may only be called
       // once. This is the only place we call this function, so this call is
@@ -368,7 +368,7 @@ impl JsRuntime {
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, true);
         global_context = v8::Global::new(scope, context);
         creator.set_default_context(context);
       }
@@ -400,7 +400,7 @@ impl JsRuntime {
       {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, false);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -457,10 +457,8 @@ impl JsRuntime {
 
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
-    if !has_startup_snapshot {
       let realm = js_runtime.global_realm();
       js_runtime.init_extension_js(&realm).unwrap();
-    }
     // Init extension ops
     js_runtime.init_extension_ops().unwrap();
     // Init callbacks (opresolve)
@@ -502,6 +500,7 @@ impl JsRuntime {
         scope,
         &Self::state(self.v8_isolate()).borrow().op_ctxs,
         self.built_from_snapshot,
+        self.snapshot_creator.is_some(),
       );
       context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
 
@@ -2100,6 +2099,14 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
+  pub fn context_scope<'s>(
+    &self,
+    scope: &'s mut v8::HandleScope<'s>,
+  ) -> v8::ContextScope<'s, v8::HandleScope<'s>> {
+    let context = v8::Context::new(scope);
+    v8::ContextScope::new(scope, context)
+  }
+
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2126,7 +2133,8 @@ impl JsRealm {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(isolate);
+    let mut scope1 = self.handle_scope(isolate);
+    let scope = &mut self.context_scope(&mut scope1);
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
@@ -2739,7 +2747,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      runtime.execute_script("a.js", "a = 1 + 2").unwrap();
+      runtime.execute_script("a.js", "let a = 1 + 2").unwrap();
       runtime.snapshot()
     };
 
