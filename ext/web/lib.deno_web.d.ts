@@ -671,8 +671,7 @@ interface ReadableStream<R = any> {
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
-  pipeThrough<T>(
-    { writable, readable }: {
+  pipeThrough<T>(transform: {
       writable: WritableStream<R>;
       readable: ReadableStream<T>;
     },
