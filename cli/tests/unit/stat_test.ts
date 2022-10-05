@@ -146,7 +146,7 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
 
 Deno.test({ permissions: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
-    Deno.lstatSync("hello.txt");
+    Deno.lstatSync("assets/hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 

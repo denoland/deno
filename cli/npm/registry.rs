@@ -21,6 +21,7 @@ use serde::Serialize;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
+use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::semver::NpmVersionReq;
@@ -91,7 +92,7 @@ impl NpmPackageVersionInfo {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
@@ -104,8 +105,8 @@ pub struct NpmRegistryApi {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
-  reload: bool,
   cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
 }
 
 impl NpmRegistryApi {
@@ -129,25 +130,17 @@ impl NpmRegistryApi {
   }
 
   pub fn new(
-    cache: NpmCache,
-    reload: bool,
-    cache_setting: CacheSetting,
-  ) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, cache_setting)
-  }
-
-  pub fn from_base(
     base_url: Url,
     cache: NpmCache,
-    reload: bool,
     cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       base_url,
       cache,
       mem_cache: Default::default(),
-      reload,
       cache_setting,
+      progress_bar,
     }
   }
 
@@ -175,7 +168,7 @@ impl NpmRegistryApi {
       Ok(info)
     } else {
       let mut maybe_package_info = None;
-      if !self.reload {
+      if self.cache_setting.should_use_for_npm_package(name) {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -294,13 +287,7 @@ impl NpmRegistryApi {
     }
 
     let package_url = self.get_package_url(name);
-
-    log::log!(
-      log::Level::Info,
-      "{} {}",
-      colors::green("Download"),
-      package_url,
-    );
+    let _guard = self.progress_bar.update(package_url.as_str());
 
     let response = match reqwest::get(package_url).await {
       Ok(response) => response,

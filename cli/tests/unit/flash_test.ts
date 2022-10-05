@@ -1085,24 +1085,27 @@ Deno.test("upgradeHttpRaw tcp", async () => {
   const promise2 = deferred();
   const ac = new AbortController();
   const signal = ac.signal;
-  const handler = async (req: Request) => {
-    const [conn, _] = Deno.upgradeHttpRaw(req);
+  let conn: Deno.Conn;
+  let _head;
+  const handler = (req: Request) => {
+    [conn, _head] = Deno.upgradeHttpRaw(req);
 
-    await conn.write(
-      new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
-    );
+    (async () => {
+      await conn.write(
+        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
+      );
 
-    promise.resolve();
+      promise.resolve();
 
-    const buf = new Uint8Array(1024);
-    const n = await conn.read(buf);
+      const buf = new Uint8Array(1024);
+      const n = await conn.read(buf);
 
-    assert(n != null);
-    const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
-    assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
+      assert(n != null);
+      const secondPacketText = new TextDecoder().decode(buf.slice(0, n));
+      assertEquals(secondPacketText, "bla bla bla\nbla bla\nbla\n");
 
-    promise2.resolve();
-    conn.close();
+      promise2.resolve();
+    })();
   };
   const server = Deno.serve({
     // NOTE: `as any` is used to bypass type checking for the return value
@@ -1131,6 +1134,7 @@ Deno.test("upgradeHttpRaw tcp", async () => {
   );
 
   await promise2;
+  conn!.close();
   tcpConn.close();
 
   ac.abort();
@@ -1417,19 +1421,15 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
   expects_con_len: true,
 });
 
-createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
-  body: stream(""),
-  expects_chunked: true,
-  expects_con_len: false,
-});
+// FIXME: https://github.com/denoland/deno/issues/15892
+// createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
+//   body: stream(""),
+//   expects_chunked: true,
+//   expects_con_len: false,
+// });
 
 Deno.test(
-  {
-    // FIXME(bartlomieju): this test is hanging on Windows, needs to be
-    // investigated and fixed
-    ignore: Deno.build.os === "windows",
-    permissions: { net: true },
-  },
+  { permissions: { net: true } },
   async function httpServerGetChunkedResponseWithKa() {
     const promises = [deferred(), deferred()];
     let reqCount = 0;
@@ -1890,6 +1890,33 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServer204ResponseDoesntSendContentLength() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (_request) => new Response(null, { status: 204 }),
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
+      assertEquals(resp.headers.get("Content-Length"), null);
+    } finally {
+      ac.abort();
+      await server;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServer304ResponseDoesntSendBody() {
     const promise = deferred();
     const ac = new AbortController();
@@ -2196,6 +2223,35 @@ Deno.test(
     await stream.cancel();
     clearInterval(timerId);
     ac.abort();
+    await server;
+  },
+);
+
+// https://github.com/denoland/deno/issues/15549
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue15549() {
+    const ac = new AbortController();
+    const promise = deferred();
+    let count = 0;
+    const server = Deno.serve(() => {
+      count++;
+      return new Response(`hello world ${count}`);
+    }, {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals(await res1.text(), "hello world 1");
+
+        const res2 = await fetch("http://localhost:9000/");
+        assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
     await server;
   },
 );

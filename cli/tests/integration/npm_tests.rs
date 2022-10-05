@@ -33,6 +33,13 @@ itest!(esm_module_deno_test {
   http_server: true,
 });
 
+itest!(esm_import_cjs_default {
+  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  output: "npm/esm_import_cjs_default/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env --unstable npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
@@ -59,6 +66,14 @@ itest!(cjs_reexport_collision {
   output: "npm/cjs_reexport_collision/main.out",
   envs: env_vars(),
   http_server: true,
+});
+
+itest!(cjs_this_in_exports {
+  args: "run --allow-read --unstable --quiet npm/cjs_this_in_exports/main.js",
+  output: "npm/cjs_this_in_exports/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
 });
 
 itest!(translate_cjs_to_esm {
@@ -89,10 +104,37 @@ itest!(dual_cjs_esm {
   http_server: true,
 });
 
-itest!(dynamic_import {
-  args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
-  output: "npm/dynamic_import/main.out",
+itest!(child_process_fork_test {
+  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  output: "npm/child_process_fork_test/main.out",
   envs: env_vars(),
+  http_server: true,
+});
+
+// FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
+// at the moment
+// itest!(dynamic_import {
+//   args: "run --allow-read --allow-env --unstable npm/dynamic_import/main.ts",
+//   output: "npm/dynamic_import/main.out",
+//   envs: env_vars(),
+//   http_server: true,
+// });
+
+itest!(env_var_re_export_dev {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("dev\n"),
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(env_var_re_export_prod {
+  args: "run --allow-read --allow-env --unstable --quiet npm/env_var_re_export/main.js",
+  output_str: Some("prod\n"),
+  envs: {
+    let mut vars = env_vars();
+    vars.push(("NODE_ENV".to_string(), "production".to_string()));
+    vars
+  },
   http_server: true,
 });
 
@@ -137,6 +179,35 @@ itest!(nonexistent_file {
   envs: env_vars(),
   http_server: true,
   exit_code: 1,
+});
+
+itest!(invalid_package_name {
+  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  output: "npm/invalid_package_name/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
+itest!(require_json {
+  args: "run --unstable -A --quiet npm/require_json/main.js",
+  output: "npm/require_json/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(error_version_after_subpath {
+  args: "run --unstable -A --quiet npm/error_version_after_subpath/main.js",
+  output: "npm/error_version_after_subpath/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_cache {
+  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  output: "npm/deno_cache.out",
+  envs: env_vars(),
+  http_server: true,
 });
 
 #[test]
@@ -229,6 +300,117 @@ fn cached_only_after_first_run() {
   assert!(output.status.success());
   assert!(stderr.is_empty());
   assert_contains!(stdout, "createChalk: chalk");
+}
+
+#[test]
+fn reload_flag() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:chalk")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert_contains!(stderr, "Download");
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--reload=npm:foobar")
+    .arg("npm/reload/main.ts")
+    .env("NO_COLOR", "1")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  assert!(stderr.is_empty());
+  assert_contains!(stdout, "createChalk: chalk");
+  assert!(output.status.success());
 }
 
 #[test]
@@ -352,9 +534,23 @@ itest!(deno_run_cowthink {
   http_server: true,
 });
 
-itest!(deno_run_esm_module {
-  args: "run --unstable -A --quiet npm:@denotest/esm-bin this is a test",
+itest!(deno_run_bin_esm {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-esm this is a test",
   output: "npm/deno_run_esm.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_no_ext {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
+  output: "npm/deno_run_no_ext.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs {
+  args: "run --unstable -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  output: "npm/deno_run_cjs.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -366,6 +562,92 @@ itest!(deno_run_non_existent {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(builtin_module_module {
+  args: "run --allow-read --quiet --unstable npm/builtin_module_module/main.js",
+  output: "npm/builtin_module_module/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(node_modules_dir_require_added_node_modules_folder {
+  args:
+    "run --unstable --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
+  output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_with_deps {
+  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main.out",
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+#[test]
+fn node_modules_dir_cache() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("cache")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let node_modules = deno_dir.path().join("node_modules");
+  assert!(node_modules
+    .join(
+      ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
+    )
+    .exists());
+  assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
+
+  // now try deleting the folder with the package source in the npm cache dir
+  let package_global_cache_dir = deno_dir
+    .path()
+    .join("npm")
+    .join("localhost_4545")
+    .join("npm")
+    .join("registry")
+    .join("@denotest")
+    .join("dual-cjs-esm")
+    .join("1.0.0");
+  assert!(package_global_cache_dir.exists());
+  std::fs::remove_dir_all(&package_global_cache_dir).unwrap();
+
+  // run the output, and it shouldn't bother recreating the directory
+  // because it already has everything cached locally in the node_modules folder
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(deno_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--quiet")
+    .arg("-A")
+    .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
+    .envs(env_vars())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  // this won't exist, but actually the parent directory
+  // will because it still re-downloads the registry information
+  assert!(!package_global_cache_dir.exists());
+}
 
 #[test]
 fn ensure_registry_files_local() {
@@ -402,6 +684,7 @@ fn env_vars_no_sync_download() -> Vec<(String, String)> {
       "DENO_NPM_REGISTRY".to_string(),
       "http://localhost:4545/npm/registry/".to_string(),
     ),
+    ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
 

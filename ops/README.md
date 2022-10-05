@@ -34,10 +34,11 @@ Cases where code is optimized away:
 The macro will infer and try to auto generate V8 fast API call trait impl for
 `sync` ops with:
 
-- arguments: integers / `&mut OpState`
-- return_type: integers
+- arguments: integers, bool, `&mut OpState`, `&[u8]`, &mut [u8]`,`&[u32]`,`&mut
+  [u32]`
+- return_type: integers, bool
 
-The `#[op(fast)]` attribute shoukd be used to enforce fast call generation at
+The `#[op(fast)]` attribute should be used to enforce fast call generation at
 compile time.
 
 Trait gen for `async` ops & a ZeroCopyBuf equivalent type is planned and will be

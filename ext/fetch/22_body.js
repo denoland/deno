@@ -28,19 +28,20 @@
   const {
     isReadableStreamDisturbed,
     errorReadableStream,
+    readableStreamClose,
+    readableStreamDisturb,
+    readableStreamCollectIntoUint8Array,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
-    TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -88,6 +89,8 @@
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
           this.streamOrStatic.getReader();
+          readableStreamDisturb(this.streamOrStatic);
+          readableStreamClose(this.streamOrStatic);
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
@@ -136,7 +139,7 @@
      * https://fetch.spec.whatwg.org/#concept-body-consume-body
      * @returns {Promise<Uint8Array>}
      */
-    async consume() {
+    consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
@@ -144,23 +147,7 @@
           this.streamOrStatic,
         )
       ) {
-        const reader = this.stream.getReader();
-        /** @type {Uint8Array[]} */
-        const chunks = [];
-        let totalLength = 0;
-        while (true) {
-          const { value: chunk, done } = await reader.read();
-          if (done) break;
-          ArrayPrototypePush(chunks, chunk);
-          totalLength += chunk.byteLength;
-        }
-        const finalBuffer = new Uint8Array(totalLength);
-        let i = 0;
-        for (const chunk of chunks) {
-          TypedArrayPrototypeSet(finalBuffer, chunk, i);
-          i += chunk.byteLength;
-        }
-        return finalBuffer;
+        return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;

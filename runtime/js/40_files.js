@@ -181,6 +181,11 @@
       }
       return this.#readable;
     }
+
+    setRaw(mode, options = {}) {
+      const cbreak = !!(options.cbreak ?? false);
+      ops.op_stdin_set_raw(mode, cbreak);
+    }
   }
 
   class Stdout {

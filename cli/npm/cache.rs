@@ -11,17 +11,17 @@ use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 
 use crate::deno_dir::DenoDir;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
+use crate::progress_bar::ProgressBar;
 
+use super::registry::NpmPackageVersionDistInfo;
 use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
-use super::NpmPackageVersionDistInfo;
 
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
@@ -173,13 +173,19 @@ impl ReadonlyNpmCache {
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(dir: &DenoDir, cache_setting: CacheSetting) -> Self {
+  pub fn from_deno_dir(
+    dir: &DenoDir,
+    cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
+  ) -> Self {
     Self {
       readonly: ReadonlyNpmCache::from_deno_dir(dir),
       cache_setting,
+      progress_bar,
     }
   }
 
@@ -193,11 +199,24 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    self
+      .ensure_package_inner(id, dist, registry_url)
+      .await
+      .with_context(|| format!("Failed caching npm package '{}'.", id))
+  }
+
+  async fn ensure_package_inner(
+    &self,
+    id: &NpmPackageId,
+    dist: &NpmPackageVersionDistInfo,
+    registry_url: &Url,
+  ) -> Result<(), AnyError> {
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && self.cache_setting.should_use_for_npm_package(&id.name)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -211,13 +230,7 @@ impl NpmCache {
       );
     }
 
-    log::log!(
-      log::Level::Info,
-      "{} {}",
-      colors::green("Download"),
-      dist.tarball,
-    );
-
+    let _guard = self.progress_bar.update(&dist.tarball);
     let response = reqwest::get(&dist.tarball).await?;
 
     if response.status() == 404 {
