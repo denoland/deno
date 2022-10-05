@@ -458,19 +458,16 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
     let value = args.get(#idx as i32);
     match #core::v8::Local::<#core::v8::ArrayBuffer>::try_from(value) {
       Ok(b) => {
-        let byte_length = b.byte_length();
         if let Some(data) = b.data() {
           let store = data.cast::<u8>().as_ptr();
           // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-          unsafe { ::std::slice::from_raw_parts_mut(store, byte_length) }
+          unsafe { ::std::slice::from_raw_parts_mut(store, b.byte_length()) }
         } else {
           &mut []
         }
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-          let len = view.byte_length();
-          let offset = view.byte_offset();
           let buffer = match view.buffer(scope) {
               Some(v) => v,
               None => {
@@ -480,7 +477,7 @@ fn codegen_u8_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
           if let Some(data) = buffer.data() {
             let store = data.cast::<u8>().as_ptr();
             // SAFETY: rust guarantees that lifetime of slice is no longer than the call.
-            unsafe { ::std::slice::from_raw_parts_mut(store.add(offset), len) }
+            unsafe { ::std::slice::from_raw_parts_mut(store.add(view.byte_offset()), view.byte_length()) }
           } else {
             &mut []
           }
@@ -505,7 +502,6 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
       },
       Err(_) => {
         if let Ok(view) = #core::v8::Local::<#core::v8::ArrayBufferView>::try_from(value) {
-          let offset = view.byte_offset();
           let buffer = match view.buffer(scope) {
               Some(v) => v,
               None => {
@@ -517,7 +513,7 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
           } else {
             std::ptr::null_mut::<u8>()
           };
-          unsafe { store.add(offset) }
+          unsafe { store.add(view.byte_offset()) }
         } else {
           return #core::_ops::throw_type_error(scope, format!("Expected ArrayBufferView at position {}", #idx));
         }
@@ -529,7 +525,6 @@ fn codegen_u8_ptr(core: &TokenStream2, idx: usize) -> TokenStream2 {
 fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
   quote! {
     if let Ok(view) = #core::v8::Local::<#core::v8::Uint32Array>::try_from(args.get(#idx as i32)) {
-      let (offset, len) = (view.byte_offset(), view.byte_length());
       let buffer = match view.buffer(scope) {
           Some(v) => v,
           None => {
@@ -539,7 +534,7 @@ fn codegen_u32_mut_slice(core: &TokenStream2, idx: usize) -> TokenStream2 {
       if let Some(data) = buffer.data() {
         let store = data.cast::<u8>().as_ptr();
         // SAFETY: buffer from Uint32Array. Rust guarantees that lifetime of slice is no longer than the call.
-        unsafe { ::std::slice::from_raw_parts_mut(store.add(offset) as *mut u32, len / 4) }
+        unsafe { ::std::slice::from_raw_parts_mut(store.add(view.byte_offset()) as *mut u32, view.byte_length() / 4) }
       } else {
         &mut []
       }
