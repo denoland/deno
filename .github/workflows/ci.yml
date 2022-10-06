@@ -40,6 +40,7 @@ jobs:
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: test
             profile: debug
+            use_sysroot: true
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-20.04-xl' || 'ubuntu-20.04' }}
             job: lint
             profile: debug
