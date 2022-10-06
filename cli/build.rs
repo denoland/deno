@@ -137,6 +137,7 @@ fn create_compiler_snapshot(
     "es2018.regexp",
     "es2019.array",
     "es2019",
+    "es2019.intl",
     "es2019.object",
     "es2019.string",
     "es2019.symbol",
