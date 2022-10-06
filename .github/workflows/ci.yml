@@ -307,7 +307,7 @@ jobs:
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug'
-        run: cargo build --locked --all-targets
+        run: ld -V && cargo build --locked --all-targets
 
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
