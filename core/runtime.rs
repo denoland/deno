@@ -426,7 +426,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context.clone())),
       known_realms,
       pending_promise_exceptions: HashMap::new(),
@@ -447,7 +447,8 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
-    })));
+    }));
+    unsafe { isolate.set_data(1, Rc::into_raw(state_rc) as *const _ as *mut c_void); }
 
     global_context
       .open(&mut isolate)
@@ -553,8 +554,13 @@ impl JsRuntime {
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+    eprintln!("before");
+    let state_ptr = isolate.get_data(1);
+    let state_rc = unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    eprintln!("after");
+    Rc::into_raw(state_rc);
+    state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
