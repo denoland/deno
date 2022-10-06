@@ -9,7 +9,7 @@ itest!(task_no_args {
   args: "task -q --config task/deno.json",
   output: "task/task_no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  exit_code: 1,
+  exit_code: 0,
 });
 
 itest!(task_cwd {
@@ -23,7 +23,7 @@ itest!(task_cwd_resolves_config_from_specified_dir {
   args: "task -q --cwd task",
   output: "task/task_no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
-  exit_code: 1,
+  exit_code: 0,
 });
 
 itest!(task_non_existent {
@@ -104,4 +104,11 @@ itest!(task_piped_stdin {
   args_vec: vec!["task", "-q", "--config", "task/deno.json", "piped"],
   output: "task/task_piped_stdin.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_no_args_no_default_task {
+  args: "task --no-default-task --config task/deno.json",
+  output: "task/task_no_args_no_default_task.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
 });

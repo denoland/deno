@@ -178,6 +178,7 @@ impl RunFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct TaskFlags {
+  pub no_default_task: Option<bool>,
   pub cwd: Option<String>,
   pub task: String,
 }
@@ -316,9 +317,11 @@ pub struct Flags {
   pub lock_write: bool,
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
-  pub no_remote: bool,
+  pub no_clear_screen: bool,
+  pub no_default_task: Option<bool>,
   pub no_npm: bool,
   pub no_prompt: bool,
+  pub no_remote: bool,
   pub reload: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
@@ -326,7 +329,6 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: Option<Vec<PathBuf>>,
-  pub no_clear_screen: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -1487,6 +1489,11 @@ fn task_subcommand<'a>() -> Command<'a> {
   Command::new("task")
     .trailing_var_arg(true)
     .arg(config_arg())
+    .arg(
+      Arg::new("no-default-task")
+        .long("no-default-task")
+        .help("Disable running a default task. Default tasks are tasks that match one of the following names (in this order):\n['default', 'main', 'run', 'start']")
+    )
     .arg(
       Arg::new("cwd")
         .long("cwd")
@@ -2649,12 +2656,18 @@ fn task_parse(
   };
 
   let mut task_flags = TaskFlags {
+    no_default_task: None,
     cwd: None,
     task: String::new(),
   };
 
   if let Some(cwd) = matches.value_of("cwd") {
     task_flags.cwd = Some(cwd.to_string());
+  }
+
+  // if `--no-default-task` is passed, set no_default_task to true
+  if matches.is_present("no-default-task") {
+    task_flags.no_default_task = Some(true);
   }
 
   if let Some(mut index) = matches.index_of("task_name_and_args") {
@@ -2678,6 +2691,10 @@ fn task_parse(
         }
         "-q" | "--quiet" => {
           flags.log_level = Some(Level::Error);
+          index += 1;
+        }
+        "--no-default-task" => {
+          flags.no_default_task = Some(true);
           index += 1;
         }
         _ => break,
@@ -2946,6 +2963,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.no_prompt = true;
   }
 }
+
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
@@ -2956,6 +2974,7 @@ fn unsafely_ignore_certificate_errors_parse(
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }
+
 fn runtime_args_parse(
   flags: &mut Flags,
   matches: &clap::ArgMatches,
@@ -3108,6 +3127,13 @@ fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
     ConfigFlag::Discover
   };
 }
+
+// TODO(): see line 2647
+// fn no_default_task_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+// if matches.is_present("no-default-task") {
+// flags.no_default_task = Some(true);
+// }
+// }
 
 fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-remote") {
@@ -5960,6 +5986,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -5973,6 +6000,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -5985,6 +6013,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: Some("foo".to_string()),
           task: "build".to_string(),
         }),
@@ -6009,6 +6038,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -6025,6 +6055,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: Some("foo".to_string()),
           task: "build".to_string(),
         }),
@@ -6042,6 +6073,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -6058,6 +6090,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -6074,6 +6107,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -6092,6 +6126,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "build".to_string(),
         }),
@@ -6109,6 +6144,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "".to_string(),
         }),
@@ -6124,6 +6160,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "".to_string(),
         }),
@@ -6140,6 +6177,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Task(TaskFlags {
+          no_default_task: None,
           cwd: None,
           task: "".to_string(),
         }),

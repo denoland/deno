@@ -1,5 +1,5 @@
 Warning deno task is unstable and may drastically change in the future
-Task not found: non_existent
+No task specified
 Available tasks:
 - boolean_logic
     sleep 0.1 && echo 3 && echo 4 & echo 1 && echo 2 || echo NOPE

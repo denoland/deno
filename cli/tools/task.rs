@@ -29,7 +29,10 @@ pub async fn execute_script(
     "{} deno task is unstable and may drastically change in the future",
     crate::colors::yellow("Warning"),
   );
+  let default_task: Vec<&str> = vec!["default", "main", "run", "start"];
+
   let ps = ProcState::build(flags).await?;
+
   let tasks_config = ps.options.resolve_tasks_config()?;
   let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
   let config_file_path = if config_file_url.scheme() == "file" {
@@ -38,16 +41,45 @@ pub async fn execute_script(
     bail!("Only local configuration files are supported")
   };
 
-  if task_flags.task.is_empty() {
-    print_available_tasks(tasks_config);
-    return Ok(1);
-  }
-
   let cwd = match task_flags.cwd {
     Some(path) => fs_util::canonicalize_path(&PathBuf::from(path))?,
     None => config_file_path.parent().unwrap().to_owned(),
   };
-  let task_name = task_flags.task;
+
+  let mut task_name: String = String::new();
+
+  let no_default_task = match task_flags.no_default_task {
+    Some(true) => true,
+    Some(false) => false,
+    None => false,
+  };
+
+  // if `--no-default-task` is not set, and no task name is provided, throw error & exit
+  if no_default_task && task_flags.task.is_empty() {
+    eprintln!("No task specified");
+    print_available_tasks(tasks_config);
+    return Ok(1);
+  }
+
+  // task_name = task_flags.task;
+
+  if task_flags.task.is_empty() && !no_default_task {
+    log::warn!(
+      "{} No task specified; attempting to run a default task. To prevent this behavior, pass `--no-default-task`. Run `deno task --help` for more info.\n",
+      crate::colors::yellow("Warning")
+    );
+
+    for task in default_task {
+      if tasks_config.contains_key(task) {
+        log::info!("Running default task: {}", crate::colors::cyan(task));
+        task_name = task.to_string();
+        break;
+      }
+    }
+  } else {
+    task_name = task_flags.task;
+  }
+
   let maybe_script = tasks_config.get(&task_name);
 
   if let Some(script) = maybe_script {
@@ -60,6 +92,7 @@ pub async fn execute_script(
       .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
       .collect::<Vec<_>>()
       .join(" ");
+    // actual task to be executed
     let script = format!("{} {}", script, additional_args);
     let script = script.trim();
     log::info!(
@@ -70,9 +103,11 @@ pub async fn execute_script(
     );
     let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
+    // load env vars
     let env_vars = std::env::vars().collect::<HashMap<String, String>>();
     let exit_code = deno_task_shell::execute(seq_list, env_vars, &cwd).await;
     Ok(exit_code)
+  // if there is no script name given, look for tasks named 'default' | 'main' | 'run' | 'start'
   } else {
     eprintln!("Task not found: {}", task_name);
     print_available_tasks(tasks_config);
