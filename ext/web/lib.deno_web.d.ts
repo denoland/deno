@@ -672,11 +672,9 @@ interface ReadableStream<R = any> {
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
   getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
   pipeThrough<T>(transform: {
-      writable: WritableStream<R>;
-      readable: ReadableStream<T>;
-    },
-    options?: PipeOptions,
-  ): ReadableStream<T>;
+    writable: WritableStream<R>;
+    readable: ReadableStream<T>;
+  }, options?: PipeOptions): ReadableStream<T>;
   pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
   [Symbol.asyncIterator](options?: {
