@@ -1521,7 +1521,6 @@ unsafe fn do_ffi_callback(
         }
       }
       NativeType::Void => unreachable!(),
-      
     };
     params.push(value);
   }
