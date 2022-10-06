@@ -163,7 +163,6 @@
       x[0],
       x[1],
     ]);
-    console.log(headerList);
 
     let body = null;
     if (request.body !== null) {
