@@ -2270,7 +2270,6 @@ Deno.test(
     try {
       await listeningPromise;
       const resp = await fetch("http://localhost:4503/", {
-        headers: { connection: "close" },
         method: "POST",
         body: '{"sus":true}',
       });
