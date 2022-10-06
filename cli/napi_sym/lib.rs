@@ -5,7 +5,7 @@ use quote::quote;
 use serde::Deserialize;
 
 static NAPI_EXPORTS: &str =
-  include_str!("../../tools/napi/symbol_exports.json");
+  include_str!("./symbol_exports.json");
 
 #[derive(Deserialize)]
 struct SymbolExports {

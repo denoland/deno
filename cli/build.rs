@@ -351,11 +351,11 @@ fn main() {
       symbols: Vec<String>,
     }
     let symbols_json =
-      std::fs::read_to_string("../tools/napi/symbol_exports.json").expect(
-        "Missing tools/napi/symbol_exports.json! This is a bug in napi_sym",
+      std::fs::read_to_string("./napi_sym/symbol_exports.json").expect(
+        "Missing ./napi_sym/symbol_exports.json! This is a bug in napi_sym",
       );
     let symbols: Symbols = serde_json::from_str(&symbols_json)
-      .expect("tools/napi/symbol_exports.json is not valid JSON");
+      .expect("./napi_sym/symbol_exports.json is not valid JSON");
 
     // Don't export all symbols into the dynamic symbol table. -rdynamic exports *all* symbols introducing binary bloat.
     // We only need to export Node API symbols.
