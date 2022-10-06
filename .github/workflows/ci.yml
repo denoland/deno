@@ -308,7 +308,7 @@ jobs:
         if: |
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug'
-        run: ld -V && cargo build --locked --all-targets
+        run: cargo build --locked --all-targets
 
       - name: Build fastci
         if: (matrix.job == 'test' && matrix.profile == 'fastci')
@@ -413,7 +413,7 @@ jobs:
 
       # Verify that the binary actually works in the Ubuntu-16.04 sysroot.
       - name: Check deno binary (in sysroot)
-        if: matrix.use_sysroot
+        if: matrix.profile == 'release' && matrix.use_sysroot
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
 
       # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
