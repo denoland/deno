@@ -17,7 +17,6 @@ use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -495,7 +494,12 @@ impl Resource for FetchResponseBodyResource {
     Box::pin(async move {
       let mut reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
+      let read = reader
+        .read(&mut buf)
+        .or_cancel(cancel)
+        .await?
+        .map_err(|e| type_error(e.to_string()))?;
+
       Ok((read, buf))
     })
   }
