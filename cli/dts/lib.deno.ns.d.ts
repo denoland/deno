@@ -3990,6 +3990,10 @@ declare namespace Deno {
    * [ "/etc/passwd" ]
    * ```
    *
+   * If you are looking for a structured way to parse arguments, there is the
+   * [`std/flags`](https://deno.land/std/flags) module as part of the Deno
+   * standard library.
+   *
    * @category Runtime Environment
    */
   export const args: string[];

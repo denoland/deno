@@ -8,28 +8,38 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The interface for defining a benchmark test using {@linkcode Deno.bench}.
+   *
    * @category Testing
    */
   export interface BenchDefinition {
+    /** The test function which will be benchmarked. */
     fn: () => void | Promise<void>;
+    /** The name of the test, which will be used in displaying the results. */
     name: string;
+    /** If truthy, the benchmark test will be ignored/skipped. */
     ignore?: boolean;
     /** Group name for the benchmark.
-     * Grouped benchmarks produce a time summary */
+     *
+     * Grouped benchmarks produce a group time summary, where the difference
+     * in performance between each test of the group is compared. */
     group?: string;
-    /** Benchmark should be used as the baseline for other benchmarks
-     * If there are multiple baselines in a group, the first one is used as the baseline */
+    /** Benchmark should be used as the baseline for other benchmarks.
+     *
+     * If there are multiple baselines in a group, the first one is used as the
+     * baseline. */
     baseline?: boolean;
     /** If at least one bench has `only` set to true, only run benches that have
-     * `only` set to true and fail the bench suite. */
+     * `only` set to `true` and fail the bench suite. */
     only?: boolean;
     /** Ensure the bench case does not prematurely cause the process to exit,
-     * for example via a call to `Deno.exit`. Defaults to true. */
+     * for example via a call to {@linkcode Deno.exit}. Defaults to `true`. */
     sanitizeExit?: boolean;
-
     /** Specifies the permissions that should be used to run the bench.
-     * Set this to "inherit" to keep the calling thread's permissions.
-     * Set this to "none" to revoke all permissions.
+     *
+     * Set this to `"inherit"` to keep the calling thread's permissions.
+     *
+     * Set this to `"none"` to revoke all permissions.
      *
      * Defaults to "inherit".
      */
@@ -38,15 +48,18 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
+   *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
    * Deno.bench({
    *   name: "example test",
-   *   fn(): void {
+   *   fn() {
    *     assertEquals("world", "world");
    *   },
    * });
@@ -54,7 +67,7 @@ declare namespace Deno {
    * Deno.bench({
    *   name: "example ignored test",
    *   ignore: Deno.build.os === "windows",
-   *   fn(): void {
+   *   fn() {
    *     // This test is ignored only on Windows machines
    *   },
    * });
@@ -75,18 +88,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.bench("My test description", (): void => {
+   * Deno.bench("My test description", () => {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.bench("My async test description", async (): Promise<void> => {
+   * Deno.bench("My async test description", async () => {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
@@ -102,18 +117,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required. Declared function must have a name.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.bench(function myTestName(): void {
+   * Deno.bench(function myTestName() {
    *   assertEquals("hello", "hello");
    * });
    *
-   * Deno.bench(async function myOtherTestName(): Promise<void> {
+   * Deno.bench(async function myOtherTestName() {
    *   const decoder = new TextDecoder("utf-8");
    *   const data = await Deno.readFile("hello_world.txt");
    *   assertEquals(decoder.decode(data), "Hello world");
@@ -126,22 +143,32 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.bench("My test description", { permissions: { read: true } }, (): void => {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.bench(
+   *   "My test description",
+   *   { permissions: { read: true } },
+   *   () => {
+   *    assertEquals("hello", "hello");
+   *   }
+   * );
    *
-   * Deno.bench("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.bench(
+   *   "My async test description",
+   *   { permissions: { read: false } },
+   *   async () => {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * );
    * ```
    *
    * @category Testing
@@ -154,22 +181,30 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.bench({ name: "My test description", permissions: { read: true } }, (): void => {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.bench(
+   *   { name: "My test description", permissions: { read: true } },
+   *   () => {
+   *     assertEquals("hello", "hello");
+   *   }
+   * );
    *
-   * Deno.bench({ name: "My async test description", permissions: { read: false } }, async (): Promise<void> => {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.bench(
+   *   { name: "My async test description", permissions: { read: false } },
+   *   async () => {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * );
    * ```
    *
    * @category Testing
@@ -181,22 +216,30 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Register a bench which will be run when `deno bench` is used on the command
-   * line and the containing module looks like a bench module.
-   * `fn` can be async if required. Declared function must have a name.
+   * Register a benchmark test which will be run when `deno bench` is used on
+   * the command line and the containing module looks like a bench module.
+   *
+   * If the test function (`fn`) returns a promise or is async, the test runner
+   * will await resolution to consider the test complete.
    *
    * ```ts
-   * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+   * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
    *
-   * Deno.bench({ permissions: { read: true } }, function myTestName(): void {
-   *   assertEquals("hello", "hello");
-   * });
+   * Deno.bench(
+   *   { permissions: { read: true } },
+   *   function myTestName() {
+   *     assertEquals("hello", "hello");
+   *   }
+   * );
    *
-   * Deno.bench({ permissions: { read: false } }, async function myOtherTestName(): Promise<void> {
-   *   const decoder = new TextDecoder("utf-8");
-   *   const data = await Deno.readFile("hello_world.txt");
-   *   assertEquals(decoder.decode(data), "Hello world");
-   * });
+   * Deno.bench(
+   *   { permissions: { read: false } },
+   *   async function myOtherTestName() {
+   *     const decoder = new TextDecoder("utf-8");
+   *     const data = await Deno.readFile("hello_world.txt");
+   *     assertEquals(decoder.decode(data), "Hello world");
+   *   }
+   * );
    * ```
    *
    * @category Testing
@@ -220,7 +263,7 @@ declare namespace Deno {
    * This API is under consideration to determine if permissions are required to
    * call it.
    *
-   * NOTE:  This API is not implemented on Windows
+   * *Note*: This API is not implemented on Windows
    *
    * @category File System
    */
