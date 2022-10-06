@@ -2261,7 +2261,7 @@ Deno.test(
 
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
