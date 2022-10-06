@@ -128,6 +128,7 @@ impl Default for WorkerOptions {
       format_js_error_fn: Default::default(),
       get_error_class_fn: Default::default(),
       origin_storage_dir: Default::default(),
+      cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
       root_cert_store: Default::default(),

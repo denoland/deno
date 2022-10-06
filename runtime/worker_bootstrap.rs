@@ -48,6 +48,7 @@ impl Default for BootstrapOptions {
       ts_version: Default::default(),
       location: Default::default(),
       unstable: Default::default(),
+      inspect: Default::default(),
       args: Default::default(),
     }
   }
