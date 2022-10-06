@@ -84,7 +84,7 @@ itest!(translate_cjs_to_esm {
 });
 
 itest!(compare_globals {
-  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  args: "run --allow-read --unstable --check=all npm/compare_globals/main.ts",
   output: "npm/compare_globals/main.out",
   envs: env_vars(),
   http_server: true,
