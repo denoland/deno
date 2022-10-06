@@ -869,6 +869,7 @@ dependencies = [
  "rustyline-derive",
  "semver 1.0.14",
  "serde",
+ "serde_json",
  "serde_repr",
  "shell-escape",
  "tar",
