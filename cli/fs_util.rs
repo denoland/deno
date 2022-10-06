@@ -5,10 +5,11 @@ use deno_core::error::{uri_error, AnyError};
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
-use std::io::{Error, Write};
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -73,6 +74,35 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
   return Ok(strip_unc_prefix(path));
   #[cfg(not(windows))]
   return Ok(path);
+}
+
+/// Canonicalizes a path which might be non-existent by going up the
+/// ancestors until it finds a directory that exists, canonicalizes
+/// that path, then adds back the remaining path components.
+///
+/// Note: When using this, you should be aware that a symlink may
+/// subsequently be created along this path by some other code.
+pub fn canonicalize_path_maybe_not_exists(
+  path: &Path,
+) -> Result<PathBuf, Error> {
+  let path = path.to_path_buf().clean();
+  let mut path = path.as_path();
+  let mut names_stack = Vec::new();
+  loop {
+    match canonicalize_path(path) {
+      Ok(mut canonicalized_path) => {
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(canonicalized_path);
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        names_stack.push(path.file_name().unwrap());
+        path = path.parent().unwrap();
+      }
+      Err(err) => return Err(err),
+    }
+  }
 }
 
 #[cfg(windows)]
@@ -249,19 +279,23 @@ where
 {
   let mut prepared = vec![];
 
-  let root_path = std::env::current_dir()?;
+  let root_path = current_dir()?;
   for path in include {
     let lowercase_path = path.to_lowercase();
     if lowercase_path.starts_with("http://")
       || lowercase_path.starts_with("https://")
-      || lowercase_path.starts_with("file://")
     {
       let url = ModuleSpecifier::parse(&path)?;
       prepared.push(url);
       continue;
     }
 
-    let p = normalize_path(&root_path.join(path));
+    let p = if lowercase_path.starts_with("file://") {
+      specifier_to_file_path(&ModuleSpecifier::parse(&path)?)?
+    } else {
+      root_path.join(path)
+    };
+    let p = normalize_path(&p);
     if p.is_dir() {
       let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
@@ -288,6 +322,60 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
   }
+}
+
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(&to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(&from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      copy_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
+    }
+  }
+
+  Ok(())
+}
+
+pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
+  let err_mapper = |err: Error| {
+    Error::new(
+      err.kind(),
+      format!(
+        "{}, symlink '{}' -> '{}'",
+        err,
+        oldpath.display(),
+        newpath.display()
+      ),
+    )
+  };
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::symlink;
+    symlink(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  #[cfg(not(unix))]
+  {
+    use std::os::windows::fs::symlink_dir;
+    symlink_dir(&oldpath, &newpath).map_err(err_mapper)?;
+  }
+  Ok(())
 }
 
 /// Attempts to convert a specifier to a file path. By default, uses the Url
@@ -443,6 +531,48 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
   }
 }
 
+/// Gets if the provided character is not supported on all
+/// kinds of file systems.
+pub fn is_banned_path_char(c: char) -> bool {
+  matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*')
+}
+
+/// Gets a safe local directory name for the provided url.
+///
+/// For example:
+/// https://deno.land:8080/path -> deno.land_8080/path
+pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
+  fn sanitize_segment(text: &str) -> String {
+    text
+      .chars()
+      .map(|c| if is_banned_segment_char(c) { '_' } else { c })
+      .collect()
+  }
+
+  fn is_banned_segment_char(c: char) -> bool {
+    matches!(c, '/' | '\\') || is_banned_path_char(c)
+  }
+
+  let mut result = String::new();
+  if let Some(domain) = root.domain() {
+    result.push_str(&sanitize_segment(domain));
+  }
+  if let Some(port) = root.port() {
+    if !result.is_empty() {
+      result.push('_');
+    }
+    result.push_str(&port.to_string());
+  }
+  let mut result = PathBuf::from(result);
+  if let Some(segments) = root.path_segments() {
+    for segment in segments.filter(|s| !s.is_empty()) {
+      result = result.join(sanitize_segment(segment));
+    }
+  }
+
+  result
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -496,8 +626,8 @@ mod tests {
     assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
     assert!(!is_supported_ext(Path::new("README.md")));
     assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext(Path::new("foo.jsx")));
     assert!(is_supported_ext(Path::new("foo.tsx")));
     assert!(is_supported_ext(Path::new("foo.TS")));
@@ -517,8 +647,12 @@ mod tests {
     assert!(is_supported_test_ext(Path::new("README.md")));
     assert!(is_supported_test_ext(Path::new("readme.MD")));
     assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/001_hello.js"
+    )));
+    assert!(is_supported_test_ext(Path::new(
+      "testdata/run/002_hello.ts"
+    )));
     assert!(is_supported_test_ext(Path::new("foo.jsx")));
     assert!(is_supported_test_ext(Path::new("foo.tsx")));
     assert!(is_supported_test_ext(Path::new("foo.TS")));
@@ -663,6 +797,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
+    let predicate = |path: &Path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    };
+
     let result = collect_specifiers(
       vec![
         "http://localhost:8080".to_string(),
@@ -670,13 +812,7 @@ mod tests {
         "https://localhost:8080".to_string(),
       ],
       &[ignore_dir_path],
-      |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      },
+      predicate,
     )
     .unwrap();
 
@@ -698,7 +834,38 @@ mod tests {
     ]
     .iter()
     .map(|f| ModuleSpecifier::parse(f).unwrap())
-    .collect::<Vec<ModuleSpecifier>>();
+    .collect::<Vec<_>>();
+
+    assert_eq!(result, expected);
+
+    let scheme = if cfg!(target_os = "windows") {
+      "file:///"
+    } else {
+      "file://"
+    };
+    let result = collect_specifiers(
+      vec![format!(
+        "{}{}",
+        scheme,
+        root_dir_path
+          .join("child")
+          .to_str()
+          .unwrap()
+          .replace('\\', "/")
+      )],
+      &[],
+      predicate,
+    )
+    .unwrap();
+
+    let expected: Vec<ModuleSpecifier> = [
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<_>>();
 
     assert_eq!(result, expected);
   }

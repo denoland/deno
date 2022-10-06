@@ -31,13 +31,16 @@ pub(crate) fn init_builtins() -> Extension {
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
+      op_add::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
       op_read::decl(),
+      op_read_all::decl(),
       op_write::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
       op_format_file_name::decl(),
       op_is_proxy::decl(),
+      op_str_byte_length::decl(),
     ])
     .ops(crate::ops_builtin_v8::init_builtins_v8())
     .build()
@@ -54,7 +57,12 @@ pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
     .collect()
 }
 
-#[op]
+#[op(fast)]
+fn op_add(a: i32, b: i32) -> i32 {
+  a + b
+}
+
+#[op(fast)]
 pub fn op_void_sync() {}
 
 #[op]
@@ -127,12 +135,12 @@ impl Resource for WasmStreamingResource {
 pub fn op_wasm_streaming_feed(
   state: &mut OpState,
   rid: ResourceId,
-  bytes: ZeroCopyBuf,
+  bytes: &[u8],
 ) -> Result<(), Error> {
   let wasm_streaming =
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
-  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+  wasm_streaming.0.borrow_mut().on_bytes_received(bytes);
 
   Ok(())
 }
@@ -158,7 +166,27 @@ async fn op_read(
   buf: ZeroCopyBuf,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  resource.read(buf).await.map(|n| n as u32)
+  resource.read_return(buf).await.map(|(n, _)| n as u32)
+}
+
+#[op]
+async fn op_read_all(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<ZeroCopyBuf, Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  let (min, maximum) = resource.size_hint();
+  let size = maximum.unwrap_or(min) as usize;
+
+  let mut buffer = Vec::with_capacity(size);
+  loop {
+    let tmp = ZeroCopyBuf::new_temp(vec![0u8; 64 * 1024]);
+    let (nread, tmp) = resource.clone().read_return(tmp).await?;
+    if nread == 0 {
+      return Ok(buffer.into());
+    }
+    buffer.extend_from_slice(&tmp[..nread]);
+  }
 }
 
 #[op]
@@ -185,7 +213,19 @@ fn op_format_file_name(file_name: String) -> String {
   format_file_name(&file_name)
 }
 
-#[op]
+#[op(fast)]
 fn op_is_proxy(value: serde_v8::Value) -> bool {
   value.v8_value.is_proxy()
+}
+
+#[op(v8)]
+fn op_str_byte_length(
+  scope: &mut v8::HandleScope,
+  value: serde_v8::Value,
+) -> u32 {
+  if let Ok(string) = v8::Local::<v8::String>::try_from(value.v8_value) {
+    string.utf8_length(scope) as u32
+  } else {
+    0
+  }
 }

@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::disk_cache::DiskCache;
+use crate::cache::DiskCache;
+
 use std::path::PathBuf;
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
@@ -55,6 +56,24 @@ impl DenoDir {
   pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
     self.root.join("lint_incremental_cache_v1")
+  }
+
+  /// Path for caching swc dependency analysis.
+  pub fn dep_analysis_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("dep_analysis_cache_v1")
+  }
+
+  /// Path for caching node analysis.
+  pub fn node_analysis_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("node_analysis_cache_v1")
+  }
+
+  /// Path for the cache used for type checking.
+  pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("check_cache_v1")
   }
 }
 
@@ -126,6 +145,7 @@ mod dirs {
   use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
 
   fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
+    // SAFETY: winapi calls
     unsafe {
       let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
       let result = shlobj::SHGetKnownFolderPath(

@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const {
     ArrayPrototypePush,
     ArrayPrototypeShift,
@@ -12,6 +13,8 @@
     MapPrototypeGet,
     MapPrototypeHas,
     MapPrototypeSet,
+    Uint8Array,
+    Uint32Array,
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
@@ -19,13 +22,17 @@
     SafeArrayIterator,
     SymbolFor,
     TypeError,
+    indirectEval,
   } = window.__bootstrap.primordials;
   const { webidl } = window.__bootstrap;
   const { reportException } = window.__bootstrap.event;
   const { assert } = window.__bootstrap.infra;
 
+  const hrU8 = new Uint8Array(8);
+  const hr = new Uint32Array(hrU8.buffer);
   function opNow() {
-    return core.opSync("op_now");
+    ops.op_now(hrU8);
+    return (hr[0] * 1000 + hr[1] / 1e6);
   }
 
   // ---------------------------------------------------------------------------
@@ -103,7 +110,7 @@
       // TODO(@andreubotella): Deal with overflow.
       // https://github.com/whatwg/html/issues/7358
       id = nextId++;
-      const cancelRid = core.opSync("op_timer_handle");
+      const cancelRid = ops.op_timer_handle();
       timerInfo = { cancelRid, isRef: true, promiseId: -1 };
 
       // Step 4 in "run steps after a timeout".
@@ -147,9 +154,7 @@
             reportException(error);
           }
         } else {
-          // TODO(@andreubotella): eval doesn't seem to have a primordial, but
-          // it can be redefined in the global scope.
-          (0, eval)(callback);
+          indirectEval(callback);
         }
 
         if (repeat) {

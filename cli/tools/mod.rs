@@ -1,10 +1,11 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 pub mod bench;
+pub mod check;
 pub mod coverage;
 pub mod doc;
 pub mod fmt;
-pub mod incremental_cache;
+pub mod init;
 pub mod installer;
 pub mod lint;
 pub mod repl;

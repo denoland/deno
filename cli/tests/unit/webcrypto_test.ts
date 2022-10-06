@@ -383,21 +383,6 @@ Deno.test(async function generateImportHmacJwk() {
 const pkcs8TestVectors = [
   // rsaEncryption
   { pem: "cli/tests/testdata/webcrypto/id_rsaEncryption.pem", hash: "SHA-256" },
-  // id-RSASSA-PSS (sha256)
-  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
-  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
-  // id-RSASSA-PSS (default parameters)
-  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
-  {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
-    hash: "SHA-1",
-  },
-  // id-RSASSA-PSS (default hash)
-  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
-  {
-    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
-    hash: "SHA-1",
-  },
 ];
 
 Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
@@ -434,6 +419,57 @@ Deno.test({ permissions: { read: true } }, async function importRsaPkcs8() {
     assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
   }
 });
+
+const nonInteroperableVectors = [
+  // id-RSASSA-PSS (sha256)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_md:sha256 -out id_rsassaPss.pem`
+  { pem: "cli/tests/testdata/webcrypto/id_rsassaPss.pem", hash: "SHA-256" },
+  // id-RSASSA-PSS (default parameters)
+  // `openssl genpkey -algorithm rsa-pss -out id_rsassaPss.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_default.pem",
+    hash: "SHA-1",
+  },
+  // id-RSASSA-PSS (default hash)
+  // `openssl genpkey -algorithm rsa-pss -pkeyopt rsa_pss_keygen_saltlen:30 -out rsaPss_saltLen_30.pem`
+  {
+    pem: "cli/tests/testdata/webcrypto/id_rsassaPss_saltLen_30.pem",
+    hash: "SHA-1",
+  },
+];
+
+Deno.test(
+  { permissions: { read: true } },
+  async function importNonInteroperableRsaPkcs8() {
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    for (const { pem, hash } of nonInteroperableVectors) {
+      const keyFile = await Deno.readTextFile(pem);
+      const pemContents = keyFile.substring(
+        pemHeader.length,
+        keyFile.length - pemFooter.length,
+      );
+      const binaryDerString = atob(pemContents);
+      const binaryDer = new Uint8Array(binaryDerString.length);
+      for (let i = 0; i < binaryDerString.length; i++) {
+        binaryDer[i] = binaryDerString.charCodeAt(i);
+      }
+
+      await assertRejects(
+        () =>
+          crypto.subtle.importKey(
+            "pkcs8",
+            binaryDer,
+            { name: "RSA-PSS", hash },
+            true,
+            ["sign"],
+          ),
+        DOMException,
+        "unsupported algorithm",
+      );
+    }
+  },
+);
 
 // deno-fmt-ignore
 const asn1AlgorithmIdentifier = new Uint8Array([
@@ -539,6 +575,71 @@ Deno.test(async function testHkdfDeriveBitsWithLargeKeySize() {
     DOMException,
     "The length provided for HKDF is too large",
   );
+});
+
+Deno.test(async function testEcdhDeriveBitsWithShorterLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keypair.publicKey,
+    },
+    keypair.privateKey,
+    256,
+  );
+  assertEquals(result.byteLength * 8, 256);
+});
+
+Deno.test(async function testEcdhDeriveBitsWithLongerLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  await assertRejects(
+    () =>
+      crypto.subtle.deriveBits(
+        {
+          name: "ECDH",
+          public: keypair.publicKey,
+        },
+        keypair.privateKey,
+        512,
+      ),
+    DOMException,
+    "Invalid length",
+  );
+});
+
+Deno.test(async function testEcdhDeriveBitsWithNullLength() {
+  const keypair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-384",
+    },
+    true,
+    ["deriveBits", "deriveKey"],
+  );
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "ECDH",
+      public: keypair.publicKey,
+    },
+    keypair.privateKey,
+    // @ts-ignore: necessary until .d.ts file allows passing null (see https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1416)
+    null,
+  );
+  assertEquals(result.byteLength * 8, 384);
 });
 
 Deno.test(async function testDeriveKey() {
@@ -716,27 +817,28 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 });
 
 Deno.test(async function testECDH() {
-  const namedCurve = "P-256";
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: "ECDH",
-      namedCurve,
-    },
-    true,
-    ["deriveBits"],
-  );
+  for (const keySize of [256, 384]) {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: "ECDH",
+        namedCurve: "P-" + keySize,
+      },
+      true,
+      ["deriveBits"],
+    );
 
-  const derivedKey = await crypto.subtle.deriveBits(
-    {
-      name: "ECDH",
-      public: keyPair.publicKey,
-    },
-    keyPair.privateKey,
-    256,
-  );
+    const derivedKey = await crypto.subtle.deriveBits(
+      {
+        name: "ECDH",
+        public: keyPair.publicKey,
+      },
+      keyPair.privateKey,
+      keySize,
+    );
 
-  assert(derivedKey instanceof ArrayBuffer);
-  assertEquals(derivedKey.byteLength, 256 / 8);
+    assert(derivedKey instanceof ArrayBuffer);
+    assertEquals(derivedKey.byteLength, keySize / 8);
+  }
 });
 
 Deno.test(async function testWrapKey() {
@@ -1299,22 +1401,17 @@ Deno.test(async function testImportEcDhJwk() {
     );
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
-    // deriveBits still not implemented for P384
-    if (size != 256) {
-      continue;
-    }
-
     const derivedKey = await subtle.deriveBits(
       {
         name: "ECDH",
         public: publicKeyECDH,
       },
       privateKeyECDH,
-      256,
+      size,
     );
 
     assert(derivedKey instanceof ArrayBuffer);
-    assertEquals(derivedKey.byteLength, 256 / 8);
+    assertEquals(derivedKey.byteLength, size / 8);
   }
 });
 
@@ -1830,4 +1927,41 @@ Deno.test(async function exportKeyNotExtractable() {
     // Should fail
     await crypto.subtle.exportKey("raw", key);
   }, DOMException);
+});
+
+// https://github.com/denoland/deno/issues/15126
+Deno.test(async function testImportLeadingZeroesKey() {
+  const alg = { name: "ECDSA", namedCurve: "P-256" };
+
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    alg: "ES256",
+    x: "EvidcdFB1xC6tgfakqZsU9aIURxAJkcX62zHe1Nt6xU",
+    y: "AHsk6BioGM7MZWeXOE_49AGmtuaXFT3Ill3DYtz9uYg",
+    d: "WDeYo4o1heCF9l_2VIaClRyIeO16zsMlN8UG6Le9dU8",
+    "key_ops": ["sign"],
+    ext: true,
+  };
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    alg,
+    true,
+    ["sign"],
+  );
+
+  assert(key instanceof CryptoKey);
+  assertEquals(key.type, "private");
+});
+
+// https://github.com/denoland/deno/issues/15523
+Deno.test(async function testECspkiRoundTrip() {
+  const alg = { name: "ECDH", namedCurve: "P-256" };
+  const { publicKey } = await crypto.subtle.generateKey(alg, true, [
+    "deriveBits",
+  ]);
+  const spki = await crypto.subtle.exportKey("spki", publicKey);
+  await crypto.subtle.importKey("spki", spki, alg, true, []);
 });

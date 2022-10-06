@@ -1,7 +1,7 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-run=cargo,git,deno --allow-net --no-check --lock=tools/deno.lock.json
+#!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
-import { GitLogOutput, path, semver } from "./deps.ts";
+import { $, GitLogOutput, semver } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
@@ -25,7 +25,7 @@ for (const crate of workspace.getCliDependencyCrates()) {
 }
 
 // update the std version used in the code
-console.log("Updating std version...");
+$.logStep("Updating std version...");
 await updateStdVersion();
 
 // update the lock file
@@ -33,12 +33,12 @@ await workspace.getCliCrate().cargoUpdate("--workspace");
 
 // try to update the Releases.md markdown text
 try {
-  console.log("Updating Releases.md...");
+  $.logStep("Updating Releases.md...");
   await updateReleasesMd();
 } catch (err) {
-  console.error(err);
-  console.error(
-    "Updating Releases.md failed. Please manually run " +
+  $.log(err);
+  $.logError(
+    "Error Updating Releases.md failed. Please manually run " +
       "`git log --oneline VERSION_FROM..VERSION_TO` and " +
       "use the output to update Releases.md",
   );
@@ -97,7 +97,7 @@ async function getGitLog() {
 }
 
 async function updateStdVersion() {
-  const compatFilePath = path.join(cliCrate.folderPath, "compat/mod.rs");
+  const compatFilePath = $.path.join(cliCrate.folderPath, "deno_std.rs");
   const text = await Deno.readTextFile(compatFilePath);
   const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
   const stdVersionText = versionRe.exec(text)?.[1];

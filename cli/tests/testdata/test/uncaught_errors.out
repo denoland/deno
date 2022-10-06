@@ -3,6 +3,7 @@ foo 1 ... FAILED ([WILDCARD])
 foo 2 ... ok ([WILDCARD])
 foo 3 ...
 Uncaught error from ./test/uncaught_errors_1.ts FAILED
+foo 3 ... cancelled (0ms)
 running 3 tests from ./test/uncaught_errors_2.ts
 bar 1 ... ok ([WILDCARD])
 bar 2 ... FAILED ([WILDCARD])
@@ -53,6 +54,6 @@ bar 2 => ./test/uncaught_errors_2.ts:3:6
 bar 3 => ./test/uncaught_errors_2.ts:6:6
 ./test/uncaught_errors_3.ts (uncaught error)
 
-FAILED | 2 passed | 5 failed ([WILDCARD])
+FAILED | 2 passed | 6 failed ([WILDCARD])
 
 error: Test failed

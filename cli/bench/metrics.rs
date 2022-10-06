@@ -17,9 +17,9 @@ static GIT_HASH: Lazy<String> = Lazy::new(|| {
 });
 
 #[derive(serde::Serialize)]
-struct Metric {
+struct Metric<T: serde::Serialize> {
   name: String,
-  value: i64,
+  value: T,
   sha1: String,
   #[serde(rename = "type")]
   type_: String,
@@ -62,7 +62,12 @@ impl Reporter {
     }
   }
 
-  pub fn write_one(&mut self, type_: &str, name: &str, value: i64) {
+  pub fn write_one<T: serde::Serialize>(
+    &mut self,
+    type_: &str,
+    name: &str,
+    value: T,
+  ) {
     self
       .wtr
       .serialize(Metric {
@@ -75,7 +80,11 @@ impl Reporter {
       .unwrap();
   }
 
-  pub fn write(&mut self, type_: &str, hashmap: &HashMap<String, i64>) {
+  pub fn write<T: serde::Serialize + Copy>(
+    &mut self,
+    type_: &str,
+    hashmap: &HashMap<String, T>,
+  ) {
     for (name, value) in hashmap {
       self.write_one(type_, name, *value);
     }

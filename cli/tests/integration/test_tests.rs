@@ -62,6 +62,49 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(test_with_config {
+  args: "test --config test/collect/deno.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
+itest!(test_with_config2 {
+  args: "test --config test/collect/deno2.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect2.out",
+});
+
+itest!(test_with_malformed_config {
+  args: "test --config test/collect/deno.malformed.jsonc",
+  exit_code: 1,
+  output: "test/collect_with_malformed_config.out",
+});
+
+itest!(parallel_flag {
+  args: "test test/short-pass.ts --parallel",
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(parallel_flag_with_env_variable {
+  args: "test test/short-pass.ts --parallel",
+  envs: vec![("DENO_JOBS".to_owned(), "2".to_owned())],
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(jobs_flag {
+  args: "test test/short-pass.ts --jobs",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-warning.out",
+});
+
+itest!(jobs_flag_with_numeric_value {
+  args: "test test/short-pass.ts --jobs=2",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-warning.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,
@@ -261,12 +304,6 @@ itest!(steps_passing_steps {
   output: "test/steps/passing_steps.out",
 });
 
-itest!(steps_passing_steps_concurrent {
-  args: "test --jobs=2 test/steps/passing_steps.ts",
-  exit_code: 0,
-  output: "test/steps/passing_steps.out",
-});
-
 itest!(steps_failing_steps {
   args: "test test/steps/failing_steps.ts",
   exit_code: 1,
@@ -303,6 +340,12 @@ itest!(no_prompt_with_denied_perms {
   output: "test/no_prompt_with_denied_perms.out",
 });
 
+itest!(test_with_custom_jsx {
+  args: "test --quiet --allow-read test/hello_world.ts --config=test/deno_custom_jsx.json",
+  exit_code: 0,
+  output: "test/hello_world.out",
+});
+
 #[test]
 fn captured_output() {
   let output = util::deno_cmd()
@@ -325,7 +368,12 @@ fn captured_output() {
   let output_text = String::from_utf8(output.stdout).unwrap();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
-  let output_text = output_text[start..end].trim();
+  // replace zero width space that may appear in test output due
+  // to test runner output flusher
+  let output_text = output_text[start..end]
+    .replace('\u{200B}', "")
+    .trim()
+    .to_string();
   let mut lines = output_text.lines().collect::<Vec<_>>();
   // the output is racy on either stdout or stderr being flushed
   // from the runtime into the rust code, so sort it... the main
@@ -391,5 +439,11 @@ itest!(check_local_by_default2 {
 itest!(non_error_thrown {
   args: "test --quiet test/non_error_thrown.ts",
   output: "test/non_error_thrown.out",
+  exit_code: 1,
+});
+
+itest!(parallel_output {
+  args: "test --parallel --reload test/parallel_output.ts",
+  output: "test/parallel_output.out",
   exit_code: 1,
 });

@@ -25,7 +25,7 @@ impl Deref for StringOrBuffer {
 
 impl ToV8 for StringOrBuffer {
   fn to_v8<'a>(
-    &self,
+    &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {

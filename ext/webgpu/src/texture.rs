@@ -2,8 +2,9 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 

@@ -16,12 +16,9 @@
   const { Blob, BlobPrototype, File, FilePrototype } =
     globalThis.__bootstrap.file;
   const {
-    ArrayPrototypeMap,
     ArrayPrototypePush,
     ArrayPrototypeSlice,
     ArrayPrototypeSplice,
-    ArrayPrototypeFilter,
-    ArrayPrototypeForEach,
     Map,
     MapPrototypeGet,
     MapPrototypeSet,
@@ -271,20 +268,19 @@
   webidl.configurePrototype(FormData);
   const FormDataPrototype = FormData.prototype;
 
-  const escape = (str, isFilename) =>
-    StringPrototypeReplace(
-      StringPrototypeReplace(
-        StringPrototypeReplace(
-          isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
-          /\n/g,
-          "%0A",
-        ),
-        /\r/g,
-        "%0D",
-      ),
-      /"/g,
-      "%22",
+  const escape = (str, isFilename) => {
+    const escapeMap = {
+      "\n": "%0A",
+      "\r": "%0D",
+      '"': "%22",
+    };
+
+    return StringPrototypeReplace(
+      isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n"),
+      /([\n\r"])/g,
+      (c) => escapeMap[c],
     );
+  };
 
   /**
    * convert FormData to a Blob synchronous without reading all of the files
@@ -336,20 +332,17 @@
     /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
-    ArrayPrototypeForEach(
-      ArrayPrototypeMap(
-        ArrayPrototypeFilter(
-          ArrayPrototypeMap(
-            ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1),
-            (s) => StringPrototypeSplit(StringPrototypeTrim(s), "="),
-          ),
-          (arr) => arr.length > 1,
-        ),
-        ([k, v]) => [k, StringPrototypeReplace(v, /^"([^"]*)"$/, "$1")],
-      ),
-      ([k, v]) => MapPrototypeSet(params, k, v),
-    );
-
+    const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
+    for (let i = 0; i < values.length; i++) {
+      const entries = StringPrototypeSplit(StringPrototypeTrim(values[i]), "=");
+      if (entries.length > 1) {
+        MapPrototypeSet(
+          params,
+          entries[0],
+          StringPrototypeReplace(entries[1], /^"([^"]*)"$/, "$1"),
+        );
+      }
+    }
     return params;
   }
 

@@ -37,7 +37,7 @@ jobs:
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: ./tools/release/03_publish_crates.ts --real
+        run: ./tools/release/03_publish_crates.ts
 
       - name: Create release tag and check forward commit to main
         env:

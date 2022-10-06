@@ -39,11 +39,14 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
 use hyper::body::Bytes;
+use hyper::body::HttpBody;
+use hyper::body::SizeHint;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
 use hyper::service::Service;
 use hyper::Body;
+use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
 use serde::Serialize;
@@ -77,7 +80,6 @@ pub fn init() -> Extension {
     ))
     .ops(vec![
       op_http_accept::decl(),
-      op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_headers::decl(),
       op_http_write::decl(),
@@ -307,8 +309,9 @@ pub struct HttpStreamResource {
   conn: Rc<HttpConnResource>,
   pub rd: AsyncRefCell<HttpRequestReader>,
   wr: AsyncRefCell<HttpResponseWriter>,
-  accept_encoding: RefCell<Encoding>,
+  accept_encoding: Encoding,
   cancel_handle: CancelHandle,
+  size: SizeHint,
 }
 
 impl HttpStreamResource {
@@ -318,13 +321,60 @@ impl HttpStreamResource {
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
   ) -> Self {
+    let size = request.body().size_hint();
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
-      accept_encoding: RefCell::new(accept_encoding),
+      accept_encoding,
+      size,
       cancel_handle: CancelHandle::new(),
     }
+  }
+}
+
+impl HttpStreamResource {
+  async fn read(
+    self: Rc<Self>,
+    mut buf: ZeroCopyBuf,
+  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+
+    let body = loop {
+      match &mut *rd {
+        HttpRequestReader::Headers(_) => {}
+        HttpRequestReader::Body(_, body) => break body,
+        HttpRequestReader::Closed => return Ok((0, buf)),
+      }
+      match take(&mut *rd) {
+        HttpRequestReader::Headers(request) => {
+          let (parts, body) = request.into_parts();
+          *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+        }
+        _ => unreachable!(),
+      };
+    };
+
+    let fut = async {
+      let mut body = Pin::new(body);
+      loop {
+        match body.as_mut().peek_mut().await {
+          Some(Ok(chunk)) if !chunk.is_empty() => {
+            let len = min(buf.len(), chunk.len());
+            buf[..len].copy_from_slice(&chunk.split_to(len));
+            break Ok((len, buf));
+          }
+          Some(_) => match body.as_mut().next().await.unwrap() {
+            Ok(chunk) => assert!(chunk.is_empty()),
+            Err(err) => break Err(AnyError::from(err)),
+          },
+          None => break Ok((0, buf)),
+        }
+      }
+    };
+
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    fut.try_or_cancel(cancel_handle).await
   }
 }
 
@@ -333,15 +383,26 @@ impl Resource for HttpStreamResource {
     "httpStream".into()
   }
 
+  fn read_return(
+    self: Rc<Self>,
+    _buf: ZeroCopyBuf,
+  ) -> deno_core::AsyncResult<(usize, ZeroCopyBuf)> {
+    Box::pin(self.read(_buf))
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (self.size.lower(), self.size.upper())
   }
 }
 
 /// The read half of an HTTP stream.
 pub enum HttpRequestReader {
   Headers(Request<Body>),
-  Body(Peekable<Body>),
+  Body(HeaderMap<HeaderValue>, Peekable<Body>),
   Closed,
 }
 
@@ -450,7 +511,7 @@ fn req_url(
 }
 
 fn req_headers(
-  req: &hyper::Request<hyper::Body>,
+  header_map: &HeaderMap<HeaderValue>,
 ) -> Vec<(ByteString, ByteString)> {
   // We treat cookies specially, because we don't want them to get them
   // mangled by the `Headers` object in JS. What we do is take all cookie
@@ -459,8 +520,8 @@ fn req_headers(
   let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
 
-  let mut headers = Vec::with_capacity(req.headers().len());
-  for (name, value) in req.headers().iter() {
+  let mut headers = Vec::with_capacity(header_map.len());
+  for (name, value) in header_map.iter() {
     if name == hyper::header::COOKIE {
       cookies.push(value.as_bytes());
     } else {
@@ -491,7 +552,7 @@ async fn op_http_write_headers(
     .get::<HttpStreamResource>(rid)?;
 
   // Track supported encoding
-  let encoding = *stream.accept_encoding.borrow();
+  let encoding = stream.accept_encoding;
 
   let mut builder = Response::builder();
   // SAFETY: can not fail, since a fresh Builder is non-errored
@@ -557,7 +618,8 @@ fn op_http_headers(
     .try_borrow()
     .ok_or_else(|| http_error("already in use"))?;
   match &*rd {
-    HttpRequestReader::Headers(request) => Ok(req_headers(request)),
+    HttpRequestReader::Headers(request) => Ok(req_headers(request.headers())),
+    HttpRequestReader::Body(headers, _) => Ok(req_headers(headers)),
     _ => unreachable!(),
   }
 }
@@ -815,55 +877,6 @@ async fn op_http_shutdown(
 }
 
 #[op]
-async fn op_http_read(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
-) -> Result<usize, AnyError> {
-  let stream = state
-    .borrow_mut()
-    .resource_table
-    .get::<HttpStreamResource>(rid)?;
-  let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
-
-  let body = loop {
-    match &mut *rd {
-      HttpRequestReader::Headers(_) => {}
-      HttpRequestReader::Body(body) => break body,
-      HttpRequestReader::Closed => return Ok(0),
-    }
-    match take(&mut *rd) {
-      HttpRequestReader::Headers(request) => {
-        let body = request.into_body().peekable();
-        *rd = HttpRequestReader::Body(body);
-      }
-      _ => unreachable!(),
-    };
-  };
-
-  let fut = async {
-    let mut body = Pin::new(body);
-    loop {
-      match body.as_mut().peek_mut().await {
-        Some(Ok(chunk)) if !chunk.is_empty() => {
-          let len = min(buf.len(), chunk.len());
-          buf[..len].copy_from_slice(&chunk.split_to(len));
-          break Ok(len);
-        }
-        Some(_) => match body.as_mut().next().await.unwrap() {
-          Ok(chunk) => assert!(chunk.is_empty()),
-          Err(err) => break Err(AnyError::from(err)),
-        },
-        None => break Ok(0),
-      }
-    }
-  };
-
-  let cancel_handle = RcRef::map(&stream, |r| &r.cancel_handle);
-  fut.try_or_cancel(cancel_handle).await
-}
-
-#[op]
 fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
@@ -871,6 +884,41 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   );
   Ok(base64::encode(digest))
 }
+
+struct UpgradedStream(hyper::upgrade::Upgraded);
+impl tokio::io::AsyncRead for UpgradedStream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut tokio::io::ReadBuf,
+  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+  }
+}
+
+impl tokio::io::AsyncWrite for UpgradedStream {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+  }
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_flush(cx)
+  }
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+  }
+}
+
+impl deno_websocket::Upgraded for UpgradedStream {}
 
 #[op]
 async fn op_http_upgrade_websocket(
@@ -891,7 +939,9 @@ async fn op_http_upgrade_websocket(
   };
 
   let transport = hyper::upgrade::on(request).await?;
-  let ws_rid = ws_create_server_stream(&state, transport).await?;
+  let ws_rid =
+    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
+      .await?;
   Ok(ws_rid)
 }
 

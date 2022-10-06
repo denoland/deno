@@ -35,7 +35,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -43,19 +43,23 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/003_relative_import.ts",
+      "cli/tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
+  (
+    "hello",
+    &["run", "cli/tests/testdata/run/002_hello.ts"],
+    None,
+  ),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/error_001.ts"],
+    &["run", "cli/tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -64,7 +68,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/002_hello.ts",
+      "cli/tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -97,22 +101,25 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    &[
+      "run",
+      "cli/tests/testdata/benches/text_encoder_into_perf.js",
+    ],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/response_string_perf.js"],
+    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -162,7 +169,7 @@ const RESULT_KEYS: &[&str] =
 fn run_exec_time(
   deno_exe: &Path,
   target_dir: &Path,
-) -> Result<HashMap<String, HashMap<String, i64>>> {
+) -> Result<HashMap<String, HashMap<String, f64>>> {
   let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
@@ -174,6 +181,7 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
+    "--show-output",
   ]
   .iter()
   .map(|s| s.to_string())
@@ -203,7 +211,7 @@ fn run_exec_time(
     true,
   );
 
-  let mut results = HashMap::<String, HashMap<String, i64>>::new();
+  let mut results = HashMap::<String, HashMap<String, f64>>::new();
   let hyperfine_results = read_json(benchmark_file)?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
@@ -220,7 +228,7 @@ fn run_exec_time(
       data
         .into_iter()
         .filter(|(key, _)| RESULT_KEYS.contains(&key.as_str()))
-        .map(|(key, val)| (key, val.as_f64().unwrap() as i64))
+        .map(|(key, val)| (key, val.as_f64().unwrap()))
         .collect(),
     );
   }
@@ -382,11 +390,11 @@ struct BenchResult {
   // TODO(ry) The "benchmark" benchmark should actually be called "exec_time".
   // When this is changed, the historical data in gh-pages branch needs to be
   // changed too.
-  benchmark: HashMap<String, HashMap<String, i64>>,
+  benchmark: HashMap<String, HashMap<String, f64>>,
   binary_size: HashMap<String, i64>,
   bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
-  max_latency: HashMap<String, i64>,
+  max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
@@ -489,7 +497,7 @@ async fn main() -> Result<()> {
     new_data.req_per_sec = req_per_sec;
     let max_latency = stats
       .iter()
-      .map(|(name, result)| (name.clone(), result.latency as i64))
+      .map(|(name, result)| (name.clone(), result.latency))
       .collect();
 
     reporter.write("max_latency", &max_latency);
@@ -515,6 +523,7 @@ async fn main() -> Result<()> {
         ])
         .args(args.iter())
         .stdout(Stdio::null())
+        .env("LC_NUMERIC", "C")
         .spawn()?
         .wait()?;
       let expected_exit_code = expected_exit_code.unwrap_or(0);

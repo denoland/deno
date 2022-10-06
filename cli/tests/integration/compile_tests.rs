@@ -13,27 +13,30 @@ fn compile() {
   } else {
     dir.path().join("welcome")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--unstable")
-    .arg("--output")
-    .arg(&exe)
-    .arg("./test_util/std/examples/welcome.ts")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  let output = Command::new(exe)
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  // try this twice to ensure it works with the cache
+  for _ in 0..2 {
+    let output = util::deno_cmd_with_deno_dir(&dir)
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./test_util/std/examples/welcome.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(&exe)
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+  }
 }
 
 #[test]
@@ -50,7 +53,7 @@ fn standalone_args() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .arg("a")
     .arg("b")
     .stdout(std::process::Stdio::piped())
@@ -87,7 +90,7 @@ fn standalone_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error.ts")
+    .arg("./compile/standalone_error.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -132,7 +135,7 @@ fn standalone_error_module_with_imports() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_error_module_with_imports_1.ts")
+    .arg("./compile/standalone_error_module_with_imports_1.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -174,7 +177,7 @@ fn standalone_load_datauri() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_datauri.ts")
+    .arg("./compile/standalone_import_datauri.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -207,7 +210,7 @@ fn standalone_follow_redirects() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_follow_redirects.ts")
+    .arg("./compile/standalone_follow_redirects.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -241,7 +244,7 @@ fn compile_with_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&output_path)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -275,7 +278,7 @@ fn compile_with_directory_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -309,7 +312,7 @@ fn compile_with_conflict_file_exists_error() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -346,7 +349,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -361,7 +364,7 @@ fn compile_and_overwrite_file() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./028_args.ts")
+    .arg("./compile/args.ts")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -387,7 +390,7 @@ fn standalone_runtime_flags() {
     .arg("1")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_runtime_flags.ts")
+    .arg("./compile/standalone_runtime_flags.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -423,10 +426,10 @@ fn standalone_import_map() {
     .arg("--unstable")
     .arg("--allow-read")
     .arg("--import-map")
-    .arg("standalone_import_map.json")
+    .arg("compile/standalone_import_map.json")
     .arg("--output")
     .arg(&exe)
-    .arg("./standalone_import_map.ts")
+    .arg("./compile/standalone_import_map.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -458,7 +461,7 @@ fn skip_rebundle() {
     .arg("--unstable")
     .arg("--output")
     .arg(&exe)
-    .arg("./001_hello.js")
+    .arg("./run/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -467,7 +470,7 @@ fn skip_rebundle() {
     .unwrap();
   assert!(output.status.success());
 
-  //no "Bundle testdata_path/001_hello.js" in output
+  //no "Bundle testdata_path/run/001_hello.js" in output
   assert!(!String::from_utf8(output.stderr).unwrap().contains("Bundle"));
 
   let output = Command::new(exe)

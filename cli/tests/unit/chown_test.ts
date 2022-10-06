@@ -12,8 +12,8 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
     args: ["-g"],
   });
 
-  assertEquals(uidProc.status.code, 0);
-  assertEquals(gidProc.status.code, 0);
+  assertEquals(uidProc.code, 0);
+  assertEquals(gidProc.code, 0);
   const uid = parseInt(new TextDecoder("utf-8").decode(uidProc.stdout));
   const gid = parseInt(new TextDecoder("utf-8").decode(gidProc.stdout));
 

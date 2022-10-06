@@ -7,19 +7,53 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
+use crate::JsRealm;
 use crate::JsRuntime;
 use log::debug;
-use once_cell::sync::Lazy;
 use std::option::Option;
 use std::os::raw::c_void;
+use v8::fast_api::FastFunction;
 use v8::MapFnTo;
 
-pub static EXTERNAL_REFERENCES: Lazy<v8::ExternalReferences> =
-  Lazy::new(|| {
-    v8::ExternalReferences::new(&[v8::ExternalReference {
+pub fn external_references(
+  ops: &[OpCtx],
+  snapshot_loaded: bool,
+) -> v8::ExternalReferences {
+  let mut references = vec![
+    v8::ExternalReference {
       function: call_console.map_fn_to(),
-    }])
-  });
+    },
+    v8::ExternalReference {
+      function: import_meta_resolve.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: catch_dynamic_import_promise_error.map_fn_to(),
+    },
+    v8::ExternalReference {
+      function: empty_fn.map_fn_to(),
+    },
+  ];
+
+  for ctx in ops {
+    let ctx_ptr = ctx as *const OpCtx as _;
+    references.push(v8::ExternalReference { pointer: ctx_ptr });
+    references.push(v8::ExternalReference {
+      function: ctx.decl.v8_fn_ptr,
+    });
+    if snapshot_loaded {
+      if let Some(fast_fn) = &ctx.decl.fast_fn {
+        references.push(v8::ExternalReference {
+          pointer: fast_fn.function() as _,
+        });
+      }
+    }
+  }
+
+  let refs = v8::ExternalReferences::new(&references);
+  // Leak, V8 takes ownership of the references.
+  std::mem::forget(references);
+  refs
+}
 
 // TODO(nayeemrmn): Move to runtime and/or make `pub(crate)`.
 pub fn script_origin<'a>(
@@ -82,7 +116,8 @@ pub fn initialize_context<'s>(
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-    initialize_ops(scope, ops_obj, op_ctxs);
+    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
+
     return scope.escape(context);
   }
 
@@ -94,7 +129,8 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
-  initialize_ops(scope, ops_obj, op_ctxs);
+
+  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
   scope.escape(context)
 }
 
@@ -102,10 +138,34 @@ fn initialize_ops(
   scope: &mut v8::HandleScope,
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
+  snapshot_loaded: bool,
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
-    set_func_raw(scope, ops_obj, ctx.decl.name, ctx.decl.v8_fn_ptr, ctx_ptr);
+
+    // If this is a fast op, we don't want it to be in the snapshot.
+    // Only initialize once snapshot is loaded.
+    if ctx.decl.fast_fn.is_some() && snapshot_loaded {
+      set_func_raw(
+        scope,
+        ops_obj,
+        ctx.decl.name,
+        ctx.decl.v8_fn_ptr,
+        ctx_ptr,
+        &ctx.decl.fast_fn,
+        snapshot_loaded,
+      );
+    } else {
+      set_func_raw(
+        scope,
+        ops_obj,
+        ctx.decl.name,
+        ctx.decl.v8_fn_ptr,
+        ctx_ptr,
+        &None,
+        snapshot_loaded,
+      );
+    }
   }
 }
 
@@ -129,15 +189,43 @@ pub fn set_func_raw(
   name: &'static str,
   callback: v8::FunctionCallback,
   external_data: *const c_void,
+  fast_function: &Option<Box<dyn FastFunction>>,
+  snapshot_loaded: bool,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
-  let val = v8::Function::builder_raw(callback)
-    .data(external.into())
-    .build(scope)
-    .unwrap();
+  let builder =
+    v8::FunctionTemplate::builder_raw(callback).data(external.into());
+  let templ = if let Some(fast_function) = fast_function {
+    // Don't initialize fast ops when snapshotting, the external references count mismatch.
+    if !snapshot_loaded {
+      builder.build(scope)
+    } else {
+      // TODO(@littledivy): Support fast api overloads in ops.
+      builder.build_fast(scope, &**fast_function, None)
+    }
+  } else {
+    builder.build(scope)
+  };
+  let val = templ.get_function(scope).unwrap();
   val.set_name(key);
   obj.set(scope, key.into(), val.into());
+}
+
+pub extern "C" fn wasm_async_resolve_promise_callback(
+  _isolate: *mut v8::Isolate,
+  context: v8::Local<v8::Context>,
+  resolver: v8::Local<v8::PromiseResolver>,
+  compilation_result: v8::Local<v8::Value>,
+  success: v8::WasmAsyncSuccess,
+) {
+  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+  let scope = &mut unsafe { v8::CallbackScope::new(context) };
+  if success == v8::WasmAsyncSuccess::Success {
+    resolver.resolve(scope, compilation_result).unwrap();
+  } else {
+    resolver.reject(scope, compilation_result).unwrap();
+  }
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
@@ -203,47 +291,11 @@ pub extern "C" fn host_import_module_dynamically_callback(
   // ones rethrown from this scope, so they include the call stack of the
   // dynamic import site. Error objects without any stack frames are assumed to
   // be module resolution errors, other exception values are left as they are.
-  let map_err = |scope: &mut v8::HandleScope,
-                 args: v8::FunctionCallbackArguments,
-                 _rv: v8::ReturnValue| {
-    let arg = args.get(0);
-    if is_instance_of_error(scope, arg) {
-      let e: crate::error::NativeJsError =
-        serde_v8::from_v8(scope, arg).unwrap();
-      let name = e.name.unwrap_or_else(|| "Error".to_string());
-      let message = v8::Exception::create_message(scope, arg);
-      if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
-        let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
-        let message_key = v8::String::new(scope, "message").unwrap();
-        let message = arg.get(scope, message_key.into()).unwrap();
-        let exception = match name.as_str() {
-          "RangeError" => {
-            v8::Exception::range_error(scope, message.try_into().unwrap())
-          }
-          "TypeError" => {
-            v8::Exception::type_error(scope, message.try_into().unwrap())
-          }
-          "SyntaxError" => {
-            v8::Exception::syntax_error(scope, message.try_into().unwrap())
-          }
-          "ReferenceError" => {
-            v8::Exception::reference_error(scope, message.try_into().unwrap())
-          }
-          _ => v8::Exception::error(scope, message.try_into().unwrap()),
-        };
-        let code_key = v8::String::new(scope, "code").unwrap();
-        let code_value =
-          v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
-        let exception_obj = exception.to_object(scope).unwrap();
-        exception_obj.set(scope, code_key.into(), code_value.into());
-        scope.throw_exception(exception);
-        return;
-      }
-    }
-    scope.throw_exception(arg);
-  };
-  let map_err = v8::FunctionTemplate::new(scope, map_err);
-  let map_err = map_err.get_function(scope).unwrap();
+  let builder = v8::FunctionBuilder::new(catch_dynamic_import_promise_error);
+
+  let map_err =
+    v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
+
   let promise = promise.catch(scope, map_err).unwrap();
 
   &*promise as *const _ as *mut _
@@ -271,6 +323,103 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let main_key = v8::String::new(scope, "main").unwrap();
   let main_val = v8::Boolean::new(scope, info.main);
   meta.create_data_property(scope, main_key.into(), main_val.into());
+
+  let builder =
+    v8::FunctionBuilder::new(import_meta_resolve).data(url_val.into());
+  let val = v8::FunctionBuilder::<v8::Function>::build(builder, scope).unwrap();
+  let resolve_key = v8::String::new(scope, "resolve").unwrap();
+  meta.set(scope, resolve_key.into(), val.into());
+}
+
+fn import_meta_resolve(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  if args.length() > 1 {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+
+  let maybe_arg_str = args.get(0).to_string(scope);
+  if maybe_arg_str.is_none() {
+    return throw_type_error(scope, "Invalid arguments");
+  }
+  let specifier = maybe_arg_str.unwrap();
+  let referrer = {
+    let url_prop = args.data().unwrap();
+    url_prop.to_rust_string_lossy(scope)
+  };
+  let module_map_rc = JsRuntime::module_map(scope);
+  let loader = {
+    let module_map = module_map_rc.borrow();
+    module_map.loader.clone()
+  };
+  match loader.resolve(&specifier.to_rust_string_lossy(scope), &referrer, false)
+  {
+    Ok(resolved) => {
+      let resolved_val = serde_v8::to_v8(scope, resolved.as_str()).unwrap();
+      rv.set(resolved_val);
+    }
+    Err(err) => {
+      throw_type_error(scope, &err.to_string());
+    }
+  };
+}
+
+fn empty_fn(
+  _scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  //Do Nothing
+}
+
+//It creates a reference to an empty function which can be mantained after the snapshots
+pub fn create_empty_fn<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Option<v8::Local<'s, v8::Function>> {
+  let empty_fn = v8::FunctionTemplate::new(scope, empty_fn);
+  empty_fn.get_function(scope)
+}
+
+fn catch_dynamic_import_promise_error(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let arg = args.get(0);
+  if is_instance_of_error(scope, arg) {
+    let e: crate::error::NativeJsError = serde_v8::from_v8(scope, arg).unwrap();
+    let name = e.name.unwrap_or_else(|| "Error".to_string());
+    let message = v8::Exception::create_message(scope, arg);
+    if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
+      let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
+      let message_key = v8::String::new(scope, "message").unwrap();
+      let message = arg.get(scope, message_key.into()).unwrap();
+      let exception = match name.as_str() {
+        "RangeError" => {
+          v8::Exception::range_error(scope, message.try_into().unwrap())
+        }
+        "TypeError" => {
+          v8::Exception::type_error(scope, message.try_into().unwrap())
+        }
+        "SyntaxError" => {
+          v8::Exception::syntax_error(scope, message.try_into().unwrap())
+        }
+        "ReferenceError" => {
+          v8::Exception::reference_error(scope, message.try_into().unwrap())
+        }
+        _ => v8::Exception::error(scope, message.try_into().unwrap()),
+      };
+      let code_key = v8::String::new(scope, "code").unwrap();
+      let code_value = v8::String::new(scope, "ERR_MODULE_NOT_FOUND").unwrap();
+      let exception_obj = exception.to_object(scope).unwrap();
+      exception_obj.set(scope, code_key.into(), code_value.into());
+      scope.throw_exception(exception);
+      return;
+    }
+  }
+  scope.throw_exception(arg);
 }
 
 pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
@@ -279,21 +428,11 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let realm_state_rc = JsRealm::state_from_scope(scope);
 
-  // Node compat: perform synchronous process.emit("unhandledRejection").
-  //
-  // Note the callback follows the (type, promise, reason) signature of Node's
-  // internal promiseRejectHandler from lib/internal/process/promises.js, not
-  // the (promise, reason) signature of the "unhandledRejection" event listener.
-  //
-  // Short-circuits Deno's regular unhandled rejection logic because that's
-  // a) asynchronous, and b) always terminates.
-  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
-    let js_uncaught_exception_cb = state.js_uncaught_exception_cb.clone();
-    drop(state); // Drop borrow, callbacks can call back into runtime.
-
+  if let Some(js_promise_reject_cb) =
+    realm_state_rc.borrow().js_promise_reject_cb.clone()
+  {
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
@@ -306,41 +445,35 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       PromiseHandlerAddedAfterReject => undefined,
     };
 
+    let promise_global = v8::Global::new(tc_scope, promise);
     let args = &[type_.into(), promise.into(), reason];
-    js_promise_reject_cb
+    let maybe_has_unhandled_rejection_handler = js_promise_reject_cb
       .open(tc_scope)
       .call(tc_scope, undefined, args);
 
-    if let Some(exception) = tc_scope.exception() {
-      if let Some(js_uncaught_exception_cb) = js_uncaught_exception_cb {
-        tc_scope.reset(); // Cancel pending exception.
-        js_uncaught_exception_cb.open(tc_scope).call(
-          tc_scope,
-          undefined,
-          &[exception],
-        );
+    let has_unhandled_rejection_handler =
+      if let Some(value) = maybe_has_unhandled_rejection_handler {
+        value.is_true()
+      } else {
+        false
+      };
+
+    if has_unhandled_rejection_handler {
+      let state_rc = JsRuntime::state(tc_scope);
+      let mut state = state_rc.borrow_mut();
+      if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
+        if !pending_mod_evaluate.has_evaluated {
+          pending_mod_evaluate
+            .handled_promise_rejections
+            .push(promise_global);
+        }
       }
     }
-
-    if tc_scope.has_caught() {
-      // If we get here, an exception was thrown by the unhandledRejection
-      // handler and there is ether no uncaughtException handler or the
-      // handler threw an exception of its own.
-      //
-      // TODO(bnoordhuis) Node terminates the process or worker thread
-      // but we don't really have that option. The exception won't bubble
-      // up either because V8 cancels it when this function returns.
-      let exception = tc_scope
-        .stack_trace()
-        .or_else(|| tc_scope.exception())
-        .map(|value| value.to_rust_string_lossy(tc_scope))
-        .unwrap_or_else(|| "no exception".into());
-      eprintln!("Unhandled exception: {}", exception);
-    }
   } else {
+    let state_rc = JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
-
     match message.get_event() {
       PromiseRejectWithNoHandler => {
         let error = message.get_value().unwrap();
@@ -357,7 +490,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         // Should not warn. See #1272
       }
     }
-  }
+  };
 }
 
 /// This binding should be used if there's a custom console implementation

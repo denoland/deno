@@ -48,6 +48,7 @@
     SymbolAsyncIterator,
     SymbolFor,
     TypeError,
+    TypedArrayPrototypeSet,
     Uint8Array,
     Uint8ArrayPrototype,
     Uint16ArrayPrototype,
@@ -647,13 +648,93 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
-  function readableStreamForRid(rid) {
-    const stream = new ReadableStream({
+  // A finalization registry to clean up underlying resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    core.tryClose(rid);
+  });
+  /**
+   * Create a new ReadableStream object that is backed by a Resource that
+   * implements `Resource::read_return`. This object contains enough metadata to
+   * allow callers to bypass the JavaScript ReadableStream implementation and
+   * read directly from the underlying resource if they so choose (FastStream).
+   *
+   * @param {number} rid The resource ID to read from.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRid(rid, autoClose = true) {
+    const stream = webidl.createBranded(ReadableStream);
+    stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
+    const underlyingSource = {
       type: "bytes",
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
           const bytesRead = await core.read(rid, v);
+          if (bytesRead === 0) {
+            tryClose();
+            controller.close();
+            controller.byobRequest.respond(0);
+          } else {
+            controller.byobRequest.respond(bytesRead);
+          }
+        } catch (e) {
+          controller.error(e);
+          tryClose();
+        }
+      },
+      cancel() {
+        tryClose();
+      },
+      autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
+    };
+    initializeReadableStream(stream);
+    setUpReadableByteStreamControllerFromUnderlyingSource(
+      stream,
+      underlyingSource,
+      underlyingSource,
+      0,
+    );
+    return stream;
+  }
+
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+  const _isUnref = Symbol("isUnref");
+  /**
+   * Create a new ReadableStream object that is backed by a Resource that
+   * implements `Resource::read_return`. This readable stream supports being
+   * refed and unrefed by calling `readableStreamForRidUnrefableRef` and
+   * `readableStreamForRidUnrefableUnref` on it. Unrefable streams are not
+   * FastStream compatible.
+   *
+   * @param {number} rid The resource ID to read from.
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function readableStreamForRidUnrefable(rid) {
+    const stream = webidl.createBranded(ReadableStream);
+    stream[promiseIdSymbol] = undefined;
+    stream[_isUnref] = false;
+    const underlyingSource = {
+      type: "bytes",
+      async pull(controller) {
+        const v = controller.byobRequest.view;
+        try {
+          const promise = core.read(rid, v);
+          const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
+          if (stream[_isUnref]) core.unrefOp(promiseId);
+          const bytesRead = await promise;
+          stream[promiseIdSymbol] = undefined;
           if (bytesRead === 0) {
             core.tryClose(rid);
             controller.close();
@@ -670,14 +751,88 @@
         core.tryClose(rid);
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
-    });
-
-    stream[_maybeRid] = rid;
+    };
+    initializeReadableStream(stream);
+    setUpReadableByteStreamControllerFromUnderlyingSource(
+      stream,
+      underlyingSource,
+      underlyingSource,
+      0,
+    );
     return stream;
   }
 
-  function getReadableStreamRid(stream) {
-    return stream[_maybeRid];
+  function readableStreamForRidUnrefableRef(stream) {
+    if (!(_isUnref in stream)) throw new TypeError("Not an unrefable stream");
+    stream[_isUnref] = false;
+    if (stream[promiseIdSymbol] !== undefined) {
+      core.refOp(stream[promiseIdSymbol]);
+    }
+  }
+
+  function readableStreamForRidUnrefableUnref(stream) {
+    if (!(_isUnref in stream)) throw new TypeError("Not an unrefable stream");
+    stream[_isUnref] = true;
+    if (stream[promiseIdSymbol] !== undefined) {
+      core.unrefOp(stream[promiseIdSymbol]);
+    }
+  }
+
+  function getReadableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
+  }
+
+  async function readableStreamCollectIntoUint8Array(stream) {
+    const resourceBacking = getReadableStreamResourceBacking(stream);
+    const reader = acquireReadableStreamDefaultReader(stream);
+
+    if (resourceBacking) {
+      // fast path, read whole body in a single op call
+      try {
+        readableStreamDisturb(stream);
+        const buf = await core.opAsync("op_read_all", resourceBacking.rid);
+        readableStreamThrowIfErrored(stream);
+        readableStreamClose(stream);
+        return buf;
+      } catch (err) {
+        readableStreamThrowIfErrored(stream);
+        readableStreamError(stream, err);
+        throw err;
+      } finally {
+        if (resourceBacking.autoClose) {
+          core.tryClose(resourceBacking.rid);
+        }
+      }
+    }
+
+    // slow path
+    /** @type {Uint8Array[]} */
+    const chunks = [];
+    let totalLength = 0;
+    while (true) {
+      const { value: chunk, done } = await reader.read();
+      if (done) break;
+
+      ArrayPrototypePush(chunks, chunk);
+      totalLength += chunk.byteLength;
+    }
+
+    const finalBuffer = new Uint8Array(totalLength);
+    let i = 0;
+    for (const chunk of chunks) {
+      TypedArrayPrototypeSet(finalBuffer, chunk, i);
+      i += chunk.byteLength;
+    }
+    return finalBuffer;
+  }
+
+  /*
+   * @param {ReadableStream} stream
+   */
+  function readableStreamThrowIfErrored(stream) {
+    if (stream[_state] === "errored") {
+      throw stream[_storedError];
+    }
   }
 
   /**
@@ -699,7 +854,6 @@
     }
     return true;
   }
-
   /**
    * @template T
    * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
@@ -1129,6 +1283,15 @@
     // This promise can be double resolved.
     // See: https://github.com/whatwg/streams/issues/1100
     reader[_closedPromise].resolve(undefined);
+  }
+
+  /**
+   * @template R
+   * @param {ReadableStream<R>} stream
+   * @returns {void}
+   */
+  function readableStreamDisturb(stream) {
+    stream[_disturbed] = true;
   }
 
   /** @param {ReadableStreamDefaultController<any>} controller */
@@ -4331,7 +4494,7 @@
     WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
-  const _maybeRid = Symbol("[[maybeRid]]");
+  const _resourceBacking = Symbol("[[resourceBacking]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
@@ -4346,8 +4509,8 @@
     [_state];
     /** @type {any} */
     [_storedError];
-    /** @type {number | null} */
-    [_maybeRid] = null;
+    /** @type {{ rid: number, autoClose: boolean } | null} */
+    [_resourceBacking] = null;
 
     /**
      * @param {UnderlyingSource<R>=} underlyingSource
@@ -5882,13 +6045,19 @@
 
   window.__bootstrap.streams = {
     // Non-Public
+    _state,
     isReadableStreamDisturbed,
     errorReadableStream,
     createProxy,
     writableStreamClose,
     readableStreamClose,
+    readableStreamCollectIntoUint8Array,
+    readableStreamDisturb,
     readableStreamForRid,
-    getReadableStreamRid,
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    getReadableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,

@@ -1,4 +1,4 @@
-const worker = new Worker(new URL("error.ts", import.meta.url).href, {
+const worker = new Worker(import.meta.resolve("./error.ts"), {
   type: "module",
 });
 worker.addEventListener("error", (e) => {

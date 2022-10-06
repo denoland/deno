@@ -465,11 +465,12 @@
   }
 
   window.__bootstrap.headers = {
-    Headers,
     headersFromHeaderList,
     headerListFromHeaders,
-    fillHeaders,
     getDecodeSplitHeader,
     guardFromHeaders,
+    fillHeaders,
+    getHeader,
+    Headers,
   };
 })(this);

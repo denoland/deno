@@ -14,6 +14,7 @@ pub use config_file::LintConfig;
 pub use config_file::LintRulesConfig;
 pub use config_file::MaybeImportsResult;
 pub use config_file::ProseWrap;
+pub use config_file::TestConfig;
 pub use config_file::TsConfig;
 pub use flags::*;
 
@@ -33,7 +34,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::compat;
+use crate::args::config_file::JsxImportSourceConfig;
 use crate::deno_dir::DenoDir;
 use crate::emit::get_ts_config_for_emit;
 use crate::emit::TsConfigType;
@@ -41,6 +42,7 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -145,6 +147,24 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
+  /// Resolves the path to use for a local node_modules folder.
+  pub fn resolve_local_node_modules_folder(
+    &self,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let path = if !self.flags.node_modules_dir {
+      return Ok(None);
+    } else if let Some(config_path) = self
+      .maybe_config_file
+      .as_ref()
+      .and_then(|c| c.specifier.to_file_path().ok())
+    {
+      config_path.parent().unwrap().join("node_modules")
+    } else {
+      std::env::current_dir()?.join("node_modules")
+    };
+    Ok(Some(fs_util::canonicalize_path_maybe_not_exists(&path)?))
+  }
+
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
     get_root_cert_store(
       None,
@@ -209,12 +229,14 @@ impl CliOptions {
     }
   }
 
-  /// Return the implied JSX import source module.
-  pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
+  /// Return the JSX import source configuration.
+  pub fn to_maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
     self
       .maybe_config_file
       .as_ref()
-      .and_then(|c| c.to_maybe_jsx_import_source_module())
+      .and_then(|c| c.to_maybe_jsx_import_source_config())
   }
 
   /// Return any imports that should be brought into the scope of the module
@@ -226,9 +248,6 @@ impl CliOptions {
         imports.extend(config_imports);
       }
     }
-    if self.flags.compat {
-      imports.extend(compat::get_node_imports());
-    }
     if imports.is_empty() {
       Ok(None)
     } else {
@@ -239,6 +258,14 @@ impl CliOptions {
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
       config_file.to_lint_config()
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
+    if let Some(config_file) = &self.maybe_config_file {
+      config_file.to_test_config()
     } else {
       Ok(None)
     }
@@ -265,16 +292,34 @@ impl CliOptions {
       .unwrap_or(false)
   }
 
-  pub fn compat(&self) -> bool {
-    self.flags.compat
-  }
+  pub fn coverage_dir(&self) -> Option<String> {
+    fn allow_coverage(sub_command: &DenoSubcommand) -> bool {
+      match sub_command {
+        DenoSubcommand::Test(_) => true,
+        DenoSubcommand::Run(flags) => !flags.is_stdin(),
+        _ => false,
+      }
+    }
 
-  pub fn coverage_dir(&self) -> Option<&String> {
-    self.flags.coverage_dir.as_ref()
+    if allow_coverage(self.sub_command()) {
+      self
+        .flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok())
+    } else {
+      None
+    }
   }
 
   pub fn enable_testing_features(&self) -> bool {
     self.flags.enable_testing_features
+  }
+
+  /// If the --inspect or --inspect-brk flags are used.
+  pub fn is_inspecting(&self) -> bool {
+    self.flags.inspect.is_some() || self.flags.inspect_brk.is_some()
   }
 
   pub fn inspect_brk(&self) -> Option<SocketAddr> {
@@ -305,6 +350,10 @@ impl CliOptions {
     self.flags.no_remote
   }
 
+  pub fn no_npm(&self) -> bool {
+    self.flags.no_npm
+  }
+
   pub fn permissions_options(&self) -> PermissionsOptions {
     self.flags.permissions_options()
   }
@@ -319,6 +368,20 @@ impl CliOptions {
 
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
+  }
+
+  pub fn trace_ops(&self) -> bool {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.trace_ops,
+      _ => false,
+    }
+  }
+
+  pub fn shuffle_tests(&self) -> Option<u64> {
+    match self.sub_command() {
+      DenoSubcommand::Test(flags) => flags.shuffle,
+      _ => None,
+    }
   }
 
   pub fn type_check_mode(&self) -> TypeCheckMode {

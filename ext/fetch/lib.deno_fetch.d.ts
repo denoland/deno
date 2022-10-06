@@ -5,6 +5,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category DOM APIs */
 interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
   values(): IterableIterator<V>;
@@ -16,12 +17,16 @@ interface DomIterable<K, V> {
   ): void;
 }
 
+/** @category Fetch API */
 type FormDataEntryValue = File | string;
 
 /** Provides a way to easily construct a set of key/value pairs representing
  * form fields and their values, which can then be easily sent using the
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
- * encoding type were set to "multipart/form-data". */
+ * encoding type were set to "multipart/form-data".
+ *
+ * @category Fetch API
+ */
 interface FormData {
   append(name: string, value: string | Blob, fileName?: string): void;
   delete(name: string): void;
@@ -39,11 +44,13 @@ interface FormData {
   ): void;
 }
 
+/** @category Fetch API */
 declare var FormData: {
   prototype: FormData;
   new (): FormData;
 };
 
+/** @category Fetch API */
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream<Uint8Array> | null;
@@ -73,6 +80,7 @@ interface Body {
   text(): Promise<string>;
 }
 
+/** @category Fetch API */
 type HeadersInit = Headers | string[][] | Record<string, string>;
 
 /** This Fetch API interface allows you to perform various actions on HTTP
@@ -81,7 +89,10 @@ type HeadersInit = Headers | string[][] | Record<string, string>;
  * which is initially empty and consists of zero or more name and value pairs.
  * You can add to this using methods like append() (see Examples). In all
  * methods of this interface, header names are matched by case-insensitive byte
- * sequence. */
+ * sequence.
+ *
+ * @category Fetch API
+ */
 interface Headers {
   append(name: string, value: string): void;
   delete(name: string): void;
@@ -94,6 +105,7 @@ interface Headers {
   ): void;
 }
 
+/** @category Fetch API */
 declare class Headers implements DomIterable<string, string> {
   constructor(init?: HeadersInit);
 
@@ -138,7 +150,9 @@ declare class Headers implements DomIterable<string, string> {
   [Symbol.iterator](): IterableIterator<[string, string]>;
 }
 
+/** @category Fetch API */
 type RequestInfo = Request | string;
+/** @category Fetch API */
 type RequestCache =
   | "default"
   | "force-cache"
@@ -146,9 +160,13 @@ type RequestCache =
   | "no-store"
   | "only-if-cached"
   | "reload";
+/** @category Fetch API */
 type RequestCredentials = "include" | "omit" | "same-origin";
+/** @category Fetch API */
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
+/** @category Fetch API */
 type RequestRedirect = "error" | "follow" | "manual";
+/** @category Fetch API */
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -159,6 +177,7 @@ type ReferrerPolicy =
   | "strict-origin"
   | "strict-origin-when-cross-origin"
   | "unsafe-url";
+/** @category Fetch API */
 type BodyInit =
   | Blob
   | BufferSource
@@ -166,6 +185,7 @@ type BodyInit =
   | URLSearchParams
   | ReadableStream<Uint8Array>
   | string;
+/** @category Fetch API */
 type RequestDestination =
   | ""
   | "audio"
@@ -186,6 +206,7 @@ type RequestDestination =
   | "worker"
   | "xslt";
 
+/** @category Fetch API */
 interface RequestInit {
   /**
    * A BodyInit object or null to set request's body.
@@ -250,9 +271,12 @@ interface RequestInit {
   window?: any;
 }
 
-/** This Fetch API interface represents a resource request. */
+/** This Fetch API interface represents a resource request.
+ *
+ * @category Fetch API
+ */
 declare class Request implements Body {
-  constructor(input: RequestInfo, init?: RequestInit);
+  constructor(input: RequestInfo | URL, init?: RequestInit);
 
   /**
    * Returns the cache mode associated with request, which is a string
@@ -366,12 +390,14 @@ declare class Request implements Body {
   text(): Promise<string>;
 }
 
+/** @category Fetch API */
 interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
 }
 
+/** @category Fetch API */
 type ResponseType =
   | "basic"
   | "cors"
@@ -380,12 +406,15 @@ type ResponseType =
   | "opaque"
   | "opaqueredirect";
 
-/** This Fetch API interface represents the response to a request. */
+/** This Fetch API interface represents the response to a request.
+ *
+ * @category Fetch API
+ */
 declare class Response implements Body {
   constructor(body?: BodyInit | null, init?: ResponseInit);
   static json(data: unknown, init?: ResponseInit): Response;
   static error(): Response;
-  static redirect(url: string, status?: number): Response;
+  static redirect(url: string | URL, status?: number): Response;
 
   readonly headers: Headers;
   readonly ok: boolean;
@@ -434,6 +463,9 @@ declare class Response implements Body {
  * console.log(response.statusText); // e.g. "OK"
  * const jsonData = await response.json();
  * ```
+ *
+ * @tags allow-net, allow-read
+ * @category Fetch API
  */
 declare function fetch(
   input: URL | Request | string,

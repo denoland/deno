@@ -5,7 +5,7 @@
   const {
     Event,
     EventTarget,
-    Deno: { core },
+    Deno: { core: { ops } },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
   const { pathFromURL } = window.__bootstrap.util;
@@ -32,12 +32,13 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
+    "sys",
     "run",
     "ffi",
     "hrtime",
@@ -48,7 +49,7 @@
    * @returns {Deno.PermissionState}
    */
   function opQuery(desc) {
-    return core.opSync("op_query_permission", desc);
+    return ops.op_query_permission(desc);
   }
 
   /**
@@ -56,7 +57,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRevoke(desc) {
-    return core.opSync("op_revoke_permission", desc);
+    return ops.op_revoke_permission(desc);
   }
 
   /**
@@ -64,7 +65,7 @@
    * @returns {Deno.PermissionState}
    */
   function opRequest(desc) {
-    return core.opSync("op_request_permission", desc);
+    return ops.op_request_permission(desc);
   }
 
   class PermissionStatus extends EventTarget {
@@ -122,12 +123,20 @@
   function cache(desc, state) {
     let { name: key } = desc;
     if (
-      (desc.name === "read" || desc.name === "write") &&
+      (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
       ReflectHas(desc, "path")
     ) {
-      key += `-${desc.path}`;
+      key += `-${desc.path}&`;
     } else if (desc.name === "net" && desc.host) {
-      key += `-${desc.host}`;
+      key += `-${desc.host}&`;
+    } else if (desc.name === "run" && desc.command) {
+      key += `-${desc.command}&`;
+    } else if (desc.name === "env" && desc.variable) {
+      key += `-${desc.variable}&`;
+    } else if (desc.name === "sys" && desc.kind) {
+      key += `-${desc.kind}&`;
+    } else {
+      key += "$";
     }
     if (MapPrototypeHas(statusCache, key)) {
       const status = MapPrototypeGet(statusCache, key);
@@ -164,8 +173,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -186,8 +194,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -206,8 +213,7 @@
       if (!isValidDescriptor(desc)) {
         return PromiseReject(
           new TypeError(
-            `The provided value "${desc
-              ?.name}" is not a valid permission name.`,
+            `The provided value "${desc?.name}" is not a valid permission name.`,
           ),
         );
       }
@@ -239,7 +245,7 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (const key of ["env", "hrtime", "net", "sys"]) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {

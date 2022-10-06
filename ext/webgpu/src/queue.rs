@@ -13,42 +13,40 @@ use super::error::WebGpuResult;
 
 type WebGpuQueue = super::WebGpuDevice;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueueSubmitArgs {
-  queue_rid: ResourceId,
-  command_buffers: Vec<ResourceId>,
-}
-
 #[op]
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
-  args: QueueSubmitArgs,
+  queue_rid: ResourceId,
+  command_buffers: Vec<ResourceId>,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
-  let queue_resource =
-    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
+  let queue_resource = state.resource_table.get::<WebGpuQueue>(queue_rid)?;
   let queue = queue_resource.0;
 
-  let mut ids = vec![];
-
-  for rid in args.command_buffers {
-    let buffer_resource =
-      state
-        .resource_table
-        .get::<super::command_encoder::WebGpuCommandBuffer>(rid)?;
-    ids.push(buffer_resource.0);
-  }
+  let ids = command_buffers
+    .iter()
+    .map(|rid| {
+      let buffer_resource =
+        state
+          .resource_table
+          .get::<super::command_encoder::WebGpuCommandBuffer>(*rid)?;
+      Ok(buffer_resource.0)
+    })
+    .collect::<Result<Vec<_>, AnyError>>()?;
 
   let maybe_err =
     gfx_select!(queue => instance.queue_submit(queue, &ids)).err();
+
+  for rid in command_buffers {
+    state.resource_table.close(rid)?;
+  }
 
   Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GpuImageDataLayout {
+pub struct GpuImageDataLayout {
   offset: u64,
   bytes_per_row: Option<u32>,
   rows_per_image: Option<u32>,
@@ -64,39 +62,32 @@ impl From<GpuImageDataLayout> for wgpu_types::ImageDataLayout {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueueWriteBufferArgs {
+#[op]
+pub fn op_webgpu_write_buffer(
+  state: &mut OpState,
   queue_rid: ResourceId,
   buffer: ResourceId,
   buffer_offset: u64,
   data_offset: usize,
   size: Option<usize>,
-}
-
-#[op]
-pub fn op_webgpu_write_buffer(
-  state: &mut OpState,
-  args: QueueWriteBufferArgs,
-  zero_copy: ZeroCopyBuf,
+  buf: ZeroCopyBuf,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
+    .get::<super::buffer::WebGpuBuffer>(buffer)?;
   let buffer = buffer_resource.0;
-  let queue_resource =
-    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
+  let queue_resource = state.resource_table.get::<WebGpuQueue>(queue_rid)?;
   let queue = queue_resource.0;
 
-  let data = match args.size {
-    Some(size) => &zero_copy[args.data_offset..(args.data_offset + size)],
-    None => &zero_copy[args.data_offset..],
+  let data = match size {
+    Some(size) => &buf[data_offset..(data_offset + size)],
+    None => &buf[data_offset..],
   };
   let maybe_err = gfx_select!(queue => instance.queue_write_buffer(
     queue,
     buffer,
-    args.buffer_offset,
+    buffer_offset,
     data
   ))
   .err();
@@ -104,42 +95,35 @@ pub fn op_webgpu_write_buffer(
   Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueueWriteTextureArgs {
+#[op]
+pub fn op_webgpu_write_texture(
+  state: &mut OpState,
   queue_rid: ResourceId,
   destination: super::command_encoder::GpuImageCopyTexture,
   data_layout: GpuImageDataLayout,
   size: wgpu_types::Extent3d,
-}
-
-#[op]
-pub fn op_webgpu_write_texture(
-  state: &mut OpState,
-  args: QueueWriteTextureArgs,
-  zero_copy: ZeroCopyBuf,
+  buf: ZeroCopyBuf,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
-    .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
-  let queue_resource =
-    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
+    .get::<super::texture::WebGpuTexture>(destination.texture)?;
+  let queue_resource = state.resource_table.get::<WebGpuQueue>(queue_rid)?;
   let queue = queue_resource.0;
 
   let destination = wgpu_core::command::ImageCopyTexture {
     texture: texture_resource.0,
-    mip_level: args.destination.mip_level,
-    origin: args.destination.origin,
-    aspect: args.destination.aspect,
+    mip_level: destination.mip_level,
+    origin: destination.origin,
+    aspect: destination.aspect,
   };
-  let data_layout = args.data_layout.into();
+  let data_layout = data_layout.into();
 
   gfx_ok!(queue => instance.queue_write_texture(
     queue,
     &destination,
-    &*zero_copy,
+    &*buf,
     &data_layout,
-    &args.size
+    &size
   ))
 }

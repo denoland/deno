@@ -6,6 +6,7 @@ import { resolve } from "../../../test_util/std/path/mod.ts";
 export {
   assert,
   assertEquals,
+  assertFalse,
   assertMatch,
   assertNotEquals,
   assertRejects,
@@ -31,7 +32,7 @@ export function pathToAbsoluteFileUrl(path: string): URL {
 const decoder = new TextDecoder();
 
 export async function execCode(code: string): Promise<[number, string]> {
-  const { status, stdout } = await Deno.spawn(Deno.execPath(), {
+  const output = await Deno.spawn(Deno.execPath(), {
     args: [
       "eval",
       "--unstable",
@@ -39,5 +40,5 @@ export async function execCode(code: string): Promise<[number, string]> {
       code,
     ],
   });
-  return [status.code, decoder.decode(stdout)];
+  return [output.code, decoder.decode(output.stdout)];
 }

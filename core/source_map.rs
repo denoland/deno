@@ -5,6 +5,7 @@
 use crate::resolve_url;
 pub use sourcemap::SourceMap;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::str;
 
 pub trait SourceMapGetter {
@@ -15,6 +16,23 @@ pub trait SourceMapGetter {
     file_name: &str,
     line_number: usize,
   ) -> Option<String>;
+}
+
+impl<T> SourceMapGetter for Rc<T>
+where
+  T: SourceMapGetter,
+{
+  fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
+    (**self).get_source_map(file_name)
+  }
+
+  fn get_source_line(
+    &self,
+    file_name: &str,
+    line_number: usize,
+  ) -> Option<String> {
+    (**self).get_source_line(file_name, line_number)
+  }
 }
 
 #[derive(Debug, Default)]

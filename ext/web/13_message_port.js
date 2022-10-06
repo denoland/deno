@@ -10,7 +10,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { InterruptedPrototype } = core;
+  const { InterruptedPrototype, ops } = core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
@@ -128,7 +128,7 @@
       }
       const data = serializeJsMessageData(message, transfer);
       if (this[_id] === null) return;
-      core.opSync("op_message_port_post_message", this[_id], data);
+      ops.op_message_port_post_message(this[_id], data);
     }
 
     start() {
@@ -193,7 +193,7 @@
    * @returns {[number, number]}
    */
   function opCreateEntangledMessagePort() {
-    return core.opSync("op_message_port_create_entangled");
+    return ops.op_message_port_create_entangled();
   }
 
   /**

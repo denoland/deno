@@ -13,10 +13,11 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { byteLowerCase } = window.__bootstrap.infra;
   const { BlobPrototype } = window.__bootstrap.file;
-  const { errorReadableStream, ReadableStreamPrototype } =
+  const { errorReadableStream, ReadableStreamPrototype, readableStreamForRid } =
     window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -27,6 +28,7 @@
     nullBodyStatus,
     networkError,
     abortedNetworkError,
+    processUrlList,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
@@ -42,7 +44,6 @@
     String,
     StringPrototypeStartsWith,
     StringPrototypeToLowerCase,
-    TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -68,8 +69,7 @@
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
   function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
-    return core.opSync(
-      "op_fetch",
+    return ops.op_fetch(
       method,
       url,
       headers,
@@ -88,65 +88,22 @@
     return core.opAsync("op_fetch_send", rid);
   }
 
-  // A finalization registry to clean up underlying fetch resources that are GC'ed.
-  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
-    core.tryClose(rid);
-  });
-
   /**
    * @param {number} responseBodyRid
    * @param {AbortSignal} [terminator]
    * @returns {ReadableStream<Uint8Array>}
    */
   function createResponseBodyStream(responseBodyRid, terminator) {
+    const readable = readableStreamForRid(responseBodyRid);
+
     function onAbort() {
-      if (readable) {
-        errorReadableStream(readable, terminator.reason);
-      }
+      errorReadableStream(readable, terminator.reason);
       core.tryClose(responseBodyRid);
     }
+
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
-    const readable = new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        try {
-          // This is the largest possible size for a single packet on a TLS
-          // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
-          // TODO(@AaronO): switch to handle nulls if that's moved to core
-          const read = await core.read(
-            responseBodyRid,
-            chunk,
-          );
-          if (read > 0) {
-            // We read some data. Enqueue it onto the stream.
-            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
-          } else {
-            RESOURCE_REGISTRY.unregister(readable);
-            // We have reached the end of the body, so we close the stream.
-            controller.close();
-            core.tryClose(responseBodyRid);
-          }
-        } catch (err) {
-          RESOURCE_REGISTRY.unregister(readable);
-          if (terminator.aborted) {
-            controller.error(terminator.reason);
-          } else {
-            // There was an error while reading a chunk of the body, so we
-            // error.
-            controller.error(err);
-          }
-          core.tryClose(responseBodyRid);
-        }
-      },
-      cancel() {
-        if (!terminator.aborted) {
-          terminator[abortSignal.signalAbort]();
-        }
-      },
-    });
-    RESOURCE_REGISTRY.register(readable, responseBodyRid, readable);
+
     return readable;
   }
 
@@ -164,6 +121,7 @@
 
       const body = new InnerBody(req.blobUrlEntry.stream());
       terminator[abortSignal.add](() => body.error(terminator.reason));
+      processUrlList(req.urlList, req.urlListProcessed);
 
       return {
         headerList: [
@@ -178,7 +136,9 @@
           if (this.urlList.length == 0) return null;
           return this.urlList[this.urlList.length - 1];
         },
-        urlList: recursive ? [] : [...new SafeArrayIterator(req.urlList)],
+        urlList: recursive
+          ? []
+          : [...new SafeArrayIterator(req.urlListProcessed)],
       };
     }
 
@@ -295,6 +255,8 @@
     }
     if (terminator.aborted) return abortedNetworkError();
 
+    processUrlList(req.urlList, req.urlListProcessed);
+
     /** @type {InnerResponse} */
     const response = {
       headerList: resp.headers,
@@ -306,7 +268,7 @@
         if (this.urlList.length == 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
-      urlList: req.urlList,
+      urlList: req.urlListProcessed,
     };
     if (redirectStatus(resp.status)) {
       switch (req.redirectMode) {
@@ -339,7 +301,8 @@
     if (recursive) return response;
 
     if (response.urlList.length === 0) {
-      response.urlList = [...new SafeArrayIterator(req.urlList)];
+      processUrlList(req.urlList, req.urlListProcessed);
+      response.urlList = [...new SafeArrayIterator(req.urlListProcessed)];
     }
 
     return response;
@@ -407,7 +370,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    ArrayPrototypePush(request.urlList, locationURL.href);
+    ArrayPrototypePush(request.urlList, () => locationURL.href);
     return mainFetch(request, true, terminator);
   }
 
@@ -560,7 +523,7 @@
       }
 
       // Pass the resolved URL to v8.
-      core.opSync("op_wasm_streaming_set_url", rid, res.url);
+      ops.op_wasm_streaming_set_url(rid, res.url);
 
       if (res.body !== null) {
         // 2.6.
@@ -571,7 +534,7 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.opSync("op_wasm_streaming_feed", rid, chunk);
+            ops.op_wasm_streaming_feed(rid, chunk);
           }
         })().then(
           // 2.7

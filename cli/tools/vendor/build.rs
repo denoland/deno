@@ -14,6 +14,8 @@ use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::cache::ParsedSourceCache;
+
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
 use super::mappings::Mappings;
@@ -52,6 +54,7 @@ impl VendorEnvironment for RealVendorEnvironment {
 /// Vendors remote modules and returns how many were vendored.
 pub fn build(
   graph: ModuleGraph,
+  parsed_source_cache: &ParsedSourceCache,
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
   environment: &impl VendorEnvironment,
@@ -66,7 +69,14 @@ pub fn build(
 
   // build the graph
   graph.lock()?;
-  graph.valid()?;
+
+  let graph_errors = graph.errors();
+  if !graph_errors.is_empty() {
+    for err in &graph_errors {
+      log::error!("{}", err);
+    }
+    bail!("failed vendoring");
+  }
 
   // figure out how to map remote modules to local
   let all_modules = graph.modules();
@@ -103,7 +113,8 @@ pub fn build(
   for (specifier, proxied_module) in mappings.proxied_modules() {
     let proxy_path = mappings.local_path(specifier);
     let module = graph.get(specifier).unwrap();
-    let text = build_proxy_module_source(module, proxied_module);
+    let text =
+      build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
     environment.write_file(&proxy_path, &text)?;
   }
@@ -117,7 +128,8 @@ pub fn build(
       &all_modules,
       &mappings,
       original_import_map,
-    );
+      parsed_source_cache,
+    )?;
     environment.write_file(&import_map_path, &import_map_text)?;
   }
 
@@ -164,7 +176,8 @@ fn validate_original_import_map(
 fn build_proxy_module_source(
   module: &Module,
   proxied_module: &ProxiedModule,
-) -> String {
+  parsed_source_cache: &ParsedSourceCache,
+) -> Result<String, AnyError> {
   let mut text = String::new();
   writeln!(
     text,
@@ -187,8 +200,10 @@ fn build_proxy_module_source(
   writeln!(text, "export * from \"{}\";", relative_specifier).unwrap();
 
   // add a default export if one exists in the module
-  if let Some(parsed_source) = module.maybe_parsed_source.as_ref() {
-    if has_default_export(parsed_source) {
+  if let Some(parsed_source) =
+    parsed_source_cache.get_parsed_source_from_module(module)?
+  {
+    if has_default_export(&parsed_source) {
       writeln!(
         text,
         "export {{ default }} from \"{}\";",
@@ -198,7 +213,7 @@ fn build_proxy_module_source(
     }
   }
 
-  text
+  Ok(text)
 }
 
 #[cfg(test)]
@@ -458,7 +473,7 @@ mod test {
             "/mod.ts",
             r#"import data from "https://localhost/data.json" assert { type: "json" };"#,
           )
-          .add("https://localhost/data.json", "{}");
+          .add("https://localhost/data.json", "{ \"a\": \"b\" }");
       })
       .build()
       .await
@@ -474,7 +489,7 @@ mod test {
     );
     assert_eq!(
       output.files,
-      to_file_vec(&[("/vendor/localhost/data.json", "{}"),]),
+      to_file_vec(&[("/vendor/localhost/data.json", "{ \"a\": \"b\" }"),]),
     );
   }
 
@@ -821,6 +836,52 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_remote_dep_bare_specifier() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map2.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "twind".to_string(),
+        "https://localhost/twind.ts".to_string(),
+      )
+      .unwrap();
+
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://remote/mod.ts';");
+        loader.add("https://remote/mod.ts", "import 'twind';");
+        loader.add("https://localhost/twind.ts", "export class Test {}");
+      })
+      .set_original_import_map(original_import_map.clone())
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "https://remote/": "./remote/"
+        },
+        "scopes": {
+          "./remote/": {
+            "twind": "./localhost/twind.ts"
+          },
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/twind.ts", "export class Test {}"),
+        ("/vendor/remote/mod.ts", "import 'twind';"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
   async fn existing_import_map_mapped_bare_specifier() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map.json");
@@ -1001,6 +1062,26 @@ mod test {
         "directory is not supported (\"./vendor/\").",
       )
     );
+  }
+
+  #[tokio::test]
+  async fn vendor_file_fails_loading_dynamic_import() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "await import('./test.ts');");
+        loader.add_failure(
+          "https://localhost/test.ts",
+          "500 Internal Server Error",
+        );
+      })
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(err.to_string(), "failed vendoring");
   }
 
   fn to_file_vec(items: &[(&str, &str)]) -> Vec<(String, String)> {

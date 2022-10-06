@@ -12,7 +12,6 @@ use crate::args::LintFlags;
 use crate::colors;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors;
 use crate::fs_util::collect_files;
 use crate::fs_util::is_supported_ext;
 use crate::fs_util::specifier_to_file_path;
@@ -29,6 +28,7 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use deno_runtime::fmt_errors::format_location;
 use log::debug;
 use log::info;
 use serde::Serialize;
@@ -41,7 +41,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use super::incremental_cache::IncrementalCache;
+use crate::cache::IncrementalCache;
 
 static STDIN_FILE_NAME: &str = "_stdin.ts";
 
@@ -49,12 +49,14 @@ static STDIN_FILE_NAME: &str = "_stdin.ts";
 pub enum LintReporterKind {
   Pretty,
   Json,
+  Compact,
 }
 
 fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   match kind {
     LintReporterKind::Pretty => Box::new(PrettyLintReporter::new()),
     LintReporterKind::Json => Box::new(JsonLintReporter::new()),
+    LintReporterKind::Compact => Box::new(CompactLintReporter::new()),
   }
 }
 
@@ -66,11 +68,12 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     files: args,
     ignore,
     json,
+    compact,
     ..
   } = lint_flags;
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
-  // over config file, ie. if there's `files.ignore` in config file
+  // over config file, i.e. if there's `files.ignore` in config file
   // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args.clone();
   let mut exclude_files = ignore.clone();
@@ -104,6 +107,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
   let reporter_kind = if json {
     LintReporterKind::Json
+  } else if compact {
+    LintReporterKind::Compact
   } else {
     LintReporterKind::Pretty
   };
@@ -128,7 +133,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files
@@ -382,7 +387,7 @@ impl LintReporter for PrettyLintReporter {
       &source_lines,
       d.range.clone(),
       d.hint.as_ref(),
-      &fmt_errors::format_location(&JsStackFrame::from_location(
+      &format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
         Some(d.range.start.line_index as i64 + 1), // 1-indexed
         // todo(#11111): make 1-indexed as well
@@ -391,6 +396,50 @@ impl LintReporter for PrettyLintReporter {
     );
 
     eprintln!("{}\n", message);
+  }
+
+  fn visit_error(&mut self, file_path: &str, err: &AnyError) {
+    eprintln!("Error linting: {}", file_path);
+    eprintln!("   {}", err);
+  }
+
+  fn close(&mut self, check_count: usize) {
+    match self.lint_count {
+      1 => info!("Found 1 problem"),
+      n if n > 1 => info!("Found {} problems", self.lint_count),
+      _ => (),
+    }
+
+    match check_count {
+      n if n <= 1 => info!("Checked {} file", n),
+      n if n > 1 => info!("Checked {} files", n),
+      _ => unreachable!(),
+    }
+  }
+}
+
+struct CompactLintReporter {
+  lint_count: u32,
+}
+
+impl CompactLintReporter {
+  fn new() -> CompactLintReporter {
+    CompactLintReporter { lint_count: 0 }
+  }
+}
+
+impl LintReporter for CompactLintReporter {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic, _source_lines: Vec<&str>) {
+    self.lint_count += 1;
+
+    eprintln!(
+      "{}: line {}, col {} - {} ({})",
+      d.filename,
+      d.range.start.line_index + 1,
+      d.range.start.column_index + 1,
+      d.message,
+      d.code
+    )
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {

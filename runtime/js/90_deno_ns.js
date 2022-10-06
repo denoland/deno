@@ -109,18 +109,18 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
-    upgradeHttp: __bootstrap.http.upgradeHttp,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
+    refTimer: __bootstrap.timers.refTimer,
+    unrefTimer: __bootstrap.timers.unrefTimer,
+    hostname: __bootstrap.os.hostname,
   };
 
   __bootstrap.denoNsUnstable = {
-    setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     loadavg: __bootstrap.os.loadavg,
-    hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
@@ -147,11 +147,12 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
-    refTimer: __bootstrap.timers.refTimer,
-    unrefTimer: __bootstrap.timers.unrefTimer,
     Child: __bootstrap.spawn.Child,
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    serve: __bootstrap.flash.serve,
+    upgradeHttp: __bootstrap.http.upgradeHttp,
+    upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
   };
 })(this);

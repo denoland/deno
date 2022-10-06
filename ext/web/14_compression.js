@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { TransformStream } = window.__bootstrap.streams;
 
@@ -32,7 +33,7 @@
         context: "Argument 1",
       });
 
-      const rid = core.opSync("op_compression_new", format, false);
+      const rid = ops.op_compression_new(format, false);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
@@ -40,15 +41,14 @@
             prefix,
             context: "chunk",
           });
-          const output = core.opSync(
-            "op_compression_write",
+          const output = ops.op_compression_write(
             rid,
             chunk,
           );
           maybeEnqueue(controller, output);
         },
         flush(controller) {
-          const output = core.opSync("op_compression_finish", rid);
+          const output = ops.op_compression_finish(rid);
           maybeEnqueue(controller, output);
         },
       });
@@ -81,7 +81,7 @@
         context: "Argument 1",
       });
 
-      const rid = core.opSync("op_compression_new", format, true);
+      const rid = ops.op_compression_new(format, true);
 
       this.#transform = new TransformStream({
         transform(chunk, controller) {
@@ -89,15 +89,14 @@
             prefix,
             context: "chunk",
           });
-          const output = core.opSync(
-            "op_compression_write",
+          const output = ops.op_compression_write(
             rid,
             chunk,
           );
           maybeEnqueue(controller, output);
         },
         flush(controller) {
-          const output = core.opSync("op_compression_finish", rid);
+          const output = ops.op_compression_finish(rid);
           maybeEnqueue(controller, output);
         },
       });

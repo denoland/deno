@@ -8,13 +8,14 @@
 // that is created when Deno needs to type check TypeScript, and in some
 // instances convert TypeScript to JavaScript.
 
-// Removes the `__proto__` for security reasons.  This intentionally makes
-// Deno non compliant with ECMA-262 Annex B.2.2.1
+// Removes the `__proto__` for security reasons.
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
 delete Object.prototype.__proto__;
 
 ((window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
+  const ops = core.ops;
 
   let logDebug = false;
   let logSource = "JS";
@@ -250,7 +251,7 @@ delete Object.prototype.__proto__;
       }
 
       this.#lastCheckTimeMs = timeMs;
-      return core.opSync("op_is_cancelled", {});
+      return ops.op_is_cancelled();
     }
 
     throwIfCancellationRequested() {
@@ -274,11 +275,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.opSync("op_exists", { specifier });
+      return ops.op_exists({ specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.opSync("op_load", { specifier }).data;
+      return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -309,8 +310,7 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = core.opSync(
-        "op_load",
+      const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
       assert(
@@ -336,20 +336,15 @@ delete Object.prototype.__proto__;
     getDefaultLibLocation() {
       return ASSETS;
     },
-    writeFile(fileName, data, _writeByteOrderMark, _onError, sourceFiles) {
+    writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      let maybeSpecifiers;
-      if (sourceFiles) {
-        maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
-      }
-      return core.opSync(
-        "op_emit",
-        { maybeSpecifiers, fileName, data },
+      return ops.op_emit(
+        { fileName, data },
       );
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
-      return cwd ?? core.opSync("op_cwd", null);
+      return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -365,7 +360,7 @@ delete Object.prototype.__proto__;
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.opSync("op_resolve", {
+      const resolved = ops.op_resolve({
         specifiers,
         base,
       });
@@ -388,7 +383,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.opSync("op_create_hash", { data }).hash;
+      return ops.op_create_hash({ data }).hash;
     },
 
     // LanguageServiceHost
@@ -403,7 +398,7 @@ delete Object.prototype.__proto__;
       if (scriptFileNamesCache) {
         return scriptFileNamesCache;
       }
-      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
+      return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -416,7 +411,7 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = core.opSync("op_script_version", { specifier });
+      const scriptVersion = ops.op_script_version({ specifier });
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -437,8 +432,7 @@ delete Object.prototype.__proto__;
         };
       }
 
-      const fileInfo = core.opSync(
-        "op_load",
+      const fileInfo = ops.op_load(
         { specifier },
       );
       if (fileInfo) {
@@ -557,19 +551,21 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const { diagnostics: emitDiagnostics } = program.emit();
-
     const diagnostics = [
       ...program.getConfigFileParsingDiagnostics(),
       ...program.getSyntacticDiagnostics(),
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-      ...emitDiagnostics,
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+
+    // emit the tsbuildinfo file
+    // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
+    program.emitBuildInfo(host.writeFile);
+
     performanceProgram({ program });
 
-    core.opSync("op_respond", {
+    ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -581,7 +577,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.opSync("op_respond", { id, data });
+    ops.op_respond({ id, data });
   }
 
   /**
@@ -718,10 +714,9 @@ delete Object.prototype.__proto__;
             request.args.specifier,
             request.args.position,
             request.args.name,
-            undefined,
+            {},
             request.args.source,
-            undefined,
-            // @ts-expect-error this exists in 4.3 but not part of the d.ts
+            request.args.preferences,
             request.args.data,
           ),
         );
@@ -945,7 +940,7 @@ delete Object.prototype.__proto__;
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
 
-  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
+  const { buildSpecifier, libs } = ops.op_build_info();
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into

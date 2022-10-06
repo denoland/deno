@@ -18,7 +18,7 @@ pub struct TestDefinition {
   pub level: usize,
   pub name: String,
   pub range: SourceRange,
-  pub steps: Option<Vec<TestDefinition>>,
+  pub steps: Vec<TestDefinition>,
 }
 
 impl TestDefinition {
@@ -26,7 +26,7 @@ impl TestDefinition {
     specifier: &ModuleSpecifier,
     name: String,
     range: SourceRange,
-    steps: Option<Vec<TestDefinition>>,
+    steps: Vec<TestDefinition>,
   ) -> Self {
     let id = checksum::gen(&[specifier.as_str().as_bytes(), name.as_bytes()]);
     Self {
@@ -43,7 +43,7 @@ impl TestDefinition {
     range: SourceRange,
     parent: String,
     level: usize,
-    steps: Option<Vec<TestDefinition>>,
+    steps: Vec<TestDefinition>,
   ) -> Self {
     let id = checksum::gen(&[
       parent.as_bytes(),
@@ -66,27 +66,18 @@ impl TestDefinition {
     lsp_custom::TestData {
       id: self.id.clone(),
       label: self.name.clone(),
-      steps: self.steps.as_ref().map(|steps| {
-        steps
-          .iter()
-          .map(|step| step.as_test_data(source_text_info))
-          .collect()
-      }),
+      steps: self
+        .steps
+        .iter()
+        .map(|step| step.as_test_data(source_text_info))
+        .collect(),
       range: Some(source_range_to_lsp_range(&self.range, source_text_info)),
     }
   }
 
-  fn find_step(&self, name: &str, level: usize) -> Option<&TestDefinition> {
-    if let Some(steps) = &self.steps {
-      for step in steps {
-        if step.name == name && step.level == level {
-          return Some(step);
-        } else if let Some(step) = step.find_step(name, level) {
-          return Some(step);
-        }
-      }
-    }
-    None
+  fn contains_id<S: AsRef<str>>(&self, id: S) -> bool {
+    let id = id.as_ref();
+    self.id == id || self.steps.iter().any(|td| td.contains_id(id))
   }
 }
 
@@ -100,6 +91,16 @@ pub struct TestDefinitions {
   pub injected: Vec<lsp_custom::TestData>,
   /// The version of the document that the discovered tests relate to.
   pub script_version: String,
+}
+
+impl Default for TestDefinitions {
+  fn default() -> Self {
+    TestDefinitions {
+      script_version: "1".to_string(),
+      discovered: vec![],
+      injected: vec![],
+    }
+  }
 }
 
 impl TestDefinitions {
@@ -137,27 +138,24 @@ impl TestDefinitions {
     })
   }
 
+  /// Register a dynamically-detected test. Returns false if a test with the
+  /// same static id was already registered statically or dynamically. Otherwise
+  /// returns true.
+  pub fn inject(&mut self, data: lsp_custom::TestData) -> bool {
+    if self.discovered.iter().any(|td| td.contains_id(&data.id))
+      || self.injected.iter().any(|td| td.id == data.id)
+    {
+      return false;
+    }
+    self.injected.push(data);
+    true
+  }
+
   /// Return a test definition identified by the test ID.
   pub fn get_by_id<S: AsRef<str>>(&self, id: S) -> Option<&TestDefinition> {
     self
       .discovered
       .iter()
       .find(|td| td.id.as_str() == id.as_ref())
-  }
-
-  /// Return a test definition by the test name.
-  pub fn get_by_name(&self, name: &str) -> Option<&TestDefinition> {
-    self.discovered.iter().find(|td| td.name.as_str() == name)
-  }
-
-  pub fn get_step_by_name(
-    &self,
-    test_name: &str,
-    level: usize,
-    name: &str,
-  ) -> Option<&TestDefinition> {
-    self
-      .get_by_name(test_name)
-      .and_then(|td| td.find_step(name, level))
   }
 }

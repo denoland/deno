@@ -2,9 +2,9 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{OpState, Resource};
-use serde::Deserialize;
 use std::borrow::Cow;
 
 use super::error::WebGpuResult;
@@ -16,31 +16,24 @@ impl Resource for WebGpuShaderModule {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateShaderModuleArgs {
+#[op]
+pub fn op_webgpu_create_shader_module(
+  state: &mut OpState,
   device_rid: ResourceId,
   label: Option<String>,
   code: String,
   _source_map: Option<()>, // not yet implemented
-}
-
-#[op]
-pub fn op_webgpu_create_shader_module(
-  state: &mut OpState,
-  args: CreateShaderModuleArgs,
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.0;
 
-  let source =
-    wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(args.code));
+  let source = wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(code));
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
-    label: args.label.map(Cow::from),
+    label: label.map(Cow::from),
     shader_bound_checks: wgpu_types::ShaderBoundChecks::default(),
   };
 

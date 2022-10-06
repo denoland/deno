@@ -39,7 +39,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use super::incremental_cache::IncrementalCache;
+use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
@@ -108,7 +108,7 @@ pub async fn format(
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files
@@ -454,8 +454,9 @@ fn format_ensure_stable(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntatically correct. As a temporary ",
-                "workfaround you can ignore this file.\n\n{:#}"
+                "workfaround you can ignore this file ({}).\n\n{:#}"
               ),
+              file_path.display(),
               err,
             )
           }
@@ -465,10 +466,11 @@ fn format_ensure_stable(
           panic!(
             concat!(
               "Formatting not stable. Bailed after {} tries. This indicates a bug ",
-              "in the formatter where it formats the file differently each time. As a ",
+              "in the formatter where it formats the file ({}) differently each time. As a ",
               "temporary workaround you can ignore this file."
             ),
-            count
+            count,
+            file_path.display(),
           )
         }
       }
@@ -755,8 +757,8 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("readme.mdown")));
     assert!(is_supported_ext_fmt(Path::new("readme.markdown")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/run/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));

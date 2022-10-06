@@ -17,10 +17,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: fastci
-          - os: macos-10.15
+          - os: macos-12
             job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'windows-2019-xl' || 'windows-2019' }}
@@ -87,7 +87,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Deno
-        if: matrix.job == 'lint'
+        if: matrix.job == 'lint' || matrix.job == 'test'
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
@@ -139,9 +139,6 @@ jobs:
           project_id: denoland
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
-
-      - name: Error on warning
-        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |
@@ -235,7 +232,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: 15-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: 18-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -251,7 +248,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            15-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -267,7 +264,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            15-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -433,14 +430,14 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json              \
-                          ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                  --allow-write --unstable                         \
+                  --lock=tools/deno.lock.json                      \
+                  ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json              \
+                   ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
 
       - name: Run web platform tests (release)
         if: |
@@ -449,17 +446,17 @@ jobs:
         env:
           DENO_BIN: ./target/release/deno
         run: |
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts setup
-          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
-                          --allow-write --unstable                         \
-                          --lock=tools/deno.lock.json                      \
-                          ./tools/wpt.ts run --quiet --release             \
-                                             --binary="$DENO_BIN"          \
-                                             --json=wpt.json               \
-                                             --wptreport=wptreport.json
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts setup
+          deno run --allow-env --allow-net --allow-read --allow-run \
+                   --allow-write --unstable                         \
+                   --lock=tools/deno.lock.json                      \
+                   ./tools/wpt.ts run --quiet --release             \
+                                      --binary="$DENO_BIN"          \
+                                      --json=wpt.json               \
+                                      --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true

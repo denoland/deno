@@ -165,8 +165,18 @@ impl ReplSession {
           exception_details,
         } = evaluate_response.value;
 
-        if exception_details.is_some() {
+        Ok(if let Some(exception_details) = exception_details {
           self.set_last_thrown_error(&result).await?;
+          let description = match exception_details.exception {
+            Some(exception) => exception
+              .description
+              .unwrap_or_else(|| "Unknown exception".to_string()),
+            None => "Unknown exception".to_string(),
+          };
+          EvaluationOutput::Error(format!(
+            "{} {}",
+            exception_details.text, description
+          ))
         } else {
           self
             .language_server
@@ -174,12 +184,8 @@ impl ReplSession {
             .await;
 
           self.set_last_eval_result(&result).await?;
-        }
-
-        let value = self.get_eval_value(&result).await?;
-        Ok(match exception_details {
-          Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
-          None => EvaluationOutput::Value(value),
+          let value = self.get_eval_value(&result).await?;
+          EvaluationOutput::Value(value)
         })
       }
       Err(err) => {

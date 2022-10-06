@@ -45,6 +45,7 @@ pub async fn vendor(
   let graph = create_graph(&ps, &vendor_flags).await?;
   let vendored_count = build::build(
     graph,
+    &ps.parsed_source_cache,
     &output_dir,
     ps.maybe_import_map.as_deref(),
     &build::RealVendorEnvironment,
@@ -203,7 +204,9 @@ fn update_config_text(
 ) -> Option<String> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
-  let ast = jsonc_parser::parse_to_ast(text, &Default::default()).ok()?;
+  let ast =
+    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())
+      .ok()?;
   let obj = match ast.value {
     Some(Value::Object(obj)) => obj,
     _ => return None, // shouldn't happen, so ignore

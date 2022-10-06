@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -91,6 +93,30 @@ pub fn get_custom_error_class(error: &Error) -> Option<&'static str> {
   error.downcast_ref::<CustomError>().map(|e| e.class)
 }
 
+pub fn to_v8_error<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  get_class: GetErrorClassFn,
+  error: &Error,
+) -> v8::Local<'a, v8::Value> {
+  let cb = JsRealm::state_from_scope(scope)
+    .borrow()
+    .js_build_custom_error_cb
+    .clone()
+    .expect("Custom error builder must be set");
+  let cb = cb.open(scope);
+  let this = v8::undefined(scope).into();
+  let class = v8::String::new(scope, get_class(error)).unwrap();
+  let message = v8::String::new(scope, &error.to_string()).unwrap();
+  let mut args = vec![class.into(), message.into()];
+  if let Some(code) = crate::error_codes::get_error_code(error) {
+    args.push(v8::String::new(scope, code).unwrap().into());
+  }
+  let exception = cb
+    .call(scope, this, &args)
+    .expect("Custom error class must have a builder registered");
+  exception
+}
+
 /// A `JsError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
@@ -108,7 +134,7 @@ pub struct JsError {
   pub aggregated: Option<Vec<JsError>>,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -192,20 +218,17 @@ impl JsError {
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
-    // Nest this state borrow. A mutable borrow can occur when accessing `stack`
-    // in this outer scope, invoking `Error.prepareStackTrace()` which calls
-    // `op_apply_source_map`.
-    {
-      let state_rc = JsRuntime::state(scope);
-      let state = state_rc.borrow();
-      if let Some(format_exception_cb) = &state.js_format_exception_cb {
-        let format_exception_cb = format_exception_cb.open(scope);
-        let this = v8::undefined(scope).into();
-        let formatted = format_exception_cb.call(scope, this, &[exception]);
-        if let Some(formatted) = formatted {
-          if formatted.is_string() {
-            exception_message = Some(formatted.to_rust_string_lossy(scope));
-          }
+    let realm_state_rc = JsRealm::state_from_scope(scope);
+
+    let js_format_exception_cb =
+      realm_state_rc.borrow().js_format_exception_cb.clone();
+    if let Some(format_exception_cb) = js_format_exception_cb {
+      let format_exception_cb = format_exception_cb.open(scope);
+      let this = v8::undefined(scope).into();
+      let formatted = format_exception_cb.call(scope, this, &[exception]);
+      if let Some(formatted) = formatted {
+        if formatted.is_string() {
+          exception_message = Some(formatted.to_rust_string_lossy(scope));
         }
       }
     }

@@ -14,11 +14,11 @@ Deno.test({
   name: "worker terminate",
   fn: async function () {
     const jsWorker = new Worker(
-      new URL("test_worker.js", import.meta.url).href,
+      import.meta.resolve("./test_worker.js"),
       { type: "module" },
     );
     const tsWorker = new Worker(
-      new URL("test_worker.ts", import.meta.url).href,
+      import.meta.resolve("./test_worker.ts"),
       { type: "module", name: "tsWorker" },
     );
 
@@ -64,7 +64,7 @@ Deno.test({
   name: "worker nested",
   fn: async function () {
     const nestedWorker = new Worker(
-      new URL("nested_worker.js", import.meta.url).href,
+      import.meta.resolve("./nested_worker.js"),
       { type: "module", name: "nested" },
     );
 
@@ -83,7 +83,7 @@ Deno.test({
   name: "worker throws when executing",
   fn: async function () {
     const throwingWorker = new Worker(
-      new URL("throwing_worker.js", import.meta.url).href,
+      import.meta.resolve("./throwing_worker.js"),
       { type: "module" },
     );
 
@@ -104,7 +104,7 @@ Deno.test({
   fn: async function () {
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
-      new URL("worker_globals.ts", import.meta.url).href,
+      import.meta.resolve("./worker_globals.ts"),
       workerOptions,
     );
 
@@ -123,7 +123,7 @@ Deno.test({
   name: "worker fetch API",
   fn: async function () {
     const fetchingWorker = new Worker(
-      new URL("fetching_worker.js", import.meta.url).href,
+      import.meta.resolve("./fetching_worker.js"),
       { type: "module" },
     );
 
@@ -149,7 +149,7 @@ Deno.test({
     const promise = deferred();
 
     const busyWorker = new Worker(
-      new URL("busy_worker.js", import.meta.url),
+      import.meta.resolve("./busy_worker.js"),
       { type: "module" },
     );
 
@@ -181,7 +181,7 @@ Deno.test({
     const promise = deferred();
 
     const racyWorker = new Worker(
-      new URL("racy_worker.js", import.meta.url),
+      import.meta.resolve("./racy_worker.js"),
       { type: "module" },
     );
 
@@ -206,7 +206,7 @@ Deno.test({
     const promise2 = deferred();
 
     const worker = new Worker(
-      new URL("event_worker.js", import.meta.url),
+      import.meta.resolve("./event_worker.js"),
       { type: "module" },
     );
 
@@ -248,7 +248,7 @@ Deno.test({
   name: "worker scope is event listener",
   fn: async function () {
     const worker = new Worker(
-      new URL("event_worker_scope.js", import.meta.url),
+      import.meta.resolve("./event_worker_scope.js"),
       { type: "module" },
     );
 
@@ -274,7 +274,7 @@ Deno.test({
   name: "worker with Deno namespace",
   fn: async function () {
     const denoWorker = new Worker(
-      new URL("deno_worker.ts", import.meta.url),
+      import.meta.resolve("./deno_worker.ts"),
       { type: "module", deno: { permissions: "inherit" } },
     );
 
@@ -293,7 +293,7 @@ Deno.test({
   name: "worker with crypto in scope",
   fn: async function () {
     const w = new Worker(
-      new URL("worker_crypto.js", import.meta.url).href,
+      import.meta.resolve("./worker_crypto.js"),
       { type: "module" },
     );
 
@@ -313,7 +313,7 @@ Deno.test({
   fn: async function () {
     const promise = deferred();
     const w = new Worker(
-      new URL("test_worker.ts", import.meta.url).href,
+      import.meta.resolve("./test_worker.ts"),
       { type: "module", name: "tsWorker" },
     );
     const arr: number[] = [];
@@ -337,7 +337,7 @@ Deno.test({
   fn: async function () {
     const promise = deferred();
     const w = new Worker(
-      new URL("./immediately_close_worker.js", import.meta.url).href,
+      import.meta.resolve("./immediately_close_worker.js"),
       { type: "module" },
     );
     setTimeout(() => {
@@ -353,7 +353,7 @@ Deno.test({
   fn: async function () {
     const promise = deferred();
     const worker = new Worker(
-      new URL("./post_undefined.ts", import.meta.url).href,
+      import.meta.resolve("./post_undefined.ts"),
       { type: "module" },
     );
 
@@ -375,7 +375,7 @@ Deno.test({
 
 Deno.test("Worker inherits permissions", async function () {
   const worker = new Worker(
-    new URL("./read_check_worker.js", import.meta.url).href,
+    import.meta.resolve("./read_check_worker.js"),
     { type: "module", deno: { permissions: "inherit" } },
   );
 
@@ -391,7 +391,7 @@ Deno.test("Worker inherits permissions", async function () {
 
 Deno.test("Worker limit children permissions", async function () {
   const worker = new Worker(
-    new URL("./read_check_worker.js", import.meta.url).href,
+    import.meta.resolve("./read_check_worker.js"),
     { type: "module", deno: { permissions: { read: false } } },
   );
 
@@ -407,7 +407,7 @@ Deno.test("Worker limit children permissions", async function () {
 
 Deno.test("Worker limit children permissions granularly", async function () {
   const worker = new Worker(
-    new URL("./read_check_granular_worker.js", import.meta.url).href,
+    import.meta.resolve("./read_check_granular_worker.js"),
     {
       type: "module",
       deno: {
@@ -459,7 +459,7 @@ Deno.test("Worker limit children permissions granularly", async function () {
 Deno.test("Nested worker limit children permissions", async function () {
   /** This worker has permissions but doesn't grant them to its children */
   const worker = new Worker(
-    new URL("./parent_read_check_worker.js", import.meta.url).href,
+    import.meta.resolve("./parent_read_check_worker.js"),
     { type: "module", deno: { permissions: "inherit" } },
   );
   const promise = deferred();
@@ -504,7 +504,7 @@ Deno.test({
     assertThrows(
       () => {
         const worker = new Worker(
-          new URL("./deno_worker.ts", import.meta.url).href,
+          import.meta.resolve("./deno_worker.ts"),
           { type: "module", deno: { permissions: { env: true } } },
         );
         worker.terminate();
@@ -517,7 +517,7 @@ Deno.test({
 
 Deno.test("Worker with disabled permissions", async function () {
   const worker = new Worker(
-    new URL("./no_permissions_worker.js", import.meta.url).href,
+    import.meta.resolve("./no_permissions_worker.js"),
     { type: "module", deno: { permissions: "none" } },
   );
 
@@ -533,7 +533,7 @@ Deno.test("Worker with disabled permissions", async function () {
 
 Deno.test("Worker permissions are not inherited with empty permission object", async function () {
   const worker = new Worker(
-    new URL("./permission_echo.js", import.meta.url).href,
+    import.meta.resolve("./permission_echo.js"),
     { type: "module", deno: { permissions: {} } },
   );
 
@@ -557,7 +557,7 @@ Deno.test("Worker permissions are not inherited with empty permission object", a
 
 Deno.test("Worker permissions are not inherited with single specified permission", async function () {
   const worker = new Worker(
-    new URL("./permission_echo.js", import.meta.url).href,
+    import.meta.resolve("./permission_echo.js"),
     { type: "module", deno: { permissions: { net: true } } },
   );
 
@@ -596,8 +596,7 @@ Deno.test({
   name: "worker location",
   fn: async function () {
     const promise = deferred();
-    const workerModuleHref =
-      new URL("worker_location.ts", import.meta.url).href;
+    const workerModuleHref = import.meta.resolve("./worker_location.ts");
     const w = new Worker(workerModuleHref, { type: "module" });
     w.onmessage = (e) => {
       promise.resolve(e.data);
@@ -631,7 +630,7 @@ Deno.test({
   fn: async function () {
     const result = deferred();
     const worker = new Worker(
-      new URL("worker_with_top_level_await.ts", import.meta.url).href,
+      import.meta.resolve("./worker_with_top_level_await.ts"),
       { type: "module" },
     );
     worker.onmessage = (e) => {
@@ -653,7 +652,7 @@ Deno.test({
   fn: async function () {
     const result = deferred();
     const worker = new Worker(
-      new URL("./http_worker.js", import.meta.url).href,
+      import.meta.resolve("./http_worker.js"),
       { type: "module", deno: { permissions: "inherit" } },
     );
     worker.onmessage = () => {
@@ -672,7 +671,7 @@ Deno.test({
   name: "structured cloning postMessage",
   fn: async function () {
     const worker = new Worker(
-      new URL("worker_structured_cloning.ts", import.meta.url).href,
+      import.meta.resolve("./worker_structured_cloning.ts"),
       { type: "module" },
     );
 
@@ -726,7 +725,7 @@ Deno.test({
     const promise = deferred();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
-      new URL("shared_array_buffer.ts", import.meta.url).href,
+      import.meta.resolve("./shared_array_buffer.ts"),
       workerOptions,
     );
     const sab1 = new SharedArrayBuffer(1);
@@ -752,7 +751,7 @@ Deno.test({
   name: "Send MessagePorts from / to workers",
   fn: async function () {
     const worker = new Worker(
-      new URL("message_port.ts", import.meta.url).href,
+      import.meta.resolve("./message_port.ts"),
       { type: "module" },
     );
     const channel = new MessageChannel();

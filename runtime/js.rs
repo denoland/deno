@@ -1,38 +1,58 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use deno_core::include_js_files;
-use deno_core::Extension;
+use deno_core::Snapshot;
+use log::debug;
+use once_cell::sync::Lazy;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:runtime",
-      // Generated with:
-      // bash -c "cd runtime && ls js/*.js | sort"
-      "js/01_build.js",
-      "js/01_errors.js",
-      "js/01_version.js",
-      "js/01_web_util.js",
-      "js/06_util.js",
-      "js/10_permissions.js",
-      "js/11_workers.js",
-      "js/12_io.js",
-      "js/13_buffer.js",
-      "js/30_fs.js",
-      "js/30_os.js",
-      "js/40_diagnostics.js",
-      "js/40_files.js",
-      "js/40_fs_events.js",
-      "js/40_http.js",
-      "js/40_process.js",
-      "js/40_read_file.js",
-      "js/40_signals.js",
-      "js/40_spawn.js",
-      "js/40_testing.js",
-      "js/40_tty.js",
-      "js/40_write_file.js",
-      "js/41_prompt.js",
-      "js/90_deno_ns.js",
-      "js/99_main.js",
-    ))
-    .build()
+pub static CLI_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+  #[allow(clippy::uninit_vec)]
+  #[cold]
+  #[inline(never)]
+  || {
+    static COMPRESSED_CLI_SNAPSHOT: &[u8] =
+      include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
+
+    let size =
+      u32::from_le_bytes(COMPRESSED_CLI_SNAPSHOT[0..4].try_into().unwrap())
+        as usize;
+    let mut vec = Vec::with_capacity(size);
+
+    // SAFETY: vec is allocated with exact snapshot size (+ alignment)
+    // SAFETY: non zeroed bytes are overwritten with decompressed snapshot
+    unsafe {
+      vec.set_len(size);
+    }
+
+    lzzzz::lz4::decompress(&COMPRESSED_CLI_SNAPSHOT[4..], &mut vec).unwrap();
+
+    vec.into_boxed_slice()
+  },
+);
+
+pub fn deno_isolate_init() -> Snapshot {
+  debug!("Deno isolate init with snapshots.");
+  Snapshot::Static(&*CLI_SNAPSHOT)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cli_snapshot() {
+    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      startup_snapshot: Some(deno_isolate_init()),
+      ..Default::default()
+    });
+    js_runtime
+      .execute_script(
+        "<anon>",
+        r#"
+      if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
+        throw Error("bad");
+      }
+      console.log("we have console.log!!!");
+    "#,
+      )
+      .unwrap();
+  }
 }
