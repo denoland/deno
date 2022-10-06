@@ -427,7 +427,8 @@ delete Object.prototype.__proto__;
           if (item) {
             const [resolvedFileName, extension] = item;
             if (resolvedFileName.startsWith("node:")) {
-              return undefined; // resolve via @types/node
+              // probably means the user doesn't have @types/node, so resolve to undefined
+              return undefined;
             }
             return {
               resolvedFileName,

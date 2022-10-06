@@ -547,8 +547,6 @@ fn op_resolve(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
-  eprintln!("Base: {}", args.base);
-  eprintln!("SPECIFIERS: {:?}", args.specifiers);
   for specifier in &args.specifiers {
     if specifier.starts_with("asset:///") {
       resolved.push((

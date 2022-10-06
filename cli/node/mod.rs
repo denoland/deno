@@ -444,7 +444,6 @@ pub fn node_resolve(
   mode: NodeResolutionMode,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
-  eprintln!("NODE RESOLVE - {} - {}", specifier, referrer);
   // Note: if we are here, then the referrer is an esm module
   // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
