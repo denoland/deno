@@ -279,7 +279,7 @@
     get [_mimeType]() {
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
-        "Content-Type"
+        "Content-Type",
       );
       return extractMimeType(values);
     }
@@ -325,7 +325,7 @@
           parsedURL.href,
           () => [],
           null,
-          true
+          true,
         );
       } else {
         // 6.
@@ -365,7 +365,7 @@
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
-            { prefix, context: "Argument 2" }
+            { prefix, context: "Argument 2" },
           );
         }
         request.clientRid = init.client?.rid ?? null;
@@ -390,7 +390,7 @@
         let headers = ArrayPrototypeSlice(
           headerListFromHeaders(this[_headers]),
           0,
-          headerListFromHeaders(this[_headers]).length
+          headerListFromHeaders(this[_headers]).length,
         );
         if (init.headers !== undefined) {
           headers = init.headers;
@@ -398,7 +398,7 @@
         ArrayPrototypeSplice(
           headerListFromHeaders(this[_headers]),
           0,
-          headerListFromHeaders(this[_headers]).length
+          headerListFromHeaders(this[_headers]).length,
         );
         fillHeaders(this[_headers], headers);
       }
@@ -517,7 +517,7 @@
           newReq,
           newSignal,
           guardFromHeaders(this[_headers]),
-          true
+          true,
         );
       }
 
@@ -525,7 +525,7 @@
         newReq,
         newSignal,
         guardFromHeaders(this[_headers]),
-        false
+        false,
       );
     }
 
@@ -535,7 +535,7 @@
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
           keys: ["bodyUsed", "headers", "method", "redirect", "url"],
-        })
+        }),
       );
     }
   }
@@ -546,7 +546,7 @@
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    RequestPrototype
+    RequestPrototype,
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
@@ -560,7 +560,7 @@
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
-    ["follow", "error", "manual"]
+    ["follow", "error", "manual"],
   );
   webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
     "RequestInit",
@@ -570,18 +570,18 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit_DOMString"]
+          webidl.converters["BodyInit_DOMString"],
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
       {
         key: "signal",
         converter: webidl.createNullableConverter(
-          webidl.converters["AbortSignal"]
+          webidl.converters["AbortSignal"],
         ),
       },
       { key: "client", converter: webidl.converters.any },
-    ]
+    ],
   );
 
   /**
@@ -628,7 +628,7 @@
     body,
     methodCb,
     urlCb,
-    headersCb
+    headersCb,
   ) {
     const request = webidl.createBranded(Request);
     request[_flash] = {
