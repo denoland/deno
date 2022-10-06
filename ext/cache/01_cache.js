@@ -145,12 +145,12 @@
           while (true) {
             const { value, done } = await reader.read();
             if (done) {
+              await core.shutdown(rid);
               break;
             }
             await core.write(rid, value);
           }
         } finally {
-          await core.shutdown(rid);
           core.close(rid);
         }
       }

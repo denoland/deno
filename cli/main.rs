@@ -22,6 +22,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod node;
 mod npm;
 mod ops;

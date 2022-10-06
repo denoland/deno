@@ -5,11 +5,13 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/napi_sym",
   "core",
   "ops",
   "runtime",
   "serde_v8",
   "test_ffi",
+  "test_napi",
   "test_util",
   "ext/broadcast_channel",
   "ext/cache",
@@ -27,6 +29,7 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "ext/napi",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
@@ -153,6 +156,8 @@ opt-level = 3
 [profile.release.package.deno_tls]
 opt-level = 3
 [profile.release.package.deno_websocket]
+opt-level = 3
+[profile.release.package.deno_napi]
 opt-level = 3
 [profile.release.package.num-bigint-dig]
 opt-level = 3

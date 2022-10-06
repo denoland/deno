@@ -114,6 +114,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
     specifier: "node/dns.ts",
   },
   NodeModulePolyfill {
+    name: "dns/promises",
+    specifier: "node/dns/promises.ts",
+  },
+  NodeModulePolyfill {
     name: "domain",
     specifier: "node/domain.ts",
   },
@@ -183,6 +187,10 @@ static SUPPORTED_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "stream",
     specifier: "node/stream.ts",
+  },
+  NodeModulePolyfill {
+    name: "stream/consumers",
+    specifier: "node/stream/consumers.mjs",
   },
   NodeModulePolyfill {
     name: "stream/promises",

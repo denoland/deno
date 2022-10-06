@@ -342,6 +342,18 @@ impl JsRuntime {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
+
+    let align = std::mem::align_of::<usize>();
+    let layout = std::alloc::Layout::from_size_align(
+      std::mem::size_of::<*mut v8::OwnedIsolate>(),
+      align,
+    )
+    .unwrap();
+    assert!(layout.size() > 0);
+    let isolate_ptr: *mut v8::OwnedIsolate =
+      // SAFETY: we just asserted that layout has non-0 size.
+      unsafe { std::alloc::alloc(layout) as *mut _ };
+
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
@@ -352,6 +364,12 @@ impl JsRuntime {
       let isolate = unsafe { creator.get_owned_isolate() };
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
+        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+        // not overwriting an existing pointer.
+        isolate = unsafe {
+          isolate_ptr.write(isolate);
+          isolate_ptr.read()
+        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
@@ -383,15 +401,23 @@ impl JsRuntime {
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
+        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+        // not overwriting an existing pointer.
+        isolate = unsafe {
+          isolate_ptr.write(isolate);
+          isolate_ptr.read()
+        };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
           bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
 
         global_context = v8::Global::new(scope, context);
       }
+
       (isolate, None)
     };
 
+    op_state.borrow_mut().put(isolate_ptr);
     let inspector =
       JsRuntimeInspector::new(&mut isolate, global_context.clone());
 
@@ -955,7 +981,6 @@ impl JsRuntime {
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
-
     // Dynamic module loading - ie. modules loaded using "import()"
     {
       // Run in a loop so that dynamic imports that only depend on another
