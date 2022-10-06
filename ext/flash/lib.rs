@@ -717,7 +717,14 @@ async fn op_flash_read_body(
     .as_mut()
     .unwrap()
   };
-  let tx = ctx.requests.get_mut(&token).unwrap();
+  let tx = ctx.requests.get_mut(&token);
+
+  if tx.is_none() {
+    // request was already consumed by caller
+    return 0;
+  }
+
+  let tx = tx.unwrap();
 
   if tx.te_chunked {
     let mut decoder =
