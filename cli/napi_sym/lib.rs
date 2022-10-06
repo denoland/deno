@@ -4,8 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use serde::Deserialize;
 
-static NAPI_EXPORTS: &str =
-  include_str!("./symbol_exports.json");
+static NAPI_EXPORTS: &str = include_str!("./symbol_exports.json");
 
 #[derive(Deserialize)]
 struct SymbolExports {
