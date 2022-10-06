@@ -27,7 +27,7 @@ function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
 }
 
 function onListen<T>(
-  p: Deferred<T>,
+  p: Deferred<T>
 ): ({ hostname, port }: { hostname: string; port: number }) => void {
   return () => {
     p.resolve();
@@ -49,7 +49,7 @@ Deno.test(async function httpServerCanResolveHostnames() {
 
   await listeningPromise;
   const resp = await fetch("http://localhost:4501/", {
-    headers: { "connection": "close" },
+    headers: { connection: "close" },
   });
   const text = await resp.text();
   assertEquals(text, "ok");
@@ -80,7 +80,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
         onListen: onListen(listeningPromise),
         onError: createOnErrorCb(ac),
       }),
-    Deno.errors.AddrInUse,
+    Deno.errors.AddrInUse
   );
   ac.abort();
   await server;
@@ -99,7 +99,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
       assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
       assertEquals(await request.text(), "");
       promise.resolve();
-      return new Response("Hello World", { headers: { "foo": "bar" } });
+      return new Response("Hello World", { headers: { foo: "bar" } });
     },
     port: 4501,
     signal: ac.signal,
@@ -109,7 +109,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
 
   await listeningPromise;
   const resp = await fetch("http://127.0.0.1:4501/", {
-    headers: { "connection": "close" },
+    headers: { connection: "close" },
   });
   await promise;
   const clone = resp.clone();
@@ -127,24 +127,27 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve({
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
-  }, async (request) => {
-    // FIXME(bartlomieju):
-    // make sure that request can be inspected
-    console.log(request);
-    assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
-    assertEquals(await request.text(), "");
-    promise.resolve();
-    return new Response("Hello World", { headers: { "foo": "bar" } });
-  });
+  const server = Deno.serve(
+    {
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    },
+    async (request) => {
+      // FIXME(bartlomieju):
+      // make sure that request can be inspected
+      console.log(request);
+      assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+      assertEquals(await request.text(), "");
+      promise.resolve();
+      return new Response("Hello World", { headers: { foo: "bar" } });
+    }
+  );
 
   await listeningPromise;
   const resp = await fetch("http://127.0.0.1:4501/", {
-    headers: { "connection": "close" },
+    headers: { connection: "close" },
   });
   await promise;
   const clone = resp.clone();
@@ -162,24 +165,27 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const promise = deferred();
   const listeningPromise = deferred();
 
-  const server = Deno.serve(async (request) => {
-    // FIXME(bartlomieju):
-    // make sure that request can be inspected
-    console.log(request);
-    assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
-    assertEquals(await request.text(), "");
-    promise.resolve();
-    return new Response("Hello World", { headers: { "foo": "bar" } });
-  }, {
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
-  });
+  const server = Deno.serve(
+    async (request) => {
+      // FIXME(bartlomieju):
+      // make sure that request can be inspected
+      console.log(request);
+      assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+      assertEquals(await request.text(), "");
+      promise.resolve();
+      return new Response("Hello World", { headers: { foo: "bar" } });
+    },
+    {
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    }
+  );
 
   await listeningPromise;
   const resp = await fetch("http://127.0.0.1:4501/", {
-    headers: { "connection": "close" },
+    headers: { connection: "close" },
   });
   await promise;
   const clone = resp.clone();
@@ -203,15 +209,15 @@ Deno.test(
       // @ts-ignore - testing invalid overload
       () => Deno.serve({ handler: undefined }),
       TypeError,
-      "handler",
+      "handler"
     );
     await assertRejects(
       // @ts-ignore - testing invalid overload
       () => Deno.serve(undefined, { handler: () => {} }),
       TypeError,
-      "handler",
+      "handler"
     );
-  },
+  }
 );
 
 Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
@@ -262,7 +268,7 @@ Deno.test(
     } finally {
       console.log = consoleLog;
     }
-  },
+  }
 );
 
 // https://github.com/denoland/deno/issues/15107
@@ -291,8 +297,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 2333 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+    const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -300,7 +305,7 @@ Deno.test(
     assertEquals(headers!.get("content-length"), "5");
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -328,8 +333,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 2334 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+    const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -340,12 +344,12 @@ Deno.test(
         req.headers;
       },
       TypeError,
-      "request closed",
+      "request closed"
     );
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -371,8 +375,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
+    const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -385,7 +388,7 @@ Deno.test(
     await promise;
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -416,7 +419,7 @@ Deno.test(
     assertEquals("hello world", respBody);
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -445,13 +448,13 @@ Deno.test(
     const resp = await fetch("http://127.0.0.1:4501/", {
       body: stream.readable,
       method: "POST",
-      headers: { "connection": "close" },
+      headers: { connection: "close" },
     });
 
     assertEquals(await resp.text(), "yo");
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test({ permissions: { net: true } }, async function httpServerClose() {
@@ -492,7 +495,7 @@ Deno.test(
     assertEquals("", respBody);
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -514,8 +517,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body = `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -529,7 +531,7 @@ Deno.test(
     ac.abort();
     await server;
     assert(msg.includes("Content-Length: 60"));
-  },
+  }
 );
 
 Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
@@ -537,10 +539,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const listeningPromise = deferred();
   const server = Deno.serve({
     handler: async (request) => {
-      const {
-        response,
-        socket,
-      } = Deno.upgradeWebSocket(request);
+      const { response, socket } = Deno.upgradeWebSocket(request);
       socket.onerror = () => fail();
       socket.onmessage = (m) => {
         socket.send(m.data);
@@ -592,8 +591,7 @@ Deno.test(
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
     const smthElse = "x".repeat(16 * 1024 + 256);
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\nSomething-Else: ${smthElse}\r\n\r\n`;
+    const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\nSomething-Else: ${smthElse}\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -602,7 +600,7 @@ Deno.test(
     assertEquals(headers!.get("something-else"), smthElse);
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -633,8 +631,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const smthElse = "x".repeat(16 * 1024 + 256);
     const reqBody = "hello world".repeat(1024);
-    let body =
-      `PUT / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: ${reqBody.length}\r\nSomething-Else: ${smthElse}\r\n\r\n${reqBody}`;
+    let body = `PUT / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: ${reqBody.length}\r\nSomething-Else: ${smthElse}\r\n\r\n${reqBody}`;
 
     while (body.length > 0) {
       const writeResult = await conn.write(encoder.encode(body));
@@ -649,43 +646,39 @@ Deno.test(
     assertEquals(text!, reqBody);
     ac.abort();
     await server;
-  },
+  }
 );
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpConnectionClose() {
-    const promise = deferred();
-    const ac = new AbortController();
-    const listeningPromise = deferred();
+Deno.test({ permissions: { net: true } }, async function httpConnectionClose() {
+  const promise = deferred();
+  const ac = new AbortController();
+  const listeningPromise = deferred();
 
-    const server = Deno.serve({
-      handler: () => {
-        promise.resolve();
-        return new Response("");
-      },
-      port: 2333,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
+  const server = Deno.serve({
+    handler: () => {
+      promise.resolve();
+      return new Response("");
+    },
+    port: 2333,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
 
-    await listeningPromise;
-    const conn = await Deno.connect({ port: 2333 });
-    // Send GET request with a body + connection: close.
-    const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nConnection: Close\r\n\r\n`;
-    const writeResult = await conn.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
+  await listeningPromise;
+  const conn = await Deno.connect({ port: 2333 });
+  // Send GET request with a body + connection: close.
+  const encoder = new TextEncoder();
+  const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nConnection: Close\r\n\r\n`;
+  const writeResult = await conn.write(encoder.encode(body));
+  assertEquals(body.length, writeResult);
 
-    await promise;
-    conn.close();
+  await promise;
+  conn.close();
 
-    ac.abort();
-    await server;
-  },
-);
+  ac.abort();
+  await server;
+});
 
 // FIXME: auto request body reading is intefering with passing it as response.
 // Deno.test(
@@ -744,11 +737,7 @@ Deno.test(
 
     let counter = 0;
 
-    const deferreds = [
-      deferred(),
-      deferred(),
-      deferred(),
-    ];
+    const deferreds = [deferred(), deferred(), deferred()];
 
     async function writeRequest(conn: Deno.Conn) {
       const encoder = new TextEncoder();
@@ -831,7 +820,7 @@ Deno.test(
     await promise;
     await finished;
     clientConn.close();
-  },
+  }
 );
 
 Deno.test(
@@ -876,7 +865,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -908,8 +897,7 @@ Deno.test(
 
       const w = new BufWriter(conn);
       const r = new BufReader(conn);
-      const body =
-        `CONNECT 127.0.0.1:4501 HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+      const body = `CONNECT 127.0.0.1:4501 HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
       const writeResult = await w.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await w.flush();
@@ -930,7 +918,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -968,7 +956,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1003,7 +991,7 @@ Deno.test(
     assertEquals(body.byteLength, 70 * 1024);
     ac.abort();
     await server;
-  },
+  }
 );
 
 // https://github.com/denoland/deno/issues/12741
@@ -1043,7 +1031,7 @@ Deno.test(
     ac.abort();
 
     await server;
-  },
+  }
 );
 
 // FIXME:
@@ -1076,7 +1064,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test("upgradeHttpRaw tcp", async () => {
@@ -1092,7 +1080,7 @@ Deno.test("upgradeHttpRaw tcp", async () => {
 
     (async () => {
       await conn.write(
-        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n"),
+        new TextEncoder().encode("HTTP/1.1 101 Switching Protocols\r\n\r\n")
       );
 
       promise.resolve();
@@ -1120,18 +1108,12 @@ Deno.test("upgradeHttpRaw tcp", async () => {
   await listeningPromise;
   const tcpConn = await Deno.connect({ port: 4501 });
   await tcpConn.write(
-    new TextEncoder().encode(
-      "CONNECT server.example.com:80 HTTP/1.1\r\n\r\n",
-    ),
+    new TextEncoder().encode("CONNECT server.example.com:80 HTTP/1.1\r\n\r\n")
   );
 
   await promise;
 
-  await tcpConn.write(
-    new TextEncoder().encode(
-      "bla bla bla\nbla bla\nbla\n",
-    ),
-  );
+  await tcpConn.write(new TextEncoder().encode("bla bla bla\nbla bla\nbla\n"));
 
   await promise2;
   conn!.close();
@@ -1176,7 +1158,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1210,7 +1192,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1237,8 +1219,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
     // Connection: close = don't try to parse the body as a new request
-    const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\nI shouldn't be read.\r\n`;
+    const body = `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\nI shouldn't be read.\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1246,7 +1227,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1272,8 +1253,7 @@ Deno.test(
     await listeningPromise;
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 19\r\n\r\nI'm a good request.`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 19\r\n\r\nI'm a good request.`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1281,7 +1261,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 type TestCase = {
@@ -1317,8 +1297,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     await listeningPromise;
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
-    const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body = `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1334,7 +1313,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
       msg += decoder.decode(buf.subarray(0, readResult));
       try {
         assert(
-          testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:"),
+          testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:")
         );
         assert(testCase.expects_chunked == hasHeader(msg, "chunked"));
         assert(testCase.expects_con_len == hasHeader(msg, "Content-Length:"));
@@ -1453,8 +1432,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
     {
-      const body =
-        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
+      const body = `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: keep-alive\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[0];
@@ -1479,8 +1457,7 @@ Deno.test(
 
     // once more!
     {
-      const body =
-        `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+      const body = `GET /quux HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
       await promises[1];
@@ -1497,7 +1474,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1525,8 +1502,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
 
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 5\r\n\r\nhello`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1535,7 +1511,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1558,8 +1534,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: +5\r\n\r\nhello`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: +5\r\n\r\nhello`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -1573,7 +1548,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1600,8 +1575,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
 
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nq\r\n2\r\nwe\r\n2\r\nrt\r\n0\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1610,7 +1584,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1636,8 +1610,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
 
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 10\r\n\r\n12345`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 10\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -1646,7 +1619,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1672,8 +1645,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body =
-      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body = `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -1690,7 +1662,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1723,7 +1695,7 @@ Deno.test(
     assertEquals(new Uint8Array(await response.arrayBuffer()), data);
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1765,7 +1737,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1792,7 +1764,7 @@ Deno.test(
     const client = Deno.createHttpClient({ caCerts: [caCert] });
     const resp = await fetch(`https://localhost:${port}/`, {
       client,
-      headers: { "connection": "close" },
+      headers: { connection: "close" },
     });
 
     const respBody = await resp.text();
@@ -1801,7 +1773,7 @@ Deno.test(
     client.close();
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1827,8 +1799,7 @@ Deno.test(
     const conn = await Deno.connect({ port: 4503 });
     const encoder = new TextEncoder();
 
-    const body =
-      `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nEXTRA`;
+    const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nEXTRA`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -1837,7 +1808,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1869,8 +1840,7 @@ Deno.test(
     await listeningPromise;
     for (const teHeader of variations) {
       const conn = await Deno.connect({ port: 4503 });
-      const body =
-        `POST / HTTP/1.1\r\nHost: example.domain\r\n${teHeader}\r\n\r\n0\r\n\r\n`;
+      const body = `POST / HTTP/1.1\r\nHost: example.domain\r\n${teHeader}\r\n\r\n0\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
 
@@ -1885,7 +1855,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1905,14 +1875,14 @@ Deno.test(
       await listeningPromise;
       const resp = await fetch("http://127.0.0.1:4501/", {
         method: "GET",
-        headers: { "connection": "close" },
+        headers: { connection: "close" },
       });
       assertEquals(resp.headers.get("Content-Length"), null);
     } finally {
       ac.abort();
       await server;
     }
-  },
+  }
 );
 
 Deno.test(
@@ -1938,8 +1908,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body =
-      `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body = `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -1957,7 +1926,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -1985,8 +1954,7 @@ Deno.test(
     const decoder = new TextDecoder();
 
     {
-      const body =
-        `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nContent-Length: 5\r\nConnection: close\r\n\r\n`;
+      const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nContent-Length: 5\r\nConnection: close\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
     }
@@ -2018,7 +1986,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -2047,8 +2015,7 @@ Deno.test(
 
     {
       // // no content-length or transfer-encoding means no body!
-      const body =
-        `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n`;
+      const body = `POST / HTTP/1.1\r\nHost: example.domain\r\nExpect: 100-continue\r\nConnection: close\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
       assertEquals(body.length, writeResult);
     }
@@ -2065,7 +2032,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 const badRequests = [
@@ -2115,10 +2082,7 @@ for (const [name, req] of badRequests) {
     },
   }[name];
 
-  Deno.test(
-    { permissions: { net: true } },
-    testFn,
-  );
+  Deno.test({ permissions: { net: true } }, testFn);
 }
 
 Deno.test(
@@ -2140,8 +2104,7 @@ Deno.test(
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const body =
-      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const body = `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -2156,7 +2119,7 @@ Deno.test(
 
     ac.abort();
     await server;
-  },
+  }
 );
 
 Deno.test(
@@ -2224,20 +2187,20 @@ Deno.test(
     clearInterval(timerId);
     ac.abort();
     await server;
-  },
+  }
 );
 
 // https://github.com/denoland/deno/issues/15549
-Deno.test(
-  { permissions: { net: true } },
-  async function testIssue15549() {
-    const ac = new AbortController();
-    const promise = deferred();
-    let count = 0;
-    const server = Deno.serve(() => {
+Deno.test({ permissions: { net: true } }, async function testIssue15549() {
+  const ac = new AbortController();
+  const promise = deferred();
+  let count = 0;
+  const server = Deno.serve(
+    () => {
       count++;
       return new Response(`hello world ${count}`);
-    }, {
+    },
+    {
       async onListen() {
         const res1 = await fetch("http://localhost:9000/");
         assertEquals(await res1.text(), "hello world 1");
@@ -2249,11 +2212,51 @@ Deno.test(
         ac.abort();
       },
       signal: ac.signal,
+    }
+  );
+
+  await promise;
+  await server;
+});
+
+// https://github.com/denoland/deno/issues/15858
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerCanCloneRequest() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        const cloned = req.clone();
+        assertEquals(req.headers, cloned.headers);
+
+        // both requests can read body
+        await req.text();
+        await req.json();
+
+        return new Response("ok");
+      },
+      port: 4503,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
     });
 
-    await promise;
-    await server;
-  },
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://localhost:4503/", {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"sus":true}',
+      });
+      const text = await resp.text();
+      assertEquals(text, "ok");
+    } finally {
+      ac.abort();
+      await server;
+    }
+  }
 );
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
@@ -2334,10 +2337,7 @@ function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   return { read };
 }
 
-async function readTrailers(
-  headers: Headers,
-  r: BufReader,
-) {
+async function readTrailers(headers: Headers, r: BufReader) {
   const trailers = parseTrailer(headers.get("trailer"));
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
@@ -2347,11 +2347,11 @@ async function readTrailers(
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }
   const undeclared = [...result.keys()].filter(
-    (k) => !trailerNames.includes(k),
+    (k) => !trailerNames.includes(k)
   );
   if (undeclared.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Undeclared trailers: ${Deno.inspect(undeclared)}.`,
+      `Undeclared trailers: ${Deno.inspect(undeclared)}.`
     );
   }
   for (const [k, v] of result) {
@@ -2360,7 +2360,7 @@ async function readTrailers(
   const missingTrailers = trailerNames.filter((k) => !result.has(k));
   if (missingTrailers.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Missing trailers: ${Deno.inspect(missingTrailers)}.`,
+      `Missing trailers: ${Deno.inspect(missingTrailers)}.`
     );
   }
   headers.delete("trailer");
@@ -2377,7 +2377,7 @@ function parseTrailer(field: string | null): Headers | undefined {
   const prohibited = trailerNames.filter((k) => isProhibitedForTrailer(k));
   if (prohibited.length > 0) {
     throw new Deno.errors.InvalidData(
-      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`,
+      `Prohibited trailer names: ${Deno.inspect(prohibited)}.`
     );
   }
   return new Headers(trailerNames.map((key) => [key, ""]));

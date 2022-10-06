@@ -155,17 +155,32 @@
   /**
    * https://fetch.spec.whatwg.org/#concept-request-clone
    * @param {InnerRequest} request
+   * @param {boolean} flash
    * @returns {InnerRequest}
    */
-  function cloneInnerRequest(request) {
-    const headerList = ArrayPrototypeMap(
-      request.headerList,
-      (x) => [x[0], x[1]],
-    );
+  function cloneInnerRequest(request, flash) {
+    const headerList = ArrayPrototypeMap(request.headerList, (x) => [
+      x[0],
+      x[1],
+    ]);
+    console.log(headerList);
 
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
+    }
+
+    if (flash) {
+      return {
+        body,
+        methodCb: request.methodCb,
+        urlCb: request.urlCb,
+        headerList: request.headerList,
+        streamRid: request.streamRid,
+        serverId: request.serverId,
+        redirectMode: "follow",
+        redirectCount: 0,
+      };
     }
 
     return {
@@ -232,7 +247,9 @@
     }
     const upperCase = byteUpperCase(m);
     if (
-      upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
+      upperCase === "CONNECT" ||
+      upperCase === "TRACE" ||
+      upperCase === "TRACK"
     ) {
       throw new TypeError("Method is forbidden.");
     }
@@ -263,7 +280,7 @@
     get [_mimeType]() {
       const values = getDecodeSplitHeader(
         headerListFromHeaders(this[_headers]),
-        "Content-Type",
+        "Content-Type"
       );
       return extractMimeType(values);
     }
@@ -309,9 +326,10 @@
           parsedURL.href,
           () => [],
           null,
-          true,
+          true
         );
-      } else { // 6.
+      } else {
+        // 6.
         if (!ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
           throw new TypeError("Unreachable");
         }
@@ -348,7 +366,7 @@
           throw webidl.makeException(
             TypeError,
             "`client` must be a Deno.HttpClient",
-            { prefix, context: "Argument 2" },
+            { prefix, context: "Argument 2" }
           );
         }
         request.clientRid = init.client?.rid ?? null;
@@ -373,7 +391,7 @@
         let headers = ArrayPrototypeSlice(
           headerListFromHeaders(this[_headers]),
           0,
-          headerListFromHeaders(this[_headers]).length,
+          headerListFromHeaders(this[_headers]).length
         );
         if (init.headers !== undefined) {
           headers = init.headers;
@@ -381,7 +399,7 @@
         ArrayPrototypeSplice(
           headerListFromHeaders(this[_headers]),
           0,
-          headerListFromHeaders(this[_headers]).length,
+          headerListFromHeaders(this[_headers]).length
         );
         fillHeaders(this[_headers], headers);
       }
@@ -395,8 +413,7 @@
       // 34.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
-        ((init.body !== undefined && init.body !== null) ||
-          inputBody !== null)
+        ((init.body !== undefined && init.body !== null) || inputBody !== null)
       ) {
         throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
@@ -485,31 +502,42 @@
       }
       let newReq;
       if (this[_flash]) {
-        newReq = cloneInnerRequest(this[_flash]);
+        newReq = cloneInnerRequest(this[_flash], true);
       } else {
-        newReq = cloneInnerRequest(this[_request]);
+        newReq = cloneInnerRequest(this[_request], false);
       }
+
       const newSignal = abortSignal.newSignal();
-      abortSignal.follow(newSignal, this[_signal]);
+
+      if (this[_signal]) {
+        abortSignal.follow(newSignal, this[_signal]);
+      }
+
+      if (this[_flash]) {
+        return fromInnerRequest(
+          newReq,
+          newSignal,
+          guardFromHeaders(this[_headers]),
+          true
+        );
+      }
+
       return fromInnerRequest(
         newReq,
         newSignal,
         guardFromHeaders(this[_headers]),
+        false
       );
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return inspect(consoleInternal.createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
-        keys: [
-          "bodyUsed",
-          "headers",
-          "method",
-          "redirect",
-          "url",
-        ],
-      }));
+      return inspect(
+        consoleInternal.createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
+          keys: ["bodyUsed", "headers", "method", "redirect", "url"],
+        })
+      );
     }
   }
 
@@ -519,7 +547,7 @@
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
-    RequestPrototype,
+    RequestPrototype
   );
   webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
     // Union for (Request or USVString)
@@ -533,11 +561,7 @@
   };
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
-    [
-      "follow",
-      "error",
-      "manual",
-    ],
+    ["follow", "error", "manual"]
   );
   webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
     "RequestInit",
@@ -547,18 +571,18 @@
       {
         key: "body",
         converter: webidl.createNullableConverter(
-          webidl.converters["BodyInit_DOMString"],
+          webidl.converters["BodyInit_DOMString"]
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
       {
         key: "signal",
         converter: webidl.createNullableConverter(
-          webidl.converters["AbortSignal"],
+          webidl.converters["AbortSignal"]
         ),
       },
       { key: "client", converter: webidl.converters.any },
-    ],
+    ]
   );
 
   /**
@@ -571,14 +595,22 @@
 
   /**
    * @param {InnerRequest} inner
+   * @param {AbortSignal} signal
    * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
+   * @param {boolean} flash
    * @returns {Request}
    */
-  function fromInnerRequest(inner, signal, guard) {
+  function fromInnerRequest(inner, signal, guard, flash) {
     const request = webidl.createBranded(Request);
-    request[_request] = inner;
+    if (flash) {
+      request[_flash] = inner;
+    } else {
+      request[_request] = inner;
+    }
     request[_signal] = signal;
-    request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+    request[_getHeaders] = flash
+      ? () => headersFromHeaderList(inner.headerList(), guard)
+      : () => headersFromHeaderList(inner.headerList, guard);
     return request;
   }
 
@@ -597,13 +629,14 @@
     body,
     methodCb,
     urlCb,
-    headersCb,
+    headersCb
   ) {
     const request = webidl.createBranded(Request);
     request[_flash] = {
       body: body !== null ? new InnerBody(body) : null,
       methodCb,
       urlCb,
+      headerList: headersCb,
       streamRid,
       serverId,
       redirectMode: "follow",
