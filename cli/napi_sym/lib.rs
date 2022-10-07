@@ -27,6 +27,7 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let block = &func.block;
   let inputs = &func.sig.inputs;
   let output = &func.sig.output;
+  let generics = &func.sig.generics;
   let ret_ty = match output {
     syn::ReturnType::Default => panic!("expected a return type"),
     syn::ReturnType::Type(_, ty) => quote! { #ty },
@@ -34,7 +35,7 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
   TokenStream::from(quote! {
       // SAFETY: it's an NAPI function.
       #[no_mangle]
-      pub unsafe extern "C" fn #name(#inputs) -> napi_status {
+      pub unsafe extern "C" fn #name #generics (#inputs) -> napi_status {
         let mut inner = || -> #ret_ty {
           #block
         };
