@@ -12,18 +12,12 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op;
 use deno_core::serde_v8;
-pub use deno_core::v8;
 use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
-pub use std::ffi::CStr;
 use std::ffi::CString;
-pub use std::mem::transmute;
-pub use std::os::raw::c_char;
-pub use std::os::raw::c_void;
 use std::path::Path;
 use std::path::PathBuf;
-pub use std::ptr;
 use std::task::Poll;
 use std::thread_local;
 
@@ -33,11 +27,21 @@ use libloading::os::unix::*;
 #[cfg(windows)]
 use libloading::os::windows::*;
 
+// Expose common stuff for ease of use.
+// `use deno_napi::*`
+pub use deno_core::v8;
+pub use std::ffi::CStr;
+pub use std::mem::transmute;
+pub use std::os::raw::c_char;
+pub use std::os::raw::c_void;
+pub use std::ptr;
+pub use value::napi_value;
+
 pub mod function;
+mod value;
 
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;
-pub type napi_value = *mut c_void;
 pub type napi_callback_info = *mut c_void;
 pub type napi_deferred = *mut c_void;
 pub type napi_ref = *mut c_void;
@@ -81,7 +85,7 @@ type napi_addon_register_func =
   extern "C" fn(env: napi_env, exports: napi_value) -> napi_value;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NapiModule {
   pub nm_version: i32,
   pub nm_flags: u32,
@@ -211,7 +215,10 @@ pub struct napi_type_tag {
 }
 
 pub type napi_callback = Option<
-  unsafe extern "C" fn(env: napi_env, info: napi_callback_info) -> napi_value,
+  unsafe extern "C" fn(
+    env: napi_env,
+    info: napi_callback_info,
+  ) -> napi_value<'static>,
 >;
 
 pub type napi_finalize = unsafe extern "C" fn(
@@ -250,13 +257,13 @@ pub const napi_default_jsproperty: napi_property_attributes =
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct napi_property_descriptor {
+pub struct napi_property_descriptor<'a> {
   pub utf8name: *const c_char,
-  pub name: napi_value,
+  pub name: napi_value<'a>,
   pub method: napi_callback,
   pub getter: napi_callback,
   pub setter: napi_callback,
-  pub value: napi_value,
+  pub value: napi_value<'a>,
   pub attributes: napi_property_attributes,
   pub data: *mut c_void,
 }

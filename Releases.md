@@ -6,6 +6,36 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.26.1 / 2022.10.06
+
+- feat(npm): implement Node API (#13633)
+- feat(unstable): add support for npm specifier cli arguments for 'deno cache'
+  (#16141)
+- fix(build): don't export all symbols to dynamic symbol table (#16171)
+- fix(ext/cache): acquire reader lock before async op (#16126)
+- fix(ext/cache): close resource on error (#16129)
+- fix(ext/cache): prevent cache insert if body is not fully written (#16138)
+- fix(ext/crypto): ECDH and X25519 non byte length and 0 length fixes (#16146)
+- fix(ext/crypto): curve25519 import export (#16140)
+- fix(ext/crypto): deriveBits for ECDH not taking length into account (#16128)
+- fix(ext/crypto): ecdh spki key import/export roundtrip (#16152)
+- fix(ext/crypto): fix importKey error when leading zeroes (#16009)
+- fix(ext/crypto): interoperable import/export (#16153)
+- fix(ext/crypto): use correct handle for public keys (#16099)
+- fix(ext/fetch): `Body#bodyUsed` for static body (#16080)
+- fix(ext/flash): Avoid sending Content-Length when status code is 204 (#15901)
+- fix(node): add dns/promises and stream/consumers (#16169)
+- fix(npm): better error is version is specified after subpath (#16131)
+- fix(npm): handle json files in require (#16125)
+- fix(npm): panic on invalid package name (#16123)
+- fix(runtime): no FastStream for unrefable streams (#16095)
+- fix(serde_v8): Implement MapAccess for StructAccess (#15962)
+- fix(serde_v8): serialize objects with numeric keys correctly (#15946)
+- fix: move Deno.hostname() from denoNsUnstable to denoNs (#16086)
+- lsp: use deno:/asset instead of deno:asset (#16023)
+- perf(ext/fetch): consume body using ops (#16038)
+- perf: node cjs & esm analysis cache (#16097)
+
 ### 1.26.0 / 2022.09.28
 
 - feat: add --allow-sys permission flag (#16028)

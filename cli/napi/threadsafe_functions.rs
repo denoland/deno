@@ -49,22 +49,12 @@ impl TsFn {
             let func: v8::Local<v8::Value> =
               func.open(scope).to_object(scope).unwrap().into();
             unsafe {
-              call_js_cb(
-                env as *mut c_void,
-                transmute::<v8::Local<v8::Value>, napi_value>(func),
-                context,
-                data,
-              )
+              call_js_cb(env as *mut c_void, func.into(), context, data)
             };
           }
           None => {
             unsafe {
-              call_js_cb(
-                env as *mut c_void,
-                std::ptr::null_mut(),
-                context,
-                data,
-              )
+              call_js_cb(env as *mut c_void, std::mem::zeroed(), context, data)
             };
           }
         }
@@ -110,9 +100,7 @@ fn napi_create_threadsafe_function(
     return Err(Error::InvalidArg);
   }
   let maybe_func = func
-    .as_mut()
-    .map(|func| {
-      let value = transmute::<napi_value, v8::Local<v8::Value>>(func);
+    .map(|value| {
       let func = v8::Local::<v8::Function>::try_from(value)
         .map_err(|_| Error::FunctionExpected)?;
       Ok(v8::Global::new(&mut env_ref.scope(), func))
