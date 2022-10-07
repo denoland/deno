@@ -1,8 +1,9 @@
-use std::thread;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use std::thread;
 
 use crate::colors;
 use crate::ops::runtime::ppid;
