@@ -444,7 +444,10 @@ pub fn as_ts_script_kind(media_type: &MediaType) -> i32 {
     MediaType::Dcts => 3,
     MediaType::Tsx => 4,
     MediaType::Json => 6,
-    _ => 0,
+    MediaType::SourceMap
+    | MediaType::TsBuildInfo
+    | MediaType::Wasm
+    | MediaType::Unknown => 0,
   }
 }
 
@@ -464,7 +467,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
-    media_type = MediaType::Dts;
+    media_type = MediaType::Dcts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
@@ -480,7 +483,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
       remapped_specifier.clone()
     } else {
-      specifier
+      specifier.clone()
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
@@ -514,9 +517,12 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     maybe_source
   };
 
-  Ok(
-    json!({ "data": data, "version": hash, "scriptKind": as_ts_script_kind(&media_type) }),
-  )
+  Ok(json!({
+    "data": data,
+    "version": hash,
+    "scriptKind": as_ts_script_kind(&media_type),
+    "isCjs": matches!(media_type, MediaType::Cjs | MediaType::Dcts),
+  }))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -306,13 +306,13 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
+      /** @type ts.CreateSourceFileOptions */
+      const createOptions = isCreateSourceFileOptions(languageVersion)
+        ? languageVersion
+        : { languageVersion };
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[
-            isCreateSourceFileOptions(languageVersion)
-              ? languageVersion.languageVersion
-              : languageVersion
-          ]
+          ts.ScriptTarget[createOptions.languageVersion]
         })`,
       );
 
@@ -324,8 +324,8 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = ops.op_load(
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; isCjs: boolean; }} */
+      const { data, scriptKind, version, isCjs } = ops.op_load(
         { specifier },
       );
       assert(
@@ -335,7 +335,12 @@ delete Object.prototype.__proto__;
       sourceFile = ts.createSourceFile(
         specifier,
         data,
-        languageVersion,
+        {
+          ...createOptions,
+          impliedNodeFormat: isCjs
+            ? ts.ModuleKind.CommonJS
+            : ts.ModuleKind.ESNext,
+        },
         false,
         scriptKind,
       );

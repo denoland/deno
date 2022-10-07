@@ -34,7 +34,7 @@ itest!(esm_module_deno_test {
 });
 
 itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  args: "run --allow-read --allow-env --unstable --quiet --check=all npm/esm_import_cjs_default/main.js",
   output: "npm/esm_import_cjs_default/main.out",
   envs: env_vars(),
   http_server: true,

@@ -77,6 +77,7 @@ impl NodeResolution {
           match media_type {
             MediaType::JavaScript | MediaType::Jsx => MediaType::Cjs,
             MediaType::TypeScript | MediaType::Tsx => MediaType::Cts,
+            MediaType::Dts => MediaType::Dcts,
             _ => media_type,
           },
         )
@@ -88,6 +89,7 @@ impl NodeResolution {
           match media_type {
             MediaType::JavaScript | MediaType::Jsx => MediaType::Mjs,
             MediaType::TypeScript | MediaType::Tsx => MediaType::Mts,
+            MediaType::Dts => MediaType::Dmts,
             _ => media_type,
           },
         )
@@ -99,8 +101,7 @@ impl NodeResolution {
             ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
           }
         };
-        let media_type = MediaType::from(&specifier);
-        (specifier, media_type)
+        (specifier, MediaType::Dcts)
       }
     }
   }
@@ -509,7 +510,7 @@ pub fn node_resolve_npm_reference(
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
   let node_module_kind = NodeModuleKind::Esm;
-  let resolved_path = package_config_resolve(
+  let maybe_resolved_path = package_config_resolve(
     &reference
       .sub_path
       .as_ref()
@@ -523,6 +524,10 @@ pub fn node_resolve_npm_reference(
   .with_context(|| {
     format!("Error resolving package config for '{}'.", reference)
   })?;
+  let resolved_path = match maybe_resolved_path {
+    Some(resolved_path) => resolved_path,
+    None => return Ok(None),
+  };
   let resolved_path = match mode {
     NodeResolutionMode::Execution => resolved_path,
     NodeResolutionMode::Types => {
@@ -671,7 +676,7 @@ fn package_config_resolve(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn RequireNpmResolver,
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   let package_json_path = package_dir.join("package.json");
   let referrer = ModuleSpecifier::from_directory_path(package_dir).unwrap();
   let package_config =
@@ -679,10 +684,10 @@ fn package_config_resolve(
   if let Some(exports) = &package_config.exports {
     let is_types = conditions == TYPES_CONDITIONS;
     if is_types && package_subpath == "." {
-      if let Ok(path) =
+      if let Ok(Some(path)) =
         legacy_main_resolve(&package_config, referrer_kind, conditions)
       {
-        return Ok(path);
+        return Ok(Some(path));
       }
     }
     return package_exports_resolve(
@@ -693,13 +698,14 @@ fn package_config_resolve(
       referrer_kind,
       conditions,
       npm_resolver,
-    );
+    )
+    .map(Some);
   }
   if package_subpath == "." {
     return legacy_main_resolve(&package_config, referrer_kind, conditions);
   }
 
-  Ok(package_dir.join(package_subpath))
+  Ok(Some(package_dir.join(package_subpath)))
 }
 
 pub fn url_to_node_resolution(
@@ -805,16 +811,14 @@ fn module_resolve(
   } else if let Ok(resolved) = Url::parse(specifier) {
     Some(resolved)
   } else {
-    Some(
-      package_resolve(
-        specifier,
-        referrer,
-        NodeModuleKind::Esm,
-        conditions,
-        npm_resolver,
-      )
-      .map(|p| ModuleSpecifier::from_file_path(p).unwrap())?,
-    )
+    package_resolve(
+      specifier,
+      referrer,
+      NodeModuleKind::Esm,
+      conditions,
+      npm_resolver,
+    )?
+    .map(|p| ModuleSpecifier::from_file_path(p).unwrap())
   };
   Ok(match url {
     Some(url) => Some(finalize_resolution(url, referrer)?),

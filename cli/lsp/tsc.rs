@@ -23,6 +23,7 @@ use crate::fs_util::specifier_to_file_path;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -2652,6 +2653,7 @@ fn op_load(
         "data": doc.text(),
         "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
         "version": state.script_version(&specifier),
+        "isCjs": matches!(doc.media_type(), MediaType::Cjs | MediaType::Dcts)
       })
     }
     None => Value::Null,

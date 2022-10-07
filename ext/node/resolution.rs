@@ -252,13 +252,17 @@ fn resolve_package_target_string(
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
-        return package_resolve(
+        return match package_resolve(
           &export_target,
           &package_json_url,
           referrer_kind,
           conditions,
           npm_resolver,
-        );
+        ) {
+          Ok(Some(path)) => Ok(path),
+          Ok(None) => Err(generic_error("not found")),
+          Err(err) => Err(err),
+        };
       }
     }
     return Err(throw_invalid_package_target(
@@ -594,7 +598,7 @@ pub fn package_resolve(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn RequireNpmResolver,
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
 
@@ -612,7 +616,8 @@ pub fn package_resolve(
         referrer_kind,
         conditions,
         npm_resolver,
-      );
+      )
+      .map(Some);
     }
   }
 
@@ -647,13 +652,16 @@ pub fn package_resolve(
       referrer_kind,
       conditions,
       npm_resolver,
-    );
+    )
+    .map(Some);
   }
   if package_subpath == "." {
     return legacy_main_resolve(&package_json, referrer_kind, conditions);
   }
 
-  Ok(package_json.path.parent().unwrap().join(&package_subpath))
+  Ok(Some(
+    package_json.path.parent().unwrap().join(&package_subpath),
+  ))
 }
 
 pub fn get_package_scope_config(
@@ -709,7 +717,7 @@ pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   let is_types = conditions == TYPES_CONDITIONS;
   let maybe_main = if is_types {
     package_json.types.as_ref()
@@ -721,7 +729,7 @@ pub fn legacy_main_resolve(
   if let Some(main) = maybe_main {
     guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
-      return Ok(guess);
+      return Ok(Some(guess));
     }
 
     let mut found = false;
@@ -781,7 +789,7 @@ pub fn legacy_main_resolve(
 
     if found {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
+      return Ok(Some(guess));
     }
   }
 
@@ -813,11 +821,11 @@ pub fn legacy_main_resolve(
       .clean();
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
+      return Ok(Some(guess));
     }
   }
 
-  Err(generic_error("not found"))
+  Ok(None)
 }
 
 #[cfg(test)]

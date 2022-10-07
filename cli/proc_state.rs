@@ -34,9 +34,9 @@ use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -475,7 +475,7 @@ impl ProcState {
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
-      None => bail!("Not found."),
+      None => return Err(generic_error("not found")),
     };
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
