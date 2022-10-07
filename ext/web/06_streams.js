@@ -6057,6 +6057,7 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    readableStreamThrowIfErrored,
     getReadableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
