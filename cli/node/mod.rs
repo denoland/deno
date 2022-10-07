@@ -712,16 +712,17 @@ pub fn url_to_node_resolution(
   url: ModuleSpecifier,
   npm_resolver: &dyn RequireNpmResolver,
 ) -> Result<NodeResolution, AnyError> {
-  Ok(if url.as_str().starts_with("http") {
+  let url_str = url.as_str().to_lowercase();
+  Ok(if url_str.starts_with("http") {
     NodeResolution::Esm(url)
-  } else if url.as_str().ends_with(".js") {
+  } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
     let package_config = get_closest_package_json(&url, npm_resolver)?;
     if package_config.typ == "module" {
       NodeResolution::Esm(url)
     } else {
       NodeResolution::CommonJs(url)
     }
-  } else if url.as_str().ends_with(".mjs") {
+  } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
     NodeResolution::Esm(url)
   } else {
     NodeResolution::CommonJs(url)
