@@ -19,6 +19,23 @@ Deno.test(async function permissionNetInvalidHost() {
   }, URIError);
 });
 
+Deno.test(async function permissionSysValidKind() {
+  await Deno.permissions.query({ name: "sys", kind: "loadavg" });
+  await Deno.permissions.query({ name: "sys", kind: "osRelease" });
+  await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
+  await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
+  await Deno.permissions.query({ name: "sys", kind: "hostname" });
+  await Deno.permissions.query({ name: "sys", kind: "getUid" });
+  await Deno.permissions.query({ name: "sys", kind: "getGid" });
+});
+
+Deno.test(async function permissionSysInvalidKind() {
+  await assertRejects(async () => {
+    // deno-lint-ignore no-explicit-any
+    await Deno.permissions.query({ name: "sys", kind: "abc" as any });
+  }, TypeError);
+});
+
 Deno.test(async function permissionQueryReturnsEventTarget() {
   const status = await Deno.permissions.query({ name: "hrtime" });
   assert(["granted", "denied", "prompt"].includes(status.state));

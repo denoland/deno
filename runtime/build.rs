@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[cfg(not(feature = "docsrs"))]
 mod not_docs {
   use super::*;
+  use deno_cache::SqliteBackedCache;
   use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -119,6 +120,15 @@ mod not_docs {
     }
   }
 
+  impl deno_napi::NapiPermissions for Permissions {
+    fn check(
+      &mut self,
+      _path: Option<&Path>,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   impl deno_flash::FlashPermissions for Permissions {
     fn check_net<T: AsRef<str>>(
       &mut self,
@@ -175,6 +185,7 @@ mod not_docs {
         Default::default(),
       ),
       deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init::<SqliteBackedCache>(None),
       deno_websocket::init::<Permissions>("".to_owned(), None, None),
       deno_webstorage::init(None),
       deno_crypto::init(None),
@@ -189,6 +200,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
+      deno_napi::init::<Permissions>(false),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
     ];

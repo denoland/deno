@@ -92,7 +92,7 @@ impl NpmPackageVersionInfo {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,

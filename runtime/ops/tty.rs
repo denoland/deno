@@ -40,7 +40,7 @@ fn get_windows_handle(
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
-      op_set_raw::decl(),
+      op_stdin_set_raw::decl(),
       op_isatty::decl(),
       op_console_size::decl(),
     ])
@@ -48,13 +48,14 @@ pub fn init() -> Extension {
 }
 
 #[op(fast)]
-fn op_set_raw(
+fn op_stdin_set_raw(
   state: &mut OpState,
-  rid: u32,
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.setRaw");
+  super::check_unstable(state, "Deno.stdin.setRaw");
+
+  let rid = 0; // stdin is always rid=0
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs

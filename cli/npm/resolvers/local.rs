@@ -47,9 +47,10 @@ impl LocalNpmPackageResolver {
     cache: NpmCache,
     api: NpmRegistryApi,
     node_modules_folder: PathBuf,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
-    let resolution = Arc::new(NpmResolution::new(api));
+    let resolution = Arc::new(NpmResolution::new(api, initial_snapshot));
 
     Self {
       cache,
@@ -179,6 +180,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError> {
     ensure_registry_read_permission(&self.root_node_modules_path, path)
+  }
+
+  fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.resolution.snapshot()
   }
 }
 
@@ -323,7 +328,42 @@ fn symlink_package_dir(
 
   // need to delete the previous symlink before creating a new one
   let _ignore = fs::remove_dir_all(new_path);
+
+  #[cfg(windows)]
+  return junction_or_symlink_dir(old_path, new_path);
+  #[cfg(not(windows))]
   fs_util::symlink_dir(old_path, new_path)
+}
+
+#[cfg(windows)]
+fn junction_or_symlink_dir(
+  old_path: &Path,
+  new_path: &Path,
+) -> Result<(), AnyError> {
+  // Use junctions because they're supported on ntfs file systems without
+  // needing to elevate privileges on Windows
+  match junction::create(old_path, new_path) {
+    Ok(()) => Ok(()),
+    Err(junction_err) => {
+      if cfg!(debug) {
+        // When running the tests, junctions should be created, but if not then
+        // surface this error.
+        log::warn!("Error creating junction. {:#}", junction_err);
+      }
+
+      match fs_util::symlink_dir(old_path, new_path) {
+        Ok(()) => Ok(()),
+        Err(symlink_err) => bail!(
+          concat!(
+            "Failed creating junction and fallback symlink in node_modules folder.\n\n",
+            "{:#}\n\n{:#}",
+          ),
+          junction_err,
+          symlink_err,
+        ),
+      }
+    }
+  }
 }
 
 fn join_package_name(path: &Path, package_name: &str) -> PathBuf {

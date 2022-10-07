@@ -104,6 +104,13 @@ itest!(dual_cjs_esm {
   http_server: true,
 });
 
+itest!(child_process_fork_test {
+  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  output: "npm/child_process_fork_test/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -172,6 +179,35 @@ itest!(nonexistent_file {
   envs: env_vars(),
   http_server: true,
   exit_code: 1,
+});
+
+itest!(invalid_package_name {
+  args: "run --unstable -A --quiet npm/invalid_package_name/main.js",
+  output: "npm/invalid_package_name/main.out",
+  envs: env_vars(),
+  exit_code: 1,
+});
+
+itest!(require_json {
+  args: "run --unstable -A --quiet npm/require_json/main.js",
+  output: "npm/require_json/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(error_version_after_subpath {
+  args: "run --unstable -A --quiet npm/error_version_after_subpath/main.js",
+  output: "npm/error_version_after_subpath/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_cache {
+  args: "cache --unstable --reload npm:chalk npm:mkdirp",
+  output: "npm/deno_cache.out",
+  envs: env_vars(),
+  http_server: true,
 });
 
 #[test]

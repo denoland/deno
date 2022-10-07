@@ -28,19 +28,20 @@
   const {
     isReadableStreamDisturbed,
     errorReadableStream,
+    readableStreamClose,
+    readableStreamDisturb,
+    readableStreamCollectIntoUint8Array,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     PromiseResolve,
-    TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -64,12 +65,10 @@
   }
 
   class InnerBody {
-    #knownExactLength = null;
-
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, knownExactLength) {
+    constructor(stream) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -77,8 +76,6 @@
       this.source = null;
       /** @type {null | number} */
       this.length = null;
-
-      this.#knownExactLength = knownExactLength;
     }
 
     get stream() {
@@ -92,6 +89,8 @@
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
           this.streamOrStatic.getReader();
+          readableStreamDisturb(this.streamOrStatic);
+          readableStreamClose(this.streamOrStatic);
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
@@ -140,7 +139,7 @@
      * https://fetch.spec.whatwg.org/#concept-body-consume-body
      * @returns {Promise<Uint8Array>}
      */
-    async consume() {
+    consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
@@ -148,40 +147,7 @@
           this.streamOrStatic,
         )
       ) {
-        const reader = this.stream.getReader();
-        /** @type {Uint8Array[]} */
-        const chunks = [];
-
-        let finalBuffer = this.#knownExactLength
-          ? new Uint8Array(this.#knownExactLength)
-          : null;
-
-        let totalLength = 0;
-        while (true) {
-          const { value: chunk, done } = await reader.read();
-          if (done) break;
-
-          if (finalBuffer) {
-            // fast path, content-length is present
-            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
-          } else {
-            // slow path, content-length is not present
-            ArrayPrototypePush(chunks, chunk);
-          }
-          totalLength += chunk.byteLength;
-        }
-
-        if (finalBuffer) {
-          return finalBuffer;
-        }
-
-        finalBuffer = new Uint8Array(totalLength);
-        let i = 0;
-        for (const chunk of chunks) {
-          TypedArrayPrototypeSet(finalBuffer, chunk, i);
-          i += chunk.byteLength;
-        }
-        return finalBuffer;
+        return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
@@ -220,7 +186,7 @@
     clone() {
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
-      const second = new InnerBody(out2, this.#knownExactLength);
+      const second = new InnerBody(out2);
       second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;
