@@ -441,8 +441,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_bool(self, v: bool) -> JsResult<'a> {
-    let scope = &mut self.scope.borrow_mut();
-    Ok(v8::Boolean::new(scope.deref_mut(), v).into())
+    Ok(v8::Boolean::new(&mut *self.scope.borrow_mut(), v).into())
   }
 
   fn serialize_char(self, v: char) -> JsResult<'a> {
@@ -467,8 +466,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_none(self) -> JsResult<'a> {
-    let scope = &mut self.scope.borrow_mut();
-    Ok(v8::null(scope.deref_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> JsResult<'a> {
@@ -476,13 +474,11 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_unit(self) -> JsResult<'a> {
-    let scope = &mut self.scope.borrow_mut();
-    Ok(v8::null(scope.deref_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   fn serialize_unit_struct(self, _name: &'static str) -> JsResult<'a> {
-    let scope = &mut self.scope.borrow_mut();
-    Ok(v8::null(scope.deref_mut()).into())
+    Ok(v8::null(&mut *self.scope.borrow_mut()).into())
   }
 
   /// For compatibility with serde-json, serialises unit variants as "Variant" strings.
