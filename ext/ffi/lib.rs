@@ -1495,7 +1495,7 @@ unsafe fn do_ffi_callback(
         let value = *((*val) as *const u32);
         v8::Integer::new_from_unsigned(scope, value).into()
       }
-      NativeType::I64 => {
+      NativeType::I64 | NativeType::ISize => {
         let result = *((*val) as *const i64);
         if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
         {
@@ -1504,7 +1504,7 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      NativeType::U64 => {
+      NativeType::U64 | NativeType::USize => {
         let result = *((*val) as *const u64);
         if result > MAX_SAFE_INTEGER as u64 {
           v8::BigInt::new_from_u64(scope, result).into()
@@ -1520,9 +1520,7 @@ unsafe fn do_ffi_callback(
           v8::Number::new(scope, result as f64).into()
         }
       }
-      _ => {
-        unreachable!()
-      }
+      NativeType::Void => unreachable!(),
     };
     params.push(value);
   }

@@ -1,7 +1,9 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import exports from "./symbol_exports.json" assert { type: "json" };
+import exports from "../../cli/napi_sym/symbol_exports.json" assert {
+  type: "json",
+};
 
 let def = "LIBRARY\nEXPORTS\n";
 for (const symbol of exports.symbols) {
