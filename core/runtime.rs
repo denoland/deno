@@ -466,14 +466,15 @@ impl JsRuntime {
       extensions: options.extensions,
     };
 
+    // Init resources and ops before extensions to make sure they are
+    // available during the initialization process.
+    js_runtime.init_extension_ops().unwrap();
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
       let realm = js_runtime.global_realm();
       js_runtime.init_extension_js(&realm).unwrap();
     }
-    // Init extension ops
-    js_runtime.init_extension_ops().unwrap();
     // Init callbacks (opresolve)
     let global_realm = js_runtime.global_realm();
     js_runtime.init_cbs(&global_realm);
