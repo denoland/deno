@@ -3077,14 +3077,8 @@
         "response-static-json.any.worker.html": true
       },
       "body": {
-        "formdata.any.html": [
-          "Consume empty response.formData() as FormData",
-          "Consume empty request.formData() as FormData"
-        ],
-        "formdata.any.worker.html": [
-          "Consume empty response.formData() as FormData",
-          "Consume empty request.formData() as FormData"
-        ],
+        "formdata.any.html": true,
+        "formdata.any.worker.html": true,
         "mime-type.any.html": true,
         "mime-type.any.worker.html": true
       },
@@ -3231,14 +3225,8 @@
           "response.text() rejects if already aborted",
           "Call text() twice on aborted response"
         ],
-        "request.any.html": [
-          "Calling formData() on an aborted request",
-          "Aborting a request after calling formData()"
-        ],
-        "request.any.worker.html": [
-          "Calling formData() on an aborted request",
-          "Aborting a request after calling formData()"
-        ],
+        "request.any.html": true,
+        "request.any.worker.html": true,
         "cache.https.any.html": false,
         "cache.https.any.worker.html": false
       }

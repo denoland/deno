@@ -393,9 +393,19 @@
      * @returns {FormData}
      */
     parse() {
-      // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
+      // To have fields body must be at least 2 boundaries + \r\n + --
+      // on the last boundary.
       if (this.body.length < (this.boundary.length * 2) + 4) {
-        throw new TypeError("Form data too short to be valid.");
+        const decodedBody = core.decode(this.body);
+        const lastBoundary = this.boundary + "--";
+        // check if it's an empty valid form data
+        if (
+          decodedBody === lastBoundary ||
+          decodedBody === lastBoundary + "\r\n"
+        ) {
+          return new FormData();
+        }
+        throw new TypeError("Unable to parse body as form data.");
       }
 
       const formData = new FormData();
