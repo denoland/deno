@@ -19,6 +19,8 @@
   const { getHeader } = window.__bootstrap.headers;
   const { readableStreamForRid } = window.__bootstrap.streams;
 
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
+
   class CacheStorage {
     constructor() {
       webidl.illegalConstructor();
@@ -33,7 +35,7 @@
         context: "Argument 1",
       });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return new Cache(cacheId);
+      return new Cache(cacheId, illegalConstructorKey);
     }
 
     async has(cacheName) {
@@ -65,7 +67,10 @@
     /** @type {number} */
     [_id];
 
-    constructor(cacheId) {
+    constructor(cacheId, key) {
+      if (key !== illegalConstructorKey) {
+        webidl.illegalConstructor();
+      }
       this[_id] = cacheId;
     }
 
