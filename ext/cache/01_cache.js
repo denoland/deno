@@ -19,8 +19,6 @@
   const { getHeader } = window.__bootstrap.headers;
   const { readableStreamForRid } = window.__bootstrap.streams;
 
-  const illegalConstructorKey = Symbol("illegalConstructorKey");
-
   class CacheStorage {
     constructor() {
       webidl.illegalConstructor();
@@ -35,7 +33,9 @@
         context: "Argument 1",
       });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return new Cache(cacheId, illegalConstructorKey);
+      const cache = webidl.createBranded(Cache);
+      cache[_id] = cacheId;
+      return cache;
     }
 
     async has(cacheName) {
@@ -67,15 +67,13 @@
     /** @type {number} */
     [_id];
 
-    constructor(cacheId, key) {
-      if (key !== illegalConstructorKey) {
-        webidl.illegalConstructor();
-      }
-      this[_id] = cacheId;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
     async put(request, response) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'put' on 'Cache'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -164,13 +162,14 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
         prefix,
         context: "Argument 1",
       });
-      const p = await this.#matchAll(request, options);
+      const p = await matchAll(request, options, this[_id]);
       if (p.length > 0) {
         return p[0];
       } else {
@@ -180,6 +179,7 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, _options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -205,79 +205,80 @@
         requestUrl: r.url,
       });
     }
+  }
 
-    /** See https://w3c.github.io/ServiceWorker/#cache-matchall
-     *
-     * Note: the function is private as we don't want to expose
-     * this API to the public yet.
-     *
-     * The function will return an array of responses.
-     */
-    async #matchAll(request, _options) {
-      // Step 1.
-      let r = null;
-      // Step 2.
-      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
-        r = request;
-        if (request.method !== "GET") {
-          return [];
-        }
-      } else if (
-        typeof request === "string" ||
-        ObjectPrototypeIsPrototypeOf(URLPrototype, request)
-      ) {
-        r = new Request(request);
+  /** See https://w3c.github.io/ServiceWorker/#cache-matchall
+   *
+   * Note: the function is private as we don't want to expose
+   * this API to the public yet.
+   *
+   * The function will return an array of responses.
+   */
+  async function matchAll(request, _options, cacheId) {
+    // Step 1.
+    let r = null;
+    // Step 2.
+    if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+      r = request;
+      if (request.method !== "GET") {
+        return [];
       }
+    } else if (
+      typeof request === "string" ||
+      ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+    ) {
+      r = new Request(request);
+    }
 
-      // Step 5.
-      const responses = [];
-      // Step 5.2
-      if (r === null) {
-        // Step 5.3
-        // Note: we have to return all responses in the cache when
-        // the request is null.
-        // We deviate from the spec here and return an empty array
-        // as we don't expose matchAll() API.
-        return responses;
-      } else {
-        // Remove the fragment from the request URL.
-        const url = new URL(r.url);
-        url.hash = "";
-        const innerRequest = toInnerRequest(r);
-        const matchResult = await core.opAsync(
-          "op_cache_match",
+    // Step 5.
+    const responses = [];
+    // Step 5.2
+    if (r === null) {
+      // Step 5.3
+      // Note: we have to return all responses in the cache when
+      // the request is null.
+      // We deviate from the spec here and return an empty array
+      // as we don't expose matchAll() API.
+      return responses;
+    } else {
+      // Remove the fragment from the request URL.
+      const url = new URL(r.url);
+      url.hash = "";
+      const innerRequest = toInnerRequest(r);
+      const matchResult = await core.opAsync(
+        "op_cache_match",
+        {
+          cacheId: cacheId,
+          requestUrl: url.toString(),
+          requestHeaders: innerRequest.headerList,
+        },
+      );
+      if (matchResult) {
+        const [meta, responseBodyRid] = matchResult;
+        let body = null;
+        if (responseBodyRid !== null) {
+          body = readableStreamForRid(responseBodyRid);
+        }
+        const response = new Response(
+          body,
           {
-            cacheId: this[_id],
-            requestUrl: url.toString(),
-            requestHeaders: innerRequest.headerList,
+            headers: meta.responseHeaders,
+            status: meta.responseStatus,
+            statusText: meta.responseStatusText,
           },
         );
-        if (matchResult) {
-          const [meta, responseBodyRid] = matchResult;
-          let body = null;
-          if (responseBodyRid !== null) {
-            body = readableStreamForRid(responseBodyRid);
-          }
-          const response = new Response(
-            body,
-            {
-              headers: meta.responseHeaders,
-              status: meta.responseStatus,
-              statusText: meta.responseStatusText,
-            },
-          );
-          responses.push(response);
-        }
+        responses.push(response);
       }
-      // Step 5.4-5.5: don't apply in this context.
-
-      return responses;
     }
+    // Step 5.4-5.5: don't apply in this context.
+
+    return responses;
   }
 
   webidl.configurePrototype(CacheStorage);
   webidl.configurePrototype(Cache);
   const CacheStoragePrototype = CacheStorage.prototype;
+  const CachePrototype = Cache.prototype;
 
   let cacheStorage;
   window.__bootstrap.caches = {
