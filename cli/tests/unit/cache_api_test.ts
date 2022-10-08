@@ -97,9 +97,9 @@ Deno.test(async function cacheApi() {
 });
 
 Deno.test(function cacheIllegalConstructor() {
-  // @ts-ignore illegal constructor
+  // @ts-expect-error illegal constructor
   assertThrows(() => new Cache(), TypeError, "Illegal constructor");
-  // @ts-ignore illegal constructor
+  // @ts-expect-error illegal constructor
   assertThrows(() => new Cache("foo", "bar"), TypeError, "Illegal constructor");
 });
 
