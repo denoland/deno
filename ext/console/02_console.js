@@ -417,7 +417,7 @@
         }
     }
 
-    let entriesLengthWithoutEmptyItems = entriesLength
+    let entriesLengthWithoutEmptyItems = entriesLength;
     if (options.typeName === "Array") {
       for (
         let i = 0, j = 0;
@@ -437,7 +437,6 @@
           entriesLengthWithoutEmptyItems -= skipTo - i;
           i = skipTo;
         }
-
       }
     } else {
       let i = 0;
@@ -481,7 +480,8 @@
     }
 
     if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
-      const nmore = entriesLengthWithoutEmptyItems - inspectOptions.iterableLimit;
+      const nmore = entriesLengthWithoutEmptyItems -
+        inspectOptions.iterableLimit;
       ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
