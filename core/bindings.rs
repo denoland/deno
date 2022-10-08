@@ -429,10 +429,9 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
   let realm_state_rc = JsRealm::state_from_scope(scope);
+  let mut realm_state = realm_state_rc.borrow_mut();
 
-  if let Some(js_promise_reject_cb) =
-    realm_state_rc.borrow().js_promise_reject_cb.clone()
-  {
+  if let Some(js_promise_reject_cb) = realm_state.js_promise_reject_cb.clone() {
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
@@ -460,7 +459,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
 
     if has_unhandled_rejection_handler {
       if let Some(pending_mod_evaluate) =
-        realm_state_rc.borrow_mut().pending_mod_evaluate.as_mut()
+        realm_state.pending_mod_evaluate.as_mut()
       {
         if !pending_mod_evaluate.has_evaluated {
           pending_mod_evaluate
