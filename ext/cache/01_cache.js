@@ -61,6 +61,7 @@
     }
   }
 
+  const _matchAll = Symbol("[[matchAll]]");
   const _id = Symbol("id");
 
   class Cache {
@@ -169,7 +170,8 @@
         prefix,
         context: "Argument 1",
       });
-      const p = await matchAll(request, options, this[_id]);
+
+      const p = await this[_matchAll](request, options);
       if (p.length > 0) {
         return p[0];
       } else {
@@ -205,74 +207,74 @@
         requestUrl: r.url,
       });
     }
-  }
 
-  /** See https://w3c.github.io/ServiceWorker/#cache-matchall
-   *
-   * Note: the function is private as we don't want to expose
-   * this API to the public yet.
-   *
-   * The function will return an array of responses.
-   */
-  async function matchAll(request, _options, cacheId) {
-    // Step 1.
-    let r = null;
-    // Step 2.
-    if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
-      r = request;
-      if (request.method !== "GET") {
-        return [];
-      }
-    } else if (
-      typeof request === "string" ||
-      ObjectPrototypeIsPrototypeOf(URLPrototype, request)
-    ) {
-      r = new Request(request);
-    }
-
-    // Step 5.
-    const responses = [];
-    // Step 5.2
-    if (r === null) {
-      // Step 5.3
-      // Note: we have to return all responses in the cache when
-      // the request is null.
-      // We deviate from the spec here and return an empty array
-      // as we don't expose matchAll() API.
-      return responses;
-    } else {
-      // Remove the fragment from the request URL.
-      const url = new URL(r.url);
-      url.hash = "";
-      const innerRequest = toInnerRequest(r);
-      const matchResult = await core.opAsync(
-        "op_cache_match",
-        {
-          cacheId: cacheId,
-          requestUrl: url.toString(),
-          requestHeaders: innerRequest.headerList,
-        },
-      );
-      if (matchResult) {
-        const [meta, responseBodyRid] = matchResult;
-        let body = null;
-        if (responseBodyRid !== null) {
-          body = readableStreamForRid(responseBodyRid);
+    /** See https://w3c.github.io/ServiceWorker/#cache-matchall
+     *
+     * Note: the function is private as we don't want to expose
+     * this API to the public yet.
+     *
+     * The function will return an array of responses.
+     */
+    async [_matchAll](request, _options) {
+      // Step 1.
+      let r = null;
+      // Step 2.
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+        r = request;
+        if (request.method !== "GET") {
+          return [];
         }
-        const response = new Response(
-          body,
+      } else if (
+        typeof request === "string" ||
+        ObjectPrototypeIsPrototypeOf(URLPrototype, request)
+      ) {
+        r = new Request(request);
+      }
+
+      // Step 5.
+      const responses = [];
+      // Step 5.2
+      if (r === null) {
+        // Step 5.3
+        // Note: we have to return all responses in the cache when
+        // the request is null.
+        // We deviate from the spec here and return an empty array
+        // as we don't expose matchAll() API.
+        return responses;
+      } else {
+        // Remove the fragment from the request URL.
+        const url = new URL(r.url);
+        url.hash = "";
+        const innerRequest = toInnerRequest(r);
+        const matchResult = await core.opAsync(
+          "op_cache_match",
           {
-            headers: meta.responseHeaders,
-            status: meta.responseStatus,
-            statusText: meta.responseStatusText,
+            cacheId: this[_id],
+            requestUrl: url.toString(),
+            requestHeaders: innerRequest.headerList,
           },
         );
-        responses.push(response);
+        if (matchResult) {
+          const [meta, responseBodyRid] = matchResult;
+          let body = null;
+          if (responseBodyRid !== null) {
+            body = readableStreamForRid(responseBodyRid);
+          }
+          const response = new Response(
+            body,
+            {
+              headers: meta.responseHeaders,
+              status: meta.responseStatus,
+              statusText: meta.responseStatusText,
+            },
+          );
+          responses.push(response);
+        }
       }
-    }
-    // Step 5.4-5.5: don't apply in this context.
+      // Step 5.4-5.5: don't apply in this context.
 
-    return responses;
+      return responses;
+    }
   }
 
   webidl.configurePrototype(CacheStorage);
