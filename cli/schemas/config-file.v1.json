@@ -249,6 +249,10 @@
               "uniqueItems": true
             }
           }
+        },
+        "report": {
+          "type": "string",
+          "description": "The default report format to use when linting"
         }
       }
     },
