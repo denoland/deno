@@ -30,7 +30,7 @@ use tower_lsp::lsp_types::Range;
 /// fixes we treat them the same.
 static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
   Lazy::new(|| {
-    (&[("2339", "2339"), ("2345", "2339")])
+    ([("2339", "2339"), ("2345", "2339")])
       .iter()
       .cloned()
       .collect()
@@ -40,7 +40,7 @@ static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
 /// multiple fixes available.
 static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
   Lazy::new(|| {
-    (&[
+    ([
       ("annotateWithTypeFromJSDoc", (1, false)),
       ("constructorForDerivedNeedSuperCall", (1, false)),
       ("extendsInterfaceBecomesImplements", (1, false)),
@@ -54,9 +54,9 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
       ("addMissingAwait", (1, false)),
       ("fixImport", (0, true)),
     ])
-      .iter()
-      .cloned()
-      .collect()
+    .iter()
+    .cloned()
+    .collect()
   });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =

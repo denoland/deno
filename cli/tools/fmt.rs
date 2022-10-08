@@ -108,7 +108,7 @@ pub async fn format(
             files
               .iter()
               .any(|path| paths.contains(path))
-              .then(|| files)
+              .then_some(files)
               .unwrap_or_else(|| [].to_vec())
           } else {
             files

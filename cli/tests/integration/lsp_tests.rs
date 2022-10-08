@@ -987,7 +987,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -998,7 +998,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -1360,7 +1360,7 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent.",
+        "The process ID of parent process of this instance of the Deno CLI.\n\n```ts\nconsole.log(Deno.ppid);\n```",
         "\n\n*@category* - Runtime Environment",
       ],
       "range":{
@@ -2810,7 +2810,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2822,7 +2822,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )

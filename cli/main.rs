@@ -22,6 +22,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -217,6 +218,7 @@ pub fn get_types(unstable: bool) -> String {
     tsc::DENO_BROADCAST_CHANNEL_LIB,
     tsc::DENO_NET_LIB,
     tsc::SHARED_GLOBALS_LIB,
+    tsc::DENO_CACHE_LIB,
     tsc::WINDOW_LIB,
   ];
 
@@ -392,6 +394,18 @@ async fn load_and_type_check(
 
   for file in files {
     let specifier = resolve_url_or_path(file)?;
+
+    // TODO(bartlomieju): in the future (after all relevant deno subcommands
+    // have support for npm: specifiers), it would be good to unify this code
+    // in `ProcState::prepare_module_load`.
+    if let Ok(package_ref) = NpmPackageReference::from_specifier(&specifier) {
+      ps.npm_resolver
+        .add_package_reqs(vec![package_ref.req.clone()])
+        .await?;
+      ps.prepare_node_std_graph().await?;
+      continue;
+    }
+
     ps.prepare_module_load(
       vec![specifier],
       false,

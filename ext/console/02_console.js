@@ -701,7 +701,11 @@
           return handleCircular(value, cyan);
         }
 
-        return inspectObject(value, inspectOptions, proxyDetails);
+        return inspectObject(
+          value,
+          inspectOptions,
+          proxyDetails,
+        );
       default:
         // Not implemented is red
         return red("[Not Implemented]");
@@ -1283,11 +1287,7 @@
     return [baseString, refIndex];
   }
 
-  function inspectObject(
-    value,
-    inspectOptions,
-    proxyDetails,
-  ) {
+  function inspectObject(value, inspectOptions, proxyDetails) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -1330,7 +1330,10 @@
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) {
       return inspectRegExp(value, inspectOptions);
     } else if (ObjectPrototypeIsPrototypeOf(DatePrototype, value)) {
-      return inspectDate(value, inspectOptions);
+      return inspectDate(
+        proxyDetails ? proxyDetails[0] : value,
+        inspectOptions,
+      );
     } else if (ObjectPrototypeIsPrototypeOf(SetPrototype, value)) {
       return inspectSet(
         proxyDetails ? proxyDetails[0] : value,
