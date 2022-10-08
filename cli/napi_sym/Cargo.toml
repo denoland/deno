@@ -3,7 +3,7 @@ name = "napi_sym"
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-readme = "../README.md"
+readme = "README.md"
 description = "proc macro for writing N-API symbols"
 
 [lib]
