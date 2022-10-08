@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::is_instance_of_error;
+use crate::error::to_v8_error;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
 use crate::modules::validate_import_assertions;
@@ -592,4 +593,23 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   let message = v8::String::new(scope, message.as_ref()).unwrap();
   let exception = v8::Exception::type_error(scope, message);
   scope.throw_exception(exception);
+}
+
+pub fn host_create_shadow_realm_callback<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> Option<v8::Local<'s, v8::Context>> {
+  match JsRuntime::create_realm_from_scope(scope) {
+    Ok(realm) => {
+      let context = realm.context();
+      Some(v8::Local::new(scope, context))
+    }
+    Err(error) => {
+      let state_rc = JsRuntime::state(scope);
+      let op_state_rc = &state_rc.borrow().op_state;
+      let exception =
+        to_v8_error(scope, op_state_rc.borrow().get_error_class_fn, &error);
+      scope.throw_exception(exception);
+      None
+    }
+  }
 }

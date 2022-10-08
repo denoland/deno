@@ -81,9 +81,8 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  built_from_snapshot: bool,
   allocations: IsolateAllocations,
-  extensions: Vec<Extension>,
+  //extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
 }
 
@@ -188,6 +187,8 @@ pub(crate) struct JsRuntimeState {
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
+  runtime_built_from_snapshot: bool,
+  extensions: Vec<Extension>,
 }
 
 fn v8_init(
@@ -430,6 +431,8 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
+      runtime_built_from_snapshot: has_startup_snapshot,
+      extensions: vec![], // Will be replaced later
     }));
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -446,24 +449,29 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      built_from_snapshot: has_startup_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
-      extensions: options.extensions,
     };
 
     // Init resources and ops before extensions to make sure they are
     // available during the initialization process.
-    js_runtime.init_extension_ops().unwrap();
+    js_runtime
+      .init_extension_ops(&mut options.extensions)
+      .unwrap();
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
       let realm = js_runtime.global_realm();
-      js_runtime.init_extension_js(&realm).unwrap();
+      realm
+        .init_extension_js(js_runtime.v8_isolate(), &options.extensions)
+        .unwrap();
     }
     // Init callbacks (opresolve)
     let global_realm = js_runtime.global_realm();
-    js_runtime.init_cbs(&global_realm);
+    Self::init_cbs(&mut js_runtime.handle_scope(), &global_realm);
+
+    Self::state(js_runtime.v8_isolate()).borrow_mut().extensions =
+      options.extensions;
 
     js_runtime
   }
@@ -508,24 +516,25 @@ impl JsRuntime {
   /// that will be used instead, and the extensions' initialization will come
   /// "for free".
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
+    Self::create_realm_from_scope(&mut self.handle_scope())
+  }
+
+  pub fn create_realm_from_scope(
+    scope: &mut v8::HandleScope,
+  ) -> Result<JsRealm, Error> {
+    let state_rc = Self::state(scope);
+    let runtime_built_from_snapshot =
+      state_rc.borrow().runtime_built_from_snapshot;
+
     let realm = {
-      // SAFETY: Having the scope tied to self's lifetime makes it impossible to
-      // reference self.ops while the scope is alive. Here we turn it into an
-      // unbound lifetime, which is sound because 1. it only lives until the end
-      // of this block, and 2. the HandleScope only has access to the isolate,
-      // and nothing else we're accessing from self does.
-      let scope = &mut v8::HandleScope::new(unsafe {
-        &mut *(self.v8_isolate() as *mut v8::OwnedIsolate)
-      });
+      let mut state = state_rc.borrow_mut();
+
       let context = bindings::initialize_context(
         scope,
-        &Self::state(self.v8_isolate()).borrow().op_ctxs,
-        self.built_from_snapshot,
+        &state.op_ctxs,
+        runtime_built_from_snapshot,
       );
       context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
-
-      let state_rc = Self::state(scope);
-      let mut state = state_rc.borrow_mut();
 
       let module_map =
         ModuleMap::new(state.module_loader.clone(), state.op_state.clone());
@@ -536,11 +545,11 @@ impl JsRuntime {
       JsRealm::new(v8::Global::new(scope, context))
     };
 
-    if !self.built_from_snapshot {
-      self.init_extension_js(&realm)?;
+    if !runtime_built_from_snapshot {
+      realm.init_extension_js(scope, &state_rc.borrow().extensions)?;
     }
 
-    self.init_cbs(&realm);
+    Self::init_cbs(scope, &realm);
 
     Ok(realm)
   }
@@ -558,6 +567,9 @@ impl JsRuntime {
     isolate.set_host_import_module_dynamically_callback(
       bindings::host_import_module_dynamically_callback,
     );
+    isolate.set_host_create_shadow_realm_context_callback(
+      bindings::host_create_shadow_realm_callback,
+    );
     isolate.set_wasm_async_resolve_promise_callback(
       bindings::wasm_async_resolve_promise_callback,
     );
@@ -573,23 +585,6 @@ impl JsRuntime {
     let state = state_rc.clone();
     Rc::into_raw(state_rc);
     state
-  }
-
-  /// Initializes JS of provided Extensions in the given realm
-  fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
-    // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
-    for m in extensions.iter_mut() {
-      let js_files = m.init_js();
-      for (filename, source) in js_files {
-        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        realm.execute_script(self.v8_isolate(), filename, source)?;
-      }
-    }
-    // Restore extensions
-    self.extensions = extensions;
-
-    Ok(())
   }
 
   /// Collects ops from extensions & applies middleware
@@ -626,10 +621,11 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn init_extension_ops(&mut self) -> Result<(), Error> {
+  fn init_extension_ops(
+    &mut self,
+    extensions: &mut [Extension],
+  ) -> Result<(), Error> {
     let op_state = self.op_state();
-    // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
     // Setup state
     for e in extensions.iter_mut() {
@@ -641,9 +637,6 @@ impl JsRuntime {
         self.event_loop_middlewares.push(middleware);
       }
     }
-
-    // Restore extensions
-    self.extensions = extensions;
 
     Ok(())
   }
@@ -699,21 +692,18 @@ impl JsRuntime {
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
-  fn init_cbs(&mut self, realm: &JsRealm) {
-    let (recv_cb, build_custom_error_cb) = {
-      let scope = &mut realm.handle_scope(self.v8_isolate());
-      let recv_cb =
-        Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
-          .expect("Deno.core.opresolve is undefined in the realm");
-      let recv_cb = v8::Global::new(scope, recv_cb);
-      let build_custom_error_cb =
-        Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
-          .expect("Deno.core.buildCustomError is undefined in the realm");
-      let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
-      (recv_cb, build_custom_error_cb)
-    };
+  fn init_cbs(scope: &mut v8::HandleScope, realm: &JsRealm) {
+    let recv_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
+        .expect("Deno.core.opresolve is undefined in the realm");
+    let recv_cb = v8::Global::new(scope, recv_cb);
+    let build_custom_error_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+        .expect("Deno.core.buildCustomError is undefined in the realm");
+    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
+
     // Put global handle in callback state
-    let state = realm.state(self.v8_isolate());
+    let state = realm.state(scope);
     state.borrow_mut().js_recv_cb.replace(recv_cb);
     state
       .borrow_mut()
@@ -1636,6 +1626,22 @@ impl JsRealm {
   ) -> v8::Local<'s, v8::Object> {
     let scope = &mut self.handle_scope(isolate);
     self.0.open(scope).global(scope)
+  }
+
+  /// Initializes JS of provided Extensions in the given realm
+  fn init_extension_js(
+    &self,
+    isolate: &mut v8::Isolate,
+    extensions: &[Extension],
+  ) -> Result<(), Error> {
+    for m in extensions.iter() {
+      let js_files = m.init_js();
+      for (filename, source) in js_files {
+        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+        self.execute_script(isolate, filename, source)?;
+      }
+    }
+    Ok(())
   }
 
   pub(crate) fn module_map(
