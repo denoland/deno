@@ -10,6 +10,7 @@ pub mod callback;
 pub mod coerce;
 pub mod numbers;
 pub mod object_wrap;
+pub mod primitives;
 pub mod promise;
 pub mod properties;
 pub mod strings;
@@ -67,6 +68,7 @@ unsafe extern "C" fn napi_register_module_v1(
   numbers::init(env, exports);
   typedarray::init(env, exports);
   array::init(env, exports);
+  primitives::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);
   coerce::init(env, exports);
