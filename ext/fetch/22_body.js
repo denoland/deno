@@ -230,7 +230,10 @@
         ? await object[bodySymbol].consume()
         : new Uint8Array();
 
-      return packageData(body, type, object[mimeTypeSymbol]);
+      const mimeType = type === "Blob" || type === "FormData"
+        ? object[mimeTypeSymbol]
+        : null;
+      return packageData(body, type, mimeType);
     }
 
     /** @type {PropertyDescriptorMap} */
