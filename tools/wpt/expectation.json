@@ -3260,6 +3260,9 @@
         "Content-Length header value of network response exceeds response body"
       ]
     },
+    "content-type": {
+      "multipart.window.html": true
+    },
     "data-urls": {
       "base64.any.html": true,
       "base64.any.worker.html": true,
