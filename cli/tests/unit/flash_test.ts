@@ -1429,12 +1429,7 @@ createServerLengthTest("autoResponseWithKnownLengthEmpty", {
 // });
 
 Deno.test(
-  {
-    // FIXME(bartlomieju): this test is hanging on Windows, needs to be
-    // investigated and fixed
-    ignore: Deno.build.os === "windows",
-    permissions: { net: true },
-  },
+  { permissions: { net: true } },
   async function httpServerGetChunkedResponseWithKa() {
     const promises = [deferred(), deferred()];
     let reqCount = 0;
@@ -1895,6 +1890,33 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServer204ResponseDoesntSendContentLength() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (_request) => new Response(null, { status: 204 }),
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
+      assertEquals(resp.headers.get("Content-Length"), null);
+    } finally {
+      ac.abort();
+      await server;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServer304ResponseDoesntSendBody() {
     const promise = deferred();
     const ac = new AbortController();
@@ -2201,6 +2223,35 @@ Deno.test(
     await stream.cancel();
     clearInterval(timerId);
     ac.abort();
+    await server;
+  },
+);
+
+// https://github.com/denoland/deno/issues/15549
+Deno.test(
+  { permissions: { net: true } },
+  async function testIssue15549() {
+    const ac = new AbortController();
+    const promise = deferred();
+    let count = 0;
+    const server = Deno.serve(() => {
+      count++;
+      return new Response(`hello world ${count}`);
+    }, {
+      async onListen() {
+        const res1 = await fetch("http://localhost:9000/");
+        assertEquals(await res1.text(), "hello world 1");
+
+        const res2 = await fetch("http://localhost:9000/");
+        assertEquals(await res2.text(), "hello world 2");
+
+        promise.resolve();
+        ac.abort();
+      },
+      signal: ac.signal,
+    });
+
+    await promise;
     await server;
   },
 );

@@ -6,6 +6,7 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.cache" />
 
 /** @category Web APIs */
 interface WindowEventMap {
@@ -36,6 +37,7 @@ declare class Window extends EventTarget {
   location: Location;
   localStorage: Storage;
   sessionStorage: Storage;
+  caches: CacheStorage;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -83,6 +85,8 @@ declare var onunhandledrejection:
 declare var localStorage: Storage;
 /** @category Web Storage API */
 declare var sessionStorage: Storage;
+/** @category Cache API */
+declare var caches: CacheStorage;
 
 /** @category Web APIs */
 declare class Navigator {

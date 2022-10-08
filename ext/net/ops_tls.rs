@@ -799,7 +799,7 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(0)))?;
+    permissions.check_net(&(hostname, Some(0)), "Deno.startTls()")?;
   }
 
   let ca_certs = args
@@ -904,9 +904,9 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
     }
   }
 
@@ -1051,12 +1051,12 @@ where
 
   {
     let permissions = state.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.listenTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
     if let Some(path) = key_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
   }
 

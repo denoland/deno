@@ -1773,3 +1773,35 @@ Deno.test(
     listener.close();
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBlobUrl(): Promise<
+    void
+  > {
+    const blob = new Blob(["ok"], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const res = await fetch(url);
+    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-length"), "2");
+    assertEquals(res.headers.get("content-type"), "text/plain");
+    assertEquals(await res.text(), "ok");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchResponseStreamIsLockedWhileReading() {
+    const response = await fetch("http://localhost:4545/echo_server", {
+      body: new Uint8Array(5000),
+      method: "POST",
+    });
+
+    assertEquals(response.body!.locked, false);
+    const promise = response.arrayBuffer();
+    assertEquals(response.body!.locked, true);
+
+    await promise;
+  },
+);

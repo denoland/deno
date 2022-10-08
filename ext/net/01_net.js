@@ -354,7 +354,6 @@
     resolveDns,
   };
   window.__bootstrap.streamUtils = {
-    readableStreamForRid,
     writableStreamForRid,
   };
 })(this);

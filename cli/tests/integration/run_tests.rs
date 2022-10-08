@@ -1255,11 +1255,6 @@ itest!(fix_emittable_skipped {
   output: "run/fix_emittable_skipped.ts.out",
 });
 
-itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload run/fix_exotic_specifiers.ts",
-  output: "run/fix_exotic_specifiers.ts.out",
-});
-
 itest!(fix_js_import_js {
   args: "run --quiet --reload run/fix_js_import_js.ts",
   output: "run/fix_js_import_js.ts.out",
@@ -3359,7 +3354,7 @@ fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
     .arg("eval")
     .arg("--unstable")
-    .arg("Deno.setRaw(Deno.stdin.rid, true)")
+    .arg("Deno.stdin.setRaw(true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
     // stderr is piped so we can capture output.

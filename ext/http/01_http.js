@@ -17,8 +17,7 @@
   } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-  const { ReadableStream, ReadableStreamPrototype } =
-    window.__bootstrap.streams;
+  const { ReadableStreamPrototype } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
   const {
     WebSocket,
@@ -33,8 +32,12 @@
   } = window.__bootstrap.webSocket;
   const { TcpConn, UnixConn } = window.__bootstrap.net;
   const { TlsConn } = window.__bootstrap.tls;
-  const { Deferred, getReadableStreamRid, readableStreamClose } =
-    window.__bootstrap.streams;
+  const {
+    Deferred,
+    getReadableStreamResourceBacking,
+    readableStreamForRid,
+    readableStreamClose,
+  } = window.__bootstrap.streams;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
@@ -50,7 +53,6 @@
     StringPrototypeSplit,
     Symbol,
     SymbolAsyncIterator,
-    TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -121,7 +123,7 @@
       // It will be closed automatically once the request has been handled and
       // the response has been sent.
       if (method !== "GET" && method !== "HEAD") {
-        body = createRequestBodyStream(streamRid);
+        body = readableStreamForRid(streamRid, false);
       }
 
       const innerRequest = newInnerRequest(
@@ -168,10 +170,6 @@
         },
       };
     }
-  }
-
-  function readRequest(streamRid, buf) {
-    return core.opAsync("op_http_read", streamRid, buf);
   }
 
   function createRespondWith(
@@ -270,9 +268,9 @@
           ) {
             throw new TypeError("Unreachable");
           }
-          const resourceRid = getReadableStreamRid(respBody);
+          const resourceBacking = getReadableStreamResourceBacking(respBody);
           let reader;
-          if (resourceRid) {
+          if (resourceBacking) {
             if (respBody.locked) {
               throw new TypeError("ReadableStream is locked.");
             }
@@ -281,9 +279,9 @@
               await core.opAsync(
                 "op_http_write_resource",
                 streamRid,
-                resourceRid,
+                resourceBacking.rid,
               );
-              core.tryClose(resourceRid);
+              if (resourceBacking.autoClose) core.tryClose(resourceBacking.rid);
               readableStreamClose(respBody); // Release JS lock.
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
@@ -377,32 +375,6 @@
         }
       }
     };
-  }
-
-  function createRequestBodyStream(streamRid) {
-    return new ReadableStream({
-      type: "bytes",
-      async pull(controller) {
-        try {
-          // This is the largest possible size for a single packet on a TLS
-          // stream.
-          const chunk = new Uint8Array(16 * 1024 + 256);
-          const read = await readRequest(streamRid, chunk);
-          if (read > 0) {
-            // We read some data. Enqueue it onto the stream.
-            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
-          } else {
-            // We have reached the end of the body, so we close the stream.
-            controller.close();
-          }
-        } catch (err) {
-          // There was an error while reading a chunk of the body, so we
-          // error.
-          controller.error(err);
-          controller.close();
-        }
-      },
-    });
   }
 
   const _ws = Symbol("[[associated_ws]]");

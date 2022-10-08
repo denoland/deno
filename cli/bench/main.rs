@@ -523,6 +523,7 @@ async fn main() -> Result<()> {
         ])
         .args(args.iter())
         .stdout(Stdio::null())
+        .env("LC_NUMERIC", "C")
         .spawn()?
         .wait()?;
       let expected_exit_code = expected_exit_code.unwrap_or(0);

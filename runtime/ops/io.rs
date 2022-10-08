@@ -124,7 +124,8 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         .take()
         .expect("Extension only supports being used once.");
       let t = &mut state.resource_table;
-      t.add(StdFileResource::stdio(
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stdin {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stdin,
@@ -134,7 +135,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stdin",
       ));
-      t.add(StdFileResource::stdio(
+      assert_eq!(rid, 0, "stdin must have ResourceId 0");
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stdout {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stdout,
@@ -144,7 +147,9 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stdout",
       ));
-      t.add(StdFileResource::stdio(
+      assert_eq!(rid, 1, "stdout must have ResourceId 1");
+
+      let rid = t.add(StdFileResource::stdio(
         match stdio.stderr {
           StdioPipe::Inherit => StdFileResourceInner {
             kind: StdFileResourceKind::Stderr,
@@ -154,6 +159,7 @@ pub fn init_stdio(stdio: Stdio) -> Extension {
         },
         "stderr",
       ));
+      assert_eq!(rid, 2, "stderr must have ResourceId 2");
       Ok(())
     })
     .build()
