@@ -607,6 +607,7 @@ pub fn create_http_client(
   let mut builder = Client::builder()
     .redirect(Policy::none())
     .default_headers(headers)
+    .pool_max_idle_per_host(0)
     .use_preconfigured_tls(tls_config);
 
   if let Some(proxy) = proxy {
