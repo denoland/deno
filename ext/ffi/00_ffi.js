@@ -14,6 +14,7 @@
     ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
+    PromiseResolve,
     TypeError,
     Int32Array,
     Uint32Array,
@@ -274,17 +275,29 @@
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
         ops.op_ffi_unsafe_callback_unref(this.#rid);
-        this.#refpromise = undefined;
+        return PromisePrototypeThen(this.#refpromise, () => {
+          this.#refpromise = undefined;
+          return true;
+        });
       }
+      return PromiseResolve(this.#refcount === 0);
     }
 
     close() {
       if (this.#refcount > 0) {
-        this.#refcount = 0;
         ops.op_ffi_unsafe_callback_unref(this.#rid);
-        this.#refpromise = undefined;
+        this.#refcount = 0;
       }
-      core.close(this.#rid);
+      if (this.#refpromise) {
+        // Either close needed to unref, or an unref is still ongoing.
+        // Await for the refpromise to resolve, and only then close the resource.
+        PromisePrototypeThen(this.#refpromise, () => {
+          this.#refpromise = undefined;
+          core.close(this.#rid);
+        });
+      } else {
+        core.close(this.#rid);
+      }
     }
   }
 

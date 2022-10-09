@@ -508,13 +508,14 @@ const addToFooCallback = new Deno.UnsafeCallback({
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
-addToFooCallback.unref();
+await addToFooCallback.unref();
 logCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
-logCallback.unref();
+await logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
+await returnU8Callback.unref();
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
@@ -585,7 +586,7 @@ After: ${postStr}`,
 })();
 
 function assertIsOptimized(fn) {
-  const status = % GetOptimizationStatus(fn);
+  const status = %GetOptimizationStatus(fn);
   assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
 }
 
