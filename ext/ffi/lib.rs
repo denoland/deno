@@ -1787,9 +1787,7 @@ where
     context,
     isolate,
     refed: false,
-    state: Arc::new(Mutex::new(SharedState {
-      waker: None,
-    })),
+    state: Arc::new(Mutex::new(SharedState { waker: None })),
   }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
