@@ -250,6 +250,7 @@ fn v8_init(
 
 pub const V8_WRAPPER_TYPE_INDEX: i32 = 0;
 pub const V8_WRAPPER_OBJECT_INDEX: i32 = 1;
+const CONTEXT_STATE_SLOT: i32 = 1;
 
 #[derive(Default)]
 pub struct RuntimeOptions {
@@ -306,6 +307,9 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
+  const STATE_SLOT: u32 = 0;
+  const MODULES_SLOT: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -426,7 +430,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let rc_state = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context.clone())),
       known_realms,
       pending_promise_exceptions: HashMap::new(),
@@ -447,14 +451,23 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
-    })));
+    }));
 
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
+    isolate.set_data(Self::STATE_SLOT, Rc::into_raw(rc_state) as *mut c_void);
+    let ctx = global_context.open(&mut isolate);
+    unsafe {
+      ctx.set_aligned_pointer_in_embedder_data(
+        CONTEXT_STATE_SLOT,
+        Rc::into_raw(Rc::<RefCell<ContextState>>::default()) as *mut c_void,
+      )
+    };
 
     let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let rc_module_map = Rc::new(RefCell::new(module_map));
+    isolate.set_data(
+      Self::MODULES_SLOT,
+      Rc::into_raw(rc_module_map) as *mut c_void,
+    );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -515,7 +528,12 @@ impl JsRuntime {
         &Self::state(self.v8_isolate()).borrow().op_ctxs,
         self.built_from_snapshot,
       );
-      context.set_slot(scope, Rc::<RefCell<ContextState>>::default());
+      unsafe {
+        context.set_aligned_pointer_in_embedder_data(
+          CONTEXT_STATE_SLOT,
+          Rc::into_raw(Rc::<RefCell<ContextState>>::default()) as *mut c_void,
+        )
+      };
 
       Self::state(scope)
         .borrow_mut()
@@ -544,23 +562,32 @@ impl JsRuntime {
     isolate.set_host_initialize_import_meta_object_callback(
       bindings::host_initialize_import_meta_object_callback,
     );
-    isolate.set_host_import_module_dynamically_callback(
-      bindings::host_import_module_dynamically_callback,
-    );
+    // isolate.set_host_import_module_dynamically_callback(
+    //   bindings::host_import_module_dynamically_callback,
+    // );
     isolate.set_wasm_async_resolve_promise_callback(
       bindings::wasm_async_resolve_promise_callback,
     );
     isolate
   }
 
-  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+  pub(crate) fn state<'a, 'b>(
+    isolate: &'a v8::Isolate,
+  ) -> &'b RefCell<JsRuntimeState> {
+    unsafe {
+      &*(isolate.get_data(Self::STATE_SLOT) as *const RefCell<JsRuntimeState>)
+    }
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let rc = unsafe {
+      Rc::from_raw(
+        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
+      )
+    };
+    let cloned = rc.clone();
+    forget(rc);
+    cloned
   }
 
   /// Initializes JS of provided Extensions in the given realm
@@ -767,12 +794,19 @@ impl JsRuntime {
     state.borrow_mut().inspector.take();
 
     // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    unsafe {
+      let isolate = self.v8_isolate();
+      drop(Rc::from_raw(
+        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
+      ));
+      isolate.set_data(
+        Self::MODULES_SLOT,
+        Rc::into_raw(Rc::new(RefCell::new(ModuleMap::new(
+          Rc::new(NoopModuleLoader),
+          state.borrow().op_state.clone(),
+        )))) as *mut c_void,
+      );
+    }
 
     // Drop other v8::Global handles before snapshotting
     {
@@ -784,9 +818,14 @@ impl JsRuntime {
           std::mem::take(
             &mut realm_state.borrow_mut().js_build_custom_error_cb,
           );
-          context
-            .open(self.v8_isolate())
-            .clear_all_slots(self.v8_isolate());
+
+          let ctx = context.open(self.v8_isolate());
+          unsafe {
+            ctx.set_aligned_pointer_in_embedder_data(
+              CONTEXT_STATE_SLOT,
+              std::ptr::null_mut(),
+            );
+          }
         }
       }
       let mut state = state.borrow_mut();
@@ -2074,36 +2113,40 @@ impl JsRuntime {
 #[derive(Clone)]
 pub struct JsRealm(v8::Global<v8::Context>);
 impl JsRealm {
+  #[inline(always)]
   pub fn new(context: v8::Global<v8::Context>) -> Self {
     JsRealm(context)
   }
 
+  #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
     &self.0
   }
 
-  pub(crate) fn state(
+  #[inline(always)]
+  pub(crate) fn state<'a, 'b>(
     &self,
-    isolate: &mut v8::Isolate,
-  ) -> Rc<RefCell<ContextState>> {
-    self
-      .context()
-      .open(isolate)
-      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
-      .unwrap()
-      .clone()
+    isolate: &'a mut v8::Isolate,
+  ) -> &'b RefCell<ContextState> {
+    let ctx = self.context().open(isolate);
+    unsafe {
+      &*(ctx.get_aligned_pointer_from_embedder_data(CONTEXT_STATE_SLOT)
+        as *const RefCell<ContextState>)
+    }
   }
 
-  pub(crate) fn state_from_scope(
-    scope: &mut v8::HandleScope,
-  ) -> Rc<RefCell<ContextState>> {
-    let context = scope.get_current_context();
-    context
-      .get_slot::<Rc<RefCell<ContextState>>>(scope)
-      .unwrap()
-      .clone()
+  #[inline(always)]
+  pub(crate) fn state_from_scope<'a, 'b>(
+    scope: &'a mut v8::HandleScope,
+  ) -> &'b RefCell<ContextState> {
+    let ctx = scope.get_current_context();
+    unsafe {
+      &*(ctx.get_aligned_pointer_from_embedder_data(CONTEXT_STATE_SLOT)
+        as *const RefCell<ContextState>)
+    }
   }
 
+  #[inline(always)]
   pub fn handle_scope<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
@@ -2111,6 +2154,7 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
+  #[inline(always)]
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
