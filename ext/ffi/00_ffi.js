@@ -281,7 +281,7 @@
     close() {
       if (this.#refcount > 0) {
         this.#refcount = 0;
-        core.opSync("op_ffi_unsafe_callback_unref", this.#rid);
+        ops.op_ffi_unsafe_callback_unref(this.#rid);
         this.#refpromise = undefined;
       }
       core.close(this.#rid);
