@@ -3,6 +3,7 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use napi_sys::*;
+use std::os::raw::c_char;
 
 pub mod array;
 pub mod r#async;
@@ -42,7 +43,7 @@ macro_rules! get_callback_info {
 macro_rules! new_property {
   ($env: expr, $name: expr, $value: expr) => {
     napi_property_descriptor {
-      utf8name: $name.as_ptr() as *const i8,
+      utf8name: $name.as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: Some($value),
       getter: None,
