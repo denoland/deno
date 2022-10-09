@@ -854,8 +854,9 @@ declare namespace Deno {
      *
      * Calling this method will also immediately set the callback's reference
      * counting to zero and it will no longer keep Deno's process from exiting.
-     * In this case the removal of the C function is not synchronous and the closing
-     * of the callback resource will happen only after the unref'ing has resolved.
+     * If the callback was ref'ed, then the removal of the C function is not
+     * synchronous and the closing of the callback resource will happen only
+     * after the unref'ing has resolved.
      *
      * If the exact timing of unref'ing and closing of the resource is important
      * (eg. testing with resource checks), it is best to first manually unref the
