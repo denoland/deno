@@ -7,7 +7,6 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -347,10 +346,10 @@ pub struct CachePutResource {
 }
 
 impl CachePutResource {
-  async fn write(self: Rc<Self>, data: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    file.write_all(&data).await?;
+    file.write_all(data).await?;
     Ok(data.len())
   }
 
@@ -374,9 +373,7 @@ impl Resource for CachePutResource {
     "CachePutResource".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
@@ -394,27 +391,19 @@ impl CacheResponseResource {
     }
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    let nread = file.read(&mut buf).await?;
-    Ok((nread, buf))
+    let nread = file.read(data).await?;
+    Ok(nread)
   }
 }
 
 impl Resource for CacheResponseResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "CacheResponseResource".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 }
 
