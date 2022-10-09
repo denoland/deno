@@ -3,6 +3,7 @@
 use napi_sys::PropertyAttributes::*;
 use napi_sys::Status::napi_ok;
 use napi_sys::*;
+use std::os::raw::c_char;
 use std::ptr;
 
 pub fn init(env: napi_env, exports: napi_value) {
@@ -15,7 +16,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     unsafe {
       napi_create_string_utf8(
         env,
-        "key_v8_string".as_ptr() as *const i8,
+        "key_v8_string".as_ptr() as *const c_char,
         usize::MAX,
         &mut name_value,
       )
@@ -29,7 +30,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     unsafe {
       napi_create_string_utf8(
         env,
-        "key_v8_symbol".as_ptr() as *const i8,
+        "key_v8_symbol".as_ptr() as *const c_char,
         usize::MAX,
         &mut symbol_description,
       )
@@ -42,7 +43,7 @@ pub fn init(env: napi_env, exports: napi_value) {
 
   let properties = &[
     napi_property_descriptor {
-      utf8name: "test_property_rw\0".as_ptr() as *const i8,
+      utf8name: "test_property_rw\0".as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: None,
       getter: None,
@@ -52,7 +53,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       value: number,
     },
     napi_property_descriptor {
-      utf8name: "test_property_r\0".as_ptr() as *const i8,
+      utf8name: "test_property_r\0".as_ptr() as *const c_char,
       name: ptr::null_mut(),
       method: None,
       getter: None,
