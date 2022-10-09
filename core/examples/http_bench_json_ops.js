@@ -23,7 +23,7 @@ async function serve(rid) {
   try {
     while (true) {
       await Deno.core.read(rid, requestBuf);
-      await Deno.core.write(rid, responseBuf);
+      await Deno.core.writeAll(rid, responseBuf);
     }
   } catch (e) {
     if (

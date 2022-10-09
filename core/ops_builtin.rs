@@ -254,6 +254,18 @@ async fn op_write(
 }
 
 #[op]
+async fn op_write_all(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<(), Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  let view = BufView::from(buf);
+  resource.write_all(view).await?;
+  Ok(())
+}
+
+#[op]
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
