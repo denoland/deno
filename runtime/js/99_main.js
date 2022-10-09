@@ -78,6 +78,7 @@ delete Intl.v8BreakIterator;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const domException = window.__bootstrap.domException;
+  const abortSignal = window.__bootstrap.abortSignal;
   const { defineEventHandler, reportException } = window.__bootstrap.event;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -400,6 +401,8 @@ delete Intl.v8BreakIterator;
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
+    AbortController: util.nonEnumerable(abortSignal.AbortController),
+    AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
     Blob: util.nonEnumerable(file.Blob),
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,

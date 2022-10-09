@@ -185,9 +185,9 @@
     }
   }
 
-  window.AbortSignal = AbortSignal;
-  window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
+    AbortSignal,
+    AbortController,
     AbortSignalPrototype,
     add,
     signalAbort,
