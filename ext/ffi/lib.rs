@@ -1391,17 +1391,17 @@ impl Resource for UnsafeCallbackResource {
 }
 
 struct CallbackInfo {
-  parameters: Vec<NativeType>,
-  result: NativeType,
-  async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
-  callback: NonNull<v8::Function>,
-  context: NonNull<v8::Context>,
-  isolate: *mut v8::Isolate,
-  refed: bool,
-  state: Arc<Mutex<SharedState>>,
+  pub parameters: Vec<NativeType>,
+  pub result: NativeType,
+  pub async_work_sender: mpsc::UnboundedSender<PendingFfiAsyncWork>,
+  pub callback: NonNull<v8::Function>,
+  pub context: NonNull<v8::Context>,
+  pub isolate: *mut v8::Isolate,
+  pub state: Arc<Mutex<SharedState>>,
 }
 
 struct SharedState {
+  refed: bool,
   waker: Option<Waker>,
 }
 
@@ -1786,8 +1786,8 @@ where
     callback,
     context,
     isolate,
-    refed: false,
     state: Arc::new(Mutex::new(SharedState {
+      refed: false,
       waker: None,
     })),
   }));
@@ -1857,10 +1857,10 @@ impl Future for CallbackInfo {
     self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    if !self.refed {
+    let mut state = self.state.lock().unwrap();
+    if !state.refed {
       Poll::Ready(())
     } else {
-      let mut state = self.state.lock().unwrap();
       state.waker = Some(cx.waker().clone());
       Poll::Pending
     }
@@ -1880,12 +1880,15 @@ async fn op_ffi_unsafe_callback_ref(
   };
   // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
   let info: &'static mut CallbackInfo = unsafe { info_ptr.as_mut().unwrap() };
-  if info.refed {
-    return Err(type_error(
-      "Invalid UnsafeCallbackResource ref call, callback is already ref'ed",
-    ));
+  {
+    let state = &mut info.state.lock().unwrap();
+    if state.refed {
+      return Err(type_error(
+        "Invalid UnsafeCallbackResource ref call, callback is already ref'ed",
+      ));
+    }
+    state.refed = true;
   }
-  info.refed = true;
   info.await;
   Ok(())
 }
@@ -1899,11 +1902,14 @@ fn op_ffi_unsafe_callback_unref(
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
   // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
   let info = unsafe { callback_resource.info.as_mut().unwrap() };
-  if info.refed {
+  {
     let state: &mut SharedState = &mut info.state.lock().unwrap();
-    // Wake up awaiters
-    if let Some(waker) = state.waker.as_ref() {
-      waker.wake_by_ref();
+    if state.refed {
+      state.refed = false;
+      // Wake up awaiters
+      if let Some(waker) = state.waker.as_ref() {
+        waker.wake_by_ref();
+      }
     }
   }
   Ok(())
