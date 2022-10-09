@@ -2385,7 +2385,7 @@ fn navigator_language_unix() {
     "run navigator_language.ts",
     None,
     Some(vec![
-      ("LANG".to_owned(), "pl-PL".to_owned()),
+      ("LANG".to_owned(), "pl_PL".to_owned()),
       ("LANGUAGE".to_owned(), "pl_PL".to_owned()),
     ]),
     false,
