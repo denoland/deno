@@ -39,6 +39,7 @@ delete Intl.v8BreakIterator;
     WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
+  const event = window.__bootstrap.event;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
@@ -155,7 +156,7 @@ delete Intl.v8BreakIterator;
       const message = v[0];
       const transferables = v[1];
 
-      const msgEvent = new MessageEvent("message", {
+      const msgEvent = new event.MessageEvent("message", {
         cancelable: false,
         data: message,
         ports: transferables.filter((t) =>
@@ -166,7 +167,7 @@ delete Intl.v8BreakIterator;
       try {
         globalDispatchEvent(msgEvent);
       } catch (e) {
-        const errorEvent = new ErrorEvent("error", {
+        const errorEvent = new event.ErrorEvent("error", {
           cancelable: true,
           message: e.message,
           lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
@@ -403,29 +404,29 @@ delete Intl.v8BreakIterator;
     ByteLengthQueuingStrategy: util.nonEnumerable(
       streams.ByteLengthQueuingStrategy,
     ),
-    CloseEvent: util.nonEnumerable(CloseEvent),
+    CloseEvent: util.nonEnumerable(event.CloseEvent),
     CompressionStream: util.nonEnumerable(compression.CompressionStream),
     CountQueuingStrategy: util.nonEnumerable(
       streams.CountQueuingStrategy,
     ),
     CryptoKey: util.nonEnumerable(crypto.CryptoKey),
-    CustomEvent: util.nonEnumerable(CustomEvent),
+    CustomEvent: util.nonEnumerable(event.CustomEvent),
     DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
     DOMException: util.nonEnumerable(domException.DOMException),
-    ErrorEvent: util.nonEnumerable(ErrorEvent),
-    Event: util.nonEnumerable(Event),
-    EventTarget: util.nonEnumerable(EventTarget),
+    ErrorEvent: util.nonEnumerable(event.ErrorEvent),
+    Event: util.nonEnumerable(event.Event),
+    EventTarget: util.nonEnumerable(eventTarget.EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
     FormData: util.nonEnumerable(formData.FormData),
     Headers: util.nonEnumerable(headers.Headers),
-    MessageEvent: util.nonEnumerable(MessageEvent),
+    MessageEvent: util.nonEnumerable(event.MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
     PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
     PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
     PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-    PromiseRejectionEvent: util.nonEnumerable(PromiseRejectionEvent),
-    ProgressEvent: util.nonEnumerable(ProgressEvent),
+    PromiseRejectionEvent: util.nonEnumerable(event.PromiseRejectionEvent),
+    ProgressEvent: util.nonEnumerable(event.ProgressEvent),
     ReadableStream: util.nonEnumerable(streams.ReadableStream),
     ReadableStreamDefaultReader: util.nonEnumerable(
       streams.ReadableStreamDefaultReader,
@@ -485,9 +486,12 @@ delete Intl.v8BreakIterator;
     SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
+    reportError: util.writable(event.reportError),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
+    // Branding as a WebIDL object
+    [webidl.brand]: util.nonEnumerable(webidl.brand),
   };
 
   const unstableWindowOrWorkerGlobalScope = {
@@ -615,7 +619,7 @@ delete Intl.v8BreakIterator;
         continue;
       }
 
-      const event = new PromiseRejectionEvent("unhandledrejection", {
+      const event = new event.PromiseRejectionEvent("unhandledrejection", {
         cancelable: true,
         promise,
         reason,

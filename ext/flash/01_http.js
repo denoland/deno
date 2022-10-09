@@ -7,6 +7,7 @@
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
+  const { Event } = window.__bootstrap.event;
   const {
     ReadableStream,
     ReadableStreamPrototype,

@@ -6,8 +6,8 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
-  const { listenerCount } = window.__bootstrap.eventTarget;
+  const { Event, setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, listenerCount } = window.__bootstrap.eventTarget;
   const {
     Set,
     SetPrototypeAdd,
