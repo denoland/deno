@@ -1382,10 +1382,10 @@ impl Resource for UnsafeCallbackResource {
     // It is up to the user to know that it is safe to call the `close()` on the
     // UnsafeCallback instance.
     unsafe {
-      let info = Box::from_raw(self.info as *mut CallbackInfo);
+      let info = Box::from_raw(self.info);
       let isolate = info.isolate.as_mut().unwrap();
-      v8::Global::from_raw(isolate, info.callback);
-      v8::Global::from_raw(isolate, info.context);
+      let _ = v8::Global::from_raw(isolate, info.callback);
+      let _ = v8::Global::from_raw(isolate, info.context);
     }
   }
 }
