@@ -3209,24 +3209,10 @@
         "WorkerGlobalScope interface: calling fetch(RequestInfo, optional RequestInit) on self with too few arguments must throw TypeError"
       ],
       "abort": {
-        "general.any.html": [
-          "response.arrayBuffer() rejects if already aborted",
-          "response.blob() rejects if already aborted",
-          "response.formData() rejects if already aborted",
-          "response.json() rejects if already aborted",
-          "response.text() rejects if already aborted",
-          "Call text() twice on aborted response"
-        ],
-        "general.any.worker.html": [
-          "response.arrayBuffer() rejects if already aborted",
-          "response.blob() rejects if already aborted",
-          "response.formData() rejects if already aborted",
-          "response.json() rejects if already aborted",
-          "response.text() rejects if already aborted",
-          "Call text() twice on aborted response"
-        ],
         "request.any.html": true,
         "request.any.worker.html": true,
+        "general.any.html": true,
+        "general.any.worker.html": true,
         "cache.https.any.html": false,
         "cache.https.any.worker.html": false
       }
@@ -3259,6 +3245,9 @@
       "too-long.window.html": [
         "Content-Length header value of network response exceeds response body"
       ]
+    },
+    "content-type": {
+      "multipart.window.html": true
     },
     "data-urls": {
       "base64.any.html": true,
