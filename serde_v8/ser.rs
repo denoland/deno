@@ -3,6 +3,7 @@ use serde::ser;
 use serde::ser::Serialize;
 
 use std::cell::RefCell;
+use std::ops::DerefMut;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
@@ -435,7 +436,8 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   }
 
   fn serialize_f64(self, v: f64) -> JsResult<'a> {
-    Ok(v8::Number::new(&mut self.scope.borrow_mut(), v).into())
+    let scope = &mut self.scope.borrow_mut();
+    Ok(v8::Number::new(scope.deref_mut(), v).into())
   }
 
   fn serialize_bool(self, v: bool) -> JsResult<'a> {
