@@ -141,7 +141,12 @@
         position = res.position;
 
         // 11.8.2.
-        position++;
+        const res2 = collectSequenceOfCodepoints(
+          input,
+          position,
+          (c) => c !== "\u003B",
+        );
+        position = res2.position;
       } else { // 11.9.
         // 11.9.1.
         const res = collectSequenceOfCodepoints(
