@@ -27,6 +27,7 @@
     ObjectAssign,
     SymbolFor,
     setQueueMicrotask,
+    PromiseResolve,
   } = window.__bootstrap.primordials;
   const ops = window.Deno.core.ops;
 
@@ -161,16 +162,12 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    let p = setPromise(promiseId);
-    try {
-      ops[opName](promiseId, ...args);
-    } catch (err) {
-      // Cleanup the just-created promise
-      getPromise(promiseId);
-      // Rethrow the error
-      throw err;
+    const maybeValue = ops[opName](promiseId, ...args);
+    if (maybeValue !== undefined) {
+      return PromiseResolve(unwrapOpResult(maybeValue));
     }
-    p = PromisePrototypeThen(p, unwrapOpResult);
+
+    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.
