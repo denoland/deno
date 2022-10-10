@@ -4735,13 +4735,15 @@
         "Cache.put called with Request and Response from fetch()",
         "Cache.put with opaque-filtered HTTP 206 response",
         "Cache.put with HTTP 500 response",
-        "Cache.put with a VARY:* opaque response should not reject"
+        "Cache.put with a VARY:* opaque response should not reject",
+        "caches from different buckets have different contents"
       ],
       "cache-put.https.any.worker.html": [
         "Cache.put called with Request and Response from fetch()",
         "Cache.put with opaque-filtered HTTP 206 response",
         "Cache.put with HTTP 500 response",
-        "Cache.put with a VARY:* opaque response should not reject"
+        "Cache.put with a VARY:* opaque response should not reject",
+        "caches from different buckets have different contents"
       ],
       "cache-storage-keys.https.any.html": false,
       "cache-storage-keys.https.any.worker.html": false,
