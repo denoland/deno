@@ -3,7 +3,7 @@
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_function;
 use napi_sys::*;
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use std::ptr;
 
 pub struct Baton {
@@ -62,7 +62,7 @@ extern "C" fn test_async_work(
     unsafe {
       napi_create_string_utf8(
         env,
-        "test_async_resource\0".as_ptr() as *const i8,
+        "test_async_resource\0".as_ptr() as *const c_char,
         usize::MAX,
         &mut resource_name,
       )

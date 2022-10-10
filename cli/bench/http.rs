@@ -67,6 +67,9 @@ pub fn benchmark(
       #[cfg(target_vendor = "apple")]
       #[cfg(target_arch = "aarch64")]
       let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
+      #[cfg(target_os = "linux")]
+      #[cfg(target_arch = "aarch64")]
+      let bun_exe = test_util::prebuilt_tool_path("bun-aarch64");
 
       // bun <path> <port>
       res.insert(
