@@ -25,9 +25,7 @@
     MathMax,
     MathMin,
     ObjectPrototypeIsPrototypeOf,
-    RegExpPrototypeTest,
     StringPrototypeCharAt,
-    StringPrototypeToLowerCase,
     StringPrototypeSlice,
     Symbol,
     SymbolFor,
@@ -35,6 +33,7 @@
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
+  const mimesniff = window.__bootstrap.mimesniff;
   const consoleInternal = window.__bootstrap.console;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
@@ -144,11 +143,8 @@
    * @returns {string}
    */
   function normalizeType(str) {
-    let normalizedType = str;
-    if (!RegExpPrototypeTest(/^[\x20-\x7E]*$/, str)) {
-      normalizedType = "";
-    }
-    return StringPrototypeToLowerCase(normalizedType);
+    const mime = mimesniff.parseMimeType(str);
+    return mime !== null ? mimesniff.serializeMimeType(mime) : "";
   }
 
   /**
