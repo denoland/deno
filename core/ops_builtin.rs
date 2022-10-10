@@ -38,6 +38,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_read::decl(),
       op_read_all::decl(),
       op_write::decl(),
+      op_write_all::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
       op_format_file_name::decl(),
