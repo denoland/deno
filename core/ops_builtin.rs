@@ -31,6 +31,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_wasm_streaming_set_url::decl(),
       op_void_sync::decl(),
       op_void_async::decl(),
+      op_void_async_deferred::decl(),
       op_add::decl(),
       // // TODO(@AaronO): track IO metrics for builtin streams
       op_read::decl(),
@@ -67,6 +68,9 @@ pub fn op_void_sync() {}
 
 #[op]
 pub async fn op_void_async() {}
+
+#[op(deferred)]
+pub async fn op_void_async_deferred() {}
 
 /// Remove a resource from the resource table.
 #[op]

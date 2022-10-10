@@ -881,28 +881,3 @@ fn op_has_pending_promise_exception<'a>(
     .pending_promise_exceptions
     .contains_key(&promise_global)
 }
-
-#[op(v8)]
-fn op_poll_pending_ops<'a>(
-  scope: &mut v8::HandleScope<'a>,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
-  state.have_unpolled_ops = false;
-
-  if let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-  {
-    let (context, promise_id, op_id, resp) = item;
-    state.op_state.borrow().tracker.track_async_completed(op_id);
-    
-    results.push((promise_id, resp));
-    break;
-
-    JsRealm::new(context)
-      .state(isolate)
-      .borrow_mut()
-      .unrefed_ops
-      .remove(&promise_id);
-  }
-
-}

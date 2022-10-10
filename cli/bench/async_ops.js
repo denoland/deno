@@ -13,7 +13,7 @@ async function bench(fun) {
   const elapsed = Date.now() - start;
   const rate = Math.floor(count / (elapsed / 1000));
   console.log(`time ${elapsed} ms rate ${rate}`);
-  if (--total) queueMicrotask(() => bench(fun));
+  if (--total) await bench(fun);
 }
 
 bench(() => Deno.core.opAsync("op_void_async"));

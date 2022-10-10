@@ -5,7 +5,7 @@ let [total, count] = typeof Deno !== "undefined"
   : [process.argv[2], process.argv[3]];
 
 total = total ? parseInt(total, 0) : 50;
-count = count ? parseInt(count, 10) : 10000;
+count = count ? parseInt(count, 10) : 100000;
 
 const promises = new Array(count);
 async function bench(fun) {
@@ -15,9 +15,7 @@ async function bench(fun) {
   const elapsed = Date.now() - start;
   const rate = Math.floor(count / (elapsed / 1000));
   console.log(`time ${elapsed} ms rate ${rate}`);
-  if (--total) queueMicrotask(() => bench(fun));
+  if (--total) await bench(fun);
 }
 
-bench(() => Deno.writeFile("/dev/null", new Uint8Array(10)));
-// const fs = require("fs").promises;
-// bench(() => fs.writeFile("/dev/null", new Uint8Array(10)));
+await bench(() => Deno.core.opAsync("op_void_async"));

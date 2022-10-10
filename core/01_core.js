@@ -162,12 +162,8 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    const maybeValue = ops[opName](promiseId, ...args);
-    if (maybeValue !== undefined) {
-      return PromiseResolve(unwrapOpResult(maybeValue));
-    }
-
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+    let p = ops[opName](promiseId, ...args);
+    p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
       // first 6 characters (the `Error\n` prefix) to get just the stack trace.

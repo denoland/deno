@@ -31,7 +31,6 @@ use futures::future::Future;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use futures::task::AtomicWaker;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -46,9 +45,10 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 
 type PendingOpFuture =
-  OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
+  OpCall<(v8::Global<v8::Context>, v8::Global<v8::PromiseResolver>, PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -188,7 +188,7 @@ pub struct JsRuntimeState {
   // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
-  waker: AtomicWaker,
+  pub(crate) waker: Option<Waker>,
 }
 
 impl Drop for JsRuntime {
@@ -232,6 +232,7 @@ fn v8_init(
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
     " --noexperimental-async-stack-tagging-api",
+    " --allow-natives-syntax",
   );
 
   if predictable {
@@ -342,7 +343,7 @@ impl JsRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
-      waker: AtomicWaker::new(),
+      waker: None,
       have_unpolled_ops: false,
       dispatched_exceptions: Default::default(),
       // Some fields are initialized later after isolate is created
@@ -888,13 +889,13 @@ impl JsRuntime {
   }
 
   fn pump_v8_message_loop(scope: &mut v8::HandleScope) -> Result<(), Error> {
-    while v8::Platform::pump_message_loop(
-      &v8::V8::get_current_platform(),
-      scope,
-      false, // don't block if there are no tasks
-    ) {
-      // do nothing
-    }
+    // while v8::Platform::pump_message_loop(
+    //   &v8::V8::get_current_platform(),
+    //   scope,
+    //   false, // don't block if there are no tasks
+    // ) {
+    //   // do nothing
+    // }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     tc_scope.perform_microtask_checkpoint();
@@ -977,8 +978,8 @@ impl JsRuntime {
     let _ = self.inspector().borrow_mut().poll_unpin(cx);
     let module_map_rc = Self::module_map(self.v8_isolate());
     {
-      let state = self.state.borrow();
-      state.waker.register(cx.waker());
+      let state = &mut self.state.borrow_mut();
+      state.waker.replace(cx.waker().clone());
     }
 
     {
@@ -1037,7 +1038,8 @@ impl JsRuntime {
 
     let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
-      let inspector_has_active_sessions = self.inspector().borrow_mut().has_active_sessions();
+      let inspector_has_active_sessions =
+        self.inspector().borrow_mut().has_active_sessions();
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
       }
@@ -1060,7 +1062,9 @@ impl JsRuntime {
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.waker.wake();
+      if let Some(waker) = state.waker.take() {
+        waker.wake();
+      }
     }
 
     if pending_state.has_pending_module_evaluation {
@@ -1101,7 +1105,9 @@ Pending dynamic modules:\n".to_string();
         // evaluation may complete during this, in which case the counter will
         // reset.
         state.dyn_module_evaluate_idle_counter += 1;
-        state.waker.wake();
+        if let Some(waker) = state.waker.take() {
+          waker.wake();
+        }
       }
     }
 
@@ -1206,7 +1212,9 @@ impl JsRuntimeState {
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
     // Notify event loop to poll again soon.
-    self.waker.wake();
+    if let Some(waker) = self.waker.take() {
+      waker.wake();
+    }
   }
 }
 
@@ -1914,108 +1922,51 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
-    // We keep a list of promise IDs and OpResults per realm. Since v8::Context
-    // isn't hashable, `results_per_realm` is a vector of (context, list) tuples
-    type ResultList = Vec<(i32, OpResult)>;
-    let mut results_per_realm: Vec<(v8::Global<v8::Context>, ResultList)> = {
-      let known_realms = &mut self.state.borrow_mut().known_realms;
-      let mut results = Vec::with_capacity(known_realms.len());
-
-      // Avoid calling the method multiple times
-      let isolate = self.v8_isolate.as_mut().unwrap();
-
-      // Remove GC'd realms from `known_realms` at the same time as we populate
-      // `results` with those that are still alive.
-      known_realms.retain(|weak| {
-        if !weak.is_empty() {
-          let context = weak.to_global(isolate).unwrap();
-          results.push((context, vec![]));
-          true
-        } else {
-          false
-        }
-      });
-
-      results
-    };
-
+  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {    
+    let mut results = vec![];
+    let isolate = self.v8_isolate.as_mut().unwrap();
     // Now handle actual ops.
     {
       let mut state = self.state.borrow_mut();
-      let isolate = self.v8_isolate.as_mut().unwrap();
       state.have_unpolled_ops = false;
-
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
-        let (context, promise_id, op_id, resp) = item;
+        let (context, resolver, promise_id, op_id, resp) = item;
         state.op_state.borrow().tracker.track_async_completed(op_id);
-        for (context2, results) in results_per_realm.iter_mut() {
-          if context == *context2 {
-            results.push((promise_id, resp));
-            break;
-          }
-        }
-        JsRealm::new(context)
+
+        let realm = JsRealm::new(context);
+        realm
           .state(isolate)
           .borrow_mut()
           .unrefed_ops
           .remove(&promise_id);
+
+        results.push((realm, resolver, resp));
       }
     }
 
-    for (context, results) in results_per_realm {
-      if results.is_empty() {
-        continue;
-      }
-
-      let realm = JsRealm::new(context);
-      let js_recv_cb_handle = realm
-        .state(self.v8_isolate())
-        .borrow()
-        .js_recv_cb
-        .clone()
-        .unwrap();
-      let scope = &mut realm.handle_scope(self.v8_isolate());
-
-      // We return async responses to JS in unbounded batches (may change),
-      // each batch is a flat vector of tuples:
-      // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-      // promise_id is a simple integer, op_result is an ops::OpResult
-      // which contains a value OR an error, encoded as a tuple.
-      // This batch is received in JS via the special `arguments` variable
-      // and then each tuple is used to resolve or reject promises
-      let mut args = vec![];
-
-      for (promise_id, mut resp) in results.into_iter() {
-        args.push(v8::Integer::new(scope, promise_id).into());
-        args.push(match resp.to_v8(scope) {
-          Ok(v) => v,
-          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-            .to_v8(scope)
-            .unwrap(),
-        });
-      }
-
-      let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
-      let this = v8::undefined(tc_scope).into();
-      js_recv_cb.call(tc_scope, this, args.as_slice());
-
-      if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception, false);
-      }
+    for (realm, resolver, mut resp) in results {
+      let scope = &mut realm.handle_scope(isolate);
+      let resolver = resolver.open(scope);
+      let result = match resp.to_v8(scope) {
+        Ok(v) => v,
+        Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+          .to_v8(scope)
+          .unwrap(),
+      };
+      resolver.resolve(scope, result);
     }
-
     Ok(())
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), Error> {
-    if self.state.borrow().js_macrotask_cbs.is_empty() {
+    let state = Self::state(self.v8_isolate());
+
+    if state.borrow().js_macrotask_cbs.is_empty() {
       return Ok(());
     }
 
-    let js_macrotask_cb_handles = self.state.borrow().js_macrotask_cbs.clone();
+    let js_macrotask_cb_handles = state.borrow().js_macrotask_cbs.clone();
     let scope = &mut self.handle_scope();
 
     for js_macrotask_cb_handle in js_macrotask_cb_handles {
@@ -2200,10 +2151,11 @@ impl JsRealm {
 pub fn queue_async_op<'a, 'b>(
   ctx: &OpCtx,
   scope: &'a mut v8::HandleScope<'b>,
+  resolver: v8::Local<'b, v8::PromiseResolver>,
   deferred: bool,
-  op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
+  op: impl Future<Output = (v8::Global<v8::Context>, v8::Global<v8::PromiseResolver>, PromiseId, OpId, OpResult)>
     + 'static,
-) -> Option<v8::Local<'b, v8::Value>> {
+)  {
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
@@ -2212,8 +2164,9 @@ pub fn queue_async_op<'a, 'b>(
     // const maybeValue = op.op_async(promiseId, ...); // Returns immediate value OR undefined.
     // if (maybeValue) p.resolve(maybeValue);
     // return p;
-    EagerPollResult::Ready((_, _, _, mut resp)) if !deferred => {
-      Some(resp.to_v8(scope).unwrap())
+    EagerPollResult::Ready((_, _, _, _, mut resp)) if !deferred => {
+      let value = resp.to_v8(scope).unwrap();
+      resolver.resolve(scope, value);
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
@@ -2222,7 +2175,6 @@ pub fn queue_async_op<'a, 'b>(
       let mut state = ctx.runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
-      None
     }
     EagerPollResult::Pending(op) => {
       let state = ctx.state.borrow();
@@ -2230,7 +2182,6 @@ pub fn queue_async_op<'a, 'b>(
       let mut state = ctx.runtime_state.borrow_mut();
       state.pending_ops.push(op);
       state.have_unpolled_ops = true;
-      None
     }
   }
 }

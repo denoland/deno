@@ -215,7 +215,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (context, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (context, resolver_global, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -246,6 +246,10 @@ fn codegen_v8_async(
         return;
       }
     };
+    
+    let resolver = #core::v8::PromiseResolver::new(scope).unwrap();
+    let promise = resolver.get_promise(scope);
+    let resolver_global = #core::v8::Global::new(scope, resolver);
 
     #arg_decls
 
@@ -261,13 +265,12 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    if let Some(value) = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
+    #core::_ops::queue_async_op(ctx, scope, resolver, #deferred, async move {
       let result = #result_fut
       #result_wrapper
-      (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    }) {
-      rv.set(value);
-    }
+      (context, resolver_global, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+    });
+    rv.set(promise.into());
   }
 }
 
