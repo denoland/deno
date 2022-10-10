@@ -1132,9 +1132,7 @@
       "Event interface: calling initEvent(DOMString, optional boolean, optional boolean) on new CustomEvent(\"foo\") with too few arguments must throw TypeError",
       "EventTarget interface: operation addEventListener(DOMString, EventListener?, optional (AddEventListenerOptions or boolean))",
       "EventTarget interface: operation removeEventListener(DOMString, EventListener?, optional (EventListenerOptions or boolean))",
-      "AbortController interface: existence and properties of interface object",
       "AbortController interface: operation abort(optional any)",
-      "AbortSignal interface: existence and properties of interface object",
       "AbortSignal interface: operation abort(optional any)",
       "AbortSignal interface: operation timeout(unsigned long long)",
       "AbortSignal interface: attribute onabort"
