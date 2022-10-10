@@ -826,6 +826,62 @@
     return finalBuffer;
   }
 
+  /**
+   * Create a new Writable object that is backed by a Resource that implements
+   * `Resource::write` / `Resource::write_all`. This object contains enough
+   * metadata to allow callers to bypass the JavaScript WritableStream
+   * implementation and write directly to the underlying resource if they so
+   * choose (FastStream).
+   *
+   * @param {number} rid The resource ID to write to.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function writableStreamForRid(rid, autoClose = true) {
+    const stream = webidl.createBranded(WritableStream);
+    stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
+    const underlyingSink = {
+      async write(chunk, controller) {
+        try {
+          await core.writeAll(rid, chunk);
+        } catch (e) {
+          controller.error(e);
+          tryClose();
+        }
+      },
+      close() {
+        tryClose();
+      },
+      abort() {
+        tryClose();
+      },
+    };
+    initializeWritableStream(stream);
+    setUpWritableStreamDefaultControllerFromUnderlyingSink(
+      stream,
+      underlyingSink,
+      underlyingSink,
+      1,
+      () => 1,
+    );
+    return stream;
+  }
+
+  function getWritableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
+  }
+
   /*
    * @param {ReadableStream} stream
    */
@@ -6059,6 +6115,8 @@
     readableStreamForRidUnrefableUnref,
     readableStreamThrowIfErrored,
     getReadableStreamResourceBacking,
+    writableStreamForRid,
+    getWritableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
