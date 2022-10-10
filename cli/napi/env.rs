@@ -1,6 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::deno_napi::*;
+use std::os::raw::c_char;
 
 /// # Safety
 ///
@@ -125,7 +126,7 @@ const NODE_VERSION: napi_node_version = napi_node_version {
   major: 17,
   minor: 4,
   patch: 0,
-  release: "Deno\0".as_ptr() as *const i8,
+  release: "Deno\0".as_ptr() as *const c_char,
 };
 
 #[napi_sym::napi_sym]
