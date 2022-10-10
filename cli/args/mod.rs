@@ -472,6 +472,23 @@ mod test {
   }
 
   #[test]
+  fn resolve_import_map_remote_config_file_local() {
+    let config_text = r#"{
+      "importMap": "https://example.com/import_map.json"
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(
+      actual,
+      Some(ModuleSpecifier::parse("https://example.com/import_map.json").unwrap())
+    );
+  }
+
+  #[test]
   fn resolve_import_map_config_file_remote() {
     let config_text = r#"{
       "importMap": "./import_map.json"
