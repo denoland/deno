@@ -2681,7 +2681,8 @@
           "Check cache attribute",
           "Check integrity attribute",
           "Check isReloadNavigation attribute",
-          "Check isHistoryNavigation attribute"
+          "Check isHistoryNavigation attribute",
+          "Check duplex attribute"
         ],
         "request-structure.any.worker.html": [
           "Check destination attribute",
@@ -2692,7 +2693,8 @@
           "Check cache attribute",
           "Check integrity attribute",
           "Check isReloadNavigation attribute",
-          "Check isHistoryNavigation attribute"
+          "Check isHistoryNavigation attribute",
+          "Check duplex attribute"
         ],
         "forbidden-method.any.html": true,
         "forbidden-method.any.worker.html": true
@@ -3157,6 +3159,7 @@
         "Request interface: attribute isHistoryNavigation",
         "Request interface: attribute body",
         "Request interface: attribute bodyUsed",
+        "Request interface: attribute duplex",
         "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
@@ -3167,6 +3170,7 @@
         "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
+        "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
         "Response interface: operation error()",
         "Response interface: operation redirect(USVString, optional unsigned short)",
         "Response interface: operation json(any, optional ResponseInit)",
@@ -3188,6 +3192,7 @@
         "Request interface: attribute isHistoryNavigation",
         "Request interface: attribute body",
         "Request interface: attribute bodyUsed",
+        "Request interface: attribute duplex",
         "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
@@ -3198,6 +3203,7 @@
         "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
+        "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
         "Response interface: operation error()",
         "Response interface: operation redirect(USVString, optional unsigned short)",
         "Response interface: operation json(any, optional ResponseInit)",
