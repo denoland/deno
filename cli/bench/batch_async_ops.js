@@ -5,7 +5,7 @@ let [total, count] = typeof Deno !== "undefined"
   : [process.argv[2], process.argv[3]];
 
 total = total ? parseInt(total, 0) : 50;
-count = count ? parseInt(count, 10) : 100000;
+count = count ? parseInt(count, 10) : 1000000;
 
 const promises = new Array(count);
 async function bench(fun) {

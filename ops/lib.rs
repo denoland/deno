@@ -247,8 +247,7 @@ fn codegen_v8_async(
       }
     };
     
-    let resolver = #core::v8::PromiseResolver::new(scope).unwrap();
-    let promise = resolver.get_promise(scope);
+    let resolver = #core::v8::Local::<#core::v8::Function>::try_from(args.get(1)).unwrap();
     let resolver_global = #core::v8::Global::new(scope, resolver);
 
     #arg_decls
@@ -265,12 +264,13 @@ fn codegen_v8_async(
     };
 
     #pre_result
-    #core::_ops::queue_async_op(ctx, scope, resolver, #deferred, async move {
+    if let Some(value) = #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (context, resolver_global, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    });
-    rv.set(promise.into());
+    }) {
+      rv.set(value);
+    }
   }
 }
 

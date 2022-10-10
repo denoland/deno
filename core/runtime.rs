@@ -48,7 +48,7 @@ use std::task::Poll;
 use std::task::Waker;
 
 type PendingOpFuture =
-  OpCall<(v8::Global<v8::Context>, v8::Global<v8::PromiseResolver>, PromiseId, OpId, OpResult)>;
+  OpCall<(v8::Global<v8::Context>, v8::Global<v8::Function>, PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1954,7 +1954,8 @@ impl JsRuntime {
           .to_v8(scope)
           .unwrap(),
       };
-      resolver.resolve(scope, result);
+      let recv = v8::undefined(scope);
+      resolver.call(scope, recv.into(), &[result]).unwrap();
     }
     Ok(())
   }
@@ -2151,11 +2152,10 @@ impl JsRealm {
 pub fn queue_async_op<'a, 'b>(
   ctx: &OpCtx,
   scope: &'a mut v8::HandleScope<'b>,
-  resolver: v8::Local<'b, v8::PromiseResolver>,
   deferred: bool,
-  op: impl Future<Output = (v8::Global<v8::Context>, v8::Global<v8::PromiseResolver>, PromiseId, OpId, OpResult)>
+  op: impl Future<Output = (v8::Global<v8::Context>, v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
     + 'static,
-)  {
+) -> Option<v8::Local<'b, v8::Value>> {
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
@@ -2165,8 +2165,7 @@ pub fn queue_async_op<'a, 'b>(
     // if (maybeValue) p.resolve(maybeValue);
     // return p;
     EagerPollResult::Ready((_, _, _, _, mut resp)) if !deferred => {
-      let value = resp.to_v8(scope).unwrap();
-      resolver.resolve(scope, value);
+      Some(resp.to_v8(scope).unwrap())
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
@@ -2175,6 +2174,7 @@ pub fn queue_async_op<'a, 'b>(
       let mut state = ctx.runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
+      None
     }
     EagerPollResult::Pending(op) => {
       let state = ctx.state.borrow();
@@ -2182,6 +2182,7 @@ pub fn queue_async_op<'a, 'b>(
       let mut state = ctx.runtime_state.borrow_mut();
       state.pending_ops.push(op);
       state.have_unpolled_ops = true;
+      None
     }
   }
 }
