@@ -249,7 +249,6 @@ impl ResourceTable {
     let removed_resource = self.index.insert(rid, resource);
     assert!(removed_resource.is_none());
     self.next_rid += 1;
-    eprintln!("resource added. rid: {}", rid);
     rid
   }
 
@@ -269,13 +268,7 @@ impl ResourceTable {
       .index
       .get(&rid)
       .and_then(|rc| rc.downcast_rc::<T>())
-      .map(|x| {
-        if rid == 3 {
-          let c = Rc::strong_count(x);
-          eprintln!("[get] current count = {}, inc_count = {}", c, c + 1);
-        }
-        Rc::clone(x)
-      })
+      .map(Clone::clone)
       .ok_or_else(bad_resource_id)
   }
 
@@ -283,13 +276,7 @@ impl ResourceTable {
     self
       .index
       .get(&rid)
-      .map(|x| {
-        if rid == 3 {
-          let c = Rc::strong_count(x);
-          eprintln!("[get_any] current count = {}, inc_count = {}", c, c + 1);
-        }
-        Rc::clone(x)
-      })
+      .map(Clone::clone)
       .ok_or_else(bad_resource_id)
   }
 
@@ -306,22 +293,23 @@ impl ResourceTable {
   /// Removes a resource of type `T` from the resource table and returns it.
   /// If a resource with the given `rid` exists but its type does not match `T`,
   /// it is not removed from the resource table. Note that the resource's
-  /// `close()` method is *not* called.
+  /// `close()` method is *not* called. Also note that there might be a case where
+  /// the returned `Rc<T>` is referenced by other variables. That is, we cannot
+  /// assume that `Rc::strong_count(&returned_rc)` is always equal to 1 on success.
+  /// In particular, be really careful when you want to extract the inner value of
+  /// type `T` from `Rc<T>`.
   pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Result<Rc<T>, Error> {
     let resource = self.get::<T>(rid)?;
     self.index.remove(&rid);
-    if rid == 3 {
-      eprintln!(
-        "[magurotuna] rid {} being taken. reference={}",
-        rid,
-        Rc::strong_count(&resource)
-      );
-    }
     Ok(resource)
   }
 
   /// Removes a resource from the resource table and returns it. Note that the
-  /// resource's `close()` method is *not* called.
+  /// resource's `close()` method is *not* called. Also note that there might be a
+  /// case where the returned `Rc<T>` is referenced by other variables. That is,
+  /// we cannot assume that `Rc::strong_count(&returned_rc)` is always equal to 1
+  /// on success. In particular, be really careful when you want to extract the
+  /// inner value of type `T` from `Rc<T>`.
   pub fn take_any(
     &mut self,
     rid: ResourceId,

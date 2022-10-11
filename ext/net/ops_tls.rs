@@ -812,14 +812,16 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
-  eprintln!("[b-1] Trying to take TcpStreamResource! Assuming there's no other strong reference");
+
   let resource_rc = state
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(rid)?;
+  // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
+  // process of starting a TLS connection on top of this TCP connection, so we just return a bad
+  // resource error. See also: https://github.com/denoland/deno/issues/99999999 (TODO)
   let resource = Rc::try_unwrap(resource_rc)
-    .expect("Only a single use of this resource should happen");
-  eprintln!("[b-2] Taking TcpStreamResource has successfully finished");
+    .map_err(|_| bad_resource("TCP stream is being used somewhere else"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
