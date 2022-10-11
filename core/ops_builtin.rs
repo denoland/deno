@@ -170,8 +170,7 @@ async fn op_read(
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
-  let result = resource.read_byob(view).await.map(|(n, _)| n as u32);
-  result
+  resource.read_byob(view).await.map(|(n, _)| n as u32)
 }
 
 #[op]

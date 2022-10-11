@@ -169,6 +169,7 @@ Deno.test(
 
     serverConn.close();
     tcpListener.close();
+    await readPromise;
   },
 );
 
