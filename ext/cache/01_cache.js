@@ -170,7 +170,6 @@
         prefix,
         context: "Argument 1",
       });
-
       const p = await this[_matchAll](request, options);
       if (p.length > 0) {
         return p[0];
