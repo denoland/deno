@@ -66,7 +66,7 @@ fn op_add(a: i32, b: i32) -> i32 {
 #[op(fast)]
 pub fn op_void_sync() {}
 
-#[op]
+#[op(fast)]
 pub async fn op_void_async() {}
 
 #[op(deferred)]
@@ -193,14 +193,14 @@ async fn op_read_all(
   }
 }
 
-#[op]
+#[op(fast)]
 async fn op_write(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  buf: ZeroCopyBuf,
-) -> Result<u32, Error> {
-  let resource = state.borrow().resource_table.get_any(rid)?;
-  resource.write(buf).await.map(|n| n as u32)
+  rid: u32,
+  buf: &[u8],
+) {
+  let resource = state.borrow().resource_table.get_any(rid).unwrap();
+  resource.write(ZeroCopyBuf::from_slice(buf)).await.map(|n| n as u32).unwrap();
 }
 
 #[op]

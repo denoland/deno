@@ -48,7 +48,7 @@ use std::task::Poll;
 use std::task::Waker;
 
 type PendingOpFuture =
-  OpCall<(v8::Global<v8::Context>, v8::Global<v8::Function>, PromiseId, OpId, OpResult)>;
+  OpCall<(v8::Global<v8::Function>, PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -329,6 +329,18 @@ impl JsRuntime {
       op_state.get_error_class_fn = get_error_class_fn;
     }
     let op_state = Rc::new(RefCell::new(op_state));
+
+    let align = std::mem::align_of::<usize>();
+    let layout = std::alloc::Layout::from_size_align(
+      std::mem::size_of::<*mut v8::OwnedIsolate>(),
+      align,
+    )
+    .unwrap();
+    assert!(layout.size() > 0);
+    let isolate_ptr: *mut v8::OwnedIsolate =
+      // SAFETY: we just asserted that layout has non-0 size.
+      unsafe { std::alloc::alloc(layout) as *mut _ };
+
     let rc_state = Rc::new(RefCell::new(JsRuntimeState {
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
@@ -360,6 +372,7 @@ impl JsRuntime {
         state: op_state.clone(),
         runtime_state: rc_state.clone(),
         decl,
+        isolate: isolate_ptr,
       })
       .collect::<Vec<_>>()
       .into_boxed_slice();
@@ -368,17 +381,6 @@ impl JsRuntime {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
-
-    let align = std::mem::align_of::<usize>();
-    let layout = std::alloc::Layout::from_size_align(
-      std::mem::size_of::<*mut v8::OwnedIsolate>(),
-      align,
-    )
-    .unwrap();
-    assert!(layout.size() > 0);
-    let isolate_ptr: *mut v8::OwnedIsolate =
-      // SAFETY: we just asserted that layout has non-0 size.
-      unsafe { std::alloc::alloc(layout) as *mut _ };
 
     let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
@@ -1922,7 +1924,7 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {    
+  fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let isolate = self.v8_isolate.as_mut().unwrap();
 
     loop {
@@ -1931,11 +1933,11 @@ impl JsRuntime {
       let item = match state.pending_ops.poll_next_unpin(cx) {
         Poll::Ready(Some(item)) => item,
         _ => break,
-      };       
-      let (context, resolver, promise_id, op_id, mut resp) = item;
+      };
+      let (resolver, promise_id, op_id, mut resp) = item;
       state.op_state.borrow().tracker.track_async_completed(op_id);
 
-      let realm = JsRealm::new(context);
+      let realm = state.global_realm.as_ref().unwrap();
       realm
         .state(isolate)
         .borrow_mut()
@@ -1943,15 +1945,15 @@ impl JsRuntime {
         .remove(&promise_id);
 
       let recv = v8::undefined(isolate);
-
-      let resolver = resolver.open(isolate);
       let scope = &mut realm.handle_scope(isolate);
+      let resolver = resolver.open(scope);
+
       let result = match resp.to_v8(scope) {
         Ok(v) => v,
         Err(_) => todo!(),
       };
       drop(state);
-      resolver.call(scope, recv.into(), &[result]).unwrap(); 
+      resolver.call(scope, recv.into(), &[result]).unwrap();
     }
 
     Ok(())
@@ -2150,7 +2152,7 @@ pub fn queue_async_op<'a, 'b>(
   ctx: &OpCtx,
   scope: &'a mut v8::HandleScope<'b>,
   deferred: bool,
-  op: impl Future<Output = (v8::Global<v8::Context>, v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
+  op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
     + 'static,
 ) -> Option<v8::Local<'b, v8::Value>> {
   match OpCall::eager(op) {
@@ -2161,8 +2163,40 @@ pub fn queue_async_op<'a, 'b>(
     // const maybeValue = op.op_async(promiseId, ...); // Returns immediate value OR undefined.
     // if (maybeValue) p.resolve(maybeValue);
     // return p;
-    EagerPollResult::Ready((_, _, _, _, mut resp)) if !deferred => {
+    EagerPollResult::Ready((_, _, _, mut resp)) if !deferred => {
       Some(resp.to_v8(scope).unwrap())
+    }
+    EagerPollResult::Ready(op) => {
+      let ready = OpCall::ready(op);
+      let state = ctx.state.borrow();
+      state.tracker.track_async(ctx.id);
+      let mut state = ctx.runtime_state.borrow_mut();
+      state.pending_ops.push(ready);
+      state.have_unpolled_ops = true;
+      None
+    }
+    EagerPollResult::Pending(op) => {
+      let state = ctx.state.borrow();
+      state.tracker.track_async(ctx.id);
+      let mut state = ctx.runtime_state.borrow_mut();
+      state.pending_ops.push(op);
+      state.have_unpolled_ops = true;
+      None
+    }
+  }
+}
+
+#[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  deferred: bool,
+  op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
+    + 'static,
+) -> Option<()> {
+  match OpCall::eager(op) {
+    EagerPollResult::Ready((_, _, _, mut resp)) if !deferred => {
+      // TODO
+      Some(())
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);

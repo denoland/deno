@@ -16,6 +16,15 @@ async function bench(fun) {
   if (--total) queueMicrotask(() => bench(fun));
 }
 
-bench(() => Deno.writeFile("/dev/null", new Uint8Array(10)));
-// const fs = require("fs").promises;
+const file = await Deno.open("/tmp/1.txt", { write: true, create: true });
+bench(() => file.write(new Uint8Array(1024)));
+
+// bench(() => Deno.writeFile("/dev/null", new Uint8Array(10)));
+
+// (async () => {
+//   const fs = require("fs").promises;
+//   const fd = await fs.open("/tmp/1.txt", "w");
+//   bench(() => fd.write(new Uint8Array(1024)));
+// })();
+
 // bench(() => fs.writeFile("/dev/null", new Uint8Array(10)));

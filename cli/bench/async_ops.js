@@ -18,9 +18,9 @@ async function bench(fun) {
 
 const core = Deno.core;
 const ops = core.ops;
-if (core.callAsync) {
-  const opCall = (a, b) => ops.op_void_async(a, b);
-  bench(() => core.callAsync(opCall));
+if (core.opFastAsync) {
+  const opCall = (a, b) => ops.op_void_async_deferred(a, b);
+  bench(() => core.opFastAsync(opCall));
 } else {
-  bench(() => core.opAsync("op_void_async"));
+  bench(() => core.opAsync("op_void_async_deferred"));
 }

@@ -160,12 +160,12 @@
     return res;
   }
 
-  function callAsync(cb) {
+  // Use this to call `#[op(fast)]` async ops.
+  function opFastAsync(cb) {
     const promiseId = nextPromiseId++;
     let p = newPromise(promiseId);
-    const maybeValue = cb(promiseId, p.resolve);
-    if (maybeValue !== undefined) {
-      p.resolve(maybeValue);
+    if (cb(promiseId, p.resolve) === 1) {
+      p.resolve(null);
       return p;
     }
     p = PromisePrototypeThen(p, unwrapOpResult);
@@ -178,7 +178,6 @@
     const promiseId = nextPromiseId++;
     let p = newPromise();
     const maybeValue = ops[opName](promiseId, p.resolve, ...args);
-
     if (maybeValue !== undefined) {
       p.resolve(maybeValue);
       return p;
@@ -322,7 +321,7 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
-    callAsync,
+    opFastAsync,
     resources,
     metrics,
     registerErrorBuilder,
@@ -343,7 +342,7 @@
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),
-    write: opAsync.bind(null, "op_write"),
+    write: (rid, buf) => opFastAsync((a, b) => ops.op_write(a, b, rid, buf)),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),

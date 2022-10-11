@@ -154,6 +154,7 @@ pub struct OpCtx {
   pub state: Rc<RefCell<OpState>>,
   pub decl: OpDecl,
   pub runtime_state: Rc<RefCell<JsRuntimeState>>,
+  pub isolate: *mut v8::OwnedIsolate,
 }
 
 /// Maintains the resources and ops inside a JS runtime.

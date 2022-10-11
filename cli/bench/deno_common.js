@@ -22,7 +22,7 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 }
 
 // deno-lint-ignore camelcase
-const { op_void_sync } = Deno.core.ops;
+const { op_void_sync, op_void_async } = Deno.core.ops;
 function sync() {
   return op_void_sync();
 }
@@ -31,10 +31,16 @@ sync(); // Warmup
 // Void ops measure op-overhead
 Deno.bench("op_void_sync", () => sync());
 
+const { opFastAsync, opAsync } = Deno.core;
+
 Deno.bench(
-  "op_void_async",
-  { n: 1e6 },
-  () => Deno.core.opAsync("op_void_async"),
+  "op_void_async (opAsync)",
+  () => opAsync("op_void_async"),
+);
+
+Deno.bench(
+  "op_void_async (opFastAsync)",
+  () => opFastAsync((a, b) => op_void_async(a, b)),
 );
 
 // A very lightweight op, that should be highly optimizable

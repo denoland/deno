@@ -34,12 +34,25 @@ Cases where code is optimized away:
 The macro will infer and try to auto generate V8 fast API call trait impl for
 `sync` ops with:
 
-- arguments: integers, bool, `&mut OpState`, `&[u8]`, &mut [u8]`,`&[u32]`,`&mut
-  [u32]`
+- arguments: integers, bool, `&mut OpState`, `&[u8]`,
+  `&mut [u8]`,`&[u32]`,`&mut [u32]`
 - return_type: integers, bool
 
 The `#[op(fast)]` attribute should be used to enforce fast call generation at
 compile time.
 
-Trait gen for `async` ops & a ZeroCopyBuf equivalent type is planned and will be
-added soon.
+### Async fast calls
+
+Async ops annotated with `#[op(fast)]` that return `()` or `Result<(), Error>`
+are elligible for fast call scheduling. They should be called from JS using
+
+```js
+const { core } = Deno;
+const { ops } = core;
+
+const buf = new Uint8Array(1024);
+const rid = 0; // You'd get this from another op.
+const call = (i, p) => ops.op_read(i, p, rid, buf);
+
+await core.opFastAsync(call);
+```
