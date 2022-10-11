@@ -18,4 +18,4 @@ async function bench(fun) {
   if (--total) await bench(fun);
 }
 
-await bench(() => Deno.core.opAsync("op_void_async"));
+await bench(() => Deno.core.opAsync("op_void_async_deferred"));

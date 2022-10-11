@@ -16,5 +16,11 @@ async function bench(fun) {
   if (--total) await bench(fun);
 }
 
-bench(() => Deno.core.opAsync("op_void_async"));
-// bench(() => Deno.core.ops.op_void_sync());
+const core = Deno.core;
+const ops = core.ops;
+if (core.callAsync) {
+  const opCall = (a, b) => ops.op_void_async(a, b);
+  bench(() => core.callAsync(opCall));
+} else {
+  bench(() => core.opAsync("op_void_async"));
+}

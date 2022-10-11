@@ -1923,40 +1923,37 @@ impl JsRuntime {
 
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {    
-    let mut results = vec![];
     let isolate = self.v8_isolate.as_mut().unwrap();
-    // Now handle actual ops.
-    {
+
+    loop {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (context, resolver, promise_id, op_id, resp) = item;
-        state.op_state.borrow().tracker.track_async_completed(op_id);
+      let item = match state.pending_ops.poll_next_unpin(cx) {
+        Poll::Ready(Some(item)) => item,
+        _ => break,
+      };       
+      let (context, resolver, promise_id, op_id, mut resp) = item;
+      state.op_state.borrow().tracker.track_async_completed(op_id);
 
-        let realm = JsRealm::new(context);
-        realm
-          .state(isolate)
-          .borrow_mut()
-          .unrefed_ops
-          .remove(&promise_id);
+      let realm = JsRealm::new(context);
+      realm
+        .state(isolate)
+        .borrow_mut()
+        .unrefed_ops
+        .remove(&promise_id);
 
-        results.push((realm, resolver, resp));
-      }
-    }
+      let recv = v8::undefined(isolate);
 
-    for (realm, resolver, mut resp) in results {
+      let resolver = resolver.open(isolate);
       let scope = &mut realm.handle_scope(isolate);
-      let resolver = resolver.open(scope);
       let result = match resp.to_v8(scope) {
         Ok(v) => v,
-        Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-          .to_v8(scope)
-          .unwrap(),
+        Err(_) => todo!(),
       };
-      let recv = v8::undefined(scope);
-      resolver.call(scope, recv.into(), &[result]).unwrap();
+      drop(state);
+      resolver.call(scope, recv.into(), &[result]).unwrap(); 
     }
+
     Ok(())
   }
 

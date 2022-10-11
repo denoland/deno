@@ -160,9 +160,23 @@
     return res;
   }
 
-  function opAsync(opName, ...args) {
+  function callAsync(cb) {
     const promiseId = nextPromiseId++;
     let p = newPromise(promiseId);
+    const maybeValue = cb(promiseId, p.resolve);
+    if (maybeValue !== undefined) {
+      p.resolve(maybeValue);
+      return p;
+    }
+    p = PromisePrototypeThen(p, unwrapOpResult);
+    // Save the id on the promise so it can later be ref'ed or unref'ed
+    p[promiseIdSymbol] = promiseId;
+    return p;
+  }
+
+  function opAsync(opName, ...args) {
+    const promiseId = nextPromiseId++;
+    let p = newPromise();
     const maybeValue = ops[opName](promiseId, p.resolve, ...args);
 
     if (maybeValue !== undefined) {
@@ -308,6 +322,7 @@
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
+    callAsync,
     resources,
     metrics,
     registerErrorBuilder,
