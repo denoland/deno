@@ -261,9 +261,6 @@ impl ResourceTable {
   /// given `rid`. If `rid` is not present or has a type different than `T`,
   /// this function returns `None`.
   pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, Error> {
-    if rid == 3 {
-      eprintln!("[magurotuna] rid {} being gotten", rid);
-    }
     self
       .index
       .get(&rid)

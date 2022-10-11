@@ -161,7 +161,8 @@ Deno.test(
 
     const buf = new Uint8Array(128);
     const readPromise = clientConn.read(buf);
-    // `clientConn` is being used by a pending promise (`readPromise`) so `Deno.startTls` cannot consume the connection.
+    // `clientConn` is being used by a pending promise (`readPromise`) so
+    // `Deno.startTls` cannot consume the connection.
     await assertRejects(
       () => Deno.startTls(clientConn, { hostname }),
       Deno.errors.BadResource,

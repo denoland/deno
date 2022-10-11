@@ -819,7 +819,7 @@ where
     .take::<TcpStreamResource>(rid)?;
   // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
   // process of starting a TLS connection on top of this TCP connection, so we just return a bad
-  // resource error. See also: https://github.com/denoland/deno/issues/99999999 (TODO)
+  // resource error. See also: https://github.com/denoland/deno/pull/16242
   let resource = Rc::try_unwrap(resource_rc)
     .map_err(|_| bad_resource("TCP stream is being used somewhere else"))?;
   let (read_half, write_half) = resource.into_inner();
