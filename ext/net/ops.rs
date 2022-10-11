@@ -1119,9 +1119,12 @@ mod tests {
       .get::<TcpStreamResource>(rid)
       .unwrap();
 
+    eprintln!("[a-1] TcpStreamResource is strongly borrowed");
+
     let wr = resource.wr_borrow_mut().await;
     let stream = wr.as_ref().as_ref();
     let socket = socket2::SockRef::from(stream);
     test_fn(socket);
+    eprintln!("[a-2] Borrowed TcpStreamResource is released now");
   }
 }

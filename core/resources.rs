@@ -249,6 +249,7 @@ impl ResourceTable {
     let removed_resource = self.index.insert(rid, resource);
     assert!(removed_resource.is_none());
     self.next_rid += 1;
+    eprintln!("resource added. rid: {}", rid);
     rid
   }
 
@@ -261,11 +262,20 @@ impl ResourceTable {
   /// given `rid`. If `rid` is not present or has a type different than `T`,
   /// this function returns `None`.
   pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, Error> {
+    if rid == 3 {
+      eprintln!("[magurotuna] rid {} being gotten", rid);
+    }
     self
       .index
       .get(&rid)
       .and_then(|rc| rc.downcast_rc::<T>())
-      .map(Clone::clone)
+      .map(|x| {
+        if rid == 3 {
+          let c = Rc::strong_count(x);
+          eprintln!("[get] current count = {}, inc_count = {}", c, c + 1);
+        }
+        Rc::clone(x)
+      })
       .ok_or_else(bad_resource_id)
   }
 
@@ -273,7 +283,13 @@ impl ResourceTable {
     self
       .index
       .get(&rid)
-      .map(Clone::clone)
+      .map(|x| {
+        if rid == 3 {
+          let c = Rc::strong_count(x);
+          eprintln!("[get_any] current count = {}, inc_count = {}", c, c + 1);
+        }
+        Rc::clone(x)
+      })
       .ok_or_else(bad_resource_id)
   }
 
@@ -294,6 +310,13 @@ impl ResourceTable {
   pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Result<Rc<T>, Error> {
     let resource = self.get::<T>(rid)?;
     self.index.remove(&rid);
+    if rid == 3 {
+      eprintln!(
+        "[magurotuna] rid {} being taken. reference={}",
+        rid,
+        Rc::strong_count(&resource)
+      );
+    }
     Ok(resource)
   }
 

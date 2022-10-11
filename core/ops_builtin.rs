@@ -168,9 +168,13 @@ async fn op_read(
   rid: ResourceId,
   buf: ZeroCopyBuf,
 ) -> Result<u32, Error> {
+  eprintln!("op_read called rid = {}", rid);
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
-  resource.read_byob(view).await.map(|(n, _)| n as u32)
+  eprintln!("op_read before await (i.e. resource is acquired)");
+  let result = resource.read_byob(view).await.map(|(n, _)| n as u32);
+  eprintln!("op_read after await (i.e. resource is about to release)");
+  result
 }
 
 #[op]

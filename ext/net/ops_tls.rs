@@ -812,12 +812,14 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
+  eprintln!("[b-1] Trying to take TcpStreamResource! Assuming there's no other strong reference");
   let resource_rc = state
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(rid)?;
   let resource = Rc::try_unwrap(resource_rc)
     .expect("Only a single use of this resource should happen");
+  eprintln!("[b-2] Taking TcpStreamResource has successfully finished");
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
