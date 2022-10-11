@@ -2393,7 +2393,7 @@ Deno.test(
     clientConn.close();
     listener.close();
     await readPromise;
-  }
+  },
 );
 
 Deno.test(
@@ -2426,9 +2426,8 @@ Deno.test(
     clientConn.close();
     listener.close();
     await readPromise;
-  }
+  },
 );
-
 
 Deno.test(
   {
@@ -2451,9 +2450,8 @@ Deno.test(
     clientConn.close();
     listener.close();
     await readPromise;
-  }
+  },
 );
-
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
