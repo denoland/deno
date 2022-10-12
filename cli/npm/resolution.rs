@@ -14,6 +14,8 @@ use deno_core::futures;
 use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
+use deno_core::serde_json;
+use std::path::PathBuf;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
@@ -50,6 +52,22 @@ impl NpmPackageReference {
         bail!("Not an npm specifier: {}", specifier);
       }
     };
+
+    if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with("/") {
+      let p = PathBuf::from(&specifier).join("package.json");
+      let package_json_str = std::fs::read_to_string(p)?;
+      let package_json: serde_json::Value = serde_json::from_str(&package_json_str)?;
+      let name = package_json["name"].as_str().unwrap().to_string();
+      let version_req = SpecifierVersionReq::parse(package_json["version"].as_str().unwrap()).unwrap();
+      return Ok(NpmPackageReference { 
+        req: NpmPackageReq {
+          name,
+          version_req: Some(version_req),
+        }, 
+        sub_path: None 
+      });
+    }
+
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
@@ -77,18 +95,7 @@ impl NpmPackageReference {
     } else {
       Some(parts[name_part_len..].join("/"))
     };
-
-    if let Some(sub_path) = &sub_path {
-      if let Some(at_index) = sub_path.rfind('@') {
-        let (new_sub_path, version) = sub_path.split_at(at_index);
-        let msg = format!(
-          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
-          name, sub_path, name, version, new_sub_path
-        );
-        return Err(generic_error(msg));
-      }
-    }
-
+    eprintln!("package req {} {:?} {:?}", name, version_req, sub_path);
     Ok(NpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,
@@ -377,6 +384,7 @@ impl NpmResolution {
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
+    eprintln!("packages {:#?}", packages);
     for package_ref in packages {
       if snapshot.package_reqs.contains_key(&package_ref) {
         // skip analyzing this package, as there's already a matching top level package

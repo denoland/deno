@@ -167,6 +167,15 @@ impl NpmRegistryApi {
     if let Some(info) = maybe_info {
       Ok(info)
     } else {
+      eprintln!("name {}", name);
+      if name.starts_with("../") || name.starts_with("./") || name.starts_with("/") {
+        return Ok(Some(NpmPackageInfo { 
+          name: "foo".to_string(), 
+          versions: HashMap::new(), 
+          dist_tags: HashMap::new()
+        }));
+      }
+
       let mut maybe_package_info = None;
       if self.cache_setting.should_use_for_npm_package(name) {
         // attempt to load from the file cache
@@ -178,6 +187,7 @@ impl NpmRegistryApi {
           .load_package_info_from_registry(name)
           .await
           .with_context(|| {
+            // panic!();
           format!("Error getting response at {}", self.get_package_url(name))
         })?;
       }
