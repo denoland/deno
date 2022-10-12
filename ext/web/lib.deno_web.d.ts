@@ -914,8 +914,8 @@ declare class MessagePort extends EventTarget {
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   /**
-   * Begins dispatching messages received on the port. This is implictly called
-   * when assiging a value to `this.onmessage`.
+   * Begins dispatching messages received on the port. This is implicitly called
+   * when assigning a value to `this.onmessage`.
    */
   start(): void;
   addEventListener<K extends keyof MessagePortEventMap>(

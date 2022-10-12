@@ -509,7 +509,7 @@ impl Resource for FetchResponseBodyResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(AnyError::from(err)),
+              Err(err) => break Err(type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
