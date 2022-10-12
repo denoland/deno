@@ -6,7 +6,7 @@ assert(window.hasOwnProperty("onload"));
 assert(window.onload === null);
 
 const eventHandler = (e: Event) => {
-  assert(e.type === 'beforeunload' ? e.cancelable : !e.cancelable);
+  assert(e.type === "beforeunload" ? e.cancelable : !e.cancelable);
   console.log(`got ${e.type} event in event handler (main)`);
 };
 
