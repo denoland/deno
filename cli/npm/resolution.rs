@@ -12,10 +12,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
-use deno_core::serde_json;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::PathBuf;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
@@ -33,27 +31,21 @@ pub trait NpmVersionMatcher {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct NpmPackageReference {
+pub struct RemoteNpmPackageReference {
   pub req: NpmPackageReq,
   pub sub_path: Option<String>,
 }
 
-// #[derive(Clone, Debug, Default, PartialEq, Eq)]
-// pub struct RemoteNpmPackageReference {
-//   pub req: NpmPackageReq,
-//   pub sub_path: Option<String>,
-// }
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LocalNpmPackageReference {
+  pub specifier: ModuleSpecifier,
+}
 
-// #[derive(Clone, Debug, Default, PartialEq, Eq)]
-// pub struct LocalNpmPackageReference {
-//   pub specifier: ModuleSpecifier,
-// }
-
-// #[derive(Clone, Debug, Default, PartialEq, Eq)]
-// pub enum NpmPackageReference {
-//   Remote(RemoteNpmPackageReference),
-//   Local(LocalNpmPackageReference),
-// }
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum NpmPackageReference {
+  Remote(RemoteNpmPackageReference),
+  Local(LocalNpmPackageReference),
+}
 
 impl NpmPackageReference {
   pub fn from_specifier(
@@ -74,21 +66,9 @@ impl NpmPackageReference {
       || specifier.starts_with("../")
       || specifier.starts_with("/")
     {
-      let p = PathBuf::from(&specifier).join("package.json");
-      let package_json_str = std::fs::read_to_string(p)?;
-      let package_json: serde_json::Value =
-        serde_json::from_str(&package_json_str)?;
-      let name = package_json["name"].as_str().unwrap().to_string();
-      let version_req =
-        SpecifierVersionReq::parse(package_json["version"].as_str().unwrap())
-          .unwrap();
-      return Ok(NpmPackageReference {
-        req: NpmPackageReq {
-          name,
-          version_req: Some(version_req),
-        },
-        sub_path: None,
-      });
+      return Ok(NpmPackageReference::Local(LocalNpmPackageReference {
+        specifier: ModuleSpecifier::from(specifier),
+      }));
     }
 
     let parts = specifier.split('/').collect::<Vec<_>>();
@@ -119,10 +99,10 @@ impl NpmPackageReference {
       Some(parts[name_part_len..].join("/"))
     };
     eprintln!("package req {} {:?} {:?}", name, version_req, sub_path);
-    Ok(NpmPackageReference {
+    Ok(NpmPackageReference::Remote(RemoteNpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,
-    })
+    }))
   }
 }
 
@@ -688,90 +668,90 @@ mod tests {
   fn parse_npm_package_ref() {
     assert_eq!(
       NpmPackageReference::from_str("npm:@package/test").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
           version_req: None,
         },
         sub_path: None,
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:@package/test@1").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
           version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
         },
         sub_path: None,
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:@package/test@~1.1/sub_path").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
           version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
         },
         sub_path: Some("sub_path".to_string()),
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
           version_req: None,
         },
         sub_path: Some("sub_path".to_string()),
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:test").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "test".to_string(),
           version_req: None,
         },
         sub_path: None,
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:test@^1.2").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "test".to_string(),
           version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
         },
         sub_path: None,
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:test@~1.1/sub_path").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "test".to_string(),
           version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
         },
         sub_path: Some("sub_path".to_string()),
-      }
+      })
     );
 
     assert_eq!(
       NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
-      NpmPackageReference {
+      NpmPackageReference::Remote(RemoteNpmPackageReference {
         req: NpmPackageReq {
           name: "@package/test".to_string(),
           version_req: None,
         },
         sub_path: Some("sub_path".to_string()),
-      }
+      })
     );
 
     assert_eq!(

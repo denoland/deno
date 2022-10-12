@@ -168,11 +168,14 @@ impl NpmRegistryApi {
       Ok(info)
     } else {
       eprintln!("name {}", name);
-      if name.starts_with("../") || name.starts_with("./") || name.starts_with("/") {
-        return Ok(Some(NpmPackageInfo { 
-          name: "foo".to_string(), 
-          versions: HashMap::new(), 
-          dist_tags: HashMap::new()
+      if name.starts_with("../")
+        || name.starts_with("./")
+        || name.starts_with("/")
+      {
+        return Ok(Some(NpmPackageInfo {
+          name: "foo".to_string(),
+          versions: HashMap::new(),
+          dist_tags: HashMap::new(),
         }));
       }
 
@@ -187,7 +190,7 @@ impl NpmRegistryApi {
           .load_package_info_from_registry(name)
           .await
           .with_context(|| {
-            // panic!();
+          // panic!();
           format!("Error getting response at {}", self.get_package_url(name))
         })?;
       }
