@@ -12,9 +12,9 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use deno_core::serde_json;
 use serde::Deserialize;
 use serde::Serialize;
-use deno_core::serde_json;
 use std::path::PathBuf;
 
 use super::registry::NpmPackageInfo;
@@ -38,6 +38,23 @@ pub struct NpmPackageReference {
   pub sub_path: Option<String>,
 }
 
+// #[derive(Clone, Debug, Default, PartialEq, Eq)]
+// pub struct RemoteNpmPackageReference {
+//   pub req: NpmPackageReq,
+//   pub sub_path: Option<String>,
+// }
+
+// #[derive(Clone, Debug, Default, PartialEq, Eq)]
+// pub struct LocalNpmPackageReference {
+//   pub specifier: ModuleSpecifier,
+// }
+
+// #[derive(Clone, Debug, Default, PartialEq, Eq)]
+// pub enum NpmPackageReference {
+//   Remote(RemoteNpmPackageReference),
+//   Local(LocalNpmPackageReference),
+// }
+
 impl NpmPackageReference {
   pub fn from_specifier(
     specifier: &ModuleSpecifier,
@@ -53,18 +70,24 @@ impl NpmPackageReference {
       }
     };
 
-    if specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with("/") {
+    if specifier.starts_with("./")
+      || specifier.starts_with("../")
+      || specifier.starts_with("/")
+    {
       let p = PathBuf::from(&specifier).join("package.json");
       let package_json_str = std::fs::read_to_string(p)?;
-      let package_json: serde_json::Value = serde_json::from_str(&package_json_str)?;
+      let package_json: serde_json::Value =
+        serde_json::from_str(&package_json_str)?;
       let name = package_json["name"].as_str().unwrap().to_string();
-      let version_req = SpecifierVersionReq::parse(package_json["version"].as_str().unwrap()).unwrap();
-      return Ok(NpmPackageReference { 
+      let version_req =
+        SpecifierVersionReq::parse(package_json["version"].as_str().unwrap())
+          .unwrap();
+      return Ok(NpmPackageReference {
         req: NpmPackageReq {
           name,
           version_req: Some(version_req),
-        }, 
-        sub_path: None 
+        },
+        sub_path: None,
       });
     }
 
