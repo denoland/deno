@@ -14,7 +14,6 @@
     ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
-    PromiseResolve,
     TypeError,
     Int32Array,
     Uint32Array,
@@ -238,6 +237,7 @@
 
   class UnsafeCallback {
     #refcount;
+    // Internal promise only meant to keep Deno from exiting
     #refpromise;
     #rid;
     definition;
@@ -268,6 +268,7 @@
           this.#rid,
         );
       }
+      return this.#refcount;
     }
 
     unref() {
@@ -275,29 +276,13 @@
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
         ops.op_ffi_unsafe_callback_unref(this.#rid);
-        return PromisePrototypeThen(this.#refpromise, () => {
-          this.#refpromise = undefined;
-          return true;
-        });
       }
-      return PromiseResolve(this.#refcount === 0);
+      return this.#refcount;
     }
 
     close() {
-      if (this.#refcount > 0) {
-        ops.op_ffi_unsafe_callback_unref(this.#rid);
-        this.#refcount = 0;
-      }
-      if (this.#refpromise) {
-        // Either close needed to unref, or an unref is still ongoing.
-        // Await for the refpromise to resolve, and only then close the resource.
-        PromisePrototypeThen(this.#refpromise, () => {
-          this.#refpromise = undefined;
-          core.close(this.#rid);
-        });
-      } else {
-        core.close(this.#rid);
-      }
+      this.#refcount = 0;
+      core.close(this.#rid);
     }
   }
 

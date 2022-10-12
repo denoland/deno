@@ -508,14 +508,14 @@ const addToFooCallback = new Deno.UnsafeCallback({
 console.log("Thread safe call counter:", counter);
 addToFooCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
-await addToFooCallback.unref();
+addToFooCallback.unref();
 logCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
-await logCallback.unref();
+logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
-await returnU8Callback.unref();
+// Purposefully do not unref returnU8Callback: Instead use it to test close() unrefing.
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);

@@ -831,21 +831,22 @@ declare namespace Deno {
     >;
 
     /**
-     * Adds one to this callback's reference counting.
+     * Adds one to this callback's reference counting and returns the
+     * new reference count.
      *
      * If the callback's reference count becomes non-zero, it will keep
      * Deno's process from exiting.
      */
-    ref(): void;
+    ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns a Promise
-     * that resolves with a boolean indicating if the callback is safe to close.
+     * Removes one from this callback's reference counting and returns
+     * the new reference count.
      *
      * If the callback's reference counter becomes zero, it will no longer
      * keep Deno's process from exiting.
      */
-    unref(): Promise<boolean>;
+    unref(): number;
 
     /**
      * Removes the C function pointer associated with the UnsafeCallback.
@@ -854,14 +855,6 @@ declare namespace Deno {
      *
      * Calling this method will also immediately set the callback's reference
      * counting to zero and it will no longer keep Deno's process from exiting.
-     * If the callback was ref'ed, then the removal of the C function is not
-     * synchronous and the closing of the callback resource will happen only
-     * after the unref'ing has resolved.
-     *
-     * If the exact timing of unref'ing and closing of the resource is important
-     * (eg. testing with resource checks), it is best to first manually unref the
-     * callback and call the `close()` method only after, at which point it is
-     * guaranteed to be synchronous.
      */
     close(): void;
   }

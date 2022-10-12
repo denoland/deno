@@ -14,6 +14,8 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -28,6 +30,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ffi::CStr;
+use std::future::IntoFuture;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
@@ -1364,6 +1367,7 @@ fn ffi_call(
 }
 
 struct UnsafeCallbackResource {
+  cancel: Rc<CancelHandle>,
   // Closure is never directly touched, but it keeps the C callback alive
   // until `close()` method is called.
   #[allow(dead_code)]
@@ -1377,6 +1381,7 @@ impl Resource for UnsafeCallbackResource {
   }
 
   fn close(self: Rc<Self>) {
+    self.cancel.cancel();
     // SAFETY: This drops the closure and the callback info associated with it.
     // Any retained function pointers to the closure become dangling pointers.
     // It is up to the user to know that it is safe to call the `close()` on the
@@ -1397,12 +1402,7 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
-  pub state: Arc<Mutex<SharedState>>,
-}
-
-struct SharedState {
-  refed: bool,
-  waker: Option<Waker>,
+  pub waker: Arc<Mutex<Option<Waker>>>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -1426,7 +1426,7 @@ unsafe extern "C" fn deno_ffi_callback(
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
-      if let Some(waker) = info.state.clone().lock().unwrap().waker.as_ref() {
+      if let Some(waker) = info.waker.clone().lock().unwrap().as_ref() {
         // Make sure event loop wakes up to receive our message before we start waiting for a response.
         waker.wake_by_ref();
       }
@@ -1786,10 +1786,7 @@ where
     callback,
     context,
     isolate,
-    state: Arc::new(Mutex::new(SharedState {
-      refed: false,
-      waker: None,
-    })),
+    waker: Arc::new(Mutex::new(None)),
   }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
@@ -1801,7 +1798,11 @@ where
     info.as_ref().unwrap()
   });
   let ptr = *closure.code_ptr() as usize;
-  let resource = UnsafeCallbackResource { closure, info };
+  let resource = UnsafeCallbackResource {
+    cancel: CancelHandle::new_rc(),
+    closure,
+    info,
+  };
   let rid = state.resource_table.add(resource);
 
   let rid_local = v8::Integer::new_from_unsigned(scope, rid);
@@ -1857,40 +1858,32 @@ impl Future for CallbackInfo {
     self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let mut state = self.state.lock().unwrap();
-    if !state.refed {
-      Poll::Ready(())
-    } else {
-      state.waker = Some(cx.waker().clone());
-      Poll::Pending
-    }
+    // Always replace the waker to make sure it's bound to the proper Future.
+    self.waker.lock().unwrap().replace(cx.waker().clone());
+    // The future for the CallbackInfo never resolves: It can only be canceled.
+    Poll::Pending
   }
 }
 
 #[op]
-async fn op_ffi_unsafe_callback_ref(
-  state: Rc<RefCell<deno_core::OpState>>,
+fn op_ffi_unsafe_callback_ref(
+  state: &mut deno_core::OpState,
   rid: ResourceId,
-) -> Result<(), AnyError> {
-  let info_ptr = {
-    let op_state = state.borrow_mut();
-    let callback_resource =
-      op_state.resource_table.get::<UnsafeCallbackResource>(rid)?;
-    callback_resource.info
-  };
+) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+  let callback_resource =
+    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
+  let info_ptr = callback_resource.info;
   // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
   let info: &'static mut CallbackInfo = unsafe { info_ptr.as_mut().unwrap() };
-  {
-    let state = &mut info.state.lock().unwrap();
-    if state.refed {
-      return Err(type_error(
-        "Invalid UnsafeCallbackResource ref call, callback is already ref'ed",
-      ));
-    }
-    state.refed = true;
-  }
-  info.await;
-  Ok(())
+
+  Ok(async move {
+    // Ignore cancellation rejection
+    let _ = info
+      .into_future()
+      .or_cancel(callback_resource.cancel.clone())
+      .await;
+    Ok(())
+  })
 }
 
 #[op(fast)]
@@ -1901,17 +1894,7 @@ fn op_ffi_unsafe_callback_unref(
   let callback_resource =
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
   // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
-  let info = unsafe { callback_resource.info.as_mut().unwrap() };
-  {
-    let state: &mut SharedState = &mut info.state.lock().unwrap();
-    if state.refed {
-      state.refed = false;
-      // Wake up awaiters
-      if let Some(waker) = state.waker.as_ref() {
-        waker.wake_by_ref();
-      }
-    }
-  }
+  callback_resource.cancel.cancel();
   Ok(())
 }
 
