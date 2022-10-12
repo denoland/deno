@@ -30,18 +30,18 @@ pub trait NpmVersionMatcher {
   fn version_text(&self) -> String;
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoteNpmPackageReference {
   pub req: NpmPackageReq,
   pub sub_path: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalNpmPackageReference {
   pub specifier: ModuleSpecifier,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NpmPackageReference {
   Remote(RemoteNpmPackageReference),
   Local(LocalNpmPackageReference),
@@ -67,7 +67,7 @@ impl NpmPackageReference {
       || specifier.starts_with("/")
     {
       return Ok(NpmPackageReference::Local(LocalNpmPackageReference {
-        specifier: ModuleSpecifier::from(specifier),
+        specifier: ModuleSpecifier::parse(specifier).unwrap(),
       }));
     }
 

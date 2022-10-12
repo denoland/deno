@@ -632,7 +632,12 @@ impl ProcState {
     let mut package_reqs = Vec::new();
     for (specifier, _) in graph.specifiers() {
       if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-        package_reqs.push(reference.req);
+        match reference {
+          NpmPackageReference::Remote(reference) => {
+            package_reqs.push(reference.req);
+          }
+          _ => todo!(),
+        };
       }
     }
     if !package_reqs.is_empty() {

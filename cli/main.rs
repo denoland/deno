@@ -399,9 +399,15 @@ async fn load_and_type_check(
     // have support for npm: specifiers), it would be good to unify this code
     // in `ProcState::prepare_module_load`.
     if let Ok(package_ref) = NpmPackageReference::from_specifier(&specifier) {
-      ps.npm_resolver
-        .add_package_reqs(vec![package_ref.req.clone()])
-        .await?;
+      match package_ref {
+        NpmPackageReference::Remote(package_ref) => {
+          ps.npm_resolver
+            .add_package_reqs(vec![package_ref.req.clone()])
+            .await?;
+        }
+        _ => todo!(),
+      };
+
       ps.prepare_node_std_graph().await?;
       continue;
     }

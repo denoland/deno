@@ -307,6 +307,11 @@ impl CliMainWorker {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
         // if the user ran a binary command, we'll need to set process.argv[0]
         // to be the name of the binary command instead of deno
+        let pkg_ref = match pkg_ref {
+          NpmPackageReference::Remote(reference) => reference,
+          _ => todo!(),
+        };
+
         let binary_name = pkg_ref
           .sub_path
           .as_deref()
@@ -351,6 +356,11 @@ pub async fn create_main_worker(
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReference::from_specifier(&main_module)
   {
+    let package_ref = match package_ref {
+      NpmPackageReference::Remote(reference) => reference,
+      _ => todo!(),
+    };
+
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
