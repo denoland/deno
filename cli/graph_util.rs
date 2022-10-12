@@ -82,7 +82,10 @@ impl GraphData {
       }
       if specifier.scheme() == "npm" {
         if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
-          self.npm_packages.insert(reference.req);
+          if let NpmPackageReference::Remote(reference) = reference {
+            self.npm_packages.insert(reference.req);
+          }
+          // TODO(bartlomieju): is this correct?
           continue;
         }
       }

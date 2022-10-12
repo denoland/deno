@@ -442,6 +442,12 @@ pub fn node_resolve_npm_reference(
   reference: &NpmPackageReference,
   npm_resolver: &NpmPackageResolver,
 ) -> Result<Option<NodeResolution>, AnyError> {
+  let reference = if let NpmPackageReference::Remote(p) = reference {
+    p
+  } else {
+    todo!()
+  };
+
   let package_folder =
     npm_resolver.resolve_package_folder_from_deno_module(&reference.req)?;
   let resolved_path = package_config_resolve(

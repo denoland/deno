@@ -36,9 +36,25 @@ pub struct RemoteNpmPackageReference {
   pub sub_path: Option<String>,
 }
 
+impl std::fmt::Display for RemoteNpmPackageReference {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(sub_path) = &self.sub_path {
+      write!(f, "{}/{}", self.req, sub_path)
+    } else {
+      write!(f, "{}", self.req)
+    }
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalNpmPackageReference {
   pub specifier: ModuleSpecifier,
+}
+
+impl std::fmt::Display for LocalNpmPackageReference {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.specifier.as_str())
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,7 +70,21 @@ impl NpmPackageReference {
     Self::from_str(specifier.as_str())
   }
 
+  pub fn from_specifier_and_referrer(
+    specifier: &ModuleSpecifier,
+    referrer: &ModuleSpecifier,
+  ) -> Result<NpmPackageReference, AnyError> {
+    Self::from_str_and_referrer(specifier.as_str(), Some(referrer.as_str()))
+  }
+
   pub fn from_str(specifier: &str) -> Result<NpmPackageReference, AnyError> {
+    Self::from_str_and_referrer(specifier, None)
+  }
+
+  pub fn from_str_and_referrer(
+    specifier: &str,
+    referrer: Option<&str>,
+  ) -> Result<NpmPackageReference, AnyError> {
     let specifier = match specifier.strip_prefix("npm:") {
       Some(s) => s,
       None => {
@@ -64,11 +94,24 @@ impl NpmPackageReference {
 
     if specifier.starts_with("./")
       || specifier.starts_with("../")
-      || specifier.starts_with("/")
+      || specifier.starts_with('/')
     {
-      return Ok(NpmPackageReference::Local(LocalNpmPackageReference {
-        specifier: ModuleSpecifier::parse(specifier).unwrap(),
-      }));
+      if let Some(referrer) = referrer {
+        let referrer_url =
+          ModuleSpecifier::parse(referrer).with_context(|| {
+            format!(
+              "Invalid referrer '{}' for npm specifier '{}'",
+              referrer, specifier
+            )
+          })?;
+        let resolved_specifier = referrer_url.join(specifier)?;
+        return Ok(NpmPackageReference::Local(LocalNpmPackageReference {
+          specifier: resolved_specifier,
+        }));
+      } else {
+        panic!();
+        bail!("Relative npm specifiers require a referrer");
+      }
     }
 
     let parts = specifier.split('/').collect::<Vec<_>>();
@@ -108,10 +151,9 @@ impl NpmPackageReference {
 
 impl std::fmt::Display for NpmPackageReference {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(sub_path) = &self.sub_path {
-      write!(f, "{}/{}", self.req, sub_path)
-    } else {
-      write!(f, "{}", self.req)
+    match self {
+      Self::Local(local) => write!(f, "{}", local),
+      Self::Remote(remote) => write!(f, "{}", remote),
     }
   }
 }
@@ -775,6 +817,11 @@ mod tests {
   fn test_get_resolved_package_version_and_info() {
     // dist tag where version doesn't exist
     let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_ref = if let NpmPackageReference::Remote(p) = package_ref {
+      p
+    } else {
+      unreachable!()
+    };
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,
@@ -795,6 +842,11 @@ mod tests {
 
     // dist tag where version is a pre-release
     let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let package_ref = if let NpmPackageReference::Remote(p) = package_ref {
+      p
+    } else {
+      unreachable!()
+    };
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,

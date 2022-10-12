@@ -170,7 +170,7 @@ impl NpmRegistryApi {
       eprintln!("name {}", name);
       if name.starts_with("../")
         || name.starts_with("./")
-        || name.starts_with("/")
+        || name.starts_with('/')
       {
         return Ok(Some(NpmPackageInfo {
           name: "foo".to_string(),

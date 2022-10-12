@@ -830,7 +830,8 @@ async fn run_command(
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
   let ps = ProcState::build(flags).await?;
-  let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
+  let cwd_specifier = ModuleSpecifier::from_file_path(std::env::current_dir()?).unwrap();
+  let main_module = if NpmPackageReference::from_str_and_referrer(&run_flags.script, Some(&cwd_specifier.as_str())).is_ok()
   {
     ModuleSpecifier::parse(&run_flags.script)?
   } else {
