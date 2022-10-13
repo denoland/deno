@@ -9,6 +9,7 @@
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
+    PromisePrototypeThen,
     PromiseResolve,
     Symbol,
     SymbolAsyncIterator,
@@ -165,7 +166,7 @@
       if (this.#unref) {
         this.#unrefOpAccept();
       }
-      return promise.then((res) => {
+      return PromisePrototypeThen(promise, (res) => {
         if (this.addr.transport == "tcp") {
           return new TcpConn(res.rid, res.remoteAddr, res.localAddr);
         } else if (this.addr.transport == "unix") {

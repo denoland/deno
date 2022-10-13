@@ -14,6 +14,7 @@
     TypeError,
     Uint8Array,
     PromiseAll,
+    PromisePrototypeThen,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
@@ -153,7 +154,7 @@
 
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
-      this.#status = waitPromise.then((res) => {
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;

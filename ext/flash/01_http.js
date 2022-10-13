@@ -28,11 +28,13 @@
   const {
     Function,
     ObjectPrototypeIsPrototypeOf,
+    Promise,
     PromiseAll,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
-    Promise,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
@@ -341,7 +343,7 @@
           }
           const reader = respBody.getReader(); // Aquire JS lock.
           try {
-            core.opAsync(
+            PromisePrototypeThen(core.opAsync(
               "op_flash_write_resource",
               http1Response(
                 method,
@@ -355,7 +357,7 @@
               i,
               resourceBacking.rid,
               resourceBacking.autoClose,
-            ).then(() => {
+            ), () => {
               // Release JS lock.
               readableStreamClose(respBody);
             });
@@ -476,10 +478,12 @@
     const serverId = core.ops.op_flash_serve(listenOpts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
-      onListen({ hostname: listenOpts.hostname, port });
-    }).catch(() => {});
-    const finishedPromise = serverPromise.catch(() => {});
+    PromisePrototypeCatch(
+      PromisePrototypeThen(core.opAsync("op_flash_wait_for_listening", serverId), (port) => {
+        onListen({ hostname: listenOpts.hostname, port });
+      }), () => {}
+    );
+    const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
     const server = {
       id: serverId,
@@ -544,7 +548,27 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || typeof resp?.then === "function") {
+              if (resp instanceof Promise) {
+                PromisePrototypeCatch(
+                  PromisePrototypeThen(
+                    resp,
+                    (resp) =>
+                      handleResponse(
+                        req,
+                        resp,
+                        body,
+                        hasBody,
+                        method,
+                        serverId,
+                        i,
+                        respondFast,
+                        respondChunked,
+                      ),
+                  ),
+                  onError,
+                );
+                continue;
+              } else if (typeof resp?.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,
@@ -585,7 +609,7 @@
 
     signal?.addEventListener("abort", () => {
       clearInterval(dateInterval);
-      server.close().then(() => {}, () => {});
+      PromisePrototypeThen(server.close(), () => {}, () => {});
     }, {
       once: true,
     });
@@ -620,7 +644,7 @@
     }
 
     await PromiseAll([
-      server.serve().catch(console.error),
+      PromisePrototypeCatch(server.serve(), console.error),
       serverPromise,
     ]);
   }
