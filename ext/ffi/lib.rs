@@ -38,8 +38,6 @@ use std::pin::Pin;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::mpsc::sync_channel;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Poll;
 use std::task::Waker;
 
@@ -1358,7 +1356,7 @@ struct CallbackInfo {
   pub callback: NonNull<v8::Function>,
   pub context: NonNull<v8::Context>,
   pub isolate: *mut v8::Isolate,
-  pub waker: Arc<Mutex<Option<Waker>>>,
+  pub waker: Option<Waker>,
 }
 
 unsafe extern "C" fn deno_ffi_callback(
@@ -1382,7 +1380,7 @@ unsafe extern "C" fn deno_ffi_callback(
         response_sender.send(()).unwrap();
       });
       async_work_sender.unbounded_send(fut).unwrap();
-      if let Some(waker) = info.waker.clone().lock().unwrap().as_ref() {
+      if let Some(waker) = info.waker.as_ref() {
         // Make sure event loop wakes up to receive our message before we start waiting for a response.
         waker.wake_by_ref();
       }
@@ -1742,7 +1740,7 @@ where
     callback,
     context,
     isolate,
-    waker: Arc::new(Mutex::new(None)),
+    waker: None,
   }));
   let cif = Cif::new(
     args.parameters.into_iter().map(libffi::middle::Type::from),
@@ -1811,11 +1809,11 @@ where
 impl Future for CallbackInfo {
   type Output = ();
   fn poll(
-    self: Pin<&mut Self>,
+    mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
     // Always replace the waker to make sure it's bound to the proper Future.
-    self.waker.lock().unwrap().replace(cx.waker().clone());
+    self.waker.replace(cx.waker().clone());
     // The future for the CallbackInfo never resolves: It can only be canceled.
     Poll::Pending
   }
