@@ -119,8 +119,10 @@
 
       // Step 8.
       if (innerResponse.body !== null && innerResponse.body.unusable()) {
-        throw new TypeError("Response body must not already used");
+        throw new TypeError("Response body is already used");
       }
+      // acquire lock before async op
+      const reader = innerResponse.body?.stream.getReader();
 
       // Remove fragment from request URL before put.
       reqUrl.hash = "";
@@ -138,17 +140,18 @@
           responseStatusText: innerResponse.statusMessage,
         },
       );
-      if (innerResponse.body) {
-        const reader = innerResponse.body.stream.getReader();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await core.shutdown(rid);
-            core.close(rid);
-            break;
-          } else {
-            await core.write(rid, value);
+      if (reader) {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              await core.shutdown(rid);
+              break;
+            }
+            await core.writeAll(rid, value);
           }
+        } finally {
+          core.close(rid);
         }
       }
       // Step 12-19: TODO(@satyarohith): do the insertion in background.

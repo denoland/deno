@@ -48,6 +48,7 @@
     SymbolAsyncIterator,
     SymbolFor,
     TypeError,
+    TypedArrayPrototypeSet,
     Uint8Array,
     Uint8ArrayPrototype,
     Uint16ArrayPrototype,
@@ -647,6 +648,10 @@
 
   const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
+  // A finalization registry to clean up underlying resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    core.tryClose(rid);
+  });
   /**
    * Create a new ReadableStream object that is backed by a Resource that
    * implements `Resource::read_return`. This object contains enough metadata to
@@ -660,6 +665,17 @@
   function readableStreamForRid(rid, autoClose = true) {
     const stream = webidl.createBranded(ReadableStream);
     stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
     const underlyingSource = {
       type: "bytes",
       async pull(controller) {
@@ -667,7 +683,7 @@
         try {
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
-            if (autoClose) core.tryClose(rid);
+            tryClose();
             controller.close();
             controller.byobRequest.respond(0);
           } else {
@@ -675,11 +691,11 @@
           }
         } catch (e) {
           controller.error(e);
-          if (autoClose) core.tryClose(rid);
+          tryClose();
         }
       },
       cancel() {
-        if (autoClose) core.tryClose(rid);
+        tryClose();
       },
       autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
     };
@@ -764,6 +780,115 @@
 
   function getReadableStreamResourceBacking(stream) {
     return stream[_resourceBacking];
+  }
+
+  async function readableStreamCollectIntoUint8Array(stream) {
+    const resourceBacking = getReadableStreamResourceBacking(stream);
+    const reader = acquireReadableStreamDefaultReader(stream);
+
+    if (resourceBacking) {
+      // fast path, read whole body in a single op call
+      try {
+        readableStreamDisturb(stream);
+        const buf = await core.opAsync("op_read_all", resourceBacking.rid);
+        readableStreamThrowIfErrored(stream);
+        readableStreamClose(stream);
+        return buf;
+      } catch (err) {
+        readableStreamThrowIfErrored(stream);
+        readableStreamError(stream, err);
+        throw err;
+      } finally {
+        if (resourceBacking.autoClose) {
+          core.tryClose(resourceBacking.rid);
+        }
+      }
+    }
+
+    // slow path
+    /** @type {Uint8Array[]} */
+    const chunks = [];
+    let totalLength = 0;
+    while (true) {
+      const { value: chunk, done } = await reader.read();
+      if (done) break;
+
+      ArrayPrototypePush(chunks, chunk);
+      totalLength += chunk.byteLength;
+    }
+
+    const finalBuffer = new Uint8Array(totalLength);
+    let i = 0;
+    for (const chunk of chunks) {
+      TypedArrayPrototypeSet(finalBuffer, chunk, i);
+      i += chunk.byteLength;
+    }
+    return finalBuffer;
+  }
+
+  /**
+   * Create a new Writable object that is backed by a Resource that implements
+   * `Resource::write` / `Resource::write_all`. This object contains enough
+   * metadata to allow callers to bypass the JavaScript WritableStream
+   * implementation and write directly to the underlying resource if they so
+   * choose (FastStream).
+   *
+   * @param {number} rid The resource ID to write to.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function writableStreamForRid(rid, autoClose = true) {
+    const stream = webidl.createBranded(WritableStream);
+    stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
+    const underlyingSink = {
+      async write(chunk, controller) {
+        try {
+          await core.writeAll(rid, chunk);
+        } catch (e) {
+          controller.error(e);
+          tryClose();
+        }
+      },
+      close() {
+        tryClose();
+      },
+      abort() {
+        tryClose();
+      },
+    };
+    initializeWritableStream(stream);
+    setUpWritableStreamDefaultControllerFromUnderlyingSink(
+      stream,
+      underlyingSink,
+      underlyingSink,
+      1,
+      () => 1,
+    );
+    return stream;
+  }
+
+  function getWritableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
+  }
+
+  /*
+   * @param {ReadableStream} stream
+   */
+  function readableStreamThrowIfErrored(stream) {
+    if (stream[_state] === "errored") {
+      throw stream[_storedError];
+    }
   }
 
   /**
@@ -5982,12 +6107,16 @@
     createProxy,
     writableStreamClose,
     readableStreamClose,
+    readableStreamCollectIntoUint8Array,
     readableStreamDisturb,
     readableStreamForRid,
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    readableStreamThrowIfErrored,
     getReadableStreamResourceBacking,
+    writableStreamForRid,
+    getWritableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,

@@ -116,6 +116,10 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn napi_tests_path() -> PathBuf {
+  root_path().join("test_napi")
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
 }

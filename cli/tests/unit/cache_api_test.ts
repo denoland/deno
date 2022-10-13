@@ -94,3 +94,74 @@ Deno.test(async function cacheApi() {
   assert(await caches.delete(cacheName));
   assertFalse(await caches.has(cacheName));
 });
+
+Deno.test(async function cachePutReaderLock() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const response = new Response("consumed");
+
+  const promise = cache.put(
+    new Request("https://example.com/"),
+    response,
+  );
+
+  await assertRejects(
+    async () => {
+      await response.arrayBuffer();
+    },
+    TypeError,
+    "Body already consumed.",
+  );
+
+  await promise;
+});
+
+Deno.test(async function cachePutResourceLeak() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new Error("leak"));
+    },
+  });
+
+  await assertRejects(
+    async () => {
+      await cache.put(
+        new Request("https://example.com/leak"),
+        new Response(stream),
+      );
+    },
+    Error,
+    "leak",
+  );
+});
+
+Deno.test(async function cachePutFailedBody() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/failed-body");
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new Error("corrupt"));
+    },
+  });
+
+  await assertRejects(
+    async () => {
+      await cache.put(
+        request,
+        new Response(stream),
+      );
+    },
+    Error,
+    "corrupt",
+  );
+
+  const response = await cache.match(request);
+  // if it fails to read the body, the cache should be empty
+  assertEquals(response, undefined);
+});

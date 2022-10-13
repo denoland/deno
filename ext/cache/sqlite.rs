@@ -7,7 +7,6 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
@@ -21,6 +20,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use crate::deserialize_headers;
+use crate::get_header;
+use crate::serialize_headers;
+use crate::vary_header_matches;
 use crate::Cache;
 use crate::CacheDeleteRequest;
 use crate::CacheMatchRequest;
@@ -42,6 +45,16 @@ impl SqliteBackedCache {
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
       });
+      // Enable write-ahead-logging mode.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+        PRAGMA optimize;
+      ";
+      connection
+        .execute_batch(initial_pragmas)
+        .expect("failed to execute pragmas");
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS cache_storage (
@@ -114,7 +127,7 @@ impl Cache for SqliteBackedCache {
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
-        "SELECT count(cache_name) FROM cache_storage WHERE cache_name = ?1",
+        "SELECT count(id) FROM cache_storage WHERE cache_name = ?1",
         params![cache_name],
         |row| {
           let count: i64 = row.get(0)?;
@@ -328,51 +341,6 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
     .join("responses")
 }
 
-/// Check if the headers provided in the vary_header match
-/// the query request headers and the cached request headers.
-fn vary_header_matches(
-  vary_header: &ByteString,
-  query_request_headers: &[(ByteString, ByteString)],
-  cached_request_headers: &[(ByteString, ByteString)],
-) -> bool {
-  let vary_header = match std::str::from_utf8(vary_header) {
-    Ok(vary_header) => vary_header,
-    Err(_) => return false,
-  };
-  let headers = get_headers_from_vary_header(vary_header);
-  for header in headers {
-    let query_header = get_header(&header, query_request_headers);
-    let cached_header = get_header(&header, cached_request_headers);
-    if query_header != cached_header {
-      return false;
-    }
-  }
-  true
-}
-
-fn get_headers_from_vary_header(vary_header: &str) -> Vec<String> {
-  vary_header
-    .split(',')
-    .map(|s| s.trim().to_lowercase())
-    .collect()
-}
-
-fn get_header(
-  name: &str,
-  headers: &[(ByteString, ByteString)],
-) -> Option<ByteString> {
-  headers
-    .iter()
-    .find(|(k, _)| {
-      if let Ok(k) = std::str::from_utf8(k) {
-        k.eq_ignore_ascii_case(name)
-      } else {
-        false
-      }
-    })
-    .map(|(_, v)| v.to_owned())
-}
-
 impl deno_core::Resource for SqliteBackedCache {
   fn name(&self) -> std::borrow::Cow<str> {
     "SqliteBackedCache".into()
@@ -388,10 +356,10 @@ pub struct CachePutResource {
 }
 
 impl CachePutResource {
-  async fn write(self: Rc<Self>, data: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    file.write_all(&data).await?;
+    file.write_all(data).await?;
     Ok(data.len())
   }
 
@@ -415,9 +383,7 @@ impl Resource for CachePutResource {
     "CachePutResource".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
@@ -435,69 +401,23 @@ impl CacheResponseResource {
     }
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
-    let nread = file.read(&mut buf).await?;
-    Ok((nread, buf))
+    let nread = file.read(data).await?;
+    Ok(nread)
   }
 }
 
 impl Resource for CacheResponseResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "CacheResponseResource".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 }
 
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
-}
-
-fn serialize_headers(headers: &[(ByteString, ByteString)]) -> Vec<u8> {
-  let mut serialized_headers = Vec::new();
-  for (name, value) in headers {
-    serialized_headers.extend_from_slice(name);
-    serialized_headers.extend_from_slice(b"\r\n");
-    serialized_headers.extend_from_slice(value);
-    serialized_headers.extend_from_slice(b"\r\n");
-  }
-  serialized_headers
-}
-
-fn deserialize_headers(
-  serialized_headers: &[u8],
-) -> Vec<(ByteString, ByteString)> {
-  let mut headers = Vec::new();
-  let mut piece = None;
-  let mut start = 0;
-  for (i, byte) in serialized_headers.iter().enumerate() {
-    if byte == &b'\r' && serialized_headers.get(i + 1) == Some(&b'\n') {
-      if piece.is_none() {
-        piece = Some(start..i);
-      } else {
-        let name = piece.unwrap();
-        let value = start..i;
-        headers.push((
-          ByteString::from(&serialized_headers[name]),
-          ByteString::from(&serialized_headers[value]),
-        ));
-        piece = None;
-      }
-      start = i + 2;
-    }
-  }
-  assert!(piece.is_none());
-  assert_eq!(start, serialized_headers.len());
-  headers
 }
