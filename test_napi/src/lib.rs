@@ -42,7 +42,7 @@ macro_rules! get_callback_info {
 macro_rules! new_property {
   ($env: expr, $name: expr, $value: expr) => {
     napi_property_descriptor {
-      utf8name: $name.as_ptr() as *const i8,
+      utf8name: $name.as_ptr() as *const std::os::raw::c_char,
       name: ptr::null_mut(),
       method: Some($value),
       getter: None,

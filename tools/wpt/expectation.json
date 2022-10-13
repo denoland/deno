@@ -2921,7 +2921,9 @@
         "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
-        "error-after-response.any.html": false,
+        "error-after-response.any.html": {
+          "ignore": true
+        },
         "header-value-combining.any.html": false,
         "header-value-combining.any.worker.html": false,
         "header-value-null-byte.any.html": true,
@@ -3218,20 +3220,8 @@
       }
     },
     "content-encoding": {
-      "bad-gzip-body.any.html": [
-        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
-        "Consuming the body of a resource with bad gzip content with blob() should reject",
-        "Consuming the body of a resource with bad gzip content with formData() should reject",
-        "Consuming the body of a resource with bad gzip content with json() should reject",
-        "Consuming the body of a resource with bad gzip content with text() should reject"
-      ],
-      "bad-gzip-body.any.worker.html": [
-        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
-        "Consuming the body of a resource with bad gzip content with blob() should reject",
-        "Consuming the body of a resource with bad gzip content with formData() should reject",
-        "Consuming the body of a resource with bad gzip content with json() should reject",
-        "Consuming the body of a resource with bad gzip content with text() should reject"
-      ]
+      "bad-gzip-body.any.html": true,
+      "bad-gzip-body.any.worker.html": true
     },
     "content-length": {
       "api-and-duplicate-headers.any.html": [
@@ -3242,9 +3232,7 @@
         "XMLHttpRequest and duplicate Content-Length/Content-Type headers",
         "fetch() and duplicate Content-Length/Content-Type headers"
       ],
-      "too-long.window.html": [
-        "Content-Length header value of network response exceeds response body"
-      ]
+      "too-long.window.html": true
     },
     "content-type": {
       "multipart.window.html": true

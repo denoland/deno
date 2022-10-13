@@ -45,6 +45,16 @@ impl SqliteBackedCache {
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
       });
+      // Enable write-ahead-logging mode.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+        PRAGMA optimize;
+      ";
+      connection
+        .execute_batch(initial_pragmas)
+        .expect("failed to execute pragmas");
       connection
         .execute(
           "CREATE TABLE IF NOT EXISTS cache_storage (
@@ -117,7 +127,7 @@ impl Cache for SqliteBackedCache {
     tokio::task::spawn_blocking(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
-        "SELECT count(cache_name) FROM cache_storage WHERE cache_name = ?1",
+        "SELECT count(id) FROM cache_storage WHERE cache_name = ?1",
         params![cache_name],
         |row| {
           let count: i64 = row.get(0)?;
