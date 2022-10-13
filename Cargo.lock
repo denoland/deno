@@ -2884,9 +2884,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350537f27a69018269e534582e2f1ec532ea7078b06485fdd4db0509bd70feb8"
+checksum = "c5e2e282addadb529bb31700f7d184797382fa2eb18384986aad78d117eaf0c4"
 
 [[package]]
 name = "naga"
