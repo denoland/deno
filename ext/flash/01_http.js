@@ -29,7 +29,7 @@
     Function,
     ObjectPrototypeIsPrototypeOf,
     Promise,
-    PromiseAll,
+    SafePromiseAll,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     TypedArrayPrototypeSubarray,
@@ -643,7 +643,7 @@
       }, 1000);
     }
 
-    await PromiseAll([
+    await SafePromiseAll([
       PromisePrototypeCatch(server.serve(), console.error),
       serverPromise,
     ]);

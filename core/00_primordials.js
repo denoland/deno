@@ -281,6 +281,7 @@
     ObjectFreeze,
     ObjectSetPrototypeOf,
     Promise,
+    PromiseAll,
     PromisePrototypeThen,
     Set,
     SymbolIterator,
@@ -309,14 +310,17 @@
     return SafeIterator;
   };
 
-  primordials.SafeArrayIterator = createSafeIterator(
+  const SafeArrayIterator = createSafeIterator(
     primordials.ArrayPrototypeSymbolIterator,
     primordials.ArrayIteratorPrototypeNext,
   );
-  primordials.SafeStringIterator = createSafeIterator(
+  primordials.SafeArrayIterator = SafeArrayIterator;
+
+  const SafeStringIterator = createSafeIterator(
     primordials.StringPrototypeSymbolIterator,
     primordials.StringIteratorPrototypeNext,
   );
+  primordials.SafeStringIterator = SafeStringIterator;
 
   const copyProps = (src, dest) => {
     ArrayPrototypeForEach(ReflectOwnKeys(src), (key) => {
@@ -435,6 +439,18 @@
 
   primordials.PromisePrototypeCatch = (thisPromise, onRejected) =>
     PromisePrototypeThen(thisPromise, undefined, onRejected);
+
+  primordials.SafePromiseAll = (iterable) =>
+    // Wrapping on a new Promise is necessary to not expose the SafePromise
+    // prototype to user-land.
+    new Promise((a, b) =>
+      FunctionPrototypeCall(
+        PromiseAll,
+        SafePromise,
+        new SafeArrayIterator(iterable),
+      )
+        .then(a, b)
+    );
 
   /**
    * Attaches a callback that is invoked when the Promise is settled (fulfilled or

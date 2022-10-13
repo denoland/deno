@@ -13,7 +13,7 @@
     String,
     TypeError,
     Uint8Array,
-    PromiseAll,
+    SafePromiseAll,
     PromisePrototypeThen,
     SymbolFor,
   } = window.__bootstrap.primordials;
@@ -178,7 +178,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await PromiseAll([
+      const [status, stdout, stderr] = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
