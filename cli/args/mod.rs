@@ -488,7 +488,9 @@ mod test {
     let actual = actual.unwrap();
     assert_eq!(
       actual,
-      Some(ModuleSpecifier::parse("https://example.com/import_map.json").unwrap())
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 
