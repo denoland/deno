@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+mod asyncfs;
 pub mod fs;
 pub mod fs_events;
 pub mod http;

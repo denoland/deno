@@ -155,3 +155,18 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
     }
   }
 }
+
+#[cfg(feature = "enable_iouring")]
+unsafe impl tokio_uring::buf::IoBuf for ZeroCopyBuf {
+  fn stable_ptr(&self) -> *const u8 {
+    self.as_ptr()
+  }
+
+  fn bytes_init(&self) -> usize {
+    self.len()
+  }
+
+  fn bytes_total(&self) -> usize {
+    self.bytes_init()
+  }
+}

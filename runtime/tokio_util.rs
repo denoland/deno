@@ -14,6 +14,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .unwrap()
 }
 
+#[cfg(not(feature = "enable_iouring"))]
 pub fn run_local<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R>,
@@ -21,4 +22,12 @@ where
   let rt = create_basic_runtime();
   let local = tokio::task::LocalSet::new();
   local.block_on(&rt, future)
+}
+
+#[cfg(feature = "enable_iouring")]
+pub fn run_local<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R>,
+{
+  tokio_uring::start(future)
 }

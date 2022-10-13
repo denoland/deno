@@ -12,6 +12,7 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
+enable_iouring = ["deno_core/enable_iouring", "tokio-uring"]
 
 [lib]
 name = "deno_runtime"
@@ -97,6 +98,7 @@ winapi = { version = "0.3.9", features = ["commapi", "knownfolders", "mswsock", 
 
 [target.'cfg(unix)'.dependencies]
 nix = "=0.24.2"
+tokio-uring = { version = "0.3.0", path = "../../tokio-uring", optional = true }
 
 [dev-dependencies]
 # Used in benchmark

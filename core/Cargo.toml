@@ -15,6 +15,7 @@ path = "lib.rs"
 [features]
 default = ["v8_use_custom_libcxx"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
+enable_iouring = ["serde_v8/enable_iouring"]
 
 [dependencies]
 anyhow = "1.0.57"

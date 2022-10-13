@@ -5,7 +5,7 @@ let [total, count] = typeof Deno !== "undefined"
   : [process.argv[2], process.argv[3]];
 
 total = total ? parseInt(total, 0) : 50;
-count = count ? parseInt(count, 10) : 100;
+count = count ? parseInt(count, 10) : 1000;
 
 async function bench(fun) {
   const start = Date.now();
@@ -17,6 +17,5 @@ async function bench(fun) {
 }
 
 const x = new TextEncoder().encode("lol\n".repeat(1024 * 1024));
-await bench(() => Deno.writeFile("a.txt", x));
-// const fs = require("fs").promises;
-// bench(() => fs.writeFile("/dev/null", x));
+await Deno.writeFile("a.txt", x);
+await bench(() => Deno.readFile("a.txt"));

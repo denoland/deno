@@ -12,6 +12,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ZeroCopyBuf;
 
+use crate::ops::asyncfs;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -48,7 +49,7 @@ pub fn init() -> Extension {
       op_open_sync::decl(),
       op_open_async::decl(),
       op_write_file_sync::decl(),
-      op_write_file_async::decl(),
+      asyncfs::op_write_file_async::decl(),
       op_seek_sync::decl(),
       op_seek_async::decl(),
       op_fdatasync_sync::decl(),
@@ -102,7 +103,7 @@ pub fn init() -> Extension {
       op_utime_async::decl(),
       op_readfile_sync::decl(),
       op_readfile_text_sync::decl(),
-      op_readfile_async::decl(),
+      asyncfs::op_readfile_async::decl(),
       op_readfile_text_async::decl(),
     ])
     .build()
@@ -112,16 +113,16 @@ pub fn init() -> Extension {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct OpenOptions {
-  read: bool,
-  write: bool,
-  create: bool,
-  truncate: bool,
-  append: bool,
-  create_new: bool,
+  pub read: bool,
+  pub write: bool,
+  pub create: bool,
+  pub truncate: bool,
+  pub append: bool,
+  pub create_new: bool,
 }
 
 #[inline]
-fn open_helper(
+pub(crate) fn open_helper(
   state: &mut OpState,
   path: &str,
   mode: Option<u32>,
@@ -222,7 +223,7 @@ async fn op_open_async(
 }
 
 #[inline]
-fn write_open_options(create: bool, append: bool) -> OpenOptions {
+pub(crate) fn write_open_options(create: bool, append: bool) -> OpenOptions {
   OpenOptions {
     read: false,
     write: true,
@@ -252,43 +253,7 @@ fn op_write_file_sync(
   write_file(&path, open_options, mode, data)
 }
 
-#[op]
-async fn op_write_file_async(
-  state: Rc<RefCell<OpState>>,
-  path: String,
-  mode: Option<u32>,
-  append: bool,
-  create: bool,
-  data: ZeroCopyBuf,
-  cancel_rid: Option<ResourceId>,
-) -> Result<(), AnyError> {
-  let cancel_handle = match cancel_rid {
-    Some(cancel_rid) => state
-      .borrow_mut()
-      .resource_table
-      .get::<CancelHandle>(cancel_rid)
-      .ok(),
-    None => None,
-  };
-  let (path, open_options) = open_helper(
-    &mut *state.borrow_mut(),
-    &path,
-    mode,
-    Some(&write_open_options(create, append)),
-    "Deno.writeFile()",
-  )?;
-  let write_future = tokio::task::spawn_blocking(move || {
-    write_file(&path, open_options, mode, data)
-  });
-  if let Some(cancel_handle) = cancel_handle {
-    write_future.or_cancel(cancel_handle).await???;
-  } else {
-    write_future.await??;
-  }
-  Ok(())
-}
-
-fn write_file(
+pub(crate) fn write_file(
   path: &Path,
   open_options: std::fs::OpenOptions,
   _mode: Option<u32>,
@@ -2038,36 +2003,6 @@ fn op_readfile_text_sync(
     .read
     .check(path, Some("Deno.readTextFileSync()"))?;
   Ok(string_from_utf8_lossy(std::fs::read(path)?))
-}
-
-#[op]
-async fn op_readfile_async(
-  state: Rc<RefCell<OpState>>,
-  path: String,
-  cancel_rid: Option<ResourceId>,
-) -> Result<ZeroCopyBuf, AnyError> {
-  {
-    let path = Path::new(&path);
-    let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check(path, Some("Deno.readFile()"))?;
-  }
-  let fut = tokio::task::spawn_blocking(move || {
-    let path = Path::new(&path);
-    Ok(std::fs::read(path).map(ZeroCopyBuf::from)?)
-  });
-  if let Some(cancel_rid) = cancel_rid {
-    let cancel_handle = state
-      .borrow_mut()
-      .resource_table
-      .get::<CancelHandle>(cancel_rid);
-    if let Ok(cancel_handle) = cancel_handle {
-      return fut.or_cancel(cancel_handle).await??;
-    }
-  }
-  fut.await?
 }
 
 #[op]

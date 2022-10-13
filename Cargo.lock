@@ -1257,6 +1257,7 @@ dependencies = [
  "termcolor",
  "test_util",
  "tokio",
+ "tokio-uring",
  "uuid",
  "winapi 0.3.9",
  "winres",
@@ -2441,6 +2442,16 @@ name = "io-lifetimes"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ea37f355c05dde75b84bba2d767906ad522e97cd9e2eef2be7a4ab7fb442c06"
+
+[[package]]
+name = "io-uring"
+version = "0.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d32c9c053ad47572e11da8bce622ed4c9ae9dedac5b7f678a2e876d1494d4c4"
+dependencies = [
+ "bitflags",
+ "libc",
+]
 
 [[package]]
 name = "ipconfig"
@@ -4076,6 +4087,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "smallvec",
+ "tokio-uring",
  "v8",
 ]
 
@@ -5008,6 +5020,18 @@ dependencies = [
  "tungstenite",
  "webpki",
  "webpki-roots",
+]
+
+[[package]]
+name = "tokio-uring"
+version = "0.3.0"
+dependencies = [
+ "io-uring",
+ "libc",
+ "scoped-tls",
+ "slab",
+ "socket2",
+ "tokio",
 ]
 
 [[package]]

@@ -12,12 +12,18 @@ description = "Rust to V8 serialization and deserialization"
 [lib]
 path = "lib.rs"
 
+[features]
+default = []
+# Requires a recent Linux kernel version (atleast )
+enable_iouring = ["tokio-uring"]
+
 [dependencies]
 bytes = "=1.2.1"
 derive_more = "0.99.17"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_bytes = "0.11"
 smallvec = { version = "1.8", features = ["union"] }
+tokio-uring = { version = "0.3.0", optional = true, path = "../../tokio-uring" }
 v8 = { version = "0.52.0", default-features = false }
 
 [dev-dependencies]
