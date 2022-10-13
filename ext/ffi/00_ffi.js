@@ -13,30 +13,12 @@
     NumberIsSafeInteger,
     ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeThen,
     TypeError,
     Int32Array,
     Uint32Array,
     BigInt64Array,
     Function,
   } = window.__bootstrap.primordials;
-
-  function unpackU64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    return BigInt(hi) << 32n | BigInt(lo);
-  }
-
-  function unpackI64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    const u64 = unpackU64([hi, lo]);
-    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
-  }
 
   class UnsafePointerView {
     pointer;
@@ -163,25 +145,6 @@
     }
   }
 
-  function unpackNonblockingReturnValue(type, result) {
-    if (
-      typeof type === "object" && type !== null && "function" in type ||
-      type === "pointer"
-    ) {
-      return unpackU64(result);
-    }
-    switch (type) {
-      case "isize":
-      case "i64":
-        return unpackI64(result);
-      case "usize":
-      case "u64":
-        return unpackU64(result);
-      default:
-        return result;
-    }
-  }
-
   class UnsafeFnPointer {
     pointer;
     definition;
@@ -192,25 +155,13 @@
     }
 
     call(...parameters) {
-      const resultType = this.definition.result;
       if (this.definition.nonblocking) {
-        const promise = core.opAsync(
+        return core.opAsync(
           "op_ffi_call_ptr_nonblocking",
           this.pointer,
           this.definition,
           parameters,
         );
-
-        if (
-          isReturnedAsBigInt(resultType)
-        ) {
-          return PromisePrototypeThen(
-            promise,
-            (result) => unpackNonblockingReturnValue(resultType, result),
-          );
-        }
-
-        return promise;
       } else {
         return ops.op_ffi_call_ptr(
           this.pointer,
@@ -221,13 +172,9 @@
     }
   }
 
-  function isPointerType(type) {
-    return type === "buffer" || type === "pointer" ||
-      typeof type === "object" && type !== null && "function" in type;
-  }
-
   function isReturnedAsBigInt(type) {
-    return isPointerType(type) || type === "u64" || type === "i64" ||
+    return type === "buffer" || type === "pointer" || type === "function" ||
+      type === "u64" || type === "i64" ||
       type === "usize" || type === "isize";
   }
 
@@ -329,22 +276,12 @@
               configurable: false,
               enumerable: true,
               value: (...parameters) => {
-                const promise = core.opAsync(
+                return core.opAsync(
                   "op_ffi_call_nonblocking",
                   this.#rid,
                   symbol,
                   parameters,
                 );
-
-                if (needsUnpacking) {
-                  return PromisePrototypeThen(
-                    promise,
-                    (result) =>
-                      unpackNonblockingReturnValue(resultType, result),
-                  );
-                }
-
-                return promise;
               },
               writable: false,
             },

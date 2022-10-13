@@ -10,7 +10,6 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::Future;
 use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -22,7 +21,6 @@ use dlopen::raw::Library;
 use libffi::middle::Arg;
 use libffi::middle::Cif;
 use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -341,47 +339,14 @@ impl NativeValue {
       NativeType::I16 => Value::from(self.i16_value),
       NativeType::U32 => Value::from(self.u32_value),
       NativeType::I32 => Value::from(self.i32_value),
-      NativeType::U64 => {
-        let value = self.u64_value;
-        if value > MAX_SAFE_INTEGER as u64 {
-          json!(U32x2::from(self.u64_value))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::I64 => {
-        let value = self.i64_value;
-        if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64 {
-          json!(U32x2::from(self.i64_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::USize => {
-        let value = self.usize_value;
-        if value > MAX_SAFE_INTEGER as usize {
-          json!(U32x2::from(self.usize_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
-      NativeType::ISize => {
-        let value = self.isize_value;
-        if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
-          json!(U32x2::from(self.isize_value as u64))
-        } else {
-          Value::from(value)
-        }
-      }
+      NativeType::U64 => Value::from(self.u64_value),
+      NativeType::I64 => Value::from(self.i64_value),
+      NativeType::USize => Value::from(self.usize_value),
+      NativeType::ISize => Value::from(self.isize_value),
       NativeType::F32 => Value::from(self.f32_value),
       NativeType::F64 => Value::from(self.f64_value),
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
-        let value = self.pointer as usize;
-        if value > MAX_SAFE_INTEGER as usize {
-          json!(U32x2::from(value as u64))
-        } else {
-          Value::from(value)
-        }
+        Value::from(self.pointer as usize)
       }
     }
   }
@@ -500,15 +465,6 @@ impl NativeValue {
 
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for NativeValue {}
-
-#[derive(Serialize, Debug, Clone, Copy)]
-struct U32x2(u32, u32);
-
-impl From<u64> for U32x2 {
-  fn from(value: u64) -> Self {
-    Self((value >> 32) as u32, value as u32)
-  }
-}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
