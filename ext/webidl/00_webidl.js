@@ -834,8 +834,7 @@
   }
 
   function createPromiseConverter(converter) {
-    return (V, opts) =>
-      PromisePrototypeThen(PromiseResolve(V), (V) => converter(V, opts));
+    return (V, opts) => PromiseResolve(converter(V, opts));
   }
 
   function invokeCallbackFunction(
