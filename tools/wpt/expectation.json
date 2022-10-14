@@ -1336,8 +1336,12 @@
       "patched-global.any.worker.html": true,
       "reentrant-strategies.any.html": true,
       "reentrant-strategies.any.worker.html": true,
-      "tee.any.html": false,
-      "tee.any.worker.html": false,
+      "tee.any.html": [
+        "ReadableStream teeing: enqueue() and close() while both branches are pulling"
+      ],
+      "tee.any.worker.html": [
+        "ReadableStream teeing: enqueue() and close() while both branches are pulling"
+      ],
       "templated.any.html": true,
       "templated.any.worker.html": true
     },
