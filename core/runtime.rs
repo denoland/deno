@@ -764,11 +764,9 @@ impl JsRuntime {
     }
 
     let snapshot_creator = self.v8_isolate.unwrap();
-    let snapshot = snapshot_creator
+    snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-
-    snapshot
+      .unwrap()
   }
 
   /// Returns the namespace object of a module.
