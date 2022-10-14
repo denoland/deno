@@ -1826,11 +1826,11 @@ fn op_ffi_unsafe_callback_ref(
 ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
   let callback_resource =
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
-  let info_ptr = callback_resource.info;
-  // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
-  let info: &'static mut CallbackInfo = unsafe { info_ptr.as_mut().unwrap() };
 
   Ok(async move {
+    // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
+    let info: &mut CallbackInfo =
+      unsafe { callback_resource.info.as_mut().unwrap() };
     // Ignore cancellation rejection
     let _ = info
       .into_future()
@@ -1845,11 +1845,13 @@ fn op_ffi_unsafe_callback_unref(
   state: &mut deno_core::OpState,
   rid: u32,
 ) -> Result<(), AnyError> {
-  let callback_resource =
-    state.resource_table.get::<UnsafeCallbackResource>(rid)?;
-  // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
-  callback_resource.cancel.cancel();
-  Ok(())
+  Ok(
+    state
+      .resource_table
+      .get::<UnsafeCallbackResource>(rid)?
+      .cancel
+      .cancel(),
+  )
 }
 
 #[op(v8)]
