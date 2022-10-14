@@ -1845,13 +1845,12 @@ fn op_ffi_unsafe_callback_unref(
   state: &mut deno_core::OpState,
   rid: u32,
 ) -> Result<(), AnyError> {
-  Ok(
-    state
-      .resource_table
-      .get::<UnsafeCallbackResource>(rid)?
-      .cancel
-      .cancel(),
-  )
+  state
+    .resource_table
+    .get::<UnsafeCallbackResource>(rid)?
+    .cancel
+    .cancel();
+  Ok(())
 }
 
 #[op(v8)]
