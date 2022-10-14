@@ -786,6 +786,7 @@ impl Inner {
     Ok(InitializeResult {
       capabilities,
       server_info: Some(server_info),
+      offset_encoding: None,
     })
   }
 
@@ -1777,6 +1778,7 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let use_snippets = self.config.client_capabilities.snippet_support;
       let req = tsc::RequestMethod::GetCompletions((
         specifier.clone(),
         position,
@@ -1792,10 +1794,12 @@ impl Inner {
               self.config.get_workspace_settings().suggest.auto_imports,
             ),
             include_completions_for_module_exports: Some(true),
-            include_completions_with_object_literal_method_snippets: Some(true),
-            include_completions_with_class_member_snippets: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(
+              use_snippets,
+            ),
+            include_completions_with_class_member_snippets: Some(use_snippets),
             include_completions_with_insert_text: Some(true),
-            include_completions_with_snippet_text: Some(true),
+            include_completions_with_snippet_text: Some(use_snippets),
             jsx_attribute_completion_style: Some(
               tsc::JsxAttributeCompletionStyle::Auto,
             ),
