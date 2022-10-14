@@ -813,6 +813,12 @@
       const { value: chunk, done } = await reader.read();
       if (done) break;
 
+      if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
+        throw new TypeError(
+          "Can't convert value to Uint8Array while consuming the stream",
+        );
+      }
+
       ArrayPrototypePush(chunks, chunk);
       totalLength += chunk.byteLength;
     }
@@ -2610,6 +2616,7 @@
     assert(typeof cloneForBranch2 === "boolean");
     const reader = acquireReadableStreamDefaultReader(stream);
     let reading = false;
+    let readAgain = false;
     let canceled1 = false;
     let canceled2 = false;
     /** @type {any} */
@@ -2628,6 +2635,7 @@
 
     function pullAlgorithm() {
       if (reading === true) {
+        readAgain = true;
         return resolvePromiseWith(undefined);
       }
       reading = true;
@@ -2635,7 +2643,7 @@
       const readRequest = {
         chunkSteps(value) {
           queueMicrotask(() => {
-            reading = false;
+            readAgain = false;
             const value1 = value;
             const value2 = value;
 
@@ -2657,6 +2665,11 @@
                 value2,
               );
             }
+
+            reading = false;
+            if (readAgain === true) {
+              pullAlgorithm();
+            }
           });
         },
         closeSteps() {
@@ -2675,7 +2688,9 @@
               ],
             );
           }
-          cancelPromise.resolve(undefined);
+          if (canceled1 === false || canceled2 === false) {
+            cancelPromise.resolve(undefined);
+          }
         },
         errorSteps() {
           reading = false;
