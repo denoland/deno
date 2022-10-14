@@ -68,38 +68,38 @@ pub fn op_compression_new(
 pub fn op_compression_write(
   state: &mut OpState,
   rid: ResourceId,
-  input: ZeroCopyBuf,
+  input: &[u8],
 ) -> Result<ZeroCopyBuf, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(&input)?;
+      d.write_all(input)?;
       d.flush()?;
       d.get_mut().drain(..)
     }

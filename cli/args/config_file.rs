@@ -11,7 +11,6 @@ use crate::fs_util::specifier_to_file_path;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -29,6 +28,11 @@ use std::path::PathBuf;
 
 pub type MaybeImportsResult =
   Result<Option<Vec<(ModuleSpecifier, Vec<String>)>>, AnyError>;
+
+pub struct JsxImportSourceConfig {
+  pub default_specifier: Option<String>,
+  pub module: String,
+}
 
 /// The transpile options that are significant out of a user provided tsconfig
 /// file, that we want to deserialize out of the final config for a transpile.
@@ -59,7 +63,7 @@ pub struct CompilerOptions {
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct IgnoredCompilerOptions {
   pub items: Vec<String>,
   pub maybe_specifier: Option<ModuleSpecifier>,
@@ -521,6 +525,20 @@ impl ConfigFile {
       std::env::current_dir()?.join(path_ref)
     };
 
+    // perf: Check if the config file exists before canonicalizing path.
+    if !config_file.exists() {
+      return Err(
+        std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          format!(
+            "Could not find the config file: {}",
+            config_file.to_string_lossy()
+          ),
+        )
+        .into(),
+      );
+    }
+
     let config_path = canonicalize_path(&config_file).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
@@ -563,13 +581,13 @@ impl ConfigFile {
         Ok(Some(value)) if value.is_object() => value,
         Ok(Some(_)) => {
           return Err(anyhow!(
-            "config file JSON {:?} should be an object",
+            "config file JSON {} should be an object",
             specifier,
           ))
         }
         Err(e) => {
           return Err(anyhow!(
-            "Unable to parse config file JSON {:?} because of {}",
+            "Unable to parse config file JSON {} because of {}",
             specifier,
             e.to_string()
           ))
@@ -680,17 +698,6 @@ impl ConfigFile {
     if let Some(types) = compiler_options.types {
       imports.extend(types);
     }
-    if compiler_options.jsx == Some("react-jsx".to_string()) {
-      imports.push(format!(
-        "{}/jsx-runtime",
-        compiler_options.jsx_import_source.ok_or_else(|| custom_error("TypeError", "Compiler option 'jsx' set to 'react-jsx', but no 'jsxImportSource' defined."))?
-      ));
-    } else if compiler_options.jsx == Some("react-jsxdev".to_string()) {
-      imports.push(format!(
-        "{}/jsx-dev-runtime",
-        compiler_options.jsx_import_source.ok_or_else(|| custom_error("TypeError", "Compiler option 'jsx' set to 'react-jsxdev', but no 'jsxImportSource' defined."))?
-      ));
-    }
     if !imports.is_empty() {
       let referrer = self.specifier.clone();
       Ok(Some(vec![(referrer, imports)]))
@@ -700,16 +707,22 @@ impl ConfigFile {
   }
 
   /// Based on the compiler options in the configuration file, return the
-  /// implied JSX import source module.
-  pub fn to_maybe_jsx_import_source_module(&self) -> Option<String> {
+  /// JSX import source configuration.
+  pub fn to_maybe_jsx_import_source_config(
+    &self,
+  ) -> Option<JsxImportSourceConfig> {
     let compiler_options_value = self.json.compiler_options.as_ref()?;
     let compiler_options: CompilerOptions =
       serde_json::from_value(compiler_options_value.clone()).ok()?;
-    match compiler_options.jsx.as_deref() {
+    let module = match compiler_options.jsx.as_deref() {
       Some("react-jsx") => Some("jsx-runtime".to_string()),
       Some("react-jsxdev") => Some("jsx-dev-runtime".to_string()),
       _ => None,
-    }
+    };
+    module.map(|module| JsxImportSourceConfig {
+      default_specifier: compiler_options.jsx_import_source,
+      module,
+    })
   }
 
   pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {

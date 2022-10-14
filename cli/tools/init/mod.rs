@@ -1,9 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::InitFlags;
-use crate::compat;
+use crate::deno_std;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::{anyhow::Context, error::AnyError};
 use dialoguer::{theme::ColorfulTheme, MultiSelect};
+use log::info;
 use std::io::Write;
 use std::path::Path;
 
@@ -53,7 +56,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
       if selections.contains(&2) {
         "std/"
       } else {
-        compat::STD_URL_STR
+        deno_std::CURRENT_STD_URL
       },
     );
     create_file(&dir, "mod_test.ts", &mod_test_ts)?;
@@ -66,7 +69,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
       if selections.contains(&2) {
         "std/"
       } else {
-        compat::STD_URL_STR
+        deno_std::CURRENT_STD_URL
       },
     );
     create_file(&dir, "mod_test.js", &mod_test_js)?;
@@ -97,7 +100,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   // Import map
   if selections.contains(&2) {
     let import_map_json = include_str!("./templates/import_map.json")
-      .replace("{CURRENT_STD_URL}", compat::STD_URL_STR);
+      .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL);
     create_file(&dir, "import_map.json", &import_map_json)?;
   }
 

@@ -191,6 +191,7 @@
       this[_url] = wsURL.href;
 
       ops.op_ws_check_permission_and_cancel_handle(
+        "WebSocket.abort()",
         this[_url],
         false,
       );
@@ -227,6 +228,7 @@
       PromisePrototypeThen(
         core.opAsync(
           "op_ws_create",
+          "new WebSocket()",
           wsURL.href,
           ArrayPrototypeJoin(protocols, ", "),
         ),

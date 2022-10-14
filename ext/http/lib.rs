@@ -23,6 +23,8 @@ use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
+use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -39,6 +41,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use fly_accept_encoding::Encoding;
 use hyper::body::Bytes;
+use hyper::body::HttpBody;
+use hyper::body::SizeHint;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
 use hyper::server::conn::Http;
@@ -78,7 +82,6 @@ pub fn init() -> Extension {
     ))
     .ops(vec![
       op_http_accept::decl(),
-      op_http_read::decl(),
       op_http_write_headers::decl(),
       op_http_headers::decl(),
       op_http_write::decl(),
@@ -310,6 +313,7 @@ pub struct HttpStreamResource {
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
   cancel_handle: CancelHandle,
+  size: SizeHint,
 }
 
 impl HttpStreamResource {
@@ -319,11 +323,13 @@ impl HttpStreamResource {
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
   ) -> Self {
+    let size = request.body().size_hint();
     Self {
       conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
+      size,
       cancel_handle: CancelHandle::new(),
     }
   }
@@ -334,8 +340,61 @@ impl Resource for HttpStreamResource {
     "httpStream".into()
   }
 
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+    Box::pin(async move {
+      let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
+
+      let body = loop {
+        match &mut *rd {
+          HttpRequestReader::Headers(_) => {}
+          HttpRequestReader::Body(_, body) => break body,
+          HttpRequestReader::Closed => return Ok(BufView::empty()),
+        }
+        match take(&mut *rd) {
+          HttpRequestReader::Headers(request) => {
+            let (parts, body) = request.into_parts();
+            *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+          }
+          _ => unreachable!(),
+        };
+      };
+
+      let fut = async {
+        let mut body = Pin::new(body);
+        loop {
+          match body.as_mut().peek_mut().await {
+            Some(Ok(chunk)) if !chunk.is_empty() => {
+              let len = min(limit, chunk.len());
+              let buf = chunk.split_to(len);
+              let view = BufView::from(buf);
+              break Ok(view);
+            }
+            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
+            // currently has a peeked value that can be synchronously returned
+            // from `next()`.
+            //
+            // The future returned from `next()` is always ready, so we can
+            // safely call `await` on it without creating a race condition.
+            Some(_) => match body.as_mut().next().await.unwrap() {
+              Ok(chunk) => assert!(chunk.is_empty()),
+              Err(err) => break Err(AnyError::from(err)),
+            },
+            None => break Ok(BufView::empty()),
+          }
+        }
+      };
+
+      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+      fut.try_or_cancel(cancel_handle).await
+    })
+  }
+
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    (self.size.lower(), self.size.upper())
   }
 }
 
@@ -703,16 +762,14 @@ async fn op_http_write_resource(
       _ => {}
     };
 
-    let vec = vec![0u8; 64 * 1024]; // 64KB
-    let buf = ZeroCopyBuf::new_temp(vec);
-    let (nread, buf) = resource.clone().read_return(buf).await?;
-    if nread == 0 {
+    let view = resource.clone().read(64 * 1024).await?; // 64KB
+    if view.is_empty() {
       break;
     }
 
     match &mut *wr {
       HttpResponseWriter::Body(body) => {
-        if let Err(err) = body.write_all(&buf[..nread]).await {
+        if let Err(err) = body.write_all(&view).await {
           assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
           // Don't return "broken pipe", that's an implementation detail.
           // Pull up the failure associated with the transport connection instead.
@@ -722,9 +779,8 @@ async fn op_http_write_resource(
         }
       }
       HttpResponseWriter::BodyUncompressed(body) => {
-        let mut buf = buf.to_temp();
-        buf.truncate(nread);
-        if let Err(err) = body.send_data(Bytes::from(buf)).await {
+        let bytes = Bytes::from(view);
+        if let Err(err) = body.send_data(bytes).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
@@ -817,55 +873,6 @@ async fn op_http_shutdown(
 }
 
 #[op]
-async fn op_http_read(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
-) -> Result<usize, AnyError> {
-  let stream = state
-    .borrow_mut()
-    .resource_table
-    .get::<HttpStreamResource>(rid)?;
-  let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
-
-  let body = loop {
-    match &mut *rd {
-      HttpRequestReader::Headers(_) => {}
-      HttpRequestReader::Body(_, body) => break body,
-      HttpRequestReader::Closed => return Ok(0),
-    }
-    match take(&mut *rd) {
-      HttpRequestReader::Headers(request) => {
-        let (parts, body) = request.into_parts();
-        *rd = HttpRequestReader::Body(parts.headers, body.peekable());
-      }
-      _ => unreachable!(),
-    };
-  };
-
-  let fut = async {
-    let mut body = Pin::new(body);
-    loop {
-      match body.as_mut().peek_mut().await {
-        Some(Ok(chunk)) if !chunk.is_empty() => {
-          let len = min(buf.len(), chunk.len());
-          buf[..len].copy_from_slice(&chunk.split_to(len));
-          break Ok(len);
-        }
-        Some(_) => match body.as_mut().next().await.unwrap() {
-          Ok(chunk) => assert!(chunk.is_empty()),
-          Err(err) => break Err(AnyError::from(err)),
-        },
-        None => break Ok(0),
-      }
-    }
-  };
-
-  let cancel_handle = RcRef::map(&stream, |r| &r.cancel_handle);
-  fut.try_or_cancel(cancel_handle).await
-}
-
-#[op]
 fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
@@ -873,6 +880,41 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   );
   Ok(base64::encode(digest))
 }
+
+struct UpgradedStream(hyper::upgrade::Upgraded);
+impl tokio::io::AsyncRead for UpgradedStream {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &mut tokio::io::ReadBuf,
+  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+  }
+}
+
+impl tokio::io::AsyncWrite for UpgradedStream {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
+  }
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_flush(cx)
+  }
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
+  }
+}
+
+impl deno_websocket::Upgraded for UpgradedStream {}
 
 #[op]
 async fn op_http_upgrade_websocket(
@@ -893,7 +935,9 @@ async fn op_http_upgrade_websocket(
   };
 
   let transport = hyper::upgrade::on(request).await?;
-  let ws_rid = ws_create_server_stream(&state, transport).await?;
+  let ws_rid =
+    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
+      .await?;
   Ok(ws_rid)
 }
 

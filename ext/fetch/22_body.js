@@ -28,19 +28,20 @@
   const {
     isReadableStreamDisturbed,
     errorReadableStream,
+    readableStreamClose,
+    readableStreamDisturb,
+    readableStreamCollectIntoUint8Array,
+    readableStreamThrowIfErrored,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
-    PromiseResolve,
-    TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -88,6 +89,8 @@
         if (consumed) {
           this.streamOrStatic = new ReadableStream();
           this.streamOrStatic.getReader();
+          readableStreamDisturb(this.streamOrStatic);
+          readableStreamClose(this.streamOrStatic);
         } else {
           this.streamOrStatic = new ReadableStream({
             start(controller) {
@@ -136,7 +139,7 @@
      * https://fetch.spec.whatwg.org/#concept-body-consume-body
      * @returns {Promise<Uint8Array>}
      */
-    async consume() {
+    consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
@@ -144,23 +147,8 @@
           this.streamOrStatic,
         )
       ) {
-        const reader = this.stream.getReader();
-        /** @type {Uint8Array[]} */
-        const chunks = [];
-        let totalLength = 0;
-        while (true) {
-          const { value: chunk, done } = await reader.read();
-          if (done) break;
-          ArrayPrototypePush(chunks, chunk);
-          totalLength += chunk.byteLength;
-        }
-        const finalBuffer = new Uint8Array(totalLength);
-        let i = 0;
-        for (const chunk of chunks) {
-          TypedArrayPrototypeSet(finalBuffer, chunk, i);
-          i += chunk.byteLength;
-        }
-        return finalBuffer;
+        readableStreamThrowIfErrored(this.stream);
+        return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
@@ -235,11 +223,17 @@
    * @returns {void}
    */
   function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
-    function consumeBody(object) {
-      if (object[bodySymbol] !== null) {
-        return object[bodySymbol].consume();
-      }
-      return PromiseResolve(new Uint8Array());
+    async function consumeBody(object, type) {
+      webidl.assertBranded(object, prototype);
+
+      const body = object[bodySymbol] !== null
+        ? await object[bodySymbol].consume()
+        : new Uint8Array();
+
+      const mimeType = type === "Blob" || type === "FormData"
+        ? object[mimeTypeSymbol]
+        : null;
+      return packageData(body, type, mimeType);
     }
 
     /** @type {PropertyDescriptorMap} */
@@ -275,10 +269,8 @@
       },
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
-        value: async function arrayBuffer() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "ArrayBuffer");
+        value: function arrayBuffer() {
+          return consumeBody(this, "ArrayBuffer");
         },
         writable: true,
         configurable: true,
@@ -286,10 +278,8 @@
       },
       blob: {
         /** @returns {Promise<Blob>} */
-        value: async function blob() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "Blob", this[mimeTypeSymbol]);
+        value: function blob() {
+          return consumeBody(this, "Blob");
         },
         writable: true,
         configurable: true,
@@ -297,10 +287,8 @@
       },
       formData: {
         /** @returns {Promise<FormData>} */
-        value: async function formData() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "FormData", this[mimeTypeSymbol]);
+        value: function formData() {
+          return consumeBody(this, "FormData");
         },
         writable: true,
         configurable: true,
@@ -308,10 +296,8 @@
       },
       json: {
         /** @returns {Promise<any>} */
-        value: async function json() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "JSON");
+        value: function json() {
+          return consumeBody(this, "JSON");
         },
         writable: true,
         configurable: true,
@@ -319,10 +305,8 @@
       },
       text: {
         /** @returns {Promise<string>} */
-        value: async function text() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "text");
+        value: function text() {
+          return consumeBody(this, "text");
         },
         writable: true,
         configurable: true,
@@ -388,7 +372,10 @@
     let source = null;
     let length = null;
     let contentType = null;
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, object)) {
+    if (typeof object === "string") {
+      source = object;
+      contentType = "text/plain;charset=UTF-8";
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, object)) {
       stream = object.stream();
       source = object;
       length = object.size;
@@ -424,24 +411,21 @@
       // TODO(@satyarohith): not sure what primordial here.
       source = object.toString();
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-    } else if (typeof object === "string") {
-      source = object;
-      contentType = "text/plain;charset=UTF-8";
     } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
       stream = object;
       if (object.locked || isReadableStreamDisturbed(object)) {
         throw new TypeError("ReadableStream is locked or disturbed");
       }
     }
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, source)) {
-      stream = { body: source, consumed: false };
-      length = source.byteLength;
-    } else if (typeof source === "string") {
+    if (typeof source === "string") {
       // WARNING: this deviates from spec (expects length to be set)
       // https://fetch.spec.whatwg.org/#bodyinit > 7.
       // no observable side-effect for users so far, but could change
       stream = { body: source, consumed: false };
       length = null; // NOTE: string length != byte length
+    } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, source)) {
+      stream = { body: source, consumed: false };
+      length = source.byteLength;
     }
     const body = new InnerBody(stream);
     body.source = source;

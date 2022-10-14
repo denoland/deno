@@ -32,12 +32,13 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
+    "sys",
     "run",
     "ffi",
     "hrtime",
@@ -122,12 +123,20 @@
   function cache(desc, state) {
     let { name: key } = desc;
     if (
-      (desc.name === "read" || desc.name === "write") &&
+      (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
       ReflectHas(desc, "path")
     ) {
-      key += `-${desc.path}`;
+      key += `-${desc.path}&`;
     } else if (desc.name === "net" && desc.host) {
-      key += `-${desc.host}`;
+      key += `-${desc.host}&`;
+    } else if (desc.name === "run" && desc.command) {
+      key += `-${desc.command}&`;
+    } else if (desc.name === "env" && desc.variable) {
+      key += `-${desc.variable}&`;
+    } else if (desc.name === "sys" && desc.kind) {
+      key += `-${desc.kind}&`;
+    } else {
+      key += "$";
     }
     if (MapPrototypeHas(statusCache, key)) {
       const status = MapPrototypeGet(statusCache, key);
@@ -236,7 +245,7 @@
           serializedPermissions[key] = permissions[key];
         }
       }
-      for (const key of ["env", "hrtime", "net"]) {
+      for (const key of ["env", "hrtime", "net", "sys"]) {
         if (ArrayIsArray(permissions[key])) {
           serializedPermissions[key] = ArrayPrototypeSlice(permissions[key]);
         } else {

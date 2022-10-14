@@ -18,16 +18,19 @@ async function dlint() {
     "*.ts",
     ":!:.github/mtime_cache/action.js",
     ":!:cli/tests/testdata/swc_syntax_error.ts",
-    ":!:cli/tests/testdata/038_checkjs.js",
     ":!:cli/tests/testdata/error_008_checkjs.js",
     ":!:cli/bench/http/node*.js",
+    ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
+    ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
     ":!:cli/tests/testdata/fmt/**",
+    ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
+    ":!:cli/tests/testdata/run/**",
     ":!:cli/tests/testdata/tsc/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
@@ -109,7 +112,7 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: cmd,
+    args: [...cmd, "--", "-D", "warnings"],
     stdout: "inherit",
     stderr: "inherit",
   });

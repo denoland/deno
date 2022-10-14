@@ -10,7 +10,6 @@ use crate::display;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -34,6 +33,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
@@ -59,7 +59,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
@@ -144,13 +144,14 @@ impl TestDescription {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
   String(String),
   Bytes(Vec<u8>),
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
@@ -160,7 +161,7 @@ pub enum TestResult {
   Cancelled,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestStepDescription {
   pub id: usize,
@@ -183,6 +184,7 @@ impl TestStepDescription {
   }
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -202,7 +204,7 @@ impl TestStepResult {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,
@@ -723,7 +725,8 @@ async fn test_specifier(
       stdout: StdioPipe::File(sender.stdout()),
       stderr: StdioPipe::File(sender.stderr()),
     },
-  );
+  )
+  .await?;
 
   worker.run_test_specifier(mode).await
 }
@@ -752,7 +755,7 @@ fn extract_files_from_regex_blocks(
           return None;
         }
 
-        match attributes.get(0) {
+        match attributes.first() {
           Some(&"js") => MediaType::JavaScript,
           Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,

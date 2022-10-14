@@ -7,8 +7,8 @@
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
-  const { writableStreamForRid } = window.__bootstrap.streamUtils;
-  const { readableStreamForRid } = window.__bootstrap.streams;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streams;
   const {
     ArrayPrototypeFilter,
     Error,
@@ -33,12 +33,14 @@
 
   function openSync(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
     const rid = ops.op_open_sync(
-      { path: pathFromURL(path), options, mode },
+      pathFromURL(path),
+      options,
+      mode,
     );
 
     return new FsFile(rid);
@@ -46,13 +48,15 @@
 
   async function open(
     path,
-    options = { read: true },
+    options,
   ) {
-    checkOpenOptions(options);
+    if (options) checkOpenOptions(options);
     const mode = options?.mode;
     const rid = await core.opAsync(
       "op_open_async",
-      { path: pathFromURL(path), options, mode },
+      pathFromURL(path),
+      options,
+      mode,
     );
 
     return new FsFile(rid);
@@ -176,6 +180,11 @@
         this.#readable = readableStreamForRid(this.rid);
       }
       return this.#readable;
+    }
+
+    setRaw(mode, options = {}) {
+      const cbreak = !!(options.cbreak ?? false);
+      ops.op_stdin_set_raw(mode, cbreak);
     }
   }
 

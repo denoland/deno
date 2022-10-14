@@ -2,62 +2,38 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
+use super::semver::NpmVersion;
+use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages.
+/// the one used by npm packages and so we represent either via a trait.
 pub trait NpmVersionMatcher {
-  fn matches(&self, version: &semver::Version) -> bool;
+  fn matches(&self, version: &NpmVersion) -> bool;
+  fn is_latest(&self) -> bool;
   fn version_text(&self) -> String;
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NpmPackageReference {
   pub req: NpmPackageReq,
   pub sub_path: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct NpmPackageReq {
-  pub name: String,
-  pub version_req: Option<semver::VersionReq>,
-}
-
-impl std::fmt::Display for NpmPackageReq {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match &self.version_req {
-      Some(req) => write!(f, "{}@{}", self.name, req),
-      None => write!(f, "{}", self.name),
-    }
-  }
-}
-
-impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &semver::Version) -> bool {
-    match &self.version_req {
-      Some(req) => req.matches(version),
-      None => version.pre.is_empty(),
-    }
-  }
-
-  fn version_text(&self) -> String {
-    self
-      .version_req
-      .as_ref()
-      .map(|v| format!("{}", v))
-      .unwrap_or_else(|| "non-prerelease".to_string())
-  }
 }
 
 impl NpmPackageReference {
@@ -71,26 +47,51 @@ impl NpmPackageReference {
     let specifier = match specifier.strip_prefix("npm:") {
       Some(s) => s,
       None => {
-        bail!("Not an npm specifier: '{}'", specifier);
+        bail!("Not an npm specifier: {}", specifier);
       }
     };
-    let (name, version_req) = match specifier.rsplit_once('@') {
-      Some((name, version_req)) => (
-        name,
-        match semver::VersionReq::parse(version_req) {
-          Ok(v) => Some(v),
-          Err(_) => None, // not a version requirement
-        },
-      ),
-      None => (specifier, None),
+    let parts = specifier.split('/').collect::<Vec<_>>();
+    let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
+    if parts.len() < name_part_len {
+      return Err(generic_error(format!("Not a valid package: {}", specifier)));
+    }
+    let name_parts = &parts[0..name_part_len];
+    let last_name_part = &name_parts[name_part_len - 1];
+    let (name, version_req) = if let Some(at_index) = last_name_part.rfind('@')
+    {
+      let version = &last_name_part[at_index + 1..];
+      let last_name_part = &last_name_part[..at_index];
+      let version_req = SpecifierVersionReq::parse(version)
+        .with_context(|| "Invalid version requirement.")?;
+      let name = if name_part_len == 1 {
+        last_name_part.to_string()
+      } else {
+        format!("{}/{}", name_parts[0], last_name_part)
+      };
+      (name, Some(version_req))
+    } else {
+      (name_parts.join("/"), None)
     };
+    let sub_path = if parts.len() == name_parts.len() {
+      None
+    } else {
+      Some(parts[name_part_len..].join("/"))
+    };
+
+    if let Some(sub_path) = &sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let msg = format!(
+          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
+          name, sub_path, name, version, new_sub_path
+        );
+        return Err(generic_error(msg));
+      }
+    }
+
     Ok(NpmPackageReference {
-      req: NpmPackageReq {
-        name: name.to_string(),
-        version_req,
-      },
-      // todo: implement and support this
-      sub_path: None,
+      req: NpmPackageReq { name, version_req },
+      sub_path,
     })
   }
 }
@@ -105,13 +106,54 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(
+  Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
+pub struct NpmPackageReq {
+  pub name: String,
+  pub version_req: Option<SpecifierVersionReq>,
+}
+
+impl std::fmt::Display for NpmPackageReq {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match &self.version_req {
+      Some(req) => write!(f, "{}@{}", self.name, req),
+      None => write!(f, "{}", self.name),
+    }
+  }
+}
+
+impl NpmVersionMatcher for NpmPackageReq {
+  fn matches(&self, version: &NpmVersion) -> bool {
+    match &self.version_req {
+      Some(req) => req.matches(version),
+      None => version.pre.is_empty(),
+    }
+  }
+
+  fn is_latest(&self) -> bool {
+    self.version_req.is_none()
+  }
+
+  fn version_text(&self) -> String {
+    self
+      .version_req
+      .as_ref()
+      .map(|v| format!("{}", v))
+      .unwrap_or_else(|| "non-prerelease".to_string())
+  }
+}
+
+#[derive(
+  Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: semver::Version,
+  pub version: NpmVersion,
 }
 
 impl NpmPackageId {
+  #[allow(unused)]
   pub fn scope(&self) -> Option<&str> {
     if self.name.starts_with('@') && self.name.contains('/') {
       self.name.split('/').next()
@@ -127,7 +169,7 @@ impl std::fmt::Display for NpmPackageId {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmResolutionPackage {
   pub id: NpmPackageId,
   pub dist: NpmPackageVersionDistInfo,
@@ -136,11 +178,52 @@ pub struct NpmResolutionPackage {
   pub dependencies: HashMap<String, NpmPackageId>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
-  package_reqs: HashMap<NpmPackageReq, semver::Version>,
-  packages_by_name: HashMap<String, Vec<semver::Version>>,
+  #[serde(with = "map_to_vec")]
+  package_reqs: HashMap<NpmPackageReq, NpmVersion>,
+  packages_by_name: HashMap<String, Vec<NpmVersion>>,
+  #[serde(with = "map_to_vec")]
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+}
+
+// This is done so the maps with non-string keys get serialized and deserialized as vectors.
+// Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
+mod map_to_vec {
+  use std::collections::HashMap;
+
+  use serde::de::Deserialize;
+  use serde::de::Deserializer;
+  use serde::ser::Serializer;
+  use serde::Serialize;
+
+  pub fn serialize<S, K: Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.collect_seq(map.iter())
+  }
+
+  pub fn deserialize<
+    'de,
+    D,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+  >(
+    deserializer: D,
+  ) -> Result<HashMap<K, V>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let mut map = HashMap::new();
+    for (key, value) in Vec::<(K, V)>::deserialize(deserializer)? {
+      map.insert(key, value);
+    }
+    Ok(map)
+  }
 }
 
 impl NpmResolutionSnapshot {
@@ -163,23 +246,66 @@ impl NpmResolutionSnapshot {
     }
   }
 
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .package_reqs
+      .iter()
+      .map(|(req, version)| NpmPackageId {
+        name: req.name.clone(),
+        version: version.clone(),
+      })
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>()
+  }
+
+  pub fn package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<&NpmResolutionPackage> {
+    self.packages.get(id)
+  }
+
   pub fn resolve_package_from_package(
     &self,
     name: &str,
     referrer: &NpmPackageId,
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.packages.get(referrer) {
-      Some(referrer_package) => match referrer_package.dependencies.get(name) {
-        Some(id) => Ok(self.packages.get(id).unwrap()),
-        None => {
-          bail!(
-            "could not find package '{}' referenced by '{}'",
-            name,
-            referrer
-          )
+      Some(referrer_package) => {
+        let name_ = name_without_path(name);
+        if let Some(id) = referrer_package.dependencies.get(name_) {
+          return Ok(self.packages.get(id).unwrap());
         }
-      },
-      None => bail!("could not find referrer package '{}'", referrer),
+
+        if referrer_package.id.name == name_ {
+          return Ok(referrer_package);
+        }
+
+        // TODO(bartlomieju): this should use a reverse lookup table in the
+        // snapshot instead of resolving best version again.
+        let req = NpmPackageReq {
+          name: name_.to_string(),
+          version_req: None,
+        };
+
+        if let Some(version) = self.resolve_best_package_version(name_, &req) {
+          let id = NpmPackageId {
+            name: name_.to_string(),
+            version,
+          };
+          if let Some(pkg) = self.packages.get(&id) {
+            return Ok(pkg);
+          }
+        }
+
+        bail!(
+          "could not find npm package '{}' referenced by '{}'",
+          name,
+          referrer
+        )
+      }
+      None => bail!("could not find referrer npm package '{}'", referrer),
     }
   }
 
@@ -191,8 +317,8 @@ impl NpmResolutionSnapshot {
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<semver::Version> {
-    let mut maybe_best_version: Option<&semver::Version> = None;
+  ) -> Option<NpmVersion> {
+    let mut maybe_best_version: Option<&NpmVersion> = None;
     if let Some(versions) = self.packages_by_name.get(name) {
       for version in versions {
         if version_matcher.matches(version) {
@@ -226,10 +352,13 @@ impl std::fmt::Debug for NpmResolution {
 }
 
 impl NpmResolution {
-  pub fn new(api: NpmRegistryApi) -> Self {
+  pub fn new(
+    api: NpmRegistryApi,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
+  ) -> Self {
     Self {
       api,
-      snapshot: Default::default(),
+      snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_sempahore: tokio::sync::Semaphore::new(1),
     }
   }
@@ -276,7 +405,7 @@ impl NpmResolution {
       let dependencies = version_and_info
         .info
         .dependencies_as_entries()
-        .with_context(|| format!("Package: {}", id))?;
+        .with_context(|| format!("npm package: {}", id))?;
 
       pending_dependencies.push_back((id.clone(), dependencies));
       snapshot.packages.insert(
@@ -311,6 +440,27 @@ impl NpmResolution {
         ordering => ordering,
       });
 
+      // cache all the dependencies' registry infos in parallel when this env var isn't set
+      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
+      {
+        let handles = deps
+          .iter()
+          .map(|dep| {
+            let name = dep.name.clone();
+            let api = self.api.clone();
+            tokio::task::spawn(async move {
+              // it's ok to call this without storing the result, because
+              // NpmRegistryApi will cache the package info in memory
+              api.package_info(&name).await
+            })
+          })
+          .collect::<Vec<_>>();
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+          result??; // surface the first error
+        }
+      }
+
       // now resolve them
       for dep in deps {
         // check if an existing dependency matches this
@@ -334,7 +484,7 @@ impl NpmResolution {
             .info
             .dependencies_as_entries()
             .with_context(|| {
-              format!("Package: {}@{}", dep.name, version_and_info.version)
+              format!("npm package: {}@{}", dep.name, version_and_info.version)
             })?;
 
           let id = NpmPackageId {
@@ -412,7 +562,7 @@ impl NpmResolution {
 
 #[derive(Clone)]
 struct VersionAndInfo {
-  version: semver::Version,
+  version: NpmVersion,
   info: NpmPackageVersionInfo,
 }
 
@@ -423,8 +573,27 @@ fn get_resolved_package_version_and_info(
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
+  if version_matcher.is_latest() {
+    if let Some(version) = info.dist_tags.get("latest") {
+      match info.versions.get(version) {
+        Some(info) => {
+          return Ok(VersionAndInfo {
+            version: NpmVersion::parse(version)?,
+            info: info.clone(),
+          });
+        }
+        None => {
+          bail!(
+            "Could not find version '{}' referenced in dist-tag 'latest'.",
+            version,
+          )
+        }
+      }
+    }
+  }
+
   for (_, version_info) in info.versions.into_iter() {
-    let version = semver::Version::parse(&version_info.version)?;
+    let version = NpmVersion::parse(&version_info.version)?;
     if version_matcher.matches(&version) {
       let is_best_version = maybe_best_version
         .as_ref()
@@ -452,8 +621,8 @@ fn get_resolved_package_version_and_info(
     // version, but next time to a different version because it has new information.
     None => bail!(
       concat!(
-        "Could not find package '{}' matching {}{}. ",
-        "Try retreiving the latest npm package information by running with --reload",
+        "Could not find npm package '{}' matching {}{}. ",
+        "Try retrieving the latest npm package information by running with --reload",
       ),
       pkg_name,
       version_matcher.version_text(),
@@ -462,5 +631,181 @@ fn get_resolved_package_version_and_info(
         None => String::new(),
       }
     ),
+  }
+}
+
+fn name_without_path(name: &str) -> &str {
+  let mut search_start_index = 0;
+  if name.starts_with('@') {
+    if let Some(slash_index) = name.find('/') {
+      search_start_index = slash_index + 1;
+    }
+  }
+  if let Some(slash_index) = &name[search_start_index..].find('/') {
+    // get the name up until the path slash
+    &name[0..search_start_index + slash_index]
+  } else {
+    name
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_npm_package_ref() {
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@1").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("1").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: None,
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@^1.2").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("^1.2").unwrap()),
+        },
+        sub_path: None,
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:test@~1.1/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "test".to_string(),
+          version_req: Some(SpecifierVersionReq::parse("~1.1").unwrap()),
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package/test/sub_path").unwrap(),
+      NpmPackageReference {
+        req: NpmPackageReq {
+          name: "@package/test".to_string(),
+          version_req: None,
+        },
+        sub_path: Some("sub_path".to_string()),
+      }
+    );
+
+    assert_eq!(
+      NpmPackageReference::from_str("npm:@package")
+        .err()
+        .unwrap()
+        .to_string(),
+      "Not a valid package: @package"
+    );
+  }
+
+  #[test]
+  fn test_name_without_path() {
+    assert_eq!(name_without_path("foo"), "foo");
+    assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
+    assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
+    assert_eq!(name_without_path("@hello"), "@hello");
+  }
+
+  #[test]
+  fn test_get_resolved_package_version_and_info() {
+    // dist tag where version doesn't exist
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::new(),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(
+      result.err().unwrap().to_string(),
+      "Could not find version '1.0.0-alpha' referenced in dist-tag 'latest'."
+    );
+
+    // dist tag where version is a pre-release
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::from([
+          ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
+          (
+            "1.0.0-alpha".to_string(),
+            NpmPackageVersionInfo {
+              version: "0.1.0-alpha".to_string(),
+              ..Default::default()
+            },
+          ),
+        ]),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(result.unwrap().version.to_string(), "1.0.0-alpha");
   }
 }

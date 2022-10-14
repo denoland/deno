@@ -135,7 +135,17 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
       stem = parent_name.to_string_lossy().to_string();
     }
   }
-  let stem = stem.split_once('@').map_or(&*stem, |x| x.0).to_string();
+
+  // if atmark symbol appears in the index other than 0 (e.g. `foo@bar`) we use
+  // the former part as the inferred name because the latter part is most likely
+  // a version number.
+  match stem.find('@') {
+    Some(at_index) if at_index > 0 => {
+      stem = stem.split_at(at_index).0.to_string();
+    }
+    _ => {}
+  }
+
   Some(stem)
 }
 
@@ -321,6 +331,10 @@ fn resolve_shim_data(
     executable_args.push("--no-remote".to_string());
   }
 
+  if flags.no_npm {
+    executable_args.push("--no-npm".to_string());
+  }
+
   if flags.lock_write {
     executable_args.push("--lock-write".to_string());
   }
@@ -331,10 +345,6 @@ fn resolve_shim_data(
 
   if flags.no_prompt {
     executable_args.push("--no-prompt".to_string());
-  }
-
-  if flags.compat {
-    executable_args.push("--compat".to_string());
   }
 
   if !flags.v8_flags.is_empty() {
@@ -479,6 +489,24 @@ mod tests {
       ),
       Some("abc".to_string())
     );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("https://example.com/@abc.ts").unwrap()),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/@abc/mod.ts").unwrap()
+      ),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///@abc.ts").unwrap()),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///@abc/cli.ts").unwrap()),
+      Some("@abc".to_string())
+    );
   }
 
   #[test]
@@ -592,7 +620,6 @@ mod tests {
         allow_read: Some(vec![]),
         type_check_mode: TypeCheckMode::None,
         log_level: Some(Level::Error),
-        compat: true,
         ..Flags::default()
       },
       &InstallFlags {
@@ -613,7 +640,6 @@ mod tests {
         "--allow-read",
         "--allow-net",
         "--quiet",
-        "--compat",
         "http://localhost:4545/echo_server.ts",
         "--foobar",
       ]

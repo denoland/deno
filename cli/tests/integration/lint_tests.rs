@@ -42,6 +42,13 @@ itest!(json {
     exit_code: 1,
 });
 
+itest!(compact {
+  args:
+    "lint --compact lint/without_config/file1.js lint/without_config/ignored_file.tss",
+    output: "lint/expected_compact.out",
+    exit_code: 1,
+});
+
 itest!(ignore {
   args:
     "lint --ignore=lint/without_config/file1.js,lint/without_config/malformed.js,lint/without_config/lint_with_config/ lint/without_config/",

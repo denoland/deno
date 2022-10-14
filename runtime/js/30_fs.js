@@ -11,16 +11,19 @@
     ObjectPrototypeIsPrototypeOf,
     SymbolAsyncIterator,
     SymbolIterator,
+    Function,
+    ObjectEntries,
+    Uint32Array,
   } = window.__bootstrap.primordials;
   const { pathFromURL } = window.__bootstrap.util;
   const build = window.__bootstrap.build.build;
 
   function chmodSync(path, mode) {
-    ops.op_chmod_sync({ path: pathFromURL(path), mode });
+    ops.op_chmod_sync(pathFromURL(path), mode);
   }
 
   async function chmod(path, mode) {
-    await core.opAsync("op_chmod_async", { path: pathFromURL(path), mode });
+    await core.opAsync("op_chmod_async", pathFromURL(path), mode);
   }
 
   function chownSync(
@@ -28,7 +31,7 @@
     uid,
     gid,
   ) {
-    ops.op_chown_sync({ path: pathFromURL(path), uid, gid });
+    ops.op_chown_sync(pathFromURL(path), uid, gid);
   }
 
   async function chown(
@@ -38,7 +41,9 @@
   ) {
     await core.opAsync(
       "op_chown_async",
-      { path: pathFromURL(path), uid, gid },
+      pathFromURL(path),
+      uid,
+      gid,
     );
   }
 
@@ -46,20 +51,21 @@
     fromPath,
     toPath,
   ) {
-    ops.op_copy_file_sync({
-      from: pathFromURL(fromPath),
-      to: pathFromURL(toPath),
-    });
+    ops.op_copy_file_sync(
+      pathFromURL(fromPath),
+      pathFromURL(toPath),
+    );
   }
 
   async function copyFile(
     fromPath,
     toPath,
   ) {
-    await core.opAsync("op_copy_file_async", {
-      from: pathFromURL(fromPath),
-      to: pathFromURL(toPath),
-    });
+    await core.opAsync(
+      "op_copy_file_async",
+      pathFromURL(fromPath),
+      pathFromURL(toPath),
+    );
   }
 
   function cwd() {
@@ -148,35 +154,110 @@
     path,
     options = {},
   ) {
-    ops.op_remove_sync({
-      path: pathFromURL(path),
-      recursive: !!options.recursive,
-    });
+    ops.op_remove_sync(
+      pathFromURL(path),
+      !!options.recursive,
+    );
   }
 
   async function remove(
     path,
     options = {},
   ) {
-    await core.opAsync("op_remove_async", {
-      path: pathFromURL(path),
-      recursive: !!options.recursive,
-    });
+    await core.opAsync(
+      "op_remove_async",
+      pathFromURL(path),
+      !!options.recursive,
+    );
   }
 
   function renameSync(oldpath, newpath) {
-    ops.op_rename_sync({
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-    });
+    ops.op_rename_sync(
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+    );
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync("op_rename_async", {
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-    });
+    await core.opAsync(
+      "op_rename_async",
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+    );
   }
+
+  // Extract the FsStat object from the encoded buffer.
+  // See `runtime/ops/fs.rs` for the encoder.
+  //
+  // This is not a general purpose decoder. There are 4 types:
+  //
+  // 1. date
+  //  offset += 4
+  //  1/0 | extra padding | high u32 | low u32
+  //  if date[0] == 1, new Date(u64) else null
+  //
+  // 2. bool
+  //  offset += 2
+  //  1/0 | extra padding
+  //
+  // 3. u64
+  //  offset += 2
+  //  high u32 | low u32
+  //
+  // 4. ?u64 converts a zero u64 value to JS null on Windows.
+  function createByteStruct(types) {
+    // types can be "date", "bool" or "u64".
+    // `?` prefix means optional on windows.
+    let offset = 0;
+    let str =
+      'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
+    for (let [name, type] of ObjectEntries(types)) {
+      const optional = type.startsWith("?");
+      if (optional) type = type.slice(1);
+
+      if (type == "u64") {
+        if (!optional) {
+          str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
+        } else {
+          str += `${name}: (unix ? (view[${offset}] + view[${
+            offset + 1
+          }] * 2**32) : (view[${offset}] + view[${
+            offset + 1
+          }] * 2**32) || null),`;
+        }
+      } else if (type == "date") {
+        str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
+          offset + 2
+        }] + view[${offset + 3}] * 2**32),`;
+        offset += 2;
+      } else {
+        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      }
+      offset += 2;
+    }
+    str += "};";
+    // ...so you don't like eval huh? don't worry, it only executes during snapshot :)
+    return [new Function("view", str), new Uint32Array(offset)];
+  }
+
+  const [statStruct, statBuf] = createByteStruct({
+    isFile: "bool",
+    isDirectory: "bool",
+    isSymlink: "bool",
+    size: "u64",
+    mtime: "date",
+    atime: "date",
+    birthtime: "date",
+    dev: "?u64",
+    ino: "?u64",
+    mode: "?u64",
+    nlink: "?u64",
+    uid: "?u64",
+    gid: "?u64",
+    rdev: "?u64",
+    blksize: "?u64",
+    blocks: "?u64",
+  });
 
   function parseFileInfo(response) {
     const unix = build.os === "darwin" || build.os === "linux";
@@ -185,9 +266,9 @@
       isDirectory: response.isDirectory,
       isSymlink: response.isSymlink,
       size: response.size,
-      mtime: response.mtime != null ? new Date(response.mtime) : null,
-      atime: response.atime != null ? new Date(response.atime) : null,
-      birthtime: response.birthtime != null
+      mtime: response.mtimeSet !== null ? new Date(response.mtime) : null,
+      atime: response.atimeSet !== null ? new Date(response.atime) : null,
+      birthtime: response.birthtimeSet !== null
         ? new Date(response.birthtime)
         : null,
       // Only non-null if on Unix
@@ -204,7 +285,8 @@
   }
 
   function fstatSync(rid) {
-    return parseFileInfo(ops.op_fstat_sync(rid));
+    ops.op_fstat_sync(rid, statBuf);
+    return statStruct(statBuf);
   }
 
   async function fstat(rid) {
@@ -220,11 +302,12 @@
   }
 
   function lstatSync(path) {
-    const res = ops.op_stat_sync({
-      path: pathFromURL(path),
-      lstat: true,
-    });
-    return parseFileInfo(res);
+    ops.op_stat_sync(
+      pathFromURL(path),
+      true,
+      statBuf,
+    );
+    return statStruct(statBuf);
   }
 
   async function stat(path) {
@@ -236,11 +319,12 @@
   }
 
   function statSync(path) {
-    const res = ops.op_stat_sync({
-      path: pathFromURL(path),
-      lstat: false,
-    });
-    return parseFileInfo(res);
+    ops.op_stat_sync(
+      pathFromURL(path),
+      false,
+      statBuf,
+    );
+    return statStruct(statBuf);
   }
 
   function coerceLen(len) {
@@ -252,19 +336,19 @@
   }
 
   function ftruncateSync(rid, len) {
-    ops.op_ftruncate_sync({ rid, len: coerceLen(len) });
+    ops.op_ftruncate_sync(rid, coerceLen(len));
   }
 
   async function ftruncate(rid, len) {
-    await core.opAsync("op_ftruncate_async", { rid, len: coerceLen(len) });
+    await core.opAsync("op_ftruncate_async", rid, coerceLen(len));
   }
 
   function truncateSync(path, len) {
-    ops.op_truncate_sync({ path, len: coerceLen(len) });
+    ops.op_truncate_sync(path, coerceLen(len));
   }
 
   async function truncate(path, len) {
-    await core.opAsync("op_truncate_async", { path, len: coerceLen(len) });
+    await core.opAsync("op_truncate_async", path, coerceLen(len));
   }
 
   function umask(mask) {
@@ -272,11 +356,11 @@
   }
 
   function linkSync(oldpath, newpath) {
-    ops.op_link_sync({ oldpath, newpath });
+    ops.op_link_sync(oldpath, newpath);
   }
 
   async function link(oldpath, newpath) {
-    await core.opAsync("op_link_async", { oldpath, newpath });
+    await core.opAsync("op_link_async", oldpath, newpath);
   }
 
   function toUnixTimeFromEpoch(value) {
@@ -305,11 +389,9 @@
     atime,
     mtime,
   ) {
-    ops.op_futime_sync({
-      rid,
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    ops.op_futime_sync(rid, atimeSec, atimeNsec, mtimeSec, mtimeNsec);
   }
 
   async function futime(
@@ -317,11 +399,16 @@
     atime,
     mtime,
   ) {
-    await core.opAsync("op_futime_async", {
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    await core.opAsync(
+      "op_futime_async",
       rid,
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   function utimeSync(
@@ -329,11 +416,15 @@
     atime,
     mtime,
   ) {
-    ops.op_utime_sync({
-      path: pathFromURL(path),
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    ops.op_utime_sync(
+      pathFromURL(path),
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   async function utime(
@@ -341,11 +432,16 @@
     atime,
     mtime,
   ) {
-    await core.opAsync("op_utime_async", {
-      path: pathFromURL(path),
-      atime: toUnixTimeFromEpoch(atime),
-      mtime: toUnixTimeFromEpoch(mtime),
-    });
+    const [atimeSec, atimeNsec] = toUnixTimeFromEpoch(atime);
+    const [mtimeSec, mtimeNsec] = toUnixTimeFromEpoch(mtime);
+    await core.opAsync(
+      "op_utime_async",
+      pathFromURL(path),
+      atimeSec,
+      atimeNsec,
+      mtimeSec,
+      mtimeNsec,
+    );
   }
 
   function symlinkSync(
@@ -353,11 +449,11 @@
     newpath,
     options,
   ) {
-    ops.op_symlink_sync({
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-      options,
-    });
+    ops.op_symlink_sync(
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+      options?.type,
+    );
   }
 
   async function symlink(
@@ -365,11 +461,12 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", {
-      oldpath: pathFromURL(oldpath),
-      newpath: pathFromURL(newpath),
-      options,
-    });
+    await core.opAsync(
+      "op_symlink_async",
+      pathFromURL(oldpath),
+      pathFromURL(newpath),
+      options?.type,
+    );
   }
 
   function fdatasyncSync(rid) {

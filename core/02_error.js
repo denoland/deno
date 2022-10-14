@@ -127,7 +127,7 @@
     let callSiteEvals = ArrayPrototypeMap(callSites, evaluateCallSite);
     callSiteEvals = ArrayPrototypeMap(callSiteEvals, sourceMapCallSiteEval);
     ObjectDefineProperties(error, {
-      __callSiteEvals: { value: [], configurable: true },
+      __callSiteEvals: { __proto__: null, value: [], configurable: true },
     });
     const formattedCallSites = [];
     for (const cse of callSiteEvals) {

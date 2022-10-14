@@ -58,6 +58,18 @@ impl DenoDir {
     self.root.join("lint_incremental_cache_v1")
   }
 
+  /// Path for caching swc dependency analysis.
+  pub fn dep_analysis_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("dep_analysis_cache_v1")
+  }
+
+  /// Path for caching node analysis.
+  pub fn node_analysis_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("node_analysis_cache_v1")
+  }
+
   /// Path for the cache used for type checking.
   pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache

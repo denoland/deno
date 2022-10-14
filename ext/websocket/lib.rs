@@ -34,8 +34,11 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::fmt;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::RootCertStore;
 use tokio_rustls::rustls::ServerName;
@@ -58,7 +61,11 @@ pub struct WsRootStore(pub Option<RootCertStore>);
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
-  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    _url: &url::Url,
+    _api_name: &str,
+  ) -> Result<(), AnyError>;
 }
 
 /// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
@@ -67,23 +74,25 @@ pub trait WebSocketPermissions {
 /// would override previously used alias.
 pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
-type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ClientWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type ServerWsStream = WebSocketStream<Pin<Box<dyn Upgraded>>>;
+
 pub enum WebSocketStreamType {
   Client {
-    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
-    rx: AsyncRefCell<SplitStream<WsStream>>,
+    tx: AsyncRefCell<SplitSink<ClientWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ClientWsStream>>,
   },
   Server {
-    tx: AsyncRefCell<
-      SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>,
-    >,
-    rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
+    tx: AsyncRefCell<SplitSink<ServerWsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<ServerWsStream>>,
   },
 }
 
+pub trait Upgraded: AsyncRead + AsyncWrite + Unpin {}
+
 pub async fn ws_create_server_stream(
   state: &Rc<RefCell<OpState>>,
-  transport: hyper::upgrade::Upgraded,
+  transport: Pin<Box<dyn Upgraded>>,
 ) -> Result<ResourceId, AnyError> {
   let ws_stream = WebSocketStream::from_raw_socket(
     transport,
@@ -206,6 +215,7 @@ impl Resource for WsCancelResource {
 #[op]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
+  api_name: String,
   url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
@@ -214,7 +224,7 @@ where
 {
   state
     .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?)?;
+    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
 
   if cancel_handle {
     let rid = state
@@ -237,6 +247,7 @@ pub struct CreateResponse {
 #[op]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
+  api_name: String,
   url: String,
   protocols: String,
   cancel_handle: Option<ResourceId>,
@@ -248,7 +259,7 @@ where
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&url)?)
+      .check_net_url(&url::Url::parse(&url)?, &api_name)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
@@ -340,7 +351,7 @@ where
       ..Default::default()
     }),
   );
-  let (stream, response): (WsStream, Response) =
+  let (stream, response): (ClientWsStream, Response) =
     if let Some(cancel_resource) = cancel_resource {
       client.or_cancel(cancel_resource.0.to_owned()).await?
     } else {
@@ -415,7 +426,7 @@ pub async fn op_ws_send(
   Ok(())
 }
 
-#[op]
+#[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

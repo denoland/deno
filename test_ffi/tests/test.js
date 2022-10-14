@@ -6,6 +6,7 @@
 import { assertEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
+  assert,
 } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -42,12 +43,13 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
-  "print_buffer": { parameters: ["pointer", "usize"], result: "void" },
+  "print_buffer": { parameters: ["buffer", "usize"], result: "void" },
+  "print_pointer": { name: "print_buffer", parameters: ["pointer", "usize"], result: "void" },
   "print_buffer2": {
-    parameters: ["pointer", "usize", "pointer", "usize"],
+    parameters: ["buffer", "usize", "buffer", "usize"],
     result: "void",
   },
-  "return_buffer": { parameters: [], result: "pointer" },
+  "return_buffer": { parameters: [], result: "buffer" },
   "is_null_ptr": { parameters: ["pointer"], result: "u8" },
   "add_u32": { parameters: ["u32", "u32"], result: "u32" },
   "add_i32": { parameters: ["i32", "i32"], result: "i32" },
@@ -58,6 +60,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_isize": { parameters: ["isize", "isize"], result: "isize" },
   "add_f32": { parameters: ["f32", "f32"], result: "f32" },
   "add_f64": { parameters: ["f64", "f64"], result: "f64" },
+  "and": { parameters: ["bool", "bool"], result: "bool" },
   "add_u32_nonblocking": {
     name: "add_u32",
     parameters: ["u32", "u32"],
@@ -106,7 +109,7 @@ const dylib = Deno.dlopen(libPath, {
     result: "f64",
     nonblocking: true,
   },
-  "fill_buffer": { parameters: ["u8", "pointer", "usize"], result: "void" },
+  "fill_buffer": { parameters: ["u8", "buffer", "usize"], result: "void" },
   "sleep_nonblocking": {
     name: "sleep_blocking",
     parameters: ["u64"],
@@ -115,7 +118,7 @@ const dylib = Deno.dlopen(libPath, {
   },
   "sleep_blocking": { parameters: ["u64"], result: "void" },
   "nonblocking_buffer": {
-    parameters: ["pointer", "usize"],
+    parameters: ["buffer", "usize"],
     result: "void",
     nonblocking: true,
   },
@@ -173,6 +176,22 @@ const dylib = Deno.dlopen(libPath, {
     result: "void",
     callback: true,
   },
+  log_many_parameters: {
+    parameters: ["u8", "u16", "u32", "u64", "f64", "f32", "i64", "i32", "i16", "i8", "isize", "usize", "f64", "f32", "f64", "f32", "f64", "f32", "f64"],
+    result: "void",
+  },
+  cast_u8_u32: {
+    parameters: ["u8"],
+    result: "u32",
+  },
+  cast_u32_u8: {
+    parameters: ["u32"],
+    result: "u8",
+  },
+  add_many_u16: {
+    parameters: ["u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16", "u16"],
+    result: "u16",
+  },
   // Statics
   "static_u32": {
     type: "u32",
@@ -189,6 +208,7 @@ const dylib = Deno.dlopen(libPath, {
   "static_char": {
     type: "pointer",
   },
+  "hash": { parameters: ["buffer", "u32"], result: "u32" },
 });
 const { symbols } = dylib;
 
@@ -208,13 +228,9 @@ function returnBuffer() { return return_buffer(); };
 returnBuffer();
 %OptimizeFunctionOnNextCall(returnBuffer);
 const ptr0 = returnBuffer();
+assertIsOptimized(returnBuffer);
 
-const status = %GetOptimizationStatus(returnBuffer);
-if (!(status & (1 << 4))) {
-  throw new Error("returnBuffer is not optimized");
-}
-
-dylib.symbols.print_buffer(ptr0, 8);
+dylib.symbols.print_pointer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
 const into = new Uint8Array(6);
 const into2 = new Uint8Array(3);
@@ -239,9 +255,9 @@ console.log(Boolean(dylib.symbols.is_null_ptr(ptr0)));
 console.log(Boolean(dylib.symbols.is_null_ptr(null)));
 console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(into))));
 const emptyBuffer = new BigUint64Array(0);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptyBuffer)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptyBuffer))));
 const emptySlice = into.subarray(6);
-console.log(Boolean(dylib.symbols.is_null_ptr(emptySlice)));
+console.log(Boolean(dylib.symbols.is_null_ptr(Deno.UnsafePointer.of(emptySlice))));
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
@@ -264,17 +280,10 @@ const { add_u32, add_usize_fast } = symbols;
 function addU32Fast(a, b) {
   return add_u32(a, b);
 };
-
-%PrepareFunctionForOptimization(addU32Fast);
-console.log(addU32Fast(123, 456));
-%OptimizeFunctionOnNextCall(addU32Fast);
-console.log(addU32Fast(123, 456));
+testOptimized(addU32Fast, () => addU32Fast(123, 456));
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
-%PrepareFunctionForOptimization(addU64Fast);
-console.log(addU64Fast(2, 3));
-%OptimizeFunctionOnNextCall(addU64Fast);
-console.log(addU64Fast(2, 3));
+testOptimized(addU64Fast, () => addU64Fast(2, 3));
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -289,6 +298,18 @@ console.log(dylib.symbols.add_isize(Number.MAX_SAFE_INTEGER, 1));
 console.log(dylib.symbols.add_isize(Number.MIN_SAFE_INTEGER, -1));
 console.log(dylib.symbols.add_f32(123.123, 456.789));
 console.log(dylib.symbols.add_f64(123.123, 456.789));
+console.log(dylib.symbols.and(true, true));
+console.log(dylib.symbols.and(true, false));
+
+function addF32Fast(a, b) {
+  return dylib.symbols.add_f32(a, b);
+};
+testOptimized(addF32Fast, () => addF32Fast(123.123, 456.789));
+
+function addF64Fast(a, b) {
+  return dylib.symbols.add_f64(a, b);
+};
+testOptimized(addF64Fast, () => addF64Fast(123.123, 456.789));
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
@@ -433,6 +454,39 @@ call_stored_function();
 dylib.symbols.store_function_2(add10Callback.pointer);
 dylib.symbols.call_stored_function_2(20);
 
+function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s) {
+  return symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
+};
+testOptimized(
+  logManyParametersFast,
+  () => logManyParametersFast(
+    255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000,
+    12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
+  )
+);
+
+// Some ABIs rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
+// If the trampoline did not zero/sign-extend arguments, this would return 256 instead of the expected 0 (in optimized builds)
+function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
+testOptimized(castU8U32Fast, () => castU8U32Fast(256));
+
+// Some ABIs rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
+// If the trampoline did not zero/sign-extend the return value, this would return 256 instead of the expected 0 (in optimized builds)
+function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
+testOptimized(castU32U8Fast, () => castU32U8Fast(256));
+
+// Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
+// the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
+function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) { 
+  return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
+};
+// N.B. V8 does not currently follow Aarch64 Apple's calling convention.
+// The current implementation of the JIT trampoline follows the V8 incorrect calling convention. This test covers the use-case
+// and is expected to fail once Deno uses a V8 version with the bug fixed.
+// The V8 bug is being tracked in https://bugs.chromium.org/p/v8/issues/detail?id=13171
+testOptimized(addManyU16Fast, () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+
+
 const nestedCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
@@ -498,6 +552,12 @@ try {
   console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
 }
 
+
+const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+function hash() { return dylib.symbols.hash(bytes, bytes.byteLength); };
+
+testOptimized(hash, () => hash());
+
 (function cleanup() {
   dylib.close();
   throwCallback.close();
@@ -523,3 +583,22 @@ After: ${postStr}`,
 
   console.log("Correct number of resources");
 })();
+
+function assertIsOptimized(fn) {
+  const status = % GetOptimizationStatus(fn);
+  assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
+}
+
+function testOptimized(fn, callback) {
+  %PrepareFunctionForOptimization(fn);
+  const r1 = callback();
+  if (r1 !== undefined) {
+    console.log(r1);
+  }
+  %OptimizeFunctionOnNextCall(fn);
+  const r2 = callback();
+  if (r2 !== undefined) {
+    console.log(r2);
+  }
+  assertIsOptimized(fn);
+}

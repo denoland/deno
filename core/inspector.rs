@@ -150,7 +150,7 @@ impl JsRuntimeInspector {
   pub fn new(
     isolate: &mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
-  ) -> Box<Self> {
+  ) -> Rc<RefCell<Self>> {
     let scope = &mut v8::HandleScope::new(isolate);
 
     let (new_session_tx, new_session_rx) =
@@ -162,7 +162,7 @@ impl JsRuntimeInspector {
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
     // Create JsRuntimeInspector instance.
-    let mut self_ = Box::new(Self {
+    let self__ = Rc::new(RefCell::new(Self {
       v8_inspector_client,
       v8_inspector: Default::default(),
       sessions: RefCell::new(SessionContainer::temporary_placeholder()),
@@ -170,7 +170,8 @@ impl JsRuntimeInspector {
       flags: Default::default(),
       waker,
       deregister_tx: None,
-    });
+    }));
+    let mut self_ = self__.borrow_mut();
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
     ));
@@ -192,8 +193,9 @@ impl JsRuntimeInspector {
     // Poll the session handler so we will get notified whenever there is
     // new incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
+    drop(self_);
 
-    self_
+    self__
   }
 
   pub fn has_active_sessions(&self) -> bool {
@@ -438,6 +440,7 @@ struct InspectorWakerInner {
   isolate_handle: v8::IsolateHandle,
 }
 
+// SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for InspectorWakerInner {}
 
 struct InspectorWaker(Mutex<InspectorWakerInner>);

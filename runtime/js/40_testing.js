@@ -16,6 +16,7 @@
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSort,
+    BigInt,
     DateNow,
     Error,
     FunctionPrototype,
@@ -89,7 +90,6 @@
     "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
     "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
     "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
-    "op_http_read": ["read the body of a HTTP request", "consuming the entire request body"],
     "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],
@@ -145,6 +145,7 @@
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
+        await opSanitizerDelay();
         await opSanitizerDelay();
       }
 
@@ -600,7 +601,8 @@
   const testStates = new Map();
   /** @type {BenchDescription[]} */
   const benchDescs = [];
-  let isTestOrBenchSubcommand = false;
+  let isTestSubcommand = false;
+  let isBenchSubcommand = false;
 
   // Main test function provided by Deno.
   function test(
@@ -608,7 +610,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isTestSubcommand) {
       return;
     }
 
@@ -727,7 +729,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isBenchSubcommand) {
       return;
     }
 
@@ -1032,11 +1034,12 @@
     return ops.op_bench_now();
   }
 
-  // This function is called by Rust side if we're in `deno test` or
-  // `deno bench` subcommand. If this function is not called then `Deno.test()`
-  // and `Deno.bench()` become noops.
-  function enableTestAndBench() {
-    isTestOrBenchSubcommand = true;
+  function enableTest() {
+    isTestSubcommand = true;
+  }
+
+  function enableBench() {
+    isBenchSubcommand = true;
   }
 
   async function runTests({
@@ -1062,15 +1065,16 @@
 
     if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
+      // Use BigInt for everything because the random seed is u64.
       const nextInt = (function (state) {
-        const m = 0x80000000;
-        const a = 1103515245;
-        const c = 12345;
+        const m = 0x80000000n;
+        const a = 1103515245n;
+        const c = 12345n;
 
         return function (max) {
-          return state = ((a * state + c) % m) % max;
+          return state = ((a * state + c) % m) % BigInt(max);
         };
-      }(shuffle));
+      }(BigInt(shuffle)));
 
       for (let i = filtered.length - 1; i > 0; i--) {
         const j = nextInt(i);
@@ -1390,15 +1394,12 @@
     return testFn;
   }
 
-  window.__bootstrap.internals = {
-    ...window.__bootstrap.internals ?? {},
-    enableTestAndBench,
-    runTests,
-    runBenchmarks,
-  };
-
   window.__bootstrap.testing = {
-    test,
     bench,
+    enableBench,
+    enableTest,
+    runBenchmarks,
+    runTests,
+    test,
   };
 })(this);

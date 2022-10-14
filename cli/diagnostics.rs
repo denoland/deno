@@ -40,7 +40,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "createHttpClient",
   "futime",
   "futimeSync",
-  "hostname",
   "kill",
   "listen",
   "listenDatagram",
@@ -49,7 +48,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "osRelease",
   "ppid",
   "removeSignalListener",
-  "setRaw",
   "shutdown",
   "Signal",
   "startTls",
@@ -63,6 +61,10 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "spawnSync",
   "ChildStatus",
   "SpawnOutput",
+  "serve",
+  "ServeInit",
+  "ServeTlsInit",
+  "Handler",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
