@@ -4,9 +4,8 @@ use crate::args::InitFlags;
 use crate::deno_std;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::{anyhow::Context, error::AnyError};
-use dialoguer::{theme::ColorfulTheme, MultiSelect};
-use log::info;
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::MultiSelect;
 use std::io::Write;
 use std::path::Path;
 
@@ -56,7 +55,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
       if selections.contains(&2) {
         "std/"
       } else {
-        deno_std::CURRENT_STD_URL
+        deno_std::CURRENT_STD_URL.as_str()
       },
     );
     create_file(&dir, "mod_test.ts", &mod_test_ts)?;
@@ -69,7 +68,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
       if selections.contains(&2) {
         "std/"
       } else {
-        deno_std::CURRENT_STD_URL
+        deno_std::CURRENT_STD_URL.as_str()
       },
     );
     create_file(&dir, "mod_test.js", &mod_test_js)?;
@@ -100,7 +99,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   // Import map
   if selections.contains(&2) {
     let import_map_json = include_str!("./templates/import_map.json")
-      .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL);
+      .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
     create_file(&dir, "import_map.json", &import_map_json)?;
   }
 
