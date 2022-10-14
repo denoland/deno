@@ -51,7 +51,6 @@
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectIs,
-    PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
     ReflectApply,
