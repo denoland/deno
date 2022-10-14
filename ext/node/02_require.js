@@ -773,7 +773,8 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    module.exports = ops.op_napi_open(filename);
+    // module.exports = ops.op_napi_open(filename);
+    throw new Error("not implemented loading .node files");
   };
 
   function createRequireFromPath(filename) {
