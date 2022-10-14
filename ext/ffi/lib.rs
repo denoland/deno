@@ -1828,8 +1828,8 @@ fn op_ffi_unsafe_callback_ref(
     state.resource_table.get::<UnsafeCallbackResource>(rid)?;
 
   Ok(async move {
-    // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
     let info: &mut CallbackInfo =
+    // SAFETY: CallbackInfo pointer stays valid as long as the resource is still alive.
       unsafe { callback_resource.info.as_mut().unwrap() };
     // Ignore cancellation rejection
     let _ = info
