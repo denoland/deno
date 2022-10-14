@@ -589,6 +589,7 @@ Deno.test(
     const deferreds = [
       deferred(),
       deferred(),
+      deferred(),
     ];
 
     async function writeRequest(conn: Deno.Conn) {
@@ -616,8 +617,7 @@ Deno.test(
         await dest.write(buf.subarray(0, len));
         // Resolve a deferred - this will make response stream to
         // enqueue next chunk.
-        const deferred = deferreds.shift();
-        deferred?.resolve();
+        deferreds[counter - 1].resolve();
       }
       return decoder.decode(dest.bytes());
     }
@@ -631,15 +631,13 @@ Deno.test(
 
         async pull(controller) {
           if (counter >= 3) {
-            return;
-          }
-          const index = counter++;
-          await deferreds[index - 1];
-          controller.enqueue(`${index}\n`);
-          if (index >= 2) {
-            // close after last chunk
             return controller.close();
           }
+
+          await deferreds[counter - 1];
+
+          controller.enqueue(`${counter}\n`);
+          counter++;
         },
       }).pipeThrough(new TextEncoderStream());
     }
