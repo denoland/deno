@@ -30,19 +30,18 @@
     errorReadableStream,
     readableStreamClose,
     readableStreamDisturb,
+    readableStreamCollectIntoUint8Array,
+    readableStreamThrowIfErrored,
     createProxy,
     ReadableStreamPrototype,
   } = globalThis.__bootstrap.streams;
   const {
     ArrayBufferPrototype,
     ArrayBufferIsView,
-    ArrayPrototypePush,
     ArrayPrototypeMap,
     JSONParse,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
-    PromiseResolve,
-    TypedArrayPrototypeSet,
     TypedArrayPrototypeSlice,
     TypeError,
     Uint8Array,
@@ -66,12 +65,10 @@
   }
 
   class InnerBody {
-    #knownExactLength = null;
-
     /**
      * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
      */
-    constructor(stream, knownExactLength) {
+    constructor(stream) {
       /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
       this.streamOrStatic = stream ??
         { body: new Uint8Array(), consumed: false };
@@ -79,8 +76,6 @@
       this.source = null;
       /** @type {null | number} */
       this.length = null;
-
-      this.#knownExactLength = knownExactLength;
     }
 
     get stream() {
@@ -144,7 +139,7 @@
      * https://fetch.spec.whatwg.org/#concept-body-consume-body
      * @returns {Promise<Uint8Array>}
      */
-    async consume() {
+    consume() {
       if (this.unusable()) throw new TypeError("Body already consumed.");
       if (
         ObjectPrototypeIsPrototypeOf(
@@ -152,40 +147,8 @@
           this.streamOrStatic,
         )
       ) {
-        const reader = this.stream.getReader();
-        /** @type {Uint8Array[]} */
-        const chunks = [];
-
-        let finalBuffer = this.#knownExactLength
-          ? new Uint8Array(this.#knownExactLength)
-          : null;
-
-        let totalLength = 0;
-        while (true) {
-          const { value: chunk, done } = await reader.read();
-          if (done) break;
-
-          if (finalBuffer) {
-            // fast path, content-length is present
-            TypedArrayPrototypeSet(finalBuffer, chunk, totalLength);
-          } else {
-            // slow path, content-length is not present
-            ArrayPrototypePush(chunks, chunk);
-          }
-          totalLength += chunk.byteLength;
-        }
-
-        if (finalBuffer) {
-          return finalBuffer;
-        }
-
-        finalBuffer = new Uint8Array(totalLength);
-        let i = 0;
-        for (const chunk of chunks) {
-          TypedArrayPrototypeSet(finalBuffer, chunk, i);
-          i += chunk.byteLength;
-        }
-        return finalBuffer;
+        readableStreamThrowIfErrored(this.stream);
+        return readableStreamCollectIntoUint8Array(this.stream);
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
@@ -224,7 +187,7 @@
     clone() {
       const [out1, out2] = this.stream.tee();
       this.streamOrStatic = out1;
-      const second = new InnerBody(out2, this.#knownExactLength);
+      const second = new InnerBody(out2);
       second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;
@@ -260,11 +223,17 @@
    * @returns {void}
    */
   function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
-    function consumeBody(object) {
-      if (object[bodySymbol] !== null) {
-        return object[bodySymbol].consume();
-      }
-      return PromiseResolve(new Uint8Array());
+    async function consumeBody(object, type) {
+      webidl.assertBranded(object, prototype);
+
+      const body = object[bodySymbol] !== null
+        ? await object[bodySymbol].consume()
+        : new Uint8Array();
+
+      const mimeType = type === "Blob" || type === "FormData"
+        ? object[mimeTypeSymbol]
+        : null;
+      return packageData(body, type, mimeType);
     }
 
     /** @type {PropertyDescriptorMap} */
@@ -300,10 +269,8 @@
       },
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
-        value: async function arrayBuffer() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "ArrayBuffer");
+        value: function arrayBuffer() {
+          return consumeBody(this, "ArrayBuffer");
         },
         writable: true,
         configurable: true,
@@ -311,10 +278,8 @@
       },
       blob: {
         /** @returns {Promise<Blob>} */
-        value: async function blob() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "Blob", this[mimeTypeSymbol]);
+        value: function blob() {
+          return consumeBody(this, "Blob");
         },
         writable: true,
         configurable: true,
@@ -322,10 +287,8 @@
       },
       formData: {
         /** @returns {Promise<FormData>} */
-        value: async function formData() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "FormData", this[mimeTypeSymbol]);
+        value: function formData() {
+          return consumeBody(this, "FormData");
         },
         writable: true,
         configurable: true,
@@ -333,10 +296,8 @@
       },
       json: {
         /** @returns {Promise<any>} */
-        value: async function json() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "JSON");
+        value: function json() {
+          return consumeBody(this, "JSON");
         },
         writable: true,
         configurable: true,
@@ -344,10 +305,8 @@
       },
       text: {
         /** @returns {Promise<string>} */
-        value: async function text() {
-          webidl.assertBranded(this, prototype);
-          const body = await consumeBody(this);
-          return packageData(body, "text");
+        value: function text() {
+          return consumeBody(this, "text");
         },
         writable: true,
         configurable: true,

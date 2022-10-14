@@ -120,6 +120,15 @@ mod not_docs {
     }
   }
 
+  impl deno_napi::NapiPermissions for Permissions {
+    fn check(
+      &mut self,
+      _path: Option<&Path>,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+  }
+
   impl deno_flash::FlashPermissions for Permissions {
     fn check_net<T: AsRef<str>>(
       &mut self,
@@ -191,6 +200,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
+      deno_napi::init::<Permissions>(false),
       deno_http::init(),
       deno_flash::init::<Permissions>(false), // No --unstable
     ];
