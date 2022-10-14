@@ -3655,6 +3655,191 @@ fn lsp_completions_auto_import() {
 }
 
 #[test]
+fn lsp_completions_snippet() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "filterText": "type=\"$1\"",
+            "insertText": "type=\"$1\"",
+            "insertTextFormat": 2,
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "type",
+        "kind": 5,
+        "sortText": "11",
+        "filterText": "type=\"$1\"",
+        "insertText": "type=\"$1\"",
+        "insertTextFormat": 2,
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/a.tsx",
+            "position": 87,
+            "name": "type",
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "type",
+      "kind": 5,
+      "detail": "(property) type: string",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "11",
+      "filterText": "type=\"$1\"",
+      "insertText": "type=\"$1\"",
+      "insertTextFormat": 2,
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
+}
+
+#[test]
+fn lsp_completions_no_snippet() {
+  let mut client = init("initialize_params_no_snippet.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
+}
+
+#[test]
 fn lsp_completions_registry() {
   let _g = http_server();
   let mut client = init("initialize_params_registry.json");
