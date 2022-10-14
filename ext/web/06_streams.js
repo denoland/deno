@@ -2682,7 +2682,9 @@
               ],
             );
           }
-          cancelPromise.resolve(undefined);
+          if (canceled1 === false || canceled2 === false) {
+            cancelPromise.resolve(undefined);
+          }
         },
         errorSteps() {
           reading = false;
