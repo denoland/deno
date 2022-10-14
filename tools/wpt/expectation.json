@@ -3003,6 +3003,8 @@
         "response-static-error.any.worker.html": true,
         "response-static-redirect.any.html": true,
         "response-static-redirect.any.worker.html": true,
+        "response-stream-bad-chunk.any.html": true,
+        "response-stream-bad-chunk.any.worker.html": true,
         "response-stream-disturbed-1.any.html": true,
         "response-stream-disturbed-1.any.worker.html": true,
         "response-stream-disturbed-2.any.html": true,

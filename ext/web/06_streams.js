@@ -813,6 +813,12 @@
       const { value: chunk, done } = await reader.read();
       if (done) break;
 
+      if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
+        throw new TypeError(
+          "Can't convert value to Uint8Array while consuming the stream",
+        );
+      }
+
       ArrayPrototypePush(chunks, chunk);
       totalLength += chunk.byteLength;
     }
