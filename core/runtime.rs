@@ -280,6 +280,61 @@ pub struct RuntimeOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
+fn create_isolate_and_context_for_snapshotting(
+  refs: &'static v8::ExternalReferences,
+  op_ctxs: &[OpCtx],
+) -> (v8::OwnedIsolate, v8::Global<v8::Context>) {
+  let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+  let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
+  let global_context;
+  {
+    let scope = &mut v8::HandleScope::new(&mut isolate);
+    let context = bindings::initialize_context(scope, op_ctxs, false);
+    global_context = v8::Global::new(scope, context);
+    scope.set_default_context(context);
+  }
+  (isolate, global_context)
+}
+
+fn create_isolate_and_context_from_options(
+  refs: &'static v8::ExternalReferences,
+  op_ctxs: &[OpCtx],
+  create_params: Option<v8::CreateParams>,
+  startup_snapshot: Option<Snapshot>,
+) -> (v8::OwnedIsolate, v8::Global<v8::Context>) {
+  let mut params = create_params
+    .unwrap_or_else(|| {
+      v8::CreateParams::default().embedder_wrapper_type_info_offsets(
+        V8_WRAPPER_TYPE_INDEX,
+        V8_WRAPPER_OBJECT_INDEX,
+      )
+    })
+    .external_references(&**refs);
+
+  let snapshot_loaded = if let Some(snapshot) = startup_snapshot {
+    params = match snapshot {
+      Snapshot::Static(data) => params.snapshot_blob(data),
+      Snapshot::JustCreated(data) => params.snapshot_blob(data),
+      Snapshot::Boxed(data) => params.snapshot_blob(data),
+    };
+    true
+  } else {
+    false
+  };
+
+  let isolate = v8::Isolate::new(params);
+  let global_context;
+  let mut isolate = JsRuntime::setup_isolate(isolate);
+  {
+    let scope = &mut v8::HandleScope::new(&mut isolate);
+    let context = bindings::initialize_context(scope, op_ctxs, snapshot_loaded);
+
+    global_context = v8::Global::new(scope, context);
+  }
+
+  (isolate, global_context)
+}
+
 impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
@@ -316,79 +371,40 @@ impl JsRuntime {
     let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let global_context;
 
-    let align = std::mem::align_of::<usize>();
-    let layout = std::alloc::Layout::from_size_align(
-      std::mem::size_of::<*mut v8::OwnedIsolate>(),
-      align,
-    )
-    .unwrap();
-    assert!(layout.size() > 0);
-    let isolate_ptr: *mut v8::OwnedIsolate =
-      // SAFETY: we just asserted that layout has non-0 size.
-      unsafe { std::alloc::alloc(layout) as *mut _ };
-
-    let mut isolate = if options.will_snapshot {
+    let (mut isolate, global_context) = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
-      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
-      {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &op_ctxs, false);
-        global_context = v8::Global::new(scope, context);
-        scope.set_default_context(context);
-      }
-      isolate
+      create_isolate_and_context_for_snapshotting(refs, &op_ctxs)
     } else {
-      let mut params = options
-        .create_params
-        .take()
-        .unwrap_or_else(|| {
-          v8::CreateParams::default().embedder_wrapper_type_info_offsets(
-            V8_WRAPPER_TYPE_INDEX,
-            V8_WRAPPER_OBJECT_INDEX,
-          )
-        })
-        .external_references(&**refs);
-      let snapshot_loaded = if let Some(snapshot) = options.startup_snapshot {
-        params = match snapshot {
-          Snapshot::Static(data) => params.snapshot_blob(data),
-          Snapshot::JustCreated(data) => params.snapshot_blob(data),
-          Snapshot::Boxed(data) => params.snapshot_blob(data),
-        };
-        true
-      } else {
-        false
-      };
-
-      let isolate = v8::Isolate::new(params);
-      let mut isolate = JsRuntime::setup_isolate(isolate);
-      {
-        // SAFETY: this is first use of `isolate_ptr` so we are sure we're
-        // not overwriting an existing pointer.
-        isolate = unsafe {
-          isolate_ptr.write(isolate);
-          isolate_ptr.read()
-        };
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
-
-        global_context = v8::Global::new(scope, context);
-      }
-
-      isolate
+      create_isolate_and_context_from_options(
+        refs,
+        &op_ctxs,
+        options.create_params.take(),
+        options.startup_snapshot.take(),
+      )
     };
 
-    op_state.borrow_mut().put(isolate_ptr);
+    {
+      let align = std::mem::align_of::<usize>();
+      let layout = std::alloc::Layout::from_size_align(
+        std::mem::size_of::<*mut v8::OwnedIsolate>(),
+        align,
+      )
+      .unwrap();
+      assert!(layout.size() > 0);
+      let isolate_ptr: *mut v8::OwnedIsolate =
+        // SAFETY: we just asserted that layout has non-0 size.
+        unsafe { std::alloc::alloc(layout) as *mut _ };
+      // SAFETY: this is first use of `isolate_ptr` so we are sure we're
+      // not overwriting an existing pointer.
+      isolate = unsafe {
+        isolate_ptr.write(isolate);
+        isolate_ptr.read()
+      };
+      op_state.borrow_mut().put(isolate_ptr);
+    }
+
     let inspector =
       JsRuntimeInspector::new(&mut isolate, global_context.clone());
 
