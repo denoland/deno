@@ -51,6 +51,7 @@
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypeIsPrototypeOf,
     ObjectIs,
+    PromisePrototypeThen,
     PromiseReject,
     PromiseResolve,
     ReflectApply,
@@ -833,7 +834,8 @@
   }
 
   function createPromiseConverter(converter) {
-    return (V, opts) => PromiseResolve(converter(V, opts));
+    return (V, opts) =>
+      PromisePrototypeThen(PromiseResolve(V), (V) => converter(V, opts));
   }
 
   function invokeCallbackFunction(
