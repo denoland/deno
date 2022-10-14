@@ -2616,6 +2616,7 @@
     assert(typeof cloneForBranch2 === "boolean");
     const reader = acquireReadableStreamDefaultReader(stream);
     let reading = false;
+    let readAgain = false;
     let canceled1 = false;
     let canceled2 = false;
     /** @type {any} */
@@ -2634,6 +2635,7 @@
 
     function pullAlgorithm() {
       if (reading === true) {
+        readAgain = true;
         return resolvePromiseWith(undefined);
       }
       reading = true;
@@ -2641,7 +2643,7 @@
       const readRequest = {
         chunkSteps(value) {
           queueMicrotask(() => {
-            reading = false;
+            readAgain = false;
             const value1 = value;
             const value2 = value;
 
@@ -2662,6 +2664,11 @@
                 ],
                 value2,
               );
+            }
+
+            reading = false;
+            if (readAgain === true) {
+              pullAlgorithm();
             }
           });
         },
