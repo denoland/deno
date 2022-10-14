@@ -886,7 +886,7 @@ dependencies = [
  "typed-arena",
  "uuid",
  "walkdir",
- "winapi 0.3.9",
+ "windows-sys",
  "winres",
  "zstd",
 ]

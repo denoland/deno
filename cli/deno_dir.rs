@@ -141,24 +141,25 @@ mod dirs {
   use std::ffi::OsString;
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
-  use winapi::shared::winerror;
-  use winapi::um::{combaseapi, knownfolders, shlobj, shtypes, winbase, winnt};
 
-  fn known_folder(folder_id: shtypes::REFKNOWNFOLDERID) -> Option<PathBuf> {
+  use windows_sys::core::{GUID, PWSTR};
+  use windows_sys::Win32::Foundation::S_OK;
+  use windows_sys::Win32::Globalization::lstrlenW;
+  use windows_sys::Win32::System::Com::CoTaskMemFree;
+  use windows_sys::Win32::UI::Shell::{
+    FOLDERID_LocalAppData, FOLDERID_Profile, SHGetKnownFolderPath,
+  };
+
+  fn known_folder(folder_id: *const GUID) -> Option<PathBuf> {
     // SAFETY: winapi calls
     unsafe {
-      let mut path_ptr: winnt::PWSTR = std::ptr::null_mut();
-      let result = shlobj::SHGetKnownFolderPath(
-        folder_id,
-        0,
-        std::ptr::null_mut(),
-        &mut path_ptr,
-      );
-      if result == winerror::S_OK {
-        let len = winbase::lstrlenW(path_ptr) as usize;
+      let mut path_ptr: PWSTR = std::ptr::null_mut();
+      let result = SHGetKnownFolderPath(folder_id, 0, 0, &mut path_ptr);
+      if result == S_OK {
+        let len = lstrlenW(path_ptr) as usize;
         let path = std::slice::from_raw_parts(path_ptr, len);
         let ostr: OsString = OsStringExt::from_wide(path);
-        combaseapi::CoTaskMemFree(path_ptr as *mut winapi::ctypes::c_void);
+        CoTaskMemFree(path_ptr as _);
         Some(PathBuf::from(ostr))
       } else {
         None
@@ -167,10 +168,10 @@ mod dirs {
   }
 
   pub fn cache_dir() -> Option<PathBuf> {
-    known_folder(&knownfolders::FOLDERID_LocalAppData)
+    known_folder(&FOLDERID_LocalAppData)
   }
 
   pub fn home_dir() -> Option<PathBuf> {
-    known_folder(&knownfolders::FOLDERID_Profile)
+    known_folder(&FOLDERID_Profile)
   }
 }

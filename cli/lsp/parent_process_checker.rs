@@ -30,18 +30,20 @@ fn is_process_active(process_id: u32) -> bool {
 
 #[cfg(windows)]
 fn is_process_active(process_id: u32) -> bool {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::ntdef::NULL;
-  use winapi::shared::winerror::WAIT_TIMEOUT;
-  use winapi::um::handleapi::CloseHandle;
-  use winapi::um::processthreadsapi::OpenProcess;
-  use winapi::um::synchapi::WaitForSingleObject;
-  use winapi::um::winnt::SYNCHRONIZE;
+  use windows_sys::Win32::Foundation::{
+    CloseHandle, BOOL, HANDLE, WAIT_TIMEOUT,
+  };
+  use windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE;
+  use windows_sys::Win32::System::Threading::{
+    OpenProcess, WaitForSingleObject,
+  };
+
+  const NULL: HANDLE = 0;
+  const FALSE: BOOL = 0;
 
   // SAFETY: winapi calls
   unsafe {
-    let process = OpenProcess(SYNCHRONIZE, FALSE, process_id as DWORD);
+    let process = OpenProcess(SYNCHRONIZE, FALSE, process_id);
     let result = if process == NULL {
       false
     } else {

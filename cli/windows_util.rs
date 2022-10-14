@@ -8,28 +8,25 @@ pub fn ensure_stdio_open() {
   // SAFETY: winapi calls
   unsafe {
     use std::mem::size_of;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::shared::minwindef::FALSE;
-    use winapi::shared::minwindef::TRUE;
-    use winapi::shared::ntdef::NULL;
-    use winapi::shared::winerror::ERROR_INVALID_HANDLE;
-    use winapi::um::errhandlingapi::GetLastError;
-    use winapi::um::fileapi::CreateFileA;
-    use winapi::um::fileapi::OPEN_EXISTING;
-    use winapi::um::handleapi::GetHandleInformation;
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-    use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-    use winapi::um::processenv::GetStdHandle;
-    use winapi::um::processenv::SetStdHandle;
-    use winapi::um::winbase::STD_ERROR_HANDLE;
-    use winapi::um::winbase::STD_INPUT_HANDLE;
-    use winapi::um::winbase::STD_OUTPUT_HANDLE;
-    use winapi::um::winnt::FILE_ATTRIBUTE_NORMAL;
-    use winapi::um::winnt::FILE_GENERIC_READ;
-    use winapi::um::winnt::FILE_GENERIC_WRITE;
-    use winapi::um::winnt::FILE_READ_ATTRIBUTES;
-    use winapi::um::winnt::FILE_SHARE_READ;
-    use winapi::um::winnt::FILE_SHARE_WRITE;
+
+    use windows_sys::Win32::Foundation::{
+      GetHandleInformation, GetLastError, BOOL, ERROR_INVALID_HANDLE, HANDLE,
+      INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+    use windows_sys::Win32::Storage::FileSystem::{
+      CreateFileA, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ,
+      FILE_GENERIC_WRITE, FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+      FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows_sys::Win32::System::Console::{
+      GetStdHandle, SetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+      STD_OUTPUT_HANDLE,
+    };
+
+    const NULL: HANDLE = 0;
+    const TRUE: BOOL = 1;
+    const FALSE: BOOL = 0;
 
     for std_handle in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
       // Check whether stdio handle is open.
@@ -37,7 +34,7 @@ pub fn ensure_stdio_open() {
         NULL | INVALID_HANDLE_VALUE => false,
         handle => {
           // The stdio handle is open; check whether its handle is valid.
-          let mut flags: DWORD = 0;
+          let mut flags: u32 = 0;
           match GetHandleInformation(handle, &mut flags) {
             TRUE => true,
             FALSE if GetLastError() == ERROR_INVALID_HANDLE => false,
@@ -56,9 +53,9 @@ pub fn ensure_stdio_open() {
           _ => FILE_GENERIC_WRITE | FILE_READ_ATTRIBUTES,
         };
         let security_attributes = SECURITY_ATTRIBUTES {
-          nLength: size_of::<SECURITY_ATTRIBUTES>() as DWORD,
-          lpSecurityDescriptor: NULL,
-          bInheritHandle: TRUE,
+          nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+          lpSecurityDescriptor: std::ptr::null_mut(),
+          bInheritHandle: true.into(),
         };
         let file_handle = CreateFileA(
           b"\\\\?\\NUL\0" as *const _ as *mut _,

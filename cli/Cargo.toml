@@ -45,7 +45,7 @@ serde_json = "1.0.64"
 zstd = '=0.11.2'
 
 [target.'cfg(windows)'.build-dependencies]
-winapi = "=0.3.9"
+windows-sys = { version = "0.36", features = ["Win32_System_SystemServices"] }
 winres = "=0.1.12"
 
 [dependencies]
@@ -115,7 +115,7 @@ zstd = '=0.11.2'
 [target.'cfg(windows)'.dependencies]
 fwdansi = "=1.1.0"
 junction = "=0.2.0"
-winapi = { version = "=0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+windows-sys = { version = "0.36", features = ["Win32_Foundation", "Win32_System_Console", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_UI_Shell", "Win32_Globalization", "Win32_System_Com"] }
 
 [dev-dependencies]
 csv = "=1.1.6"

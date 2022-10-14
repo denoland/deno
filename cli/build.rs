@@ -457,10 +457,11 @@ fn main() {
   {
     let mut res = winres::WindowsResource::new();
     res.set_icon("deno.ico");
-    res.set_language(winapi::um::winnt::MAKELANGID(
-      winapi::um::winnt::LANG_ENGLISH,
-      winapi::um::winnt::SUBLANG_ENGLISH_US,
-    ));
+    use windows_sys::Win32::System::SystemServices::{
+      LANG_ENGLISH, SUBLANG_ENGLISH_US,
+    };
+    let lang_id = (LANG_ENGLISH << 10) | SUBLANG_ENGLISH_US;
+    res.set_language(lang_id as u16);
     res.compile().unwrap();
   }
 }
