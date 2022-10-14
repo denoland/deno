@@ -1,4 +1,3 @@
-Warning deno task is unstable and may drastically change in the future
 Task not found: non_existent
 Available tasks:
 - boolean_logic
