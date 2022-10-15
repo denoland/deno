@@ -78,8 +78,10 @@ pub struct HttpCache {
   pub location: PathBuf,
 }
 
+// url is required, all other fields are optional.
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
+  #[serde(default)]
   pub headers: HeadersMap,
   pub url: String,
   #[serde(default = "SystemTime::now")]
