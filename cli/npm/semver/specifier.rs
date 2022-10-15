@@ -64,7 +64,15 @@ fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
         raw_text: input.to_string(),
         inner: match range_result {
           Ok(range) => SpecifierVersionReqInner::Range(range),
-          Err(_) => SpecifierVersionReqInner::Tag(input.to_string()),
+          Err(err) => {
+            // npm seems to be extremely lax on what it supports for a dist-tag (any non-valid semver range),
+            // so just make any error here be a dist tag unless it starts or ends with whitespace
+            if input.trim() != input {
+              return Err(err);
+            } else {
+              SpecifierVersionReqInner::Tag(input.to_string())
+            }
+          }
         },
       },
     ))

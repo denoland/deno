@@ -132,12 +132,14 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 
   fn matches(&self, version: &NpmVersion) -> bool {
-    assert!(self.tag().is_none());
     match self.version_req.as_ref() {
-      Some(req) => match req.range() {
-        Some(range) => range.satisfies(version),
-        None => false,
-      },
+      Some(req) => {
+        assert_eq!(self.tag(), None);
+        match req.range() {
+          Some(range) => range.satisfies(version),
+          None => false,
+        }
+      }
       None => version.pre.is_empty(),
     }
   }
