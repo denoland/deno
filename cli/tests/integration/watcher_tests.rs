@@ -1163,3 +1163,66 @@ fn run_watch_dynamic_imports() {
 
   check_alive_then_kill(child);
 }
+
+// https://github.com/denoland/deno/issues/16267
+#[test]
+fn run_watch_flash() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  write(
+    &file_to_watch,
+    r#"
+      console.log("Starting flash server...");
+      Deno.serve({
+        onListen() {
+            console.error("First server is listening");
+        },
+        handler: () => {},
+        port: 4501,
+      });
+    "#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(stderr_lines.next().unwrap(), "Process started");
+  wait_contains("Starting flash server...", &mut stdout_lines);
+  assert_contains!(stderr_lines.next().unwrap(), "First server is listening");
+
+  write(
+    &file_to_watch,
+    r#"
+      console.log("Restarting flash server...");
+      Deno.serve({
+        onListen() {
+            console.error("Second server is listening");
+        },
+        handler: () => {},
+        port: 4501,
+      });
+    "#,
+  )
+  .unwrap();
+
+  assert_contains!(
+    stderr_lines.next().unwrap(),
+    "File change detected! Restarting!"
+  );
+  wait_contains("Restarting flash server...", &mut stdout_lines);
+  assert_contains!(stderr_lines.next().unwrap(), "Second server is listening");
+
+  check_alive_then_kill(child);
+}
