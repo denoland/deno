@@ -184,6 +184,8 @@
 
   class UnsafeCallback {
     #refcount;
+    // Internal promise only meant to keep Deno from exiting
+    #refpromise;
     #rid;
     definition;
     callback;
@@ -208,23 +210,25 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        ops.op_ffi_unsafe_callback_ref(true);
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
       }
+      return this.#refcount;
     }
 
     unref() {
       // Only decrement refcount if it is positive, and only
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
-        ops.op_ffi_unsafe_callback_ref(false);
+        ops.op_ffi_unsafe_callback_unref(this.#rid);
       }
+      return this.#refcount;
     }
 
     close() {
-      if (this.#refcount) {
-        this.#refcount = 0;
-        ops.op_ffi_unsafe_callback_ref(false);
-      }
+      this.#refcount = 0;
       core.close(this.#rid);
     }
   }

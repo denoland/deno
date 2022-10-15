@@ -43,6 +43,7 @@ regex = "=1.6.0"
 serde = { version = "=1.0.144", features = ["derive"] }
 serde_json = "1.0.64"
 zstd = '=0.11.2'
+glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"
@@ -105,7 +106,7 @@ text-size = "=1.1.0"
 text_lines = "=0.6.0"
 tokio = { version = "=1.21.1", features = ["full"] }
 tokio-util = "=0.7.4"
-tower-lsp = "=0.17.0"
+tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { version = "=1.1.2", features = ["v4", "serde"] }

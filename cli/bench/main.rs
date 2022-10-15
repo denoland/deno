@@ -181,7 +181,6 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
-    "--show-output",
   ]
   .iter()
   .map(|s| s.to_string())
