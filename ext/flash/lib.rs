@@ -182,7 +182,7 @@ fn op_try_flash_respond_chuncked(
   try_write_bail!(response);
   try_write_bail!(b"\r\n");
   if shutdown {
-    // Best case: We've writing everything and the stream is done too.
+    // Best case: We've written everything and the stream is done too.
     let _ = ctx.requests.remove(&token).unwrap();
   }
   0
