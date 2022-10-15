@@ -281,6 +281,9 @@ pub struct RuntimeOptions {
 }
 
 impl JsRuntime {
+  const STATE_DATA_OFFSET: u32 = 0;
+  const MODULE_MAP_DATA_OFFSET: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -419,14 +422,20 @@ impl JsRuntime {
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
     }));
-    unsafe { isolate.set_data(1, Rc::into_raw(state_rc) as *const _ as *mut c_void); }
+    isolate.set_data(
+      Self::STATE_DATA_OFFSET,
+      Rc::into_raw(state_rc) as *mut c_void,
+    );
 
     global_context
       .open(&mut isolate)
       .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
 
-    let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    isolate.set_data(
+      Self::MODULE_MAP_DATA_OFFSET,
+      Rc::into_raw(module_map_rc) as *mut c_void,
+    );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -524,18 +533,25 @@ impl JsRuntime {
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    eprintln!("before");
-    let state_ptr = isolate.get_data(1);
-    let state_rc = unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
     let state = state_rc.clone();
-    eprintln!("after");
     Rc::into_raw(state_rc);
     state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
   }
 
   /// Initializes JS of provided Extensions in the given realm
@@ -739,13 +755,16 @@ impl JsRuntime {
 
     state.borrow_mut().inspector.take();
 
-    // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let module_map_ptr =
+        self.v8_isolate().get_data(Self::MODULE_MAP_DATA_OFFSET);
+      let module_map_rc =
+        // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+        // the runtime.
+        unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+      drop(module_map_rc);
+    }
 
     // Drop other v8::Global handles before snapshotting
     {
