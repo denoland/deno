@@ -35,6 +35,7 @@ use mio::Events;
 use mio::Interest;
 use mio::Poll;
 use mio::Token;
+use mio::Waker;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Socket;
@@ -70,6 +71,10 @@ use request::Request;
 use socket::InnerStream;
 use socket::Stream;
 
+const CLOSE_TOKEN: Token = Token(0);
+const LISTENER_TOKEN: Token = Token(1);
+const TOKEN_INITIAL_VALUE: usize = 2;
+
 pub struct FlashContext {
   next_server_id: u32,
   join_handles: HashMap<u32, JoinHandle<Result<(), AnyError>>>,
@@ -83,8 +88,38 @@ pub struct ServerContext {
   requests: HashMap<u32, Request>,
   next_token: u32,
   listening_rx: Option<mpsc::Receiver<u16>>,
-  close_tx: mpsc::Sender<()>,
+  close_notifier: CloseNotifier,
   cancel_handle: Rc<CancelHandle>,
+}
+
+enum CloseNotifier {
+  Unnotified { waker: Waker },
+  Notified,
+}
+
+impl CloseNotifier {
+  fn new(poll: &Poll) -> Result<Self, AnyError> {
+    let waker = Waker::new(poll.registry(), CLOSE_TOKEN)?;
+
+    Ok(Self::Unnotified { waker })
+  }
+
+  fn notify(&mut self) {
+    if let Self::Unnotified { waker } = self {
+      if waker.wake().is_ok() {
+        *self = Self::Notified;
+      }
+    }
+  }
+}
+
+impl Drop for CloseNotifier {
+  fn drop(&mut self) {
+    if let Self::Unnotified { waker } = self {
+      // Ignore error
+      _ = waker.wake();
+    }
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -385,14 +420,11 @@ fn op_flash_method(state: &mut OpState, server_id: u32, token: u32) -> u32 {
 
 #[op]
 async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
-  let close_tx = {
-    let mut op_state = state.borrow_mut();
-    let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx.cancel_handle.cancel();
-    ctx.close_tx.clone()
-  };
-  let _ = close_tx.send(()).await;
+  let mut op_state = state.borrow_mut();
+  let flash_ctx = op_state.borrow_mut::<FlashContext>();
+  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  ctx.cancel_handle.cancel();
+  ctx.close_notifier.notify();
 }
 
 #[op]
@@ -813,7 +845,7 @@ pub struct ListenOpts {
 fn run_server(
   tx: mpsc::Sender<Request>,
   listening_tx: mpsc::Sender<u16>,
-  mut close_rx: mpsc::Receiver<()>,
+  mut poll: Poll,
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
@@ -840,11 +872,9 @@ fn run_server(
   let std_listener: std::net::TcpListener = socket.into();
   let mut listener = TcpListener::from_std(std_listener);
 
-  let mut poll = Poll::new()?;
-  let token = Token(0);
   poll
     .registry()
-    .register(&mut listener, token, Interest::READABLE)
+    .register(&mut listener, LISTENER_TOKEN, Interest::READABLE)
     .unwrap();
 
   let tls_context: Option<Arc<rustls::ServerConfig>> = {
@@ -869,31 +899,26 @@ fn run_server(
     .blocking_send(listener.local_addr().unwrap().port())
     .unwrap();
   let mut sockets = HashMap::with_capacity(1000);
-  let mut counter: usize = 1;
+  let mut counter = TOKEN_INITIAL_VALUE;
   let mut events = Events::with_capacity(1024);
   'outer: loop {
-    let result = close_rx.try_recv();
-    if result.is_ok() {
-      break 'outer;
-    }
-    // FIXME(bartlomieju): how does Tokio handle it? I just put random 100ms
-    // timeout here to handle close signal.
-    match poll.poll(&mut events, Some(Duration::from_millis(100))) {
+    match poll.poll(&mut events, None) {
       Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
       Err(e) => panic!("{}", e),
       Ok(()) => (),
     }
     'events: for event in &events {
-      if close_rx.try_recv().is_ok() {
-        break 'outer;
-      }
-      let token = event.token();
-      match token {
-        Token(0) => loop {
+      match event.token() {
+        // If an explicit close notification arrives, exit from the event loop
+        // so that the resources are released.
+        token if token == CLOSE_TOKEN => {
+          break 'outer;
+        }
+        token if token == LISTENER_TOKEN => loop {
           match listener.accept() {
             Ok((mut socket, _)) => {
-              counter += 1;
               let token = Token(counter);
+              counter += 1;
               poll
                 .registry()
                 .register(&mut socket, token, Interest::READABLE)
@@ -1191,15 +1216,16 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
-  let (close_tx, close_rx) = mpsc::channel(1);
   let (listening_tx, listening_rx) = mpsc::channel(1);
+  let mut poll = Poll::new()?;
+  let close_notifier = CloseNotifier::new(&poll)?;
   let ctx = ServerContext {
     _addr: addr,
     tx,
     rx,
     requests: HashMap::with_capacity(1000),
     next_token: 0,
-    close_tx,
+    close_notifier,
     listening_rx: Some(listening_rx),
     cancel_handle: CancelHandle::new_rc(),
   };
@@ -1207,11 +1233,12 @@ where
   let maybe_cert = opts.cert;
   let maybe_key = opts.key;
   let reuseport = opts.reuseport;
+
   let join_handle = tokio::task::spawn_blocking(move || {
     run_server(
       tx,
       listening_tx,
-      close_rx,
+      poll,
       addr,
       maybe_cert,
       maybe_key,
