@@ -9,7 +9,7 @@ const responseBuf = new Uint8Array(
     .map((c) => c.charCodeAt(0)),
 );
 
-/** Listens on 0.0.0.0:4500, returns rid. */
+/** Listens on 0.0.0.0:4570, returns rid. */
 function listen() {
   return Deno.core.ops.op_listen();
 }
@@ -38,7 +38,7 @@ async function serve(rid) {
 
 async function main() {
   const listenerRid = listen();
-  Deno.core.print(`http_bench_ops listening on http://127.0.0.1:4544/\n`);
+  Deno.core.print(`http_bench_ops listening on http://127.0.0.1:4570/\n`);
 
   while (true) {
     const rid = await accept(listenerRid);
