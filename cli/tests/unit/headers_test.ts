@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 const {
   inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -384,5 +384,18 @@ Deno.test(function customInspectReturnsCorrectHeadersFormat() {
   assertEquals(
     stringify(multiParamHeader),
     `Headers { "content-length": "1337", "content-type": "application/json" }`,
+  );
+});
+
+Deno.test(function invalidHeadersFlaky() {
+  assertThrows(
+    () => new Headers([["x", "\u0000x"]]),
+    TypeError,
+    "Header value is not valid.",
+  );
+  assertThrows(
+    () => new Headers([["x", "\u0000x"]]),
+    TypeError,
+    "Header value is not valid.",
   );
 });

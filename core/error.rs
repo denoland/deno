@@ -134,7 +134,7 @@ pub struct JsError {
   pub aggregated: Option<Vec<JsError>>,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,

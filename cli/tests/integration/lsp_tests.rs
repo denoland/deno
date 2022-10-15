@@ -987,7 +987,7 @@ fn lsp_hover_asset() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -998,7 +998,7 @@ fn lsp_hover_asset() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.es2015.symbol.wellknown.d.ts"
+          "uri": "deno:/asset/lib.es2015.symbol.wellknown.d.ts"
         },
         "position": {
           "line": 109,
@@ -1360,7 +1360,7 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "The pid of the current process's parent.",
+        "The process ID of parent process of this instance of the Deno CLI.\n\n```ts\nconsole.log(Deno.ppid);\n```",
         "\n\n*@category* - Runtime Environment",
       ],
       "range":{
@@ -2810,7 +2810,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "deno/virtualTextDocument",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -2822,7 +2822,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
       "textDocument/codeLens",
       json!({
         "textDocument": {
-          "uri": "deno:asset/lib.deno.shared_globals.d.ts"
+          "uri": "deno:/asset/lib.deno.shared_globals.d.ts"
         }
       }),
     )
@@ -3655,6 +3655,191 @@ fn lsp_completions_auto_import() {
 }
 
 #[test]
+fn lsp_completions_snippet() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "filterText": "type=\"$1\"",
+            "insertText": "type=\"$1\"",
+            "insertTextFormat": 2,
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "type",
+        "kind": 5,
+        "sortText": "11",
+        "filterText": "type=\"$1\"",
+        "insertText": "type=\"$1\"",
+        "insertTextFormat": 2,
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/a.tsx",
+            "position": 87,
+            "name": "type",
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "type",
+      "kind": 5,
+      "detail": "(property) type: string",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "11",
+      "filterText": "type=\"$1\"",
+      "insertText": "type=\"$1\"",
+      "insertTextFormat": 2,
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
+}
+
+#[test]
+fn lsp_completions_no_snippet() {
+  let mut client = init("initialize_params_no_snippet.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
+}
+
+#[test]
 fn lsp_completions_registry() {
   let _g = http_server();
   let mut client = init("initialize_params_registry.json");
@@ -4107,8 +4292,8 @@ fn lsp_diagnostics_warn_redirect() {
           severity: Some(lsp::DiagnosticSeverity::INFORMATION),
           code: Some(lsp::NumberOrString::String("redirect".to_string())),
           source: Some("deno".to_string()),
-          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/x_deno_warning_redirect.js\".".to_string(),
-          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/x_deno_warning_redirect.js"})),
+          message: "The import of \"http://127.0.0.1:4545/x_deno_warning.js\" was redirected to \"http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js\".".to_string(),
+          data: Some(json!({"specifier": "http://127.0.0.1:4545/x_deno_warning.js", "redirect": "http://127.0.0.1:4545/lsp/x_deno_warning_redirect.js"})),
           ..Default::default()
         }
       ],

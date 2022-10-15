@@ -12,6 +12,7 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
@@ -266,6 +267,43 @@
   }
   const InterruptedPrototype = Interrupted.prototype;
 
+  const promiseHooks = {
+    init: [],
+    before: [],
+    after: [],
+    resolve: [],
+    hasBeenSet: false,
+  };
+
+  function setPromiseHooks(init, before, after, resolve) {
+    if (init) ArrayPrototypePush(promiseHooks.init, init);
+    if (before) ArrayPrototypePush(promiseHooks.before, before);
+    if (after) ArrayPrototypePush(promiseHooks.after, after);
+    if (resolve) ArrayPrototypePush(promiseHooks.resolve, resolve);
+
+    if (!promiseHooks.hasBeenSet) {
+      promiseHooks.hasBeenSet = true;
+
+      ops.op_set_promise_hooks((promise, parentPromise) => {
+        for (let i = 0; i < promiseHooks.init.length; ++i) {
+          promiseHooks.init[i](promise, parentPromise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.before.length; ++i) {
+          promiseHooks.before[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.after.length; ++i) {
+          promiseHooks.after[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.resolve.length; ++i) {
+          promiseHooks.resolve[i](promise);
+        }
+      });
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
@@ -286,10 +324,12 @@
     refOp,
     unrefOp,
     setReportExceptionCallback,
+    setPromiseHooks,
     close: (rid) => ops.op_close(rid),
     tryClose: (rid) => ops.op_try_close(rid),
     read: opAsync.bind(null, "op_read"),
     write: opAsync.bind(null, "op_write"),
+    writeAll: opAsync.bind(null, "op_write_all"),
     shutdown: opAsync.bind(null, "op_shutdown"),
     print: (msg, isErr) => ops.op_print(msg, isErr),
     setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
@@ -312,7 +352,7 @@
     deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
     getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
     getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
-    isProxy: (value) => ops.op_is_proxy.fast(value),
+    isProxy: (value) => ops.op_is_proxy(value),
     memoryUsage: () => ops.op_memory_usage(),
     setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
     abortWasmStreaming: (

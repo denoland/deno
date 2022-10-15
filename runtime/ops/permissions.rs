@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::parse_sys_kind;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
@@ -27,6 +28,7 @@ pub struct PermissionArgs {
   path: Option<String>,
   host: Option<String>,
   variable: Option<String>,
+  kind: Option<String>,
   command: Option<String>,
 }
 
@@ -48,6 +50,9 @@ pub fn op_query_permission(
       .as_ref(),
     ),
     "env" => permissions.env.query(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.query(args.command.as_deref()),
     "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
@@ -79,6 +84,9 @@ pub fn op_revoke_permission(
       .as_ref(),
     ),
     "env" => permissions.env.revoke(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.revoke(args.command.as_deref()),
     "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
@@ -110,6 +118,9 @@ pub fn op_request_permission(
       .as_ref(),
     ),
     "env" => permissions.env.request(args.variable.as_deref()),
+    "sys" => permissions
+      .sys
+      .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.request(args.command.as_deref()),
     "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
