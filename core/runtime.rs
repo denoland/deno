@@ -504,6 +504,15 @@ impl JsRuntime {
     state.global_realm.clone().unwrap()
   }
 
+  /// Creates a new realm (V8 context) in this JS execution context,
+  /// pre-initialized with all of the extensions that were passed in
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was constructed.
+  ///
+  /// If the [`JsRuntime`] was not built from a snapshot (see
+  /// [`RuntimeOptions::startup_snapshot`]), the JS code for the extensions will
+  /// be run in the call to this method. In contrast, if there is a snapshot,
+  /// that will be used instead, and the extensions' initialization will come
+  /// "for free".
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
@@ -2066,10 +2075,17 @@ impl JsRuntime {
 /// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
 /// execution in the realm's context.
 ///
-/// A [`JsRealm`] instance does not hold ownership of its corresponding realm,
-/// so they can be created and dropped as needed. And since every operation on
-/// them requires passing a mutable reference to the [`JsRuntime`], multiple
-/// [`JsRealm`] instances won't overlap.
+/// A [`JsRealm`] instance is a reference to an already existing realm, which
+/// does not hold ownership of it, so instances can be created and dropped as
+/// needed. As such, calling [`JsRealm::new`] doesn't create a new realm, and
+/// cloning a [`JsRealm`] only creates a new reference. See
+/// [`JsRuntime::create_realm`] to create new realms instead.
+///
+/// Despite [`JsRealm`] instances being references, multiple instances that
+/// point to the same realm won't overlap because every operation requires
+/// passing a mutable reference to the [`v8::Isolate`]. Therefore, no operation
+/// on two [`JsRealm`] instances tied to the same isolate can be run at the same
+/// time, regardless of whether they point to the same realm.
 ///
 /// # Panics
 ///
@@ -2078,8 +2094,9 @@ impl JsRuntime {
 ///
 /// # Lifetime of the realm
 ///
-/// A [`JsRealm`] instance will keep the underlying V8 context alive even if it
-/// would have otherwise been garbage collected.
+/// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
+/// keep the underlying V8 context alive even if it would have otherwise been
+/// garbage collected.
 #[derive(Clone)]
 pub struct JsRealm(v8::Global<v8::Context>);
 impl JsRealm {
