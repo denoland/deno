@@ -56,7 +56,8 @@ fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
   map_res(version_range, |result| {
     let (new_input, range_result) = match result {
       Ok((input, range)) => (input, Ok(range)),
-      Err(err) => (input, Err(err)),
+      // use an empty string because we'll consider the tag
+      Err(err) => ("", Err(err)),
     };
     Ok((
       new_input,
@@ -290,5 +291,11 @@ mod tests {
     assert!(tester.matches("0.0.2")); // for some reason this matches, but not with ^
     assert!(!tester.matches("0.1.0"));
     assert!(!tester.matches("1.0.0"));
+  }
+
+  #[test]
+  fn parses_tag() {
+    let latest_tag = SpecifierVersionReq::parse("latest").unwrap();
+    assert_eq!(latest_tag.tag().unwrap(), "latest");
   }
 }
