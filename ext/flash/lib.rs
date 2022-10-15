@@ -163,24 +163,14 @@ fn op_try_flash_respond_chuncked(
   let tx = ctx.requests.get(&token).unwrap();
   let sock = tx.socket();
 
-  let mut n = 0;
   // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
   // https://github.com/denoland/deno/pull/15629
-  macro_rules! try_write_bail {
-    ($e:expr) => {
-      let e = $e;
-      let expected = sock.try_write(e);
-      n += expected;
-      if expected != e.len() {
-        return n as u32;
-      }
-    };
-  }
-
   let h = format!("{:x}\r\n", response.len());
-  try_write_bail!(h.as_bytes());
-  try_write_bail!(response);
-  try_write_bail!(b"\r\n");
+  let concat = [h.as_bytes(), response, b"\r\n"].concat();
+  let expected = sock.try_write(&concat);
+  if expected != concat.len() {
+    return expected as u32;
+  }
   if shutdown {
     // Best case: We've writing everything and the stream is done too.
     let _ = ctx.requests.remove(&token).unwrap();

@@ -365,6 +365,8 @@
           }
         } else {
           const reader = respBody.getReader();
+          const { value, done } = await reader.read();
+          // Best case: sends headers + first chunk in a single go.
           writeFixedResponse(
             serverId,
             i,
@@ -379,14 +381,20 @@
             false,
             respondFast,
           );
+          await respondChunked(
+            i,
+            value,
+            done,
+          );
+
           while (true) {
-            const { value, done } = await reader.read();
+            const A = await reader.read();
             await respondChunked(
               i,
-              value,
-              done,
+              A.value,
+              A.done,
             );
-            if (done) break;
+            if (A.done) break;
           }
         }
       }
