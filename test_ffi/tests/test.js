@@ -515,6 +515,7 @@ logCallback.unref();
 console.log("Thread safe call counter:", counter);
 returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
+// Purposefully do not unref returnU8Callback: Instead use it to test close() unrefing.
 
 // Test statics
 console.log("Static u32:", dylib.symbols.static_u32);
@@ -585,7 +586,7 @@ After: ${postStr}`,
 })();
 
 function assertIsOptimized(fn) {
-  const status = % GetOptimizationStatus(fn);
+  const status = %GetOptimizationStatus(fn);
   assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
 }
 
