@@ -2063,12 +2063,12 @@ fn op_ffi_call_nonblocking<'scope>(
   })
 }
 
-#[op(v8)]
-fn op_ffi_ptr_of<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+#[op(fast)]
+fn op_ffi_ptr_of<FP>(
   state: &mut deno_core::OpState,
-  buf: serde_v8::Value<'scope>,
-) -> Result<serde_v8::Value<'scope>, AnyError>
+  buf: &[u8],
+  out: &mut [u32],
+) -> Result<(), AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -2076,34 +2076,22 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check(None)?;
 
-  let pointer = if let Ok(value) =
-    v8::Local::<v8::ArrayBufferView>::try_from(buf.v8_value)
+  let outptr = out.as_ptr();
+  let outptr_integer = outptr as usize;
+  let length = out.len();
+  if length < (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
+    || (outptr_integer % std::mem::size_of::<usize>()) != 0
   {
-    let backing_store = value
-      .buffer(scope)
-      .ok_or_else(|| {
-        type_error("Invalid FFI ArrayBufferView, expected data in the buffer")
-      })?
-      .get_backing_store();
-    let byte_offset = value.byte_offset();
-    &backing_store[byte_offset..] as *const _ as *const u8
-  } else if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(buf.v8_value)
-  {
-    let backing_store = value.get_backing_store();
-    &backing_store[..] as *const _ as *const u8
-  } else {
-    return Err(type_error(
-      "Invalid FFI buffer, expected ArrayBuffer, or ArrayBufferView",
-    ));
-  };
+    return Err(type_error("Invalid out buffer for op_ffi_ptr_of"));
+  }
 
-  let integer: v8::Local<v8::Value> =
-    if pointer as usize > MAX_SAFE_INTEGER as usize {
-      v8::BigInt::new_from_u64(scope, pointer as u64).into()
-    } else {
-      v8::Number::new(scope, pointer as usize as f64).into()
-    };
-  Ok(integer.into())
+  // SAFETY: Both size of the out buffer and the alignment of the pointer was checked.
+  let out_usize =
+    unsafe { std::slice::from_raw_parts_mut(outptr as *mut usize, 1) };
+
+  out_usize[0] = buf.as_ptr() as usize;
+
+  Ok(())
 }
 
 unsafe extern "C" fn noop_deleter_callback(
