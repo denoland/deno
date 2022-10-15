@@ -386,15 +386,16 @@
             value,
             done,
           );
-
-          while (true) {
-            const A = await reader.read();
-            await respondChunked(
-              i,
-              A.value,
-              A.done,
-            );
-            if (A.done) break;
+          if (!done) {
+            while (true) {
+              const A = await reader.read();
+              await respondChunked(
+                i,
+                A.value,
+                A.done,
+              );
+              if (A.done) break;
+            }
           }
         }
       }
