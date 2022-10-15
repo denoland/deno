@@ -60,6 +60,7 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
+  const ops = core.ops;
   const { AssertionError, assert } = window.__bootstrap.infra;
 
   /** @template T */
@@ -218,15 +219,7 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    assert(!isDetachedBuffer(O));
-    const transferredIshVersion = O.slice(0);
-    ObjectDefineProperty(O, "byteLength", {
-      get() {
-        return 0;
-      },
-    });
-    O[isFakeDetached] = true;
-    return transferredIshVersion;
+    return ops.op_transfer_arraybuffer(O);
   }
 
   /**
@@ -4572,7 +4565,7 @@
      * @param {UnderlyingSource<R>=} underlyingSource
      * @param {QueuingStrategy<R>=} strategy
      */
-    constructor(underlyingSource = undefined, strategy = {}) {
+    constructor(underlyingSource = undefined, strategy = undefined) {
       const prefix = "Failed to construct 'ReadableStream'";
       if (underlyingSource !== undefined) {
         underlyingSource = webidl.converters.object(underlyingSource, {
@@ -4580,18 +4573,22 @@
           context: "Argument 1",
         });
       }
-      strategy = webidl.converters.QueuingStrategy(strategy, {
-        prefix,
-        context: "Argument 2",
-      });
-      this[webidl.brand] = webidl.brand;
-      if (underlyingSource === undefined) {
-        underlyingSource = null;
+      if (strategy !== undefined) {
+        strategy = webidl.converters.QueuingStrategy(strategy, {
+          prefix,
+          context: "Argument 2",
+        });
+      } else {
+        strategy = {};
       }
-      const underlyingSourceDict = webidl.converters.UnderlyingSource(
-        underlyingSource,
-        { prefix, context: "underlyingSource" },
-      );
+      this[webidl.brand] = webidl.brand;
+      let underlyingSourceDict = {};
+      if (underlyingSource !== undefined) {
+        underlyingSourceDict = webidl.converters.UnderlyingSource(
+          underlyingSource,
+          { prefix, context: "underlyingSource" },
+        );
+      }
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
@@ -4652,13 +4649,17 @@
      * @param {ReadableStreamGetReaderOptions=} options
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
-    getReader(options = {}) {
+    getReader(options = undefined) {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
-      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
-        prefix,
-        context: "Argument 1",
-      });
+      if (options !== undefined) {
+        options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+          prefix,
+          context: "Argument 1",
+        });
+      } else {
+        options = {};
+      }
       if (options.mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       } else {

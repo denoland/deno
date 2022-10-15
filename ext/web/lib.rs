@@ -111,6 +111,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
+      op_transfer_arraybuffer::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -335,6 +336,20 @@ fn op_encoding_encode_into(
   ) as u32;
   out_buf[0] = nchars as u32;
   Ok(())
+}
+
+#[op(v8)]
+fn op_transfer_arraybuffer<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  let bs = ab.get_backing_store();
+  ab.detach();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+  Ok(serde_v8::Value {
+    v8_value: ab.into(),
+  })
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
