@@ -56,7 +56,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
-use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -1217,7 +1216,7 @@ where
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
   let (listening_tx, listening_rx) = mpsc::channel(1);
-  let mut poll = Poll::new()?;
+  let poll = Poll::new()?;
   let close_notifier = CloseNotifier::new(&poll)?;
   let ctx = ServerContext {
     _addr: addr,
