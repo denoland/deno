@@ -419,7 +419,7 @@ fn op_flash_method(state: &mut OpState, server_id: u32, token: u32) -> u32 {
 }
 
 #[op]
-async fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
+fn op_flash_close_server(state: Rc<RefCell<OpState>>, server_id: u32) {
   let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
