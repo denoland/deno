@@ -38,7 +38,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::c_void;
-use std::mem::forget;
 use std::option::Option;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -81,8 +80,6 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_creator: Option<v8::SnapshotCreator>,
-  has_snapshotted: bool,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -188,28 +185,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
   inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
-}
-
-impl Drop for JsRuntime {
-  fn drop(&mut self) {
-    if let Some(creator) = self.snapshot_creator.take() {
-      // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
-      // a `struct OwnedIsolate` which is not actually owned, hence the need
-      // here to leak the `OwnedIsolate` in order to avoid a double free and
-      // the segfault that it causes.
-      let v8_isolate = self.v8_isolate.take().unwrap();
-      forget(v8_isolate);
-
-      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
-      // being deallocated if it hasn't created a snapshot yet.
-      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
-      // If that assert is removed, this if guard could be removed.
-      // WARNING: There may be false positive LSAN errors here.
-      if self.has_snapshotted {
-        drop(creator);
-      }
-    }
-  }
 }
 
 fn v8_init(
@@ -354,15 +329,11 @@ impl JsRuntime {
       // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
+    let mut isolate = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
-      // SAFETY: `get_owned_isolate` is unsafe because it may only be called
-      // once. This is the only place we call this function, so this call is
-      // safe.
-      let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = JsRuntime::setup_isolate(isolate);
+      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
         // not overwriting an existing pointer.
@@ -373,9 +344,9 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
-        creator.set_default_context(context);
+        scope.set_default_context(context);
       }
-      (isolate, Some(creator))
+      isolate
     } else {
       let mut params = options
         .create_params
@@ -414,7 +385,7 @@ impl JsRuntime {
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, None)
+      isolate
     };
 
     op_state.borrow_mut().put(isolate_ptr);
@@ -459,22 +430,21 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      snapshot_creator: maybe_snapshot_creator,
-      has_snapshotted: false,
       built_from_snapshot: has_startup_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
     };
 
+    // Init resources and ops before extensions to make sure they are
+    // available during the initialization process.
+    js_runtime.init_extension_ops().unwrap();
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
       let realm = js_runtime.global_realm();
       js_runtime.init_extension_js(&realm).unwrap();
     }
-    // Init extension ops
-    js_runtime.init_extension_ops().unwrap();
     // Init callbacks (opresolve)
     let global_realm = js_runtime.global_realm();
     js_runtime.init_cbs(&global_realm);
@@ -750,9 +720,7 @@ impl JsRuntime {
   /// set to true.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn snapshot(&mut self) -> v8::StartupData {
-    assert!(self.snapshot_creator.is_some());
-
+  pub fn snapshot(mut self) -> v8::StartupData {
     // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
     // TODO(@AaronO): make ops stable across snapshots
     {
@@ -801,13 +769,10 @@ impl JsRuntime {
       state.js_nexttick_cbs.clear();
     }
 
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
-    let snapshot = snapshot_creator
+    let snapshot_creator = self.v8_isolate.unwrap();
+    snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-    self.has_snapshotted = true;
-
-    snapshot
+      .unwrap()
   }
 
   /// Returns the namespace object of a module.
@@ -3943,7 +3908,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
   #[test]
   fn js_realm_init_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });

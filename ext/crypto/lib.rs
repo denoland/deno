@@ -132,24 +132,24 @@ pub fn op_crypto_base64url_encode(data: ZeroCopyBuf) -> String {
   data
 }
 
-#[op]
+#[op(fast)]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  mut zero_copy: ZeroCopyBuf,
+  out: &mut [u8],
 ) -> Result<(), AnyError> {
-  if zero_copy.len() > 65536 {
+  if out.len() > 65536 {
     return Err(
-      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", zero_copy.len()))
+      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", out.len()))
         .into(),
     );
   }
 
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
-    seeded_rng.fill(&mut *zero_copy);
+    seeded_rng.fill(out);
   } else {
     let mut rng = thread_rng();
-    rng.fill(&mut *zero_copy);
+    rng.fill(out);
   }
 
   Ok(())

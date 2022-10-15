@@ -4652,6 +4652,11 @@
       webidl.assertBranded(this, CryptoPrototype);
       const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
+      // Fast path for Uint8Array
+      if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, arrayBufferView)) {
+        ops.op_crypto_get_random_values(arrayBufferView);
+        return arrayBufferView;
+      }
       arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
         prefix,
         context: "Argument 1",

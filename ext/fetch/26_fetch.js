@@ -225,7 +225,7 @@
           }
           try {
             await PromisePrototypeCatch(
-              core.write(requestBodyRid, value),
+              core.writeAll(requestBodyRid, value),
               (err) => {
                 if (terminator.aborted) return;
                 throw err;

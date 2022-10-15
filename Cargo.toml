@@ -159,6 +159,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3
+[profile.release.package.test_napi]
+opt-level = 3
 [profile.release.package.num-bigint-dig]
 opt-level = 3
 [profile.release.package.v8]

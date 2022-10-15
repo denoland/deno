@@ -74,6 +74,7 @@ impl ReplLanguageServer {
           window: None,
           general: None,
           experimental: None,
+          offset_encoding: None,
         },
         trace: None,
         workspace_folders: None,

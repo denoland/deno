@@ -8,7 +8,9 @@
 
 use crate::error::bad_resource_id;
 use crate::error::not_supported;
-use crate::ZeroCopyBuf;
+use crate::io::BufMutView;
+use crate::io::BufView;
+use crate::io::WriteOutcome;
 use anyhow::Error;
 use futures::Future;
 use std::any::type_name;
@@ -23,9 +25,51 @@ use std::rc::Rc;
 /// Returned by resource read/write/shutdown methods
 pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Error>>>>;
 
-/// All objects that can be store in the resource table should implement the
-/// `Resource` trait.
-/// TODO(@AaronO): investigate avoiding alloc on read/write/shutdown
+/// Resources are Rust objects that are attached to a [deno_core::JsRuntime].
+/// They are identified in JS by a numeric ID (the resource ID, or rid).
+/// Resources can be created in ops. Resources can also be retrieved in ops by
+/// their rid. Resources are not thread-safe - they can only be accessed from
+/// the thread that the JsRuntime lives on.
+///
+/// Resources are reference counted in Rust. This means that they can be
+/// cloned and passed around. When the last reference is dropped, the resource
+/// is automatically closed. As long as the resource exists in the resource
+/// table, the reference count is at least 1.
+///
+/// ### Readable
+///
+/// Readable resources are resources that can have data read from. Examples of
+/// this are files, sockets, or HTTP streams.
+///
+/// Readables can be read from from either JS or Rust. In JS one can use
+/// `Deno.core.read()` to read from a single chunk of data from a readable. In
+/// Rust one can directly call `read()` or `read_byob()`. The Rust side code is
+/// used to implement ops like `op_slice`.
+///
+/// A distinction can be made between readables that produce chunks of data
+/// themselves (they allocate the chunks), and readables that fill up
+/// bring-your-own-buffers (BYOBs). The former is often the case for framed
+/// protocols like HTTP, while the latter is often the case for kernel backed
+/// resources like files and sockets.
+///
+/// All readables must implement `read()`. If resources can support an optimized
+/// path for BYOBs, they should also implement `read_byob()`. For kernel backed
+/// resources it often makes sense to implement `read_byob()` first, and then
+/// implement `read()` as an operation that allocates a new chunk with
+/// `len == limit`, then calls `read_byob()`, and then returns a chunk sliced to
+/// the number of bytes read. Kernel backed resources can use the
+/// [deno_core::impl_readable_byob] macro to implement optimized `read_byob()`
+/// and `read()` implementations from a single `Self::read()` method.
+///
+/// ### Writable
+///
+/// Writable resources are resources that can have data written to. Examples of
+/// this are files, sockets, or HTTP streams.
+///
+/// Writables can be written to from either JS or Rust. In JS one can use
+/// `Deno.core.write()` to write to a single chunk of data to a writable. In
+/// Rust one can directly call `write()`. The latter is used to implement ops
+/// like `op_slice`.
 pub trait Resource: Any + 'static {
   /// Returns a string representation of the resource which is made available
   /// to JavaScript code through `op_resources`. The default implementation
@@ -35,20 +79,86 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
-  /// Resources may implement `read_return()` to be a readable stream
-  fn read_return(
+  /// Read a single chunk of data from the resource. This operation returns a
+  /// `BufView` that represents the data that was read. If a zero length buffer
+  /// is returned, it indicates that the resource has reached EOF.
+  ///
+  /// If this method is not implemented, the default implementation will error
+  /// with a "not supported" error.
+  ///
+  /// If a readable can provide an optimized path for BYOBs, it should also
+  /// implement `read_byob()`.
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+    _ = limit;
+    Box::pin(futures::future::err(not_supported()))
+  }
+
+  /// Read a single chunk of data from the resource into the provided `BufMutView`.
+  ///
+  /// This operation returns the number of bytes read. If zero bytes are read,
+  /// it indicates that the resource has reached EOF.
+  ///
+  /// If this method is not implemented explicitly, the default implementation
+  /// will call `read()` and then copy the data into the provided buffer. For
+  /// readable resources that can provide an optimized path for BYOBs, it is
+  /// strongly recommended to override this method.
+  fn read_byob(
     self: Rc<Self>,
-    _buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
+    mut buf: BufMutView,
+  ) -> AsyncResult<(usize, BufMutView)> {
+    Box::pin(async move {
+      let read = self.read(buf.len()).await?;
+      let nread = read.len();
+      buf[..nread].copy_from_slice(&read);
+      Ok((nread, buf))
+    })
+  }
+
+  /// Write a single chunk of data to the resource. The operation may not be
+  /// able to write the entire chunk, in which case it should return the number
+  /// of bytes written. Additionally it should return the `BufView` that was
+  /// passed in.
+  ///
+  /// If this method is not implemented, the default implementation will error
+  /// with a "not supported" error.
+  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+    _ = buf;
     Box::pin(futures::future::err(not_supported()))
   }
 
-  /// Resources may implement `write()` to be a writable stream
-  fn write(self: Rc<Self>, _buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(futures::future::err(not_supported()))
+  /// Write an entire chunk of data to the resource. Unlike `write()`, this will
+  /// ensure the entire chunk is written. If the operation is not able to write
+  /// the entire chunk, an error is to be returned.
+  ///
+  /// By default this method will call `write()` repeatedly until the entire
+  /// chunk is written. Resources that can write the entire chunk in a single
+  /// operation using an optimized path should override this method.
+  fn write_all(self: Rc<Self>, view: BufView) -> AsyncResult<()> {
+    Box::pin(async move {
+      let mut view = view;
+      let this = self;
+      while !view.is_empty() {
+        let resp = this.clone().write(view).await?;
+        match resp {
+          WriteOutcome::Partial {
+            nwritten,
+            view: new_view,
+          } => {
+            view = new_view;
+            view.advance_cursor(nwritten);
+          }
+          WriteOutcome::Full { .. } => break,
+        }
+      }
+      Ok(())
+    })
   }
 
-  /// Resources may implement `shutdown()` for graceful async shutdowns
+  /// The shutdown method can be used to asynchronously close the resource. It
+  /// is not automatically called when the resource is dropped or closed.
+  ///
+  /// If this method is not implemented, the default implementation will error
+  /// with a "not supported" error.
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(futures::future::err(not_supported()))
   }
@@ -228,4 +338,61 @@ impl ResourceTable {
       .iter()
       .map(|(&id, resource)| (id, resource.name()))
   }
+}
+
+#[macro_export]
+macro_rules! impl_readable_byob {
+  () => {
+    fn read(self: Rc<Self>, limit: usize) -> AsyncResult<$crate::BufView> {
+      Box::pin(async move {
+        let mut vec = vec![0; limit];
+        let nread = self.read(&mut vec).await?;
+        if nread != vec.len() {
+          vec.truncate(nread);
+        }
+        let view = $crate::BufView::from(vec);
+        Ok(view)
+      })
+    }
+
+    fn read_byob(
+      self: Rc<Self>,
+      mut buf: $crate::BufMutView,
+    ) -> AsyncResult<(usize, $crate::BufMutView)> {
+      Box::pin(async move {
+        let nread = self.read(buf.as_mut()).await?;
+        Ok((nread, buf))
+      })
+    }
+  };
+}
+
+#[macro_export]
+macro_rules! impl_writable {
+  (__write) => {
+    fn write(
+      self: Rc<Self>,
+      view: $crate::BufView,
+    ) -> AsyncResult<$crate::WriteOutcome> {
+      Box::pin(async move {
+        let nwritten = self.write(&view).await?;
+        Ok($crate::WriteOutcome::Partial { nwritten, view })
+      })
+    }
+  };
+  (__write_all) => {
+    fn write_all(self: Rc<Self>, view: $crate::BufView) -> AsyncResult<()> {
+      Box::pin(async move {
+        self.write_all(&view).await?;
+        Ok(())
+      })
+    }
+  };
+  () => {
+    $crate::impl_writable!(__write);
+  };
+  (with_all) => {
+    $crate::impl_writable!(__write);
+    $crate::impl_writable!(__write_all);
+  };
 }

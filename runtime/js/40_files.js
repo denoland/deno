@@ -7,8 +7,8 @@
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
-  const { writableStreamForRid } = window.__bootstrap.streamUtils;
-  const { readableStreamForRid } = window.__bootstrap.streams;
+  const { readableStreamForRid, writableStreamForRid } =
+    window.__bootstrap.streams;
   const {
     ArrayPrototypeFilter,
     Error,
