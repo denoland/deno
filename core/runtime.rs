@@ -45,6 +45,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::OwnedIsolate;
 
 type PendingOpFuture =
   OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
@@ -280,6 +281,14 @@ pub struct RuntimeOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
+impl Drop for JsRuntime {
+  fn drop(&mut self) {
+    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+  }
+}
+
 impl JsRuntime {
   const STATE_DATA_OFFSET: u32 = 0;
   const MODULE_MAP_DATA_OFFSET: u32 = 1;
@@ -459,6 +468,22 @@ impl JsRuntime {
     js_runtime.init_cbs(&global_realm);
 
     js_runtime
+  }
+
+  fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
+    let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    drop(state_rc);
+
+    let module_map_ptr = v8_isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    drop(module_map_rc);
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
@@ -757,13 +782,8 @@ impl JsRuntime {
 
     // Drop existing ModuleMap to drop v8::Global handles
     {
-      let module_map_ptr =
-        self.v8_isolate().get_data(Self::MODULE_MAP_DATA_OFFSET);
-      let module_map_rc =
-        // SAFETY: We are sure that it's a valid pointer for whole lifetime of
-        // the runtime.
-        unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
-      drop(module_map_rc);
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
     }
 
     // Drop other v8::Global handles before snapshotting
@@ -788,7 +808,7 @@ impl JsRuntime {
       state.js_nexttick_cbs.clear();
     }
 
-    let snapshot_creator = self.v8_isolate.unwrap();
+    let snapshot_creator = self.v8_isolate.take().unwrap();
     snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap()
