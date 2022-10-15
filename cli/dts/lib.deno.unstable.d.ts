@@ -1590,7 +1590,7 @@ declare namespace Deno {
 
     /** Waits for the child to exit completely, returning all its output and status. */
     output(): Promise<SpawnOutput>;
-    /** Kills the process with given Signal. Defaults to SIGTERM. */
+    /** Kills the process with given Signal. Default signal is `"SIGTERM"`. */
     kill(signo?: Signal): void;
 
     ref(): void;

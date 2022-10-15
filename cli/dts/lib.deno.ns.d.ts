@@ -3394,6 +3394,7 @@ declare namespace Deno {
     /** Clean up resources associated with the sub-process instance. */
     close(): void;
     /** Send a signal to process.
+     * Default signal is `"SIGTERM"`.
      *
      * ```ts
      * const p = Deno.run({ cmd: [ "sleep", "20" ]});
@@ -3401,11 +3402,11 @@ declare namespace Deno {
      * p.close();
      * ```
      */
-    kill(signo: Signal): void;
+    kill(signo?: Signal): void;
   }
 
   /** Operating signals which can be listened for or sent to sub-processes. What
-   * signals and what their standard behaviors are are OS dependent.
+   * signals and what their standard behaviors are OS dependent.
    *
    * @category Runtime Environment */
   export type Signal =
@@ -4080,6 +4081,7 @@ declare namespace Deno {
   ): WebSocketUpgrade;
 
   /** Send a signal to process under given `pid`.
+   * Default signal is `"SIGTERM"`.
    *
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`. An error will be thrown if a negative
@@ -4098,7 +4100,7 @@ declare namespace Deno {
    * @tags allow-run
    * @category Sub Process
    */
-  export function kill(pid: number, signo: Signal): void;
+  export function kill(pid: number, signo?: Signal): void;
 
   /** The type of the resource record.
    * Only the listed types are supported currently.
