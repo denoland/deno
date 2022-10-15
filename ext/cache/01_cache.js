@@ -148,7 +148,7 @@
               await core.shutdown(rid);
               break;
             }
-            await core.write(rid, value);
+            await core.writeAll(rid, value);
           }
         } finally {
           core.close(rid);
