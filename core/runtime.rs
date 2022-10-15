@@ -38,7 +38,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::c_void;
-use std::mem::forget;
 use std::option::Option;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -46,6 +45,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::OwnedIsolate;
 
 type PendingOpFuture =
   OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
@@ -81,8 +81,6 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_creator: Option<v8::SnapshotCreator>,
-  has_snapshotted: bool,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -190,28 +188,6 @@ pub(crate) struct JsRuntimeState {
   waker: AtomicWaker,
 }
 
-impl Drop for JsRuntime {
-  fn drop(&mut self) {
-    if let Some(creator) = self.snapshot_creator.take() {
-      // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
-      // a `struct OwnedIsolate` which is not actually owned, hence the need
-      // here to leak the `OwnedIsolate` in order to avoid a double free and
-      // the segfault that it causes.
-      let v8_isolate = self.v8_isolate.take().unwrap();
-      forget(v8_isolate);
-
-      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
-      // being deallocated if it hasn't created a snapshot yet.
-      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
-      // If that assert is removed, this if guard could be removed.
-      // WARNING: There may be false positive LSAN errors here.
-      if self.has_snapshotted {
-        drop(creator);
-      }
-    }
-  }
-}
-
 fn v8_init(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,
   predictable: bool,
@@ -306,9 +282,17 @@ pub struct RuntimeOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
+impl Drop for JsRuntime {
+  fn drop(&mut self) {
+    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+  }
+}
+
 impl JsRuntime {
-  const STATE_SLOT: u32 = 0;
-  const MODULES_SLOT: u32 = 1;
+  const STATE_DATA_OFFSET: u32 = 0;
+  const MODULE_MAP_DATA_OFFSET: u32 = 1;
 
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
@@ -358,15 +342,11 @@ impl JsRuntime {
       // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
+    let mut isolate = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
-      // SAFETY: `get_owned_isolate` is unsafe because it may only be called
-      // once. This is the only place we call this function, so this call is
-      // safe.
-      let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = JsRuntime::setup_isolate(isolate);
+      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
         // not overwriting an existing pointer.
@@ -377,9 +357,9 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
-        creator.set_default_context(context);
+        scope.set_default_context(context);
       }
-      (isolate, Some(creator))
+      isolate
     } else {
       let mut params = options
         .create_params
@@ -418,7 +398,7 @@ impl JsRuntime {
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, None)
+      isolate
     };
 
     op_state.borrow_mut().put(isolate_ptr);
@@ -430,7 +410,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    let rc_state = Rc::new(RefCell::new(JsRuntimeState {
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context.clone())),
       known_realms,
       pending_promise_exceptions: HashMap::new(),
@@ -452,8 +432,11 @@ impl JsRuntime {
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
     }));
+    isolate.set_data(
+      Self::STATE_DATA_OFFSET,
+      Rc::into_raw(state_rc) as *mut c_void,
+    );
 
-    isolate.set_data(Self::STATE_SLOT, Rc::into_raw(rc_state) as *mut c_void);
     let ctx = global_context.open(&mut isolate);
     unsafe {
       ctx.set_aligned_pointer_in_embedder_data(
@@ -462,17 +445,14 @@ impl JsRuntime {
       )
     };
 
-    let module_map = ModuleMap::new(loader, op_state);
-    let rc_module_map = Rc::new(RefCell::new(module_map));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     isolate.set_data(
-      Self::MODULES_SLOT,
-      Rc::into_raw(rc_module_map) as *mut c_void,
+      Self::MODULE_MAP_DATA_OFFSET,
+      Rc::into_raw(module_map_rc) as *mut c_void,
     );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      snapshot_creator: maybe_snapshot_creator,
-      has_snapshotted: false,
       built_from_snapshot: has_startup_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
@@ -493,6 +473,22 @@ impl JsRuntime {
     js_runtime.init_cbs(&global_realm);
 
     js_runtime
+  }
+
+  fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
+    let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    drop(state_rc);
+
+    let module_map_ptr = v8_isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    drop(module_map_rc);
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
@@ -571,23 +567,26 @@ impl JsRuntime {
     isolate
   }
 
-  pub(crate) fn state<'a, 'b>(
-    isolate: &'a v8::Isolate,
-  ) -> &'b RefCell<JsRuntimeState> {
-    unsafe {
-      &*(isolate.get_data(Self::STATE_SLOT) as *const RefCell<JsRuntimeState>)
-    }
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    Rc::into_raw(state_rc);
+    state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let rc = unsafe {
-      Rc::from_raw(
-        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
-      )
-    };
-    let cloned = rc.clone();
-    forget(rc);
-    cloned
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
   }
 
   /// Initializes JS of provided Extensions in the given realm
@@ -772,9 +771,7 @@ impl JsRuntime {
   /// set to true.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn snapshot(&mut self) -> v8::StartupData {
-    assert!(self.snapshot_creator.is_some());
-
+  pub fn snapshot(mut self) -> v8::StartupData {
     // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
     // TODO(@AaronO): make ops stable across snapshots
     {
@@ -793,19 +790,10 @@ impl JsRuntime {
 
     state.borrow_mut().inspector.take();
 
-    // Overwrite existing ModuleMap to drop v8::Global handles
-    unsafe {
-      let isolate = self.v8_isolate();
-      drop(Rc::from_raw(
-        isolate.get_data(Self::MODULES_SLOT) as *const RefCell<ModuleMap>
-      ));
-      isolate.set_data(
-        Self::MODULES_SLOT,
-        Rc::into_raw(Rc::new(RefCell::new(ModuleMap::new(
-          Rc::new(NoopModuleLoader),
-          state.borrow().op_state.clone(),
-        )))) as *mut c_void,
-      );
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
     }
 
     // Drop other v8::Global handles before snapshotting
@@ -835,13 +823,10 @@ impl JsRuntime {
       state.js_nexttick_cbs.clear();
     }
 
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
-    let snapshot = snapshot_creator
+    let snapshot_creator = self.v8_isolate.take().unwrap();
+    snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-    self.has_snapshotted = true;
-
-    snapshot
+      .unwrap()
   }
 
   /// Returns the namespace object of a module.
@@ -3982,7 +3967,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
   #[test]
   fn js_realm_init_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
