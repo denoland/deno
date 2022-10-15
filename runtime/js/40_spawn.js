@@ -20,8 +20,8 @@
     readableStreamForRidUnrefable,
     readableStreamForRidUnrefableRef,
     readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
   } = window.__bootstrap.streams;
-  const { writableStreamForRid } = window.__bootstrap.streamUtils;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
