@@ -91,6 +91,12 @@ pub struct ServerContext {
   cancel_handle: Rc<CancelHandle>,
 }
 
+/// An abstract utility allowing the main thread to tell the flash thread to close.
+/// The notification the main thread makes will be delivered as a mio's event that the flash thread
+/// can handle in the same way as other events associated with network.
+/// The main thread can notify either explicitly or implicitly. To explicitly notify, `notify`
+/// method will be used. If `notify` has not yet called up until the time when the notifier is
+/// dropped, then implicit notification will be made.
 enum CloseNotifier {
   Unnotified { waker: Waker },
   Notified,
@@ -908,8 +914,8 @@ fn run_server(
     }
     'events: for event in &events {
       match event.token() {
-        // If an explicit close notification arrives, exit from the event loop
-        // so that the resources are released.
+        // When a close notification arrives, exit from the event loop
+        // so that the resources are properly released.
         token if token == CLOSE_TOKEN => {
           break 'outer;
         }
