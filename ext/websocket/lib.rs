@@ -489,7 +489,9 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
     Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
-      state.borrow_mut().resource_table.close(rid).unwrap();
+      // No message was received, presumably the socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      let _ = state.borrow_mut().resource_table.close(rid);
       NextEventResponse::Closed
     }
   };
