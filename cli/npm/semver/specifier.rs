@@ -86,7 +86,7 @@ fn parse_npm_specifier(input: &str) -> ParseResult<SpecifierVersionReq> {
 // npm specifiers.
 
 // version_range ::= partial | tilde | caret
-fn version_range<'a>(input: &'a str) -> ParseResult<'a, VersionRange> {
+fn version_range(input: &str) -> ParseResult<VersionRange> {
   or3(
     map(preceded(ch('~'), partial), |partial| {
       partial.as_tilde_version_range()
