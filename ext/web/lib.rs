@@ -344,6 +344,9 @@ fn op_transfer_arraybuffer<'a>(
   input: serde_v8::Value<'a>,
 ) -> Result<serde_v8::Value<'a>, AnyError> {
   let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  if !ab.is_detachable() {
+    return Err(type_error("ArrayBuffer is not detachable"));
+  }
   let bs = ab.get_backing_store();
   ab.detach();
   let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
