@@ -21,6 +21,7 @@ declare class Window extends EventTarget {
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
   onload: ((this: Window, ev: Event) => any) | null;
+  onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
@@ -75,6 +76,8 @@ declare var self: Window & typeof globalThis;
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 /** @category DOM Events */
 declare var onload: ((this: Window, ev: Event) => any) | null;
+/** @category DOM Events */
+declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
 /** @category DOM Events */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
 /** @category Observability */
