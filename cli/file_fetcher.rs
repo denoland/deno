@@ -1186,7 +1186,7 @@ mod tests {
       .get_cache_filename(&specifier)
       .unwrap();
     let mut metadata =
-      crate::http_cache::Metadata::read(&cache_filename).unwrap();
+      crate::http_cache::Metadata::read(&cache_filename, &specifier).unwrap();
     metadata.headers = HashMap::new();
     metadata
       .headers

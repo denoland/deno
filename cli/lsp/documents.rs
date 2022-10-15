@@ -597,7 +597,7 @@ impl SpecifierResolver {
   ) -> Option<ModuleSpecifier> {
     let cache_filename = self.cache.get_cache_filename(specifier)?;
     if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = http_cache::Metadata::read(&cache_filename)
+      let headers = http_cache::Metadata::read(&cache_filename, specifier)
         .ok()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
@@ -645,7 +645,7 @@ impl FileSystemDocuments {
     } else {
       let cache_filename = cache.get_cache_filename(specifier)?;
       let specifier_metadata =
-        http_cache::Metadata::read(&cache_filename).ok()?;
+        http_cache::Metadata::read(&cache_filename, specifier).ok()?;
       let maybe_content_type =
         specifier_metadata.headers.get("content-type").cloned();
       let maybe_headers = Some(&specifier_metadata.headers);

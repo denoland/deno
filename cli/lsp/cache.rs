@@ -88,7 +88,7 @@ impl CacheMetadata {
     }
     let cache_filename = self.cache.get_cache_filename(specifier)?;
     let specifier_metadata =
-      http_cache::Metadata::read(&cache_filename).ok()?;
+      http_cache::Metadata::read(&cache_filename, specifier).ok()?;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
     let version = calculate_fs_version(&cache_filename);
     let mut metadata_map = self.metadata.lock();
