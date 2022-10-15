@@ -591,13 +591,17 @@
     });
 
     function respondChunked(token, chunk, shutdown) {
-      return core.opAsync(
-        "op_flash_respond_chuncked",
-        serverId,
-        token,
-        chunk,
-        shutdown,
-      );
+      const nwritten = core.ops.op_try_flash_respond_chuncked(serverId, token, chunk ?? new Uint8Array(), shutdown);
+      if (nwritten > 0) {
+        return core.opAsync(
+          "op_flash_respond_chuncked",
+          serverId,
+          token,
+          chunk,
+          shutdown,
+          nwritten,
+        ); 
+      }
     }
 
     const fastOp = prepareFastCalls();
