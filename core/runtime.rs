@@ -45,6 +45,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::OwnedIsolate;
 
 type PendingOpFuture =
   OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
@@ -280,7 +281,18 @@ pub struct RuntimeOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
+impl Drop for JsRuntime {
+  fn drop(&mut self) {
+    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+  }
+}
+
 impl JsRuntime {
+  const STATE_DATA_OFFSET: u32 = 0;
+  const MODULE_MAP_DATA_OFFSET: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -397,7 +409,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context.clone())),
       known_realms,
       pending_promise_exceptions: HashMap::new(),
@@ -418,14 +430,21 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
-    })));
+    }));
+    isolate.set_data(
+      Self::STATE_DATA_OFFSET,
+      Rc::into_raw(state_rc) as *mut c_void,
+    );
 
     global_context
       .open(&mut isolate)
       .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
 
-    let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    isolate.set_data(
+      Self::MODULE_MAP_DATA_OFFSET,
+      Rc::into_raw(module_map_rc) as *mut c_void,
+    );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -449,6 +468,22 @@ impl JsRuntime {
     js_runtime.init_cbs(&global_realm);
 
     js_runtime
+  }
+
+  fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
+    let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    drop(state_rc);
+
+    let module_map_ptr = v8_isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    drop(module_map_rc);
   }
 
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
@@ -523,13 +558,25 @@ impl JsRuntime {
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    Rc::into_raw(state_rc);
+    state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
   }
 
   /// Initializes JS of provided Extensions in the given realm
@@ -733,13 +780,11 @@ impl JsRuntime {
 
     state.borrow_mut().inspector.take();
 
-    // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
 
     // Drop other v8::Global handles before snapshotting
     {
@@ -763,7 +808,7 @@ impl JsRuntime {
       state.js_nexttick_cbs.clear();
     }
 
-    let snapshot_creator = self.v8_isolate.unwrap();
+    let snapshot_creator = self.v8_isolate.take().unwrap();
     snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap()
