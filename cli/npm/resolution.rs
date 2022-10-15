@@ -2,15 +2,19 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::lockfile::Lockfile;
 
@@ -52,7 +56,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      bail!("Not a valid package: {}", specifier);
+      return Err(generic_error(format!("Not a valid package: {}", specifier)));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -76,6 +80,18 @@ impl NpmPackageReference {
     } else {
       Some(parts[name_part_len..].join("/"))
     };
+
+    if let Some(sub_path) = &sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let msg = format!(
+          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
+          name, sub_path, name, version, new_sub_path
+        );
+        return Err(generic_error(msg));
+      }
+    }
+
     Ok(NpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,
@@ -93,7 +109,9 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+  Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct NpmPackageReq {
   pub name: String,
   pub version_req: Option<SpecifierVersionReq>,
@@ -129,7 +147,9 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(
+  Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct NpmPackageId {
   pub name: String,
   pub version: NpmVersion,
@@ -152,7 +172,7 @@ impl std::fmt::Display for NpmPackageId {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmResolutionPackage {
   pub id: NpmPackageId,
   pub dist: NpmPackageVersionDistInfo,
@@ -161,11 +181,52 @@ pub struct NpmResolutionPackage {
   pub dependencies: HashMap<String, NpmPackageId>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
+  #[serde(with = "map_to_vec")]
   package_reqs: HashMap<NpmPackageReq, NpmVersion>,
   packages_by_name: HashMap<String, Vec<NpmVersion>>,
+  #[serde(with = "map_to_vec")]
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+}
+
+// This is done so the maps with non-string keys get serialized and deserialized as vectors.
+// Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
+mod map_to_vec {
+  use std::collections::HashMap;
+
+  use serde::de::Deserialize;
+  use serde::de::Deserializer;
+  use serde::ser::Serializer;
+  use serde::Serialize;
+
+  pub fn serialize<S, K: Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.collect_seq(map.iter())
+  }
+
+  pub fn deserialize<
+    'de,
+    D,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+  >(
+    deserializer: D,
+  ) -> Result<HashMap<K, V>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let mut map = HashMap::new();
+    for (key, value) in Vec::<(K, V)>::deserialize(deserializer)? {
+      map.insert(key, value);
+    }
+    Ok(map)
+  }
 }
 
 impl NpmResolutionSnapshot {
@@ -186,6 +247,26 @@ impl NpmResolutionSnapshot {
       ),
       None => bail!("could not find npm package directory for '{}'", req),
     }
+  }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .package_reqs
+      .iter()
+      .map(|(req, version)| NpmPackageId {
+        name: req.name.clone(),
+        version: version.clone(),
+      })
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>()
+  }
+
+  pub fn package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<&NpmResolutionPackage> {
+    self.packages.get(id)
   }
 
   pub fn resolve_package_from_package(
@@ -274,10 +355,13 @@ impl std::fmt::Debug for NpmResolution {
 }
 
 impl NpmResolution {
-  pub fn new(api: NpmRegistryApi) -> Self {
+  pub fn new(
+    api: NpmRegistryApi,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
+  ) -> Self {
     Self {
       api,
-      snapshot: Default::default(),
+      snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_sempahore: tokio::sync::Semaphore::new(1),
     }
   }
@@ -474,8 +558,6 @@ impl NpmResolution {
     !self.snapshot.read().packages.is_empty()
   }
 
-  // todo(dsherret): for use in the lsp
-  #[allow(dead_code)]
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
   }

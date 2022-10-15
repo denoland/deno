@@ -116,6 +116,10 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn napi_tests_path() -> PathBuf {
+  root_path().join("test_napi")
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
 }
@@ -690,7 +694,7 @@ async fn main_server(
         .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
       res.headers_mut().insert(
         "location",
-        HeaderValue::from_bytes(b"/x_deno_warning_redirect.js").unwrap(),
+        HeaderValue::from_bytes(b"/lsp/x_deno_warning_redirect.js").unwrap(),
       );
       Ok(res)
     }
@@ -774,7 +778,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_directives_redirect.js") => {
+    (_, "/run/type_directives_redirect.js") => {
       let mut res = Response::new(Body::from("export const foo = 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -788,7 +792,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.js") => {
+    (_, "/run/type_headers_deno_types.foo.js") => {
       let mut res = Response::new(Body::from(
         "export function foo(text) { console.log(text); }",
       ));
@@ -799,12 +803,12 @@ async fn main_server(
       res.headers_mut().insert(
         "X-TypeScript-Types",
         HeaderValue::from_static(
-          "http://localhost:4545/type_headers_deno_types.d.ts",
+          "http://localhost:4545/run/type_headers_deno_types.d.ts",
         ),
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.d.ts") => {
+    (_, "/run/type_headers_deno_types.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: number): void;"));
       res.headers_mut().insert(
@@ -813,7 +817,7 @@ async fn main_server(
       );
       Ok(res)
     }
-    (_, "/type_headers_deno_types.foo.d.ts") => {
+    (_, "/run/type_headers_deno_types.foo.d.ts") => {
       let mut res =
         Response::new(Body::from("export function foo(text: string): void;"));
       res.headers_mut().insert(
@@ -1458,7 +1462,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("/053_import_compression/brotli") {
+  if p.ends_with("/run/import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -1471,7 +1475,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("/053_import_compression/gziped") {
+  if p.ends_with("/run/import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));
@@ -1861,6 +1865,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub temp_cwd: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1874,6 +1879,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       );
       std::borrow::Cow::Borrowed(&self.args_vec)
     };
+    let testdata_dir = testdata_path();
+    let args = args
+      .iter()
+      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
+      .collect::<Vec<_>>();
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1884,17 +1894,21 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let testdata_dir = testdata_path();
     let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    println!("deno_exe args {}", self.args);
-    println!("deno_exe testdata path {:?}", &testdata_dir);
+    let cwd = if self.temp_cwd {
+      deno_dir.path()
+    } else {
+      testdata_dir.as_path()
+    };
+    println!("deno_exe args {}", args.join(" "));
+    println!("deno_exe cwd {:?}", &testdata_dir);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&testdata_dir);
+    command.current_dir(&cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1949,7 +1963,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.first() == Some(&"test") {
+    if args.first().map(|s| s.as_str()) == Some("test") {
       actual = actual.replace('\u{200B}', "");
     }
 

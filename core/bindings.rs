@@ -146,27 +146,15 @@ fn initialize_ops(
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
     if ctx.decl.fast_fn.is_some() && snapshot_loaded {
-      let object_template = v8::ObjectTemplate::new(scope);
-      assert!(object_template.set_internal_field_count(
-        (crate::runtime::V8_WRAPPER_OBJECT_INDEX + 1) as usize
-      ));
-
-      let method_obj = object_template.new_instance(scope).unwrap();
-      method_obj.set_aligned_pointer_in_internal_field(
-        crate::runtime::V8_WRAPPER_OBJECT_INDEX,
-        ctx_ptr,
-      );
       set_func_raw(
         scope,
-        method_obj,
-        "fast",
+        ops_obj,
+        ctx.decl.name,
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
         snapshot_loaded,
       );
-      let method_key = v8::String::new(scope, ctx.decl.name).unwrap();
-      ops_obj.set(scope, method_key.into(), method_obj.into());
     } else {
       set_func_raw(
         scope,
@@ -240,16 +228,13 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   }
 }
 
-pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  _host_defined_options: v8::Local<v8::Data>,
-  resource_name: v8::Local<v8::Value>,
-  specifier: v8::Local<v8::String>,
-  import_assertions: v8::Local<v8::FixedArray>,
-) -> *mut v8::Promise {
-  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
+pub fn host_import_module_dynamically_callback<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  _host_defined_options: v8::Local<'s, v8::Data>,
+  resource_name: v8::Local<'s, v8::Value>,
+  specifier: v8::Local<'s, v8::String>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
+) -> Option<v8::Local<'s, v8::Promise>> {
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
     .to_string(scope)
@@ -310,7 +295,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let promise = promise.catch(scope, map_err).unwrap();
 
-  &*promise as *const _ as *mut _
+  Some(promise)
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(

@@ -3,11 +3,6 @@
 use deno_ops::op;
 
 #[op(fast)]
-fn op_result_return(a: i32, b: i32) -> Result<(), ()> {
-  a + b
-}
-
-#[op(fast)]
 fn op_u8_arg(a: u8, b: u8) {
   //
 }

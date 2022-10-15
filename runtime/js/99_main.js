@@ -50,6 +50,7 @@ delete Intl.v8BreakIterator;
   const encoding = window.__bootstrap.encoding;
   const colors = window.__bootstrap.colors;
   const Console = window.__bootstrap.console.Console;
+  const caches = window.__bootstrap.caches;
   const inspectArgs = window.__bootstrap.console.inspectArgs;
   const quoteString = window.__bootstrap.console.quoteString;
   const compression = window.__bootstrap.compression;
@@ -252,8 +253,10 @@ delete Intl.v8BreakIterator;
     );
     build.setBuildInfo(runtimeOptions.target);
     util.setLogDebug(runtimeOptions.debugFlag, source);
+    colors.setNoColor(runtimeOptions.noColor || !runtimeOptions.isTty);
     // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = core.prepareStackTrace;
+    registerErrors();
   }
 
   function registerErrors() {
@@ -467,6 +470,13 @@ delete Intl.v8BreakIterator;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
+    caches: {
+      enumerable: true,
+      configurable: true,
+      get: caches.cacheStorage,
+    },
+    CacheStorage: util.nonEnumerable(caches.CacheStorage),
+    Cache: util.nonEnumerable(caches.Cache),
     console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
@@ -639,19 +649,6 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    const {
-      args,
-      location: locationHref,
-      noColor,
-      isTty,
-      pid,
-      ppid,
-      unstableFlag,
-      cpuCount,
-      inspectFlag,
-      userAgent: userAgentInfo,
-    } = runtimeOptions;
-
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -665,12 +662,12 @@ delete Intl.v8BreakIterator;
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
     // writable, so that they can mock it themselves if they like. If the flag was
     // set, define `globalThis.location`, using the provided value.
-    if (locationHref == null) {
+    if (runtimeOptions.location == null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
       };
     } else {
-      location.setLocationHref(locationHref);
+      location.setLocationHref(runtimeOptions.location);
     }
 
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
@@ -680,7 +677,7 @@ delete Intl.v8BreakIterator;
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
-    if (inspectFlag) {
+    if (runtimeOptions.inspectFlag) {
       const consoleFromDeno = globalThis.console;
       wrapConsole(consoleFromDeno, consoleFromV8);
     }
@@ -706,10 +703,8 @@ delete Intl.v8BreakIterator;
 
     runtimeStart(runtimeOptions);
 
-    colors.setNoColor(noColor || !isTty);
-    numCpus = cpuCount;
-    userAgent = userAgentInfo;
-    registerErrors();
+    numCpus = runtimeOptions.cpuCount;
+    userAgent = runtimeOptions.userAgent;
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -722,14 +717,14 @@ delete Intl.v8BreakIterator;
       ...denoNs,
     };
     ObjectDefineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      ppid: util.readOnly(ppid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(ObjectFreeze(args)),
+      pid: util.readOnly(runtimeOptions.pid),
+      ppid: util.readOnly(runtimeOptions.ppid),
+      noColor: util.readOnly(runtimeOptions.noColor),
+      args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
       mainModule: util.getterOnly(opMainModule),
     });
 
-    if (unstableFlag) {
+    if (runtimeOptions.unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
     }
 
@@ -738,7 +733,7 @@ delete Intl.v8BreakIterator;
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
 
-    util.log("args", args);
+    util.log("args", runtimeOptions.args);
   }
 
   function bootstrapWorkerRuntime(
@@ -795,20 +790,9 @@ delete Intl.v8BreakIterator;
       runtimeOptions,
       internalName ?? name,
     );
-    const {
-      unstableFlag,
-      pid,
-      noColor,
-      isTty,
-      args,
-      location: locationHref,
-      cpuCount,
-    } = runtimeOptions;
 
-    colors.setNoColor(noColor || !isTty);
-    location.setLocationHref(locationHref);
-    numCpus = cpuCount;
-    registerErrors();
+    location.setLocationHref(runtimeOptions.location);
+    numCpus = runtimeOptions.cpuCount;
 
     globalThis.pollForMessages = pollForMessages;
 
@@ -822,13 +806,13 @@ delete Intl.v8BreakIterator;
       close: core.close,
       ...denoNs,
     };
-    if (unstableFlag) {
+    if (runtimeOptions.unstableFlag) {
       ObjectAssign(finalDenoNs, denoNsUnstable);
     }
     ObjectDefineProperties(finalDenoNs, {
-      pid: util.readOnly(pid),
-      noColor: util.readOnly(noColor),
-      args: util.readOnly(ObjectFreeze(args)),
+      pid: util.readOnly(runtimeOptions.pid),
+      noColor: util.readOnly(runtimeOptions.noColor),
+      args: util.readOnly(ObjectFreeze(runtimeOptions.args)),
     });
     // Setup `Deno` global - we're actually overriding already
     // existing global `Deno` with `Deno` namespace from "./deno.ts".

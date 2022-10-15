@@ -561,7 +561,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
   assert_eq!(
     &stdout_lines.next().unwrap(),
-    "exit using ctrl+d or close()"
+    "exit using ctrl+d, ctrl+c, or close()"
   );
 
   assert_inspector_messages(

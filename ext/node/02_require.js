@@ -109,7 +109,7 @@
       requestPath,
       "package.json",
     );
-    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -773,7 +773,7 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    throw new Error("not implemented loading .node files");
+    module.exports = ops.op_napi_open(filename);
   };
 
   function createRequireFromPath(filename) {

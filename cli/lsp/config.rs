@@ -20,6 +20,7 @@ pub const SETTINGS_SECTION: &str = "deno";
 pub struct ClientCapabilities {
   pub code_action_disabled_support: bool,
   pub line_folding_only: bool,
+  pub snippet_support: bool,
   pub status_notification: bool,
   /// The client provides the `experimental.testingApi` capability, which is
   /// built around VSCode's testing API. It indicates that the server should
@@ -393,6 +394,16 @@ impl Config {
         .as_ref()
         .and_then(|it| it.disabled_support)
         .unwrap_or(false);
+      self.client_capabilities.snippet_support =
+        if let Some(completion) = &text_document.completion {
+          completion
+            .completion_item
+            .as_ref()
+            .and_then(|it| it.snippet_support)
+            .unwrap_or(false)
+        } else {
+          false
+        };
     }
   }
 

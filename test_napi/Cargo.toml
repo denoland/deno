@@ -1,0 +1,20 @@
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "test_napi"
+version = "0.1.0"
+authors = ["the deno authors"]
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi-sys = { version = "2.2.2", default-features = false, features = ["napi4"] }
+
+[dev-dependencies]
+test_util = { path = "../test_util" }
+
+[build-dependencies]
+napi-build = "1"

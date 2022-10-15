@@ -933,12 +933,24 @@ interface DateConstructor {
 declare var Date: DateConstructor;
 
 interface RegExpMatchArray extends Array<string> {
+    /**
+     * The index of the search at which the result was found.
+     */
     index?: number;
+    /**
+     * A copy of the search string.
+     */
     input?: string;
 }
 
 interface RegExpExecArray extends Array<string> {
+    /**
+     * The index of the search at which the result was found.
+     */
     index: number;
+    /**
+     * A copy of the search string.
+     */
     input: string;
 }
 
@@ -1584,7 +1596,7 @@ type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
 /**
  * Exclude null and undefined from T
  */
-type NonNullable<T> = T extends null | undefined ? never : T;
+type NonNullable<T> = T & {};
 
 /**
  * Obtain the parameters of a function type in a tuple

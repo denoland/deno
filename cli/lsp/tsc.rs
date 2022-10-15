@@ -2196,6 +2196,10 @@ impl CompletionEntry {
         || kind == Some(lsp::CompletionItemKind::METHOD));
     let commit_characters = self.get_commit_characters(info, settings);
     let mut insert_text = self.insert_text.clone();
+    let insert_text_format = match self.is_snippet {
+      Some(true) => Some(lsp::InsertTextFormat::SNIPPET),
+      _ => None,
+    };
     let range = self.replacement_span.clone();
     let mut filter_text = self.get_filter_text();
     let mut tags = None;
@@ -2262,6 +2266,7 @@ impl CompletionEntry {
       text_edit,
       filter_text,
       insert_text,
+      insert_text_format,
       detail,
       tags,
       commit_characters,
@@ -2910,6 +2915,10 @@ pub struct UserPreferences {
   pub include_inlay_function_like_return_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_inlay_enum_member_value_hints: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_rename_of_import_path: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub auto_import_file_exclude_patterns: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -3775,7 +3784,7 @@ mod tests {
 
     // You might have found this assertion starts failing after upgrading TypeScript.
     // Just update the new number of assets (declaration files) for this number.
-    assert_eq!(assets.len(), 69);
+    assert_eq!(assets.len(), 71);
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;

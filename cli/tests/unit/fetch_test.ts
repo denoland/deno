@@ -93,40 +93,40 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchJsonSuccess() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
 Deno.test({ permissions: { net: false } }, async function fetchPerm() {
   await assertRejects(async () => {
-    await fetch("http://localhost:4545/fixture.json");
+    await fetch("http://localhost:4545/assets/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchUrl() {
-  const response = await fetch("http://localhost:4545/fixture.json");
-  assertEquals(response.url, "http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/assets/fixture.json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchURL() {
   const response = await fetch(
-    new URL("http://localhost:4545/fixture.json"),
+    new URL("http://localhost:4545/assets/fixture.json"),
   );
-  assertEquals(response.url, "http://localhost:4545/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/assets/fixture.json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchHeaders() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   const _json = await response.json();
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBlob() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
@@ -137,7 +137,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedReader() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
 
@@ -155,7 +155,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyUsedCancelStream() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
 
@@ -167,7 +167,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchAsyncIterator() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
 
   assert(response.body !== null);
@@ -181,7 +181,7 @@ Deno.test({ permissions: { net: true } }, async function fetchAsyncIterator() {
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBodyReader() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
   const reader = response.body.getReader();
@@ -220,7 +220,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function responseClone() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
   assertEquals(response.status, response1.status);
@@ -359,10 +359,10 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchWithRedirection() {
-    const response = await fetch("http://localhost:4546/hello.txt");
+    const response = await fetch("http://localhost:4546/assets/hello.txt");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/hello.txt");
+    assertEquals(response.url, "http://localhost:4545/assets/hello.txt");
     const body = await response.text();
     assert(body.includes("Hello world!"));
   },
@@ -374,7 +374,7 @@ Deno.test(
   },
   async function fetchWithRelativeRedirection() {
     const response = await fetch(
-      "http://localhost:4545/001_hello.js",
+      "http://localhost:4545/run/001_hello.js",
     );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
@@ -449,7 +449,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchSeparateInit() {
     // related to: https://github.com/denoland/deno/issues/10396
-    const req = new Request("http://localhost:4545/001_hello.js");
+    const req = new Request("http://localhost:4545/run/001_hello.js");
     const init = {
       method: "GET",
     };
@@ -869,13 +869,13 @@ Deno.test(
 );
 
 Deno.test(function responseRedirect() {
-  const redir = Response.redirect("example.com/newLocation", 301);
+  const redir = Response.redirect("http://example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
   assertEquals(
     redir.headers.get("Location"),
-    "http://js-unit-tests/foo/example.com/newLocation",
+    "http://example.com/newLocation",
   );
   assertEquals(redir.type, "default");
 });
@@ -901,7 +901,7 @@ Deno.test(async function responseWithoutBody() {
 });
 
 Deno.test({ permissions: { net: true } }, async function fetchBodyReadTwice() {
-  const response = await fetch("http://localhost:4545/fixture.json");
+  const response = await fetch("http://localhost:4545/assets/fixture.json");
 
   // Read body
   const _json = await response.json();
@@ -925,7 +925,7 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchBodyReaderAfterRead() {
     const response = await fetch(
-      "http://localhost:4545/fixture.json",
+      "http://localhost:4545/assets/fixture.json",
     );
     assert(response.body !== null);
     const reader = await response.body.getReader();
@@ -1005,7 +1005,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchResourceCloseAfterStreamCancel() {
-    const res = await fetch("http://localhost:4545/fixture.json");
+    const res = await fetch("http://localhost:4545/assets/fixture.json");
     assert(res.body !== null);
 
     // After ReadableStream.cancel is called, resource handle must be closed
@@ -1014,14 +1014,8 @@ Deno.test(
   },
 );
 
-// FIXME(bartlomieju): for reasons unknown after working for
-// a few months without a problem; this test started failing
-// consistently on Windows CI with following error:
-// TypeError: error sending request for url (http://localhost:4545/echo_server):
-// connection error: An established connection was aborted by
-// the software in your host machine. (os error 10053)
 Deno.test(
-  { permissions: { net: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { net: true } },
   async function fetchNullBodyStatus() {
     const nullBodyStatus = [101, 204, 205, 304];
 
@@ -1113,7 +1107,7 @@ Deno.test(
   > {
     const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
-    const response = await fetch("https://localhost:5545/fixture.json", {
+    const response = await fetch("https://localhost:5545/assets/fixture.json", {
       client,
     });
     const json = await response.json();
@@ -1286,7 +1280,7 @@ Deno.test(
           "cli/tests/testdata/tls/localhost.key",
         ),
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);
@@ -1303,7 +1297,7 @@ Deno.test(
         ),
         privateKey: "bad data",
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);
@@ -1320,7 +1314,7 @@ Deno.test(
         ),
         privateKey: "",
       });
-      await fetch("https://localhost:5552/fixture.json", {
+      await fetch("https://localhost:5552/assets/fixture.json", {
         client,
       });
     }, Deno.errors.InvalidData);
@@ -1645,3 +1639,169 @@ Deno.test(async function staticResponseJson() {
   const res = await resp.json();
   assertEquals(res, data);
 });
+
+function invalidServer(addr: string, body: Uint8Array): Deno.Listener {
+  const [hostname, port] = addr.split(":");
+  const listener = Deno.listen({
+    hostname,
+    port: Number(port),
+  }) as Deno.Listener;
+
+  (async () => {
+    for await (const conn of listener) {
+      const p1 = conn.read(new Uint8Array(2 ** 14));
+      const p2 = conn.write(body);
+
+      await Promise.all([p1, p2]);
+      conn.close();
+    }
+  })();
+
+  return listener;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLengthAndTransferEncoding(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4516";
+    const data = "a".repeat(10 << 10);
+
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${
+        Math.round(data.length * 2)
+      }\r\nTransfer-Encoding: chunked\r\n\r\n${
+        data.length.toString(16)
+      }\r\n${data}\r\n0\r\n\r\n`,
+    );
+
+    // if transfer-encoding is sent, content-length is ignored
+    // even if it has an invalid value (content-length > totalLength)
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+
+    const res = await response.arrayBuffer();
+    const buf = new TextEncoder().encode(data);
+    assertEquals(res.byteLength, buf.byteLength);
+    assertEquals(new Uint8Array(res), buf);
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4517";
+    const data = "a".repeat(10 << 10);
+
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${
+        Math.round(data.length / 2)
+      }\r\nContent-Length: ${data.length}\r\n\r\n${data}`,
+    );
+
+    // It should fail if multiple content-length headers with different values are sent
+    const listener = invalidServer(addr, body);
+    await assertRejects(
+      async () => {
+        await fetch(`http://${addr}/`);
+      },
+      TypeError,
+      "invalid content-length parsed",
+    );
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4518";
+    const data = "a".repeat(10 << 10);
+
+    const contentLength = data.length / 2;
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${contentLength}\r\n\r\n${data}`,
+    );
+
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+
+    // If content-length < totalLength, a maximum of content-length bytes
+    // should be returned.
+    const res = await response.arrayBuffer();
+    const buf = new TextEncoder().encode(data);
+    assertEquals(res.byteLength, contentLength);
+    assertEquals(new Uint8Array(res), buf.subarray(contentLength));
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchWithInvalidContentLength(): Promise<
+    void
+  > {
+    const addr = "127.0.0.1:4519";
+    const data = "a".repeat(10 << 10);
+
+    const contentLength = data.length * 2;
+    const body = new TextEncoder().encode(
+      `HTTP/1.1 200 OK\r\nContent-Length: ${contentLength}\r\n\r\n${data}`,
+    );
+
+    const listener = invalidServer(addr, body);
+    const response = await fetch(`http://${addr}/`);
+    // If content-length > totalLength, a maximum of content-length bytes
+    // should be returned.
+    await assertRejects(
+      async () => {
+        await response.arrayBuffer();
+      },
+      Error,
+      "end of file before message length reached",
+    );
+
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBlobUrl(): Promise<
+    void
+  > {
+    const blob = new Blob(["ok"], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const res = await fetch(url);
+    assert(res.url.startsWith("blob:http://js-unit-tests/"));
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-length"), "2");
+    assertEquals(res.headers.get("content-type"), "text/plain");
+    assertEquals(await res.text(), "ok");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchResponseStreamIsLockedWhileReading() {
+    const response = await fetch("http://localhost:4545/echo_server", {
+      body: new Uint8Array(5000),
+      method: "POST",
+    });
+
+    assertEquals(response.body!.locked, false);
+    const promise = response.arrayBuffer();
+    assertEquals(response.body!.locked, true);
+
+    await promise;
+  },
+);

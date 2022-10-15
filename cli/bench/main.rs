@@ -35,7 +35,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/run/002_hello.ts"],
     None,
   ),
   (
@@ -43,19 +43,23 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--reload",
-      "cli/tests/testdata/003_relative_import.ts",
+      "cli/tests/testdata/run/003_relative_import.ts",
     ],
     None,
   ),
-  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
+  (
+    "hello",
+    &["run", "cli/tests/testdata/run/002_hello.ts"],
+    None,
+  ),
   (
     "relative_import",
-    &["run", "cli/tests/testdata/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/run/003_relative_import.ts"],
     None,
   ),
   (
     "error_001",
-    &["run", "cli/tests/testdata/error_001.ts"],
+    &["run", "cli/tests/testdata/run/error_001.ts"],
     Some(1),
   ),
   (
@@ -64,7 +68,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "run",
       "--reload",
       "--no-check",
-      "cli/tests/testdata/002_hello.ts",
+      "cli/tests/testdata/run/002_hello.ts",
     ],
     None,
   ),
@@ -97,22 +101,25 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/testdata/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/testdata/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/benches/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
+    &[
+      "run",
+      "cli/tests/testdata/benches/text_encoder_into_perf.js",
+    ],
     None,
   ),
   (
     "response_string",
-    &["run", "cli/tests/testdata/response_string_perf.js"],
+    &["run", "cli/tests/testdata/benches/response_string_perf.js"],
     None,
   ),
   (
@@ -174,7 +181,6 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
-    "--show-output",
   ]
   .iter()
   .map(|s| s.to_string())
@@ -516,6 +522,7 @@ async fn main() -> Result<()> {
         ])
         .args(args.iter())
         .stdout(Stdio::null())
+        .env("LC_NUMERIC", "C")
         .spawn()?
         .wait()?;
       let expected_exit_code = expected_exit_code.unwrap_or(0);
