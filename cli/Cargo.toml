@@ -57,7 +57,7 @@ deno_emit = "0.9.0"
 deno_graph = "0.34.0"
 deno_lint = { version = "0.33.0", features = ["docs"] }
 deno_runtime = { version = "0.80.0", path = "../runtime" }
-deno_task_shell = "0.5.2"
+deno_task_shell = "0.6.0"
 napi_sym = { path = "./napi_sym", version = "0.2.0" }
 
 atty = "=0.2.14"
@@ -85,7 +85,7 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
 mitata = "=0.0.7"
-monch = "=0.2.0"
+monch = "=0.2.1"
 notify = "=5.0.0"
 once_cell = "=1.14.0"
 os_pipe = "=1.0.1"

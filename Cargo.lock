@@ -1265,9 +1265,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91059ae4dccefd55b84e0582683fe41e78b4287a2fe283962ea0a1698ea43d4d"
+checksum = "9e4e1c86712e2cded9046ac6748cbe5dba87042f045265a51b1ac2629a7fa6c5"
 dependencies = [
  "anyhow",
  "futures",
@@ -1275,6 +1275,7 @@ dependencies = [
  "os_pipe",
  "path-dedot",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2894,9 +2895,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "350537f27a69018269e534582e2f1ec532ea7078b06485fdd4db0509bd70feb8"
+checksum = "c5e2e282addadb529bb31700f7d184797382fa2eb18384986aad78d117eaf0c4"
 
 [[package]]
 name = "naga"
