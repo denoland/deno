@@ -219,7 +219,8 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    return ops.op_transfer_arraybuffer(O);
+    const v = ops.op_transfer_arraybuffer(O);
+    v[isFakeDetached] = true;
   }
 
   /**
