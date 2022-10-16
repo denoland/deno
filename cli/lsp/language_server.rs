@@ -196,6 +196,13 @@ impl LanguageServer {
     }
   }
 
+  pub async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    self.0.lock().await.inlay_hint(params).await
+  }
+
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
@@ -786,6 +793,7 @@ impl Inner {
     Ok(InitializeResult {
       capabilities,
       server_info: Some(server_info),
+      offset_encoding: None,
     })
   }
 
@@ -1777,6 +1785,7 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let use_snippets = self.config.client_capabilities.snippet_support;
       let req = tsc::RequestMethod::GetCompletions((
         specifier.clone(),
         position,
@@ -1792,10 +1801,12 @@ impl Inner {
               self.config.get_workspace_settings().suggest.auto_imports,
             ),
             include_completions_for_module_exports: Some(true),
-            include_completions_with_object_literal_method_snippets: Some(true),
-            include_completions_with_class_member_snippets: Some(true),
+            include_completions_with_object_literal_method_snippets: Some(
+              use_snippets,
+            ),
+            include_completions_with_class_member_snippets: Some(use_snippets),
             include_completions_with_insert_text: Some(true),
-            include_completions_with_snippet_text: Some(true),
+            include_completions_with_snippet_text: Some(use_snippets),
             jsx_attribute_completion_style: Some(
               tsc::JsxAttributeCompletionStyle::Auto,
             ),
@@ -2890,6 +2901,50 @@ impl Inner {
         .as_ref()
         .and_then(|cf| cf.to_lsp_tasks()),
     )
+  }
+
+  async fn inlay_hint(
+    &self,
+    params: InlayHintParams,
+  ) -> LspResult<Option<Vec<InlayHint>>> {
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    let workspace_settings = self.config.get_workspace_settings();
+    if !self.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+      || !workspace_settings.enabled_inlay_hints()
+    {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("inlay_hint", Some(&params));
+    let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    let line_index = asset_or_doc.line_index();
+    let range = tsc::TextSpan::from_range(&params.range, line_index.clone())
+      .map_err(|err| {
+        error!("Failed to convert range to text_span: {}", err);
+        LspError::internal_error()
+      })?;
+    let req = tsc::RequestMethod::ProvideInlayHints((
+      specifier.clone(),
+      range,
+      (&workspace_settings).into(),
+    ));
+    let maybe_inlay_hints: Option<Vec<tsc::InlayHint>> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Unable to get inlay hints: {}", err);
+        LspError::internal_error()
+      })?;
+    let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
+      hints
+        .iter()
+        .map(|hint| hint.to_lsp(line_index.clone()))
+        .collect()
+    });
+    self.performance.measure(mark);
+    Ok(maybe_inlay_hints)
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {

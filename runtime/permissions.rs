@@ -1656,6 +1656,14 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
+// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
+// change in the future.
+impl deno_napi::NapiPermissions for Permissions {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    self.ffi.check(path)
+  }
+}
+
 impl deno_ffi::FfiPermissions for Permissions {
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.ffi.check(path)
