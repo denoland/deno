@@ -2384,9 +2384,7 @@ fn navigator_language_unix() {
     true,
     "run navigator_language.ts",
     None,
-    Some(vec![
-      ("LC_ALL".to_owned(), "pl_PL".to_owned()),
-    ]),
+    Some(vec![("LC_ALL".to_owned(), "pl_PL".to_owned())]),
     false,
   );
   assert_eq!(res, "pl-PL\n")
