@@ -53,6 +53,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_store_pending_promise_exception::decl(),
     op_remove_pending_promise_exception::decl(),
     op_has_pending_promise_exception::decl(),
+    op_arraybuffer_was_detached::decl(),
   ]
 }
 
@@ -886,4 +887,13 @@ fn op_has_pending_promise_exception<'a>(
   state
     .pending_promise_exceptions
     .contains_key(&promise_global)
+}
+
+#[op(v8)]
+fn op_arraybuffer_was_detached<'a>(
+  _scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<bool, Error> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  Ok(ab.was_detached())
 }

@@ -364,6 +364,7 @@
     eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
     setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
     byteLength: (str) => ops.op_str_byte_length(str),
+    arrayBufferWasDetached: (ab) => ops.op_arraybuffer_was_detached(ab)
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });
