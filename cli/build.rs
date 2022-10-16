@@ -333,7 +333,11 @@ fn main() {
   }
 
   let symbols_path = std::path::Path::new(
-    format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
+    format!(
+      "napi_sym/generated_symbol_exports_list_{}.def",
+      env::consts::OS
+    )
+    .as_str(),
   )
   .canonicalize()
   .expect(
