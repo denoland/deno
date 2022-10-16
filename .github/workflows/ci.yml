@@ -2,6 +2,8 @@ name: ci
 
 on:
   - push
+    branches:
+    - main
   - pull_request:
     # dont run github actions on draft PRs
     types:
