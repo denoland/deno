@@ -220,7 +220,8 @@
    */
   function transferArrayBuffer(O) {
     const v = ops.op_transfer_arraybuffer(O);
-    v[isFakeDetached] = true;
+    O[isFakeDetached] = true;
+    return v;
   }
 
   /**
