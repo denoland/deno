@@ -58,6 +58,7 @@ pub fn server_capabilities(
         ";".to_string(),
         "(".to_string(),
       ]),
+      completion_item: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -140,5 +141,6 @@ pub fn server_capabilities(
       "denoConfigTasks": true,
       "testingApi":true,
     })),
+    inlay_hint_provider: Some(OneOf::Left(true)),
   }
 }

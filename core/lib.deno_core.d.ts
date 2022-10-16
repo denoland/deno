@@ -62,6 +62,11 @@ declare namespace Deno {
     function write(rid: number, buf: Uint8Array): Promise<number>;
 
     /**
+     * Write to a (stream) resource that implements write()
+     */
+    function writeAll(rid: number, buf: Uint8Array): Promise<void>;
+
+    /**
      * Print a message to stdout or stderr
      */
     function print(message: string, is_err?: boolean): void;

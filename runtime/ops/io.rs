@@ -7,6 +7,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufMutView;
+use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -202,9 +204,9 @@ where
     RcRef::map(self, |r| &r.stream).borrow_mut()
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     let mut stream = self.borrow_mut().await;
-    let nwritten = stream.write(&buf).await?;
+    let nwritten = stream.write(data).await?;
     Ok(nwritten)
   }
 
@@ -250,16 +252,10 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(
-    self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
     let mut rd = self.borrow_mut().await;
-    let nread = rd
-      .read(&mut buf)
-      .try_or_cancel(self.cancel_handle())
-      .await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    Ok(nread)
   }
 
   pub fn into_inner(self) -> S {
@@ -274,9 +270,7 @@ impl Resource for ChildStdinResource {
     "childStdin".into()
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
-  }
+  deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
@@ -286,15 +280,10 @@ impl Resource for ChildStdinResource {
 pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 
 impl Resource for ChildStdoutResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "childStdout".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -305,15 +294,10 @@ impl Resource for ChildStdoutResource {
 pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 
 impl Resource for ChildStderrResource {
+  deno_core::impl_readable_byob!();
+
   fn name(&self) -> Cow<str> {
     "childStderr".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
   }
 
   fn close(self: Rc<Self>) {
@@ -534,22 +518,31 @@ impl StdFileResource {
     result
   }
 
-  async fn read(
+  async fn read_byob(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    mut buf: BufMutView,
+  ) -> Result<(usize, BufMutView), AnyError> {
     self
-      .with_inner_blocking_task(
-        move |inner| -> Result<(usize, ZeroCopyBuf), AnyError> {
-          Ok((inner.read(&mut buf)?, buf))
-        },
-      )
+      .with_inner_blocking_task(move |inner| {
+        let nread = inner.read(&mut buf)?;
+        Ok((nread, buf))
+      })
       .await
   }
 
-  async fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
+    let buf = data.to_owned();
     self
       .with_inner_blocking_task(move |inner| inner.write_and_maybe_flush(&buf))
+      .await
+  }
+
+  async fn write_all(self: Rc<Self>, data: &[u8]) -> Result<(), AnyError> {
+    let buf = data.to_owned();
+    self
+      .with_inner_blocking_task(move |inner| {
+        inner.write_all_and_maybe_flush(&buf)
+      })
       .await
   }
 
@@ -641,16 +634,27 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
+  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<deno_core::BufView> {
+    Box::pin(async move {
+      let vec = vec![0; limit];
+      let buf = BufMutView::from(vec);
+      let (nread, buf) = self.read_byob(buf).await?;
+      let mut vec = buf.unwrap_vec();
+      if vec.len() != nread {
+        vec.truncate(nread);
+      }
+      Ok(BufView::from(vec))
+    })
   }
 
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
+  fn read_byob(
+    self: Rc<Self>,
+    buf: deno_core::BufMutView,
+  ) -> AsyncResult<(usize, deno_core::BufMutView)> {
+    Box::pin(self.read_byob(buf))
   }
+
+  deno_core::impl_writable!(with_all);
 
   #[cfg(unix)]
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {

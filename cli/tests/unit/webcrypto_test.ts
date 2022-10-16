@@ -675,7 +675,7 @@ Deno.test(async function testDeriveKey() {
   const algorithm = derivedKey.algorithm as HmacKeyAlgorithm;
   assertEquals(algorithm.name, "HMAC");
   assertEquals(algorithm.hash.name, "SHA-256");
-  assertEquals(algorithm.length, 256);
+  assertEquals(algorithm.length, 512);
 });
 
 Deno.test(async function testAesCbcEncryptDecrypt() {
