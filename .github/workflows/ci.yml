@@ -1,6 +1,12 @@
 name: ci
 
-on: [push, pull_request]
+on:
+  - push
+  - pull_request:
+    # dont run github actions on draft PRs
+    types:
+      - review_requested
+      - ready_for_review
 
 concurrency:
   group: ${{ github.workflow }}-${{ !contains(github.event.pull_request.labels.*.name, 'test-flaky-ci') && github.head_ref || github.run_id }}
