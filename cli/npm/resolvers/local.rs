@@ -19,6 +19,7 @@ use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
 use tokio::task::JoinHandle;
 
+use crate::lockfile::Lockfile;
 use crate::fs_util;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
@@ -184,6 +185,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
+  }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.resolution.lock(lockfile)
   }
 }
 
