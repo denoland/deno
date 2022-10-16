@@ -63,6 +63,7 @@ pub struct BundleFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CacheFlags {
   pub files: Vec<String>,
+  pub deterministic: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -749,6 +750,12 @@ fn cache_subcommand<'a>() -> Command<'a> {
         .required(true)
         .min_values(1)
         .value_hint(ValueHint::FilePath),
+    )
+    .arg(
+      Arg::new("deterministic")
+        .long("deterministic")
+        .help("Produce deterministic output")
+        .takes_value(false),
     )
     .about("Cache the dependencies")
     .long_about(
@@ -2289,7 +2296,8 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
+  let deterministic = matches.is_present("deterministic");
+  flags.subcommand = DenoSubcommand::Cache(CacheFlags { files, deterministic });
 }
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
