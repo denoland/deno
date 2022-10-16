@@ -27,4 +27,24 @@ Deno.test("correct DataCloneError message", () => {
     DOMException,
     "Value not transferable",
   );
+
+  const ab = new ArrayBuffer(1);
+  // detach ArrayBuffer
+  structuredClone(ab, { transfer: [ab] });
+  assertThrows(
+    () => {
+      structuredClone(ab, { transfer: [ab] });
+    },
+    DOMException,
+    "ArrayBuffer at index 0 is already detached",
+  );
+
+  const ab2 = new ArrayBuffer(0);
+  assertThrows(
+    () => {
+      structuredClone([ab2, ab], { transfer: [ab2, ab] });
+    },
+    DOMException,
+    "ArrayBuffer at index 1 is already detached",
+  );
 });

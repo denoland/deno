@@ -26,9 +26,6 @@
     SymbolFor,
     SymbolIterator,
     TypeError,
-    WeakSet,
-    WeakSetPrototypeAdd,
-    WeakSetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   class MessageChannel {
@@ -239,8 +236,6 @@
     return [data, transferables];
   }
 
-  const detachedArrayBuffers = new WeakSet();
-
   /**
    * @param {any} data
    * @param {object[]} transferables
@@ -251,19 +246,6 @@
       transferables,
       (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
     );
-
-    for (const arrayBuffer of transferredArrayBuffers) {
-      // This is hacky with both false positives and false negatives for
-      // detecting detached array buffers. V8  needs to add a way to tell if a
-      // buffer is detached or not.
-      if (WeakSetPrototypeHas(detachedArrayBuffers, arrayBuffer)) {
-        throw new DOMException(
-          "Can not transfer detached ArrayBuffer",
-          "DataCloneError",
-        );
-      }
-      WeakSetPrototypeAdd(detachedArrayBuffers, arrayBuffer);
-    }
 
     const serializedData = core.serialize(data, {
       hostObjects: ArrayPrototypeFilter(
