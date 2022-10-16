@@ -56,11 +56,6 @@
           ]
         }
       },
-      "completion": {
-        "completionItem": {
-          "snippetSupport": true
-        }
-      },
       "foldingRange": {
         "lineFoldingOnly": true
       },
