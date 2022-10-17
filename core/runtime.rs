@@ -38,7 +38,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::ffi::c_void;
-use std::mem::forget;
 use std::option::Option;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -46,6 +45,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::OwnedIsolate;
 
 type PendingOpFuture =
   OpCall<(v8::Global<v8::Context>, PromiseId, OpId, OpResult)>;
@@ -81,8 +81,6 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_creator: Option<v8::SnapshotCreator>,
-  has_snapshotted: bool,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -190,28 +188,6 @@ pub(crate) struct JsRuntimeState {
   waker: AtomicWaker,
 }
 
-impl Drop for JsRuntime {
-  fn drop(&mut self) {
-    if let Some(creator) = self.snapshot_creator.take() {
-      // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
-      // a `struct OwnedIsolate` which is not actually owned, hence the need
-      // here to leak the `OwnedIsolate` in order to avoid a double free and
-      // the segfault that it causes.
-      let v8_isolate = self.v8_isolate.take().unwrap();
-      forget(v8_isolate);
-
-      // TODO(ry) V8 has a strange assert which prevents a SnapshotCreator from
-      // being deallocated if it hasn't created a snapshot yet.
-      // https://github.com/v8/v8/blob/73212783fbd534fac76cc4b66aac899c13f71fc8/src/api.cc#L603
-      // If that assert is removed, this if guard could be removed.
-      // WARNING: There may be false positive LSAN errors here.
-      if self.has_snapshotted {
-        drop(creator);
-      }
-    }
-  }
-}
-
 fn v8_init(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,
   predictable: bool,
@@ -305,7 +281,18 @@ pub struct RuntimeOptions {
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
 }
 
+impl Drop for JsRuntime {
+  fn drop(&mut self) {
+    if let Some(v8_isolate) = self.v8_isolate.as_mut() {
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+  }
+}
+
 impl JsRuntime {
+  const STATE_DATA_OFFSET: u32 = 0;
+  const MODULE_MAP_DATA_OFFSET: u32 = 1;
+
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> Self {
     let v8_platform = options.v8_platform.take();
@@ -354,15 +341,11 @@ impl JsRuntime {
       // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
 
-    let (mut isolate, maybe_snapshot_creator) = if options.will_snapshot {
+    let mut isolate = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
       assert!(options.startup_snapshot.is_none());
-      let mut creator = v8::SnapshotCreator::new(Some(refs));
-      // SAFETY: `get_owned_isolate` is unsafe because it may only be called
-      // once. This is the only place we call this function, so this call is
-      // safe.
-      let isolate = unsafe { creator.get_owned_isolate() };
-      let mut isolate = JsRuntime::setup_isolate(isolate);
+      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
         // not overwriting an existing pointer.
@@ -373,9 +356,9 @@ impl JsRuntime {
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context = bindings::initialize_context(scope, &op_ctxs, false);
         global_context = v8::Global::new(scope, context);
-        creator.set_default_context(context);
+        scope.set_default_context(context);
       }
-      (isolate, Some(creator))
+      isolate
     } else {
       let mut params = options
         .create_params
@@ -414,7 +397,7 @@ impl JsRuntime {
         global_context = v8::Global::new(scope, context);
       }
 
-      (isolate, None)
+      isolate
     };
 
     op_state.borrow_mut().put(isolate_ptr);
@@ -426,7 +409,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     let known_realms = vec![v8::Weak::new(&mut isolate, &global_context)];
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context.clone())),
       known_realms,
       pending_promise_exceptions: HashMap::new(),
@@ -447,19 +430,24 @@ impl JsRuntime {
       dispatched_exceptions: Default::default(),
       inspector: Some(inspector),
       waker: AtomicWaker::new(),
-    })));
+    }));
+    isolate.set_data(
+      Self::STATE_DATA_OFFSET,
+      Rc::into_raw(state_rc) as *mut c_void,
+    );
 
     global_context
       .open(&mut isolate)
       .set_slot(&mut isolate, Rc::<RefCell<ContextState>>::default());
 
-    let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    isolate.set_data(
+      Self::MODULE_MAP_DATA_OFFSET,
+      Rc::into_raw(module_map_rc) as *mut c_void,
+    );
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      snapshot_creator: maybe_snapshot_creator,
-      has_snapshotted: false,
       built_from_snapshot: has_startup_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
@@ -482,6 +470,22 @@ impl JsRuntime {
     js_runtime
   }
 
+  fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
+    let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    drop(state_rc);
+
+    let module_map_ptr = v8_isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+    // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+    // the runtime.
+    unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    drop(module_map_rc);
+  }
+
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
     self.global_realm().0
   }
@@ -500,6 +504,15 @@ impl JsRuntime {
     state.global_realm.clone().unwrap()
   }
 
+  /// Creates a new realm (V8 context) in this JS execution context,
+  /// pre-initialized with all of the extensions that were passed in
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was constructed.
+  ///
+  /// If the [`JsRuntime`] was not built from a snapshot (see
+  /// [`RuntimeOptions::startup_snapshot`]), the JS code for the extensions will
+  /// be run in the call to this method. In contrast, if there is a snapshot,
+  /// that will be used instead, and the extensions' initialization will come
+  /// "for free".
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
@@ -554,13 +567,25 @@ impl JsRuntime {
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
-    s.clone()
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    Rc::into_raw(state_rc);
+    state
   }
 
   pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
-    module_map.clone()
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
   }
 
   /// Initializes JS of provided Extensions in the given realm
@@ -745,9 +770,7 @@ impl JsRuntime {
   /// set to true.
   ///
   /// `Error` can usually be downcast to `JsError`.
-  pub fn snapshot(&mut self) -> v8::StartupData {
-    assert!(self.snapshot_creator.is_some());
-
+  pub fn snapshot(mut self) -> v8::StartupData {
     // Nuke Deno.core.ops.* to avoid ExternalReference snapshotting issues
     // TODO(@AaronO): make ops stable across snapshots
     {
@@ -766,13 +789,11 @@ impl JsRuntime {
 
     state.borrow_mut().inspector.take();
 
-    // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
 
     // Drop other v8::Global handles before snapshotting
     {
@@ -796,13 +817,10 @@ impl JsRuntime {
       state.js_nexttick_cbs.clear();
     }
 
-    let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
-    let snapshot = snapshot_creator
+    let snapshot_creator = self.v8_isolate.take().unwrap();
+    snapshot_creator
       .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap();
-    self.has_snapshotted = true;
-
-    snapshot
+      .unwrap()
   }
 
   /// Returns the namespace object of a module.
@@ -2057,10 +2075,17 @@ impl JsRuntime {
 /// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
 /// execution in the realm's context.
 ///
-/// A [`JsRealm`] instance does not hold ownership of its corresponding realm,
-/// so they can be created and dropped as needed. And since every operation on
-/// them requires passing a mutable reference to the [`JsRuntime`], multiple
-/// [`JsRealm`] instances won't overlap.
+/// A [`JsRealm`] instance is a reference to an already existing realm, which
+/// does not hold ownership of it, so instances can be created and dropped as
+/// needed. As such, calling [`JsRealm::new`] doesn't create a new realm, and
+/// cloning a [`JsRealm`] only creates a new reference. See
+/// [`JsRuntime::create_realm`] to create new realms instead.
+///
+/// Despite [`JsRealm`] instances being references, multiple instances that
+/// point to the same realm won't overlap because every operation requires
+/// passing a mutable reference to the [`v8::Isolate`]. Therefore, no operation
+/// on two [`JsRealm`] instances tied to the same isolate can be run at the same
+/// time, regardless of whether they point to the same realm.
 ///
 /// # Panics
 ///
@@ -2069,8 +2094,9 @@ impl JsRuntime {
 ///
 /// # Lifetime of the realm
 ///
-/// A [`JsRealm`] instance will keep the underlying V8 context alive even if it
-/// would have otherwise been garbage collected.
+/// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
+/// keep the underlying V8 context alive even if it would have otherwise been
+/// garbage collected.
 #[derive(Clone)]
 pub struct JsRealm(v8::Global<v8::Context>);
 impl JsRealm {
@@ -3938,7 +3964,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
   #[test]
   fn js_realm_init_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let runtime = JsRuntime::new(RuntimeOptions {
         will_snapshot: true,
         ..Default::default()
       });
