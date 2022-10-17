@@ -22,9 +22,9 @@ use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
 use crate::fs_util;
+use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
-use crate::npm::resolvers::common::should_sync_download;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;

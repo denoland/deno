@@ -15,6 +15,7 @@ use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::cache::should_sync_download;
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
@@ -387,6 +388,7 @@ impl NpmResolution {
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
+    let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
     for package_req in package_reqs {
       if snapshot.package_reqs.contains_key(&package_req) {
         // skip analyzing this package, as there's already a matching top level package
@@ -401,7 +403,24 @@ impl NpmResolution {
       }
 
       // no existing best version, so resolve the current packages
-      let info = self.api.package_info(&package_req.name).await?;
+      let api = self.api.clone();
+      let maybe_info = if should_sync_download() {
+        // for deterministic test output
+        Some(api.package_info(&package_req.name).await)
+      } else {
+        None
+      };
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = match maybe_info {
+          Some(info) => info?,
+          None => api.package_info(&package_req.name).await?,
+        };
+        Result::<_, AnyError>::Ok((package_req, info))
+      }));
+    }
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_req, info) = result??;
       let version_and_info = get_resolved_package_version_and_info(
         &package_req.name,
         &package_req,
@@ -450,9 +469,8 @@ impl NpmResolution {
         ordering => ordering,
       });
 
-      // cache all the dependencies' registry infos in parallel when this env var isn't set
-      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
-      {
+      // cache all the dependencies' registry infos in parallel if should
+      if !should_sync_download() {
         let handles = deps
           .iter()
           .map(|dep| {
