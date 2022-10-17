@@ -291,7 +291,7 @@
 
       if (typeof data === "string") {
         // try to send in one go!
-        // this lets us skip `core.byteLength` and bufferAmount tracking.
+        // this lets us skip `core.byteLength`.
         const d = core.byteLength(data);
         const sent = ops.op_ws_try_send_string(this[_rid], data);
         this[_bufferedAmount] += d;
@@ -303,6 +303,9 @@
             },
           );
         } else {
+          // Spec expects data to be start flushing on next tick but oh well...
+          // we already sent it so we can just decrement the bufferedAmount
+          // on the next tick.
           queueMicrotask(() => {
             this[_bufferedAmount] -= d;
           });
@@ -311,7 +314,6 @@
 
       const sendTypedArray = (ta) => {
         // try to send in one go!
-        // this lets us skip bufferAmount tracking.
         const sent = ops.op_ws_try_send_binary(this[_rid], ta);
         this[_bufferedAmount] += ta.byteLength;
         if (!sent) {
@@ -322,6 +324,9 @@
             },
           );
         } else {
+          // Spec expects data to be start flushing on next tick but oh well...
+          // we already sent it so we can just decrement the bufferedAmount
+          // on the next tick.
           queueMicrotask(() => {
             this[_bufferedAmount] -= ta.byteLength;
           });
