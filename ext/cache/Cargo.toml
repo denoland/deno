@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cache"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 async-trait = "0.1"
-deno_core = { version = "0.154.0", path = "../../core" }
+deno_core = { version = "0.155.0", path = "../../core" }
 rusqlite = { version = "0.28.0", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.129", features = ["derive"] }
 sha2 = "0.10.2"
