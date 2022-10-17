@@ -107,7 +107,7 @@ serde = { version = "=1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "=1.0.85"
 serde_repr = "=0.1.9"
-sha2 = "0.10.2"
+sha2 = { version = "0.10.6", features = ["oid"] }
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
