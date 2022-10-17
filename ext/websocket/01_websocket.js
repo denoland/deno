@@ -30,6 +30,7 @@
     SymbolIterator,
     PromisePrototypeCatch,
     SymbolFor,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
