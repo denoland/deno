@@ -1168,7 +1168,7 @@ fn run_watch_dynamic_imports() {
 #[test]
 fn run_watch_flash() {
   let t = TempDir::new();
-  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_to_watch = t.path().join("watch_flash.js");
   write(
     &file_to_watch,
     r#"
