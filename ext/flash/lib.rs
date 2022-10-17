@@ -1068,7 +1068,7 @@ fn run_server(
                     // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
                     // https://github.com/denoland/deno/issues/15549
                     #[cfg(target_os = "windows")]
-                    match &mut socket.inner {
+                    match states_with_js.stream.lock().unwrap().deref_mut() {
                       Stream::Tcp(ref mut socket) => {
                         poll
                           .registry()
@@ -1481,7 +1481,7 @@ pub fn detach_socket(
   let std_stream = {
     use std::os::windows::prelude::AsRawSocket;
     use std::os::windows::prelude::FromRawSocket;
-    let fd = match stream.inner {
+    let fd = match stream_states.stream.lock().unwrap().deref() {
       Stream::Tcp(ref tcp) => tcp.as_raw_socket(),
       _ => todo!(),
     };
