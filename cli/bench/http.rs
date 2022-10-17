@@ -191,8 +191,9 @@ fn server_addr(port: u16) -> String {
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
+  // let port = get_port();
   println!("http_benchmark testing CORE http_bench_json_ops");
-  run(&[exe], 4544, None, None, None)
+  run(&[exe], 4570, None, None, None)
 }
 
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {

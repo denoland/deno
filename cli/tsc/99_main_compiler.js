@@ -898,6 +898,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "provideInlayHints":
+        return respond(
+          id,
+          languageService.provideInlayHints(
+            request.specifier,
+            request.span,
+            request.preferences,
+          ),
+        );
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
