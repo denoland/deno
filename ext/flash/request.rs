@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use crate::Stream;
+use crate::states::RequestStatesSharedWithJS;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ pub struct InnerRequest {
 #[derive(Debug)]
 pub struct Request {
   pub inner: InnerRequest,
-  pub stream_states: Arc<crate::socket::RequestStatesSharedWithJS>,
+  pub stream_states: Arc<RequestStatesSharedWithJS>,
   pub keep_alive: bool,
   pub content_read: usize,
   pub content_length: Option<u64>,

@@ -67,10 +67,10 @@ mod request;
 #[cfg(unix)]
 mod sendfile;
 mod socket;
+mod states;
 
 use request::InnerRequest;
 use request::Request;
-use socket::InnerStream;
 use socket::Stream;
 
 const CLOSE_TOKEN: Token = Token(0);
@@ -272,22 +272,21 @@ async fn op_flash_write_resource(
 
   #[cfg(unix)]
   {
-    use std::ops::Deref;
     use std::os::unix::io::AsRawFd;
-    if let InnerStream::Tcp(stream_handle) =
-      stream_states.stream.lock().unwrap().deref()
+    if let Stream::Tcp(stream_handle) =
+      stream_states.stream.lock().unwrap().deref_mut()
     {
-      let stream_handle = stream_handle.as_raw_fd();
+      let stream_fd = stream_handle.as_raw_fd();
       if let Some(fd) = resource.clone().backing_fd() {
         // SAFETY: all-zero byte-pattern is a valid value for libc::stat.
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: call to libc::fstat.
         if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let _ = stream_states.stream.lock().unwrap().write(
+          let _ = stream_handle.write(
             format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
           );
           let tx = sendfile::SendFile {
-            io: (fd, stream_handle),
+            io: (fd, stream_fd),
             written: 0,
           };
           tx.await?;
@@ -965,21 +964,21 @@ fn run_server(
                 Some(ref tls_conf) => {
                   let connection =
                     rustls::ServerConnection::new(tls_conf.clone()).unwrap();
-                  InnerStream::Tls(Box::new(rustls::StreamOwned::new(
+                  Stream::Tls(Box::new(rustls::StreamOwned::new(
                     connection, socket,
                   )))
                 }
-                None => InnerStream::Tcp(socket),
+                None => Stream::Tcp(socket),
               };
 
               let states_with_js =
-                Arc::new(crate::socket::RequestStatesSharedWithJS {
+                Arc::new(states::RequestStatesSharedWithJS {
                   stream: Mutex::new(socket),
                   detached: AtomicBool::new(false),
                   read_rx: Mutex::new(None),
                   read_tx: Mutex::new(None),
                 });
-              let states_in_flash = crate::socket::RequestStatesInFlash {
+              let states_in_flash = states::RequestStatesInFlash {
                 header_parse_status: ParseStatus::None,
                 parse_buffer: UnsafeCell::new(vec![0_u8; 1024]),
               };
@@ -1000,10 +999,10 @@ fn run_server(
             .load(std::sync::atomic::Ordering::Relaxed)
           {
             match states_with_js.stream.lock().unwrap().deref_mut() {
-              InnerStream::Tcp(ref mut socket) => {
+              Stream::Tcp(ref mut socket) => {
                 poll.registry().deregister(socket).unwrap();
               }
-              InnerStream::Tls(_) => {
+              Stream::Tls(_) => {
                 todo!("upgrade tls not implemented");
               }
             }
@@ -1070,13 +1069,13 @@ fn run_server(
                     // https://github.com/denoland/deno/issues/15549
                     #[cfg(target_os = "windows")]
                     match &mut socket.inner {
-                      InnerStream::Tcp(ref mut socket) => {
+                      Stream::Tcp(ref mut socket) => {
                         poll
                           .registry()
                           .reregister(socket, token, Interest::READABLE)
                           .unwrap();
                       }
-                      InnerStream::Tls(ref mut socket) => {
+                      Stream::Tls(ref mut socket) => {
                         poll
                           .registry()
                           .reregister(
@@ -1472,7 +1471,7 @@ pub fn detach_socket(
     use std::os::unix::prelude::AsRawFd;
     use std::os::unix::prelude::FromRawFd;
     let fd = match stream_states.stream.lock().unwrap().deref() {
-      InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
+      Stream::Tcp(ref tcp) => tcp.as_raw_fd(),
       _ => todo!(),
     };
     // SAFETY: `fd` is a valid file descriptor.
@@ -1483,7 +1482,7 @@ pub fn detach_socket(
     use std::os::windows::prelude::AsRawSocket;
     use std::os::windows::prelude::FromRawSocket;
     let fd = match stream.inner {
-      InnerStream::Tcp(ref tcp) => tcp.as_raw_socket(),
+      Stream::Tcp(ref tcp) => tcp.as_raw_socket(),
       _ => todo!(),
     };
     // SAFETY: `fd` is a valid file descriptor.
