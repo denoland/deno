@@ -869,13 +869,13 @@ Deno.test(
 );
 
 Deno.test(function responseRedirect() {
-  const redir = Response.redirect("example.com/newLocation", 301);
+  const redir = Response.redirect("http://example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
   assertEquals(
     redir.headers.get("Location"),
-    "http://js-unit-tests/foo/example.com/newLocation",
+    "http://example.com/newLocation",
   );
   assertEquals(redir.type, "default");
 });

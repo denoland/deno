@@ -26,8 +26,8 @@ use super::semver::SpecifierVersionReq;
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages and so we represent either via a trait.
 pub trait NpmVersionMatcher {
+  fn tag(&self) -> Option<&str>;
   fn matches(&self, version: &NpmVersion) -> bool;
-  fn is_latest(&self) -> bool;
   fn version_text(&self) -> String;
 }
 
@@ -125,15 +125,24 @@ impl std::fmt::Display for NpmPackageReq {
 }
 
 impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &NpmVersion) -> bool {
+  fn tag(&self) -> Option<&str> {
     match &self.version_req {
-      Some(req) => req.matches(version),
-      None => version.pre.is_empty(),
+      Some(version_req) => version_req.tag(),
+      None => Some("latest"),
     }
   }
 
-  fn is_latest(&self) -> bool {
-    self.version_req.is_none()
+  fn matches(&self, version: &NpmVersion) -> bool {
+    match self.version_req.as_ref() {
+      Some(req) => {
+        assert_eq!(self.tag(), None);
+        match req.range() {
+          Some(range) => range.satisfies(version),
+          None => false,
+        }
+      }
+      None => version.pre.is_empty(),
+    }
   }
 
   fn version_text(&self) -> String {
@@ -366,10 +375,10 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    mut packages: Vec<NpmPackageReq>,
+    mut package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // multiple packages are resolved in alphabetical order
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
     // only allow one thread in here at a time
     let _permit = self.update_sempahore.acquire().await.unwrap();
@@ -378,29 +387,29 @@ impl NpmResolution {
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
-    for package_ref in packages {
-      if snapshot.package_reqs.contains_key(&package_ref) {
+    for package_req in package_reqs {
+      if snapshot.package_reqs.contains_key(&package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
       }
       // inspect the list of current packages
       if let Some(version) =
-        snapshot.resolve_best_package_version(&package_ref.name, &package_ref)
+        snapshot.resolve_best_package_version(&package_req.name, &package_req)
       {
-        snapshot.package_reqs.insert(package_ref, version);
+        snapshot.package_reqs.insert(package_req, version);
         continue; // done, no need to continue
       }
 
       // no existing best version, so resolve the current packages
-      let info = self.api.package_info(&package_ref.name).await?;
+      let info = self.api.package_info(&package_req.name).await?;
       let version_and_info = get_resolved_package_version_and_info(
-        &package_ref.name,
-        &package_ref,
+        &package_req.name,
+        &package_req,
         info,
         None,
       )?;
       let id = NpmPackageId {
-        name: package_ref.name.clone(),
+        name: package_req.name.clone(),
         version: version_and_info.version.clone(),
       };
       let dependencies = version_and_info
@@ -419,12 +428,12 @@ impl NpmResolution {
       );
       snapshot
         .packages_by_name
-        .entry(package_ref.name.clone())
+        .entry(package_req.name.clone())
         .or_default()
         .push(version_and_info.version.clone());
       snapshot
         .package_reqs
-        .insert(package_ref, version_and_info.version);
+        .insert(package_req, version_and_info.version);
     }
 
     // now go down through the dependencies by tree depth
@@ -574,7 +583,8 @@ fn get_resolved_package_version_and_info(
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
-  if version_matcher.is_latest() {
+  if let Some(tag) = version_matcher.tag() {
+    if let Some(version) = info.dist_tags.get(tag) {
     // For when someone just specifies @types/node, we want to pull in a
     // "known good" version of @types/node that works well with Deno and
     // not necessarily the latest version. For example, we might only be
@@ -582,7 +592,7 @@ fn get_resolved_package_version_and_info(
     // want to pull that in.
     // Note: If the user doesn't want this behavior, then they can specify an
     // explicit version.
-    if pkg_name == "@types/node" {
+    if tag == "latest" && pkg_name == "@types/node" {
       return get_resolved_package_version_and_info(
         pkg_name,
         &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
@@ -590,8 +600,6 @@ fn get_resolved_package_version_and_info(
         parent,
       );
     }
-
-    if let Some(version) = info.dist_tags.get("latest") {
       match info.versions.get(version) {
         Some(info) => {
           return Ok(VersionAndInfo {
@@ -601,26 +609,29 @@ fn get_resolved_package_version_and_info(
         }
         None => {
           bail!(
-            "Could not find version '{}' referenced in dist-tag 'latest'.",
+            "Could not find version '{}' referenced in dist-tag '{}'.",
             version,
+            tag,
           )
         }
       }
+    } else {
+      bail!("Could not find dist-tag '{}'.", tag,)
     }
-  }
-
-  for (_, version_info) in info.versions.into_iter() {
-    let version = NpmVersion::parse(&version_info.version)?;
-    if version_matcher.matches(&version) {
-      let is_best_version = maybe_best_version
-        .as_ref()
-        .map(|best_version| best_version.version.cmp(&version).is_lt())
-        .unwrap_or(true);
-      if is_best_version {
-        maybe_best_version = Some(VersionAndInfo {
-          version,
-          info: version_info,
-        });
+  } else {
+    for (_, version_info) in info.versions.into_iter() {
+      let version = NpmVersion::parse(&version_info.version)?;
+      if version_matcher.matches(&version) {
+        let is_best_version = maybe_best_version
+          .as_ref()
+          .map(|best_version| best_version.version.cmp(&version).is_lt())
+          .unwrap_or(true);
+        if is_best_version {
+          maybe_best_version = Some(VersionAndInfo {
+            version,
+            info: version_info,
+          });
+        }
       }
     }
   }

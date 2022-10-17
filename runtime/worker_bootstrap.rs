@@ -1,7 +1,12 @@
-use crate::ops::runtime::ppid;
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use std::thread;
+
+use crate::colors;
+use crate::ops::runtime::ppid;
 
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
@@ -22,6 +27,32 @@ pub struct BootstrapOptions {
   pub unstable: bool,
   pub user_agent: String,
   pub inspect: bool,
+}
+
+impl Default for BootstrapOptions {
+  fn default() -> Self {
+    let cpu_count = thread::available_parallelism()
+      .map(|p| p.get())
+      .unwrap_or(1);
+
+    let runtime_version = env!("CARGO_PKG_VERSION").into();
+    let user_agent = format!("Deno/{}", runtime_version);
+
+    Self {
+      runtime_version,
+      user_agent,
+      cpu_count,
+      no_color: !colors::use_color(),
+      is_tty: colors::is_tty(),
+      enable_testing_features: Default::default(),
+      debug_flag: Default::default(),
+      ts_version: Default::default(),
+      location: Default::default(),
+      unstable: Default::default(),
+      inspect: Default::default(),
+      args: Default::default(),
+    }
+  }
 }
 
 impl BootstrapOptions {

@@ -3,7 +3,7 @@
 use napi_sys::Status::napi_ok;
 use napi_sys::ValueType::napi_number;
 use napi_sys::*;
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use std::ptr;
 
 pub struct NapiObject {
@@ -130,7 +130,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     unsafe {
       napi_define_class(
         env,
-        "NapiObject\0".as_ptr() as *mut i8,
+        "NapiObject\0".as_ptr() as *mut c_char,
         usize::MAX,
         Some(NapiObject::new),
         ptr::null_mut(),
@@ -146,7 +146,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       napi_set_named_property(
         env,
         exports,
-        "NapiObject\0".as_ptr() as *const i8,
+        "NapiObject\0".as_ptr() as *const c_char,
         cons,
       )
     } == napi_ok
