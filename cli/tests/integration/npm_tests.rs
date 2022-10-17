@@ -226,6 +226,22 @@ itest!(check_local {
   exit_code: 1,
 });
 
+itest!(types_ambient_module {
+  args: "check --unstable --quiet npm/types_ambient_module/main.ts",
+  output: "npm/types_ambient_module/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(types_ambient_module_import_map {
+  args: "check --unstable --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  output: "npm/types_ambient_module/main_import_map.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
