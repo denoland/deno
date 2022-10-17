@@ -290,40 +290,45 @@
         throw new DOMException("readyState not OPEN", "InvalidStateError");
       }
 
+      if (typeof data === "string") {
+        // try to send in one go!
+        // this lets us skip `core.byteLength` and bufferAmount tracking.
+        const sent = ops.op_ws_try_send_string(this[_rid], data);
+        if (!sent) {
+          const d = core.byteLength(data);
+          this[_bufferedAmount] += d.byteLength;
+          PromisePrototypeThen(
+            core.opAsync("op_ws_send_string", this[_rid], data),
+            () => {
+              this[_bufferedAmount] -= d.byteLength;
+            },
+          );
+        }
+      }
+
       const sendTypedArray = (ta) => {
-        this[_bufferedAmount] += ta.byteLength;
-        PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
-            kind: "binary",
-            value: ta,
-          }),
-          () => {
-            this[_bufferedAmount] -= ta.byteLength;
-          },
-        );
+        // try to send in one go!
+        // this lets us skip bufferAmount tracking.
+        const sent = ops.op_ws_try_send_binary(this[_rid], ta);
+        if (!sent) {
+          this[_bufferedAmount] += ta.byteLength;
+          PromisePrototypeThen(
+            core.opAsync("op_ws_send_binary", this[_rid], ta),
+            () => {
+              this[_bufferedAmount] -= ta.byteLength;
+            },
+          );
+        }
       };
 
-      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
-        PromisePrototypeThen(
-          data.slice().arrayBuffer(),
-          (ab) => sendTypedArray(new DataView(ab)),
-        );
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+        sendTypedArray(new Uint8Array(data));
       } else if (ArrayBufferIsView(data)) {
         sendTypedArray(data);
-      } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-        sendTypedArray(new DataView(data));
-      } else {
-        const string = String(data);
-        const d = core.encode(string);
-        this[_bufferedAmount] += d.byteLength;
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
-            kind: "text",
-            value: string,
-          }),
-          () => {
-            this[_bufferedAmount] -= d.byteLength;
-          },
+          data.slice().arrayBuffer(),
+          (ab) => sendTypedArray(new Uint8Array(ab)),
         );
       }
     }
