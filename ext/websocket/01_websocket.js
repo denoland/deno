@@ -29,6 +29,7 @@
     Symbol,
     SymbolIterator,
     PromisePrototypeCatch,
+    queueMicrotask,
     SymbolFor,
     Uint8Array,
   } = window.__bootstrap.primordials;
