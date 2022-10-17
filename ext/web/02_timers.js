@@ -18,7 +18,6 @@
     // deno-lint-ignore camelcase
     NumberPOSITIVE_INFINITY,
     PromisePrototypeThen,
-    ObjectPrototypeIsPrototypeOf,
     SafeArrayIterator,
     SymbolFor,
     TypeError,
