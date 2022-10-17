@@ -1031,8 +1031,8 @@ fn run_server(
           let body_offset;
           let body_len;
           'parse_header: loop {
-            // SAFETY: It is safe for the read buf to be mutable here.
             let parse_buffer =
+            // SAFETY: It is safe for the read buf to be mutable here.
               unsafe { &mut *states_in_flash.parse_buffer.get() };
             let offset = match states_in_flash.header_parse_status {
               ParseStatus::None => 0,
@@ -1121,8 +1121,8 @@ fn run_server(
               states_with_js.read_tx.lock().unwrap().replace(read_tx);
             }
           }
-          // SAFETY: It is safe for the read buf to be mutable here.
           let parse_buffer =
+          // SAFETY: It is safe for the read buf to be mutable here.
             unsafe { &mut *states_in_flash.parse_buffer.get() };
           let inner_req = InnerRequest {
             // SAFETY: backing buffer is pinned and lives as long as the request.

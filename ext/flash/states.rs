@@ -17,7 +17,7 @@ pub struct RequestStatesSharedWithJS {
   /// If it's `None` that means we don't need to read more data.
   pub read_rx: Mutex<Option<mpsc::Receiver<()>>>,
   /// A sender to notify JS thread that some data is available on the stream.
-  /// TODO(magurotuna): is it needed to be shared with JS?
+  /// If it's `None` that means we don't need to read more data.
   pub read_tx: Mutex<Option<mpsc::Sender<()>>>,
 }
 
