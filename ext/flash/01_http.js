@@ -20,9 +20,6 @@
     _readyState,
     _eventLoop,
     _protocol,
-    _idleTimeoutDuration,
-    _idleTimeoutTimeout,
-    _serverHandleIdleTimeout,
   } = window.__bootstrap.webSocket;
   const { _ws } = window.__bootstrap.http;
   const {
@@ -405,13 +402,6 @@
         ws.dispatchEvent(event);
 
         ws[_eventLoop]();
-        if (ws[_idleTimeoutDuration]) {
-          ws.addEventListener(
-            "close",
-            () => clearTimeout(ws[_idleTimeoutTimeout]),
-          );
-        }
-        ws[_serverHandleIdleTimeout]();
       }
     })();
   }
