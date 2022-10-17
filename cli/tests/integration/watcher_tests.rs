@@ -1199,8 +1199,12 @@ fn run_watch_flash() {
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
   assert_contains!(stderr_lines.next().unwrap(), "Process started");
-  wait_contains("Starting flash server...", &mut stdout_lines);
+  assert_contains!(stdout_lines.next().unwrap(), "Starting flash server...");
   assert_contains!(stderr_lines.next().unwrap(), "First server is listening");
+
+  // TODO(magurotuna): Without this sleep, the watcher sometimes would not detect the file change
+  // even though the content of the file changed really. any solution?
+  std::thread::sleep(std::time::Duration::from_secs(1));
 
   write(
     &file_to_watch,
@@ -1221,7 +1225,7 @@ fn run_watch_flash() {
     stderr_lines.next().unwrap(),
     "File change detected! Restarting!"
   );
-  wait_contains("Restarting flash server...", &mut stdout_lines);
+  assert_contains!(stdout_lines.next().unwrap(), "Restarting flash server...");
   assert_contains!(stderr_lines.next().unwrap(), "Second server is listening");
 
   check_alive_then_kill(child);
