@@ -160,7 +160,7 @@ async fn op_flash_respond_async(
   trace!("op_flash_respond_async");
 
   let mut close = false;
-  let sock = {
+  let stream_states = {
     let mut op_state = state.borrow_mut();
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
@@ -169,18 +169,18 @@ async fn op_flash_respond_async(
       true => {
         let tx = ctx.requests.remove(&token).unwrap();
         close = !tx.keep_alive;
-        tx.socket
+        Arc::clone(&tx.stream_states)
       }
       // In case of a websocket upgrade or streaming response.
       false => {
         let tx = ctx.requests.get(&token).unwrap();
-        Arc::clone(&tx.socket)
+        Arc::clone(&tx.stream_states)
       }
     }
   };
 
-  sock
-    .inner
+  stream_states
+    .stream
     .lock()
     .unwrap()
     .with_async_stream(|stream| {
@@ -191,7 +191,7 @@ async fn op_flash_respond_async(
     .await?;
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
-    sock.inner.lock().unwrap().shutdown();
+    stream_states.stream.lock().unwrap().shutdown();
   }
   Ok(())
 }
@@ -207,21 +207,21 @@ async fn op_flash_respond_chuncked(
   let mut op_state = op_state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  let sock = match shutdown {
+  let stream_states = match shutdown {
     true => {
       let tx = ctx.requests.remove(&token).unwrap();
-      tx.socket
+      Arc::clone(&tx.stream_states)
     }
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.requests.get(&token).unwrap();
-      Arc::clone(&tx.socket)
+      Arc::clone(&tx.stream_states)
     }
   };
 
   drop(op_state);
-  sock
-    .inner
+  stream_states
+    .stream
     .lock()
     .unwrap()
     .with_async_stream(|stream| {
@@ -256,7 +256,7 @@ async fn op_flash_write_resource(
   resource_id: deno_core::ResourceId,
   auto_close: bool,
 ) -> Result<(), AnyError> {
-  let (resource, sock) = {
+  let (resource, stream_states) = {
     let op_state = &mut op_state.borrow_mut();
     let resource = if auto_close {
       op_state.resource_table.take_any(resource_id)?
@@ -265,16 +265,17 @@ async fn op_flash_write_resource(
     };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    (resource, ctx.requests.remove(&token).unwrap().socket)
+    (resource, ctx.requests.remove(&token).unwrap().stream_states)
   };
 
-  let _ = sock.inner.lock().unwrap().write(&response);
+  let _ = stream_states.stream.lock().unwrap().write(&response);
 
   #[cfg(unix)]
   {
     use std::ops::Deref;
     use std::os::unix::io::AsRawFd;
-    if let InnerStream::Tcp(stream_handle) = sock.inner.lock().unwrap().deref()
+    if let InnerStream::Tcp(stream_handle) =
+      stream_states.stream.lock().unwrap().deref()
     {
       let stream_handle = stream_handle.as_raw_fd();
       if let Some(fd) = resource.clone().backing_fd() {
@@ -282,7 +283,7 @@ async fn op_flash_write_resource(
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: call to libc::fstat.
         if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let _ = sock.inner.lock().unwrap().write(
+          let _ = stream_states.stream.lock().unwrap().write(
             format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
           );
           let tx = sendfile::SendFile {
@@ -296,8 +297,8 @@ async fn op_flash_write_resource(
     }
   }
 
-  sock
-    .inner
+  stream_states
+    .stream
     .lock()
     .unwrap()
     .with_async_stream(|stream| {
@@ -355,17 +356,17 @@ fn flash_respond(
   response: &[u8],
 ) -> u32 {
   let tx = ctx.requests.get(&token).unwrap();
-  let sock = Arc::clone(&tx.socket);
+  let stream_states = Arc::clone(&tx.stream_states);
 
-  sock.read_tx.lock().unwrap().take();
-  sock.read_rx.lock().unwrap().take();
+  stream_states.read_rx.lock().unwrap().take();
+  stream_states.read_tx.lock().unwrap().take();
 
-  let mut lock = sock.inner.lock().unwrap();
-  let nwritten = lock.try_write(response);
+  let mut stream = stream_states.stream.lock().unwrap();
+  let nwritten = stream.try_write(response);
 
   if shutdown && nwritten == response.len() {
     if !tx.keep_alive {
-      lock.shutdown();
+      stream.shutdown();
     }
     ctx.requests.remove(&token).unwrap();
   }
@@ -637,7 +638,7 @@ fn op_flash_make_request<'scope>(
 
 #[inline]
 fn has_body_stream(req: &Request) -> bool {
-  req.socket.read_rx.lock().unwrap().is_some()
+  req.stream_states.read_rx.lock().unwrap().is_some()
 }
 
 #[op]
@@ -693,8 +694,8 @@ fn op_flash_first_packet(
 
   if tx.expect_continue {
     let _ = tx
-      .socket
-      .inner
+      .stream_states
+      .stream
       .lock()
       .unwrap()
       .write(b"HTTP/1.1 100 Continue\r\n\r\n");
@@ -771,13 +772,10 @@ async fn op_flash_read_body(
   let tx = ctx.requests.get_mut(&token).unwrap();
 
   if tx.te_chunked {
-    let sock = Arc::clone(&tx.socket);
-    use std::ops::DerefMut;
-    // FIXME(magurotuna): This causes the mutex lock to live during the loop, which should be
-    // avoided.
-    let mut inner_lock = sock.inner.lock().unwrap();
+    let stream_states = Arc::clone(&tx.stream_states);
+    let mut stream_lock = stream_states.stream.lock().unwrap();
     let mut decoder =
-      chunked::Decoder::new(inner_lock.deref_mut(), tx.remaining_chunk_size);
+      chunked::Decoder::new(stream_lock.deref_mut(), tx.remaining_chunk_size);
 
     loop {
       match decoder.read(&mut buf) {
@@ -789,7 +787,8 @@ async fn op_flash_read_body(
           panic!("chunked read error: {}", e);
         }
         Err(_) => {
-          sock
+          // Wait until more data is available on the stream.
+          stream_states
             .read_rx
             .lock()
             .unwrap()
@@ -804,19 +803,19 @@ async fn op_flash_read_body(
   }
 
   if let Some(content_length) = tx.content_length {
-    let sock = Arc::clone(&tx.socket);
+    let stream_states = Arc::clone(&tx.stream_states);
 
     loop {
       if tx.content_read >= content_length as usize {
         return 0;
       }
-      match sock.inner.lock().unwrap().read(&mut buf) {
+      match stream_states.stream.lock().unwrap().read(&mut buf) {
         Ok(n) => {
           tx.content_read += n;
           return n;
         }
         _ => {
-          sock
+          stream_states
             .read_rx
             .lock()
             .unwrap()
@@ -936,7 +935,7 @@ fn run_server(
   listening_tx
     .blocking_send(listener.local_addr().unwrap().port())
     .unwrap();
-  let mut sockets = HashMap::with_capacity(1000);
+  let mut states = HashMap::with_capacity(1000);
   let mut counter = TOKEN_INITIAL_VALUE;
   let mut events = Events::with_capacity(1024);
   'outer: loop {
@@ -972,28 +971,35 @@ fn run_server(
                 }
                 None => InnerStream::Tcp(socket),
               };
-              let stream = Arc::new(Stream {
-                inner: Mutex::new(socket),
-                detached: AtomicBool::new(false),
-                read_rx: Mutex::new(None),
-                read_tx: Mutex::new(None),
-                read_lock: Arc::new(Mutex::new(())),
-                parse_done: Mutex::new(ParseStatus::None),
-                buffer: Mutex::new(vec![0_u8; 1024]),
-              });
+
+              let states_with_js =
+                Arc::new(crate::socket::RequestStatesSharedWithJS {
+                  stream: Mutex::new(socket),
+                  detached: AtomicBool::new(false),
+                  read_rx: Mutex::new(None),
+                  read_tx: Mutex::new(None),
+                });
+              let states_in_flash = crate::socket::RequestStatesInFlash {
+                header_parse_status: ParseStatus::None,
+                parse_buffer: UnsafeCell::new(vec![0_u8; 1024]),
+              };
 
               trace!("New connection: {}", token.0);
-              sockets.insert(token, stream);
+              states.insert(token, (states_with_js, states_in_flash));
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
             Err(_) => break,
           }
         },
         token => {
-          let socket = sockets.get(&token).unwrap();
+          let (states_with_js, states_in_flash) =
+            states.get_mut(&token).unwrap();
 
-          if socket.detached.load(std::sync::atomic::Ordering::Relaxed) {
-            match socket.inner.lock().unwrap().deref_mut() {
+          if states_with_js
+            .detached
+            .load(std::sync::atomic::Ordering::Relaxed)
+          {
+            match states_with_js.stream.lock().unwrap().deref_mut() {
               InnerStream::Tcp(ref mut socket) => {
                 poll.registry().deregister(socket).unwrap();
               }
@@ -1002,8 +1008,9 @@ fn run_server(
               }
             }
 
-            let boxed = sockets.remove(&token).unwrap();
-            std::mem::forget(boxed);
+            let (states_with_js, _states_in_flash) =
+              states.remove(&token).unwrap();
+            std::mem::forget(states_with_js);
             trace!("Socket detached: {}", token.0);
             continue;
           }
@@ -1011,12 +1018,11 @@ fn run_server(
           debug_assert!(event.is_readable());
 
           trace!("Socket readable: {}", token.0);
-          if let Some(tx) = socket.read_tx.lock().unwrap().as_ref() {
-            {
-              let _l = socket.read_lock.lock().unwrap();
-            }
+
+          if let Some(read_tx) = states_with_js.read_tx.lock().unwrap().as_ref()
+          {
             trace!("Sending readiness notification: {}", token.0);
-            let _ = tx.blocking_send(());
+            let _ = read_tx.blocking_send(());
 
             continue;
           }
@@ -1025,34 +1031,38 @@ fn run_server(
           let mut req = httparse::Request::new(&mut headers);
           let body_offset;
           let body_len;
-          loop {
-            let mut buffer = socket.buffer.lock().unwrap();
-            let offset = match socket.parse_done.lock().unwrap().deref() {
+          'parse_header: loop {
+            // SAFETY: It is safe for the read buf to be mutable here.
+            let parse_buffer =
+              unsafe { &mut *states_in_flash.parse_buffer.get() };
+            let offset = match states_in_flash.header_parse_status {
               ParseStatus::None => 0,
-              ParseStatus::Ongoing(offset) => *offset,
+              ParseStatus::Ongoing(offset) => offset,
             };
-            if offset >= buffer.len() {
-              buffer.resize(offset * 2, 0);
+            if offset >= parse_buffer.len() {
+              parse_buffer.resize(offset * 2, 0);
             }
-            let nread =
-              socket.inner.lock().unwrap().read(&mut buffer[offset..]);
+            let nread = states_with_js
+              .stream
+              .lock()
+              .unwrap()
+              .read(&mut parse_buffer[offset..]);
 
             match nread {
               Ok(0) => {
                 trace!("Socket closed: {}", token.0);
                 // FIXME: don't remove while JS is writing!
-                // sockets.remove(&token);
+                // states.remove(&token);
                 continue 'events;
               }
               Ok(read) => {
-                match req
-                  // FIXME(magurotuna)
-                  .parse(unsafe { transmute::<_, _>(&buffer[..offset + read]) })
-                {
+                match req.parse(&parse_buffer[..offset + read]) {
                   Ok(httparse::Status::Complete(n)) => {
                     body_offset = n;
                     body_len = offset + read;
-                    *socket.parse_done.lock().unwrap() = ParseStatus::None;
+                    // Parse is done, so we set the status to the initial.
+                    states_in_flash.header_parse_status = ParseStatus::None;
+
                     // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
                     //
                     // Mio tries to emulate edge triggered events on Windows.
@@ -1077,16 +1087,16 @@ fn run_server(
                           .unwrap();
                       }
                     };
-                    break;
+                    break 'parse_header;
                   }
                   Ok(httparse::Status::Partial) => {
-                    *socket.parse_done.lock().unwrap() =
+                    states_in_flash.header_parse_status =
                       ParseStatus::Ongoing(offset + read);
-                    continue;
+                    continue 'parse_header;
                   }
                   Err(_) => {
-                    let _ = socket
-                      .inner
+                    let _ = states_with_js
+                      .stream
                       .lock()
                       .unwrap()
                       .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -1102,18 +1112,19 @@ fn run_server(
           }
 
           debug_assert_eq!(
-            socket.parse_done.lock().unwrap().deref(),
-            &ParseStatus::None
+            states_in_flash.header_parse_status,
+            ParseStatus::None
           );
           if let Some(method) = &req.method {
             if method == &"POST" || method == &"PUT" {
-              let (tx, rx) = mpsc::channel(100);
-              socket.read_tx.lock().unwrap().replace(tx);
-              socket.read_rx.lock().unwrap().replace(rx);
+              let (read_tx, read_rx) = mpsc::channel(100);
+              states_with_js.read_rx.lock().unwrap().replace(read_rx);
+              states_with_js.read_tx.lock().unwrap().replace(read_tx);
             }
           }
-
-          let mut buffer = socket.buffer.lock().unwrap();
+          // SAFETY: It is safe for the read buf to be mutable here.
+          let parse_buffer =
+            unsafe { &mut *states_in_flash.parse_buffer.get() };
           let inner_req = InnerRequest {
             // SAFETY: backing buffer is pinned and lives as long as the request.
             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
@@ -1122,7 +1133,7 @@ fn run_server(
               transmute::<Vec<httparse::Header<'_>>, _>(headers)
             },
             buffer: Pin::new(
-              replace(buffer.deref_mut(), vec![0_u8; 1024]).into_boxed_slice(),
+              replace(parse_buffer, vec![0_u8; 1024]).into_boxed_slice(),
             ),
             body_offset,
             body_len,
@@ -1174,8 +1185,8 @@ fn run_server(
                 if let Some(len) = from_digits(header.value) {
                   if let Some(prev) = content_length {
                     if prev != len {
-                      let _ = socket
-                        .inner
+                      let _ = states_with_js
+                        .stream
                         .lock()
                         .unwrap()
                         .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -1185,8 +1196,8 @@ fn run_server(
                   }
                   content_length = Some(len);
                 } else {
-                  let _ = socket
-                    .inner
+                  let _ = states_with_js
+                    .stream
                     .lock()
                     .unwrap()
                     .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -1203,8 +1214,8 @@ fn run_server(
 
           // There is Transfer-Encoding but its not chunked.
           if te && !te_chunked {
-            let _ = socket
-              .inner
+            let _ = states_with_js
+              .stream
               .lock()
               .unwrap()
               .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -1212,7 +1223,7 @@ fn run_server(
           }
 
           tx.blocking_send(Request {
-            socket: Arc::clone(&socket),
+            stream_states: Arc::clone(states_with_js),
             // SAFETY: headers backing buffer outlives the mio event loop ('static)
             inner: inner_req,
             keep_alive,
@@ -1450,17 +1461,17 @@ pub fn detach_socket(
     .requests
     .remove(&token)
     .ok_or_else(|| type_error("request closed"))?;
-  let stream = Arc::clone(&tx.socket);
+  let stream_states = Arc::clone(&tx.stream_states);
   // prevent socket from being dropped on server thread.
-  // TODO(@littledivy): Box-ify, since there is no overhead.
-  stream.detach_ownership();
+  stream_states
+    .detached
+    .store(true, std::sync::atomic::Ordering::Relaxed);
 
   #[cfg(unix)]
   let std_stream = {
-    use std::ops::Deref;
     use std::os::unix::prelude::AsRawFd;
     use std::os::unix::prelude::FromRawFd;
-    let fd = match stream.inner.lock().unwrap().deref() {
+    let fd = match stream_states.stream.lock().unwrap().deref() {
       InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
       _ => todo!(),
     };

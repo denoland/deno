@@ -19,8 +19,7 @@ pub struct InnerRequest {
 #[derive(Debug)]
 pub struct Request {
   pub inner: InnerRequest,
-  pub socket: Arc<Stream>,
-  pub parse_buffer: Vec<u8>,
+  pub stream_states: Arc<crate::socket::RequestStatesSharedWithJS>,
   pub keep_alive: bool,
   pub content_read: usize,
   pub content_length: Option<u64>,
