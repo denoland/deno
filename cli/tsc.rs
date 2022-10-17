@@ -483,7 +483,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else if let Some(remapped_specifier) = state.root_map.get(&v.specifier) {
       remapped_specifier.clone()
     } else {
-      specifier.clone()
+      specifier
     };
     let maybe_source = if let Some(ModuleEntry::Module {
       code,
@@ -503,7 +503,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       media_type = state
         .npm_media_type_cache
         .get(&specifier)
-        .map(|m| *m)
+        .copied()
         .unwrap_or(MediaType::Unknown);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
@@ -682,7 +682,7 @@ pub fn resolve_npm_package_reference_types(
   npm_resolver: &NpmPackageResolver,
 ) -> Result<(ModuleSpecifier, MediaType), AnyError> {
   let maybe_resolution = node_resolve_npm_reference(
-    &npm_ref,
+    npm_ref,
     NodeResolutionMode::Types,
     npm_resolver,
   )?;

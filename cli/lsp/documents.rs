@@ -950,12 +950,12 @@ impl Documents {
     let mut results = Vec::new();
     for specifier in specifiers {
       if let Some(npm_resolver) = maybe_npm_resolver {
-        if npm_resolver.in_npm_package(&referrer) {
+        if npm_resolver.in_npm_package(referrer) {
           // we're in an npm package, so use node resolution
           results.push(Some(NodeResolution::into_specifier_and_media_type(
             node::node_resolve(
               &specifier,
-              &referrer,
+              referrer,
               node::NodeResolutionMode::Types,
               npm_resolver,
             )

@@ -855,12 +855,12 @@ fn diagnose_resolved(
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          if !npm_resolver
+          if npm_resolver
             .resolve_package_folder_from_deno_module(&pkg_ref.req)
-            .is_ok()
+            .is_err()
           {
             diagnostics.push(
-              DenoDiagnostic::NoCacheNpm(pkg_ref.clone(), specifier.clone())
+              DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone())
                 .to_lsp_diagnostic(&range),
             );
           }

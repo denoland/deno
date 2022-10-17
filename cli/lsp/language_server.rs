@@ -269,7 +269,7 @@ impl Inner {
       registry_url,
       npm_cache.clone(),
       cache_setting,
-      progress_bar.clone(),
+      progress_bar,
     );
     let npm_resolver =
       NpmPackageResolver::new(npm_cache, api, true, false, None);
