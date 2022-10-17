@@ -497,8 +497,8 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
     } else if state
       .maybe_npm_resolver
       .as_ref()
-      .unwrap()
-      .in_npm_package(&specifier)
+      .map(|resolver| resolver.in_npm_package(&specifier))
+      .unwrap_or(false)
     {
       media_type = state
         .npm_media_type_cache
@@ -1039,6 +1039,7 @@ mod tests {
         "data": "console.log(\"hello deno\");\n",
         "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
         "scriptKind": 3,
+        "isCjs": false,
       })
     );
   }
@@ -1089,6 +1090,7 @@ mod tests {
         "data": "some content",
         "version": null,
         "scriptKind": 0,
+        "isCjs": false,
       })
     );
   }
@@ -1107,6 +1109,7 @@ mod tests {
         "data": null,
         "version": null,
         "scriptKind": 0,
+        "isCjs": false,
       })
     )
   }
