@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.86.0"
+version = "0.87.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -24,8 +24,8 @@ const-oid = "0.9.0"
 ctr = "0.9.1"
 # https://github.com/dalek-cryptography/curve25519-dalek/pull/397
 curve25519-dalek = "2.1.3"
-deno_core = { version = "0.154.0", path = "../../core" }
-deno_web = { version = "0.103.0", path = "../web" }
+deno_core = { version = "0.155.0", path = "../../core" }
+deno_web = { version = "0.104.0", path = "../web" }
 elliptic-curve = { version = "0.12.1", features = ["std", "pem"] }
 num-traits = "0.2.14"
 once_cell = "1.10.0"
