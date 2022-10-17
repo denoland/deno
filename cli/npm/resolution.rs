@@ -584,22 +584,23 @@ fn get_resolved_package_version_and_info(
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
   if let Some(tag) = version_matcher.tag() {
+    // For when someone just specifies @types/node, we want to pull in a
+    // "known good" version of @types/node that works well with Deno and
+    // not necessarily the latest version. For example, we might only be
+    // compatible with Node vX, but then Node vY is published so we wouldn't
+    // want to pull that in.
+    // Note: If the user doesn't want this behavior, then they can specify an
+    // explicit version.
+    if tag == "latest" && pkg_name == "@types/node" {
+      return get_resolved_package_version_and_info(
+        pkg_name,
+        &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+        info,
+        parent,
+      );
+    }
+
     if let Some(version) = info.dist_tags.get(tag) {
-      // For when someone just specifies @types/node, we want to pull in a
-      // "known good" version of @types/node that works well with Deno and
-      // not necessarily the latest version. For example, we might only be
-      // compatible with Node vX, but then Node vY is published so we wouldn't
-      // want to pull that in.
-      // Note: If the user doesn't want this behavior, then they can specify an
-      // explicit version.
-      if tag == "latest" && pkg_name == "@types/node" {
-        return get_resolved_package_version_and_info(
-          pkg_name,
-          &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
-          info,
-          parent,
-        );
-      }
       match info.versions.get(version) {
         Some(info) => {
           return Ok(VersionAndInfo {
