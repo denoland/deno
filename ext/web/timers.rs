@@ -82,10 +82,10 @@ pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
   millis: u64,
   rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
-  tokio::time::sleep(Duration::from_millis(millis))
+  let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
-    .await?;
-  Ok(())
+    .await;
+  Ok(res.is_err())
 }

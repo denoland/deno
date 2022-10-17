@@ -245,7 +245,12 @@
     // 1.
     PromisePrototypeThen(
       sleepPromise,
-      () => {
+      (cancelled) => {
+        if (cancelled) {
+          // The timer was cancelled.
+          removeFromScheduledTimers(timerObject);
+          return;
+        }
         // 2. Wait until any invocations of this algorithm that had the same
         // global and orderingIdentifier, that started before this one, and
         // whose milliseconds is equal to or less than this one's, have
@@ -276,14 +281,6 @@
           }
 
           currentEntry = currentEntry.next;
-        }
-      },
-      (err) => {
-        if (ObjectPrototypeIsPrototypeOf(core.InterruptedPrototype, err)) {
-          // The timer was cancelled.
-          removeFromScheduledTimers(timerObject);
-        } else {
-          throw err;
         }
       },
     );
