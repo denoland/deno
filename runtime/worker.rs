@@ -18,6 +18,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
@@ -103,6 +104,41 @@ fn grab_cb(
   let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
     .unwrap_or_else(|| panic!("{} must be defined", path));
   v8::Global::new(scope, cb)
+}
+
+impl Default for WorkerOptions {
+  fn default() -> Self {
+    Self {
+      web_worker_preload_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      web_worker_pre_execute_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      create_web_worker_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      module_loader: Rc::new(FsModuleLoader),
+      seed: None,
+      unsafely_ignore_certificate_errors: Default::default(),
+      should_break_on_first_statement: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      maybe_inspector_server: Default::default(),
+      format_js_error_fn: Default::default(),
+      get_error_class_fn: Default::default(),
+      origin_storage_dir: Default::default(),
+      cache_storage_dir: Default::default(),
+      broadcast_channel: Default::default(),
+      source_map_getter: Default::default(),
+      root_cert_store: Default::default(),
+      npm_resolver: Default::default(),
+      blob_store: Default::default(),
+      extensions: Default::default(),
+      bootstrap: Default::default(),
+      stdio: Default::default(),
+    }
+  }
 }
 
 impl MainWorker {
@@ -533,7 +569,7 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
-      module_loader: Rc::new(deno_core::FsModuleLoader),
+      module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
       cache_storage_dir: None,

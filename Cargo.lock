@@ -843,6 +843,7 @@ dependencies = [
  "flaky_test",
  "flate2",
  "fwdansi",
+ "glibc_version",
  "google-storage1",
  "http",
  "import_map",
@@ -2045,6 +2046,15 @@ checksum = "d930750de5717d2dd0b8c0d42c076c0e884c81a73e6cab859bbd2339c71e3e40"
 dependencies = [
  "opaque-debug",
  "polyval",
+]
+
+[[package]]
+name = "glibc_version"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803ff7635f1ab4e2c064b68a0c60da917d3d18dc8d086130f689d62ce4f1c33e"
+dependencies = [
+ "regex",
 ]
 
 [[package]]
@@ -5465,9 +5475,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.52.0"
+version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44e483583f1b8da53083a47335afa9b7196f35cb91f92d78452bf56508121da0"
+checksum = "e952e936bcb610c9f22997f50dc7f65887afe76e1fedd37daf532a20211335ca"
 dependencies = [
  "bitflags",
  "fslock",
