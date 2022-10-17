@@ -291,7 +291,6 @@
 
       if (typeof data === "string") {
         // try to send in one go!
-        // this lets us skip `core.byteLength`.
         const d = core.byteLength(data);
         const sent = ops.op_ws_try_send_string(this[_rid], data);
         this[_bufferedAmount] += d;
