@@ -204,6 +204,10 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
+    // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
+    // We specify the resolution mode to be CommonJS for some npm files and this
+    // diagnostic gets generated even though we're using custom module resolution.
+    1452,
     // TS2306: File '.../index.d.ts' is not a module.
     // We get this for `x-typescript-types` declaration files which don't export
     // anything. We prefer to treat these as modules with no exports.
