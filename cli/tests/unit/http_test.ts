@@ -30,7 +30,7 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const tpr = new TextProtoReader(r);
   const statusLine = await tpr.readLine();
   assert(statusLine !== null);
-  const headers = await tpr.readMIMEHeader();
+  const headers = await tpr.readMimeHeader();
   assert(headers !== null);
 
   const chunkedReader = chunkedBodyReader(headers, r);
@@ -605,7 +605,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -751,7 +751,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -2459,7 +2459,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

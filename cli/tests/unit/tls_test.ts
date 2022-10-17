@@ -10,7 +10,7 @@ import {
   deferred,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/buffer.ts";
-import { readAll } from "../../../test_util/std/io/util.ts";
+import { readAll } from "../../../test_util/std/streams/conversion.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -195,7 +195,7 @@ Deno.test(
     assertEquals(proto, "HTTP/1.1");
     assertEquals(status, "200");
     assertEquals(ok, "OK");
-    const headers = await tpr.readMIMEHeader();
+    const headers = await tpr.readMimeHeader();
     assert(headers !== null);
     const contentLength = parseInt(headers.get("content-length")!);
     const bodyBuf = new Uint8Array(contentLength);
@@ -248,7 +248,7 @@ Deno.test(
     assertEquals(proto, "HTTP/1.1");
     assertEquals(status, "200");
     assertEquals(ok, "OK");
-    const headers = await tpr.readMIMEHeader();
+    const headers = await tpr.readMimeHeader();
     assert(headers !== null);
     const contentLength = parseInt(headers.get("content-length")!);
     const bodyBuf = new Uint8Array(contentLength);
