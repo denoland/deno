@@ -831,20 +831,22 @@ declare namespace Deno {
     >;
 
     /**
-     * Adds one to this callback's reference counting.
+     * Adds one to this callback's reference counting and returns the
+     * new reference count.
      *
      * If the callback's reference count becomes non-zero, it will keep
      * Deno's process from exiting.
      */
-    ref(): void;
+    ref(): number;
 
     /**
-     * Removes one from this callback's reference counting.
+     * Removes one from this callback's reference counting and returns
+     * the new reference count.
      *
      * If the callback's reference counter becomes zero, it will no longer
      * keep Deno's process from exiting.
      */
-    unref(): void;
+    unref(): number;
 
     /**
      * Removes the C function pointer associated with the UnsafeCallback.
@@ -1540,6 +1542,10 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms. Defaults to "false". */
+    windowsRawArguments?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

@@ -37,6 +37,7 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    windowsRawArguments = false,
   } = {}) {
     const child = ops.op_spawn_child({
       cmd: pathFromURL(command),
@@ -49,6 +50,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
@@ -244,6 +246,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    windowsRawArguments = false,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
@@ -261,6 +264,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     });
     return {
       success: result.status.success,

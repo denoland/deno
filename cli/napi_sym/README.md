@@ -24,11 +24,11 @@ fn napi_get_boolean(
 
 ### `symbol_exports.json`
 
-A file containing the symbols that need to be put into the exectable's dynamic
+A file containing the symbols that need to be put into the executable's dynamic
 symbol table at link-time.
 
 This is done using `/DEF:` on Windows, `-exported_symbol,_` on macOS and
 `--export-dynamic-symbol=` on Linux. See [`cli/build.rs`](../build.rs).
 
 On Windows, you need to generate the `.def` file by running
-[`tools/napi/generate_link_win.js`](../../tools/napi/generate_link_win.js).
+[`tools/napi/generate_symbols_lists.js`](../../tools/napi/generate_symbols_lists.js).
