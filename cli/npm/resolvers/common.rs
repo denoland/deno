@@ -10,6 +10,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
+use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReq;
@@ -77,12 +78,6 @@ pub async fn cache_packages(
     result??;
   }
   Ok(())
-}
-
-/// For some of the tests, we want downloading of packages
-/// to be deterministic so that the output is always the same
-pub fn should_sync_download() -> bool {
-  std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
 }
 
 pub fn ensure_registry_read_permission(

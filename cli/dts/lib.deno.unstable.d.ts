@@ -1542,6 +1542,10 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms. Defaults to "false". */
+    windowsRawArguments?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
