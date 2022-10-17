@@ -77,6 +77,8 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 
 /// Waits asynchronously until either `millis` milliseconds have passed or the
 /// [`TimerHandle`] resource given by `rid` has been canceled.
+///
+/// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
 #[op(deferred)]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
@@ -87,5 +89,5 @@ pub async fn op_sleep(
   let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
     .await;
-  Ok(res.is_err())
+  Ok(res.is_ok())
 }
