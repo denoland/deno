@@ -108,7 +108,7 @@ pub fn check(
     graph_data,
     hash_data,
     maybe_config_specifier: options.maybe_config_specifier,
-    maybe_npm_resolver: Some(npm_resolver),
+    maybe_npm_resolver: Some(npm_resolver.clone()),
     maybe_tsbuildinfo,
     root_names,
   })?;
@@ -117,6 +117,9 @@ pub fn check(
     response.diagnostics.filter(|d| {
       if let Some(file_name) = &d.file_name {
         !file_name.starts_with("http")
+          && ModuleSpecifier::parse(file_name)
+            .map(|specifier| !npm_resolver.in_npm_package(&specifier))
+            .unwrap_or(true)
       } else {
         true
       }

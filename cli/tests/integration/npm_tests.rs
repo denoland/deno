@@ -210,6 +210,22 @@ itest!(deno_cache {
   http_server: true,
 });
 
+itest!(check_all {
+  args: "check --unstable --remote npm/check_errors/main.ts",
+  output: "npm/check_errors/main_all.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(check_local {
+  args: "check --unstable npm/check_errors/main.ts",
+  output: "npm/check_errors/main_local.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
