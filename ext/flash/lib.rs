@@ -51,8 +51,11 @@ use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Context;
@@ -166,17 +169,20 @@ async fn op_flash_respond_async(
       true => {
         let tx = ctx.requests.remove(&token).unwrap();
         close = !tx.keep_alive;
-        tx.socket()
+        tx.socket
       }
       // In case of a websocket upgrade or streaming response.
       false => {
         let tx = ctx.requests.get(&token).unwrap();
-        tx.socket()
+        Arc::clone(&tx.socket)
       }
     }
   };
 
   sock
+    .inner
+    .lock()
+    .unwrap()
     .with_async_stream(|stream| {
       Box::pin(async move {
         Ok(tokio::io::AsyncWriteExt::write(stream, &response).await?)
@@ -185,7 +191,7 @@ async fn op_flash_respond_async(
     .await?;
   // server is done writing and request doesn't want to kept alive.
   if shutdown && close {
-    sock.shutdown();
+    sock.inner.lock().unwrap().shutdown();
   }
   Ok(())
 }
@@ -204,17 +210,20 @@ async fn op_flash_respond_chuncked(
   let sock = match shutdown {
     true => {
       let tx = ctx.requests.remove(&token).unwrap();
-      tx.socket()
+      tx.socket
     }
     // In case of a websocket upgrade or streaming response.
     false => {
       let tx = ctx.requests.get(&token).unwrap();
-      tx.socket()
+      Arc::clone(&tx.socket)
     }
   };
 
   drop(op_state);
   sock
+    .inner
+    .lock()
+    .unwrap()
     .with_async_stream(|stream| {
       Box::pin(async move {
         use tokio::io::AsyncWriteExt;
@@ -256,22 +265,24 @@ async fn op_flash_write_resource(
     };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    (resource, ctx.requests.remove(&token).unwrap().socket())
+    (resource, ctx.requests.remove(&token).unwrap().socket)
   };
 
-  let _ = sock.write(&response);
+  let _ = sock.inner.lock().unwrap().write(&response);
 
   #[cfg(unix)]
   {
+    use std::ops::Deref;
     use std::os::unix::io::AsRawFd;
-    if let InnerStream::Tcp(stream_handle) = &sock.inner {
+    if let InnerStream::Tcp(stream_handle) = sock.inner.lock().unwrap().deref()
+    {
       let stream_handle = stream_handle.as_raw_fd();
       if let Some(fd) = resource.clone().backing_fd() {
         // SAFETY: all-zero byte-pattern is a valid value for libc::stat.
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: call to libc::fstat.
         if unsafe { libc::fstat(fd, &mut stat) } >= 0 {
-          let _ = sock.write(
+          let _ = sock.inner.lock().unwrap().write(
             format!("Content-Length: {}\r\n\r\n", stat.st_size).as_bytes(),
           );
           let tx = sendfile::SendFile {
@@ -286,6 +297,9 @@ async fn op_flash_write_resource(
   }
 
   sock
+    .inner
+    .lock()
+    .unwrap()
     .with_async_stream(|stream| {
       Box::pin(async move {
         use tokio::io::AsyncWriteExt;
@@ -341,16 +355,17 @@ fn flash_respond(
   response: &[u8],
 ) -> u32 {
   let tx = ctx.requests.get(&token).unwrap();
-  let sock = tx.socket();
+  let sock = Arc::clone(&tx.socket);
 
-  sock.read_tx.take();
-  sock.read_rx.take();
+  sock.read_tx.lock().unwrap().take();
+  sock.read_rx.lock().unwrap().take();
 
-  let nwritten = sock.try_write(response);
+  let mut lock = sock.inner.lock().unwrap();
+  let nwritten = lock.try_write(response);
 
   if shutdown && nwritten == response.len() {
     if !tx.keep_alive {
-      sock.shutdown();
+      lock.shutdown();
     }
     ctx.requests.remove(&token).unwrap();
   }
@@ -622,8 +637,7 @@ fn op_flash_make_request<'scope>(
 
 #[inline]
 fn has_body_stream(req: &Request) -> bool {
-  let sock = req.socket();
-  sock.read_rx.is_some()
+  req.socket.read_rx.lock().unwrap().is_some()
 }
 
 #[op]
@@ -672,14 +686,18 @@ fn op_flash_first_packet(
   token: u32,
 ) -> Result<Option<ZeroCopyBuf>, AnyError> {
   let tx = get_request!(op_state, server_id, token);
-  let sock = tx.socket();
 
   if !tx.te_chunked && tx.content_length.is_none() {
     return Ok(None);
   }
 
   if tx.expect_continue {
-    let _ = sock.write(b"HTTP/1.1 100 Continue\r\n\r\n");
+    let _ = tx
+      .socket
+      .inner
+      .lock()
+      .unwrap()
+      .write(b"HTTP/1.1 100 Continue\r\n\r\n");
     tx.expect_continue = false;
   }
 
@@ -753,12 +771,15 @@ async fn op_flash_read_body(
   let tx = ctx.requests.get_mut(&token).unwrap();
 
   if tx.te_chunked {
+    let sock = Arc::clone(&tx.socket);
+    use std::ops::DerefMut;
+    // FIXME(magurotuna): This causes the mutex lock to live during the loop, which should be
+    // avoided.
+    let mut inner_lock = sock.inner.lock().unwrap();
     let mut decoder =
-      chunked::Decoder::new(tx.socket(), tx.remaining_chunk_size);
-    loop {
-      let sock = tx.socket();
+      chunked::Decoder::new(inner_lock.deref_mut(), tx.remaining_chunk_size);
 
-      let _lock = sock.read_lock.lock().unwrap();
+    loop {
       match decoder.read(&mut buf) {
         Ok(n) => {
           tx.remaining_chunk_size = decoder.remaining_chunks_size;
@@ -768,30 +789,42 @@ async fn op_flash_read_body(
           panic!("chunked read error: {}", e);
         }
         Err(_) => {
-          drop(_lock);
-          sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+          sock
+            .read_rx
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .recv()
+            .await
+            .unwrap();
         }
       }
     }
   }
 
   if let Some(content_length) = tx.content_length {
-    let sock = tx.socket();
-    let l = sock.read_lock.clone();
+    let sock = Arc::clone(&tx.socket);
 
     loop {
-      let _lock = l.lock().unwrap();
       if tx.content_read >= content_length as usize {
         return 0;
       }
-      match sock.read(&mut buf) {
+      match sock.inner.lock().unwrap().read(&mut buf) {
         Ok(n) => {
           tx.content_read += n;
           return n;
         }
         _ => {
-          drop(_lock);
-          sock.read_rx.as_mut().unwrap().recv().await.unwrap();
+          sock
+            .read_rx
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .recv()
+            .await
+            .unwrap();
         }
       }
     }
@@ -939,14 +972,14 @@ fn run_server(
                 }
                 None => InnerStream::Tcp(socket),
               };
-              let stream = Box::pin(Stream {
-                inner: socket,
-                detached: false,
-                read_rx: None,
-                read_tx: None,
+              let stream = Arc::new(Stream {
+                inner: Mutex::new(socket),
+                detached: AtomicBool::new(false),
+                read_rx: Mutex::new(None),
+                read_tx: Mutex::new(None),
                 read_lock: Arc::new(Mutex::new(())),
-                parse_done: ParseStatus::None,
-                buffer: UnsafeCell::new(vec![0_u8; 1024]),
+                parse_done: Mutex::new(ParseStatus::None),
+                buffer: Mutex::new(vec![0_u8; 1024]),
               });
 
               trace!("New connection: {}", token.0);
@@ -957,16 +990,10 @@ fn run_server(
           }
         },
         token => {
-          let socket = sockets.get_mut(&token).unwrap();
-          // SAFETY: guarantee that we will never move the data out of the mutable reference.
-          let socket = unsafe {
-            let mut_ref: Pin<&mut Stream> = Pin::as_mut(socket);
-            Pin::get_unchecked_mut(mut_ref)
-          };
-          let sock_ptr = socket as *mut _;
+          let socket = sockets.get(&token).unwrap();
 
-          if socket.detached {
-            match &mut socket.inner {
+          if socket.detached.load(std::sync::atomic::Ordering::Relaxed) {
+            match socket.inner.lock().unwrap().deref_mut() {
               InnerStream::Tcp(ref mut socket) => {
                 poll.registry().deregister(socket).unwrap();
               }
@@ -984,7 +1011,7 @@ fn run_server(
           debug_assert!(event.is_readable());
 
           trace!("Socket readable: {}", token.0);
-          if let Some(tx) = &socket.read_tx {
+          if let Some(tx) = socket.read_tx.lock().unwrap().as_ref() {
             {
               let _l = socket.read_lock.lock().unwrap();
             }
@@ -999,16 +1026,16 @@ fn run_server(
           let body_offset;
           let body_len;
           loop {
-            // SAFETY: It is safe for the read buf to be mutable here.
-            let buffer = unsafe { &mut *socket.buffer.get() };
-            let offset = match socket.parse_done {
+            let mut buffer = socket.buffer.lock().unwrap();
+            let offset = match socket.parse_done.lock().unwrap().deref() {
               ParseStatus::None => 0,
-              ParseStatus::Ongoing(offset) => offset,
+              ParseStatus::Ongoing(offset) => *offset,
             };
             if offset >= buffer.len() {
               buffer.resize(offset * 2, 0);
             }
-            let nread = socket.read(&mut buffer[offset..]);
+            let nread =
+              socket.inner.lock().unwrap().read(&mut buffer[offset..]);
 
             match nread {
               Ok(0) => {
@@ -1018,11 +1045,14 @@ fn run_server(
                 continue 'events;
               }
               Ok(read) => {
-                match req.parse(&buffer[..offset + read]) {
+                match req
+                  // FIXME(magurotuna)
+                  .parse(unsafe { transmute::<_, _>(&buffer[..offset + read]) })
+                {
                   Ok(httparse::Status::Complete(n)) => {
                     body_offset = n;
                     body_len = offset + read;
-                    socket.parse_done = ParseStatus::None;
+                    *socket.parse_done.lock().unwrap() = ParseStatus::None;
                     // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
                     //
                     // Mio tries to emulate edge triggered events on Windows.
@@ -1050,11 +1080,16 @@ fn run_server(
                     break;
                   }
                   Ok(httparse::Status::Partial) => {
-                    socket.parse_done = ParseStatus::Ongoing(offset + read);
+                    *socket.parse_done.lock().unwrap() =
+                      ParseStatus::Ongoing(offset + read);
                     continue;
                   }
                   Err(_) => {
-                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    let _ = socket
+                      .inner
+                      .lock()
+                      .unwrap()
+                      .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
                     continue 'events;
                   }
                 }
@@ -1066,17 +1101,19 @@ fn run_server(
             }
           }
 
-          debug_assert_eq!(socket.parse_done, ParseStatus::None);
+          debug_assert_eq!(
+            socket.parse_done.lock().unwrap().deref(),
+            &ParseStatus::None
+          );
           if let Some(method) = &req.method {
             if method == &"POST" || method == &"PUT" {
               let (tx, rx) = mpsc::channel(100);
-              socket.read_tx = Some(tx);
-              socket.read_rx = Some(rx);
+              socket.read_tx.lock().unwrap().replace(tx);
+              socket.read_rx.lock().unwrap().replace(rx);
             }
           }
 
-          // SAFETY: It is safe for the read buf to be mutable here.
-          let buffer = unsafe { &mut *socket.buffer.get() };
+          let mut buffer = socket.buffer.lock().unwrap();
           let inner_req = InnerRequest {
             // SAFETY: backing buffer is pinned and lives as long as the request.
             req: unsafe { transmute::<httparse::Request<'_, '_>, _>(req) },
@@ -1085,7 +1122,7 @@ fn run_server(
               transmute::<Vec<httparse::Header<'_>>, _>(headers)
             },
             buffer: Pin::new(
-              replace(buffer, vec![0_u8; 1024]).into_boxed_slice(),
+              replace(buffer.deref_mut(), vec![0_u8; 1024]).into_boxed_slice(),
             ),
             body_offset,
             body_len,
@@ -1137,14 +1174,22 @@ fn run_server(
                 if let Some(len) = from_digits(header.value) {
                   if let Some(prev) = content_length {
                     if prev != len {
-                      let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                      let _ = socket
+                        .inner
+                        .lock()
+                        .unwrap()
+                        .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
                       continue 'events;
                     }
                     continue;
                   }
                   content_length = Some(len);
                 } else {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                  let _ = socket
+                    .inner
+                    .lock()
+                    .unwrap()
+                    .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
                   continue 'events;
                 }
               }
@@ -1158,12 +1203,16 @@ fn run_server(
 
           // There is Transfer-Encoding but its not chunked.
           if te && !te_chunked {
-            let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+            let _ = socket
+              .inner
+              .lock()
+              .unwrap()
+              .write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
             continue 'events;
           }
 
           tx.blocking_send(Request {
-            socket: sock_ptr,
+            socket: Arc::clone(&socket),
             // SAFETY: headers backing buffer outlives the mio event loop ('static)
             inner: inner_req,
             keep_alive,
@@ -1401,16 +1450,17 @@ pub fn detach_socket(
     .requests
     .remove(&token)
     .ok_or_else(|| type_error("request closed"))?;
-  let stream = tx.socket();
+  let stream = Arc::clone(&tx.socket);
   // prevent socket from being dropped on server thread.
   // TODO(@littledivy): Box-ify, since there is no overhead.
   stream.detach_ownership();
 
   #[cfg(unix)]
   let std_stream = {
+    use std::ops::Deref;
     use std::os::unix::prelude::AsRawFd;
     use std::os::unix::prelude::FromRawFd;
-    let fd = match stream.inner {
+    let fd = match stream.inner.lock().unwrap().deref() {
       InnerStream::Tcp(ref tcp) => tcp.as_raw_fd(),
       _ => todo!(),
     };

@@ -2,6 +2,7 @@
 
 use crate::Stream;
 use std::pin::Pin;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct InnerRequest {
@@ -18,11 +19,8 @@ pub struct InnerRequest {
 #[derive(Debug)]
 pub struct Request {
   pub inner: InnerRequest,
-  // Pointer to stream owned by the server loop thread.
-  //
-  // Dereferencing is safe until server thread finishes and
-  // op_flash_serve resolves or websocket upgrade is performed.
-  pub socket: *mut Stream,
+  pub socket: Arc<Stream>,
+  pub parse_buffer: Vec<u8>,
   pub keep_alive: bool,
   pub content_read: usize,
   pub content_length: Option<u64>,
@@ -31,17 +29,7 @@ pub struct Request {
   pub expect_continue: bool,
 }
 
-// SAFETY: Sent from server thread to JS thread.
-// See comment above for `socket`.
-unsafe impl Send for Request {}
-
 impl Request {
-  #[inline(always)]
-  pub fn socket<'a>(&self) -> &'a mut Stream {
-    // SAFETY: Dereferencing is safe until server thread detaches socket or finishes.
-    unsafe { &mut *self.socket }
-  }
-
   #[inline(always)]
   pub fn method(&self) -> &str {
     self.inner.req.method.unwrap()

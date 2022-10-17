@@ -29,7 +29,6 @@
     Function,
     ObjectPrototypeIsPrototypeOf,
     PromiseAll,
-    PromiseAllSettled,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
@@ -492,8 +491,6 @@
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
 
-    const handleResponsePromises = [];
-
     const server = {
       id: serverId,
       transport: listenOpts.cert && listenOpts.key ? "https" : "http",
@@ -506,9 +503,6 @@
           return;
         }
         server.closed = true;
-        // Before closing the server we must ensure that all promises are settled.
-        // Otherwise a socket may be used after it is closed.
-        await PromiseAllSettled(handleResponsePromises);
         core.ops.op_flash_close_server(serverId);
         await server.finished;
       },
@@ -525,10 +519,6 @@
             if (server.closed) {
               break;
             }
-            // handleResponse may have made progress. To avoid having the promise list expand too much,
-            // we wait for them to be settled and remove them from the array.
-            await PromiseAllSettled(handleResponsePromises);
-            handleResponsePromises.length = 0;
           }
 
           for (let i = offset; i < offset + tokens; i++) {
@@ -565,7 +555,7 @@
             try {
               resp = handler(req);
               if (resp instanceof Promise || typeof resp?.then === "function") {
-                const promise = resp.then((resp) =>
+                resp.then((resp) =>
                   handleResponse(
                     req,
                     resp,
@@ -578,14 +568,13 @@
                     respondChunked,
                   )
                 ).catch(onError);
-                handleResponsePromises.push(promise);
                 continue;
               }
             } catch (e) {
               resp = await onError(e);
             }
 
-            const promise = handleResponse(
+            handleResponse(
               req,
               resp,
               body,
@@ -596,7 +585,6 @@
               respondFast,
               respondChunked,
             );
-            handleResponsePromises.push(promise);
           }
 
           offset += tokens;
