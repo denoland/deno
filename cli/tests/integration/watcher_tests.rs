@@ -1179,7 +1179,7 @@ fn run_watch_flash() {
             console.error("First server is listening");
         },
         handler: () => {},
-        port: 4501,
+        port: 4601,
       });
     "#,
   )
@@ -1216,7 +1216,7 @@ fn run_watch_flash() {
             console.error("Second server is listening");
         },
         handler: () => {},
-        port: 4501,
+        port: 4601,
       });
     "#,
   )
