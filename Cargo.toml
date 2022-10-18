@@ -109,12 +109,14 @@ tokio-util = "=0.7.4"
 data-url = "=0.1.1"
 rand = "=0.8.5"
 sha2 = "0.10.2"
+zstd = "=0.11.2"
 
 # macros
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
 
+#unix
 nix = "=0.24.2"
 
 # windows deps
