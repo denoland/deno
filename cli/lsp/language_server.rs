@@ -916,10 +916,7 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
-          let _ = self
-            .npm_resolver
-            .add_package_reqs(document.npm_package_reqs())
-            .await;
+          self.refresh_npm_specifiers().await;
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
@@ -930,6 +927,11 @@ impl Inner {
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
+  }
+
+  async fn refresh_npm_specifiers(&mut self) {
+    let package_reqs = self.documents.npm_package_reqs();
+    let _ = self.npm_resolver.set_package_reqs(package_reqs).await;
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -946,6 +948,7 @@ impl Inner {
       error!("{}", err);
     }
     if self.is_diagnosable(&specifier) {
+      self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
@@ -2505,10 +2508,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
       if document.is_diagnosable() {
-        let _ = inner
-          .npm_resolver
-          .add_package_reqs(document.npm_package_reqs())
-          .await;
+        inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
@@ -2915,6 +2915,7 @@ impl Inner {
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
+    self.refresh_npm_specifiers().await;
     self.diagnostics_server.invalidate_all();
     let _: bool = self
       .ts_server

@@ -376,15 +376,57 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    mut package_reqs: Vec<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    // multiple packages are resolved in alphabetical order
-    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
-
     // only allow one thread in here at a time
     let _permit = self.update_sempahore.acquire().await.unwrap();
-    let mut snapshot = self.snapshot.read().clone();
-    let mut pending_dependencies = VecDeque::new();
+    let snapshot = self.snapshot.read().clone();
+
+    let snapshot = self
+      .add_package_reqs_to_snapshot(package_reqs, snapshot)
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+    Ok(())
+  }
+
+  pub async fn set_package_reqs(
+    &self,
+    package_reqs: HashSet<NpmPackageReq>,
+  ) -> Result<(), AnyError> {
+    // only allow one thread in here at a time
+    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let snapshot = self.snapshot.read().clone();
+
+    let has_removed_package = !snapshot
+      .package_reqs
+      .keys()
+      .all(|req| package_reqs.contains(req));
+    // if any packages were removed, we need to completely recreate the npm resolution snapshot
+    let snapshot = if has_removed_package {
+      NpmResolutionSnapshot::default()
+    } else {
+      snapshot
+    };
+    let snapshot = self
+      .add_package_reqs_to_snapshot(
+        package_reqs.into_iter().collect(),
+        snapshot,
+      )
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+
+    Ok(())
+  }
+
+  async fn add_package_reqs_to_snapshot(
+    &self,
+    mut package_reqs: Vec<NpmPackageReq>,
+    mut snapshot: NpmResolutionSnapshot,
+  ) -> Result<NpmResolutionSnapshot, AnyError> {
+    // multiple packages are resolved in alphabetical order
+    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
@@ -419,6 +461,7 @@ impl NpmResolution {
       }));
     }
 
+    let mut pending_dependencies = VecDeque::new();
     for result in futures::future::join_all(unresolved_tasks).await {
       let (package_req, info) = result??;
       let version_and_info = get_resolved_package_version_and_info(
@@ -547,8 +590,7 @@ impl NpmResolution {
       }
     }
 
-    *self.snapshot.write() = snapshot;
-    Ok(())
+    Ok(snapshot)
   }
 
   pub fn resolve_package_from_package(

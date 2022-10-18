@@ -215,6 +215,29 @@ impl AssetOrDocument {
   }
 }
 
+#[derive(Debug, Default)]
+struct DocumentDependencies {
+  deps: BTreeMap<String, deno_graph::Dependency>,
+  maybe_types_dependency: Option<(String, Resolved)>,
+}
+
+impl DocumentDependencies {
+  pub fn from_maybe_module(maybe_module: &MaybeModuleResult) -> Self {
+    if let Some(Ok(module)) = &maybe_module {
+      Self::from_module(module)
+    } else {
+      Self::default()
+    }
+  }
+
+  pub fn from_module(module: &deno_graph::Module) -> Self {
+    Self {
+      deps: module.dependencies.clone(),
+      maybe_types_dependency: module.maybe_types_dependency.clone(),
+    }
+  }
+}
+
 type MaybeModuleResult =
   Option<Result<deno_graph::Module, deno_graph::ModuleGraphError>>;
 type MaybeParsedSourceResult =
@@ -223,7 +246,7 @@ type MaybeParsedSourceResult =
 #[derive(Debug, Clone)]
 struct DocumentInner {
   /// contains the last-known-good set of dependencies from parsing the module
-  dependencies: Arc<BTreeMap<String, deno_graph::Dependency>>,
+  dependencies: Arc<DocumentDependencies>,
   fs_version: String,
   line_index: Arc<LineIndex>,
   maybe_language_id: Option<LanguageId>,
@@ -255,12 +278,9 @@ impl Document {
       maybe_headers,
       maybe_resolver,
     );
-    let dependencies = if let Some(Ok(module)) = &maybe_module {
-      Arc::new(module.dependencies.clone())
-    } else {
-      Arc::new(BTreeMap::new())
-    };
-    // todo(dsherret): retrieve this from the parsed source if it
+    let dependencies =
+      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
+    // todo(dsherret): retrieve this from the parsed source if it exists
     let text_info = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(text_info.text_str()));
     Self(Arc::new(DocumentInner {
@@ -295,11 +315,8 @@ impl Document {
     } else {
       (None, None)
     };
-    let dependencies = if let Some(Ok(module)) = &maybe_module {
-      Arc::new(module.dependencies.clone())
-    } else {
-      Arc::new(BTreeMap::new())
-    };
+    let dependencies =
+      Arc::new(DocumentDependencies::from_maybe_module(&maybe_module));
     let source = SourceTextInfo::new(content);
     let line_index = Arc::new(LineIndex::new(source.text_str()));
     Self(Arc::new(DocumentInner {
@@ -361,9 +378,9 @@ impl Document {
       (None, None)
     };
     let dependencies = if let Some(Ok(module)) = &maybe_module {
-      Arc::new(module.dependencies.clone())
+      Arc::new(DocumentDependencies::from_module(module))
     } else {
-      self.0.dependencies.clone()
+      self.0.dependencies.clone() // use the last known good
     };
     let text_info = SourceTextInfo::new(content);
     let line_index = if index_valid == IndexValid::All {
@@ -441,15 +458,9 @@ impl Document {
   }
 
   pub fn maybe_types_dependency(&self) -> deno_graph::Resolved {
-    let module_result = match self.0.maybe_module.as_ref() {
-      Some(module_result) => module_result,
-      _ => return deno_graph::Resolved::None,
-    };
-    let module = match module_result.as_ref() {
-      Ok(module) => module,
-      Err(_) => return deno_graph::Resolved::None,
-    };
-    if let Some((_, maybe_dep)) = module.maybe_types_dependency.as_ref() {
+    if let Some((_, maybe_dep)) =
+      self.0.dependencies.maybe_types_dependency.as_ref()
+    {
       maybe_dep.clone()
     } else {
       deno_graph::Resolved::None
@@ -469,23 +480,6 @@ impl Document {
     self.0.maybe_lsp_version
   }
 
-  pub fn npm_package_reqs(&self) -> Vec<NpmPackageReq> {
-    let mut reqs = Vec::with_capacity(self.0.dependencies.len() * 2);
-    for dep in self.0.dependencies.values() {
-      if let Some(specifier) = dep.get_code() {
-        if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
-          reqs.push(reference.req);
-        }
-      }
-      if let Some(specifier) = dep.get_type() {
-        if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
-          reqs.push(reference.req);
-        }
-      }
-    }
-    reqs
-  }
-
   fn maybe_module(
     &self,
   ) -> Option<&Result<deno_graph::Module, deno_graph::ModuleGraphError>> {
@@ -502,13 +496,8 @@ impl Document {
     self.0.maybe_navigation_tree.clone()
   }
 
-  pub fn dependencies(&self) -> Vec<(String, deno_graph::Dependency)> {
-    self
-      .0
-      .dependencies
-      .iter()
-      .map(|(s, d)| (s.clone(), d.clone()))
-      .collect()
+  pub fn dependencies(&self) -> &BTreeMap<String, deno_graph::Dependency> {
+    &self.0.dependencies.deps
   }
 
   /// If the supplied position is within a dependency range, return the resolved
@@ -721,6 +710,8 @@ pub struct Documents {
   maybe_import_map: Option<ImportMapResolver>,
   /// The optional JSX resolver, which is used when JSX imports are configured.
   maybe_jsx_resolver: Option<JsxResolver>,
+  /// The npm package requirements.
+  npm_reqs: HashSet<NpmPackageReq>,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
 }
@@ -736,6 +727,7 @@ impl Documents {
       imports: Default::default(),
       maybe_import_map: None,
       maybe_jsx_resolver: None,
+      npm_reqs: HashSet::new(),
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
   }
@@ -870,6 +862,12 @@ impl Documents {
     }
   }
 
+  /// Returns an array of npm package requirements.
+  pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
+    self.calculate_dependents_if_dirty();
+    self.npm_reqs.clone()
+  }
+
   /// Return a document for the specifier.
   pub fn get(&self, original_specifier: &ModuleSpecifier) -> Option<Document> {
     let specifier = self.specifier_resolver.resolve(original_specifier)?;
@@ -973,7 +971,7 @@ impl Documents {
         } else {
           results.push(None);
         }
-      } else if let Some(dep) = dependencies.get(&specifier) {
+      } else if let Some(dep) = dependencies.deps.get(&specifier) {
         if let Resolved::Ok { specifier, .. } = &dep.maybe_type {
           results.push(self.resolve_dependency(specifier, maybe_npm_resolver));
         } else if let Resolved::Ok { specifier, .. } = &dep.maybe_code {
@@ -1091,32 +1089,36 @@ impl Documents {
     // favour documents that are open in case a document exists in both collections
     let documents = file_system_docs.docs.iter().chain(self.open_docs.iter());
     for (specifier, doc) in documents {
-      if let Some(Ok(module)) = doc.maybe_module() {
-        for dependency in module.dependencies.values() {
-          if let Some(dep) = dependency.get_code() {
-            dependents_map
-              .entry(dep.clone())
-              .or_default()
-              .insert(specifier.clone());
-          }
-          if let Some(dep) = dependency.get_type() {
-            dependents_map
-              .entry(dep.clone())
-              .or_default()
-              .insert(specifier.clone());
-          }
+      for dependency in doc.dependencies().values() {
+        if let Some(dep) = dependency.get_code() {
+          dependents_map
+            .entry(dep.clone())
+            .or_default()
+            .insert(specifier.clone());
         }
-        if let Some((_, Resolved::Ok { specifier: dep, .. })) =
-          &module.maybe_types_dependency
-        {
+        if let Some(dep) = dependency.get_type() {
           dependents_map
             .entry(dep.clone())
             .or_default()
             .insert(specifier.clone());
         }
       }
+      if let Resolved::Ok { specifier: dep, .. } = doc.maybe_types_dependency()
+      {
+        dependents_map
+          .entry(dep.clone())
+          .or_default()
+          .insert(specifier.clone());
+      }
+    }
+    let mut npm_reqs = HashSet::new();
+    for specifier in dependents_map.keys() {
+      if let Ok(reference) = NpmPackageReference::from_specifier(specifier) {
+        npm_reqs.insert(reference.req);
+      }
     }
     self.dependents_map = Arc::new(dependents_map);
+    self.npm_reqs = npm_reqs;
     self.dirty = false;
     file_system_docs.dirty = false;
   }

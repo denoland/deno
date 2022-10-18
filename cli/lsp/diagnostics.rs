@@ -960,8 +960,8 @@ async fn generate_deno_diagnostics(
           &mut diagnostics,
           snapshot,
           specifier,
-          &dependency_key,
-          &dependency,
+          dependency_key,
+          dependency,
         );
       }
     }

@@ -2,6 +2,7 @@
 
 //! Code for global npm cache resolution.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -119,12 +120,19 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      cache_packages(
-        resolver.resolution.all_packages(),
-        &resolver.cache,
-        &resolver.registry_url,
-      )
-      .await
+      cache_packages_in_resolver(&resolver).await
+    }
+    .boxed()
+  }
+
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      resolver.resolution.set_package_reqs(packages).await?;
+      cache_packages_in_resolver(&resolver).await
     }
     .boxed()
   }
@@ -137,4 +145,15 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
   }
+}
+
+async fn cache_packages_in_resolver(
+  resolver: &GlobalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  cache_packages(
+    resolver.resolution.all_packages(),
+    &resolver.cache,
+    &resolver.registry_url,
+  )
+  .await
 }

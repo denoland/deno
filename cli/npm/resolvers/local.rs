@@ -187,15 +187,20 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
+      sync_resolver_with_fs(&resolver).await?;
+      Ok(())
+    }
+    .boxed()
+  }
 
-      sync_resolution_with_fs(
-        &resolver.resolution.snapshot(),
-        &resolver.cache,
-        &resolver.registry_url,
-        &resolver.root_node_modules_path,
-      )
-      .await?;
-
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      resolver.resolution.set_package_reqs(packages).await?;
+      sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
@@ -208,6 +213,18 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
   }
+}
+
+async fn sync_resolver_with_fs(
+  resolver: &LocalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  sync_resolution_with_fs(
+    &resolver.resolution.snapshot(),
+    &resolver.cache,
+    &resolver.registry_url,
+    &resolver.root_node_modules_path,
+  )
+  .await
 }
 
 /// Creates a pnpm style folder structure.

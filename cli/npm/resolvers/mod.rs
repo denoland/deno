@@ -15,6 +15,7 @@ use global::GlobalNpmPackageResolver;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -193,7 +194,7 @@ impl NpmPackageResolver {
     self.inner.has_packages()
   }
 
-  /// Adds a package requirement to the resolver and ensures everything is setup.
+  /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
     packages: Vec<NpmPackageReq>,
@@ -224,6 +225,14 @@ impl NpmPackageResolver {
     }
 
     self.inner.add_package_reqs(packages).await
+  }
+
+  /// Sets package requirements to the resolver, removing old requirements and adding new ones.
+  pub async fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> Result<(), AnyError> {
+    self.inner.set_package_reqs(packages).await
   }
 
   // If the main module should be treated as being in an npm package.
