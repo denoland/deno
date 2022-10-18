@@ -14,7 +14,7 @@ description = "Implementation of BroadcastChannel API for Deno"
 path = "lib.rs"
 
 [dependencies]
-async-trait = "0.1"
-deno_core = { version = "0.155.0", path = "../../core" }
-tokio = { version = "1.21", features = ["full"] }
-uuid = { version = "1.0.0", features = ["v4"] }
+async-trait.workspace = true
+deno_core.workspace = true
+tokio.workspace = true
+uuid.workspace = true

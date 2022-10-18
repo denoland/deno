@@ -14,16 +14,16 @@ description = "Rust to V8 serialization and deserialization"
 path = "lib.rs"
 
 [dependencies]
-bytes = "=1.2.1"
+bytes.workspace = true
 derive_more = "0.99.17"
-serde = { version = "1.0.136", features = ["derive"] }
-serde_bytes = "0.11"
+serde.workspace = true
+serde_bytes.workspace = true
 smallvec = { version = "1.8", features = ["union"] }
-v8 = { version = "0.53.1", default-features = false }
+v8.workspace = true
 
 [dev-dependencies]
-bencher = "0.1"
-serde_json = "1.0.64"
+bencher.workspace = true
+serde_json.workspace = true
 
 [[example]]
 name = "basic"

@@ -15,10 +15,10 @@ description = "Bench and profiling utilities for deno crates"
 path = "lib.rs"
 
 [dependencies]
-bencher = "0.1"
-deno_core = { version = "0.155.0", path = "../core" }
-once_cell = "1.10.0"
-tokio = { version = "1.21", features = ["full"] }
+bencher.workspace = true
+deno_core.workspace = true
+once_cell.workspace = true
+tokio.workspace = true
 
 [[bench]]
 name = "op_baseline"

@@ -14,12 +14,12 @@ description = "Dynamic library ffi for deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.155.0", path = "../../core" }
-dlopen = "0.1.8"
+deno_core.workspace = true
+dlopen.workspace = true
 dynasmrt = "1.2.3"
 libffi = "3.0.0"
-serde = { version = "1.0.129", features = ["derive"] }
-tokio = { version = "1.21", features = ["full"] }
+serde.workspace = true
+tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }

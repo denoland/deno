@@ -14,4 +14,4 @@ description = "WebIDL implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.155.0", path = "../../core" }
+deno_core.workspace = true
