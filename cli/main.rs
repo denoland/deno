@@ -19,6 +19,7 @@ mod graph_util;
 mod http_cache;
 mod http_util;
 mod lockfile;
+mod lockfile_v2;
 mod logger;
 mod lsp;
 mod module_loader;
