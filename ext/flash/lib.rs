@@ -205,16 +205,20 @@ async fn op_flash_write_resource(
   server_id: u32,
   token: u32,
   resource_id: deno_core::ResourceId,
+  auto_close: bool,
 ) -> Result<(), AnyError> {
-  let resource = op_state.borrow_mut().resource_table.take_any(resource_id)?;
-  let sock = {
+  let (resource, sock) = {
     let op_state = &mut op_state.borrow_mut();
+    let resource = if auto_close {
+      op_state.resource_table.take_any(resource_id)?
+    } else {
+      op_state.resource_table.get_any(resource_id)?
+    };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
     let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx.requests.remove(&token).unwrap().socket()
+    (resource, ctx.requests.remove(&token).unwrap().socket())
   };
 
-  drop(op_state);
   let _ = sock.write(&response);
 
   #[cfg(unix)]
@@ -249,20 +253,16 @@ async fn op_flash_write_resource(
           .write_all(b"Transfer-Encoding: chunked\r\n\r\n")
           .await?;
         loop {
-          let vec = vec![0u8; 64 * 1024]; // 64KB
-          let buf = ZeroCopyBuf::new_temp(vec);
-          let (nread, buf) = resource.clone().read_return(buf).await?;
-          if nread == 0 {
+          let view = resource.clone().read(64 * 1024).await?; // 64KB
+          if view.is_empty() {
             stream.write_all(b"0\r\n\r\n").await?;
             break;
           }
-
-          let response = &buf[..nread];
           // TODO(@littledivy): use vectored writes.
           stream
-            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
+            .write_all(format!("{:x}\r\n", view.len()).as_bytes())
             .await?;
-          stream.write_all(response).await?;
+          stream.write_all(&view).await?;
           stream.write_all(b"\r\n").await?;
         }
         resource.close();
@@ -987,22 +987,48 @@ fn run_server(
                 // sockets.remove(&token);
                 continue 'events;
               }
-              Ok(read) => match req.parse(&buffer[..offset + read]) {
-                Ok(httparse::Status::Complete(n)) => {
-                  body_offset = n;
-                  body_len = offset + read;
-                  socket.parse_done = ParseStatus::None;
-                  break;
+              Ok(read) => {
+                match req.parse(&buffer[..offset + read]) {
+                  Ok(httparse::Status::Complete(n)) => {
+                    body_offset = n;
+                    body_len = offset + read;
+                    socket.parse_done = ParseStatus::None;
+                    // On Windows, We must keep calling socket.read() until it fails with WouldBlock.
+                    //
+                    // Mio tries to emulate edge triggered events on Windows.
+                    // AFAICT it only rearms the event on WouldBlock, but it doesn't when a partial read happens.
+                    // https://github.com/denoland/deno/issues/15549
+                    #[cfg(target_os = "windows")]
+                    match &mut socket.inner {
+                      InnerStream::Tcp(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(socket, token, Interest::READABLE)
+                          .unwrap();
+                      }
+                      InnerStream::Tls(ref mut socket) => {
+                        poll
+                          .registry()
+                          .reregister(
+                            &mut socket.sock,
+                            token,
+                            Interest::READABLE,
+                          )
+                          .unwrap();
+                      }
+                    };
+                    break;
+                  }
+                  Ok(httparse::Status::Partial) => {
+                    socket.parse_done = ParseStatus::Ongoing(offset + read);
+                    continue;
+                  }
+                  Err(_) => {
+                    let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+                    continue 'events;
+                  }
                 }
-                Ok(httparse::Status::Partial) => {
-                  socket.parse_done = ParseStatus::Ongoing(offset + read);
-                  continue;
-                }
-                Err(_) => {
-                  let _ = socket.write(b"HTTP/1.1 400 Bad Request\r\n\r\n");
-                  continue 'events;
-                }
-              },
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break 'events
               }

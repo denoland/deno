@@ -3,6 +3,7 @@
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
+use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 #[cfg(test)]
@@ -303,6 +304,14 @@ impl ToString for RunDescriptor {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SysDescriptor(pub String);
+
+pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
+  match kind {
+    "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
+    | "systemMemoryInfo" | "getUid" | "getGid" => Ok(kind),
+    _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
+  }
+}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FfiDescriptor(pub PathBuf);
@@ -1644,6 +1653,14 @@ impl deno_websocket::WebSocketPermissions for Permissions {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.net.check_url(url, Some(api_name))
+  }
+}
+
+// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
+// change in the future.
+impl deno_napi::NapiPermissions for Permissions {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    self.ffi.check(path)
   }
 }
 

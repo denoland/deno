@@ -5,9 +5,11 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
+use deno_runtime::permissions::parse_sys_kind;
 use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
@@ -1842,15 +1844,9 @@ fn permission_args(app: Command) -> Command {
         .help("Allow access to system info")
         .validator(|keys| {
           for key in keys.split(',') {
-            match key {
-              "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
-              | "systemMemoryInfo" | "getUid" | "getGid" => {}
-              _ => {
-                return Err(format!("unknown system info kind \"{}\"", key));
-              }
-            }
+            parse_sys_kind(key)?;
           }
-          Ok(())
+          Ok::<(), AnyError>(())
         }),
     )
     .arg(

@@ -1255,11 +1255,6 @@ itest!(fix_emittable_skipped {
   output: "run/fix_emittable_skipped.ts.out",
 });
 
-itest!(fix_exotic_specifiers {
-  args: "run --quiet --reload run/fix_exotic_specifiers.ts",
-  output: "run/fix_exotic_specifiers.ts.out",
-});
-
 itest!(fix_js_import_js {
   args: "run --quiet --reload run/fix_js_import_js.ts",
   output: "run/fix_js_import_js.ts.out",
@@ -3376,6 +3371,12 @@ fn broken_stdout() {
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_tail {
+  args: "run error_cause_recursive_tail.ts",
+  output: "error_cause_recursive_tail.ts.out",
   exit_code: 1,
 });
 

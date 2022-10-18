@@ -12,6 +12,8 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_node::NODE_GLOBAL_THIS_NAME;
 use std::fmt::Write;
 
+use crate::cache::NodeAnalysisCache;
+
 static NODE_GLOBALS: &[&str] = &[
   "Buffer",
   "clearImmediate",
@@ -32,18 +34,34 @@ static NODE_GLOBALS: &[&str] = &[
 // `var` decls are taken into consideration.
 
 pub fn esm_code_with_node_globals(
+  analysis_cache: &NodeAnalysisCache,
   specifier: &ModuleSpecifier,
   code: String,
 ) -> Result<String, AnyError> {
-  let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-    specifier: specifier.to_string(),
-    text_info: deno_ast::SourceTextInfo::from_string(code),
-    media_type: deno_ast::MediaType::from(specifier),
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })?;
-  let top_level_decls = analyze_top_level_decls(&parsed_source)?;
+  let source_hash = NodeAnalysisCache::compute_source_hash(&code);
+  let text_info = deno_ast::SourceTextInfo::from_string(code);
+  let top_level_decls = if let Some(decls) =
+    analysis_cache.get_esm_analysis(specifier.as_str(), &source_hash)
+  {
+    HashSet::from_iter(decls)
+  } else {
+    let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
+      specifier: specifier.to_string(),
+      text_info: text_info.clone(),
+      media_type: deno_ast::MediaType::from(specifier),
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })?;
+    let top_level_decls = analyze_top_level_decls(&parsed_source)?;
+    analysis_cache.set_esm_analysis(
+      specifier.as_str(),
+      &source_hash,
+      &top_level_decls.clone().into_iter().collect(),
+    );
+    top_level_decls
+  };
+
   let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
   let has_global_this = top_level_decls.contains("globalThis");
   for global in NODE_GLOBALS.iter() {
@@ -64,7 +82,7 @@ pub fn esm_code_with_node_globals(
     write!(result, "var {0} = {1}.{0};", global, global_this_expr).unwrap();
   }
 
-  let file_text = parsed_source.text_info().text_str();
+  let file_text = text_info.text_str();
   // strip the shebang
   let file_text = if file_text.starts_with("#!/") {
     let start_index = file_text.find('\n').unwrap_or(file_text.len());
@@ -148,6 +166,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "export const x = 1;".to_string(),
     )
@@ -163,6 +182,7 @@ mod tests {
   #[test]
   fn test_esm_code_with_node_globals_with_shebang() {
     let r = esm_code_with_node_globals(
+      &NodeAnalysisCache::new(None),
       &ModuleSpecifier::parse("https://example.com/foo/bar.js").unwrap(),
       "#!/usr/bin/env node\nexport const x = 1;".to_string(),
     )

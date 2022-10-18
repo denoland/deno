@@ -33,7 +33,9 @@
         context: "Argument 1",
       });
       const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
-      return new Cache(cacheId);
+      const cache = webidl.createBranded(Cache);
+      cache[_id] = cacheId;
+      return cache;
     }
 
     async has(cacheName) {
@@ -59,18 +61,20 @@
     }
   }
 
+  const _matchAll = Symbol("[[matchAll]]");
   const _id = Symbol("id");
 
   class Cache {
     /** @type {number} */
     [_id];
 
-    constructor(cacheId) {
-      this[_id] = cacheId;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
     async put(request, response) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'put' on 'Cache'";
       webidl.requiredArguments(arguments.length, 2, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -109,11 +113,9 @@
       // Step 7.
       const varyHeader = getHeader(innerResponse.headerList, "vary");
       if (varyHeader) {
-        const fieldValues = varyHeader.split(",").map((field) => field.trim());
-        for (const fieldValue of fieldValues) {
-          if (
-            fieldValue === "*"
-          ) {
+        const fieldValues = varyHeader.split(",");
+        for (const field of fieldValues) {
+          if (field.trim() === "*") {
             throw new TypeError("Vary header must not contain '*'");
           }
         }
@@ -121,8 +123,10 @@
 
       // Step 8.
       if (innerResponse.body !== null && innerResponse.body.unusable()) {
-        throw new TypeError("Response body must not already used");
+        throw new TypeError("Response body is already used");
       }
+      // acquire lock before async op
+      const reader = innerResponse.body?.stream.getReader();
 
       // Remove fragment from request URL before put.
       reqUrl.hash = "";
@@ -140,17 +144,18 @@
           responseStatusText: innerResponse.statusMessage,
         },
       );
-      if (innerResponse.body) {
-        const reader = innerResponse.body.stream.getReader();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await core.shutdown(rid);
-            core.close(rid);
-            break;
-          } else {
-            await core.write(rid, value);
+      if (reader) {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              await core.shutdown(rid);
+              break;
+            }
+            await core.writeAll(rid, value);
           }
+        } finally {
+          core.close(rid);
         }
       }
       // Step 12-19: TODO(@satyarohith): do the insertion in background.
@@ -158,13 +163,14 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-match */
     async match(request, options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'match' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
         prefix,
         context: "Argument 1",
       });
-      const p = await this.#matchAll(request, options);
+      const p = await this[_matchAll](request, options);
       if (p.length > 0) {
         return p[0];
       } else {
@@ -174,6 +180,7 @@
 
     /** See https://w3c.github.io/ServiceWorker/#cache-delete */
     async delete(request, _options) {
+      webidl.assertBranded(this, CachePrototype);
       const prefix = "Failed to execute 'delete' on 'Cache'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       request = webidl.converters["RequestInfo_DOMString"](request, {
@@ -207,7 +214,7 @@
      *
      * The function will return an array of responses.
      */
-    async #matchAll(request, _options) {
+    async [_matchAll](request, _options) {
       // Step 1.
       let r = null;
       // Step 2.
@@ -272,6 +279,7 @@
   webidl.configurePrototype(CacheStorage);
   webidl.configurePrototype(Cache);
   const CacheStoragePrototype = CacheStorage.prototype;
+  const CachePrototype = Cache.prototype;
 
   let cacheStorage;
   window.__bootstrap.caches = {
