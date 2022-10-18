@@ -5,6 +5,7 @@ use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -125,10 +126,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = tc_scope
-    .get_slot::<Rc<RefCell<ModuleMap>>>()
-    .unwrap()
-    .clone();
+  let module_map = JsRuntime::module_map(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map
@@ -1145,6 +1143,7 @@ mod tests {
   use crate::Extension;
   use crate::JsRuntime;
   use crate::RuntimeOptions;
+  use crate::Snapshot;
   use deno_ops::op;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
@@ -2304,5 +2303,87 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
 
     let _ = runtime.mod_evaluate(side_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+  }
+
+  #[test]
+  fn dynamic_imports_snapshot() {
+    //TODO: Once the issue with the ModuleNamespaceEntryGetter is fixed, we can maintain a reference to the module
+    // and use it when loading the snapshot
+    let snapshot = {
+      const MAIN_WITH_CODE_SRC: &str = r#"
+      await import("./b.js");
+    "#;
+
+      let loader = MockLoader::new();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        will_snapshot: true,
+        ..Default::default()
+      });
+      // In default resolution code should be empty.
+      // Instead we explicitly pass in our own code.
+      // The behavior should be very similar to /a.js.
+      let spec = resolve_url("file:///main_with_code.js").unwrap();
+      let main_id_fut = runtime
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .boxed_local();
+      let main_id = futures::executor::block_on(main_id_fut).unwrap();
+
+      let _ = runtime.mod_evaluate(main_id);
+      futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    //Evaluate the snapshot with an empty function
+    runtime2.execute_script("check.js", "true").unwrap();
+  }
+
+  #[test]
+  fn import_meta_snapshot() {
+    let snapshot = {
+      const MAIN_WITH_CODE_SRC: &str = r#"
+    if (import.meta.url != 'file:///main_with_code.js') throw Error();
+    globalThis.meta = import.meta;
+    globalThis.url = import.meta.url;
+    "#;
+
+      let loader = MockLoader::new();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        will_snapshot: true,
+        ..Default::default()
+      });
+      // In default resolution code should be empty.
+      // Instead we explicitly pass in our own code.
+      // The behavior should be very similar to /a.js.
+      let spec = resolve_url("file:///main_with_code.js").unwrap();
+      let main_id_fut = runtime
+        .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC.to_owned()))
+        .boxed_local();
+      let main_id = futures::executor::block_on(main_id_fut).unwrap();
+
+      let _ = runtime.mod_evaluate(main_id);
+      futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(snapshot);
+    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    runtime2
+      .execute_script(
+        "check.js",
+        "if (globalThis.url !== 'file:///main_with_code.js') throw Error('x')",
+      )
+      .unwrap();
   }
 }

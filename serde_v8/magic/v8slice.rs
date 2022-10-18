@@ -146,6 +146,7 @@ impl From<V8Slice> for bytes::Bytes {
 const V8SLICE_VTABLE: rawbytes::Vtable = rawbytes::Vtable {
   clone: v8slice_clone,
   drop: v8slice_drop,
+  to_vec: v8slice_to_vec,
 };
 
 unsafe fn v8slice_clone(
@@ -159,6 +160,18 @@ unsafe fn v8slice_clone(
   // NOTE: `bytes::Bytes` does bounds checking so we trust its ptr, len inputs
   // and must use them to allow cloning Bytes it has sliced
   rawbytes::RawBytes::new_raw(ptr, len, data.cast(), &V8SLICE_VTABLE)
+}
+
+unsafe fn v8slice_to_vec(
+  data: &rawbytes::AtomicPtr<()>,
+  ptr: *const u8,
+  len: usize,
+) -> Vec<u8> {
+  let rc = Rc::from_raw(*data as *const V8Slice);
+  std::mem::forget(rc);
+  // NOTE: `bytes::Bytes` does bounds checking so we trust its ptr, len inputs
+  // and must use them to allow cloning Bytes it has sliced
+  Vec::from_raw_parts(ptr as _, len, len)
 }
 
 unsafe fn v8slice_drop(

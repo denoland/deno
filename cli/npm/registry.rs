@@ -21,9 +21,10 @@ use serde::Serialize;
 use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::http_cache::CACHE_PERM;
+use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
-use super::version_req::NpmVersionReq;
+use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
@@ -31,6 +32,8 @@ use super::version_req::NpmVersionReq;
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
+  #[serde(rename = "dist-tags")]
+  pub dist_tags: HashMap<String, String>,
 }
 
 pub struct NpmDependencyEntry {
@@ -39,7 +42,7 @@ pub struct NpmDependencyEntry {
   pub version_req: NpmVersionReq,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -89,7 +92,7 @@ impl NpmPackageVersionInfo {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
@@ -102,8 +105,8 @@ pub struct NpmRegistryApi {
   base_url: Url,
   cache: NpmCache,
   mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
-  reload: bool,
   cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
 }
 
 impl NpmRegistryApi {
@@ -127,25 +130,17 @@ impl NpmRegistryApi {
   }
 
   pub fn new(
-    cache: NpmCache,
-    reload: bool,
-    cache_setting: CacheSetting,
-  ) -> Self {
-    Self::from_base(Self::default_url(), cache, reload, cache_setting)
-  }
-
-  pub fn from_base(
     base_url: Url,
     cache: NpmCache,
-    reload: bool,
     cache_setting: CacheSetting,
+    progress_bar: ProgressBar,
   ) -> Self {
     Self {
       base_url,
       cache,
       mem_cache: Default::default(),
-      reload,
       cache_setting,
+      progress_bar,
     }
   }
 
@@ -173,7 +168,7 @@ impl NpmRegistryApi {
       Ok(info)
     } else {
       let mut maybe_package_info = None;
-      if !self.reload {
+      if self.cache_setting.should_use_for_npm_package(name) {
         // attempt to load from the file cache
         maybe_package_info = self.load_file_cached_package_info(name);
       }
@@ -231,7 +226,20 @@ impl NpmRegistryApi {
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(err.into()),
     };
-    Ok(serde_json::from_str(&file_text)?)
+    match serde_json::from_str(&file_text) {
+      Ok(package_info) => Ok(Some(package_info)),
+      Err(err) => {
+        // This scenario might mean we need to load more data from the
+        // npm registry than before. So, just debug log while in debug
+        // rather than panic.
+        log::debug!(
+          "error deserializing registry.json for '{}'. Reloading. {:?}",
+          name,
+          err
+        );
+        Ok(None)
+      }
+    }
   }
 
   fn save_package_info_to_file_cache(
@@ -279,13 +287,7 @@ impl NpmRegistryApi {
     }
 
     let package_url = self.get_package_url(name);
-
-    log::log!(
-      log::Level::Info,
-      "{} {}",
-      colors::green("Download"),
-      package_url,
-    );
+    let _guard = self.progress_bar.update(package_url.as_str());
 
     let response = match reqwest::get(package_url).await {
       Ok(response) => response,

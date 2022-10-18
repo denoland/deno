@@ -3,7 +3,6 @@
 use crate::args::Flags;
 use crate::colors;
 use crate::file_fetcher::get_source_from_data_url;
-use crate::fmt_errors::format_js_error;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
@@ -25,6 +24,7 @@ use deno_graph::source::Resolver;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
@@ -276,6 +276,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -283,6 +284,7 @@ pub async fn run(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: metadata.unstable,
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions: ops::cli_exts(ps.clone()),
     unsafely_ignore_certificate_errors: metadata
@@ -299,6 +301,7 @@ pub async fn run(
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,

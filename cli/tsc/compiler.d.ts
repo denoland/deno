@@ -77,7 +77,8 @@ declare global {
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
-    | ProvideCallHierarchyOutgoingCalls;
+    | ProvideCallHierarchyOutgoingCalls
+    | ProvideInlayHints;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -253,6 +254,13 @@ declare global {
     method: "provideCallHierarchyOutgoingCalls";
     specifier: string;
     position: number;
+  }
+
+  interface ProvideInlayHints extends BaseLanguageServerRequest {
+    method: "provideInlayHints";
+    specifier: string;
+    span: ts.TextSpan;
+    preferences?: ts.UserPreferences;
   }
 
   interface Restart extends BaseLanguageServerRequest {

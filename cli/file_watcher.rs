@@ -1,16 +1,15 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::fmt_errors::format_js_error;
 use crate::fs_util::canonicalize_path;
 
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
+use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
-use notify::Config;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
@@ -344,8 +343,8 @@ where
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let mut watcher: RecommendedWatcher =
-    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
+  let watcher = Watcher::new(
+    move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
         if matches!(
           event.kind,
@@ -359,9 +358,9 @@ fn new_watcher(
           sender.send(paths).unwrap();
         }
       }
-    })?;
-
-  watcher.configure(Config::PreciseEvents(true)).unwrap();
+    },
+    Default::default(),
+  )?;
 
   Ok(watcher)
 }

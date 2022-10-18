@@ -81,11 +81,10 @@ impl GraphData {
         continue;
       }
       if specifier.scheme() == "npm" {
-        // the loader enforces npm specifiers are valid, so it's ok to unwrap here
-        let reference =
-          NpmPackageReference::from_specifier(&specifier).unwrap();
-        self.npm_packages.insert(reference.req);
-        continue;
+        if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+          self.npm_packages.insert(reference.req);
+          continue;
+        }
       }
       if let Some(found) = graph.redirects.get(&specifier) {
         let module_entry = ModuleEntry::Redirect(found.clone());
@@ -439,20 +438,6 @@ impl GraphData {
       return Some(&graph_import.dependencies);
     }
     None
-  }
-
-  // TODO(bartlomieju): after saving translated source
-  // it's never removed, potentially leading to excessive
-  // memory consumption
-  pub fn add_cjs_esm_translation(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    source: String,
-  ) {
-    let prev = self
-      .cjs_esm_translations
-      .insert(specifier.to_owned(), source);
-    assert!(prev.is_none());
   }
 
   pub fn get_cjs_esm_translation<'a>(

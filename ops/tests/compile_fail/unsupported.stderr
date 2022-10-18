@@ -15,17 +15,25 @@ error: custom attribute panicked
    = help: message: op cannot be a fast api. enforced by #[op(fast)]
 
 error: custom attribute panicked
-  --> tests/compile_fail/unsupported.rs:15:1
+  --> tests/compile_fail/unsupported.rs:17:1
    |
-15 | #[op(fast)]
+17 | #[op(fast)]
    | ^^^^^^^^^^^
    |
    = help: message: op cannot be a fast api. enforced by #[op(fast)]
 
 error: custom attribute panicked
-  --> tests/compile_fail/unsupported.rs:20:1
+  --> tests/compile_fail/unsupported.rs:22:1
    |
-20 | #[op(fast)]
+22 | #[op(fast)]
    | ^^^^^^^^^^^
    |
    = help: message: async op cannot be a fast api. enforced by #[op(fast)]
+
+warning: unused import: `deno_core::v8::fast_api::FastApiCallbackOptions`
+  --> tests/compile_fail/unsupported.rs:15:5
+   |
+15 | use deno_core::v8::fast_api::FastApiCallbackOptions;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default

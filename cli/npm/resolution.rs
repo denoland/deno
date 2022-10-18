@@ -2,25 +2,32 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::RwLock;
+use serde::Deserialize;
+use serde::Serialize;
 
+use super::cache::should_sync_download;
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
-use super::version_req::SpecifierVersionReq;
+use super::semver::NpmVersion;
+use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
-/// the one used by npm packages.
+/// the one used by npm packages and so we represent either via a trait.
 pub trait NpmVersionMatcher {
-  fn matches(&self, version: &semver::Version) -> bool;
+  fn tag(&self) -> Option<&str>;
+  fn matches(&self, version: &NpmVersion) -> bool;
   fn version_text(&self) -> String;
 }
 
@@ -47,7 +54,7 @@ impl NpmPackageReference {
     let parts = specifier.split('/').collect::<Vec<_>>();
     let name_part_len = if specifier.starts_with('@') { 2 } else { 1 };
     if parts.len() < name_part_len {
-      bail!("Not a valid package: {}", specifier);
+      return Err(generic_error(format!("Not a valid package: {}", specifier)));
     }
     let name_parts = &parts[0..name_part_len];
     let last_name_part = &name_parts[name_part_len - 1];
@@ -71,6 +78,18 @@ impl NpmPackageReference {
     } else {
       Some(parts[name_part_len..].join("/"))
     };
+
+    if let Some(sub_path) = &sub_path {
+      if let Some(at_index) = sub_path.rfind('@') {
+        let (new_sub_path, version) = sub_path.split_at(at_index);
+        let msg = format!(
+          "Invalid package specifier 'npm:{}/{}'. Did you mean to write 'npm:{}{}/{}'?",
+          name, sub_path, name, version, new_sub_path
+        );
+        return Err(generic_error(msg));
+      }
+    }
+
     Ok(NpmPackageReference {
       req: NpmPackageReq { name, version_req },
       sub_path,
@@ -88,7 +107,9 @@ impl std::fmt::Display for NpmPackageReference {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+  Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct NpmPackageReq {
   pub name: String,
   pub version_req: Option<SpecifierVersionReq>,
@@ -104,9 +125,22 @@ impl std::fmt::Display for NpmPackageReq {
 }
 
 impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &semver::Version) -> bool {
+  fn tag(&self) -> Option<&str> {
     match &self.version_req {
-      Some(req) => req.matches(version),
+      Some(version_req) => version_req.tag(),
+      None => Some("latest"),
+    }
+  }
+
+  fn matches(&self, version: &NpmVersion) -> bool {
+    match self.version_req.as_ref() {
+      Some(req) => {
+        assert_eq!(self.tag(), None);
+        match req.range() {
+          Some(range) => range.satisfies(version),
+          None => false,
+        }
+      }
       None => version.pre.is_empty(),
     }
   }
@@ -120,10 +154,12 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(
+  Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
 pub struct NpmPackageId {
   pub name: String,
-  pub version: semver::Version,
+  pub version: NpmVersion,
 }
 
 impl NpmPackageId {
@@ -143,7 +179,7 @@ impl std::fmt::Display for NpmPackageId {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmResolutionPackage {
   pub id: NpmPackageId,
   pub dist: NpmPackageVersionDistInfo,
@@ -152,11 +188,52 @@ pub struct NpmResolutionPackage {
   pub dependencies: HashMap<String, NpmPackageId>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
-  package_reqs: HashMap<NpmPackageReq, semver::Version>,
-  packages_by_name: HashMap<String, Vec<semver::Version>>,
+  #[serde(with = "map_to_vec")]
+  package_reqs: HashMap<NpmPackageReq, NpmVersion>,
+  packages_by_name: HashMap<String, Vec<NpmVersion>>,
+  #[serde(with = "map_to_vec")]
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+}
+
+// This is done so the maps with non-string keys get serialized and deserialized as vectors.
+// Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
+mod map_to_vec {
+  use std::collections::HashMap;
+
+  use serde::de::Deserialize;
+  use serde::de::Deserializer;
+  use serde::ser::Serializer;
+  use serde::Serialize;
+
+  pub fn serialize<S, K: Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.collect_seq(map.iter())
+  }
+
+  pub fn deserialize<
+    'de,
+    D,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+  >(
+    deserializer: D,
+  ) -> Result<HashMap<K, V>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let mut map = HashMap::new();
+    for (key, value) in Vec::<(K, V)>::deserialize(deserializer)? {
+      map.insert(key, value);
+    }
+    Ok(map)
+  }
 }
 
 impl NpmResolutionSnapshot {
@@ -177,6 +254,26 @@ impl NpmResolutionSnapshot {
       ),
       None => bail!("could not find npm package directory for '{}'", req),
     }
+  }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .package_reqs
+      .iter()
+      .map(|(req, version)| NpmPackageId {
+        name: req.name.clone(),
+        version: version.clone(),
+      })
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>()
+  }
+
+  pub fn package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<&NpmResolutionPackage> {
+    self.packages.get(id)
   }
 
   pub fn resolve_package_from_package(
@@ -230,8 +327,8 @@ impl NpmResolutionSnapshot {
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<semver::Version> {
-    let mut maybe_best_version: Option<&semver::Version> = None;
+  ) -> Option<NpmVersion> {
+    let mut maybe_best_version: Option<&NpmVersion> = None;
     if let Some(versions) = self.packages_by_name.get(name) {
       for version in versions {
         if version_matcher.matches(version) {
@@ -265,20 +362,23 @@ impl std::fmt::Debug for NpmResolution {
 }
 
 impl NpmResolution {
-  pub fn new(api: NpmRegistryApi) -> Self {
+  pub fn new(
+    api: NpmRegistryApi,
+    initial_snapshot: Option<NpmResolutionSnapshot>,
+  ) -> Self {
     Self {
       api,
-      snapshot: Default::default(),
+      snapshot: RwLock::new(initial_snapshot.unwrap_or_default()),
       update_sempahore: tokio::sync::Semaphore::new(1),
     }
   }
 
   pub async fn add_package_reqs(
     &self,
-    mut packages: Vec<NpmPackageReq>,
+    mut package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
     // multiple packages are resolved in alphabetical order
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
     // only allow one thread in here at a time
     let _permit = self.update_sempahore.acquire().await.unwrap();
@@ -287,29 +387,47 @@ impl NpmResolution {
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
-    for package_ref in packages {
-      if snapshot.package_reqs.contains_key(&package_ref) {
+    let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
+    for package_req in package_reqs {
+      if snapshot.package_reqs.contains_key(&package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
       }
       // inspect the list of current packages
       if let Some(version) =
-        snapshot.resolve_best_package_version(&package_ref.name, &package_ref)
+        snapshot.resolve_best_package_version(&package_req.name, &package_req)
       {
-        snapshot.package_reqs.insert(package_ref, version);
+        snapshot.package_reqs.insert(package_req, version);
         continue; // done, no need to continue
       }
 
       // no existing best version, so resolve the current packages
-      let info = self.api.package_info(&package_ref.name).await?;
+      let api = self.api.clone();
+      let maybe_info = if should_sync_download() {
+        // for deterministic test output
+        Some(api.package_info(&package_req.name).await)
+      } else {
+        None
+      };
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = match maybe_info {
+          Some(info) => info?,
+          None => api.package_info(&package_req.name).await?,
+        };
+        Result::<_, AnyError>::Ok((package_req, info))
+      }));
+    }
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_req, info) = result??;
       let version_and_info = get_resolved_package_version_and_info(
-        &package_ref.name,
-        &package_ref,
+        &package_req.name,
+        &package_req,
         info,
         None,
       )?;
       let id = NpmPackageId {
-        name: package_ref.name.clone(),
+        name: package_req.name.clone(),
         version: version_and_info.version.clone(),
       };
       let dependencies = version_and_info
@@ -328,12 +446,12 @@ impl NpmResolution {
       );
       snapshot
         .packages_by_name
-        .entry(package_ref.name.clone())
+        .entry(package_req.name.clone())
         .or_default()
         .push(version_and_info.version.clone());
       snapshot
         .package_reqs
-        .insert(package_ref, version_and_info.version);
+        .insert(package_req, version_and_info.version);
     }
 
     // now go down through the dependencies by tree depth
@@ -350,9 +468,8 @@ impl NpmResolution {
         ordering => ordering,
       });
 
-      // cache all the dependencies' registry infos in parallel when this env var isn't set
-      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
-      {
+      // cache all the dependencies' registry infos in parallel if should
+      if !should_sync_download() {
         let handles = deps
           .iter()
           .map(|dep| {
@@ -472,7 +589,7 @@ impl NpmResolution {
 
 #[derive(Clone)]
 struct VersionAndInfo {
-  version: semver::Version,
+  version: NpmVersion,
   info: NpmPackageVersionInfo,
 }
 
@@ -483,18 +600,40 @@ fn get_resolved_package_version_and_info(
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
-  for (_, version_info) in info.versions.into_iter() {
-    let version = semver::Version::parse(&version_info.version)?;
-    if version_matcher.matches(&version) {
-      let is_best_version = maybe_best_version
-        .as_ref()
-        .map(|best_version| best_version.version.cmp(&version).is_lt())
-        .unwrap_or(true);
-      if is_best_version {
-        maybe_best_version = Some(VersionAndInfo {
-          version,
-          info: version_info,
-        });
+  if let Some(tag) = version_matcher.tag() {
+    if let Some(version) = info.dist_tags.get(tag) {
+      match info.versions.get(version) {
+        Some(info) => {
+          return Ok(VersionAndInfo {
+            version: NpmVersion::parse(version)?,
+            info: info.clone(),
+          });
+        }
+        None => {
+          bail!(
+            "Could not find version '{}' referenced in dist-tag '{}'.",
+            version,
+            tag,
+          )
+        }
+      }
+    } else {
+      bail!("Could not find dist-tag '{}'.", tag,)
+    }
+  } else {
+    for (_, version_info) in info.versions.into_iter() {
+      let version = NpmVersion::parse(&version_info.version)?;
+      if version_matcher.matches(&version) {
+        let is_best_version = maybe_best_version
+          .as_ref()
+          .map(|best_version| best_version.version.cmp(&version).is_lt())
+          .unwrap_or(true);
+        if is_best_version {
+          maybe_best_version = Some(VersionAndInfo {
+            version,
+            info: version_info,
+          });
+        }
       }
     }
   }
@@ -513,7 +652,7 @@ fn get_resolved_package_version_and_info(
     None => bail!(
       concat!(
         "Could not find npm package '{}' matching {}{}. ",
-        "Try retreiving the latest npm package information by running with --reload",
+        "Try retrieving the latest npm package information by running with --reload",
       ),
       pkg_name,
       version_matcher.version_text(),
@@ -649,5 +788,54 @@ mod tests {
     assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
     assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
     assert_eq!(name_without_path("@hello"), "@hello");
+  }
+
+  #[test]
+  fn test_get_resolved_package_version_and_info() {
+    // dist tag where version doesn't exist
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::new(),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(
+      result.err().unwrap().to_string(),
+      "Could not find version '1.0.0-alpha' referenced in dist-tag 'latest'."
+    );
+
+    // dist tag where version is a pre-release
+    let package_ref = NpmPackageReference::from_str("npm:test").unwrap();
+    let result = get_resolved_package_version_and_info(
+      "test",
+      &package_ref.req,
+      NpmPackageInfo {
+        name: "test".to_string(),
+        versions: HashMap::from([
+          ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
+          (
+            "1.0.0-alpha".to_string(),
+            NpmPackageVersionInfo {
+              version: "0.1.0-alpha".to_string(),
+              ..Default::default()
+            },
+          ),
+        ]),
+        dist_tags: HashMap::from([(
+          "latest".to_string(),
+          "1.0.0-alpha".to_string(),
+        )]),
+      },
+      None,
+    );
+    assert_eq!(result.unwrap().version.to_string(), "1.0.0-alpha");
   }
 }

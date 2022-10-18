@@ -35,7 +35,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use crate::args::config_file::JsxImportSourceConfig;
-use crate::compat;
 use crate::deno_dir::DenoDir;
 use crate::emit::get_ts_config_for_emit;
 use crate::emit::TsConfigType;
@@ -43,6 +42,7 @@ use crate::emit::TsConfigWithIgnoredOptions;
 use crate::emit::TsTypeLib;
 use crate::file_fetcher::get_root_cert_store;
 use crate::file_fetcher::CacheSetting;
+use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::version;
 
@@ -147,6 +147,24 @@ impl CliOptions {
     self.overrides.import_map_specifier = Some(path);
   }
 
+  /// Resolves the path to use for a local node_modules folder.
+  pub fn resolve_local_node_modules_folder(
+    &self,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let path = if !self.flags.node_modules_dir {
+      return Ok(None);
+    } else if let Some(config_path) = self
+      .maybe_config_file
+      .as_ref()
+      .and_then(|c| c.specifier.to_file_path().ok())
+    {
+      config_path.parent().unwrap().join("node_modules")
+    } else {
+      std::env::current_dir()?.join("node_modules")
+    };
+    Ok(Some(fs_util::canonicalize_path_maybe_not_exists(&path)?))
+  }
+
   pub fn resolve_root_cert_store(&self) -> Result<RootCertStore, AnyError> {
     get_root_cert_store(
       None,
@@ -230,9 +248,6 @@ impl CliOptions {
         imports.extend(config_imports);
       }
     }
-    if self.flags.compat {
-      imports.extend(compat::get_node_imports());
-    }
     if imports.is_empty() {
       Ok(None)
     } else {
@@ -275,10 +290,6 @@ impl CliOptions {
       .as_ref()
       .map(|cf| cf.get_check_js())
       .unwrap_or(false)
-  }
-
-  pub fn compat(&self) -> bool {
-    self.flags.compat
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -337,6 +348,10 @@ impl CliOptions {
 
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
+  }
+
+  pub fn no_npm(&self) -> bool {
+    self.flags.no_npm
   }
 
   pub fn permissions_options(&self) -> PermissionsOptions {
@@ -405,6 +420,10 @@ fn resolve_import_map_specifier(
     // and with config files, we support both local and remote config files,
     // so we have treat them differently.
     if let Some(import_map_path) = config_file.to_import_map_path() {
+      // if the import map is an absolute URL, use it as is
+      if let Ok(specifier) = deno_core::resolve_url(&import_map_path) {
+        return Ok(Some(specifier));
+      }
       let specifier =
           // with local config files, it might be common to specify an import
           // map like `"importMap": "import-map.json"`, which is resolvable if
@@ -453,6 +472,25 @@ mod test {
     assert_eq!(
       actual,
       Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap())
+    );
+  }
+
+  #[test]
+  fn resolve_import_map_remote_config_file_local() {
+    let config_text = r#"{
+      "importMap": "https://example.com/import_map.json"
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(
+      actual,
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 

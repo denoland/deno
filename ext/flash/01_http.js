@@ -10,7 +10,7 @@
   const {
     ReadableStream,
     ReadableStreamPrototype,
-    getReadableStreamRid,
+    getReadableStreamResourceBacking,
     readableStreamClose,
     _state,
   } = window.__bootstrap.streams;
@@ -32,6 +32,7 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    Promise,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
@@ -111,7 +112,6 @@
 
   let dateInterval;
   let date;
-  let stringResources = {};
 
   // Construct an HTTP response message.
   // All HTTP/1.1 messages consist of a start-line followed by a sequence
@@ -122,7 +122,14 @@
   //    CRLF
   //    [ message-body ]
   //
-  function http1Response(method, status, headerList, body, earlyEnd = false) {
+  function http1Response(
+    method,
+    status,
+    headerList,
+    body,
+    bodyLen,
+    earlyEnd = false,
+  ) {
     // HTTP uses a "<major>.<minor>" numbering scheme
     //   HTTP-version  = HTTP-name "/" DIGIT "." DIGIT
     //   HTTP-name     = %x48.54.54.50 ; "HTTP", case-sensitive
@@ -145,7 +152,8 @@
     }
 
     // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
-    if (status == 204 && status <= 100) {
+    if (status === 204 || status < 200) {
+      str += "\r\n";
       return str;
     }
 
@@ -155,7 +163,7 @@
 
     // null body status is validated by inititalizeAResponse in ext/fetch
     if (body !== null && body !== undefined) {
-      str += `Content-Length: ${body.length}\r\n\r\n`;
+      str += `Content-Length: ${bodyLen}\r\n\r\n`;
     } else {
       str += "Transfer-Encoding: chunked\r\n\r\n";
       return str;
@@ -186,6 +194,226 @@
     // because browsers in Windows don't resolve "0.0.0.0".
     // See the discussion in https://github.com/denoland/deno_std/issues/1165
     return hostname === "0.0.0.0" ? "localhost" : hostname;
+  }
+
+  function writeFixedResponse(
+    server,
+    requestId,
+    response,
+    responseLen,
+    end,
+    respondFast,
+  ) {
+    let nwritten = 0;
+    // TypedArray
+    if (typeof response !== "string") {
+      nwritten = respondFast(requestId, response, end);
+    } else {
+      // string
+      nwritten = core.ops.op_flash_respond(
+        server,
+        requestId,
+        response,
+        end,
+      );
+    }
+
+    if (nwritten < responseLen) {
+      core.opAsync(
+        "op_flash_respond_async",
+        server,
+        requestId,
+        response.slice(nwritten),
+        end,
+      );
+    }
+  }
+
+  // TODO(@littledivy): Woah woah, cut down the number of arguments.
+  async function handleResponse(
+    req,
+    resp,
+    body,
+    hasBody,
+    method,
+    serverId,
+    i,
+    respondFast,
+    respondChunked,
+  ) {
+    // there might've been an HTTP upgrade.
+    if (resp === undefined) {
+      return;
+    }
+    const innerResp = toInnerResponse(resp);
+    // If response body length is known, it will be sent synchronously in a
+    // single op, in other case a "response body" resource will be created and
+    // we'll be streaming it.
+    /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+    let respBody = null;
+    let isStreamingResponseBody = false;
+    if (innerResp.body !== null) {
+      if (typeof innerResp.body.streamOrStatic?.body === "string") {
+        if (innerResp.body.streamOrStatic.consumed === true) {
+          throw new TypeError("Body is unusable.");
+        }
+        innerResp.body.streamOrStatic.consumed = true;
+        respBody = innerResp.body.streamOrStatic.body;
+        isStreamingResponseBody = false;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(
+          ReadableStreamPrototype,
+          innerResp.body.streamOrStatic,
+        )
+      ) {
+        if (innerResp.body.unusable()) {
+          throw new TypeError("Body is unusable.");
+        }
+        if (
+          innerResp.body.length === null ||
+          ObjectPrototypeIsPrototypeOf(
+            BlobPrototype,
+            innerResp.body.source,
+          )
+        ) {
+          respBody = innerResp.body.stream;
+        } else {
+          const reader = innerResp.body.stream.getReader();
+          const r1 = await reader.read();
+          if (r1.done) {
+            respBody = new Uint8Array(0);
+          } else {
+            respBody = r1.value;
+            const r2 = await reader.read();
+            if (!r2.done) throw new TypeError("Unreachable");
+          }
+        }
+        isStreamingResponseBody = !(
+          typeof respBody === "string" ||
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
+        );
+      } else {
+        if (innerResp.body.streamOrStatic.consumed === true) {
+          throw new TypeError("Body is unusable.");
+        }
+        innerResp.body.streamOrStatic.consumed = true;
+        respBody = innerResp.body.streamOrStatic.body;
+      }
+    } else {
+      respBody = new Uint8Array(0);
+    }
+
+    const ws = resp[_ws];
+    if (isStreamingResponseBody === false) {
+      const length = respBody.byteLength || core.byteLength(respBody);
+      const responseStr = http1Response(
+        method,
+        innerResp.status ?? 200,
+        innerResp.headerList,
+        respBody,
+        length,
+      );
+      writeFixedResponse(
+        serverId,
+        i,
+        responseStr,
+        length,
+        !ws, // Don't close socket if there is a deferred websocket upgrade.
+        respondFast,
+      );
+    }
+
+    (async () => {
+      if (!ws) {
+        if (hasBody && body[_state] !== "closed") {
+          // TODO(@littledivy): Optimize by draining in a single op.
+          try {
+            await req.arrayBuffer();
+          } catch { /* pass */ }
+        }
+      }
+
+      if (isStreamingResponseBody === true) {
+        const resourceBacking = getReadableStreamResourceBacking(respBody);
+        if (resourceBacking) {
+          if (respBody.locked) {
+            throw new TypeError("ReadableStream is locked.");
+          }
+          const reader = respBody.getReader(); // Aquire JS lock.
+          try {
+            core.opAsync(
+              "op_flash_write_resource",
+              http1Response(
+                method,
+                innerResp.status ?? 200,
+                innerResp.headerList,
+                0, // Content-Length will be set by the op.
+                null,
+                true,
+              ),
+              serverId,
+              i,
+              resourceBacking.rid,
+              resourceBacking.autoClose,
+            ).then(() => {
+              // Release JS lock.
+              readableStreamClose(respBody);
+            });
+          } catch (error) {
+            await reader.cancel(error);
+            throw error;
+          }
+        } else {
+          const reader = respBody.getReader();
+          writeFixedResponse(
+            serverId,
+            i,
+            http1Response(
+              method,
+              innerResp.status ?? 200,
+              innerResp.headerList,
+              respBody.byteLength,
+              null,
+            ),
+            respBody.byteLength,
+            false,
+            respondFast,
+          );
+          while (true) {
+            const { value, done } = await reader.read();
+            await respondChunked(
+              i,
+              value,
+              done,
+            );
+            if (done) break;
+          }
+        }
+      }
+
+      if (ws) {
+        const wsRid = await core.opAsync(
+          "op_flash_upgrade_websocket",
+          serverId,
+          i,
+        );
+        ws[_rid] = wsRid;
+        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+        ws[_readyState] = WebSocket.OPEN;
+        const event = new Event("open");
+        ws.dispatchEvent(event);
+
+        ws[_eventLoop]();
+        if (ws[_idleTimeoutDuration]) {
+          ws.addEventListener(
+            "close",
+            () => clearTimeout(ws[_idleTimeoutTimeout]),
+          );
+        }
+        ws[_serverHandleIdleTimeout]();
+      }
+    })();
   }
 
   async function serve(arg1, arg2) {
@@ -233,6 +461,7 @@
     const listenOpts = {
       hostname: options.hostname ?? "127.0.0.1",
       port: options.port ?? 9000,
+      reuseport: options.reusePort ?? false,
     };
     if (options.cert || options.key) {
       if (!options.cert || !options.key) {
@@ -314,205 +543,38 @@
 
             let resp;
             try {
-              resp = await handler(req);
+              resp = handler(req);
+              if (resp instanceof Promise || typeof resp?.then === "function") {
+                resp.then((resp) =>
+                  handleResponse(
+                    req,
+                    resp,
+                    body,
+                    hasBody,
+                    method,
+                    serverId,
+                    i,
+                    respondFast,
+                    respondChunked,
+                  )
+                ).catch(onError);
+                continue;
+              }
             } catch (e) {
               resp = await onError(e);
             }
-            // there might've been an HTTP upgrade.
-            if (resp === undefined) {
-              continue;
-            }
-            const innerResp = toInnerResponse(resp);
 
-            // If response body length is known, it will be sent synchronously in a
-            // single op, in other case a "response body" resource will be created and
-            // we'll be streaming it.
-            /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
-            let respBody = null;
-            let isStreamingResponseBody = false;
-            if (innerResp.body !== null) {
-              if (typeof innerResp.body.streamOrStatic?.body === "string") {
-                if (innerResp.body.streamOrStatic.consumed === true) {
-                  throw new TypeError("Body is unusable.");
-                }
-                innerResp.body.streamOrStatic.consumed = true;
-                respBody = innerResp.body.streamOrStatic.body;
-                isStreamingResponseBody = false;
-              } else if (
-                ObjectPrototypeIsPrototypeOf(
-                  ReadableStreamPrototype,
-                  innerResp.body.streamOrStatic,
-                )
-              ) {
-                if (innerResp.body.unusable()) {
-                  throw new TypeError("Body is unusable.");
-                }
-                if (
-                  innerResp.body.length === null ||
-                  ObjectPrototypeIsPrototypeOf(
-                    BlobPrototype,
-                    innerResp.body.source,
-                  )
-                ) {
-                  respBody = innerResp.body.stream;
-                } else {
-                  const reader = innerResp.body.stream.getReader();
-                  const r1 = await reader.read();
-                  if (r1.done) {
-                    respBody = new Uint8Array(0);
-                  } else {
-                    respBody = r1.value;
-                    const r2 = await reader.read();
-                    if (!r2.done) throw new TypeError("Unreachable");
-                  }
-                }
-                isStreamingResponseBody = !(
-                  typeof respBody === "string" ||
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, respBody)
-                );
-              } else {
-                if (innerResp.body.streamOrStatic.consumed === true) {
-                  throw new TypeError("Body is unusable.");
-                }
-                innerResp.body.streamOrStatic.consumed = true;
-                respBody = innerResp.body.streamOrStatic.body;
-              }
-            } else {
-              respBody = new Uint8Array(0);
-            }
-
-            const ws = resp[_ws];
-            if (isStreamingResponseBody === false) {
-              const responseStr = http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                respBody,
-              );
-
-              // TypedArray
-              if (typeof responseStr !== "string") {
-                respondFast(i, responseStr, !ws);
-              } else {
-                // string
-                const maybeResponse = stringResources[responseStr];
-                if (maybeResponse === undefined) {
-                  stringResources[responseStr] = core.encode(responseStr);
-                  core.ops.op_flash_respond(
-                    serverId,
-                    i,
-                    stringResources[responseStr],
-                    null,
-                    !ws, // Don't close socket if there is a deferred websocket upgrade.
-                  );
-                } else {
-                  respondFast(i, maybeResponse, !ws);
-                }
-              }
-            }
-
-            (async () => {
-              if (!ws) {
-                if (hasBody && body[_state] !== "closed") {
-                  // TODO(@littledivy): Optimize by draining in a single op.
-                  try {
-                    await req.arrayBuffer();
-                  } catch { /* pass */ }
-                }
-              }
-
-              if (isStreamingResponseBody === true) {
-                const resourceRid = getReadableStreamRid(respBody);
-                if (resourceRid) {
-                  if (respBody.locked) {
-                    throw new TypeError("ReadableStream is locked.");
-                  }
-                  const reader = respBody.getReader(); // Aquire JS lock.
-                  try {
-                    core.opAsync(
-                      "op_flash_write_resource",
-                      http1Response(
-                        method,
-                        innerResp.status ?? 200,
-                        innerResp.headerList,
-                        null,
-                        true,
-                      ),
-                      serverId,
-                      i,
-                      resourceRid,
-                    ).then(() => {
-                      // Release JS lock.
-                      readableStreamClose(respBody);
-                    });
-                  } catch (error) {
-                    await reader.cancel(error);
-                    throw error;
-                  }
-                } else {
-                  const reader = respBody.getReader();
-                  let first = true;
-                  a:
-                  while (true) {
-                    const { value, done } = await reader.read();
-                    if (first) {
-                      first = false;
-                      core.ops.op_flash_respond(
-                        serverId,
-                        i,
-                        http1Response(
-                          method,
-                          innerResp.status ?? 200,
-                          innerResp.headerList,
-                          null,
-                        ),
-                        value ?? new Uint8Array(),
-                        false,
-                      );
-                    } else {
-                      if (value === undefined) {
-                        core.ops.op_flash_respond_chuncked(
-                          serverId,
-                          i,
-                          undefined,
-                          done,
-                        );
-                      } else {
-                        respondChunked(
-                          i,
-                          value,
-                          done,
-                        );
-                      }
-                    }
-                    if (done) break a;
-                  }
-                }
-              }
-
-              if (ws) {
-                const wsRid = await core.opAsync(
-                  "op_flash_upgrade_websocket",
-                  serverId,
-                  i,
-                );
-                ws[_rid] = wsRid;
-                ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-                ws[_readyState] = WebSocket.OPEN;
-                const event = new Event("open");
-                ws.dispatchEvent(event);
-
-                ws[_eventLoop]();
-                if (ws[_idleTimeoutDuration]) {
-                  ws.addEventListener(
-                    "close",
-                    () => clearTimeout(ws[_idleTimeoutTimeout]),
-                  );
-                }
-                ws[_serverHandleIdleTimeout]();
-              }
-            })().catch(onError);
+            handleResponse(
+              req,
+              resp,
+              body,
+              hasBody,
+              method,
+              serverId,
+              i,
+              respondFast,
+              respondChunked,
+            );
           }
 
           offset += tokens;
@@ -528,18 +590,24 @@
       once: true,
     });
 
+    function respondChunked(token, chunk, shutdown) {
+      return core.opAsync(
+        "op_flash_respond_chuncked",
+        serverId,
+        token,
+        chunk,
+        shutdown,
+      );
+    }
+
     const fastOp = prepareFastCalls();
     let nextRequestSync = () => fastOp.nextRequest();
     let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondChunked = (token, chunk, shutdown) =>
-      fastOp.respondChunked(token, chunk, shutdown);
     let respondFast = (token, response, shutdown) =>
       fastOp.respond(token, response, shutdown);
     if (serverId > 0) {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
-      respondChunked = (token, chunk, shutdown) =>
-        core.ops.op_flash_respond_chuncked(serverId, token, chunk, shutdown);
       respondFast = (token, response, shutdown) =>
         core.ops.op_flash_respond(serverId, token, response, null, shutdown);
     }
@@ -548,7 +616,6 @@
       date = new Date().toUTCString();
       dateInterval = setInterval(() => {
         date = new Date().toUTCString();
-        stringResources = {};
       }, 1000);
     }
 

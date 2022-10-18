@@ -5,7 +5,6 @@ mod auth_tokens;
 mod cache;
 mod cdp;
 mod checksum;
-mod compat;
 mod deno_dir;
 mod deno_std;
 mod diagnostics;
@@ -15,7 +14,6 @@ mod emit;
 mod errors;
 mod file_fetcher;
 mod file_watcher;
-mod fmt_errors;
 mod fs_util;
 mod graph_util;
 mod http_cache;
@@ -24,10 +22,12 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod node;
 mod npm;
 mod ops;
 mod proc_state;
+mod progress_bar;
 mod resolver;
 mod standalone;
 mod text_encoding;
@@ -67,12 +67,12 @@ use crate::cache::TypeCheckCache;
 use crate::emit::TsConfigType;
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors::format_js_error;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
 use args::CliOptions;
 use deno_ast::MediaType;
@@ -88,6 +88,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::run_local;
 use log::debug;
@@ -133,6 +134,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
+  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
@@ -149,6 +151,7 @@ fn print_cache_info(
     let mut output = json!({
       "denoDir": deno_dir,
       "modulesCache": modules_cache,
+      "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
       "originStorage": origin_dir,
@@ -169,6 +172,11 @@ fn print_cache_info(
       "{} {}",
       colors::bold("Remote modules cache:"),
       modules_cache.display()
+    );
+    println!(
+      "{} {}",
+      colors::bold("npm modules cache:"),
+      npm_cache.display()
     );
     println!(
       "{} {}",
@@ -210,6 +218,7 @@ pub fn get_types(unstable: bool) -> String {
     tsc::DENO_BROADCAST_CHANNEL_LIB,
     tsc::DENO_NET_LIB,
     tsc::SHARED_GLOBALS_LIB,
+    tsc::DENO_CACHE_LIB,
     tsc::WINDOW_LIB,
   ];
 
@@ -385,6 +394,18 @@ async fn load_and_type_check(
 
   for file in files {
     let specifier = resolve_url_or_path(file)?;
+
+    // TODO(bartlomieju): in the future (after all relevant deno subcommands
+    // have support for npm: specifiers), it would be good to unify this code
+    // in `ProcState::prepare_module_load`.
+    if let Ok(package_ref) = NpmPackageReference::from_specifier(&specifier) {
+      ps.npm_resolver
+        .add_package_reqs(vec![package_ref.req.clone()])
+        .await?;
+      ps.prepare_node_std_graph().await?;
+      continue;
+    }
+
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -499,11 +520,11 @@ async fn create_graph_and_maybe_check(
     }
     let maybe_config_specifier = ps.options.maybe_config_file_specifier();
     let cache = TypeCheckCache::new(&ps.dir.type_checking_cache_db_file_path());
-    let check_result = emit::check(
+    let check_result = check::check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
       &cache,
-      emit::CheckOptions {
+      check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
         maybe_config_specifier,
@@ -795,8 +816,6 @@ async fn run_command(
     return run_with_watch(flags, run_flags.script).await;
   }
 
-  // TODO(bartlomieju): it should not be resolved here if we're in compat mode
-  // because it might be a bare specifier
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead

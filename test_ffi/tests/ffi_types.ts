@@ -42,6 +42,10 @@ const remote = Deno.dlopen(
       parameters: ["buffer"],
       result: "void",
     },
+    method24: {
+      parameters: ["bool"],
+      result: "bool",
+    },
     static1: { type: "usize" },
     static2: { type: "pointer" },
     static3: { type: "usize" },
@@ -56,6 +60,7 @@ const remote = Deno.dlopen(
     static12: { type: "i64" },
     static13: { type: "f32" },
     static14: { type: "f64" },
+    static15: { type: "bool" },
   } as const,
 );
 
@@ -143,12 +148,12 @@ remote.symbols.method15(0n);
 const result = remote.symbols.method16();
 // @ts-expect-error: Invalid argument
 let r_0: string = result;
-let r_1: number | bigint = result;
+let r_1: Deno.PointerValue = result;
 
 const result2 = remote.symbols.method17();
 // @ts-expect-error: Invalid argument
 result2.then((_0: string) => {});
-result2.then((_1: number | bigint) => {});
+result2.then((_1: Deno.PointerValue) => {});
 
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
@@ -200,7 +205,7 @@ const unsafe_callback_wrong4 = new Deno.UnsafeCallback(
     parameters: ["u64"],
     result: "void",
   } as const,
-  // @ts-expect-error: Callback's 64bit parameters are always called as bigint
+  // @ts-expect-error: Callback's 64bit parameters are either number or bigint
   (_: number) => {},
 );
 const unsafe_callback_right1 = new Deno.UnsafeCallback(
@@ -208,7 +213,7 @@ const unsafe_callback_right1 = new Deno.UnsafeCallback(
     parameters: ["u8", "u32", "pointer"],
     result: "void",
   } as const,
-  (_1: number, _2: number, _3: Deno.UnsafePointer) => {},
+  (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 const unsafe_callback_right2 = new Deno.UnsafeCallback(
   {
@@ -230,14 +235,14 @@ const unsafe_callback_right4 = new Deno.UnsafeCallback(
     parameters: ["u8", "u32", "pointer"],
     result: "u8",
   } as const,
-  (_1: number, _2: number, _3: Deno.UnsafePointer) => 3,
+  (_1: number, _2: number, _3: Deno.PointerValue) => 3,
 );
 const unsafe_callback_right5 = new Deno.UnsafeCallback(
   {
     parameters: ["u8", "i32", "pointer"],
     result: "void",
   } as const,
-  (_1: number, _2: number, _3: Deno.UnsafePointer) => {},
+  (_1: number, _2: number, _3: Deno.PointerValue) => {},
 );
 
 // @ts-expect-error: Must pass callback
@@ -256,8 +261,23 @@ remote.symbols.method23(new Uint8Array(1));
 remote.symbols.method23(0);
 // @ts-expect-error: Cannot pass pointer values as buffer.
 remote.symbols.method23(0n);
-// @ts-expect-error: Cannot pass pointer values as buffer.
 remote.symbols.method23(null);
+
+// @ts-expect-error: Cannot pass number as bool.
+remote.symbols.method24(0);
+// @ts-expect-error: Cannot pass number as bool.
+remote.symbols.method24(1);
+// @ts-expect-error: Cannot pass null as bool.
+remote.symbols.method24(null);
+remote.symbols.method24(true);
+remote.symbols.method24(false);
+// @ts-expect-error: Cannot assert return type as a number.
+<number> remote.symbols.method24(true);
+// @ts-expect-error: Cannot assert return type truthiness.
+let r24_0: true = remote.symbols.method24(true);
+// @ts-expect-error: Cannot assert return type as a number.
+let r42_1: number = remote.symbols.method24(true);
+<boolean> remote.symbols.method24(Math.random() > 0.5);
 
 // @ts-expect-error: Invalid member type
 const static1_wrong: null = remote.symbols.static1;
@@ -301,6 +321,9 @@ const static13_right: number = remote.symbols.static13;
 // @ts-expect-error: Invalid member type
 const static14_wrong: null = remote.symbols.static14;
 const static14_right: number = remote.symbols.static14;
+// @ts-expect-error: Invalid member type
+const static15_wrong: number = remote.symbols.static15;
+const static15_right: boolean = remote.symbols.static15;
 
 // Adapted from https://stackoverflow.com/a/53808212/10873797
 type Equal<T, U> = (<G>() => G extends T ? 1 : 2) extends
@@ -348,9 +371,9 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray,
-          ptr: number | bigint | null,
-          func: number | bigint | null,
+          buf: TypedArray | null,
+          ptr: Deno.PointerValue | null,
+          func: Deno.PointerValue | null,
         ) => void;
       };
       close(): void;
@@ -368,10 +391,10 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray,
-          ptr: number | bigint | null,
-          func: number | bigint | null,
-        ) => number | bigint;
+          buf: TypedArray | null,
+          ptr: Deno.PointerValue | null,
+          func: Deno.PointerValue | null,
+        ) => Deno.PointerValue;
       };
       close(): void;
     },
@@ -388,8 +411,8 @@ type __Tests__ = [
     {
       symbols: {
         foo: (
-          ...args: (number | bigint | null)[]
-        ) => number | bigint;
+          ...args: (Deno.PointerValue | null)[]
+        ) => Deno.PointerValue;
       };
       close(): void;
     },

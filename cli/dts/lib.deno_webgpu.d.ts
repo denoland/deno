@@ -81,6 +81,7 @@ declare class GPU {
   ): Promise<GPUAdapter | null>;
 }
 
+/** @category WebGPU */
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
   forceFallbackAdapter?: boolean;
@@ -142,8 +143,8 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
     | ((this: GPUDevice, ev: GPUUncapturedErrorEvent) => any)
     | null;
 
-  readonly features: ReadonlyArray<GPUFeatureName>;
-  readonly limits: Record<string, number>;
+  readonly features: GPUSupportedFeatures;
+  readonly limits: GPUSupportedLimits;
   readonly queue: GPUQueue;
 
   destroy(): undefined;

@@ -38,7 +38,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -691,21 +690,18 @@ impl TlsStreamResource {
 
   pub async fn read(
     self: Rc<Self>,
-    mut buf: ZeroCopyBuf,
-  ) -> Result<(usize, ZeroCopyBuf), AnyError> {
+    data: &mut [u8],
+  ) -> Result<usize, AnyError> {
     let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-    let nread = rd.read(&mut buf).try_or_cancel(cancel_handle).await?;
-    Ok((nread, buf))
+    let nread = rd.read(data).try_or_cancel(cancel_handle).await?;
+    Ok(nread)
   }
 
-  pub async fn write(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> Result<usize, AnyError> {
+  pub async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, AnyError> {
     self.handshake().await?;
     let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
-    let nwritten = wr.write(&buf).await?;
+    let nwritten = wr.write(data).await?;
     wr.flush().await?;
     Ok(nwritten)
   }
@@ -736,19 +732,11 @@ impl TlsStreamResource {
 }
 
 impl Resource for TlsStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
   fn name(&self) -> Cow<str> {
     "tlsStream".into()
-  }
-
-  fn read_return(
-    self: Rc<Self>,
-    buf: ZeroCopyBuf,
-  ) -> AsyncResult<(usize, ZeroCopyBuf)> {
-    Box::pin(self.read(buf))
-  }
-
-  fn write(self: Rc<Self>, buf: ZeroCopyBuf) -> AsyncResult<usize> {
-    Box::pin(self.write(buf))
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
@@ -799,7 +787,7 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(0)))?;
+    permissions.check_net(&(hostname, Some(0)), "Deno.startTls()")?;
   }
 
   let ca_certs = args
@@ -824,12 +812,16 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
+
   let resource_rc = state
     .borrow_mut()
     .resource_table
     .take::<TcpStreamResource>(rid)?;
+  // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
+  // process of starting a TLS connection on top of this TCP connection, so we just return a bad
+  // resource error. See also: https://github.com/denoland/deno/pull/16242
   let resource = Rc::try_unwrap(resource_rc)
-    .expect("Only a single use of this resource should happen");
+    .map_err(|_| bad_resource("TCP stream is currently in use"))?;
   let (read_half, write_half) = resource.into_inner();
   let tcp_stream = read_half.reunite(write_half)?;
 
@@ -904,9 +896,9 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.connectTls()")?;
     }
   }
 
@@ -1051,12 +1043,12 @@ where
 
   {
     let permissions = state.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(port)))?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.listenTls()")?;
     if let Some(path) = cert_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
     if let Some(path) = key_file {
-      permissions.check_read(Path::new(path))?;
+      permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
   }
 

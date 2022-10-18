@@ -3,6 +3,7 @@
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 
 pub fn err_invalid_module_specifier(
   request: &str,
@@ -56,7 +57,7 @@ pub fn err_invalid_package_target(
   key: String,
   target: String,
   is_import: bool,
-  maybe_base: Option<String>,
+  maybe_referrer: Option<String>,
 ) -> AnyError {
   let rel_error = !is_import && !target.is_empty() && !target.starts_with("./");
   let mut msg = "[ERR_INVALID_PACKAGE_TARGET]".to_string();
@@ -69,7 +70,7 @@ pub fn err_invalid_package_target(
     msg = format!("{} Invalid \"{}\" target {} defined for '{}' in the package config {}package.json", msg, ie, target, key, pkg_path)
   };
 
-  if let Some(base) = maybe_base {
+  if let Some(base) = maybe_referrer {
     msg = format!("{} imported from {}", msg, base);
   };
   if rel_error {
@@ -80,23 +81,36 @@ pub fn err_invalid_package_target(
 }
 
 pub fn err_package_path_not_exported(
-  pkg_path: String,
+  mut pkg_path: String,
   subpath: String,
-  maybe_base: Option<String>,
+  maybe_referrer: Option<String>,
 ) -> AnyError {
   let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
 
+  #[cfg(windows)]
+  {
+    if !pkg_path.ends_with('\\') {
+      pkg_path.push('\\');
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    if !pkg_path.ends_with('/') {
+      pkg_path.push('/');
+    }
+  }
+
   if subpath == "." {
     msg = format!(
-      "{} No \"exports\" main defined in {}package.json",
+      "{} No \"exports\" main defined in '{}package.json'",
       msg, pkg_path
     );
   } else {
-    msg = format!("{} Package subpath \'{}\' is not defined by \"exports\" in {}package.json", msg, subpath, pkg_path);
+    msg = format!("{} Package subpath '{}' is not defined by \"exports\" in '{}package.json'", msg, subpath, pkg_path);
   };
 
-  if let Some(base) = maybe_base {
-    msg = format!("{} imported from {}", msg, base);
+  if let Some(referrer) = maybe_referrer {
+    msg = format!("{} imported from '{}'", msg, referrer);
   }
 
   generic_error(msg)
@@ -119,4 +133,24 @@ pub fn err_package_import_not_defined(
   msg = format!("{} imported from {}", msg, base);
 
   type_error(msg)
+}
+
+pub fn err_unsupported_dir_import(path: &str, base: &str) -> AnyError {
+  generic_error(format!("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules imported from {}", path, base))
+}
+
+pub fn err_unsupported_esm_url_scheme(url: &Url) -> AnyError {
+  let mut msg =
+    "[ERR_UNSUPPORTED_ESM_URL_SCHEME] Only file and data URLS are supported by the default ESM loader"
+      .to_string();
+
+  if cfg!(window) && url.scheme().len() == 2 {
+    msg = format!(
+      "{}. On Windows, absolute path must be valid file:// URLs",
+      msg
+    );
+  }
+
+  msg = format!("{}. Received protocol '{}'", msg, url.scheme());
+  generic_error(msg)
 }

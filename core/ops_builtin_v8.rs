@@ -37,13 +37,14 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_decode::decl(),
     op_serialize::decl(),
     op_deserialize::decl(),
+    op_set_promise_hooks::decl(),
     op_get_promise_details::decl(),
     op_get_proxy_details::decl(),
     op_memory_usage::decl(),
     op_set_wasm_streaming_callback::decl(),
     op_abort_wasm_streaming::decl(),
     op_destructure_error::decl(),
-    op_terminate::decl(),
+    op_dispatch_exception::decl(),
     op_op_names::decl(),
     op_apply_source_map::decl(),
     op_set_format_exception_callback::decl(),
@@ -103,8 +104,8 @@ fn op_set_promise_reject_callback<'a>(
   cb: serde_v8::Value,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
+  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let old = realm_state_rc.borrow_mut().js_promise_reject_cb.replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }
@@ -231,7 +232,7 @@ fn op_encode<'a>(
 #[op(v8)]
 fn op_decode<'a>(
   scope: &mut v8::HandleScope<'a>,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: &[u8],
 ) -> Result<serde_v8::Value<'a>, Error> {
   let buf = &zero_copy;
 
@@ -575,6 +576,33 @@ fn op_get_promise_details<'a>(
   }
 }
 
+#[op(v8)]
+fn op_set_promise_hooks<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  init_cb: serde_v8::Value,
+  before_cb: serde_v8::Value,
+  after_cb: serde_v8::Value,
+  resolve_cb: serde_v8::Value,
+) -> Result<(), Error> {
+  let init_hook_global = to_v8_fn(scope, init_cb)?;
+  let before_hook_global = to_v8_fn(scope, before_cb)?;
+  let after_hook_global = to_v8_fn(scope, after_cb)?;
+  let resolve_hook_global = to_v8_fn(scope, resolve_cb)?;
+  let init_hook = v8::Local::new(scope, init_hook_global);
+  let before_hook = v8::Local::new(scope, before_hook_global);
+  let after_hook = v8::Local::new(scope, after_hook_global);
+  let resolve_hook = v8::Local::new(scope, resolve_hook_global);
+
+  scope.get_current_context().set_promise_hooks(
+    init_hook,
+    before_hook,
+    after_hook,
+    resolve_hook,
+  );
+
+  Ok(())
+}
+
 // Based on https://github.com/nodejs/node/blob/1e470510ff74391d7d4ec382909ea8960d2d2fbc/src/node_util.cc
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -641,22 +669,28 @@ fn op_set_wasm_streaming_callback(
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let mut realm_state = realm_state_rc.borrow_mut();
   // The callback to pass to the v8 API has to be a unit type, so it can't
   // borrow or move any local variables. Therefore, we're storing the JS
   // callback in a JsRuntimeState slot.
-  if state.js_wasm_streaming_cb.is_some() {
+  if realm_state.js_wasm_streaming_cb.is_some() {
     return Err(type_error("op_set_wasm_streaming_callback already called"));
   }
-  state.js_wasm_streaming_cb = Some(cb);
+  realm_state.js_wasm_streaming_cb = Some(cb);
 
   scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
     let (cb_handle, streaming_rid) = {
+      let realm_state_rc = JsRealm::state_from_scope(scope);
+      let cb_handle = realm_state_rc
+        .borrow()
+        .js_wasm_streaming_cb
+        .as_ref()
+        .unwrap()
+        .clone();
       let state_rc = JsRuntime::state(scope);
-      let state = state_rc.borrow();
-      let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
-      let streaming_rid = state
+      let streaming_rid = state_rc
+        .borrow()
         .op_state
         .borrow_mut()
         .resource_table
@@ -712,13 +746,27 @@ fn op_destructure_error(
   JsError::from_v8_exception(scope, error.v8_value)
 }
 
+/// Effectively throw an uncatchable error. This will terminate runtime
+/// execution before any more JS code can run, except in the REPL where it
+/// should just output the error to the console.
 #[op(v8)]
-fn op_terminate(scope: &mut v8::HandleScope, exception: serde_v8::Value) {
+fn op_dispatch_exception(
+  scope: &mut v8::HandleScope,
+  exception: serde_v8::Value,
+) {
   let state_rc = JsRuntime::state(scope);
   let mut state = state_rc.borrow_mut();
-  state.explicit_terminate_exception =
-    Some(v8::Global::new(scope, exception.v8_value));
-  scope.terminate_execution();
+  state
+    .dispatched_exceptions
+    .push_front(v8::Global::new(scope, exception.v8_value));
+  // Only terminate execution if there are no inspector sessions.
+  match state.inspector().try_borrow() {
+    Ok(inspector) if !inspector.has_active_sessions() => {
+      scope.terminate_execution();
+    }
+    // If the inspector is borrowed at this time, assume an inspector is active.
+    _ => {}
+  }
 }
 
 #[op(v8)]
@@ -775,8 +823,11 @@ fn op_set_format_exception_callback<'a>(
   cb: serde_v8::Value<'a>,
 ) -> Result<Option<serde_v8::Value<'a>>, Error> {
   let cb = to_v8_fn(scope, cb)?;
-  let state_rc = JsRuntime::state(scope);
-  let old = state_rc.borrow_mut().js_format_exception_cb.replace(cb);
+  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let old = realm_state_rc
+    .borrow_mut()
+    .js_format_exception_cb
+    .replace(cb);
   let old = old.map(|v| v8::Local::new(scope, v));
   Ok(old.map(|v| from_v8(scope, v.into()).unwrap()))
 }

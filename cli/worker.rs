@@ -7,11 +7,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::Extension;
 use deno_core::ModuleId;
-use deno_graph::source::ResolveResponse;
 use deno_runtime::colors;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::Permissions;
@@ -23,9 +22,7 @@ use deno_runtime::BootstrapOptions;
 
 use crate::args::DenoSubcommand;
 use crate::checksum;
-use crate::compat;
 use crate::errors;
-use crate::fmt_errors::format_js_error;
 use crate::module_loader::CliModuleLoader;
 use crate::node;
 use crate::npm::NpmPackageReference;
@@ -53,15 +50,6 @@ impl CliMainWorker {
   }
 
   pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
-    if self.ps.options.compat() {
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      compat::add_global_require(
-        &mut self.worker.js_runtime,
-        self.main_module.as_str(),
-      )?;
-      self.worker.run_event_loop(false).await?;
-      compat::setup_builtin_modules(&mut self.worker.js_runtime)?;
-    }
     self.worker.run_event_loop(false).await?;
     Ok(())
   }
@@ -71,39 +59,7 @@ impl CliMainWorker {
       self.maybe_setup_coverage_collector().await?;
     log::debug!("main_module {}", self.main_module);
 
-    if self.ps.options.compat() {
-      // TODO(bartlomieju): fix me
-      assert_eq!(self.main_module.scheme(), "file");
-
-      // Set up Node globals
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      // And `module` module that we'll use for checking which
-      // loader to use and potentially load CJS module with.
-      // This allows to skip permission check for `--allow-net`
-      // which would otherwise be requested by dynamically importing
-      // this file.
-      self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-      let use_esm_loader =
-        compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-      if use_esm_loader {
-        // ES module execution in Node compatiblity mode
-        self.worker.execute_main_module(&self.main_module).await?;
-      } else {
-        // CJS module execution in Node compatiblity mode
-        compat::load_cjs_module(
-          &mut self.worker.js_runtime,
-          &self
-            .main_module
-            .to_file_path()
-            .unwrap()
-            .display()
-            .to_string(),
-          true,
-        )?;
-      }
-    } else if self.is_main_cjs {
+    if self.is_main_cjs {
       self.initialize_main_module_for_node().await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
@@ -161,13 +117,6 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
-        if self.inner.ps.options.compat() {
-          self
-            .inner
-            .worker
-            .execute_side_module(&compat::GLOBAL_URL)
-            .await?;
-        }
         self.inner.execute_main_module_possibly_with_npm().await?;
         self
           .inner
@@ -176,20 +125,23 @@ impl CliMainWorker {
         self.pending_unload = true;
 
         let result = loop {
-          let result = self.inner.worker.run_event_loop(false).await;
-          if !self
+          match self.inner.worker.run_event_loop(false).await {
+            Ok(()) => {}
+            Err(error) => break Err(error),
+          }
+          match self
             .inner
             .worker
-            .dispatch_beforeunload_event(&located_script_name!())?
+            .dispatch_beforeunload_event(&located_script_name!())
           {
-            break result;
+            Ok(default_prevented) if default_prevented => {} // continue loop
+            Ok(_) => break Ok(()),
+            Err(error) => break Err(error),
           }
         };
         self.pending_unload = false;
 
-        if let Err(err) = result {
-          return Err(err);
-        }
+        result?;
 
         self
           .inner
@@ -203,11 +155,10 @@ impl CliMainWorker {
     impl Drop for FileWatcherModuleExecutor {
       fn drop(&mut self) {
         if self.pending_unload {
-          self
+          let _ = self
             .inner
             .worker
-            .dispatch_unload_event(&located_script_name!())
-            .unwrap();
+            .dispatch_unload_event(&located_script_name!());
         }
       }
     }
@@ -220,10 +171,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_test();
 
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
@@ -244,46 +192,15 @@ impl CliMainWorker {
     // We only execute the specifier as a module if it is tagged with TestMode::Module or
     // TestMode::Both.
     if mode != TestMode::Documentation {
-      if self.ps.options.compat() {
-        self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-        self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-        let use_esm_loader =
-          compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-        if use_esm_loader {
-          self.worker.execute_side_module(&self.main_module).await?;
-        } else {
-          compat::load_cjs_module(
-            &mut self.worker.js_runtime,
-            &self
-              .main_module
-              .to_file_path()
-              .unwrap()
-              .display()
-              .to_string(),
-            false,
-          )?;
-          self.worker.run_event_loop(false).await?;
-        }
-      } else {
-        // We execute the module module as a side module so that import.meta.main is not set.
-        self.execute_side_module_possibly_with_npm().await?;
-      }
+      // We execute the module module as a side module so that import.meta.main is not set.
+      self.execute_side_module_possibly_with_npm().await?;
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let test_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      &format!(
-        r#"Deno[Deno.internal].runTests({})"#,
-        json!({ "shuffle": self.ps.options.shuffle_tests() }),
-      ),
-    )?;
-
-    self.worker.js_runtime.resolve_value(test_result).await?;
-
+    self
+      .worker
+      .run_tests(&self.ps.options.shuffle_tests())
+      .await?;
     loop {
       if !self
         .worker
@@ -309,10 +226,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_test();
 
     self
       .worker
@@ -328,14 +242,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let test_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runTests()"#,
-    )?;
-
-    self.worker.js_runtime.resolve_value(test_result).await?;
-
+    self.worker.run_tests(&None).await?;
     loop {
       if !self
         .worker
@@ -350,47 +257,13 @@ impl CliMainWorker {
   }
 
   pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].enableTestAndBench()"#,
-    )?;
+    self.worker.enable_bench();
 
-    if self.ps.options.compat() {
-      self.worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      self.worker.execute_side_module(&compat::MODULE_URL).await?;
-
-      let use_esm_loader =
-        compat::check_if_should_use_esm_loader(&self.main_module)?;
-
-      if use_esm_loader {
-        self.worker.execute_side_module(&self.main_module).await?;
-      } else {
-        compat::load_cjs_module(
-          &mut self.worker.js_runtime,
-          &self
-            .main_module
-            .to_file_path()
-            .unwrap()
-            .display()
-            .to_string(),
-          false,
-        )?;
-        self.worker.run_event_loop(false).await?;
-      }
-    } else {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      self.execute_side_module_possibly_with_npm().await?;
-    }
+    // We execute the module module as a side module so that import.meta.main is not set.
+    self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-
-    let bench_result = self.worker.js_runtime.execute_script(
-      &located_script_name!(),
-      r#"Deno[Deno.internal].runBenchmarks()"#,
-    )?;
-
-    self.worker.js_runtime.resolve_value(bench_result).await?;
-
+    self.worker.run_benchmarks().await?;
     loop {
       if !self
         .worker
@@ -481,18 +354,28 @@ pub async fn create_main_worker(
     ps.npm_resolver
       .add_package_reqs(vec![package_ref.req.clone()])
       .await?;
-    ps.npm_resolver.cache_packages().await?;
-    ps.prepare_node_std_graph().await?;
-    let resolve_response = node::node_resolve_binary_export(
+    let node_resolution = node::node_resolve_binary_export(
       &package_ref.req,
       package_ref.sub_path.as_deref(),
       &ps.npm_resolver,
     )?;
-    let is_main_cjs = matches!(resolve_response, ResolveResponse::CommonJs(_));
-    (resolve_response.to_result()?, is_main_cjs)
+    let is_main_cjs =
+      matches!(node_resolution, node::NodeResolution::CommonJs(_));
+    (node_resolution.into_url(), is_main_cjs)
+  } else if ps.npm_resolver.is_npm_main() {
+    let node_resolution =
+      node::url_to_node_resolution(main_module, &ps.npm_resolver)?;
+    let is_main_cjs =
+      matches!(node_resolution, node::NodeResolution::CommonJs(_));
+    (node_resolution.into_url(), is_main_cjs)
   } else {
     (main_module, false)
   };
+
+  if ps.npm_resolver.has_packages() {
+    ps.prepare_node_std_graph().await?;
+  }
+
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -506,11 +389,18 @@ pub async fn create_main_worker(
     create_web_worker_pre_execute_module_callback(ps.clone());
 
   let maybe_storage_key = ps.options.resolve_storage_key(&main_module);
-  let origin_storage_dir = maybe_storage_key.map(|key| {
+  let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
     ps.dir
       .root
       // TODO(@crowlKats): change to origin_data for 2.0
       .join("location_data")
+      .join(checksum::gen(&[key.as_bytes()]))
+  });
+  let cache_storage_dir = maybe_storage_key.map(|key| {
+    // TODO(@satyarohith): storage quota management
+    // Note: we currently use temp_dir() to avoid managing storage size.
+    std::env::temp_dir()
+      .join("deno_cache")
       .join(checksum::gen(&[key.as_bytes()]))
   });
 
@@ -528,6 +418,7 @@ pub async fn create_main_worker(
         .log_level()
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
+      locale: deno_core::v8::icu::get_language_tag(),
       location: ps.options.location_flag().map(ToOwned::to_owned),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -535,6 +426,7 @@ pub async fn create_main_worker(
       ts_version: version::TYPESCRIPT.to_string(),
       unstable: ps.options.unstable(),
       user_agent: version::get_user_agent(),
+      inspect: ps.options.is_inspecting(),
     },
     extensions,
     unsafely_ignore_certificate_errors: ps
@@ -553,6 +445,7 @@ pub async fn create_main_worker(
     module_loader,
     npm_resolver: Some(Rc::new(ps.npm_resolver.clone())),
     get_error_class_fn: Some(&errors::get_error_class_name),
+    cache_storage_dir,
     origin_storage_dir,
     blob_store: ps.blob_store.clone(),
     broadcast_channel: ps.broadcast_channel.clone(),
@@ -574,20 +467,13 @@ pub async fn create_main_worker(
   })
 }
 
+// TODO(bartlomieju): this callback could have default value
+// and not be required
 fn create_web_worker_preload_module_callback(
-  ps: ProcState,
+  _ps: ProcState,
 ) -> Arc<WorkerEventCb> {
-  let compat = ps.options.compat();
-
-  Arc::new(move |mut worker| {
-    let fut = async move {
-      if compat {
-        worker.execute_side_module(&compat::GLOBAL_URL).await?;
-        worker.execute_side_module(&compat::MODULE_URL).await?;
-      }
-
-      Ok(worker)
-    };
+  Arc::new(move |worker| {
+    let fut = async move { Ok(worker) };
     LocalFutureObj::new(Box::new(fut))
   })
 }
@@ -629,6 +515,15 @@ fn create_web_worker_callback(
 
     let extensions = ops::cli_exts(ps.clone());
 
+    let maybe_storage_key = ps.options.resolve_storage_key(&args.main_module);
+    let cache_storage_dir = maybe_storage_key.map(|key| {
+      // TODO(@satyarohith): storage quota management
+      // Note: we currently use temp_dir() to avoid managing storage size.
+      std::env::temp_dir()
+        .join("deno_cache")
+        .join(checksum::gen(&[key.as_bytes()]))
+    });
+
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
         args: ps.options.argv().clone(),
@@ -640,6 +535,7 @@ fn create_web_worker_callback(
           .log_level()
           .map_or(false, |l| l == log::Level::Debug),
         enable_testing_features: ps.options.enable_testing_features(),
+        locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),
@@ -647,6 +543,7 @@ fn create_web_worker_callback(
         ts_version: version::TYPESCRIPT.to_string(),
         unstable: ps.options.unstable(),
         user_agent: version::get_user_agent(),
+        inspect: ps.options.is_inspecting(),
       },
       extensions,
       unsafely_ignore_certificate_errors: ps
@@ -670,6 +567,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(ps.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(ps.compiled_wasm_module_store.clone()),
       stdio: stdio.clone(),
+      cache_storage_dir,
     };
 
     WebWorker::bootstrap_from_options(

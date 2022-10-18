@@ -4,13 +4,13 @@ use crate::emit::emit_parsed_source;
 use crate::emit::TsTypeLib;
 use crate::graph_util::ModuleEntry;
 use crate::node;
-use crate::npm::NpmPackageResolver;
 use crate::proc_state::ProcState;
 use crate::text_encoding::code_without_source_map;
 use crate::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
@@ -62,6 +62,7 @@ impl CliModuleLoader {
   fn load_prepared_module(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.as_str() == "node:module" {
       return Ok(ModuleCodeSource {
@@ -120,23 +121,34 @@ impl CliModuleLoader {
           media_type: *media_type,
         })
       }
-      _ => Err(anyhow!(
-        "Loading unprepared module: {}",
-        specifier.to_string()
-      )),
+      _ => {
+        let mut msg = format!("Loading unprepared module: {}", specifier);
+        if let Some(referrer) = maybe_referrer {
+          msg = format!("{}, imported from: {}", msg, referrer.as_str());
+        }
+        Err(anyhow!(msg))
+      }
     }
   }
 
   fn load_sync(
     &self,
     specifier: &ModuleSpecifier,
+    maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
     let code_source = if self.ps.npm_resolver.in_npm_package(specifier) {
       let file_path = specifier.to_file_path().unwrap();
-      let code = std::fs::read_to_string(file_path)?;
-      let is_cjs = self.ps.cjs_resolutions.lock().contains(specifier);
+      let code = std::fs::read_to_string(&file_path).with_context(|| {
+        let mut msg = "Unable to load ".to_string();
+        msg.push_str(&*file_path.to_string_lossy());
+        if let Some(referrer) = &maybe_referrer {
+          msg.push_str(" imported from ");
+          msg.push_str(referrer.as_str());
+        }
+        msg
+      })?;
 
-      let code = if is_cjs {
+      let code = if self.ps.cjs_resolutions.lock().contains(specifier) {
         // translate cjs to esm if it's cjs and inject node globals
         node::translate_cjs_to_esm(
           &self.ps.file_fetcher,
@@ -144,19 +156,23 @@ impl CliModuleLoader {
           code,
           MediaType::Cjs,
           &self.ps.npm_resolver,
+          &self.ps.node_analysis_cache,
         )?
       } else {
         // only inject node globals for esm
-        node::esm_code_with_node_globals(specifier, code)?
+        node::esm_code_with_node_globals(
+          &self.ps.node_analysis_cache,
+          specifier,
+          code,
+        )?
       };
-
       ModuleCodeSource {
         code,
         found_url: specifier.clone(),
         media_type: MediaType::from(specifier),
       }
     } else {
-      self.load_prepared_module(specifier)?
+      self.load_prepared_module(specifier, maybe_referrer)?
     };
     let code = if self.ps.options.is_inspecting() {
       // we need the code with the source map in order for
@@ -192,13 +208,15 @@ impl ModuleLoader for CliModuleLoader {
   fn load(
     &self,
     specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    maybe_referrer: Option<ModuleSpecifier>,
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     // NOTE: this block is async only because of `deno_core` interface
     // requirements; module was already loaded when constructing module graph
     // during call to `prepare_load` so we can load it synchronously.
-    Box::pin(deno_core::futures::future::ready(self.load_sync(specifier)))
+    Box::pin(deno_core::futures::future::ready(
+      self.load_sync(specifier, maybe_referrer),
+    ))
   }
 
   fn prepare_load(
@@ -250,7 +268,7 @@ impl SourceMapGetter for CliModuleLoader {
       "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => return None,
     }
-    let source = self.load_prepared_module(&specifier).ok()?;
+    let source = self.load_prepared_module(&specifier, None).ok()?;
     source_map_from_code(&source.code)
   }
 

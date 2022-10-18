@@ -15,6 +15,7 @@ const dylib = Deno.dlopen(libPath, {
   "add_u64": { parameters: ["u64", "u64"], result: "u64" },
   "ffi_string": { parameters: [], result: "pointer" },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
+  "nop_bool": { parameters: ["bool"], result: "void" },
   "nop_u8": { parameters: ["u8"], result: "void" },
   "nop_i8": { parameters: ["i8"], result: "void" },
   "nop_u16": { parameters: ["u16"], result: "void" },
@@ -28,6 +29,7 @@ const dylib = Deno.dlopen(libPath, {
   "nop_f32": { parameters: ["f32"], result: "void" },
   "nop_f64": { parameters: ["f64"], result: "void" },
   "nop_buffer": { parameters: ["buffer"], result: "void" },
+  "return_bool": { parameters: [], result: "bool" },
   "return_u8": { parameters: [], result: "u8" },
   "return_i8": { parameters: [], result: "i8" },
   "return_u16": { parameters: [], result: "u16" },
@@ -43,6 +45,11 @@ const dylib = Deno.dlopen(libPath, {
   "return_buffer": { parameters: [], result: "buffer" },
   // Nonblocking calls
   "nop_nonblocking": { name: "nop", parameters: [], result: "void" },
+  "nop_bool_nonblocking": {
+    name: "nop_bool",
+    parameters: ["bool"],
+    result: "void",
+  },
   "nop_u8_nonblocking": { name: "nop_u8", parameters: ["u8"], result: "void" },
   "nop_i8_nonblocking": { name: "nop_i8", parameters: ["i8"], result: "void" },
   "nop_u16_nonblocking": {
@@ -99,6 +106,11 @@ const dylib = Deno.dlopen(libPath, {
     name: "nop_buffer",
     parameters: ["buffer"],
     result: "void",
+  },
+  "return_bool_nonblocking": {
+    name: "return_bool",
+    parameters: [],
+    result: "bool",
   },
   "return_u8_nonblocking": { name: "return_u8", parameters: [], result: "u8" },
   "return_i8_nonblocking": { name: "return_i8", parameters: [], result: "i8" },
@@ -267,6 +279,11 @@ Deno.bench("return_i64()", () => {
   return_i64();
 });
 
+const { nop_bool } = dylib.symbols;
+Deno.bench("nop_bool()", () => {
+  nop_bool(true);
+});
+
 const { nop_u8 } = dylib.symbols;
 Deno.bench("nop_u8()", () => {
   nop_u8(100);
@@ -343,6 +360,11 @@ Deno.bench("nop_buffer()", () => {
   nop_buffer(buffer);
 });
 
+const { return_bool } = dylib.symbols;
+Deno.bench("return_bool()", () => {
+  return_bool();
+});
+
 const { return_u8 } = dylib.symbols;
 Deno.bench("return_u8()", () => {
   return_u8();
@@ -398,6 +420,11 @@ Deno.bench("return_f64()", () => {
 const { nop_nonblocking } = dylib.symbols;
 Deno.bench("nop_nonblocking()", async () => {
   await nop_nonblocking();
+});
+
+const { nop_bool_nonblocking } = dylib.symbols;
+Deno.bench("nop_bool_nonblocking()", async () => {
+  await nop_bool_nonblocking(true);
 });
 
 const { nop_u8_nonblocking } = dylib.symbols;
@@ -465,6 +492,12 @@ const { nop_buffer_nonblocking } = dylib.symbols;
 Deno.bench("nop_buffer_nonblocking()", async () => {
   await nop_buffer_nonblocking(buffer);
 });
+
+const { return_bool_nonblocking } = dylib.symbols;
+Deno.bench("return_bool_nonblocking()", async () => {
+  await return_bool_nonblocking();
+});
+
 const { return_u8_nonblocking } = dylib.symbols;
 Deno.bench("return_u8_nonblocking()", async () => {
   await return_u8_nonblocking();

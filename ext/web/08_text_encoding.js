@@ -25,6 +25,7 @@
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   class TextDecoder {
@@ -125,24 +126,22 @@
         }
 
         if (!options.stream && this.#rid === null) {
-          return ops.op_encoding_decode_single(input, {
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          return ops.op_encoding_decode_single(
+            input,
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
 
         if (this.#rid === null) {
-          this.#rid = ops.op_encoding_new_decoder({
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          this.#rid = ops.op_encoding_new_decoder(
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
-        return ops.op_encoding_decode(input, {
-          rid: this.#rid,
-          stream: options.stream,
-        });
+        return ops.op_encoding_decode(input, this.#rid, options.stream);
       } finally {
         if (!options.stream && this.#rid !== null) {
           core.close(this.#rid);
@@ -201,9 +200,15 @@
         context: "Argument 2",
         allowShared: true,
       });
-      return ops.op_encoding_encode_into(source, destination);
+      ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
     }
   }
+
+  const encodeIntoBuf = new Uint32Array(2);
 
   webidl.configurePrototype(TextEncoder);
   const TextEncoderPrototype = TextEncoder.prototype;
