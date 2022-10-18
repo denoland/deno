@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-import { join, ROOT_PATH, walk } from "./util.js";
+import { join, ROOT_PATH } from "./util.js";
 
 const COMMIT = "076df1a56812eee01614b7a3a4c88798012e79ab";
 const REPO = "gfx-rs/wgpu";
