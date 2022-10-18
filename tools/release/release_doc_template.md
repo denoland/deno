@@ -183,6 +183,12 @@ script generates the symbols based on the latest tags.
 - [ ] Run the release workflow in the apiland_scripts repo on the main branch:
       https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
 
+  <details>
+     <summary>Failure Steps</summary>
+
+  1. Clone `deno/apliland_scripts`.
+  2. Execute `deno task release`.
+  </details>
 ## Updating `deno_docker`
 
 - [ ] Open a PR on the `deno_docker` repo that bumps the Deno version in all
