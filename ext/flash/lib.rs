@@ -914,6 +914,7 @@ pub struct ListenOpts {
   reuseport: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_server(
   tx: mpsc::Sender<Request>,
   listening_tx: mpsc::Sender<u16>,
