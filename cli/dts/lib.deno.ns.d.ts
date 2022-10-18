@@ -4017,7 +4017,7 @@ declare namespace Deno {
    * }
    * ```
    *
-   * Note that this function *consumes* the given connetion passed to it, thus the
+   * Note that this function *consumes* the given connection passed to it, thus the
    * original connection will be unusable after calling this. Additionally, you
    * need to ensure that the connection is not being used elsewhere when calling
    * this function in order for the connection to be consumed properly.
