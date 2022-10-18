@@ -23,6 +23,12 @@ use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
 
+/// For some of the tests, we want downloading of packages
+/// to be deterministic so that the output is always the same
+pub fn should_sync_download() -> bool {
+  std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
+}
+
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 #[derive(Clone, Debug)]

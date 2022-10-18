@@ -130,7 +130,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     unsafe {
       napi_define_class(
         env,
-        "NapiObject\0".as_ptr() as *mut i8,
+        "NapiObject\0".as_ptr() as *mut c_char,
         usize::MAX,
         Some(NapiObject::new),
         ptr::null_mut(),
