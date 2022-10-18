@@ -101,15 +101,13 @@ pub struct ServerContext {
 /// method will be used. If `notify` has not yet called up until the time when the notifier is
 /// dropped, then implicit notification will be made.
 enum CloseNotifier {
-  Unnotified { waker: Waker },
+  Unnotified { waker: Arc<Waker> },
   Notified,
 }
 
 impl CloseNotifier {
-  fn new(poll: &Poll) -> Result<Self, AnyError> {
-    let waker = Waker::new(poll.registry(), CLOSE_TOKEN)?;
-
-    Ok(Self::Unnotified { waker })
+  fn new(waker: Arc<Waker>) -> Self {
+    Self::Unnotified { waker }
   }
 
   fn notify(&mut self) {
@@ -920,6 +918,10 @@ fn run_server(
   tx: mpsc::Sender<Request>,
   listening_tx: mpsc::Sender<u16>,
   mut poll: Poll,
+  // We put a waker as an unused argument here since it needs to be alive
+  // during the event loop. See the comment in mio's example:
+  // https://docs.rs/mio/0.8.4/x86_64-unknown-linux-gnu/mio/struct.Waker.html#examples
+  _waker: Arc<Waker>,
   addr: SocketAddr,
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
@@ -1320,7 +1322,8 @@ where
   let (tx, rx) = mpsc::channel(100);
   let (listening_tx, listening_rx) = mpsc::channel(1);
   let poll = Poll::new()?;
-  let close_notifier = CloseNotifier::new(&poll)?;
+  let waker = Arc::new(Waker::new(poll.registry(), CLOSE_TOKEN)?);
+  let close_notifier = CloseNotifier::new(Arc::clone(&waker));
   let ctx = ServerContext {
     _addr: addr,
     tx,
@@ -1341,6 +1344,7 @@ where
       tx,
       listening_tx,
       poll,
+      waker,
       addr,
       maybe_cert,
       maybe_key,
