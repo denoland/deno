@@ -3121,6 +3121,202 @@ pub mod tests {
     assert_eq!(binding.unwrap(), v8::Number::new(scope, 3_f64));
   }
 
+  #[tokio::test]
+  async fn test_realm_modules() {
+    use std::cell::Cell;
+    struct Loader(Cell<usize>);
+    impl ModuleLoader for Loader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///test.js");
+        assert_eq!(referrer, ".");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        use std::io::Write;
+        let mut code: Vec<u8> = vec![];
+        write!(&mut code, "export default {};", self.0.get()).unwrap();
+        self.0.set(self.0.get() + 1);
+        let code = code.into_boxed_slice();
+        let module_url = module_specifier.to_string();
+
+        async {
+          Ok(ModuleSource {
+            code,
+            module_type: ModuleType::JavaScript,
+            module_url_specified: module_url.clone(),
+            module_url_found: module_url,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let loader = Rc::new(Loader(Cell::new(0)));
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    let main_realm = runtime.global_realm();
+    let other_realm = runtime.create_realm().unwrap();
+    let other_realm2 = runtime.create_realm().unwrap();
+
+    async fn load_test_module(
+      runtime: &mut JsRuntime,
+      realm: JsRealm,
+    ) -> usize {
+      let id = realm
+        .load_side_module(
+          runtime.v8_isolate(),
+          &crate::resolve_url("file:///test.js").unwrap(),
+          None,
+        )
+        .await
+        .unwrap();
+      let receiver = realm.mod_evaluate(runtime.v8_isolate(), id);
+      runtime.run_event_loop(false).await.unwrap();
+      receiver.await.unwrap().unwrap();
+
+      let namespace = realm
+        .get_module_namespace(runtime.v8_isolate(), id)
+        .unwrap();
+      let mut scope = realm.handle_scope(runtime.v8_isolate());
+      let default_key = v8::String::new(&mut scope, "default").unwrap();
+      let default_value = namespace
+        .open(&mut scope)
+        .get(&mut scope, default_key.into())
+        .unwrap();
+      default_value.uint32_value(&mut scope).unwrap() as usize
+    }
+
+    assert_eq!(load_test_module(&mut runtime, other_realm2).await, 0);
+    assert_eq!(load_test_module(&mut runtime, main_realm).await, 1);
+    assert_eq!(load_test_module(&mut runtime, other_realm).await, 2);
+  }
+
+  #[tokio::test]
+  async fn test_cross_realm_imports() {
+    struct Loader;
+    impl ModuleLoader for Loader {
+      fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, Error> {
+        assert_eq!(specifier, "file:///test.js");
+        assert_eq!(referrer, "");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        let code = String::from("export default globalThis;")
+          .into_bytes()
+          .into_boxed_slice();
+        let module_url = module_specifier.to_string();
+
+        async {
+          Ok(ModuleSource {
+            code,
+            module_type: ModuleType::JavaScript,
+            module_url_specified: module_url.clone(),
+            module_url_found: module_url,
+          })
+        }
+        .boxed_local()
+      }
+    }
+
+    let loader = Rc::new(Loader);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    let main_realm = runtime.global_realm();
+    let other_realm = runtime.create_realm().unwrap();
+
+    fn import_wrapper_function(
+      realm: &JsRealm,
+      isolate: &mut v8::Isolate,
+    ) -> v8::Global<v8::Function> {
+      let value = realm
+        .execute_script(
+          isolate,
+          "",
+          r#"() => import("file:///test.js").then(ns => ns.default)"#,
+        )
+        .unwrap();
+
+      let mut scope = realm.handle_scope(isolate);
+      let value = v8::Local::new(&mut scope, value);
+      let function: v8::Local<v8::Function> = value.try_into().unwrap();
+      v8::Global::new(&mut scope, function)
+    }
+
+    let main_import_wrapper =
+      import_wrapper_function(&main_realm, runtime.v8_isolate());
+    let other_import_wrapper =
+      import_wrapper_function(&other_realm, runtime.v8_isolate());
+
+    async fn run_fn_test(
+      runtime: &mut JsRuntime,
+      realm: &JsRealm,
+      function: v8::Global<v8::Function>,
+    ) -> v8::Global<v8::Value> {
+      let promise = {
+        let mut scope = realm.handle_scope(runtime.v8_isolate());
+        let undefined = v8::undefined(&mut scope);
+        let promise = function
+          .open(&mut scope)
+          .call(&mut scope, undefined.into(), &[])
+          .unwrap();
+        assert!(promise.is_promise());
+        v8::Global::new(&mut scope, promise)
+      };
+      runtime.resolve_value(promise).await.unwrap()
+    }
+
+    // Same-realm imports.
+    assert_eq!(
+      run_fn_test(&mut runtime, &main_realm, main_import_wrapper.clone()).await,
+      main_realm.global_object(runtime.v8_isolate())
+    );
+    assert_eq!(
+      run_fn_test(&mut runtime, &other_realm, other_import_wrapper.clone())
+        .await,
+      other_realm.global_object(runtime.v8_isolate())
+    );
+
+    // Cross-realm imports.
+    assert_eq!(
+      run_fn_test(&mut runtime, &main_realm, other_import_wrapper.clone())
+        .await,
+      other_realm.global_object(runtime.v8_isolate())
+    );
+    assert_eq!(
+      run_fn_test(&mut runtime, &other_realm, main_import_wrapper.clone())
+        .await,
+      main_realm.global_object(runtime.v8_isolate())
+    );
+  }
+
   #[test]
   fn test_heap_limits() {
     let create_params =
