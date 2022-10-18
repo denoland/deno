@@ -64,7 +64,7 @@ fn op_http_start(
     // process of starting a HTTP server on top of this TLS connection, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("TLS stream is being used somewhere else"))?;
+      .map_err(|_| bad_resource("TLS stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.reunite(write_half);
     let addr = tls_stream.get_ref().0.local_addr()?;
