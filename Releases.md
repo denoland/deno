@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.26.2 / 2022.10.17
+
+- feat(core): Reorder extension initialization (#16136)
+- feat(core): add Deno.core.writeAll(rid, chunk) (#16228)
+- feat(core): improve resource read & write traits (#16115)
+- feat(unstable): add windowsRawArguments to SpawnOptions (#16319)
+- feat(unstable/npm): support providing npm dist-tag in npm package specifier
+  (#16293)
+- feat(unstable/task): add `INIT_CWD` env var (#16110)
+- fix sparse array inspection (#16204)
+- fix(build) fix linux symbols export list format (#16313)
+- fix(cli): allow importMap to be an absolute URL within the deno config file
+  (#16234)
+- fix(cli): skip removing the latter part if `@` appears at the beginning
+  (#16244)
+- fix(cli/bench): skip strace table border (#16310)
+- fix(docs): Documentation improvements related to `JsRealm`. (#16247)
+- fix(ext/cache): illegal constructor (#16205)
+- fix(ext/crypto): correct HMAC get key length op (#16201)
+- fix(ext/fetch): fix illegal header regex (#16236)
+- fix(ext/fetch): reject immediately on aborted signal (#16190)
+- fix(ext/fetch): set accept-encoding: identity if range header is present
+  (#16197)
+- fix(ext/fetch): support empty formdata (#16165)
+- fix(ext/fetch): throw TypeError on non-Uint8Array chunk (#16262)
+- fix(ext/fetch): throw TypeError on read failure (#16219)
+- fix(ext/ffi): Fix UnsafeCallback ref'ing making Deno enter a live-loop
+  (#16216)
+- fix(ext/ffi): Fix usize and isize FFI callback parameters missing match arm
+  (#16172)
+- fix(ext/ffi): Invalid 'function' return type check logic, remove U32x2 as
+  unnecessary (#16259)
+- fix(ext/web/streams): enqueue to second branch before closing (#16269)
+- fix(ext/web/streams): resolve cancelPromise in ReadableStreamTee (#16266)
+- fix(ext/websocket): panic on no next ws message from an already closed stream
+  (#16004)
+- fix(lsp): properly handle snippets on completions (#16274)
+- fix(lsp): treat empty import map value config as none (#16224)
+- fix(napi): move napi symbols file (#16179)
+- fix(npm): disable loading native module for "fsevents" package (#16273)
+- fix(npm): support compiling on linux/aarch64 (#16208)
+- fix(serde_v8): avoid creating unsound slice reference (#16189)
+- fix: add error cause in recursive cause tail (#16306)
+- perf(ext/cache): set journal_mode=wal (#16231)
+- perf(ext/crypto): optimize `getRandomValues` (#16212)
+- perf(ext/web): optimize `op_cancel_handle` (#16318)
+- perf(ext/web): optimize timer cancellation (#16316)
+- perf(napi): optimize primitive napi functions (#16163)
+- perf(npm): parallelize caching of npm specifier package infos (#16323)
+
 ### 1.26.1 / 2022.10.06
 
 - feat(npm): implement Node API (#13633)

@@ -9,9 +9,9 @@ import {
   Deferred,
   deferred,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { readAll } from "../../../test_util/std/io/util.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { BufReader, BufWriter } from "../../../test_util/std/io/buffer.ts";
+import { readAll } from "../../../test_util/std/streams/conversion.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -148,6 +148,33 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true } },
+  async function startTlsWithoutExclusiveAccessToTcpConn() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const tcpListener = Deno.listen({ hostname, port });
+    const [serverConn, clientConn] = await Promise.all([
+      tcpListener.accept(),
+      Deno.connect({ hostname, port }),
+    ]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = clientConn.read(buf);
+    // `clientConn` is being used by a pending promise (`readPromise`) so
+    // `Deno.startTls` cannot consume the connection.
+    await assertRejects(
+      () => Deno.startTls(clientConn, { hostname }),
+      Deno.errors.BadResource,
+    );
+
+    serverConn.close();
+    tcpListener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
   { permissions: { read: true, net: true } },
   async function dialAndListenTLS() {
     const resolvable = deferred();
@@ -195,7 +222,7 @@ Deno.test(
     assertEquals(proto, "HTTP/1.1");
     assertEquals(status, "200");
     assertEquals(ok, "OK");
-    const headers = await tpr.readMIMEHeader();
+    const headers = await tpr.readMimeHeader();
     assert(headers !== null);
     const contentLength = parseInt(headers.get("content-length")!);
     const bodyBuf = new Uint8Array(contentLength);
@@ -248,7 +275,7 @@ Deno.test(
     assertEquals(proto, "HTTP/1.1");
     assertEquals(status, "200");
     assertEquals(ok, "OK");
-    const headers = await tpr.readMIMEHeader();
+    const headers = await tpr.readMimeHeader();
     assert(headers !== null);
     const contentLength = parseInt(headers.get("content-length")!);
     const bodyBuf = new Uint8Array(contentLength);
