@@ -25,10 +25,6 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  log::warn!(
-    "{} deno task is unstable and may drastically change in the future",
-    crate::colors::yellow("Warning"),
-  );
   let ps = ProcState::build(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
