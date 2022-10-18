@@ -281,18 +281,18 @@ Deno.test(
         promise.resolve();
         return new Response("");
       },
-      port: 2333,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 2333 });
+    const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
     const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -318,18 +318,18 @@ Deno.test(
         promise.resolve();
         return new Response("Hello World");
       },
-      port: 2334,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 2334 });
+    const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
     const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\n\r\n12345`;
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -503,14 +503,14 @@ Deno.test(
 
     const server = Deno.serve({
       handler: () => new Response("韓國".repeat(10)),
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -581,19 +581,19 @@ Deno.test(
         promise.resolve();
         return new Response("");
       },
-      port: 2333,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 2333 });
+    const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
     const smthElse = "x".repeat(16 * 1024 + 256);
     const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: 5\r\nSomething-Else: ${smthElse}\r\n\r\n`;
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: 5\r\nSomething-Else: ${smthElse}\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
     await promise;
@@ -621,20 +621,20 @@ Deno.test(
         promise.resolve();
         return new Response("");
       },
-      port: 2333,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 2333 });
+    const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + content-length.
     const encoder = new TextEncoder();
     const smthElse = "x".repeat(16 * 1024 + 256);
     const reqBody = "hello world".repeat(1024);
     let body =
-      `PUT / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nContent-Length: ${reqBody.length}\r\nSomething-Else: ${smthElse}\r\n\r\n${reqBody}`;
+      `PUT / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nContent-Length: ${reqBody.length}\r\nSomething-Else: ${smthElse}\r\n\r\n${reqBody}`;
 
     while (body.length > 0) {
       const writeResult = await conn.write(encoder.encode(body));
@@ -664,18 +664,18 @@ Deno.test(
         promise.resolve();
         return new Response("");
       },
-      port: 2333,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 2333 });
+    const conn = await Deno.connect({ port: 4501 });
     // Send GET request with a body + connection: close.
     const encoder = new TextEncoder();
     const body =
-      `GET / HTTP/1.1\r\nHost: 127.0.0.1:2333\r\nConnection: Close\r\n\r\n`;
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nConnection: Close\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
@@ -699,12 +699,12 @@ Deno.test(
 
 //       promise.resolve();
 //       return new Response(request.body);
-//     }, { port: 2333, signal: ac.signal });
+//     }, { port: 4501, signal: ac.signal });
 
 //     const ts = new TransformStream();
 //     const writable = ts.writable.getWriter();
 
-//     const resp = await fetch("http://127.0.0.1:2333/", {
+//     const resp = await fetch("http://127.0.0.1:4501/", {
 //       method: "POST",
 //       body: ts.readable,
 //     });
@@ -989,14 +989,14 @@ Deno.test(
         promise.resolve();
         return new Response(f.readable);
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const resp = await fetch("http://127.0.0.1:4503/");
+    const resp = await fetch("http://127.0.0.1:4501/");
     await promise;
     const body = await resp.arrayBuffer();
 
@@ -1159,14 +1159,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const body = `GET /echo HTTP/1.1\r\nHost: deno.land\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
@@ -1193,14 +1193,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const body = `GET / HTTP/1.1\r\nserver: hello\tworld\r\n\r\n`;
     const writeResult = await conn.write(encoder.encode(body));
@@ -1227,14 +1227,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     // Connection: close = don't try to parse the body as a new request
     const body =
@@ -1263,14 +1263,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const body =
       `POST / HTTP/1.1\r\nHost: example.domain\r\nContent-Length: 19\r\n\r\nI'm a good request.`;
@@ -1308,14 +1308,14 @@ function createServerLengthTest(name: string, testCase: TestCase) {
         promise.resolve();
         return new Response(testCase.body, testCase.headers ?? {});
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const body =
       `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
@@ -1443,14 +1443,14 @@ Deno.test(
         reqCount++;
         return new Response(reqCount <= 1 ? stream("foo bar baz") : "zar quux");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     {
       const body =
@@ -1515,14 +1515,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
 
     const body =
@@ -1547,14 +1547,14 @@ Deno.test(
       handler: () => {
         throw new Error("unreachable");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -1590,14 +1590,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
 
     const body =
@@ -1626,14 +1626,14 @@ Deno.test(
         assertEquals(await r.text(), "12345");
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
 
     const body =
@@ -1661,14 +1661,14 @@ Deno.test(
         promise.resolve();
         return new Response("foo bar baz");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -1745,7 +1745,7 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
@@ -1753,7 +1753,7 @@ Deno.test(
 
     await listeningPromise;
     const f = await Deno.open(tmpFile, { write: true, read: true });
-    const response = await fetch(`http://localhost:4503/`, {
+    const response = await fetch(`http://localhost:4501/`, {
       method: "POST",
       body: f.readable,
     });
@@ -1817,14 +1817,14 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
 
     const body =
@@ -1850,7 +1850,7 @@ Deno.test(
       handler: () => {
         throw new Error("oops");
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
@@ -1868,7 +1868,7 @@ Deno.test(
 
     await listeningPromise;
     for (const teHeader of variations) {
-      const conn = await Deno.connect({ port: 4503 });
+      const conn = await Deno.connect({ port: 4501 });
       const body =
         `POST / HTTP/1.1\r\nHost: example.domain\r\n${teHeader}\r\n\r\n0\r\n\r\n`;
       const writeResult = await conn.write(encoder.encode(body));
@@ -1927,14 +1927,14 @@ Deno.test(
         promise.resolve();
         return new Response(null, { status: 304 });
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -1973,14 +1973,14 @@ Deno.test(
         assertEquals(await req.text(), "hello");
         return new Response(null, { status: 304 });
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -2034,14 +2034,14 @@ Deno.test(
         assertEquals(await req.text(), "");
         return new Response(null, { status: 304 });
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -2086,14 +2086,14 @@ for (const [name, req] of badRequests) {
         handler: () => {
           throw new Error("oops");
         },
-        port: 4503,
+        port: 4501,
         signal: ac.signal,
         onListen: onListen(listeningPromise),
         onError: createOnErrorCb(ac),
       });
 
       await listeningPromise;
-      const conn = await Deno.connect({ port: 4503 });
+      const conn = await Deno.connect({ port: 4501 });
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
 
@@ -2129,14 +2129,14 @@ Deno.test(
 
     const server = Deno.serve({
       handler: () => new Response(null),
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const conn = await Deno.connect({ port: 4503 });
+    const conn = await Deno.connect({ port: 4501 });
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -2194,13 +2194,13 @@ Deno.test(
 
         return new Response(`hello ${reqCount}`);
       },
-      port: 4503,
+      port: 4501,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
-    const sseRequest = await fetch(`http://localhost:4503/`);
+    const sseRequest = await fetch(`http://localhost:4501/`);
 
     const decoder = new TextDecoder();
     const stream = sseRequest.body!.getReader();
@@ -2210,7 +2210,7 @@ Deno.test(
       assertEquals(decoder.decode(value), "data: hello\r\n\r\n");
     }
 
-    const helloRequest = await fetch(`http://localhost:4503/`);
+    const helloRequest = await fetch(`http://localhost:4501/`);
     assertEquals(helloRequest.status, 200);
     assertEquals(await helloRequest.text(), "hello 1");
 
