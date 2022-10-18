@@ -264,7 +264,7 @@ declare namespace Deno {
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
-   * // `conn` becomes unusable after calling `startTls`
+   * // `conn` becomes unusable after calling `Deno.startTls`
    * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
    * ```
    *
