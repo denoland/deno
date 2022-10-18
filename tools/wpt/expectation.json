@@ -3266,12 +3266,10 @@
     "range": {
       "general.any.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.any.worker.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.window.html": false
@@ -4562,8 +4560,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
@@ -4652,8 +4648,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
