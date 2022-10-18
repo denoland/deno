@@ -189,6 +189,7 @@ script generates the symbols based on the latest tags.
   1. Clone `deno/apliland_scripts`.
   2. Execute `deno task release`.
   </details>
+
 ## Updating `deno_docker`
 
 - [ ] Open a PR on the `deno_docker` repo that bumps the Deno version in all
