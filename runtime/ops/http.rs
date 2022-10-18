@@ -82,7 +82,7 @@ fn op_http_start(
     // process of starting a HTTP server on top of this UNIX socket, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("UNIX stream is being used somewhere else"))?;
+      .map_err(|_| bad_resource("UNIX stream is currently in use"))?;
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     let addr = unix_stream.local_addr()?;
