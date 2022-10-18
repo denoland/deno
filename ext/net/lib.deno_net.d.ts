@@ -253,7 +253,7 @@ declare namespace Deno {
    * this function requires that the other end of the connection is prepared for
    * a TLS handshake.
    *
-   * Note that this function *consumes* the TCP connetion passed to it, thus the
+   * Note that this function *consumes* the TCP connection passed to it, thus the
    * original TCP connection will be unusable after calling this. Additionally,
    * you need to ensure that the TCP connection is not being used elsewhere when
    * calling this function in order for the TCP connection to be consumed properly.
