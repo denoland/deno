@@ -529,7 +529,7 @@ Deno.test(async function rsaExport() {
 });
 
 Deno.test(async function testHkdfDeriveBits() {
-  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey(
     "raw",
     rawKey,
@@ -537,8 +537,8 @@ Deno.test(async function testHkdfDeriveBits() {
     false,
     ["deriveBits"],
   );
-  const salt = await crypto.getRandomValues(new Uint8Array(16));
-  const info = await crypto.getRandomValues(new Uint8Array(16));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const info = crypto.getRandomValues(new Uint8Array(16));
   const result = await crypto.subtle.deriveBits(
     {
       name: "HKDF",
@@ -644,7 +644,7 @@ Deno.test(async function testEcdhDeriveBitsWithNullLength() {
 
 Deno.test(async function testDeriveKey() {
   // Test deriveKey
-  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const rawKey = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey(
     "raw",
     rawKey,
@@ -653,7 +653,7 @@ Deno.test(async function testDeriveKey() {
     ["deriveKey", "deriveBits"],
   );
 
-  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
   const derivedKey = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
@@ -685,7 +685,7 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
     ["encrypt", "decrypt"],
   );
 
-  const iv = await crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(16));
   const encrypted = await crypto.subtle.encrypt(
     {
       name: "AES-CBC",
@@ -756,7 +756,7 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 
     // test normal operation
     for (const length of [128 /*, 64, 128 */]) {
-      const counter = await crypto.getRandomValues(new Uint8Array(16));
+      const counter = crypto.getRandomValues(new Uint8Array(16));
 
       await aesCtrRoundTrip(
         key,
@@ -768,7 +768,7 @@ Deno.test(async function testAesCtrEncryptDecrypt() {
 
     // test counter-wrapping
     for (const length of [32, 64, 128]) {
-      const plaintext1 = await crypto.getRandomValues(new Uint8Array(32));
+      const plaintext1 = crypto.getRandomValues(new Uint8Array(32));
       const counter = new Uint8Array(16);
 
       // fixed upper part
