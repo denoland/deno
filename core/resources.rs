@@ -304,7 +304,9 @@ impl ResourceTable {
   }
 
   /// Removes a resource from the resource table and returns it. Note that the
-  /// resource's `close()` method is *not* called. Also note that there might be a
+  /// resource's `close()` method is *not* called. 
+  ///
+  /// Also note that there might be a
   /// case where the returned `Rc<T>` is referenced by other variables. That is,
   /// we cannot assume that `Rc::strong_count(&returned_rc)` is always equal to 1
   /// on success. In particular, be really careful when you want to extract the
