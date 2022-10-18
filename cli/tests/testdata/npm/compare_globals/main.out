@@ -2,7 +2,7 @@ Download http://localhost:4545/npm/registry/@denotest/globals
 Download http://localhost:4545/npm/registry/@types/node
 Download http://localhost:4545/npm/registry/@denotest/globals/1.0.0.tgz
 Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz
-Check file:///V:/deno/cli/tests/testdata/npm/compare_globals/main.ts
-Check file:///V:/deno/test_util/std/node/module_all.ts
+Check file:///[WILDCARD]/npm/compare_globals/main.ts
+Check file:///[WILDCARD]/std/node/module_all.ts
 true
 []
