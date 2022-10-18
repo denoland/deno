@@ -602,3 +602,4 @@ jobs:
         run: |
           echo ${{ github.sha }} > canary-latest.txt
           gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
