@@ -1710,14 +1710,14 @@ Deno.test(
         promise.resolve();
         return new Response(f.readable, { status: 200 });
       },
-      port: 4503,
+      port: 4502,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
     await listeningPromise;
-    const response = await fetch(`http://localhost:4503/`);
+    const response = await fetch(`http://localhost:4502/`);
     assertEquals(response.status, 200);
     await promise;
     assertEquals(new Uint8Array(await response.arrayBuffer()), data);
@@ -1745,7 +1745,7 @@ Deno.test(
         promise.resolve();
         return new Response("ok");
       },
-      port: 4501,
+      port: 4502,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
@@ -1753,7 +1753,7 @@ Deno.test(
 
     await listeningPromise;
     const f = await Deno.open(tmpFile, { write: true, read: true });
-    const response = await fetch(`http://localhost:4501/`, {
+    const response = await fetch(`http://localhost:4502/`, {
       method: "POST",
       body: f.readable,
     });
@@ -2194,13 +2194,13 @@ Deno.test(
 
         return new Response(`hello ${reqCount}`);
       },
-      port: 4501,
+      port: 4502,
       signal: ac.signal,
       onListen: onListen(listeningPromise),
       onError: createOnErrorCb(ac),
     });
 
-    const sseRequest = await fetch(`http://localhost:4501/`);
+    const sseRequest = await fetch(`http://localhost:4502/`);
 
     const decoder = new TextDecoder();
     const stream = sseRequest.body!.getReader();
@@ -2210,7 +2210,7 @@ Deno.test(
       assertEquals(decoder.decode(value), "data: hello\r\n\r\n");
     }
 
-    const helloRequest = await fetch(`http://localhost:4501/`);
+    const helloRequest = await fetch(`http://localhost:4502/`);
     assertEquals(helloRequest.status, 200);
     assertEquals(await helloRequest.text(), "hello 1");
 
