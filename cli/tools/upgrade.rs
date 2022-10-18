@@ -33,6 +33,10 @@ const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
 pub fn check_for_upgrades() -> Option<String> {
+  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+    return None;
+  }
+
   let current_exe_mtime =
     env::current_exe().ok()?.metadata().ok()?.modified().ok()?;
 
