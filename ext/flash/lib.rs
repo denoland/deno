@@ -145,7 +145,13 @@ fn op_flash_respond(
   shutdown: bool,
 ) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let ctx = match flash_ctx.servers.get_mut(&server_id) {
+    Some(ctx) => ctx,
+    // If the server has been aborted, its context is no longer present in the
+    // map and there's no point processing further. So we return 0 as a
+    // meaningless value.
+    None => return 0,
+  };
   flash_respond(ctx, token, shutdown, &response)
 }
 
@@ -163,7 +169,10 @@ async fn op_flash_respond_async(
   let stream_states = {
     let mut op_state = state.borrow_mut();
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+    let ctx = flash_ctx
+      .servers
+      .get_mut(&server_id)
+      .ok_or_else(|| generic_error("server aborted"))?;
 
     match shutdown {
       true => {
@@ -206,7 +215,10 @@ async fn op_flash_respond_chuncked(
 ) -> Result<(), AnyError> {
   let mut op_state = op_state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| generic_error("server aborted"))?;
   let stream_states = match shutdown {
     true => {
       let tx = ctx.requests.remove(&token).unwrap();
@@ -264,7 +276,10 @@ async fn op_flash_write_resource(
       op_state.resource_table.get_any(resource_id)?
     };
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+    let ctx = flash_ctx
+      .servers
+      .get_mut(&server_id)
+      .ok_or_else(|| generic_error("server aborted"))?;
     (resource, ctx.requests.remove(&token).unwrap().stream_states)
   };
 
@@ -391,17 +406,6 @@ unsafe fn op_flash_respond_fast(
   }
 }
 
-macro_rules! get_request {
-  ($op_state: ident, $token: ident) => {
-    get_request!($op_state, 0, $token)
-  };
-  ($op_state: ident, $server_id: expr, $token: ident) => {{
-    let flash_ctx = $op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&$server_id).unwrap();
-    ctx.requests.get_mut(&$token).unwrap()
-  }};
-}
-
 #[repr(u32)]
 pub enum Method {
   GET = 0,
@@ -416,7 +420,7 @@ pub enum Method {
 }
 
 #[inline]
-fn get_method(req: &mut Request) -> u32 {
+fn get_method(req: &Request) -> u32 {
   let method = match req.method() {
     "GET" => Method::GET,
     "POST" => Method::POST,
@@ -434,7 +438,17 @@ fn get_method(req: &mut Request) -> u32 {
 
 #[op]
 fn op_flash_method(state: &mut OpState, server_id: u32, token: u32) -> u32 {
-  let req = get_request!(state, server_id, token);
+  let ctx = {
+    let flash_ctx = state.borrow_mut::<FlashContext>();
+    match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => ctx,
+      // If the server has been aborted, its context is no longer present in the
+      // map and there's no point processing further. So we return 0 as a
+      // meaningless value.
+      None => return 0,
+    }
+  };
+  let req = ctx.requests.get(&token).unwrap();
   get_method(req)
 }
 
@@ -452,19 +466,24 @@ fn op_flash_path(
   state: Rc<RefCell<OpState>>,
   server_id: u32,
   token: u32,
-) -> String {
+) -> Result<String, AnyError> {
   let mut op_state = state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-  ctx
-    .requests
-    .get(&token)
-    .unwrap()
-    .inner
-    .req
-    .path
-    .unwrap()
-    .to_string()
+  let ctx = flash_ctx
+    .servers
+    .get_mut(&server_id)
+    .ok_or_else(|| generic_error("server aborted"))?;
+  Ok(
+    ctx
+      .requests
+      .get(&token)
+      .unwrap()
+      .inner
+      .req
+      .path
+      .unwrap()
+      .to_string(),
+  )
 }
 
 #[inline]
@@ -646,7 +665,17 @@ fn op_flash_has_body_stream(
   server_id: u32,
   token: u32,
 ) -> bool {
-  let req = get_request!(op_state, server_id, token);
+  let ctx = {
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => ctx,
+      // If the server has been aborted, its context is no longer present in the
+      // map and there's no point processing further. So we return false as a
+      // meaningless value.
+      None => return false,
+    }
+  };
+  let req = ctx.requests.get(&token).unwrap();
   has_body_stream(req)
 }
 
@@ -685,7 +714,14 @@ fn op_flash_first_packet(
   server_id: u32,
   token: u32,
 ) -> Result<Option<ZeroCopyBuf>, AnyError> {
-  let tx = get_request!(op_state, server_id, token);
+  let tx = {
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    let ctx = flash_ctx
+      .servers
+      .get_mut(&server_id)
+      .ok_or_else(|| generic_error("server aborted"))?;
+    ctx.requests.get_mut(&token).unwrap()
+  };
 
   if !tx.te_chunked && tx.content_length.is_none() {
     return Ok(None);
@@ -760,13 +796,15 @@ async fn op_flash_read_body(
   // SAFETY: we cannot hold op_state borrow across the await point. The JS caller
   // is responsible for ensuring this is not called concurrently.
   let ctx = unsafe {
-    {
-      let op_state = &mut state.borrow_mut();
-      let flash_ctx = op_state.borrow_mut::<FlashContext>();
-      flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
+    let op_state = &mut state.borrow_mut();
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => (ctx as *mut ServerContext).as_mut().unwrap(),
+      // If the server has been aborted, its context is no longer present in the
+      // map and there's no point processing further. So we return 0 as a
+      // meaningless value.
+      None => return 0,
     }
-    .as_mut()
-    .unwrap()
   };
   let tx = ctx.requests.get_mut(&token).unwrap();
 
@@ -1370,8 +1408,13 @@ async fn op_flash_next_async(
   let ctx = {
     let mut op_state = op_state.borrow_mut();
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-    ctx as *mut ServerContext
+    match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => ctx as *mut ServerContext,
+      // If the server has been aborted, its context is no longer present in the
+      // map and there's no point processing further. So we return 0 as a
+      // meaningless value.
+      None => return 0,
+    }
   };
   // SAFETY: we cannot hold op_state borrow across the await point. The JS caller
   // is responsible for ensuring this is not called concurrently.
@@ -1405,7 +1448,13 @@ fn op_flash_next(state: &mut OpState) -> u32 {
 #[op]
 fn op_flash_next_server(state: &mut OpState, server_id: u32) -> u32 {
   let flash_ctx = state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let ctx = match flash_ctx.servers.get_mut(&server_id) {
+    Some(ctx) => ctx,
+    // If the server has been aborted, its context is no longer present in the
+    // map and there's no point processing further. So we return 0 as a
+    // meaningless value.
+    None => return 0,
+  };
   next_request_sync(ctx)
 }
 
@@ -1501,7 +1550,13 @@ async fn op_flash_upgrade_websocket(
   let stream = {
     let op_state = &mut state.borrow_mut();
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    detach_socket(flash_ctx.servers.get_mut(&server_id).unwrap(), token)?
+    detach_socket(
+      flash_ctx
+        .servers
+        .get_mut(&server_id)
+        .ok_or_else(|| generic_error("server aborted"))?,
+      token,
+    )?
   };
   deno_websocket::ws_create_server_stream(
     &state,

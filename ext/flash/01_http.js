@@ -479,12 +479,16 @@
     }).catch(() => {});
     const finishedPromise = serverPromise.catch(() => {});
 
-    const fastOp = prepareFastCalls();
-    let nextRequestSync = () => fastOp.nextRequest();
-    let getMethodSync = (token) => fastOp.getMethod(token);
-    let respondFast = (token, response, shutdown) =>
-      fastOp.respond(token, response, shutdown);
-    if (serverId > 0) {
+    let nextRequestSync;
+    let getMethodSync;
+    let respondFast;
+    if (serverId === 0) {
+      const fastOp = prepareFastCalls();
+      nextRequestSync = () => fastOp.nextRequest();
+      getMethodSync = (token) => fastOp.getMethod(token);
+      respondFast = (token, response, shutdown) =>
+        fastOp.respond(token, response, shutdown);
+    } else {
       nextRequestSync = () => core.ops.op_flash_next_server(serverId);
       getMethodSync = (token) => core.ops.op_flash_method(serverId, token);
       respondFast = (token, response, shutdown) =>
