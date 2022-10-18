@@ -500,8 +500,12 @@ impl Inner {
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
-    let maybe_import_map_url = if let Some(import_map_str) =
-      self.config.get_workspace_settings().import_map
+
+    let maybe_import_map_url = if let Some(import_map_str) = self
+      .config
+      .get_workspace_settings()
+      .import_map
+      .and_then(|s| if s.is_empty() { None } else { Some(s) })
     {
       lsp_log!(
         "Setting import map from workspace settings: \"{}\"",

@@ -338,8 +338,8 @@ fn op_encoding_encode_into(
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
-#[op]
-pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+#[op(fast)]
+pub fn op_cancel_handle(state: &mut OpState) -> u32 {
   state.resource_table.add(CancelHandle::new())
 }
 

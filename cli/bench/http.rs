@@ -10,7 +10,7 @@ pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 //   "deno_tcp" was once called "deno"
 //   "deno_http" was once called "deno_net_http"
 
-const DURATION: &str = "20s";
+const DURATION: &str = "10s";
 
 pub fn benchmark(
   target_path: &Path,

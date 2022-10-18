@@ -4,7 +4,7 @@ import {
   BufReader,
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
   assert,
@@ -30,7 +30,7 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const tpr = new TextProtoReader(r);
   const statusLine = await tpr.readLine();
   assert(statusLine !== null);
-  const headers = await tpr.readMIMEHeader();
+  const headers = await tpr.readMimeHeader();
   assert(headers !== null);
 
   const chunkedReader = chunkedBodyReader(headers, r);
@@ -605,7 +605,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -751,7 +751,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -2373,6 +2373,86 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function httpServerWithoutExclusiveAccessToTcp() {
+    const port = 4506;
+    const listener = Deno.listen({ port });
+
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connect({ port }),
+      listener.accept(),
+    ]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, read: true },
+  },
+  async function httpServerWithoutExclusiveAccessToTls() {
+    const hostname = "localhost";
+    const port = 4507;
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
+    });
+
+    const caCerts = [
+      await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem"),
+    ];
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connectTls({ hostname, port, caCerts }),
+      listener.accept(),
+    ]);
+    await Promise.all([clientConn.handshake(), serverConn.handshake()]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function httpServerWithoutExclusiveAccessToUnixSocket() {
+    const filePath = await Deno.makeTempFile();
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
+
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connect({ path: filePath, transport: "unix" }),
+      listener.accept(),
+    ]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
@@ -2459,7 +2539,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

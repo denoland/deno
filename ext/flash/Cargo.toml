@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_flash"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,10 +14,10 @@ description = "Fast HTTP/1 server implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { path = "../../core", version = "0.154.0" }
-deno_tls = { version = "0.59.0", path = "../tls" }
+deno_core = { path = "../../core", version = "0.155.0" }
+deno_tls = { version = "0.60.0", path = "../tls" }
 # For HTTP/2 and websocket upgrades
-deno_websocket = { version = "0.77.0", path = "../websocket" }
+deno_websocket = { version = "0.78.0", path = "../websocket" }
 http = "0.2.6"
 httparse = "1.8"
 libc = "0.2"
