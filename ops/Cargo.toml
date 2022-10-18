@@ -1,9 +1,13 @@
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 [package]
 name = "deno_ops"
 version = "0.33.0"
-edition = "2021"
-license = "MIT"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
+repository.workspace = true
 description = "Proc macro for writing Deno Ops"
 
 [lib]

@@ -1,9 +1,13 @@
+# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
 [package]
 name = "napi_sym"
 version = "0.3.0"
-edition = "2021"
-license = "MIT"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
+repository.workspace = true
 description = "proc macro for writing N-API symbols"
 
 [lib]

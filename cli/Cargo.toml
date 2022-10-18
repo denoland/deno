@@ -3,12 +3,12 @@
 [package]
 name = "deno"
 version = "1.26.2"
-authors = ["the Deno authors"]
+authors.workspace = true
 default-run = "deno"
-edition = "2021"
+edition.workspace = true
 exclude = ["tests/testdata/npm/registry/*"]
-license = "MIT"
-repository = "https://github.com/denoland/deno"
+license.workspace = true
+repository.workspace = true
 description = "Provides the deno executable"
 
 [[bin]]

@@ -33,6 +33,12 @@ members = [
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
+[workspace.package]
+authors = ["the Deno authors"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/denoland/deno"
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
