@@ -19,6 +19,7 @@
     ArrayPrototypeMap,
     ArrayPrototypeSome,
     DataView,
+    Uint32Array,
     ErrorPrototypeToString,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
@@ -401,7 +402,7 @@
           this[_rid],
           eventBuf,
         );
-        const kind = outEventBuf[0];
+        const kind = eventBuf[0];
         switch (kind) {
           /* string */
           case 0: {
@@ -444,10 +445,10 @@
             break;
           }
           /* closed */
-          case 6:
+          case 6: // falls through
           /* close */
           case 2: {
-            const code = outEventBuf[1];
+            const code = eventBuf[1];
             const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
