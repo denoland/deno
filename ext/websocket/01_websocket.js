@@ -310,6 +310,7 @@
             this[_bufferedAmount] -= d;
           });
         }
+        return;
       }
 
       const sendTypedArray = (ta) => {
