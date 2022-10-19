@@ -169,12 +169,15 @@
                   PromisePrototypeThen(
                     (async () => {
                       while (true) {
-                        const { kind } = await core.opAsync(
+                        const kind = new Uint32Array(2);
+                        await core.opAsync(
                           "op_ws_next_event",
                           create.rid,
+                          kind,
                         );
 
-                        if (kind === "close") {
+                        /* close */
+                        if (kind === 2) {
                           break;
                         }
                       }
