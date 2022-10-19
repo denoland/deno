@@ -118,7 +118,7 @@ impl Lockfile {
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check_npm_package(&mut self, specifier: String, checksum: String) -> bool {
-    if let Some(lockfile_checksum) = self.map.get(&specifier) {
+    if let Some(lockfile_checksum) = self.content.map.get(&specifier) {
       lockfile_checksum == &checksum
     } else {
       false
@@ -126,7 +126,7 @@ impl Lockfile {
   }
 
   fn insert_npm_package(&mut self, specifier: String, checksum: String) {
-    self.map.insert(specifier, checksum);
+    self.content.map.insert(specifier, checksum);
   }
 }
 
