@@ -83,7 +83,7 @@
   const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
   const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 
-  /* [event type, error code] */
+  /* [event type, close code] */
   const eventBuf = new Uint32Array(2);
 
   class WebSocket extends EventTarget {
