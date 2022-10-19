@@ -40,11 +40,7 @@ pub fn check_for_upgrades() -> Option<String> {
     Ok(file) => file,
     Err(err) if err.kind() == io::ErrorKind::NotFound => {
       fs::create_dir_all(&cache_dir.join("deno")).ok()?;
-      if let Ok(c) = std::fs::read_to_string(&p) {
-        c
-      } else {
-        "".to_string()
-      }
+      std::fs::read_to_string(&p).unwrap_or_default()
     }
     Err(_) => "".to_string(),
   };
@@ -57,27 +53,22 @@ pub fn check_for_upgrades() -> Option<String> {
   }
 
   if latest_version.is_none() || latest_version.as_ref().unwrap().is_empty() {
-    let mut last_checked_dt = None;
+    let last_checked_dt = last_checked.and_then(|last_checked| {
+      chrono::DateTime::parse_from_rfc3339(last_checked)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .ok()
+    });
 
-    if let Some(last_checked) = last_checked {
-      if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(last_checked) {
-        last_checked_dt = Some(dt.with_timezone(&chrono::Utc));
-      };
-    }
-
-    let last_checked_dt = if let Some(dt) = last_checked_dt {
-      dt
-    } else {
-      // If we're unable to parse saved last check date, use datetime further in
-      // the past than the check interval
-      chrono::Utc::now()
-        .checked_sub_signed(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1))
-        .unwrap()
+    let should_check = match last_checked_dt {
+      Some(last_checked_dt) => {
+        let last_check_age =
+          chrono::Utc::now().signed_duration_since(last_checked_dt);
+        last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
+      }
+      None => true,
     };
 
-    let last_check_age =
-      chrono::Utc::now().signed_duration_since(last_checked_dt);
-    if last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
+    if should_check {
       tokio::spawn(async move {
         // Sleep for a small amount of time to not unnecessarily impact startup
         // time.
