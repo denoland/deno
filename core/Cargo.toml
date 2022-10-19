@@ -1,7 +1,7 @@
 # Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 [package]
 name = "deno_core"
-version = "0.154.0"
+version = "0.155.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -19,7 +19,7 @@ v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 [dependencies]
 anyhow = "1.0.57"
 bytes = "1"
-deno_ops = { path = "../ops", version = "0.32.0" }
+deno_ops = { path = "../ops", version = "0.33.0" }
 futures = "0.3.21"
 # Stay on 1.6 to avoid a dependency cycle in ahash https://github.com/tkaitchuck/aHash/issues/95
 # Projects not depending on ahash are unafected as cargo will pull any 1.X that is >= 1.6.
@@ -31,10 +31,10 @@ parking_lot = "0.12.0"
 pin-project = "1.0.11"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { version = "1.0.79", features = ["preserve_order"] }
-serde_v8 = { version = "0.65.0", path = "../serde_v8" }
+serde_v8 = { version = "0.66.0", path = "../serde_v8" }
 sourcemap = "6.1"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
-v8 = { version = "0.52.0", default-features = false }
+v8 = { version = "0.53.1", default-features = false }
 
 [[example]]
 name = "http_bench_json_ops"

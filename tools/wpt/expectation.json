@@ -1336,8 +1336,8 @@
       "patched-global.any.worker.html": true,
       "reentrant-strategies.any.html": true,
       "reentrant-strategies.any.worker.html": true,
-      "tee.any.html": false,
-      "tee.any.worker.html": false,
+      "tee.any.html": true,
+      "tee.any.worker.html": true,
       "templated.any.html": true,
       "templated.any.worker.html": true
     },
@@ -2999,6 +2999,8 @@
         "response-static-error.any.worker.html": true,
         "response-static-redirect.any.html": true,
         "response-static-redirect.any.worker.html": true,
+        "response-stream-bad-chunk.any.html": true,
+        "response-stream-bad-chunk.any.worker.html": true,
         "response-stream-disturbed-1.any.html": true,
         "response-stream-disturbed-1.any.worker.html": true,
         "response-stream-disturbed-2.any.html": true,
@@ -3264,12 +3266,10 @@
     "range": {
       "general.any.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.any.worker.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.window.html": false
@@ -4560,8 +4560,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
@@ -4650,8 +4648,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",

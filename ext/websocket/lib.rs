@@ -20,6 +20,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use http::header::HeaderName;
@@ -52,7 +53,6 @@ use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::WebSocketStream;
-use deno_core::StringOrBuffer;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
@@ -515,7 +515,9 @@ pub async fn op_ws_next_event(
       Some(StringOrBuffer::String(e.to_string())),
     ),
     None => {
-      state.borrow_mut().resource_table.close(rid).unwrap();
+      // No message was received, presumably the socket closed while we waited.
+      // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+      let _ = state.borrow_mut().resource_table.close(rid);
       (NextEventKind::Closed as u32, None)
     }
   };
