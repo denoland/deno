@@ -18,20 +18,21 @@
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
     ArrayPrototypeSome,
-    DataView,
+    Uint32Array,
     ErrorPrototypeToString,
     ObjectDefineProperties,
     ObjectPrototypeIsPrototypeOf,
     PromisePrototypeThen,
     RegExpPrototypeTest,
     Set,
-    String,
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
     Symbol,
     SymbolIterator,
     PromisePrototypeCatch,
+    queueMicrotask,
     SymbolFor,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -82,6 +83,10 @@
   const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
   const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
   const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
+
+  /* [event type, close code] */
+  const eventBuf = new Uint32Array(2);
+
   class WebSocket extends EventTarget {
     [_rid];
 
@@ -290,40 +295,58 @@
         throw new DOMException("readyState not OPEN", "InvalidStateError");
       }
 
+      if (typeof data === "string") {
+        // try to send in one go!
+        const d = core.byteLength(data);
+        const sent = ops.op_ws_try_send_string(this[_rid], data);
+        this[_bufferedAmount] += d;
+        if (!sent) {
+          PromisePrototypeThen(
+            core.opAsync("op_ws_send_string", this[_rid], data),
+            () => {
+              this[_bufferedAmount] -= d;
+            },
+          );
+        } else {
+          // Spec expects data to be start flushing on next tick but oh well...
+          // we already sent it so we can just decrement the bufferedAmount
+          // on the next tick.
+          queueMicrotask(() => {
+            this[_bufferedAmount] -= d;
+          });
+        }
+        return;
+      }
+
       const sendTypedArray = (ta) => {
+        // try to send in one go!
+        const sent = ops.op_ws_try_send_binary(this[_rid], ta);
         this[_bufferedAmount] += ta.byteLength;
-        PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
-            kind: "binary",
-            value: ta,
-          }),
-          () => {
+        if (!sent) {
+          PromisePrototypeThen(
+            core.opAsync("op_ws_send_binary", this[_rid], ta),
+            () => {
+              this[_bufferedAmount] -= ta.byteLength;
+            },
+          );
+        } else {
+          // Spec expects data to be start flushing on next tick but oh well...
+          // we already sent it so we can just decrement the bufferedAmount
+          // on the next tick.
+          queueMicrotask(() => {
             this[_bufferedAmount] -= ta.byteLength;
-          },
-        );
+          });
+        }
       };
 
-      if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
-        PromisePrototypeThen(
-          data.slice().arrayBuffer(),
-          (ab) => sendTypedArray(new DataView(ab)),
-        );
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+        sendTypedArray(new Uint8Array(data));
       } else if (ArrayBufferIsView(data)) {
         sendTypedArray(data);
-      } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-        sendTypedArray(new DataView(data));
-      } else {
-        const string = String(data);
-        const d = core.encode(string);
-        this[_bufferedAmount] += d.byteLength;
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         PromisePrototypeThen(
-          core.opAsync("op_ws_send", this[_rid], {
-            kind: "text",
-            value: string,
-          }),
-          () => {
-            this[_bufferedAmount] -= d.byteLength;
-          },
+          data.slice().arrayBuffer(),
+          (ab) => sendTypedArray(new Uint8Array(ab)),
         );
       }
     }
@@ -392,13 +415,15 @@
 
     async [_eventLoop]() {
       while (this[_readyState] !== CLOSED) {
-        const { kind, value } = await core.opAsync(
+        const value = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
+          eventBuf,
         );
-
+        const kind = eventBuf[0];
         switch (kind) {
-          case "string": {
+          /* string */
+          case 0: {
             this[_serverHandleIdleTimeout]();
             const event = new MessageEvent("message", {
               data: value,
@@ -407,7 +432,8 @@
             this.dispatchEvent(event);
             break;
           }
-          case "binary": {
+          /* binary */
+          case 1: {
             this[_serverHandleIdleTimeout]();
             let data;
 
@@ -424,18 +450,23 @@
             this.dispatchEvent(event);
             break;
           }
-          case "ping": {
+          /* ping */
+          case 3: {
             core.opAsync("op_ws_send", this[_rid], {
               kind: "pong",
             });
             break;
           }
-          case "pong": {
+          /* pong */
+          case 4: {
             this[_serverHandleIdleTimeout]();
             break;
           }
-          case "closed":
-          case "close": {
+          /* closed */
+          case 6: // falls through
+          /* close */
+          case 2: {
+            const code = eventBuf[1];
             const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
@@ -445,8 +476,8 @@
                 await core.opAsync(
                   "op_ws_close",
                   this[_rid],
-                  value.code,
-                  value.reason,
+                  code,
+                  value,
                 );
               } catch {
                 // ignore failures
@@ -455,14 +486,15 @@
 
             const event = new CloseEvent("close", {
               wasClean: true,
-              code: value.code,
-              reason: value.reason,
+              code,
+              reason: value,
             });
             this.dispatchEvent(event);
             core.tryClose(this[_rid]);
             break;
           }
-          case "error": {
+          /* error */
+          case 5: {
             this[_readyState] = CLOSED;
 
             const errorEv = new ErrorEvent("error", {
