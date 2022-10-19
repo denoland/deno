@@ -9,8 +9,14 @@
 set -e
 #set -x
 
+#export RUST_BACKTRACE=1
+#export RUST_BACKTRACE=all
+export RUST_BACKTRACE=full
+
 gitdir=$(mktemp -d --suffix=-project)
 git clone --depth 1 https://github.com/hayd/deno-udd $gitdir
+
+logdir=$(mktemp -d --suffix=-log)
 
 mainScript=$gitdir/main.ts
 
@@ -58,7 +64,11 @@ else
   # call "deno cache" with "--deterministic"
 
   # note: $DENO_DIR/lock.json is a non-standard location
-  deno cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} --deterministic
+  # "--deterministic" in subcommand flags. this is hard to implement
+  #deno cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} --deterministic 2>&1 |
+  # "--deterministic" in main flags. this is easy to implement
+  deno --deterministic cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} 2>&1 |
+  tee $logdir/deno-cache.log
 fi
 
 
@@ -81,8 +91,13 @@ done
 
 
 
+echo "logs:"
+echo "  $logdir/deno-cache.log"
+
+
+
 echo "hit enter to cleanup tempdirs:"
-echo "  rm -rf $DENO_DIR $gitdir"
+echo "  rm -rf $DENO_DIR $gitdir $logdir"
 read
 
-rm -rf $DENO_DIR $gitdir
+rm -rf $DENO_DIR $gitdir $logdir
