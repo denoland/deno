@@ -325,6 +325,18 @@ jobs:
           startsWith(github.ref, 'refs/tags/'))))
         run: cargo build --release --locked --all-targets
 
+      - name: Upload PR artifact (linux)
+        if: |
+          matrix.job == 'test' &&
+          matrix.profile == 'release' && (matrix.use_sysroot ||
+          (github.repository == 'denoland/deno' &&
+          (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/'))))
+        uses: actions/upload-artifact@v3
+        with:
+          name: deno-${{ github.event.number }}
+          path: target/release/deno
+
       - name: Pre-release (linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
