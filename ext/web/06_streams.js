@@ -29,7 +29,6 @@
     NumberIsNaN,
     MathMin,
     ObjectCreate,
-    ObjectDefineProperties,
     ObjectDefineProperty,
     ObjectGetPrototypeOf,
     ObjectPrototypeIsPrototypeOf,
@@ -4379,17 +4378,7 @@
    * @returns {IteratorResult<T>}
    */
   function createIteratorResult(value, done) {
-    const result = ObjectCreate(null);
-    ObjectDefineProperties(result, {
-      value: { value, writable: true, enumerable: true, configurable: true },
-      done: {
-        value: done,
-        writable: true,
-        enumerable: true,
-        configurable: true,
-      },
-    });
-    return result;
+    return { value, done };
   }
 
   /** @type {AsyncIterator<unknown, unknown>} */
