@@ -14,21 +14,18 @@ use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
-use std::time::SystemTime;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
-const UPGRADE_CHECK_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
+const UPGRADE_CHECK_INTERVAL: i64 = 12;
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -37,77 +34,79 @@ pub fn check_for_upgrades() -> Option<String> {
     return None;
   }
 
-  let current_exe_mtime =
-    env::current_exe().ok()?.metadata().ok()?.modified().ok()?;
-
-  // Open `$DENO_DIR/latest.txt` for reading and writing. If this fails somehow
-  // we bail out early and return `None`.
   let cache_dir = cache_dir()?;
-  let mut latest_txt_file = loop {
-    match fs::OpenOptions::new()
-      .create(true)
-      .read(true)
-      .write(true)
-      .open(&cache_dir.join("deno/latest.txt"))
-    {
-      Ok(file) => break file,
-      Err(err) if err.kind() == io::ErrorKind::NotFound => {
-        fs::create_dir_all(&cache_dir.join("deno")).ok()?;
-      }
-      Err(_) => return None,
-    }
-  };
-
-  let latest_txt_mtime = latest_txt_file.metadata().ok()?.modified().ok()?;
-  let latest_txt_age = SystemTime::now()
-    .duration_since(latest_txt_mtime)
-    .unwrap_or_default();
-
-  // We consider `latest.txt` valid and up-to-date if it is non-empty and newer
-  // than the currently running deno executable.
-  let latest_txt_version = if latest_txt_mtime > current_exe_mtime {
-    let mut buf = String::new();
-    match latest_txt_file.read_to_string(&mut buf) {
-      Ok(0) | Err(_) => None,
-      Ok(_) => Some(buf),
-    }
-  } else {
-    None
-  };
-
-  // Spawn a task that will query dl.deno.land for the latest version and update
-  // latest.txt. This step is skipped if latest.txt is valid and no older than
-  // 12 hours.
-  if latest_txt_version.is_none() || latest_txt_age >= UPGRADE_CHECK_INTERVAL {
-    tokio::spawn(async move {
-      // Sleep for a small amount of time to not unnecessarily impact startup
-      // time.
-      tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
-
-      // Fetch latest version or commit hash from server.
-      let client = match build_http_client(None) {
-        Ok(client) => client,
-        Err(_) => return,
-      };
-      let latest_version = match if version::is_canary() {
-        get_latest_canary_version(&client).await
+  let p = cache_dir.join("deno/latest.txt");
+  let content = match std::fs::read_to_string(&p) {
+    Ok(file) => file,
+    Err(err) if err.kind() == io::ErrorKind::NotFound => {
+      fs::create_dir_all(&cache_dir.join("deno")).ok()?;
+      if let Ok(c) = std::fs::read_to_string(&p) {
+        c
       } else {
-        get_latest_release_version(&client).await
-      } {
-        Ok(latest_version) => latest_version,
-        Err(_) => return,
-      };
+        "".to_string()
+      }
+    }
+    Err(_) => "".to_string(),
+  };
 
-      // Write the latest version to `latest.txt`.
-      let _ = latest_txt_file
-        .rewind()
-        .and_then(|_| latest_txt_file.set_len(0))
-        .and_then(|_| latest_txt_file.write_all(latest_version.as_bytes()));
-    });
+  let (mut last_checked, mut latest_version) = (None, None);
+  let split_content = content.split('!').collect::<Vec<_>>();
+  if split_content.len() == 2 {
+    last_checked = Some(split_content[0]);
+    latest_version = Some(split_content[1].to_owned());
+  }
+
+  if latest_version.is_none() || latest_version.as_ref().unwrap().is_empty() {
+    let mut last_checked_dt = None;
+
+    if let Some(last_checked) = last_checked {
+      if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(last_checked) {
+        last_checked_dt = Some(dt.with_timezone(&chrono::Utc));
+      };
+    }
+
+    let last_checked_dt = if let Some(dt) = last_checked_dt {
+      dt
+    } else {
+      // If we're unable to parse saved last check date, use datetime further in
+      // the past than the check interval
+      chrono::Utc::now()
+        .checked_sub_signed(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1))
+        .unwrap()
+    };
+
+    let last_check_age =
+      chrono::Utc::now().signed_duration_since(last_checked_dt);
+    if last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
+      tokio::spawn(async move {
+        // Sleep for a small amount of time to not unnecessarily impact startup
+        // time.
+        tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
+
+        // Fetch latest version or commit hash from server.
+        let client = match build_http_client(None) {
+          Ok(client) => client,
+          Err(_) => return,
+        };
+        let latest_version = match if version::is_canary() {
+          get_latest_canary_version(&client).await
+        } else {
+          get_latest_release_version(&client).await
+        } {
+          Ok(latest_version) => latest_version,
+          Err(_) => return,
+        };
+
+        // Write the latest version to `latest.txt`.
+        let contents =
+          format!("{}!{}", chrono::Utc::now().to_rfc3339(), latest_version);
+        let _ = std::fs::write(cache_dir.join("deno/latest.txt"), contents);
+      });
+    }
   }
 
   // Return `Some(version)` if a new version is available, `None` otherwise.
-  latest_txt_version
+  latest_version
     .filter(|v| v != version::release_version_or_canary_commit_hash())
 }
 

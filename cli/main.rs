@@ -1115,11 +1115,13 @@ pub fn main() {
       if !matches!(flags.subcommand, DenoSubcommand::Upgrade(_))
         && atty::is(atty::Stream::Stderr)
       {
+        eprint!(
+          "{} ",
+          colors::green(format!("Deno {upgrade_version} is out."))
+        );
         eprintln!(
           "{}",
-          colors::italic_gray(format!(
-            "Deno {upgrade_version} is out. Run `deno upgrade` to install it."
-          ))
+          colors::italic_gray("Run `deno upgrade` to install it.")
         );
       }
     }
