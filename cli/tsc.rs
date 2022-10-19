@@ -313,7 +313,6 @@ struct State {
   maybe_npm_resolver: Option<NpmPackageResolver>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
-  npm_media_type_cache: HashMap<ModuleSpecifier, MediaType>,
 }
 
 impl State {
@@ -335,7 +334,6 @@ impl State {
       maybe_response: None,
       remapped_specifiers,
       root_map,
-      npm_media_type_cache: Default::default(),
     }
   }
 }
@@ -430,7 +428,7 @@ struct LoadArgs {
   specifier: String,
 }
 
-pub fn as_ts_script_kind(media_type: &MediaType) -> i32 {
+pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   match media_type {
     MediaType::JavaScript => 1,
     MediaType::Jsx => 2,
@@ -500,11 +498,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
       .map(|resolver| resolver.in_npm_package(&specifier))
       .unwrap_or(false)
     {
-      media_type = state
-        .npm_media_type_cache
-        .get(&specifier)
-        .copied()
-        .unwrap_or(MediaType::Unknown);
+      media_type = MediaType::from(&specifier);
       let file_path = specifier.to_file_path().unwrap();
       let code = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Unable to load {}", file_path.display()))?;
@@ -520,8 +514,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   Ok(json!({
     "data": data,
     "version": hash,
-    "scriptKind": as_ts_script_kind(&media_type),
-    "isCjs": matches!(media_type, MediaType::Cjs | MediaType::Dcts),
+    "scriptKind": as_ts_script_kind(media_type),
   }))
 }
 
@@ -597,15 +590,10 @@ fn op_resolve(
                 NpmPackageReference::from_specifier(&specifier)
               {
                 if let Some(npm_resolver) = &state.maybe_npm_resolver {
-                  let (specifier, media_type) =
-                    resolve_npm_package_reference_types(
-                      &npm_ref,
-                      npm_resolver,
-                    )?;
-                  state
-                    .npm_media_type_cache
-                    .insert(specifier.clone(), media_type);
-                  Some((specifier, media_type))
+                  Some(resolve_npm_package_reference_types(
+                    &npm_ref,
+                    npm_resolver,
+                  )?)
                 } else {
                   None
                 }
@@ -619,21 +607,16 @@ fn op_resolve(
           state.maybe_npm_resolver.as_ref().and_then(|npm_resolver| {
             if npm_resolver.in_npm_package(&referrer) {
               // we're in an npm package, so use node resolution
-              let (specifier, media_type) =
-                NodeResolution::into_specifier_and_media_type(
-                  node::node_resolve(
-                    specifier,
-                    &referrer,
-                    node::NodeResolutionMode::Types,
-                    npm_resolver,
-                  )
-                  .ok()
-                  .flatten(),
-                );
-              state
-                .npm_media_type_cache
-                .insert(specifier.clone(), media_type);
-              Some((specifier, media_type))
+              Some(NodeResolution::into_specifier_and_media_type(
+                node::node_resolve(
+                  specifier,
+                  &referrer,
+                  node::NodeResolutionMode::Types,
+                  npm_resolver,
+                )
+                .ok()
+                .flatten(),
+              ))
             } else {
               None
             }
@@ -1039,7 +1022,6 @@ mod tests {
         "data": "console.log(\"hello deno\");\n",
         "version": "149c777056afcc973d5fcbe11421b6d5ddc57b81786765302030d7fc893bf729",
         "scriptKind": 3,
-        "isCjs": false,
       })
     );
   }
@@ -1090,7 +1072,6 @@ mod tests {
         "data": "some content",
         "version": null,
         "scriptKind": 0,
-        "isCjs": false,
       })
     );
   }
@@ -1109,7 +1090,6 @@ mod tests {
         "data": null,
         "version": null,
         "scriptKind": 0,
-        "isCjs": false,
       })
     )
   }

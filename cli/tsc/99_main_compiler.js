@@ -134,6 +134,24 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, boolean>} */
   const isNodeSourceFileCache = new Map();
 
+  class SpecifierIsCjsCache {
+    /** @type {Set<string>} */
+    #cache = new Set();
+
+    /** @param {[string, ts.Extension]} param */
+    add([specifier, ext]) {
+      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
+        this.#cache.add(specifier);
+      }
+    }
+
+    has(specifier) {
+      return this.#cache.has(specifier);
+    }
+  }
+
+  const isCjsCache = new SpecifierIsCjsCache();
+
   ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
     const fileName = sourceFile.fileName;
     let isNodeSourceFile = isNodeSourceFileCache.get(fileName);
@@ -328,20 +346,24 @@ delete Object.prototype.__proto__;
         return sourceFile;
       }
 
-      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; isCjs: boolean; }} */
-      const { data, scriptKind, version, isCjs } = ops.op_load(
+      /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
+      const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
       assert(
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
+      // globalThis.Deno.core.print(
+      //   "IS CJS" + isCjsCache.has(specifier) + "\n",
+      //   true,
+      // );
       sourceFile = ts.createSourceFile(
         specifier,
         data,
         {
           ...createOptions,
-          impliedNodeFormat: isCjs
+          impliedNodeFormat: isCjsCache.has(specifier)
             ? ts.ModuleKind.CommonJS
             : ts.ModuleKind.ESNext,
         },
@@ -402,6 +424,7 @@ delete Object.prototype.__proto__;
             base: containingFilePath,
           })?.[0];
           if (resolved) {
+            isCjsCache.add(resolved);
             return {
               primary: true,
               resolvedFileName: resolved[0],
@@ -434,6 +457,7 @@ delete Object.prototype.__proto__;
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
+            isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
             if (resolvedFileName.startsWith("node:")) {
               // probably means the user doesn't have @types/node, so resolve to undefined
@@ -1000,6 +1024,7 @@ delete Object.prototype.__proto__;
 
   function serverRestart() {
     languageService = ts.createLanguageService(host);
+    isNodeSourceFileCache.clear();
     debug("serverRestart()");
   }
 

@@ -1,0 +1,11 @@
+{
+  "label": "cjsDefault",
+  "kind": 6,
+  "detail": "import cjsDefault",
+  "documentation": {
+    "kind": "markdown",
+    "value": ""
+  },
+  "sortText": "1",
+  "insertTextFormat": 1
+}

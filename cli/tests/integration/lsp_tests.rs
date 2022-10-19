@@ -4077,112 +4077,106 @@ fn lsp_completions_no_snippet() {
   }
 }
 
-#[test]
-fn lsp_completions_npm() {
-  let _g = http_server();
-  let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
-        "text": "import cjsDefault from 'npm:@denotest/cjs-default-export';\n",
-      }
-    }),
-  );
-  let (maybe_res, maybe_err) = client
-    .write_request::<_, _, Value>(
-      "deno/cache",
-      json!({
-        "referrer": {
-          "uri": "file:///a/file.ts",
-        },
-        "uris": [],
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  assert!(maybe_res.is_some());
-  let (method, value) = client.read_notification::<Value>().unwrap();
-  eprintln!("{:?}", value);
-  assert_eq!(method, "textDocument/publishDiagnostics");
+// #[test]
+// fn lsp_completions_npm() {
+//   let _g = http_server();
+//   let mut client = init("initialize_params.json");
+//   did_open(
+//     &mut client,
+//     json!({
+//       "textDocument": {
+//         "uri": "file:///a/file.ts",
+//         "languageId": "typescript",
+//         "version": 1,
+//         "text": "import cjsDefault from 'npm:@denotest/cjs-default-export';\n\n",
+//       }
+//     }),
+//   );
+//   let (maybe_res, maybe_err) = client
+//     .write_request::<_, _, Value>(
+//       "deno/cache",
+//       json!({
+//         "referrer": {
+//           "uri": "file:///a/file.ts",
+//         },
+//         "uris": [
+//           {
+//             "uri": "npm:@denotest/cjs-default-export",
+//           }
+//         ]
+//       }),
+//     )
+//     .unwrap();
+//   assert!(maybe_err.is_none());
+//   assert!(maybe_res.is_some());
 
-  client
-    .write_notification(
-      "textDocument/didChange",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 2
-        },
-        "contentChanges": [
-          {
-            "range": {
-              "start": {
-                "line": 1,
-                "character": 0
-              },
-              "end": {
-                "line": 1,
-                "character": 0
-              }
-            },
-            "text": "cjsDefault."
-          }
-        ]
-      }),
-    )
-    .unwrap();
-  // let (method, _) = client.read_notification::<Value>().unwrap();
-  // assert_eq!(method, "textDocument/publishDiagnostics");
-  // let (method, _) = client.read_notification::<Value>().unwrap();
-  // assert_eq!(method, "textDocument/publishDiagnostics");
-  // let (method, _) = client.read_notification::<Value>().unwrap();
-  // assert_eq!(method, "textDocument/publishDiagnostics");
+//   client
+//     .write_notification(
+//       "textDocument/didChange",
+//       json!({
+//         "textDocument": {
+//           "uri": "file:///a/file.ts",
+//           "version": 2
+//         },
+//         "contentChanges": [
+//           {
+//             "range": {
+//               "start": {
+//                 "line": 2,
+//                 "character": 0
+//               },
+//               "end": {
+//                 "line": 2,
+//                 "character": 0
+//               }
+//             },
+//             "text": "cjsDefault."
+//           }
+//         ]
+//       }),
+//     )
+//     .unwrap();
+//   read_diagnostics(&mut client);
 
-  let (maybe_res, maybe_err) = client
-    .write_request(
-      "textDocument/completion",
-      json!({
-        "textDocument": {
-          "uri": "file:///a/file.ts"
-        },
-        "position": {
-          "line": 1,
-          "character": 12
-        },
-        "context": {
-          "triggerKind": 2,
-          "triggerCharacter": "."
-        }
-      }),
-    )
-    .unwrap();
-  assert!(maybe_err.is_none());
-  let value: Option<Value> = maybe_res;
-  eprintln!("VALUE: {:?}", value);
-  // if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
-  //   assert!(!list.is_incomplete);
-  //   eprintln!("{:?}", list);
-  //   assert!(list.items.len() > 90);
-  // } else {
-  //   panic!("unexpected response");
-  // }
-  // let (maybe_res, maybe_err) = client
-  //   .write_request(
-  //     "completionItem/resolve",
-  //     load_fixture("completion_resolve_params.json"),
-  //   )
-  //   .unwrap();
-  // assert!(maybe_err.is_none());
-  // assert_eq!(
-  //   maybe_res,
-  //   Some(load_fixture("completion_resolve_response.json"))
-  // );
-  shutdown(&mut client);
-}
+//   let (maybe_res, maybe_err) = client
+//     .write_request(
+//       "textDocument/completion",
+//       json!({
+//         "textDocument": {
+//           "uri": "file:///a/file.ts"
+//         },
+//         "position": {
+//           "line": 2,
+//           "character": 11
+//         },
+//         "context": {
+//           "triggerKind": 2,
+//           "triggerCharacter": "."
+//         }
+//       }),
+//     )
+//     .unwrap();
+//   assert!(maybe_err.is_none());
+//   if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+//     assert!(!list.is_incomplete);
+//     std::fs::write("V:\\deno\\asdf.txt", format!("{:#?}", list)).unwrap();
+//     assert!(list.items.len() > 90);
+//   } else {
+//     panic!("unexpected response");
+//   }
+//   let (maybe_res, maybe_err) = client
+//     .write_request(
+//       "completionItem/resolve",
+//       load_fixture("completions/npm/resolve_params.json"),
+//     )
+//     .unwrap();
+//   assert!(maybe_err.is_none());
+//   assert_eq!(
+//     maybe_res,
+//     Some(load_fixture("completions/npm/resolve_response.json"))
+//   );
+//   shutdown(&mut client);
+// }
 
 #[test]
 fn lsp_completions_registry() {
