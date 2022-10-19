@@ -300,7 +300,8 @@
                     return pull(controller);
                   }
 
-                  this[_closed].resolve(value);
+                  const code = eventBuf[1];
+                  this[_closed].resolve(code);
                   core.tryClose(this[_rid]);
                 }
               };
