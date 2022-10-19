@@ -415,6 +415,7 @@ pub struct ModuleRegistryOptions {
   pub maybe_ca_stores: Option<Vec<String>>,
   pub maybe_ca_file: Option<String>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub deterministic: bool,
 }
 
 /// A structure which holds the information about currently configured module
@@ -442,7 +443,7 @@ impl ModuleRegistry {
     location: &Path,
     options: ModuleRegistryOptions,
   ) -> Result<Self, AnyError> {
-    let http_cache = HttpCache::new(location);
+    let http_cache = HttpCache::new(location, options.deterministic);
     let root_cert_store = Some(get_root_cert_store(
       options.maybe_root_path,
       options.maybe_ca_stores,
@@ -549,7 +550,7 @@ impl ModuleRegistry {
       self
         .file_fetcher
         .http_cache
-        .set(specifier, headers_map, &[])?;
+        .set(specifier, Some(headers_map), &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;

@@ -63,7 +63,6 @@ pub struct BundleFlags {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CacheFlags {
   pub files: Vec<String>,
-  pub deterministic: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -303,6 +302,7 @@ pub struct Flags {
   /// This is not exposed as an option in the CLI, it is used internally when
   /// the language server is configured with an explicit cache option.
   pub cache_path: Option<PathBuf>,
+  pub cache_deterministic: bool,
   pub cached_only: bool,
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
@@ -754,7 +754,7 @@ fn cache_subcommand<'a>() -> Command<'a> {
     .arg(
       Arg::new("deterministic")
         .long("deterministic")
-        .help("Produce deterministic output")
+        .help("Produce deterministic files in the cache.")
         .takes_value(false),
     )
     .about("Cache the dependencies")
@@ -2296,8 +2296,10 @@ fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     .unwrap()
     .map(String::from)
     .collect();
-  let deterministic = matches.is_present("deterministic");
-  flags.subcommand = DenoSubcommand::Cache(CacheFlags { files, deterministic });
+  // NOTE(milahu): moving deterministic to flags
+  // is much simpler than passing cache_flags to ProcState::build in check_command
+  flags.cache_deterministic = matches.is_present("deterministic");
+  flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
 }
 
 fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -3920,6 +3922,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
+          //deterministic: false,
         }),
         ..Flags::default()
       }
@@ -4790,6 +4793,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
+          //deterministic: false,
         }),
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()

@@ -615,7 +615,7 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, false);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -626,12 +626,12 @@ mod tests {
         (*source).into(),
       );
     }
-    let http_cache = HttpCache::new(location);
+    let http_cache = HttpCache::new(location, false);
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       http_cache
-        .set(&specifier, HashMap::default(), source.as_bytes())
+        .set(&specifier, Some(HashMap::default()), source.as_bytes())
         .expect("could not cache file");
       assert!(
         documents.get(&specifier).is_some(),

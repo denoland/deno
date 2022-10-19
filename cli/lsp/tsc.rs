@@ -3443,7 +3443,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location, false);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3934,13 +3934,13 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(&location);
+    let cache = HttpCache::new(&location, false);
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Some(HeadersMap::default()),
         b"export const b = \"b\";\n",
       )
       .unwrap();
@@ -3978,7 +3978,7 @@ mod tests {
     cache
       .set(
         &specifier_dep,
-        HeadersMap::default(),
+        Some(HeadersMap::default()),
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();

@@ -560,9 +560,9 @@ struct SpecifierResolver {
 }
 
 impl SpecifierResolver {
-  pub fn new(cache_path: &Path) -> Self {
+  pub fn new(cache_path: &Path, deterministic: bool) -> Self {
     Self {
-      cache: HttpCache::new(cache_path),
+      cache: HttpCache::new(cache_path, deterministic),
       redirects: Mutex::new(HashMap::new()),
     }
   }
@@ -600,7 +600,7 @@ impl SpecifierResolver {
       let headers = http_cache::Metadata::read(&cache_filename)
         .ok()
         .map(|m| m.headers)?;
-      if let Some(location) = headers.get("location") {
+      if let Some(location) = (|| { headers.as_ref()?.get("location") })() {
         let redirect =
           deno_core::resolve_import(location, specifier.as_str()).ok()?;
         self.resolve_remote(&redirect, redirect_limit - 1)
@@ -647,8 +647,8 @@ impl FileSystemDocuments {
       let specifier_metadata =
         http_cache::Metadata::read(&cache_filename).ok()?;
       let maybe_content_type =
-        specifier_metadata.headers.get("content-type").cloned();
-      let maybe_headers = Some(&specifier_metadata.headers);
+        (|| { specifier_metadata.headers.as_ref()?.get("content-type").cloned() })();
+      let maybe_headers = (|| { specifier_metadata.headers.as_ref() })();
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
       Document::new(
@@ -699,12 +699,13 @@ pub struct Documents {
   maybe_jsx_resolver: Option<JsxResolver>,
   /// Resolves a specifier to its final redirected to specifier.
   specifier_resolver: Arc<SpecifierResolver>,
+  deterministic: bool,
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, deterministic: bool) -> Self {
     Self {
-      cache: HttpCache::new(location),
+      cache: HttpCache::new(location, deterministic),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
@@ -712,7 +713,8 @@ impl Documents {
       imports: Default::default(),
       maybe_import_map: None,
       maybe_jsx_resolver: None,
-      specifier_resolver: Arc::new(SpecifierResolver::new(location)),
+      specifier_resolver: Arc::new(SpecifierResolver::new(location, deterministic)),
+      deterministic: deterministic,
     }
   }
 
@@ -955,8 +957,8 @@ impl Documents {
   /// Update the location of the on disk cache for the document store.
   pub fn set_location(&mut self, location: &Path) {
     // TODO update resolved dependencies?
-    self.cache = HttpCache::new(location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(location));
+    self.cache = HttpCache::new(location, self.deterministic);
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(location, self.deterministic));
     self.dirty = true;
   }
 
@@ -1176,7 +1178,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let documents = Documents::new(&location, false);
     (documents, location)
   }
 

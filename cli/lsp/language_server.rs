@@ -238,8 +238,14 @@ impl Inner {
     )
     .expect("could not create module registries");
     let location = dir.root.join(CACHE_PATH);
-    let documents = Documents::new(&location);
-    let cache_metadata = cache::CacheMetadata::new(&location);
+    let documents = Documents::new(&location, false);
+
+    // not called from "deno cache"
+    // TODO get deterministic from parent?
+    let deterministic = false;
+    println!("deno::lsp::language_server::Inner: calling CacheMetadata new: deterministic = {}", deterministic);
+
+    let cache_metadata = cache::CacheMetadata::new(&location, deterministic);
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let config = Config::new();
@@ -479,6 +485,7 @@ impl Inner {
         .root_uri
         .as_ref()
         .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+      let deterministic = false; // TODO(milahu): expose?
       self.module_registries = ModuleRegistry::new(
         &module_registries_location,
         ModuleRegistryOptions {
@@ -487,6 +494,7 @@ impl Inner {
           maybe_ca_file: workspace_settings.tls_certificate.clone(),
           unsafely_ignore_certificate_errors: workspace_settings
             .unsafely_ignore_certificate_errors,
+          deterministic: deterministic,
         },
       )?;
       self.module_registries_location = module_registries_location;
@@ -599,6 +607,7 @@ impl Inner {
       .root_uri
       .as_ref()
       .and_then(|uri| fs_util::specifier_to_file_path(uri).ok());
+    let deterministic = false;
     self.module_registries = ModuleRegistry::new(
       &self.module_registries_location,
       ModuleRegistryOptions {
@@ -608,6 +617,7 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
+        deterministic: deterministic,
       },
     )?;
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {

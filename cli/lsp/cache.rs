@@ -26,10 +26,10 @@ pub fn calculate_fs_version(path: &Path) -> Option<String> {
 
 /// Populate the metadata map based on the supplied headers
 fn parse_metadata(
-  headers: &HashMap<String, String>,
+  headers: &Option<HashMap<String, String>>,
 ) -> HashMap<MetadataKey, String> {
   let mut metadata = HashMap::new();
-  if let Some(warning) = headers.get("x-deno-warning").cloned() {
+  if let Some(warning) = (|| { headers.as_ref()?.get("x-deno-warning").cloned() })() {
     metadata.insert(MetadataKey::Warning, warning);
   }
   metadata
@@ -51,13 +51,16 @@ struct Metadata {
 pub struct CacheMetadata {
   cache: http_cache::HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
+  deterministic: bool,
 }
 
 impl CacheMetadata {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, deterministic: bool) -> Self {
+    println!("CacheMetadata new: deterministic = {}", deterministic);
     Self {
-      cache: http_cache::HttpCache::new(location),
+      cache: http_cache::HttpCache::new(location, deterministic),
       metadata: Default::default(),
+      deterministic: deterministic,
     }
   }
 
@@ -98,7 +101,7 @@ impl CacheMetadata {
   }
 
   pub fn set_location(&mut self, location: &Path) {
-    self.cache = http_cache::HttpCache::new(location);
+    self.cache = http_cache::HttpCache::new(location, self.deterministic);
     self.metadata.lock().clear();
   }
 }

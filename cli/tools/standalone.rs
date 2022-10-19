@@ -264,6 +264,7 @@ pub fn compile_to_runtime_flags(
     cache_blocklist: vec![],
     cache_path: None,
     cached_only: false,
+    cache_deterministic: flags.cache_deterministic.clone(),
     config_flag: Default::default(),
     coverage_dir: flags.coverage_dir.clone(),
     enable_testing_features: false,

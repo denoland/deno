@@ -124,6 +124,10 @@ impl CliOptions {
     }
   }
 
+  pub fn cache_deterministic(&self) -> bool {
+    self.flags.cache_deterministic
+  }
+
   pub fn resolve_deno_dir(&self) -> Result<DenoDir, AnyError> {
     Ok(DenoDir::new(self.maybe_custom_root())?)
   }

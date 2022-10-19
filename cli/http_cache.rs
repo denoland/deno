@@ -76,20 +76,34 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
 #[derive(Debug, Clone, Default)]
 pub struct HttpCache {
   pub location: PathBuf,
+  pub deterministic: bool,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
-  pub headers: HeadersMap,
+  pub headers: Option<HeadersMap>,
   pub url: String,
-  #[serde(default = "SystemTime::now")]
-  pub now: SystemTime,
+  // FIXME(milahu): default "path" must be callable
+  //#[serde(default = "SystemTime::now")] // callable, but no Option<SystemTime>
+  //#[serde(default = "(|| { Some(SystemTime::now()) })")]
+  #[serde(default)] // TODO(milahu): what?
+  pub now: Option<SystemTime>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DeterministicMetadata {
+  pub url: String,
 }
 
 impl Metadata {
-  pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
+  pub fn write(&self, cache_filename: &Path, deterministic: bool) -> Result<(), AnyError> {
     let metadata_filename = Self::filename(cache_filename);
-    let json = serde_json::to_string_pretty(self)?;
+    let json = if deterministic {
+      serde_json::to_string_pretty(&self.to_deterministic())?
+    }
+    else {
+      serde_json::to_string_pretty(self)?
+    };
     fs_util::atomic_write_file(&metadata_filename, json, CACHE_PERM)?;
     Ok(())
   }
@@ -105,16 +119,23 @@ impl Metadata {
   pub fn filename(cache_filename: &Path) -> PathBuf {
     cache_filename.with_extension("metadata.json")
   }
+
+  pub fn to_deterministic(&self) -> DeterministicMetadata {
+    DeterministicMetadata {
+      url: self.url.clone(),
+    }
+  }
 }
 
 impl HttpCache {
   /// Returns a new instance.
   ///
   /// `location` must be an absolute path.
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: &Path, deterministic: bool) -> Self {
     assert!(location.is_absolute());
     Self {
       location: location.to_owned(),
+      deterministic,
     }
   }
 
@@ -144,7 +165,7 @@ impl HttpCache {
   pub fn get(
     &self,
     url: &Url,
-  ) -> Result<(File, HeadersMap, SystemTime), AnyError> {
+  ) -> Result<(File, Option<HeadersMap>, Option<SystemTime>), AnyError> {
     let cache_filename = self.location.join(
       url_to_filename(url)
         .ok_or_else(|| generic_error("Can't convert url to filename."))?,
@@ -159,9 +180,10 @@ impl HttpCache {
   pub fn set(
     &self,
     url: &Url,
-    headers_map: HeadersMap,
+    headers_map: Option<HeadersMap>,
     content: &[u8],
   ) -> Result<(), AnyError> {
+    let deterministic = self.deterministic;
     let cache_filename = self.location.join(
       url_to_filename(url)
         .ok_or_else(|| generic_error("Can't convert url to filename."))?,
@@ -174,12 +196,22 @@ impl HttpCache {
     // Cache content
     fs_util::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
 
-    let metadata = Metadata {
-      now: SystemTime::now(),
-      url: url.to_string(),
-      headers: headers_map,
+    let metadata = if deterministic {
+      Metadata {
+        now: None,
+        url: url.to_string(),
+        headers: None,
+      }
+    }
+    else {
+      Metadata {
+        now: Some(SystemTime::now()),
+        url: url.to_string(),
+        headers: headers_map,
+      }
     };
-    metadata.write(&cache_filename)
+
+    metadata.write(&cache_filename, self.deterministic)
   }
 }
 
@@ -204,12 +236,12 @@ mod tests {
     // doesn't make sense to return error in such specific scenarios.
     // For more details check issue:
     // https://github.com/denoland/deno/issues/5688
-    let cache = HttpCache::new(&cache_path);
+    let cache = HttpCache::new(&cache_path, false);
     assert!(!cache.location.exists());
     cache
       .set(
         &Url::parse("http://example.com/foo/bar.js").unwrap(),
-        HeadersMap::new(),
+        Some(HeadersMap::new()),
         b"hello world",
       )
       .expect("Failed to add to cache");
@@ -220,7 +252,7 @@ mod tests {
   #[test]
   fn test_get_set() {
     let dir = TempDir::new();
-    let cache = HttpCache::new(dir.path());
+    let cache = HttpCache::new(dir.path(), false);
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(
@@ -229,7 +261,7 @@ mod tests {
     );
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
-    let r = cache.set(&url, headers, content);
+    let r = cache.set(&url, Some(headers), content);
     eprintln!("result {:?}", r);
     assert!(r.is_ok());
     let r = cache.get(&url);
@@ -239,11 +271,11 @@ mod tests {
     file.read_to_string(&mut content).unwrap();
     assert_eq!(content, "Hello world");
     assert_eq!(
-      headers.get("content-type").unwrap(),
+      (|| { headers.as_ref()?.get("content-type") })().unwrap(),
       "application/javascript"
     );
-    assert_eq!(headers.get("etag").unwrap(), "as5625rqdsfb");
-    assert_eq!(headers.get("foobar"), None);
+    assert_eq!((|| { headers.as_ref()?.get("etag") })().unwrap(), "as5625rqdsfb");
+    assert_eq!((|| { headers.as_ref()?.get("foobar") })(), None);
   }
 
   #[test]

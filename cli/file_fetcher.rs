@@ -3,6 +3,7 @@
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
+use crate::http_util::HeadersMap;
 use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
@@ -119,8 +120,12 @@ impl CacheSetting {
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
         if let Ok((_, headers, cache_time)) = http_cache.get(specifier) {
+          // TODO(milahu): better? handle missing values from deterministic == true
+          let headers = headers.unwrap_or(HeadersMap::new());
+          let now_time = SystemTime::now();
+          let cache_time = cache_time.unwrap_or(now_time);
           let cache_semantics =
-            CacheSemantics::new(headers, cache_time, SystemTime::now());
+            CacheSemantics::new(headers, cache_time, now_time);
           cache_semantics.should_use()
         } else {
           false
@@ -379,7 +384,7 @@ impl FileFetcher {
     &self,
     specifier: &ModuleSpecifier,
     bytes: Vec<u8>,
-    headers: &HashMap<String, String>,
+    headers: &Option<HashMap<String, String>>,
   ) -> Result<File, AnyError> {
     let local =
       self
@@ -388,7 +393,13 @@ impl FileFetcher {
         .ok_or_else(|| {
           generic_error("Cannot convert specifier to cached filename.")
         })?;
-    let maybe_content_type = headers.get("content-type").cloned();
+    // TODO(milahu): shorter
+    let maybe_content_type = match headers {
+      Some(headers) => {
+        headers.get("content-type").cloned()
+      },
+      None => None,
+    };
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
     let source = get_source_from_bytes(bytes, maybe_charset)?;
@@ -396,7 +407,10 @@ impl FileFetcher {
       MediaType::JavaScript
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Jsx => headers.get("x-typescript-types").cloned(),
+      // TODO(milahu): shorter?
+      // headers are now an Option, so we must chain options
+      //| MediaType::Jsx => headers.get("x-typescript-types").cloned(),
+      | MediaType::Jsx => (|| { headers.as_ref()?.get("x-typescript-types").cloned() })(),
       _ => None,
     };
 
@@ -406,7 +420,7 @@ impl FileFetcher {
       media_type,
       source: source.into(),
       specifier: specifier.clone(),
-      maybe_headers: Some(headers.clone()),
+      maybe_headers: headers.clone(),
     })
   }
 
@@ -434,7 +448,7 @@ impl FileFetcher {
       }
       Ok(cache) => cache,
     };
-    if let Some(redirect_to) = headers.get("location") {
+    if let Some(redirect_to) = (|| { headers.as_ref()?.get("location") })() {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
       return self.fetch_cached(&redirect, redirect_limit - 1);
@@ -484,7 +498,7 @@ impl FileFetcher {
     headers.insert("content-type".to_string(), content_type);
     self
       .http_cache
-      .set(specifier, headers.clone(), source.as_bytes())?;
+      .set(specifier, Some(headers.clone()), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -548,7 +562,7 @@ impl FileFetcher {
     headers.insert("content-type".to_string(), content_type);
     self
       .http_cache
-      .set(specifier, headers.clone(), source.as_bytes())?;
+      .set(specifier, Some(headers.clone()), source.as_bytes())?;
 
     Ok(File {
       local,
@@ -618,7 +632,7 @@ impl FileFetcher {
     }
 
     let maybe_etag = match self.http_cache.get(specifier) {
-      Ok((_, headers, _)) => headers.get("etag").cloned(),
+      Ok((_, headers, _)) => (|| { headers.as_ref()?.get("etag").cloned() })(),
       _ => None,
     };
     let maybe_auth_token = self.auth_tokens.get(specifier);
@@ -778,19 +792,20 @@ mod tests {
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir) {
     let (file_fetcher, temp_dir, _) =
-      setup_with_blob_store(cache_setting, maybe_temp_dir);
+      setup_with_blob_store(cache_setting, maybe_temp_dir, false);
     (file_fetcher, temp_dir)
   }
 
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<TempDir>,
+    deterministic: bool,
   ) -> (FileFetcher, TempDir, BlobStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("deps");
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, deterministic),
       cache_setting,
       true,
       None,
@@ -831,7 +846,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
     let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
-    (result.unwrap(), headers)
+    (result.unwrap(), headers.unwrap())
   }
 
   async fn test_fetch_remote_encoded(
@@ -1132,7 +1147,7 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_blob_url() {
     let (file_fetcher, _, blob_store) =
-      setup_with_blob_store(CacheSetting::Use, None);
+      setup_with_blob_store(CacheSetting::Use, None, false);
 
     let bytes =
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
@@ -1187,11 +1202,12 @@ mod tests {
       .unwrap();
     let mut metadata =
       crate::http_cache::Metadata::read(&cache_filename).unwrap();
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "text/javascript".to_string());
-    metadata.write(&cache_filename).unwrap();
+
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "text/javascript".to_string());
+    metadata.headers = Some(headers);
+
+    metadata.write(&cache_filename, false).unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1207,12 +1223,12 @@ mod tests {
     assert_eq!(file.media_type, MediaType::JavaScript);
 
     let (_, headers, _) = file_fetcher_02.http_cache.get(&specifier).unwrap();
-    assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
-    metadata.headers = HashMap::new();
-    metadata
-      .headers
-      .insert("content-type".to_string(), "application/json".to_string());
-    metadata.write(&cache_filename).unwrap();
+    assert_eq!(headers.unwrap().get("content-type").unwrap(), "text/javascript");
+
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
+    metadata.headers = Some(headers);
+    metadata.write(&cache_filename, false).unwrap();
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1229,7 +1245,7 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::ReloadAll,
       true,
       None,
@@ -1256,7 +1272,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       true,
       None,
@@ -1284,7 +1300,7 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       true,
       None,
@@ -1340,7 +1356,7 @@ mod tests {
     );
     let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.unwrap().get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
@@ -1350,7 +1366,7 @@ mod tests {
     );
     let (_, headers, _) =
       file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-    assert!(headers.get("location").is_none());
+    assert!(headers.unwrap().get("location").is_none());
   }
 
   #[tokio::test]
@@ -1393,7 +1409,7 @@ mod tests {
     );
     let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.unwrap().get("location").unwrap(),
       "http://localhost:4546/subdir/redirects/redirect1.js"
     );
 
@@ -1407,7 +1423,7 @@ mod tests {
       .get(&redirected_01_specifier)
       .unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.unwrap().get("location").unwrap(),
       "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
@@ -1419,7 +1435,7 @@ mod tests {
       .http_cache
       .get(&redirected_02_specifier)
       .unwrap();
-    assert!(headers.get("location").is_none());
+    assert!(headers.unwrap().get("location").is_none());
   }
 
   #[tokio::test]
@@ -1428,7 +1444,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       true,
       None,
@@ -1458,7 +1474,7 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       true,
       None,
@@ -1540,7 +1556,7 @@ mod tests {
     );
     let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
     assert_eq!(
-      headers.get("location").unwrap(),
+      headers.unwrap().get("location").unwrap(),
       "/subdir/redirects/redirect1.js"
     );
 
@@ -1550,7 +1566,7 @@ mod tests {
     );
     let (_, headers, _) =
       file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-    assert!(headers.get("location").is_none());
+    assert!(headers.unwrap().get("location").is_none());
   }
 
   #[tokio::test]
@@ -1559,7 +1575,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       false,
       None,
@@ -1586,7 +1602,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps");
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Only,
       true,
       None,
@@ -1596,7 +1612,7 @@ mod tests {
     )
     .unwrap();
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(&location, false),
       CacheSetting::Use,
       true,
       None,
