@@ -274,7 +274,8 @@
                   case 6: // falls through
                   /* close */
                   case 2: {
-                    this[_closed].resolve(value);
+                    const code = eventBuf[1];
+                    this[_closed].resolve(code);
                     core.tryClose(this[_rid]);
                     break;
                   }
