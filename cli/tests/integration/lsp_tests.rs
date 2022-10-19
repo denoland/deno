@@ -1084,21 +1084,21 @@ fn lsp_inlay_hints() {
         "text": r#"function a(b: string) {
           return b;
         }
-        
+
         a("foo");
-        
+
         enum C {
           A,
         }
-        
+
         parseInt("123", 8);
-        
+
         const d = Date.now();
-        
+
         class E {
           f = Date.now();
         }
-        
+
         ["a"].map((v) => v + v);
         "#
       }
@@ -1234,21 +1234,21 @@ fn lsp_inlay_hints_not_enabled() {
         "text": r#"function a(b: string) {
           return b;
         }
-        
+
         a("foo");
-        
+
         enum C {
           A,
         }
-        
+
         parseInt("123", 8);
-        
+
         const d = Date.now();
-        
+
         class E {
           f = Date.now();
         }
-        
+
         ["a"].map((v) => v + v);
         "#
       }
@@ -1871,7 +1871,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
       },
       "range": {
         "start": {
@@ -1905,7 +1905,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/type_reference.js\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/type_reference.js\n\n**Types**: http&#8203;://127.0.0.1:4545/subdir/type_reference.d.ts\n"
       },
       "range": {
         "start": {
@@ -4256,7 +4256,7 @@ fn lsp_cache_location() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
       },
       "range": {
         "start": {

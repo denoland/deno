@@ -21,6 +21,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
@@ -1108,6 +1109,33 @@ impl Documents {
       }
     }
     None
+  }
+}
+
+/// Loader that will look at the open documents.
+pub struct DocumentsDenoGraphLoader<'a> {
+  pub inner_loader: &'a mut dyn deno_graph::source::Loader,
+  pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
+}
+
+impl<'a> deno_graph::source::Loader for DocumentsDenoGraphLoader<'a> {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> deno_graph::source::LoadFuture {
+    if specifier.scheme() == "file" {
+      if let Some(doc) = self.open_docs.get(specifier) {
+        return Box::pin(future::ready(Ok(Some(
+          deno_graph::source::LoadResponse::Module {
+            content: doc.content(),
+            specifier: doc.specifier().clone(),
+            maybe_headers: None,
+          },
+        ))));
+      }
+    }
+    self.inner_loader.load(specifier, is_dynamic)
   }
 }
 
