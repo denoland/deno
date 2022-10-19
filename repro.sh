@@ -64,10 +64,7 @@ else
   # call "deno cache" with "--deterministic"
 
   # note: $DENO_DIR/lock.json is a non-standard location
-  # "--deterministic" in subcommand flags. this is hard to implement
-  #deno cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} --deterministic 2>&1 |
-  # "--deterministic" in main flags. this is easy to implement
-  deno --deterministic cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} 2>&1 |
+  deno cache --lock=$DENO_DIR/lock.json --lock-write ${mainScript} --deterministic 2>&1 |
   tee $logdir/deno-cache.log
 fi
 
