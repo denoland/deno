@@ -76,6 +76,7 @@ file=$(find $DENO_DIR/deps -name '*.metadata.json' | head -n1)
 
 echo "testing metadata file: $file"
 cat $file
+echo
 
 for key in headers now
 do
