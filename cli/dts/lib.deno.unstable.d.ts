@@ -713,9 +713,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: bigint);
+    constructor(pointer: PointerValue);
 
-    pointer: bigint;
+    pointer: PointerValue;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -769,10 +769,10 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Fn;
 
-    constructor(pointer: bigint, definition: Fn);
+    constructor(pointer: PointerValue, definition: Fn);
 
     call: FromForeignFunction<Fn>;
   }
@@ -823,7 +823,7 @@ declare namespace Deno {
       >,
     );
 
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Definition;
     callback: UnsafeCallbackFunction<
       Definition["parameters"],
