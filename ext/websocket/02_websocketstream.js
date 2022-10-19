@@ -275,7 +275,7 @@
                   /* close */
                   case 2: {
                     const code = eventBuf[1];
-                    this[_closed].resolve(code);
+                    this[_closed].resolve({ code, reason: value });
                     core.tryClose(this[_rid]);
                     break;
                   }
@@ -301,7 +301,7 @@
                   }
 
                   const code = eventBuf[1];
-                  this[_closed].resolve(code);
+                  this[_closed].resolve({ code, reason: value });
                   core.tryClose(this[_rid]);
                 }
               };
