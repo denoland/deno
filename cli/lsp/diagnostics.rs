@@ -693,16 +693,17 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-data" => {
+        "no-cache" | "no-cache-data" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
             .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
           let data: DiagnosticDataSpecifier = serde_json::from_value(data)?;
-          let title = if code == "no-cache" {
-            format!("Cache \"{}\" and its dependencies.", data.specifier)
-          } else {
-            "Cache the data URL and its dependencies.".to_string()
+          let title = match code.as_str() {
+            "no-cache" | "no-cache-npm" => {
+              format!("Cache \"{}\" and its dependencies.", data.specifier)
+            }
+            _ => "Cache the data URL and its dependencies.".to_string(),
           };
           lsp::CodeAction {
             title,
@@ -760,6 +761,7 @@ impl DenoDiagnostic {
         code.as_str(),
         "import-map-remap"
           | "no-cache"
+          | "no-cache-npm"
           | "no-cache-data"
           | "no-assert-type"
           | "redirect"

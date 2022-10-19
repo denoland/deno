@@ -4751,6 +4751,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "url",
  "winapi 0.3.9",
 ]
 

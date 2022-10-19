@@ -1084,21 +1084,21 @@ fn lsp_inlay_hints() {
         "text": r#"function a(b: string) {
           return b;
         }
-        
+
         a("foo");
-        
+
         enum C {
           A,
         }
-        
+
         parseInt("123", 8);
-        
+
         const d = Date.now();
-        
+
         class E {
           f = Date.now();
         }
-        
+
         ["a"].map((v) => v + v);
         "#
       }
@@ -1234,21 +1234,21 @@ fn lsp_inlay_hints_not_enabled() {
         "text": r#"function a(b: string) {
           return b;
         }
-        
+
         a("foo");
-        
+
         enum C {
           A,
         }
-        
+
         parseInt("123", 8);
-        
+
         const d = Date.now();
-        
+
         class E {
           f = Date.now();
         }
-        
+
         ["a"].map((v) => v + v);
         "#
       }
@@ -3342,6 +3342,38 @@ fn lsp_code_actions_deno_cache() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("code_action_response_cache.json"))
+  );
+  session.shutdown_and_exit();
+}
+
+#[test]
+fn lsp_code_actions_deno_cache_npm() {
+  let _g = http_server();
+  let mut session = TestSession::from_file("initialize_params.json");
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
+    }
+  }));
+  assert_eq!(
+    diagnostics.with_source("deno"),
+    load_fixture_as("code_actions/cache_npm/diagnostics.json")
+  );
+
+  let (maybe_res, maybe_err) = session
+    .client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_actions/cache_npm/cache_action.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_actions/cache_npm/cache_response.json"))
   );
   session.shutdown_and_exit();
 }

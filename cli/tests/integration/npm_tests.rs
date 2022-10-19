@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::url::Url;
 use std::process::Stdio;
 use test_util as util;
 use util::assert_contains;
@@ -704,18 +703,10 @@ fn ensure_registry_files_local() {
   }
 }
 
-fn std_file_url() -> String {
-  let u = Url::from_directory_path(util::std_path()).unwrap();
-  u.to_string()
-}
-
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
-    (
-      "DENO_NPM_REGISTRY".to_string(),
-      "http://localhost:4545/npm/registry/".to_string(),
-    ),
+    ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
+    ("DENO_NPM_REGISTRY".to_string(), util::npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
