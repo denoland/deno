@@ -241,10 +241,10 @@
                   await this.closed;
                 },
               });
-              /* [event type, close code] */
-              const eventBuf = new Uint32Array(2);
 
               const pull = async (controller) => {
+                /* [event type, close code] */
+                const eventBuf = new Uint32Array(2);
                 const value = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
