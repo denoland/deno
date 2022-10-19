@@ -388,13 +388,13 @@
           );
           if (!done) {
             while (true) {
-              const A = await reader.read();
+              const chunk = await reader.read();
               await respondChunked(
                 i,
-                A.value,
-                A.done,
+                chunk.value,
+                chunk.done,
               );
-              if (A.done) break;
+              if (chunk.done) break;
             }
           }
         }
