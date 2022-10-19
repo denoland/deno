@@ -3,7 +3,6 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::args::UpgradeFlags;
-use crate::deno_dir::cache_dir;
 use crate::version;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -13,7 +12,6 @@ use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
-use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -29,19 +27,14 @@ const UPGRADE_CHECK_INTERVAL: i64 = 12;
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
-pub fn check_for_upgrades() -> Option<String> {
+pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
     return None;
   }
 
-  let cache_dir = cache_dir()?;
-  let p = cache_dir.join("deno/latest.txt");
+  let p = cache_dir.join("latest.txt");
   let content = match std::fs::read_to_string(&p) {
     Ok(file) => file,
-    Err(err) if err.kind() == io::ErrorKind::NotFound => {
-      fs::create_dir_all(&cache_dir.join("deno")).ok()?;
-      std::fs::read_to_string(&p).unwrap_or_default()
-    }
     Err(_) => "".to_string(),
   };
 
@@ -91,7 +84,7 @@ pub fn check_for_upgrades() -> Option<String> {
         // Write the latest version to `latest.txt`.
         let contents =
           format!("{}!{}", chrono::Utc::now().to_rfc3339(), latest_version);
-        let _ = std::fs::write(cache_dir.join("deno/latest.txt"), contents);
+        let _ = std::fs::write(cache_dir.join("latest.txt"), contents);
       });
     }
   }

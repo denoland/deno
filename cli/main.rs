@@ -807,6 +807,29 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<i32, AnyError> {
   Ok(0)
 }
 
+fn check_for_upgrades(cache_dir: PathBuf) {
+  // Run a background task that checks for available upgrades. If an earlier
+  // run of this background task found a new version of Deno, the new version
+  // number (or commit hash for canary builds) is returned.
+  let maybe_upgrade_version = tools::upgrade::check_for_upgrades(cache_dir);
+
+  // Print a message if an update is available, unless:
+  //   * stderr is not a tty
+  //   * we're already running the 'deno upgrade' command.
+  if let Some(upgrade_version) = maybe_upgrade_version {
+    if atty::is(atty::Stream::Stderr) {
+      eprint!(
+        "{} ",
+        colors::green(format!("Deno {upgrade_version} is out."))
+      );
+      eprintln!(
+        "{}",
+        colors::italic_gray("Run `deno upgrade` to install it.")
+      );
+    }
+  }
+}
+
 async fn run_command(
   flags: Flags,
   run_flags: RunFlags,
@@ -824,6 +847,7 @@ async fn run_command(
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
   let ps = ProcState::build(flags).await?;
+  check_for_upgrades(ps.dir.root.clone());
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
     ModuleSpecifier::parse(&run_flags.script)?
@@ -1102,29 +1126,6 @@ pub fn main() {
     }
 
     logger::init(flags.log_level);
-
-    // Run a background task that checks for available upgrades. If an earlier
-    // run of this background task found a new version of Deno, the new version
-    // number (or commit hash for canary builds) is returned.
-    let maybe_upgrade_version = tools::upgrade::check_for_upgrades();
-
-    // Print a message if an update is available, unless:
-    //   * stderr is not a tty
-    //   * we're already running the 'deno upgrade' command.
-    if let Some(upgrade_version) = maybe_upgrade_version {
-      if !matches!(flags.subcommand, DenoSubcommand::Upgrade(_))
-        && atty::is(atty::Stream::Stderr)
-      {
-        eprint!(
-          "{} ",
-          colors::green(format!("Deno {upgrade_version} is out."))
-        );
-        eprintln!(
-          "{}",
-          colors::italic_gray("Run `deno upgrade` to install it.")
-        );
-      }
-    }
 
     get_subcommand(flags).await
   };
