@@ -480,7 +480,7 @@ declare namespace Deno {
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
-    & Record<NativeBufferType, TypedArray | null>;
+    & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -662,23 +662,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category FFI
-   */
-  type TypedArray =
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
-    | Uint8ClampedArray
-    | Float32Array
-    | Float64Array
-    | BigInt64Array
-    | BigUint64Array;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Pointer type depends on the architecture and actual pointer value.
    *
    * On a 32 bit system all pointer values are plain numbers. On a 64 bit
@@ -700,7 +683,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
+    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -752,11 +735,11 @@ declare namespace Deno {
       offset?: number,
     ): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
-    copyInto(destination: TypedArray, offset?: number): void;
+    copyInto(destination: BufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerValue,
-      destination: TypedArray,
+      destination: BufferSource,
       offset?: number,
     ): void;
   }
