@@ -1,8 +1,12 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+#![allow(dead_code)]
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
@@ -16,14 +20,27 @@ use std::sync::Arc;
 
 use crate::tools::fmt::format_json;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LockfileV2Content {
+  // Mapping between URLs and their checksums
+  remote: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone)]
-pub struct LockfileContent {
+pub struct LockfileV1Content {
   map: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+enum LockfileContent {
+  V1(LockfileV1Content),
+  V2(LockfileV2Content),
 }
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
+  pub version: &'static str,
   content: LockfileContent,
   pub filename: PathBuf,
 }
@@ -42,7 +59,8 @@ impl Lockfile {
 
     Ok(Lockfile {
       write,
-      content: LockfileContent { map },
+      version: "1",
+      content: LockfileContent::V1(LockfileV1Content { map }),
       filename,
     })
   }
@@ -52,7 +70,11 @@ impl Lockfile {
     if !self.write {
       return Ok(());
     }
-    let j = json!(&self.content.map);
+    let content = match &self.content {
+      LockfileContent::V1(c) => &c.map,
+      _ => unreachable!(),
+    };
+    let j = json!(&content);
     let s = serde_json::to_string_pretty(&j).unwrap();
 
     let format_s = format_json(&s, &Default::default())
@@ -85,7 +107,11 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return true;
     }
-    if let Some(lockfile_checksum) = self.content.map.get(specifier) {
+    let content = match &self.content {
+      LockfileContent::V1(c) => &c.map,
+      _ => unreachable!(),
+    };
+    if let Some(lockfile_checksum) = content.get(specifier) {
       let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
     } else {
@@ -97,8 +123,12 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return;
     }
+    let content = match &mut self.content {
+      LockfileContent::V1(c) => &mut c.map,
+      _ => unreachable!(),
+    };
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
-    self.content.map.insert(specifier.to_string(), checksum);
+    content.insert(specifier.to_string(), checksum);
   }
 }
 
@@ -176,7 +206,11 @@ mod tests {
 
     let result = Lockfile::new(file_path, false).unwrap();
 
-    let keys: Vec<String> = result.content.map.keys().cloned().collect();
+    let content = match result.content {
+      LockfileContent::V1(c) => c.map,
+      _ => unreachable!(),
+    };
+    let keys: Vec<String> = content.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
@@ -198,7 +232,11 @@ mod tests {
       "Here is some source code",
     );
 
-    let keys: Vec<String> = lockfile.content.map.keys().cloned().collect();
+    let content = match lockfile.content {
+      LockfileContent::V1(c) => c.map,
+      _ => unreachable!(),
+    };
+    let keys: Vec<String> = content.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/io/util.ts"),
