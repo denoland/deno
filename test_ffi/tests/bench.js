@@ -353,7 +353,7 @@ Deno.bench("nop_f64()", () => {
 });
 
 const { nop_buffer } = dylib.symbols;
-const buffer = new Uint8Array(8).fill(1);
+const buffer = new Uint8Array(8).fill(5);
 // Make sure the buffer does not get collected
 globalThis.buffer = buffer;
 Deno.bench("nop_buffer()", () => {
@@ -645,7 +645,7 @@ Deno.bench("Deno.UnsafePointerView#getCString", () => {
 });
 
 const bufferPointerView = new Deno.UnsafePointerView(
-  return_buffer()
+  Deno.UnsafePointer.of(buffer),
 );
 
 Deno.bench("Deno.UnsafePointerView#getBool", () => {
