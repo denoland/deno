@@ -27,6 +27,7 @@
     SymbolFor,
     TypeError,
     Uint8ArrayPrototype,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -237,35 +238,45 @@
                   await this.closed;
                 },
               });
+              /* [event type, close code] */
+              const eventBuf = new Uint32Array(2);
+
               const pull = async (controller) => {
-                const { kind, value } = await core.opAsync(
+                const value = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
+                  eventBuf,
                 );
-
+                const kind = eventBuf[0];
                 switch (kind) {
-                  case "string": {
+                  /* string */
+                  case 0: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "binary": {
+                  /* binary */
+                  case 1: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "ping": {
+                  /* ping */
+                  case 3: {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "pong",
                     });
                     await pull(controller);
                     break;
                   }
-                  case "closed":
-                  case "close": {
+                  /* closed */
+                  case 6: // falls through
+                  /* close */
+                  case 2: {
                     this[_closed].resolve(value);
                     core.tryClose(this[_rid]);
                     break;
                   }
-                  case "error": {
+                  /* error */
+                  case 5: {
                     const err = new Error(value);
                     this[_closed].reject(err);
                     controller.error(err);
