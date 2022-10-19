@@ -22,14 +22,13 @@ use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockfileV2Content {
+  version: String,
   // Mapping between URLs and their checksums
   remote: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct LockfileV1Content {
-  map: BTreeMap<String, String>,
-}
+#[derive(Debug, Clone, Deserialize)]
+pub struct LockfileV1Content(BTreeMap<String, String>);
 
 #[derive(Debug, Clone)]
 enum LockfileContent {
@@ -40,27 +39,39 @@ enum LockfileContent {
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
-  pub version: &'static str,
   content: LockfileContent,
   pub filename: PathBuf,
 }
 
 impl Lockfile {
   pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
-    let map = if write {
-      BTreeMap::new()
+    // Writing a lock file always uses the new format.
+    let content = if write {
+      LockfileContent::V2(LockfileV2Content {
+        version: "2".to_string(),
+        remote: BTreeMap::new(),
+      })
     } else {
       let s = std::fs::read_to_string(&filename).with_context(|| {
         format!("Unable to read lockfile: {}", filename.display())
       })?;
-      serde_json::from_str(&s)
-        .context("Unable to parse contents of the lockfile")?
+      let value: serde_json::Value = serde_json::from_str(&s)
+        .context("Unable to parse contents of the lockfile")?;
+      let version = value.get("version").and_then(|v| v.as_str());
+      if version == Some("2") {
+        let content: LockfileV2Content =
+          serde_json::from_value(value).context("Unable to parse lockfile")?;
+        LockfileContent::V2(content)
+      } else {
+        let content: LockfileV1Content =
+          serde_json::from_value(value).context("Unable to parse lockfile")?;
+        LockfileContent::V1(content)
+      }
     };
 
     Ok(Lockfile {
       write,
-      version: "1",
-      content: LockfileContent::V1(LockfileV1Content { map }),
+      content,
       filename,
     })
   }
@@ -73,10 +84,10 @@ impl Lockfile {
 
     let json_string = match &self.content {
       LockfileContent::V1(c) => {
-        let j = json!(&c.map);
+        let j = json!(&c.0);
         serde_json::to_string(&j).unwrap()
       }
-      LockfileContent::V2(_c) => todo!(),
+      LockfileContent::V2(c) => serde_json::to_string(&c).unwrap(),
     };
 
     let format_s = format_json(&json_string, &Default::default())
@@ -111,14 +122,21 @@ impl Lockfile {
     }
     match &self.content {
       LockfileContent::V1(c) => {
-        if let Some(lockfile_checksum) = c.map.get(specifier) {
+        if let Some(lockfile_checksum) = c.0.get(specifier) {
           let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
           lockfile_checksum == &compiled_checksum
         } else {
           false
         }
       }
-      LockfileContent::V2(_c) => todo!(),
+      LockfileContent::V2(c) => {
+        if let Some(lockfile_checksum) = c.remote.get(specifier) {
+          let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
+          lockfile_checksum == &compiled_checksum
+        } else {
+          false
+        }
+      }
     }
   }
 
@@ -126,12 +144,14 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return;
     }
+    let checksum = crate::checksum::gen(&[code.as_bytes()]);
     match &mut self.content {
       LockfileContent::V1(c) => {
-        let checksum = crate::checksum::gen(&[code.as_bytes()]);
-        c.map.insert(specifier.to_string(), checksum);
+        c.0.insert(specifier.to_string(), checksum);
       }
-      LockfileContent::V2(_c) => todo!(),
+      LockfileContent::V2(c) => {
+        c.remote.insert(specifier.to_string(), checksum);
+      }
     };
   }
 }
@@ -188,8 +208,11 @@ mod tests {
     let mut file = File::create(file_path).expect("write file fail");
 
     let value: serde_json::Value = json!({
-      "https://deno.land/std@0.71.0/textproto/mod.ts": "3118d7a42c03c242c5a49c2ad91c8396110e14acca1324e7aaefd31a999b71a4",
-      "https://deno.land/std@0.71.0/async/delay.ts": "35957d585a6e3dd87706858fb1d6b551cb278271b03f52c5a2cb70e65e00c26a"
+      "version": "2",
+      "remote": {
+        "https://deno.land/std@0.71.0/textproto/mod.ts": "3118d7a42c03c242c5a49c2ad91c8396110e14acca1324e7aaefd31a999b71a4",
+        "https://deno.land/std@0.71.0/async/delay.ts": "35957d585a6e3dd87706858fb1d6b551cb278271b03f52c5a2cb70e65e00c26a"
+      }
     });
 
     file.write_all(value.to_string().as_bytes()).unwrap();
@@ -210,11 +233,11 @@ mod tests {
 
     let result = Lockfile::new(file_path, false).unwrap();
 
-    let content = match result.content {
-      LockfileContent::V1(c) => c.map,
+    let remote = match result.content {
+      LockfileContent::V2(c) => c.remote,
       _ => unreachable!(),
     };
-    let keys: Vec<String> = content.keys().cloned().collect();
+    let keys: Vec<String> = remote.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
@@ -236,11 +259,11 @@ mod tests {
       "Here is some source code",
     );
 
-    let content = match lockfile.content {
-      LockfileContent::V1(c) => c.map,
+    let remote = match lockfile.content {
+      LockfileContent::V2(c) => c.remote,
       _ => unreachable!(),
     };
-    let keys: Vec<String> = content.keys().cloned().collect();
+    let keys: Vec<String> = remote.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/io/util.ts"),
@@ -284,7 +307,7 @@ mod tests {
 
     let contents_json =
       serde_json::from_str::<serde_json::Value>(&contents).unwrap();
-    let object = contents_json.as_object().unwrap();
+    let object = contents_json["remote"].as_object().unwrap();
 
     assert_eq!(
       object
