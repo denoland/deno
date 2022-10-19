@@ -365,6 +365,8 @@
           }
         } else {
           const reader = respBody.getReader();
+          const { value, done } = await reader.read();
+          // Best case: sends headers + first chunk in a single go.
           writeFixedResponse(
             serverId,
             i,
@@ -379,14 +381,21 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+          await respondChunked(
+            i,
+            value,
+            done,
+          );
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -591,13 +600,22 @@
     });
 
     function respondChunked(token, chunk, shutdown) {
-      return core.opAsync(
-        "op_flash_respond_chuncked",
+      const nwritten = core.ops.op_try_flash_respond_chuncked(
         serverId,
         token,
-        chunk,
+        chunk ?? new Uint8Array(),
         shutdown,
       );
+      if (nwritten > 0) {
+        return core.opAsync(
+          "op_flash_respond_chuncked",
+          serverId,
+          token,
+          chunk,
+          shutdown,
+          nwritten,
+        );
+      }
     }
 
     const fastOp = prepareFastCalls();

@@ -1,5 +1,7 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -7,7 +9,7 @@ use deno_core::ModuleSpecifier;
 use log::debug;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::io::Result;
+use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,34 +17,42 @@ use std::sync::Arc;
 use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone)]
+pub struct LockfileContent {
+  map: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Lockfile {
   write: bool,
-  map: BTreeMap<String, String>,
+  content: LockfileContent,
   pub filename: PathBuf,
 }
 
 impl Lockfile {
-  pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile> {
+  pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
     let map = if write {
       BTreeMap::new()
     } else {
-      let s = std::fs::read_to_string(&filename)?;
-      serde_json::from_str(&s)?
+      let s = std::fs::read_to_string(&filename).with_context(|| {
+        format!("Unable to read lockfile: {}", filename.display())
+      })?;
+      serde_json::from_str(&s)
+        .context("Unable to parse contents of the lockfile")?
     };
 
     Ok(Lockfile {
       write,
-      map,
+      content: LockfileContent { map },
       filename,
     })
   }
 
   // Synchronize lock file to disk - noop if --lock-write file is not specified.
-  pub fn write(&self) -> Result<()> {
+  pub fn write(&self) -> Result<(), AnyError> {
     if !self.write {
       return Ok(());
     }
-    let j = json!(&self.map);
+    let j = json!(&self.content.map);
     let s = serde_json::to_string_pretty(&j).unwrap();
 
     let format_s = format_json(&s, &Default::default())
@@ -54,7 +64,6 @@ impl Lockfile {
       .create(true)
       .truncate(true)
       .open(&self.filename)?;
-    use std::io::Write;
     f.write_all(format_s.as_bytes())?;
     debug!("lockfile write {}", self.filename.display());
     Ok(())
@@ -76,7 +85,7 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return true;
     }
-    if let Some(lockfile_checksum) = self.map.get(specifier) {
+    if let Some(lockfile_checksum) = self.content.map.get(specifier) {
       let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
     } else {
@@ -89,7 +98,7 @@ impl Lockfile {
       return;
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
-    self.map.insert(specifier.to_string(), checksum);
+    self.content.map.insert(specifier.to_string(), checksum);
   }
 }
 
@@ -167,7 +176,7 @@ mod tests {
 
     let result = Lockfile::new(file_path, false).unwrap();
 
-    let keys: Vec<String> = result.map.keys().cloned().collect();
+    let keys: Vec<String> = result.content.map.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/textproto/mod.ts"),
@@ -189,7 +198,7 @@ mod tests {
       "Here is some source code",
     );
 
-    let keys: Vec<String> = lockfile.map.keys().cloned().collect();
+    let keys: Vec<String> = lockfile.content.map.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
       String::from("https://deno.land/std@0.71.0/io/util.ts"),
