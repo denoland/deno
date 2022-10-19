@@ -70,17 +70,19 @@ impl Lockfile {
     if !self.write {
       return Ok(());
     }
-    let content = match &self.content {
-      LockfileContent::V1(c) => &c.map,
-      _ => unreachable!(),
-    };
-    let j = json!(&content);
-    let s = serde_json::to_string_pretty(&j).unwrap();
 
-    let format_s = format_json(&s, &Default::default())
+    let json_string = match &self.content {
+      LockfileContent::V1(c) => {
+        let j = json!(&c.map);
+        serde_json::to_string(&j).unwrap()
+      }
+      LockfileContent::V2(_c) => todo!(),
+    };
+
+    let format_s = format_json(&json_string, &Default::default())
       .ok()
       .flatten()
-      .unwrap_or(s);
+      .unwrap_or(json_string);
     let mut f = std::fs::OpenOptions::new()
       .write(true)
       .create(true)
@@ -107,15 +109,16 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return true;
     }
-    let content = match &self.content {
-      LockfileContent::V1(c) => &c.map,
-      _ => unreachable!(),
-    };
-    if let Some(lockfile_checksum) = content.get(specifier) {
-      let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
-      lockfile_checksum == &compiled_checksum
-    } else {
-      false
+    match &self.content {
+      LockfileContent::V1(c) => {
+        if let Some(lockfile_checksum) = c.map.get(specifier) {
+          let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
+          lockfile_checksum == &compiled_checksum
+        } else {
+          false
+        }
+      }
+      LockfileContent::V2(_c) => todo!(),
     }
   }
 
@@ -123,12 +126,13 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return;
     }
-    let content = match &mut self.content {
-      LockfileContent::V1(c) => &mut c.map,
-      _ => unreachable!(),
+    match &mut self.content {
+      LockfileContent::V1(c) => {
+        let checksum = crate::checksum::gen(&[code.as_bytes()]);
+        c.map.insert(specifier.to_string(), checksum);
+      }
+      LockfileContent::V2(_c) => todo!(),
     };
-    let checksum = crate::checksum::gen(&[code.as_bytes()]);
-    content.insert(specifier.to_string(), checksum);
   }
 }
 
