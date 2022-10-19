@@ -141,6 +141,6 @@ pub fn server_capabilities(
       "denoConfigTasks": true,
       "testingApi":true,
     })),
-    inlay_hint_provider: None,
+    inlay_hint_provider: Some(OneOf::Left(true)),
   }
 }

@@ -1072,6 +1072,213 @@ fn lsp_hover_disabled() {
 }
 
 #[test]
+fn lsp_inlay_hints() {
+  let mut client = init("initialize_params_hints.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"function a(b: string) {
+          return b;
+        }
+        
+        a("foo");
+        
+        enum C {
+          A,
+        }
+        
+        parseInt("123", 8);
+        
+        const d = Date.now();
+        
+        class E {
+          f = Date.now();
+        }
+        
+        ["a"].map((v) => v + v);
+        "#
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/inlayHint",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 19,
+            "character": 0,
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    json!(maybe_res),
+    json!([
+      {
+        "position": {
+          "line": 0,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 4,
+          "character": 10
+        },
+        "label": "b:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 7,
+          "character": 11
+        },
+        "label": "= 0",
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 17
+        },
+        "label": "string:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 24
+        },
+        "label": "radix:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 12,
+          "character": 15
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 15,
+          "character": 11
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 18
+        },
+        "label": "callbackfn:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 20
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      }
+    ])
+  );
+}
+
+#[test]
+fn lsp_inlay_hints_not_enabled() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"function a(b: string) {
+          return b;
+        }
+        
+        a("foo");
+        
+        enum C {
+          A,
+        }
+        
+        parseInt("123", 8);
+        
+        const d = Date.now();
+        
+        class E {
+          f = Date.now();
+        }
+        
+        ["a"].map((v) => v + v);
+        "#
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/inlayHint",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 19,
+            "character": 0,
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(json!(maybe_res), json!(null));
+}
+
+#[test]
 fn lsp_workspace_enable_paths() {
   let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
     "initialize_params_workspace_enable_paths.json",

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.66.0"
+version = "0.67.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -23,8 +23,8 @@ base64 = "0.13.0"
 brotli = "3.3.4"
 bytes = "1"
 cache_control = "0.2.0"
-deno_core = { version = "0.154.0", path = "../../core" }
-deno_websocket = { version = "0.77.0", path = "../websocket" }
+deno_core = { version = "0.155.0", path = "../../core" }
+deno_websocket = { version = "0.78.0", path = "../websocket" }
 flate2 = "1.0.23"
 fly-accept-encoding = "0.2.0"
 hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }

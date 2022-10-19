@@ -2377,6 +2377,59 @@ itest!(eval_context_throw_dom_exception {
   output: "run/eval_context_throw_dom_exception.js.out",
 });
 
+#[test]
+#[cfg(unix)]
+fn navigator_language_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    Some(vec![("LC_ALL".to_owned(), "pl_PL".to_owned())]),
+    false,
+  );
+  assert_eq!(res, "pl-PL\n")
+}
+
+#[test]
+fn navigator_language() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_language.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
+#[test]
+#[cfg(unix)]
+fn navigator_languages_unix() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    Some(vec![
+      ("LC_ALL".to_owned(), "pl_PL".to_owned()),
+      ("NO_COLOR".to_owned(), "1".to_owned()),
+    ]),
+    false,
+  );
+  assert_eq!(res, "[ \"pl-PL\" ]\n")
+}
+
+#[test]
+fn navigator_languages() {
+  let (res, _) = util::run_and_collect_output(
+    true,
+    "run navigator_languages.ts",
+    None,
+    None,
+    false,
+  );
+  assert!(!res.is_empty())
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/12740.
 #[test]
 fn issue12740() {
@@ -3371,6 +3424,12 @@ fn broken_stdout() {
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_tail {
+  args: "run error_cause_recursive_tail.ts",
+  output: "error_cause_recursive_tail.ts.out",
   exit_code: 1,
 });
 

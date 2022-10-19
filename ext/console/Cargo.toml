@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_console"
-version = "0.72.0"
+version = "0.73.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,4 +14,4 @@ description = "Implementation of Console API for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.154.0", path = "../../core" }
+deno_core = { version = "0.155.0", path = "../../core" }
