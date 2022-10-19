@@ -74,6 +74,9 @@ echo "testing if metadata is deterministic"
 
 file=$(find $DENO_DIR/deps -name '*.metadata.json' | head -n1)
 
+echo "testing metadata file: $file"
+cat $file
+
 for key in headers now
 do
   val="$(cat $file | jq -r ".$key")"
