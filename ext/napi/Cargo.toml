@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_napi"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -14,5 +14,5 @@ description = "NAPI implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.154.0", path = "../../core" }
+deno_core = { version = "0.155.0", path = "../../core" }
 libloading = { version = "0.7" }

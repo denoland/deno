@@ -34,7 +34,9 @@ use http::header::CONTENT_LENGTH;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::ACCEPT_ENCODING;
 use reqwest::header::HOST;
+use reqwest::header::RANGE;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
@@ -288,15 +290,25 @@ where
         None
       };
 
+      let mut header_map = HeaderMap::new();
       for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)
           .map_err(|err| type_error(err.to_string()))?;
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
+
         if !matches!(name, HOST | CONTENT_LENGTH) {
-          request = request.header(name, v);
+          header_map.append(name, v);
         }
       }
+
+      if header_map.contains_key(RANGE) {
+        // https://fetch.spec.whatwg.org/#http-network-or-cache-fetch step 18
+        // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
+        header_map
+          .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+      }
+      request = request.headers(header_map);
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {

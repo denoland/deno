@@ -1072,6 +1072,213 @@ fn lsp_hover_disabled() {
 }
 
 #[test]
+fn lsp_inlay_hints() {
+  let mut client = init("initialize_params_hints.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"function a(b: string) {
+          return b;
+        }
+        
+        a("foo");
+        
+        enum C {
+          A,
+        }
+        
+        parseInt("123", 8);
+        
+        const d = Date.now();
+        
+        class E {
+          f = Date.now();
+        }
+        
+        ["a"].map((v) => v + v);
+        "#
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/inlayHint",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 19,
+            "character": 0,
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    json!(maybe_res),
+    json!([
+      {
+        "position": {
+          "line": 0,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 4,
+          "character": 10
+        },
+        "label": "b:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 7,
+          "character": 11
+        },
+        "label": "= 0",
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 17
+        },
+        "label": "string:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 10,
+          "character": 24
+        },
+        "label": "radix:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 12,
+          "character": 15
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 15,
+          "character": 11
+        },
+        "label": ": number",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 18
+        },
+        "label": "callbackfn:",
+        "kind": 2,
+        "paddingRight": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 20
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      },
+      {
+        "position": {
+          "line": 18,
+          "character": 21
+        },
+        "label": ": string",
+        "kind": 1,
+        "paddingLeft": true
+      }
+    ])
+  );
+}
+
+#[test]
+fn lsp_inlay_hints_not_enabled() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": r#"function a(b: string) {
+          return b;
+        }
+        
+        a("foo");
+        
+        enum C {
+          A,
+        }
+        
+        parseInt("123", 8);
+        
+        const d = Date.now();
+        
+        class E {
+          f = Date.now();
+        }
+        
+        ["a"].map((v) => v + v);
+        "#
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/inlayHint",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 19,
+            "character": 0,
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(json!(maybe_res), json!(null));
+}
+
+#[test]
 fn lsp_workspace_enable_paths() {
   let mut params: lsp::InitializeParams = serde_json::from_value(load_fixture(
     "initialize_params_workspace_enable_paths.json",
@@ -3652,6 +3859,191 @@ fn lsp_completions_auto_import() {
       ]
     }))
   );
+}
+
+#[test]
+fn lsp_completions_snippet() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "filterText": "type=\"$1\"",
+            "insertText": "type=\"$1\"",
+            "insertTextFormat": 2,
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      json!({
+        "label": "type",
+        "kind": 5,
+        "sortText": "11",
+        "filterText": "type=\"$1\"",
+        "insertText": "type=\"$1\"",
+        "insertTextFormat": 2,
+        "commitCharacters": [
+          ".",
+          ",",
+          ";",
+          "("
+        ],
+        "data": {
+          "tsc": {
+            "specifier": "file:///a/a.tsx",
+            "position": 87,
+            "name": "type",
+            "useCodeSnippet": false
+          }
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "label": "type",
+      "kind": 5,
+      "detail": "(property) type: string",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "11",
+      "filterText": "type=\"$1\"",
+      "insertText": "type=\"$1\"",
+      "insertTextFormat": 2,
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ]
+    }))
+  );
+}
+
+#[test]
+fn lsp_completions_no_snippet() {
+  let mut client = init("initialize_params_no_snippet.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/a.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text": "function A({ type }: { type: string }) {\n  return type;\n}\n\nfunction B() {\n  return <A t\n}",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/a.tsx"
+        },
+        "position": {
+          "line": 5,
+          "character": 13,
+        },
+        "context": {
+          "triggerKind": 1,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(
+      json!(list),
+      json!({
+        "isIncomplete": false,
+        "items": [
+          {
+            "label": "type",
+            "kind": 5,
+            "sortText": "11",
+            "commitCharacters": [
+              ".",
+              ",",
+              ";",
+              "("
+            ],
+            "data": {
+              "tsc": {
+                "specifier": "file:///a/a.tsx",
+                "position": 87,
+                "name": "type",
+                "useCodeSnippet": false
+              }
+            }
+          }
+        ]
+      })
+    );
+  } else {
+    panic!("unexpected completion response");
+  }
 }
 
 #[test]
