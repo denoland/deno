@@ -506,7 +506,10 @@ pub async fn op_ws_next_event(
     }
     Some(Ok(Message::Close(None))) => {
       kind_out[1] = 1005;
-      (NextEventKind::Close as u32, None)
+      (
+        NextEventKind::Close as u32,
+        Some(StringOrBuffer::String(String::new())),
+      )
     }
     Some(Ok(Message::Ping(_))) => (NextEventKind::Ping as u32, None),
     Some(Ok(Message::Pong(_))) => (NextEventKind::Pong as u32, None),
