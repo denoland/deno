@@ -177,7 +177,7 @@
                         );
 
                         /* close */
-                        if (kind === 2) {
+                        if (kind[0] === 2) {
                           break;
                         }
                       }
