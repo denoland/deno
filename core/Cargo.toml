@@ -20,7 +20,7 @@ v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 [dependencies]
 anyhow.workspace = true
 bytes.workspace = true
-deno_ops = { path = "../ops", version = "0.33.0" }
+deno_ops.workspace = true
 futures.workspace = true
 # Stay on 1.6 to avoid a dependency cycle in ahash https://github.com/tkaitchuck/aHash/issues/95
 # Projects not depending on ahash are unafected as cargo will pull any 1.X that is >= 1.6.
@@ -32,7 +32,7 @@ parking_lot.workspace = true
 pin-project.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
-serde_v8 = { version = "0.66.0", path = "../serde_v8" }
+serde_v8.workspace = true
 sourcemap = "6.1"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 v8.workspace = true

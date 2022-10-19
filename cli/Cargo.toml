@@ -56,9 +56,9 @@ deno_doc = "0.46.0"
 deno_emit = "0.9.0"
 deno_graph = "0.34.0"
 deno_lint = { version = "0.33.0", features = ["docs"] }
-deno_runtime = { version = "0.81.0", path = "../runtime" }
+deno_runtime.workspace = true
 deno_task_shell = "0.6.0"
-napi_sym = { path = "./napi_sym", version = "0.3.0" }
+napi_sym.workspace = true
 
 atty.workspace = true
 base64.workspace = true
