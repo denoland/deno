@@ -51,6 +51,7 @@ napi_sym = { version = "0.3.0", path = "./cli/napi_sym" }
 deno_bench_util = { version = "0.67.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 
+# exts
 deno_broadcast_channel = { version = "0.67.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.5.0", path = "./ext/cache" }
 deno_console = { version = "0.73.0", path = "./ext/console" }
@@ -121,7 +122,7 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
 
-#unix
+# unix
 nix = "=0.24.2"
 
 # windows deps
