@@ -546,7 +546,8 @@ impl JsRuntime {
     };
 
     if !runtime_built_from_snapshot {
-      realm.init_extension_js(scope, &state_rc.borrow().extensions)?;
+      realm
+        .init_extension_js_from_scope(scope, &state_rc.borrow().extensions)?;
     }
 
     Self::init_cbs(scope, &realm);
@@ -692,18 +693,24 @@ impl JsRuntime {
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
-  fn init_cbs(scope: &mut v8::HandleScope, realm: &JsRealm) {
-    let recv_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
-        .expect("Deno.core.opresolve is undefined in the realm");
-    let recv_cb = v8::Global::new(scope, recv_cb);
-    let build_custom_error_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
-        .expect("Deno.core.buildCustomError is undefined in the realm");
-    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
+  fn init_cbs(parent_scope: &mut v8::HandleScope<()>, realm: &JsRealm) {
+    let (recv_cb, build_custom_error_cb) = {
+      let context = v8::Local::new(parent_scope, realm.context());
+      let mut scope = v8::ContextScope::new(parent_scope, context);
+      let scope = &mut scope;
+      let recv_cb =
+        Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve")
+          .expect("Deno.core.opresolve is undefined in the realm");
+      let recv_cb = v8::Global::new(scope, recv_cb);
+      let build_custom_error_cb =
+        Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+          .expect("Deno.core.buildCustomError is undefined in the realm");
+      let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
+      (recv_cb, build_custom_error_cb)
+    };
 
     // Put global handle in callback state
-    let state = realm.state(scope);
+    let state = realm.state(parent_scope);
     state.borrow_mut().js_recv_cb.replace(recv_cb);
     state
       .borrow_mut()
@@ -1644,6 +1651,25 @@ impl JsRealm {
     Ok(())
   }
 
+  /// Initializes JS of provided Extensions in the given realm, with a parent
+  /// scope.
+  fn init_extension_js_from_scope(
+    &self,
+    parent_scope: &mut v8::HandleScope,
+    extensions: &[Extension],
+  ) -> Result<(), Error> {
+    let context = v8::Local::new(parent_scope, &self.0);
+    let mut scope = v8::ContextScope::new(parent_scope, context);
+    for m in extensions.iter() {
+      let js_files = m.init_js();
+      for (filename, source) in js_files {
+        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+        Self::execute_script_in_scope(&mut scope, filename, source)?;
+      }
+    }
+    Ok(())
+  }
+
   pub(crate) fn module_map(
     &self,
     isolate: &mut v8::Isolate,
@@ -2380,8 +2406,18 @@ impl JsRealm {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let scope = &mut self.handle_scope(isolate);
+    Self::execute_script_in_scope(
+      &mut self.handle_scope(isolate),
+      name,
+      source_code,
+    )
+  }
 
+  fn execute_script_in_scope(
+    scope: &mut v8::HandleScope,
+    name: &str,
+    source_code: &str,
+  ) -> Result<v8::Global<v8::Value>, Error> {
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
     let origin = bindings::script_origin(scope, name);
