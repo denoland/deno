@@ -242,7 +242,7 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    let transferredArrayBuffers = [];
+    const transferredArrayBuffers = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
       const ab = transferables[i];
       if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
