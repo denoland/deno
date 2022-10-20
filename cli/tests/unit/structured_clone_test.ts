@@ -47,4 +47,7 @@ Deno.test("correct DataCloneError message", () => {
     DOMException,
     "ArrayBuffer at index 1 is already detached",
   );
+
+  // ab2 should not be detached after above failure
+  structuredClone(ab2, { transfer: [ab2] });
 });

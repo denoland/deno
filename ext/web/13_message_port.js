@@ -242,10 +242,20 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, transferables) {
-    const transferredArrayBuffers = ArrayPrototypeFilter(
-      transferables,
-      (a) => ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, a),
-    );
+    let transferredArrayBuffers = [];
+    for (let i = 0, j = 0; i < transferables.length; i++) {
+      const ab = transferables[i];
+      if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, ab)) {
+        if (ab.byteLength === 0 && core.ops.op_arraybuffer_was_detached(ab)) {
+          throw new DOMException(
+            `ArrayBuffer at index ${j} is already detached`,
+            "DataCloneError",
+          );
+        }
+        j++;
+        transferredArrayBuffers.push(ab);
+      }
+    }
 
     const serializedData = core.serialize(data, {
       hostObjects: ArrayPrototypeFilter(
