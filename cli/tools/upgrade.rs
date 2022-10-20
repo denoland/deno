@@ -427,7 +427,7 @@ mod test {
       CheckVersionFile::parse("2020-01-01T00:00:00+00:00!1.2.3".to_string())
         .unwrap();
     assert_eq!(
-      file.last_checked.to_string(),
+      file.last_checked.to_rfc3339(),
       "2020-01-01T00:00:00+00:00".to_string()
     );
     assert_eq!(file.latest_version, "1.2.3".to_string());
