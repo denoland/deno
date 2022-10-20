@@ -8,7 +8,6 @@ use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url_or_path;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map as apply_source_map_;
-use crate::JsRealm;
 use crate::JsRuntime;
 use crate::OpDecl;
 use crate::ZeroCopyBuf;
@@ -74,14 +73,14 @@ fn to_v8_local_fn(
 
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.borrow_mut().unrefed_ops.remove(&promise_id);
+  let state_rc = JsRuntime::state(scope);
+  state_rc.borrow_mut().unrefed_ops.remove(&promise_id);
 }
 
 #[op(v8)]
 fn op_unref_op(scope: &mut v8::HandleScope, promise_id: i32) {
-  let context_state = JsRealm::state_from_scope(scope);
-  context_state.borrow_mut().unrefed_ops.insert(promise_id);
+  let state_rc = JsRuntime::state(scope);
+  state_rc.borrow_mut().unrefed_ops.insert(promise_id);
 }
 
 #[op(v8)]
