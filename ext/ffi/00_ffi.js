@@ -160,12 +160,19 @@
     }
   }
 
+  const OUT_BUFFER = new Uint32Array(2);
+  const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
   class UnsafePointer {
     static of(value) {
       if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
         return value.pointer;
       }
-      return ops.op_ffi_ptr_of(value);
+      ops.op_ffi_ptr_of(value, OUT_BUFFER);
+      const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
+      if (NumberIsSafeInteger(result)) {
+        return result;
+      }
+      return OUT_BUFFER_64[0];
     }
   }
 
