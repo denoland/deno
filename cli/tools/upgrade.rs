@@ -54,7 +54,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
   };
 
   if should_check {
-    let cache_dir_ = cache_dir.clone();
+    let cache_dir = cache_dir.clone();
     tokio::spawn(async {
       // Sleep for a small amount of time to not unnecessarily impact startup
       // time.
@@ -79,7 +79,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
         last_checked: chrono::Utc::now(),
         latest_version,
       };
-      file.save(cache_dir_);
+      file.save(cache_dir);
     });
   }
 
@@ -115,10 +115,8 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
 
-        let maybe_file =
-          maybe_file.map(|f| f.with_last_prompt(chrono::Utc::now()));
         if let Some(file) = maybe_file {
-          file.save(cache_dir);
+          file.with_last_prompt(chrono::Utc::now()).save(cache_dir);
         }
       }
     }
