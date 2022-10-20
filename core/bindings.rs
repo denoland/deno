@@ -611,7 +611,7 @@ pub fn host_create_shadow_realm_callback<'s>(
       initialize_shadow_realm_fn(&mut scope)?;
       Ok(context)
     } else {
-      return Err(crate::error::generic_error("ShadowRealm is not supported"));
+      Err(crate::error::generic_error("ShadowRealm is not supported"))
     }
   })();
 

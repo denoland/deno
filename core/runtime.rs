@@ -4641,9 +4641,9 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
     let mut runtime = JsRuntime::new(Default::default());
     let error = runtime.execute_script("", "new ShadowRealm()").unwrap_err();
     let error = error.downcast::<JsError>().unwrap();
-    assert_eq!(error.name.as_ref().map(|s| -> &str { &*s }), Some("Error"));
+    assert_eq!(error.name.as_deref(), Some("Error"));
     assert_eq!(
-      error.message.as_ref().map(|s| -> &str { &*s }),
+      error.message.as_deref(),
       Some("ShadowRealm is not supported")
     );
   }
