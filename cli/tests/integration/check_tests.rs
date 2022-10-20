@@ -53,7 +53,8 @@ itest!(declaration_header_file_with_no_exports {
 itest!(check_npm_install_diagnostics {
   args: "check --quiet check/npm_install_diagnostics/main.ts",
   output: "check/npm_install_diagnostics/main.out",
-  http_server: false,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
 });
 
 #[test]

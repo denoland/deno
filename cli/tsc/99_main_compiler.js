@@ -41,6 +41,16 @@ delete Object.prototype.__proto__;
       "languageVersion" in value;
   }
 
+  /**
+   * @param {ts.ScriptTarget | ts.CreateSourceFileOptions | undefined} versionOrOptions
+   * @returns {ts.CreateSourceFileOptions}
+   */
+  function getCreateSourceFileOptions(versionOrOptions) {
+    return isCreateSourceFileOptions(versionOrOptions)
+      ? versionOrOptions
+      : { languageVersion: versionOrOptions ?? ts.ScriptTarget.ESNext };
+  }
+
   function setLogDebug(debug, source) {
     logDebug = debug;
     if (source) {
@@ -120,20 +130,6 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  // In the case of the LSP, this is initialized with the assets
-  // when snapshotting and never added to or removed after that.
-  /** @type {Map<string, ts.SourceFile>} */
-  const sourceFileCache = new Map();
-
-  /** @type {string[]=} */
-  let scriptFileNamesCache;
-
-  /** @type {Map<string, string>} */
-  const scriptVersionCache = new Map();
-
-  /** @type {Map<string, boolean>} */
-  const isNodeSourceFileCache = new Map();
-
   class SpecifierIsCjsCache {
     /** @type {Set<string>} */
     #cache = new Set();
@@ -150,7 +146,179 @@ delete Object.prototype.__proto__;
     }
   }
 
+  // In the case of the LSP, this will only ever contain the assets.
+  /** @type {Map<string, ts.SourceFile>} */
+  const sourceFileCache = new Map();
+
+  /** @type {string[]=} */
+  let scriptFileNamesCache;
+
+  /** @type {Map<string, string>} */
+  const scriptVersionCache = new Map();
+
+  /** @type {Map<string, boolean>} */
+  const isNodeSourceFileCache = new Map();
+
   const isCjsCache = new SpecifierIsCjsCache();
+
+  /**
+   * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
+   * @returns {ts.CompilerOptions}
+   */
+  function getCompilationSettings(settingsOrHost) {
+    if (typeof settingsOrHost.getCompilationSettings === "function") {
+      return settingsOrHost.getCompilationSettings();
+    }
+    return /** @type {ts.CompilerOptions} */ (settingsOrHost);
+  }
+
+  // We need to use a custom document registry in order to provide source files
+  // with an impliedNodeFormat to the ts language service
+
+  /** @type {Map<string, ts.SourceFile} */
+  const documentRegistrySourceFileCache = new Map();
+  const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
+  /** @type {ts.DocumentRegistry} */
+  const documentRegistry = {
+    acquireDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.acquireDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    acquireDocumentWithKey(
+      fileName,
+      path,
+      _compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey);
+      if (!sourceFile || sourceFile.version !== version) {
+        sourceFile = ts.createLanguageServiceSourceFile(
+          fileName,
+          scriptSnapshot,
+          {
+            ...getCreateSourceFileOptions(sourceFileOptions),
+            impliedNodeFormat: isCjsCache.has(fileName)
+              ? ts.ModuleKind.CommonJS
+              : ts.ModuleKind.ESNext,
+          },
+          version,
+          true,
+          scriptKind,
+        );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
+      }
+      return sourceFile;
+    },
+
+    updateDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.updateDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    updateDocumentWithKey(
+      fileName,
+      path,
+      compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey) ??
+        this.acquireDocumentWithKey(
+          fileName,
+          path,
+          compilationSettingsOrHost,
+          key,
+          scriptSnapshot,
+          version,
+          scriptKind,
+          sourceFileOptions,
+        );
+
+      if (sourceFile.version !== version) {
+        sourceFile = ts.updateLanguageServiceSourceFile(
+          sourceFile,
+          scriptSnapshot,
+          version,
+          scriptSnapshot.getChangeRange(sourceFile.scriptSnapShot),
+        );
+      }
+      return sourceFile;
+    },
+
+    getKeyForCompilationSettings(settings) {
+      return getKeyForCompilationSettings(settings);
+    },
+
+    releaseDocument(
+      fileName,
+      compilationSettings,
+      scriptKind,
+      impliedNodeFormat,
+    ) {
+      const key = getKeyForCompilationSettings(compilationSettings);
+      return this.releaseDocumentWithKey(
+        /** @type {ts.Path} */ (fileName),
+        key,
+        scriptKind,
+        impliedNodeFormat,
+      );
+    },
+
+    releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
+      const mapKey = path + key;
+      documentRegistrySourceFileCache.remove(mapKey);
+    },
+
+    reportStats() {
+      return "[]";
+    },
+  };
 
   ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
     const fileName = sourceFile.fileName;
@@ -265,12 +433,12 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
+  // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
 
   // todo(dsherret): we should investigate if throttling is really necessary
-
   /**
    * Inspired by ThrottledCancellationToken in ts server.
    *
@@ -330,10 +498,7 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
-      /** @type ts.CreateSourceFileOptions */
-      const createOptions = isCreateSourceFileOptions(languageVersion)
-        ? languageVersion
-        : { languageVersion };
+      const createOptions = getCreateSourceFileOptions(languageVersion);
       debug(
         `host.getSourceFile("${specifier}", ${
           ts.ScriptTarget[createOptions.languageVersion]
@@ -356,10 +521,6 @@ delete Object.prototype.__proto__;
         data != null,
         `"data" is unexpectedly null for "${specifier}".`,
       );
-      // globalThis.Deno.core.print(
-      //   "IS CJS" + isCjsCache.has(specifier) + "\n",
-      //   true,
-      // );
       sourceFile = ts.createSourceFile(
         specifier,
         data,
@@ -1036,13 +1197,13 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     cwd = rootUri;
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
 
   function serverRestart() {
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
     isNodeSourceFileCache.clear();
     debug("serverRestart()");
   }

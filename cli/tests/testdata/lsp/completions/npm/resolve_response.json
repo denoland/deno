@@ -1,11 +1,14 @@
 {
-  "label": "cjsDefault",
+  "label": "MyClass",
   "kind": 6,
-  "detail": "import cjsDefault",
-  "documentation": {
-    "kind": "markdown",
-    "value": ""
-  },
   "sortText": "1",
-  "insertTextFormat": 1
+  "insertTextFormat": 1,
+  "data": {
+    "tsc": {
+      "specifier": "file:///a/file.ts",
+      "position": 69,
+      "name": "MyClass",
+      "useCodeSnippet": false
+    }
+  }
 }

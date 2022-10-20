@@ -1,5 +1,5 @@
 {
-  "label": "cjsDefault",
+  "label": "MyClass",
   "kind": 6,
   "sortText": "1",
   "insertTextFormat": 1,
@@ -7,7 +7,7 @@
     "tsc": {
       "specifier": "file:///a/file.ts",
       "position": 69,
-      "name": "cjsDefault",
+      "name": "MyClass",
       "useCodeSnippet": false
     }
   }
