@@ -209,17 +209,27 @@ fn v8_init(
     " --turbo_fast_api_calls",
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
-    " --noexperimental-async-stack-tagging-api",
+    " --noexperimental-async-stack-tagging-api"
   );
 
-  if predictable {
-    v8::V8::set_flags_from_string(&format!(
-      "{}{}",
-      flags, " --predictable --random-seed=42"
-    ));
+  // TODO(andreubotella): We want to turn on this flag for unit tests, but not
+  // yet for debug or release builds.
+  let test_flags = if cfg!(test) {
+    " --harmony-shadow-realm"
   } else {
-    v8::V8::set_flags_from_string(flags);
-  }
+    ""
+  };
+
+  let predictable_flags = if predictable {
+    " --predictable --random-seed=42"
+  } else {
+    ""
+  };
+
+  v8::V8::set_flags_from_string(&format!(
+    "{}{}{}",
+    flags, test_flags, predictable_flags
+  ));
 
   let v8_platform = v8_platform
     .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
@@ -4614,5 +4624,53 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         Poll::Ready(Ok(()))
       ));
     });
+  }
+
+  #[test]
+  fn test_shadowrealm_constructor() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let main_realm = runtime.global_realm();
+    let other_realm = runtime.create_realm().unwrap();
+
+    fn initialize(isolate: &mut v8::Isolate, realm: &JsRealm) {
+      realm
+        .execute_script(
+          isolate,
+          "",
+          r#"
+            globalThis.sr1 = new ShadowRealm();
+            globalThis.sr2 = new ShadowRealm();
+
+            globalThis.test = (globalThis.test ?? 0) + 1;
+            globalThis.sr1.evaluate(`
+              globalThis.test = (globalThis.test ?? 0) + 1;
+            `);
+            globalThis.sr2.evaluate(`
+              globalThis.test = (globalThis.test ?? 0) + 1;
+            `);
+          "#,
+        )
+        .unwrap();
+    }
+    initialize(runtime.v8_isolate(), &main_realm);
+    initialize(runtime.v8_isolate(), &other_realm);
+
+    fn test(isolate: &mut v8::Isolate, realm: &JsRealm) {
+      let value = realm
+        .execute_script(
+          isolate,
+          "",
+          r#"
+            globalThis.test === 1 &&
+            globalThis.sr1.evaluate(`globalThis.test`) === 1 &&
+            globalThis.sr2.evaluate(`globalThis.test`) === 1
+          "#,
+        )
+        .unwrap();
+      let mut scope = realm.handle_scope(isolate);
+      assert!(value.open(&mut scope).is_true());
+    }
+    test(runtime.v8_isolate(), &main_realm);
+    test(runtime.v8_isolate(), &other_realm);
   }
 }
