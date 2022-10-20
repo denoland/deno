@@ -343,24 +343,27 @@
           }
           const reader = respBody.getReader(); // Aquire JS lock.
           try {
-            PromisePrototypeThen(core.opAsync(
-              "op_flash_write_resource",
-              http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                0, // Content-Length will be set by the op.
-                null,
-                true,
+            PromisePrototypeThen(
+              core.opAsync(
+                "op_flash_write_resource",
+                http1Response(
+                  method,
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  0, // Content-Length will be set by the op.
+                  null,
+                  true,
+                ),
+                serverId,
+                i,
+                resourceBacking.rid,
+                resourceBacking.autoClose,
               ),
-              serverId,
-              i,
-              resourceBacking.rid,
-              resourceBacking.autoClose,
-            ), () => {
-              // Release JS lock.
-              readableStreamClose(respBody);
-            });
+              () => {
+                // Release JS lock.
+                readableStreamClose(respBody);
+              },
+            );
           } catch (error) {
             await reader.cancel(error);
             throw error;
@@ -488,9 +491,13 @@
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
     PromisePrototypeCatch(
-      PromisePrototypeThen(core.opAsync("op_flash_wait_for_listening", serverId), (port) => {
-        onListen({ hostname: listenOpts.hostname, port });
-      }), () => {}
+      PromisePrototypeThen(
+        core.opAsync("op_flash_wait_for_listening", serverId),
+        (port) => {
+          onListen({ hostname: listenOpts.hostname, port });
+        },
+      ),
+      () => {},
     );
     const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
