@@ -251,7 +251,12 @@
           }
         },
         "report": {
-          "type": "string",
+          "default": "pretty",
+          "enum": [
+            "pretty",
+            "json",
+            "compact"
+          ],
           "description": "The default report format to use when linting"
         }
       }
