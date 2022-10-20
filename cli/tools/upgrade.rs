@@ -53,9 +53,9 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
     None => true,
   };
 
-  let cache_dir1 = cache_dir.clone();
   if should_check {
-    tokio::spawn(async move {
+    let cache_dir_ = cache_dir.clone();
+    tokio::spawn(async {
       // Sleep for a small amount of time to not unnecessarily impact startup
       // time.
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
@@ -74,14 +74,12 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
         Err(_) => return,
       };
 
-      let contents = CheckVersionFile {
+      let file = CheckVersionFile {
         last_prompt: chrono::Utc::now(),
         last_checked: chrono::Utc::now(),
         latest_version,
-      }
-      .serialize();
-      let _ =
-        std::fs::write(cache_dir1.join(UPGRADE_CHECK_FILE_NAME), contents);
+      };
+      file.save(cache_dir_);
     });
   }
 
@@ -117,11 +115,10 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
 
-        let maybe_contents = maybe_file
-          .map(|f| f.with_last_prompt(chrono::Utc::now()).serialize());
-        if let Some(contents) = maybe_contents {
-          let _ =
-            std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), contents);
+        let maybe_file =
+          maybe_file.map(|f| f.with_last_prompt(chrono::Utc::now()));
+        if let Some(file) = maybe_file {
+          file.save(cache_dir);
         }
       }
     }
@@ -457,7 +454,7 @@ impl CheckVersionFile {
     })
   }
 
-  pub fn serialize(&self) -> String {
+  fn serialize(&self) -> String {
     format!(
       "{}!{}!{}",
       self.last_prompt.to_rfc3339(),
@@ -471,6 +468,11 @@ impl CheckVersionFile {
       last_prompt: dt,
       ..self
     }
+  }
+
+  fn save(&self, cache_dir: PathBuf) {
+    let _ =
+      std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), self.serialize());
   }
 }
 
