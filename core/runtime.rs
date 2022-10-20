@@ -2203,6 +2203,14 @@ pub fn queue_async_op(
   op: impl Future<Output = (v8::Global<v8::Context>, PromiseId, OpId, OpResult)>
     + 'static,
 ) {
+  if deferred {
+    let state_rc = JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
+    state.pending_ops.push(OpCall::lazy(op));
+    state.have_unpolled_ops = true;
+    return;
+  }
+
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
@@ -2213,9 +2221,7 @@ pub fn queue_async_op(
     // const p = setPromise();
     // op.op_async(promiseId, ...); // Calls `opresolve`
     // return p;
-    EagerPollResult::Ready((context, promise_id, op_id, mut resp))
-      if !deferred =>
-    {
+    EagerPollResult::Ready((context, promise_id, op_id, mut resp)) => {
       let args = &[
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
@@ -2230,13 +2236,6 @@ pub fn queue_async_op(
       let js_recv_cb = js_recv_cb_handle.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
       js_recv_cb.call(tc_scope, this, args);
-    }
-    EagerPollResult::Ready(op) => {
-      let ready = OpCall::ready(op);
-      let state_rc = JsRuntime::state(scope);
-      let mut state = state_rc.borrow_mut();
-      state.pending_ops.push(ready);
-      state.have_unpolled_ops = true;
     }
     EagerPollResult::Pending(op) => {
       let state_rc = JsRuntime::state(scope);
