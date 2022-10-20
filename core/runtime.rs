@@ -60,6 +60,9 @@ pub type JsErrorCreateFn = dyn Fn(JsError) -> Error;
 
 pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e Error) -> &'static str;
 
+pub type InitializeShadowRealmFn =
+  &'static dyn Fn(&mut v8::HandleScope) -> Result<(), Error>;
+
 /// Objects that need to live as long as the isolate
 #[derive(Default)]
 struct IsolateAllocations {
@@ -177,6 +180,7 @@ pub(crate) struct JsRuntimeState {
   #[allow(dead_code)]
   // We don't explicitly re-read this prop but need the slice to live alongside the isolate
   pub(crate) op_ctxs: Box<[OpCtx]>,
+  pub(crate) initialize_shadow_realm_fn: Option<InitializeShadowRealmFn>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   /// The error that was passed to an `op_dispatch_exception` call.
@@ -277,6 +281,11 @@ pub struct RuntimeOptions {
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
+
+  /// Provides a function to initialize the realm created by the `ShadowRealm`
+  /// constructor. Passing `None` will result in the `ShadowRealm` constructor
+  /// throwing.
+  pub initialize_shadow_realm_fn: Option<InitializeShadowRealmFn>,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
@@ -433,6 +442,7 @@ impl JsRuntime {
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
       pending_ops: FuturesUnordered::new(),
+      initialize_shadow_realm_fn: options.initialize_shadow_realm_fn,
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -4627,8 +4637,30 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
   }
 
   #[test]
-  fn test_shadowrealm_constructor() {
+  fn test_shadowrealm_no_initializer() {
     let mut runtime = JsRuntime::new(Default::default());
+    let error = runtime.execute_script("", "new ShadowRealm()").unwrap_err();
+    let error = error.downcast::<JsError>().unwrap();
+    assert_eq!(error.name.as_ref().map(|s| -> &str { &*s }), Some("Error"));
+    assert_eq!(
+      error.message.as_ref().map(|s| -> &str { &*s }),
+      Some("ShadowRealm is not supported")
+    );
+  }
+
+  #[test]
+  fn test_shadowrealm_constructor() {
+    fn initialize_shadow_realm(
+      _scope: &mut v8::HandleScope,
+    ) -> Result<(), Error> {
+      // Noop.
+      Ok(())
+    }
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      initialize_shadow_realm_fn: Some(&initialize_shadow_realm),
+      ..Default::default()
+    });
     let main_realm = runtime.global_realm();
     let other_realm = runtime.create_realm().unwrap();
 

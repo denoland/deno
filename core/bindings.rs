@@ -598,11 +598,25 @@ pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
 pub fn host_create_shadow_realm_callback<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Option<v8::Local<'s, v8::Context>> {
-  match JsRuntime::create_realm_from_scope(scope) {
-    Ok(realm) => {
-      let context = realm.context();
-      Some(v8::Local::new(scope, context))
+  let state = JsRuntime::state(scope);
+
+  // We use an IIFE so we can use the question mark operator.
+  let temp = (|| {
+    let realm = JsRuntime::create_realm_from_scope(scope)?;
+    let context = v8::Local::new(scope, realm.context());
+    if let Some(initialize_shadow_realm_fn) =
+      state.borrow().initialize_shadow_realm_fn
+    {
+      let mut scope = v8::ContextScope::new(scope, context);
+      initialize_shadow_realm_fn(&mut scope)?;
+      Ok(context)
+    } else {
+      return Err(crate::error::generic_error("ShadowRealm is not supported"));
     }
+  })();
+
+  match temp {
+    Ok(context) => Some(context),
     Err(error) => {
       let state_rc = JsRuntime::state(scope);
       let op_state_rc = &state_rc.borrow().op_state;

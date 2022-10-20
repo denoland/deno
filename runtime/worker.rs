@@ -40,6 +40,22 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+pub(crate) fn initialize_shadow_realm(
+  _scope: &mut v8::HandleScope,
+) -> Result<(), AnyError> {
+  eprintln!(
+    "Unstable API 'ShadowRealm'. The --unstable flag must be provided."
+  );
+  std::process::exit(70);
+}
+
+pub(crate) fn initialize_shadow_realm_unstable(
+  _scope: &mut v8::HandleScope,
+) -> Result<(), AnyError> {
+  // TODO(andreubotella): Call the bootstrap functions.
+  Ok(())
+}
+
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
 #[derive(Clone, Default)]
@@ -54,6 +70,7 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -245,6 +262,11 @@ impl MainWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
+      initialize_shadow_realm_fn: if unstable {
+        Some(&initialize_shadow_realm_unstable)
+      } else {
+        Some(&initialize_shadow_realm)
+      },
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,

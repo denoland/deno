@@ -454,6 +454,11 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
+      initialize_shadow_realm_fn: if unstable {
+        Some(&crate::worker::initialize_shadow_realm_unstable)
+      } else {
+        Some(&crate::worker::initialize_shadow_realm)
+      },
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
