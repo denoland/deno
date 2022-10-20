@@ -4088,7 +4088,7 @@ fn lsp_completions_npm() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import cjsDefault from 'npm:@denotest/cjs-default-export';\n\n",
+        "text": "import cjsDefault from 'npm:@denotest/cjs-default-export';import chalk from 'npm:chalk';\n\n",
       }
     }),
   );
@@ -4102,6 +4102,9 @@ fn lsp_completions_npm() {
         "uris": [
           {
             "uri": "npm:@denotest/cjs-default-export",
+          },
+          {
+            "uri": "npm:chalk",
           }
         ]
       }),
@@ -4110,6 +4113,7 @@ fn lsp_completions_npm() {
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
 
+  // check importing a cjs default import
   client
     .write_notification(
       "textDocument/didChange",
@@ -4176,6 +4180,63 @@ fn lsp_completions_npm() {
     maybe_res,
     Some(load_fixture("completions/npm/resolve_response.json"))
   );
+
+  // now check chalk, which is esm
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 3
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 2,
+                "character": 11
+              }
+            },
+            "text": "chalk."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  read_diagnostics(&mut client);
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 6
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert!(list.items.iter().any(|i| i.label == "green"));
+    assert!(list.items.iter().any(|i| i.label == "red"));
+  } else {
+    panic!("unexpected response");
+  }
+
   shutdown(&mut client);
 }
 
