@@ -4,7 +4,7 @@ The files in this directory are mostly from the TypeScript repository. We
 currently (unfortunately) have a rather manual process for upgrading TypeScript.
 It works like this currently:
 
-1. Checkout denoland/typescript repo in a separate directory.
+1. Checkout denoland/TypeScript repo in a separate directory.
 1. Add Microsoft/TypeScript as a remote and fetch its latest tags
 1. Checkout a new branch based on this tag.
 1. Cherry pick the custom commit we made in a previous release to the new one.
