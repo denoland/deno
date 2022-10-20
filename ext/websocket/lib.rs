@@ -20,6 +20,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use http::header::HeaderName;
@@ -159,6 +160,51 @@ impl WsStreamResource {
       )) => Ok(()),
       Err(err) => Err(err.into()),
     }
+  }
+
+  fn try_send(self: &Rc<Self>, message: Message) -> Result<bool, AnyError> {
+    let waker = deno_core::futures::task::noop_waker();
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    let res = match self.stream {
+      WebSocketStreamType::Client { .. } => {
+        match RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { tx, .. } => tx,
+          WebSocketStreamType::Server { .. } => unreachable!(),
+        })
+        .try_borrow_mut()
+        {
+          Some(mut tx) => {
+            if tx.poll_ready_unpin(&mut cx).is_ready() {
+              tx.start_send_unpin(message)?;
+              tx.poll_flush_unpin(&mut cx).is_ready()
+            } else {
+              false
+            }
+          }
+          None => false,
+        }
+      }
+      WebSocketStreamType::Server { .. } => {
+        match RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { .. } => unreachable!(),
+          WebSocketStreamType::Server { tx, .. } => tx,
+        })
+        .try_borrow_mut()
+        {
+          Some(mut tx) => {
+            if tx.poll_ready_unpin(&mut cx).is_ready() {
+              tx.start_send_unpin(message)?;
+              tx.poll_flush_unpin(&mut cx).is_ready()
+            } else {
+              false
+            }
+          }
+          None => false,
+        }
+      }
+    };
+    Ok(res)
   }
 
   async fn next_message(
@@ -426,6 +472,54 @@ pub async fn op_ws_send(
   Ok(())
 }
 
+#[op]
+pub async fn op_ws_send_string(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  text: String,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Text(text)).await?;
+  Ok(())
+}
+
+#[op]
+pub async fn op_ws_send_binary(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  data: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<WsStreamResource>(rid)?;
+  resource.send(Message::Binary(data.to_vec())).await?;
+  Ok(())
+}
+
+#[op]
+pub fn op_ws_try_send_string(
+  state: &mut OpState,
+  rid: ResourceId,
+  text: String,
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Text(text))
+}
+
+#[op(fast)]
+pub fn op_ws_try_send_binary(
+  state: &mut OpState,
+  rid: u32,
+  value: &[u8],
+) -> Result<bool, AnyError> {
+  let resource = state.resource_table.get::<WsStreamResource>(rid)?;
+  resource.try_send(Message::Binary(value.to_vec()))
+}
+
 #[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
@@ -462,11 +556,23 @@ pub enum NextEventResponse {
   Closed,
 }
 
-#[op]
+#[repr(u32)]
+enum NextEventKind {
+  String = 0,
+  Binary = 1,
+  Close = 2,
+  Ping = 3,
+  Pong = 4,
+  Error = 5,
+  Closed = 6,
+}
+
+#[op(deferred)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<NextEventResponse, AnyError> {
+  kind_out: &mut [u32],
+) -> Result<Option<StringOrBuffer>, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -474,28 +580,45 @@ pub async fn op_ws_next_event(
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;
-  let res = match val {
-    Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
-    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
-    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
-      code: frame.code.into(),
-      reason: frame.reason.to_string(),
-    },
-    Some(Ok(Message::Close(None))) => NextEventResponse::Close {
-      code: 1005,
-      reason: String::new(),
-    },
-    Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
-    Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
-    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
+  let (kind, value) = match val {
+    Some(Ok(Message::Text(text))) => (
+      NextEventKind::String as u32,
+      Some(StringOrBuffer::String(text)),
+    ),
+    Some(Ok(Message::Binary(data))) => (
+      NextEventKind::Binary as u32,
+      Some(StringOrBuffer::Buffer(data.into())),
+    ),
+    Some(Ok(Message::Close(Some(frame)))) => {
+      let code: u16 = frame.code.into();
+      kind_out[1] = code as u32;
+      (
+        NextEventKind::Close as u32,
+        Some(StringOrBuffer::String(frame.reason.to_string())),
+      )
+    }
+    Some(Ok(Message::Close(None))) => {
+      kind_out[1] = 1005;
+      (
+        NextEventKind::Close as u32,
+        Some(StringOrBuffer::String(String::new())),
+      )
+    }
+    Some(Ok(Message::Ping(_))) => (NextEventKind::Ping as u32, None),
+    Some(Ok(Message::Pong(_))) => (NextEventKind::Pong as u32, None),
+    Some(Err(e)) => (
+      NextEventKind::Error as u32,
+      Some(StringOrBuffer::String(e.to_string())),
+    ),
     None => {
       // No message was received, presumably the socket closed while we waited.
       // Try close the stream, ignoring any errors, and report closed status to JavaScript.
       let _ = state.borrow_mut().resource_table.close(rid);
-      NextEventResponse::Closed
+      (NextEventKind::Closed as u32, None)
     }
   };
-  Ok(res)
+  kind_out[0] = kind as u32;
+  Ok(value)
 }
 
 pub fn init<P: WebSocketPermissions + 'static>(
@@ -515,6 +638,10 @@ pub fn init<P: WebSocketPermissions + 'static>(
       op_ws_send::decl(),
       op_ws_close::decl(),
       op_ws_next_event::decl(),
+      op_ws_send_string::decl(),
+      op_ws_send_binary::decl(),
+      op_ws_try_send_string::decl(),
+      op_ws_try_send_binary::decl(),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
