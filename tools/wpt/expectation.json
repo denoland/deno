@@ -1296,14 +1296,8 @@
       "bad-buffers-and-views.any.worker.html": true,
       "construct-byob-request.any.html": true,
       "construct-byob-request.any.worker.html": true,
-      "general.any.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
-      ],
-      "general.any.worker.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
-      ],
+      "general.any.html": true,
+      "general.any.worker.html": true,
       "non-transferable-buffers.any.html": false,
       "non-transferable-buffers.any.worker.html": false,
       "enqueue-with-detached-buffer.window.html": false,
@@ -1372,12 +1366,8 @@
       "bad-underlying-sinks.any.worker.html": true,
       "byte-length-queuing-strategy.any.html": true,
       "byte-length-queuing-strategy.any.worker.html": true,
-      "close.any.html": [
-        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
-      ],
-      "close.any.worker.html": [
-        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
-      ],
+      "close.any.html": true,
+      "close.any.worker.html": true,
       "constructor.any.html": true,
       "constructor.any.worker.html": true,
       "count-queuing-strategy.any.html": true,
