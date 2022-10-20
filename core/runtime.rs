@@ -151,6 +151,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_nexttick_cbs: Vec<v8::Global<v8::Function>>,
   pub(crate) js_promise_reject_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_format_exception_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_build_custom_error_cb: Option<v8::Global<v8::Function>>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
@@ -401,7 +402,7 @@ impl JsRuntime {
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
-    isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
+    let state_rc = Rc::new(RefCell::new(JsRuntimeState {
       global_realm: Some(JsRealm(global_context)),
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: vec![],
@@ -412,6 +413,7 @@ impl JsRuntime {
       js_nexttick_cbs: vec![],
       js_promise_reject_cb: None,
       js_format_exception_cb: None,
+      js_build_custom_error_cb: None,
       has_tick_scheduled: false,
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
@@ -698,10 +700,17 @@ impl JsRuntime {
     let recv_cb =
       Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
     let recv_cb = v8::Global::new(scope, recv_cb);
+    let build_custom_error_cb =
+      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+        .expect("Deno.core.buildCustomError is undefined in the realm");
+    let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
     // Put global handles in state
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     state.js_recv_cb.replace(recv_cb);
+    state
+      .js_build_custom_error_cb
+      .replace(build_custom_error_cb);
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -768,6 +777,7 @@ impl JsRuntime {
       ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_build_custom_error_cb);
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
     snapshot_creator
@@ -1866,7 +1876,7 @@ impl JsRuntime {
 
       while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
       {
-        let (promise_id, op_id, resp) = item;
+        let (promise_id, op_id, mut resp) = item;
         state.unrefed_ops.remove(&promise_id);
         state.op_state.borrow().tracker.track_async_completed(op_id);
         args.push(v8::Integer::new(scope, promise_id as i32).into());
@@ -2070,8 +2080,7 @@ pub fn queue_async_op(
   state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
   deferred: bool,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)>
-    + 'static,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
 ) {
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
@@ -2083,17 +2092,14 @@ pub fn queue_async_op(
     // const p = setPromise();
     // op.op_async(promiseId, ...); // Calls `opresolve`
     // return p;
-    EagerPollResult::Ready((context, promise_id, op_id, mut resp))
-      if !deferred =>
-    {
+    EagerPollResult::Ready((promise_id, op_id, mut resp)) if !deferred => {
       let args = &[
         v8::Integer::new(scope, promise_id).into(),
         resp.to_v8(scope).unwrap(),
       ];
 
-      let realm = JsRealm::new(context);
       let js_recv_cb_handle =
-        realm.state(scope).borrow().js_recv_cb.clone().unwrap();
+        JsRuntime::state(scope).borrow().js_recv_cb.clone().unwrap();
       state.borrow().tracker.track_async_completed(op_id);
 
       let tc_scope = &mut v8::TryCatch::new(scope);
