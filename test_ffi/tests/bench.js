@@ -251,7 +251,7 @@ Deno.bench("hash()", () => {
 const { ffi_string } = dylib.symbols;
 Deno.bench(
   "c string",
-  () => new Deno.UnsafePointerView(ffi_string()).getCString(),
+  () => Deno.UnsafePointerView.getCString(ffi_string()),
 );
 
 const { add_u32 } = dylib.symbols;
@@ -642,4 +642,52 @@ const cstringPointerView = new Deno.UnsafePointerView(
 );
 Deno.bench("Deno.UnsafePointerView#getCString", () => {
   cstringPointerView.getCString();
+});
+
+const bufferPointerView = new Deno.UnsafePointerView(
+  Deno.UnsafePointer.of(buffer),
+);
+
+Deno.bench("Deno.UnsafePointerView#getBool", () => {
+  bufferPointerView.getBool();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint8", () => {
+  bufferPointerView.getUint8();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt8", () => {
+  bufferPointerView.getInt8();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint16", () => {
+  bufferPointerView.getUint16();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt16", () => {
+  bufferPointerView.getInt16();
+});
+
+Deno.bench("Deno.UnsafePointerView#getUint32", () => {
+  bufferPointerView.getUint32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getInt32", () => {
+  bufferPointerView.getInt32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getBigUint64", () => {
+  bufferPointerView.getBigUint64();
+});
+
+Deno.bench("Deno.UnsafePointerView#getBigInt64", () => {
+  bufferPointerView.getBigInt64();
+});
+
+Deno.bench("Deno.UnsafePointerView#getFloat32", () => {
+  bufferPointerView.getFloat32();
+});
+
+Deno.bench("Deno.UnsafePointerView#getFloat64", () => {
+  bufferPointerView.getFloat64();
 });

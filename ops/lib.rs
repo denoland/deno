@@ -774,6 +774,35 @@ fn is_fast_scalar(
   match tokens(&ty).as_str() {
     "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
     "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
+    "u64" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Uint64 })
+      }
+    }
+    "i64" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Int64 })
+      }
+    }
+    // TODO(@aapoalas): Support 32 bit machines
+    "usize" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Uint64 })
+      }
+    }
+    "isize" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Int64 })
+      }
+    }
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
     "bool" => Some(quote! { #core::v8::fast_api::#cty::Bool }),
