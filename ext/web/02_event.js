@@ -64,7 +64,7 @@
   }
 
   function setIsTrusted(event, value) {
-    if (value) isTrustedSet.add(event);
+    event[_isTrusted] = value;
   }
 
   function setDispatched(event, value) {
