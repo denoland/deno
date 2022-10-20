@@ -72,6 +72,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
       };
 
       let contents = CheckVersionFile {
+        last_prompt: chrono::Utc::now(),
         last_checked: chrono::Utc::now(),
         latest_version,
       }
@@ -81,11 +82,27 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
   }
 
   // Return `Some(version)` if a new version is available, `None` otherwise.
-  maybe_file
-    .map(|f| f.latest_version)
+  let new_version_available = maybe_file
+    .as_ref()
+    .map(|f| f.latest_version.to_string())
     .filter(|latest_version| {
       latest_version != version::release_version_or_canary_commit_hash()
-    })
+    });
+
+  let should_prompt = match &maybe_file {
+    Some(file) => {
+      let last_prompt_age =
+        chrono::Utc::now().signed_duration_since(file.last_prompt);
+      last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
+    }
+    None => true,
+  };
+
+  if !should_prompt {
+    return None;
+  }
+
+  new_version_available
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
@@ -385,6 +402,7 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
 }
 
 struct CheckVersionFile {
+  pub last_prompt: chrono::DateTime<chrono::Utc>,
   pub last_checked: chrono::DateTime<chrono::Utc>,
   pub latest_version: String,
 }
@@ -393,27 +411,36 @@ impl CheckVersionFile {
   pub fn parse(content: String) -> Option<Self> {
     let split_content = content.split('!').collect::<Vec<_>>();
 
-    if split_content.len() != 2 {
+    if split_content.len() != 3 {
       return None;
     }
 
-    let latest_version = split_content[1].trim().to_owned();
+    let latest_version = split_content[2].trim().to_owned();
     if latest_version.is_empty() {
       return None;
     }
 
-    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[0])
+    let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[1])
       .map(|dt| dt.with_timezone(&chrono::Utc))
       .ok()?;
 
     Some(CheckVersionFile {
+      last_prompt,
       last_checked,
       latest_version,
     })
   }
 
   pub fn serialize(&self) -> String {
-    format!("{}!{}", self.last_checked.to_rfc3339(), self.latest_version)
+    format!(
+      "{}!{}!{}",
+      self.last_prompt.to_rfc3339(),
+      self.last_checked.to_rfc3339(),
+      self.latest_version
+    )
   }
 }
 
@@ -423,9 +450,14 @@ mod test {
 
   #[test]
   fn test_parse_upgrade_check_file() {
-    let file =
-      CheckVersionFile::parse("2020-01-01T00:00:00+00:00!1.2.3".to_string())
-        .unwrap();
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3".to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+      file.last_prompt.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
     assert_eq!(
       file.last_checked.to_rfc3339(),
       "2020-01-01T00:00:00+00:00".to_string()
@@ -446,6 +478,9 @@ mod test {
   #[test]
   fn test_serialize_upgrade_check_file() {
     let file = CheckVersionFile {
+      last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc),
       last_checked: chrono::DateTime::parse_from_rfc3339(
         "2020-01-01T00:00:00Z",
       )
@@ -453,6 +488,9 @@ mod test {
       .with_timezone(&chrono::Utc),
       latest_version: "1.2.3".to_string(),
     };
-    assert_eq!(file.serialize(), "2020-01-01T00:00:00+00:00!1.2.3");
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3"
+    );
   }
 }
