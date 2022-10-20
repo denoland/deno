@@ -229,7 +229,7 @@ fn codegen_v8_async(
     use #core::futures::FutureExt;
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+      &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
       as *const #core::_ops::OpCtx)
     };
     let op_id = ctx.id;
@@ -557,7 +557,7 @@ fn codegen_v8_sync(
   quote! {
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
+      &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
       as *const #core::_ops::OpCtx)
     };
 
