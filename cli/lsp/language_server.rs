@@ -858,7 +858,7 @@ impl Inner {
       if let Err(err) =
         self.client.register_capability(vec![registration]).await
       {
-        warn!("Client errored on capabilities.\n{}", err);
+        warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
     self.config.update_enabled_paths(self.client.clone()).await;
@@ -936,7 +936,9 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    let _ = self.npm_resolver.set_package_reqs(package_reqs).await;
+    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
+      warn!("Could not set npm package requirements. {:#}", err);
+    }
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1172,7 +1174,7 @@ impl Inner {
         Ok(None) => Some(Vec::new()),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
-          warn!("Format error: {}", err);
+          warn!("Format error: {:#}", err);
           None
         }
       }
