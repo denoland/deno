@@ -3,7 +3,9 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::args::UpgradeFlags;
+use crate::colors;
 use crate::version;
+
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -29,9 +31,9 @@ const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
-pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
+pub fn check_for_upgrades(cache_dir: PathBuf) {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
-    return None;
+    return;
   }
 
   let p = cache_dir.join(UPGRADE_CHECK_FILE_NAME);
@@ -51,6 +53,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
     None => true,
   };
 
+  let cache_dir1 = cache_dir.clone();
   if should_check {
     tokio::spawn(async move {
       // Sleep for a small amount of time to not unnecessarily impact startup
@@ -77,7 +80,8 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
         latest_version,
       }
       .serialize();
-      let _ = std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), contents);
+      let _ =
+        std::fs::write(cache_dir1.join(UPGRADE_CHECK_FILE_NAME), contents);
     });
   }
 
@@ -98,11 +102,30 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
     None => true,
   };
 
-  if !should_prompt {
-    return None;
-  }
+  // Print a message if an update is available, unless:
+  //   * stderr is not a tty
+  //   * we're already running the 'deno upgrade' command.
+  if should_prompt {
+    if let Some(upgrade_version) = new_version_available {
+      if atty::is(atty::Stream::Stderr) {
+        eprint!(
+          "{} ",
+          colors::green(format!("Deno {upgrade_version} has been released."))
+        );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
 
-  new_version_available
+        let maybe_contents = maybe_file
+          .map(|f| f.with_last_prompt(chrono::Utc::now()).serialize());
+        if let Some(contents) = maybe_contents {
+          let _ =
+            std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), contents);
+        }
+      }
+    }
+  }
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
@@ -441,6 +464,13 @@ impl CheckVersionFile {
       self.last_checked.to_rfc3339(),
       self.latest_version
     )
+  }
+
+  fn with_last_prompt(self, dt: chrono::DateTime<chrono::Utc>) -> Self {
+    Self {
+      last_prompt: dt,
+      ..self
+    }
   }
 }
 
