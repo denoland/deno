@@ -82,10 +82,10 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
 
   // Return `Some(version)` if a new version is available, `None` otherwise.
   maybe_file
-    .filter(|file| {
-      file.latest_version != version::release_version_or_canary_commit_hash()
-    })
     .map(|f| f.latest_version)
+    .filter(|latest_version| {
+      latest_version != version::release_version_or_canary_commit_hash()
+    })
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
@@ -396,10 +396,15 @@ impl CheckVersionFile {
     if split_content.len() != 2 {
       return None;
     }
-    let last_checked = chrono::DateTime::parse_from_rfc3339(&split_content[0])
+
+    let latest_version = split_content[1].trim().to_owned();
+    if latest_version.is_empty() {
+      return None;
+    }
+
+    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[0])
       .map(|dt| dt.with_timezone(&chrono::Utc))
       .ok()?;
-    let latest_version = split_content[1].to_owned();
 
     Some(CheckVersionFile {
       last_checked,
@@ -421,10 +426,20 @@ mod test {
     let file =
       CheckVersionFile::parse("2020-01-01T00:00:00+00:00!1.2.3".to_string())
         .unwrap();
-    assert_eq!(file.last_checked, "2020-01-01T00:00:00+00:00".to_string());
+    assert_eq!(
+      file.last_checked.to_string(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
     assert_eq!(file.latest_version, "1.2.3".to_string());
 
+    let result =
+      CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
+    assert!(result.is_none());
+
     let result = CheckVersionFile::parse("garbage!test".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("test".to_string());
     assert!(result.is_none());
   }
 
