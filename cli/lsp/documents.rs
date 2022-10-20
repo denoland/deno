@@ -1183,12 +1183,12 @@ impl Documents {
 }
 
 /// Loader that will look at the open documents.
-pub struct DocumentsDenoGraphLoader<'a> {
+pub struct OpenDocumentsGraphLoader<'a> {
   pub inner_loader: &'a mut dyn deno_graph::source::Loader,
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
 }
 
-impl<'a> deno_graph::source::Loader for DocumentsDenoGraphLoader<'a> {
+impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,

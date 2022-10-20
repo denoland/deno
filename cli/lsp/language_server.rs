@@ -2872,7 +2872,7 @@ impl Inner {
         .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
       let mut inner_loader = ps.create_graph_loader();
-      let mut loader = crate::lsp::documents::DocumentsDenoGraphLoader {
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
