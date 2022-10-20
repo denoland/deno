@@ -50,6 +50,12 @@ itest!(declaration_header_file_with_no_exports {
   output_str: Some(""),
 });
 
+itest!(check_npm_install_diagnostics {
+  args: "check --quiet check/npm_install_diagnostics/main.ts",
+  output: "check/npm_install_diagnostics/main.out",
+  http_server: false,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let deno_dir = util::new_deno_dir();

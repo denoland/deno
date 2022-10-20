@@ -269,6 +269,8 @@ delete Object.prototype.__proto__;
   class OperationCanceledError extends Error {
   }
 
+  // todo(dsherret): we should investigate if throttling is really necessary
+
   /**
    * Inspired by ThrottledCancellationToken in ts server.
    *
@@ -538,6 +540,23 @@ delete Object.prototype.__proto__;
       }
     },
   };
+
+  // override the npm install @types package diagnostics to be deno specific
+  ts.setLocalizedDiagnosticMessages((() => {
+    const nodeMessage = "Cannot find name '{0}'."; // don't offer any suggestions
+    const jqueryMessage =
+      "Cannot find name '{0}'. Did you mean to import jQuery? Try adding `import $ from \"npm:jquery\";`.";
+    return {
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2580":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2591":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2581":
+        jqueryMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
+        jqueryMessage,
+    };
+  })());
 
   /** @type {Array<[string, number]>} */
   const stats = [];
