@@ -458,6 +458,13 @@ async fn generate_lint_diagnostics(
         break;
       }
 
+      // ignore any npm package files
+      if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
+        if npm_resolver.in_npm_package(document.specifier()) {
+          continue;
+        }
+      }
+
       let version = document.maybe_lsp_version();
       diagnostics_vec.push((
         document.specifier().clone(),
