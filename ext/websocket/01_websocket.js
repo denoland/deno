@@ -10,7 +10,7 @@
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { defineEventHandler, _skipInternalInit } = window.__bootstrap.event;
   const { Blob, BlobPrototype } = globalThis.__bootstrap.file;
   const {
     ArrayBufferPrototype,
@@ -446,6 +446,7 @@
             const event = new MessageEvent("message", {
               data,
               origin: this[_url],
+              [_skipInternalInit]: true,
             });
             this.dispatchEvent(event);
             break;
