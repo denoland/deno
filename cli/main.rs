@@ -820,7 +820,7 @@ fn check_for_upgrades(cache_dir: PathBuf) {
     if atty::is(atty::Stream::Stderr) {
       eprint!(
         "{} ",
-        colors::green(format!("Deno {upgrade_version} is out."))
+        colors::green(format!("Deno {upgrade_version} has been released."))
       );
       eprintln!(
         "{}",

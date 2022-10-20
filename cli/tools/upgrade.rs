@@ -23,7 +23,9 @@ static ARCHIVE_NAME: Lazy<String> =
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 
-const UPGRADE_CHECK_INTERVAL: i64 = 12;
+// How often query server for new version. In hours.
+const UPGRADE_CHECK_INTERVAL: i64 = 24;
+const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -32,22 +34,17 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
     return None;
   }
 
-  let p = cache_dir.join("latest.txt");
+  let p = cache_dir.join(UPGRADE_CHECK_FILE_NAME);
   let content = match std::fs::read_to_string(&p) {
     Ok(file) => file,
     Err(_) => "".to_string(),
   };
 
-  let (mut last_checked, mut latest_version) = (None, None);
-  let split_content = content.split('!').collect::<Vec<_>>();
-  if split_content.len() == 2 {
-    last_checked = Some(split_content[0]);
-    latest_version = Some(split_content[1].to_owned());
-  }
+  let (last_checked, latest_version) = parse_upgrade_check_file(content);
 
   if latest_version.is_none() || latest_version.as_ref().unwrap().is_empty() {
     let last_checked_dt = last_checked.and_then(|last_checked| {
-      chrono::DateTime::parse_from_rfc3339(last_checked)
+      chrono::DateTime::parse_from_rfc3339(&last_checked)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .ok()
     });
@@ -81,10 +78,10 @@ pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
           Err(_) => return,
         };
 
-        // Write the latest version to `latest.txt`.
         let contents =
-          format!("{}!{}", chrono::Utc::now().to_rfc3339(), latest_version);
-        let _ = std::fs::write(cache_dir.join("latest.txt"), contents);
+          serialize_upgrade_check_file(chrono::Utc::now(), latest_version);
+        let _ =
+          std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), contents);
       });
     }
   }
@@ -388,4 +385,57 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
     .output()?;
   assert!(output.status.success());
   Ok(())
+}
+
+fn parse_upgrade_check_file(
+  content: String,
+) -> (Option<String>, Option<String>) {
+  let (mut last_checked, mut latest_version) = (None, None);
+  let split_content = content.split('!').collect::<Vec<_>>();
+
+  if split_content.len() == 2 {
+    last_checked = Some(split_content[0].to_owned());
+
+    if !split_content[1].is_empty() {
+      latest_version = Some(split_content[1].to_owned());
+    }
+  }
+
+  (last_checked, latest_version)
+}
+
+#[test]
+fn test_parse_upgrade_check_file() {
+  let (last_checked, latest_version) =
+    parse_upgrade_check_file("2020-01-01T00:00:00+00:00!1.2.3".to_string());
+  assert_eq!(last_checked, Some("2020-01-01T00:00:00+00:00".to_string()));
+  assert_eq!(latest_version, Some("1.2.3".to_string()));
+
+  let (last_checked, latest_version) =
+    parse_upgrade_check_file("2020-01-01T00:00:00+00:00!".to_string());
+  assert_eq!(last_checked, Some("2020-01-01T00:00:00+00:00".to_string()));
+  assert_eq!(latest_version, None);
+
+  let (last_checked, latest_version) =
+    parse_upgrade_check_file("2020-01-01T00:00:00+00:00".to_string());
+  assert_eq!(last_checked, None);
+  assert_eq!(latest_version, None);
+}
+
+fn serialize_upgrade_check_file(
+  dt: chrono::DateTime<chrono::Utc>,
+  version: String,
+) -> String {
+  format!("{}!{}", dt.to_rfc3339(), version)
+}
+
+#[test]
+fn test_serialize_upgrade_check_file() {
+  let s = serialize_upgrade_check_file(
+    chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+      .unwrap()
+      .with_timezone(&chrono::Utc),
+    "1.2.3".to_string(),
+  );
+  assert_eq!(s, "2020-01-01T00:00:00+00:00!1.2.3");
 }
