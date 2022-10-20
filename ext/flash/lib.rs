@@ -203,6 +203,41 @@ async fn op_flash_respond_async(
   Ok(())
 }
 
+#[op(fast)]
+fn op_try_flash_respond_chuncked(
+  op_state: &mut OpState,
+  server_id: u32,
+  token: u32,
+  response: &[u8],
+  shutdown: bool,
+) -> u32 {
+  let ctx = {
+    let flash_ctx = op_state.borrow_mut::<FlashContext>();
+    match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => ctx,
+      // If the server has been aborted, its context is no longer present in the
+      // map and there's no point processing further. So we return 0 as a
+      // meaningless value.
+      None => return 0,
+    }
+  };
+  let tx = ctx.requests.get(&token).unwrap();
+
+  // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+  // https://github.com/denoland/deno/pull/15629
+  let h = format!("{:x}\r\n", response.len());
+  let concat = [h.as_bytes(), response, b"\r\n"].concat();
+  let expected = tx.stream_states.stream.lock().unwrap().try_write(&concat);
+  if expected != concat.len() {
+    return expected as u32;
+  }
+  if shutdown {
+    // Best case: We've written everything and the stream is done too.
+    let _ = ctx.requests.remove(&token).unwrap();
+  }
+  0
+}
+
 #[op]
 async fn op_flash_respond_chuncked(
   op_state: Rc<RefCell<OpState>>,
@@ -210,6 +245,7 @@ async fn op_flash_respond_chuncked(
   token: u32,
   response: Option<ZeroCopyBuf>,
   shutdown: bool,
+  nwritten: u32,
 ) -> Result<(), AnyError> {
   let mut op_state = op_state.borrow_mut();
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
@@ -237,17 +273,27 @@ async fn op_flash_respond_chuncked(
     .with_async_stream(|stream| {
       Box::pin(async move {
         use tokio::io::AsyncWriteExt;
+        // TODO(@littledivy): Use writev when `UnixIoSlice` lands.
+        // https://github.com/denoland/deno/pull/15629
+        macro_rules! write_whats_not_written {
+          ($e:expr) => {
+            let e = $e;
+            let n = nwritten as usize;
+            if n < e.len() {
+              stream.write_all(&e[n..]).await?;
+            }
+          };
+        }
         if let Some(response) = response {
-          stream
-            .write_all(format!("{:x}\r\n", response.len()).as_bytes())
-            .await?;
-          stream.write_all(&response).await?;
-          stream.write_all(b"\r\n").await?;
+          let h = format!("{:x}\r\n", response.len());
+          write_whats_not_written!(h.as_bytes());
+          write_whats_not_written!(&response);
+          write_whats_not_written!(b"\r\n");
         }
 
         // The last chunk
         if shutdown {
-          stream.write_all(b"0\r\n\r\n").await?;
+          write_whats_not_written!(b"0\r\n\r\n");
         }
 
         Ok(())
@@ -1603,6 +1649,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),
+      op_try_flash_respond_chuncked::decl(),
       op_flash_method::decl(),
       op_flash_path::decl(),
       op_flash_headers::decl(),

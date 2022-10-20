@@ -57,7 +57,7 @@ deno_emit = "0.9.0"
 deno_graph = "0.34.0"
 deno_lint = { version = "0.33.0", features = ["docs"] }
 deno_runtime = { version = "0.81.0", path = "../runtime" }
-deno_task_shell = "0.5.2"
+deno_task_shell = "0.6.0"
 napi_sym = { path = "./napi_sym", version = "0.3.0" }
 
 atty = "=0.2.14"

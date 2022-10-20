@@ -549,6 +549,7 @@ mod tests {
         cpu_count: 1,
         debug_flag: false,
         enable_testing_features: false,
+        locale: deno_core::v8::icu::get_language_tag(),
         location: None,
         no_color: true,
         is_tty: false,

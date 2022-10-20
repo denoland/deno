@@ -97,6 +97,8 @@ declare class Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
+  readonly language: string;
+  readonly languages: string[];
 }
 
 /** @category Web APIs */
