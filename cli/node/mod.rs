@@ -489,7 +489,7 @@ pub fn node_resolve(
     NodeResolutionMode::Execution => url,
     NodeResolutionMode::Types => {
       let path = url.to_file_path().unwrap();
-      // todo: the module kind is not correct here. I think we need
+      // todo(16370): the module kind is not correct here. I think we need
       // typescript to tell us if the referrer is esm or cjs
       let path = path_to_declaration_path(path, NodeModuleKind::Esm);
       ModuleSpecifier::from_file_path(path).unwrap()

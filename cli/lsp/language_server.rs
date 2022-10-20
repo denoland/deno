@@ -259,6 +259,10 @@ impl Inner {
     );
     let assets = Assets::new(ts_server.clone());
     let registry_url = NpmRegistryApi::default_url();
+    // Use an "only" cache setting in order to make the
+    // user do an explicit "cache" command and prevent
+    // the cache from being filled with lots of packages while
+    // the user is typing.
     let cache_setting = CacheSetting::Only;
     let progress_bar = ProgressBar::default();
     let npm_cache = NpmCache::from_deno_dir(
@@ -2904,6 +2908,8 @@ impl Inner {
         ca_stores: None,
         ca_file: None,
         unsafely_ignore_certificate_errors: None,
+        // this is to allow loading npm specifiers, so we can remove this
+        // once stabilizing them
         unstable: true,
         ..Default::default()
       },

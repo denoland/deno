@@ -863,7 +863,7 @@ impl Documents {
     }
   }
 
-  /// Returns an array of npm package requirements.
+  /// Returns a collection of npm package requirements.
   pub fn npm_package_reqs(&mut self) -> HashSet<NpmPackageReq> {
     self.calculate_dependents_if_dirty();
     self.npm_reqs.clone()

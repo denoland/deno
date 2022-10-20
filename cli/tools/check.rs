@@ -58,8 +58,8 @@ pub fn check(
   roots: &[(ModuleSpecifier, ModuleKind)],
   graph_data: Arc<RwLock<GraphData>>,
   cache: &TypeCheckCache,
-  options: CheckOptions,
   npm_resolver: NpmPackageResolver,
+  options: CheckOptions,
 ) -> Result<CheckResult, AnyError> {
   let check_js = options.ts_config.get_check_js();
   let segment_graph_data = {

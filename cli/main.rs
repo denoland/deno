@@ -525,6 +525,7 @@ async fn create_graph_and_maybe_check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
       &cache,
+      ps.npm_resolver.clone(),
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
@@ -533,7 +534,6 @@ async fn create_graph_and_maybe_check(
         log_checks: true,
         reload: ps.options.reload_flag(),
       },
-      ps.npm_resolver.clone(),
     )?;
     debug!("{}", check_result.stats);
     if !check_result.diagnostics.is_empty() {

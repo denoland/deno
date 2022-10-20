@@ -437,8 +437,8 @@ impl ProcState {
         &roots,
         graph_data,
         &check_cache,
-        options,
         self.npm_resolver.clone(),
+        options,
       )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
