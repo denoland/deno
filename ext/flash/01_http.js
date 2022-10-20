@@ -196,7 +196,7 @@
     return hostname === "0.0.0.0" ? "localhost" : hostname;
   }
 
-  function writeFixedResponse(
+  async function writeFixedResponse(
     server,
     requestId,
     response,
@@ -219,7 +219,7 @@
     }
 
     if (nwritten < responseLen) {
-      core.opAsync(
+      await core.opAsync(
         "op_flash_respond_async",
         server,
         requestId,
@@ -303,6 +303,8 @@
       respBody = new Uint8Array(0);
     }
 
+    const promises = [];
+
     const ws = resp[_ws];
     if (isStreamingResponseBody === false) {
       const length = respBody.byteLength || core.byteLength(respBody);
@@ -313,107 +315,107 @@
         respBody,
         length,
       );
-      writeFixedResponse(
+      promises.push(writeFixedResponse(
         serverId,
         i,
         responseStr,
         length,
         !ws, // Don't close socket if there is a deferred websocket upgrade.
         respondFast,
-      );
+      ));
     }
 
-    (async () => {
-      if (!ws) {
-        if (hasBody && body[_state] !== "closed") {
-          // TODO(@littledivy): Optimize by draining in a single op.
-          try {
-            await req.arrayBuffer();
-          } catch { /* pass */ }
-        }
+    if (!ws) {
+      if (hasBody && body[_state] !== "closed") {
+        // TODO(@littledivy): Optimize by draining in a single op.
+        try {
+          await req.arrayBuffer();
+        } catch { /* pass */ }
       }
+    }
 
-      if (isStreamingResponseBody === true) {
-        const resourceBacking = getReadableStreamResourceBacking(respBody);
-        if (resourceBacking) {
-          if (respBody.locked) {
-            throw new TypeError("ReadableStream is locked.");
-          }
-          const reader = respBody.getReader(); // Aquire JS lock.
-          try {
-            core.opAsync(
-              "op_flash_write_resource",
-              http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                0, // Content-Length will be set by the op.
-                null,
-                true,
-              ),
-              serverId,
-              i,
-              resourceBacking.rid,
-              resourceBacking.autoClose,
-            ).then(() => {
-              // Release JS lock.
-              readableStreamClose(respBody);
-            });
-          } catch (error) {
-            await reader.cancel(error);
-            throw error;
-          }
-        } else {
-          const reader = respBody.getReader();
-          writeFixedResponse(
-            serverId,
-            i,
+    if (isStreamingResponseBody === true) {
+      const resourceBacking = getReadableStreamResourceBacking(respBody);
+      if (resourceBacking) {
+        if (respBody.locked) {
+          throw new TypeError("ReadableStream is locked.");
+        }
+        const reader = respBody.getReader(); // Aquire JS lock.
+        try {
+          core.opAsync(
+            "op_flash_write_resource",
             http1Response(
               method,
               innerResp.status ?? 200,
               innerResp.headerList,
-              respBody.byteLength,
+              0, // Content-Length will be set by the op.
               null,
+              true,
             ),
-            respBody.byteLength,
-            false,
-            respondFast,
-          );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
-          }
+            serverId,
+            i,
+            resourceBacking.rid,
+            resourceBacking.autoClose,
+          ).then(() => {
+            // Release JS lock.
+            readableStreamClose(respBody);
+          });
+        } catch (error) {
+          await reader.cancel(error);
+          throw error;
         }
-      }
-
-      if (ws) {
-        const wsRid = await core.opAsync(
-          "op_flash_upgrade_websocket",
+      } else {
+        const reader = respBody.getReader();
+        promises.push(writeFixedResponse(
           serverId,
           i,
-        );
-        ws[_rid] = wsRid;
-        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
-
-        ws[_readyState] = WebSocket.OPEN;
-        const event = new Event("open");
-        ws.dispatchEvent(event);
-
-        ws[_eventLoop]();
-        if (ws[_idleTimeoutDuration]) {
-          ws.addEventListener(
-            "close",
-            () => clearTimeout(ws[_idleTimeoutTimeout]),
+          http1Response(
+            method,
+            innerResp.status ?? 200,
+            innerResp.headerList,
+            respBody.byteLength,
+            null,
+          ),
+          respBody.byteLength,
+          false,
+          respondFast,
+        ));
+        while (true) {
+          const { value, done } = await reader.read();
+          await respondChunked(
+            i,
+            value,
+            done,
           );
+          if (done) break;
         }
-        ws[_serverHandleIdleTimeout]();
       }
-    })();
+    }
+
+    if (ws) {
+      const wsRid = await core.opAsync(
+        "op_flash_upgrade_websocket",
+        serverId,
+        i,
+      );
+      ws[_rid] = wsRid;
+      ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+      ws[_readyState] = WebSocket.OPEN;
+      const event = new Event("open");
+      ws.dispatchEvent(event);
+
+      ws[_eventLoop]();
+      if (ws[_idleTimeoutDuration]) {
+        ws.addEventListener(
+          "close",
+          () => clearTimeout(ws[_idleTimeoutTimeout]),
+        );
+      }
+      ws[_serverHandleIdleTimeout]();
+    }
+
+    await PromiseAll(promises);
   }
 
   async function serve(arg1, arg2) {
@@ -572,7 +574,7 @@
                     i,
                     respondFast,
                     respondChunked,
-                  )
+                  ).catch(onError)
                 ).catch(onError);
                 continue;
               }
@@ -590,7 +592,7 @@
               i,
               respondFast,
               respondChunked,
-            );
+            ).catch(onError);
           }
 
           offset += tokens;
