@@ -774,8 +774,13 @@ impl JsRuntime {
       Self::drop_state_and_module_map(v8_isolate);
     }
     // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
-    std::mem::take(&mut state.borrow_mut().js_build_custom_error_cb);
+    {
+      let mut state = state.borrow_mut();
+      std::mem::take(&mut state.js_recv_cb);
+      std::mem::take(&mut state.js_build_custom_error_cb);
+      state.js_macrotask_cbs.clear();
+      state.js_nexttick_cbs.clear();
+    }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
     snapshot_creator
