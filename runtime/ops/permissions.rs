@@ -1,8 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use crate::permissions::parse_sys_kind;
 use crate::permissions::Permissions;
 use deno_core::error::custom_error;
-use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -50,7 +50,9 @@ pub fn op_query_permission(
       .as_ref(),
     ),
     "env" => permissions.env.query(args.variable.as_deref()),
-    "sys" => permissions.sys.query(parse_sys_kind(args.kind.as_deref())?),
+    "sys" => permissions
+      .sys
+      .query(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.query(args.command.as_deref()),
     "ffi" => permissions.ffi.query(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.query(),
@@ -84,7 +86,7 @@ pub fn op_revoke_permission(
     "env" => permissions.env.revoke(args.variable.as_deref()),
     "sys" => permissions
       .sys
-      .revoke(parse_sys_kind(args.kind.as_deref())?),
+      .revoke(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.revoke(args.command.as_deref()),
     "ffi" => permissions.ffi.revoke(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.revoke(),
@@ -118,7 +120,7 @@ pub fn op_request_permission(
     "env" => permissions.env.request(args.variable.as_deref()),
     "sys" => permissions
       .sys
-      .request(parse_sys_kind(args.kind.as_deref())?),
+      .request(args.kind.as_deref().map(parse_sys_kind).transpose()?),
     "run" => permissions.run.request(args.command.as_deref()),
     "ffi" => permissions.ffi.request(args.path.as_deref().map(Path::new)),
     "hrtime" => permissions.hrtime.request(),
@@ -140,16 +142,4 @@ fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {
   }
   let hostname = url.host_str().unwrap();
   Ok((hostname.to_string(), url.port()))
-}
-
-fn parse_sys_kind(kind: Option<&str>) -> Result<Option<&str>, AnyError> {
-  if let Some(kind) = kind {
-    match kind {
-      "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
-      | "systemMemoryInfo" | "getUid" | "getGid" => Ok(Some(kind)),
-      _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
-    }
-  } else {
-    Ok(kind)
-  }
 }

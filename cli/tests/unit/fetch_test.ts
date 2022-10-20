@@ -869,13 +869,13 @@ Deno.test(
 );
 
 Deno.test(function responseRedirect() {
-  const redir = Response.redirect("example.com/newLocation", 301);
+  const redir = Response.redirect("http://example.com/newLocation", 301);
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
   assertEquals(
     redir.headers.get("Location"),
-    "http://js-unit-tests/foo/example.com/newLocation",
+    "http://example.com/newLocation",
   );
   assertEquals(redir.type, "default");
 });
@@ -1787,5 +1787,21 @@ Deno.test(
     assertEquals(res.headers.get("content-length"), "2");
     assertEquals(res.headers.get("content-type"), "text/plain");
     assertEquals(await res.text(), "ok");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchResponseStreamIsLockedWhileReading() {
+    const response = await fetch("http://localhost:4545/echo_server", {
+      body: new Uint8Array(5000),
+      method: "POST",
+    });
+
+    assertEquals(response.body!.locked, false);
+    const promise = response.arrayBuffer();
+    assertEquals(response.body!.locked, true);
+
+    await promise;
   },
 );

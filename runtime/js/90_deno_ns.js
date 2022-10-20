@@ -114,13 +114,13 @@
     removeSignalListener: __bootstrap.signals.removeSignalListener,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    hostname: __bootstrap.os.hostname,
   };
 
   __bootstrap.denoNsUnstable = {
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     loadavg: __bootstrap.os.loadavg,
-    hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,

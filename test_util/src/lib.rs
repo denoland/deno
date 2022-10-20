@@ -116,6 +116,10 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn napi_tests_path() -> PathBuf {
+  root_path().join("test_napi")
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
 }
@@ -2194,9 +2198,12 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   // Filter out non-relevant lines. See the error log at
   // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
   // This is checked in testdata/strace_summary2.out
-  let mut lines = output
-    .lines()
-    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let mut lines = output.lines().filter(|line| {
+    !line.is_empty()
+      && !line.contains("detached ...")
+      && !line.contains("unfinished ...")
+      && !line.contains("????")
+  });
   let count = lines.clone().count();
 
   if count < 4 {
@@ -2211,7 +2218,6 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_fields = line.split_whitespace().collect::<Vec<_>>();
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
-
     if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),
