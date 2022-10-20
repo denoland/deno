@@ -1,3 +1,8 @@
 {
-  "npm:chalk@5.0.1": "sha512-foobar"
+  "version": "2",
+  "npm": {
+    "dependencies": {
+      "npm:chalk@5.0.1": "sha512-foobar"
+    }
+  }
 }

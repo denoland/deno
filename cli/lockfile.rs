@@ -23,7 +23,7 @@ use crate::tools::fmt::format_json;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockfileV2Content {
   version: String,
-  // Mapping between URLs and their checksums
+  // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
 }
 
@@ -172,15 +172,29 @@ impl Lockfile {
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check_npm_package(&mut self, specifier: String, checksum: String) -> bool {
-    if let Some(lockfile_checksum) = self.content.map.get(&specifier) {
-      lockfile_checksum == &checksum
-    } else {
-      false
+    match &self.content {
+      LockfileContent::V1(_c) => {
+        panic!("Locking npm specifiers is not supported in lockfile v1");
+      }
+      LockfileContent::V2(c) => {
+        if let Some(lockfile_checksum) = c.remote.get(&specifier) {
+          lockfile_checksum == &checksum
+        } else {
+          false
+        }
+      }
     }
   }
 
   fn insert_npm_package(&mut self, specifier: String, checksum: String) {
-    self.content.map.insert(specifier, checksum);
+    match &mut self.content {
+      LockfileContent::V1(_c) => {
+        panic!("Locking npm specifiers is not supported in lockfile v1");
+      }
+      LockfileContent::V2(c) => {
+        c.remote.insert(specifier, checksum);
+      }
+    }
   }
 }
 
