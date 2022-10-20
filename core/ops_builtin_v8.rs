@@ -65,9 +65,9 @@ fn to_v8_fn(
 }
 
 #[inline]
-fn to_v8_local_fn<'a>(
-  value: serde_v8::Value<'a>,
-) -> Result<v8::Local<'a, v8::Function>, Error> {
+fn to_v8_local_fn(
+  value: serde_v8::Value,
+) -> Result<v8::Local<v8::Function>, Error> {
   v8::Local::<v8::Function>::try_from(value.v8_value)
     .map_err(|err| type_error(err.to_string()))
 }
