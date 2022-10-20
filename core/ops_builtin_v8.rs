@@ -66,6 +66,14 @@ fn to_v8_fn(
     .map_err(|err| type_error(err.to_string()))
 }
 
+#[inline]
+fn to_v8_local_fn(
+  value: serde_v8::Value,
+) -> Result<v8::Local<v8::Function>, Error> {
+  v8::Local::<v8::Function>::try_from(value.v8_value)
+    .map_err(|err| type_error(err.to_string()))
+}
+
 #[op(v8)]
 fn op_ref_op(scope: &mut v8::HandleScope, promise_id: i32) {
   let context_state = JsRealm::state_from_scope(scope);
@@ -198,9 +206,7 @@ fn op_queue_microtask(
   scope: &mut v8::HandleScope,
   cb: serde_v8::Value,
 ) -> Result<(), Error> {
-  let cb = to_v8_fn(scope, cb)?;
-  let cb = v8::Local::new(scope, cb);
-  scope.enqueue_microtask(cb);
+  scope.enqueue_microtask(to_v8_local_fn(cb)?);
   Ok(())
 }
 

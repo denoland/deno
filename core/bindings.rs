@@ -343,7 +343,7 @@ fn import_meta_resolve(
   }
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
-    let url_prop = args.data().unwrap();
+    let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
