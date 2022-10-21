@@ -4,6 +4,7 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
+use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
@@ -152,6 +153,7 @@ pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
   pub decl: OpDecl,
+  pub runtime_state: Rc<RefCell<JsRuntimeState>>,
 }
 
 /// Maintains the resources and ops inside a JS runtime.
