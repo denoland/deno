@@ -215,7 +215,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (context, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -258,16 +258,11 @@ fn codegen_v8_async(
       state.get_error_class_fn
     };
 
-    let context = {
-      let local = scope.get_current_context();
-      #core::v8::Global::new(scope, local)
-    };
-
     #pre_result
     #core::_ops::queue_async_op(state, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
-      (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
 }
