@@ -194,7 +194,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 2);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -215,7 +215,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (resolver_global, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -247,6 +247,9 @@ fn codegen_v8_async(
       }
     };
 
+    let resolver = #core::v8::Local::<#core::v8::Function>::try_from(args.get(1)).unwrap();
+    let resolver_global = #core::v8::Global::new(scope, resolver);
+
     #arg_decls
 
     let state = ctx.state.clone();
@@ -262,7 +265,7 @@ fn codegen_v8_async(
     #core::_ops::queue_async_op(state, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
-      (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      (resolver_global, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
     });
   }
 }

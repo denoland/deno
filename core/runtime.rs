@@ -47,7 +47,8 @@ use std::task::Context;
 use std::task::Poll;
 use v8::OwnedIsolate;
 
-type PendingOpFuture = OpCall<(PromiseId, OpId, OpResult)>;
+type PendingOpFuture =
+  OpCall<(v8::Global<v8::Function>, PromiseId, OpId, OpResult)>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1863,51 +1864,40 @@ impl JsRuntime {
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let state_rc = Self::state(self.v8_isolate());
 
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
-    let scope = &mut self.handle_scope();
-
-    // We return async responses to JS in unbounded batches (may change),
-    // each batch is a flat vector of tuples:
-    // `[promise_id1, op_result1, promise_id2, op_result2, ...]`
-    // promise_id is a simple integer, op_result is an ops::OpResult
-    // which contains a value OR an error, encoded as a tuple.
-    // This batch is received in JS via the special `arguments` variable
-    // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
-
-    // Now handle actual ops.
-    {
+    loop {
       let mut state = state_rc.borrow_mut();
       state.have_unpolled_ops = false;
+      let item = match state.pending_ops.poll_next_unpin(cx) {
+        Poll::Ready(Some(item)) => item,
+        _ => break,
+      };
+      let (resolver, promise_id, op_id, mut resp) = item;
+      state.unrefed_ops.remove(&promise_id);
+      state.op_state.borrow().tracker.track_async_completed(op_id);
+      drop(state);
 
-      while let Poll::Ready(Some(item)) = state.pending_ops.poll_next_unpin(cx)
-      {
-        let (promise_id, op_id, mut resp) = item;
-        state.unrefed_ops.remove(&promise_id);
-        state.op_state.borrow().tracker.track_async_completed(op_id);
-        args.push(v8::Integer::new(scope, promise_id as i32).into());
-        args.push(match resp.to_v8(scope) {
-          Ok(v) => v,
-          Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
-            .to_v8(scope)
-            .unwrap(),
-        });
-      }
+      let scope = &mut self.handle_scope();
+      let arg = match resp.to_v8(scope) {
+        Ok(v) => v,
+        Err(e) => OpResult::Err(OpError::new(&|_| "TypeError", e.into()))
+          .to_v8(scope)
+          .unwrap(),
+      };
+
+      let tc_scope = &mut v8::TryCatch::new(scope);
+      let resolver = resolver.open(tc_scope);
+      let this = v8::undefined(tc_scope).into();
+
+      resolver.call(tc_scope, this, &[arg]).unwrap();
+      match tc_scope.exception() {
+        None => {}
+        Some(exception) => {
+          return exception_to_err_result(tc_scope, exception, false)
+        }
+      };
     }
 
-    if args.is_empty() {
-      return Ok(());
-    }
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.open(tc_scope);
-    let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
-
-    match tc_scope.exception() {
-      None => Ok(()),
-      Some(exception) => exception_to_err_result(tc_scope, exception, false),
-    }
+    Ok(())
   }
 
   fn drain_macrotasks(&mut self) -> Result<(), Error> {
@@ -2091,7 +2081,8 @@ pub fn queue_async_op(
   state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
   deferred: bool,
-  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+  op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
+    + 'static,
 ) {
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
@@ -2103,20 +2094,13 @@ pub fn queue_async_op(
     // const p = setPromise();
     // op.op_async(promiseId, ...); // Calls `opresolve`
     // return p;
-    EagerPollResult::Ready((promise_id, op_id, mut resp)) if !deferred => {
-      let args = &[
-        v8::Integer::new(scope, promise_id).into(),
-        resp.to_v8(scope).unwrap(),
-      ];
-
-      let js_recv_cb_handle =
-        JsRuntime::state(scope).borrow().js_recv_cb.clone().unwrap();
+    EagerPollResult::Ready((resolver, _, op_id, mut resp)) if !deferred => {
+      let arg = resp.to_v8(scope).unwrap();
       state.borrow().tracker.track_async_completed(op_id);
-
       let tc_scope = &mut v8::TryCatch::new(scope);
-      let js_recv_cb = js_recv_cb_handle.open(tc_scope);
+      let js_recv_cb = resolver.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
-      js_recv_cb.call(tc_scope, this, args);
+      js_recv_cb.call(tc_scope, this, &[arg]);
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);

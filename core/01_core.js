@@ -161,15 +161,8 @@
 
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
-    let p = setPromise(promiseId);
-    try {
-      ops[opName](promiseId, ...args);
-    } catch (err) {
-      // Cleanup the just-created promise
-      getPromise(promiseId);
-      // Rethrow the error
-      throw err;
-    }
+    let p = newPromise();
+    ops[opName](promiseId, p.resolve, ...args);
     p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
       // Capture a stack trace by creating a new `Error` object. We remove the
