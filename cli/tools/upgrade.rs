@@ -130,7 +130,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let permissions = metadata.permissions();
 
   if permissions.readonly() {
-    bail!("You do not have write permission to {:?}", old_exe_path);
+    bail!("You do not have write permission to {}", old_exe_path.display());
   }
   #[cfg(unix)]
   if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
