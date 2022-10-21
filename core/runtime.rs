@@ -1299,8 +1299,7 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let mut state = self.state.borrow_mut();
-    let global_realm = state.global_realm.clone().unwrap();
+    let global_realm = self.state.borrow_mut().global_realm.clone().unwrap();
     let scope =
       &mut global_realm.handle_scope(self.v8_isolate.as_mut().unwrap());
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1329,7 +1328,7 @@ impl JsRuntime {
         module: module_global,
       };
 
-      state.pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
+      self.state.borrow_mut().pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(
         generic_error("Cannot evaluate dynamically imported module, because JavaScript execution has been terminated.")
