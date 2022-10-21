@@ -186,7 +186,7 @@
   }
 
   function prepareFastCalls() {
-    return core.opSync("op_flash_make_request");
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {
