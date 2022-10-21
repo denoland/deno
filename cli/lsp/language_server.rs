@@ -14,6 +14,7 @@ use import_map::ImportMap;
 use log::error;
 use log::warn;
 use serde_json::from_value;
+use std::collections::HashMap;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -2825,9 +2826,19 @@ impl Inner {
     async fn create_graph_for_caching(
       cli_options: CliOptions,
       roots: Vec<(ModuleSpecifier, ModuleKind)>,
+      open_docs: Vec<Document>,
     ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-      let graph = ps.create_graph(roots).await?;
+      let mut inner_loader = ps.create_graph_loader();
+      let mut loader = crate::lsp::documents::DocumentsDenoGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = ps.create_graph_with_loader(roots, &mut loader).await?;
       graph_valid(&graph, true, false)?;
       Ok(())
     }
@@ -2867,10 +2878,11 @@ impl Inner {
 
     // todo(dsherret): why is running this on a new thread necessary? It does
     // a compile error otherwise.
+    let open_docs = self.documents.documents(true, true);
     let handle = tokio::task::spawn_blocking(|| {
-      run_local(
-        async move { create_graph_for_caching(cli_options, roots).await },
-      )
+      run_local(async move {
+        create_graph_for_caching(cli_options, roots, open_docs).await
+      })
     });
     if let Err(err) = handle.await.unwrap() {
       self.client.show_message(MessageType::WARNING, err).await;

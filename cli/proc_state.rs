@@ -589,16 +589,29 @@ impl ProcState {
     Ok(())
   }
 
-  pub async fn create_graph(
-    &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = cache::FetchCacher::new(
+  /// Creates the default loader used for creating a graph.
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-    );
+    )
+  }
+
+  pub async fn create_graph(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self.create_graph_with_loader(roots, &mut cache).await
+  }
+
+  pub async fn create_graph_with_loader(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    loader: &mut dyn Loader,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_import_map_resolver =
       self.maybe_import_map.clone().map(ImportMapResolver::new);
@@ -620,7 +633,7 @@ impl ProcState {
       roots,
       false,
       maybe_imports,
-      &mut cache,
+      loader,
       maybe_resolver,
       maybe_locker,
       Some(&*analyzer),

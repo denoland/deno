@@ -615,8 +615,7 @@ fn op_flash_make_request<'scope>(
       |_: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         rv.set_uint32(next_request_sync(ctx));
@@ -637,8 +636,7 @@ fn op_flash_make_request<'scope>(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
         let token = args.get(0).uint32_value(scope).unwrap();
@@ -661,8 +659,7 @@ fn op_flash_make_request<'scope>(
       |scope: &mut v8::HandleScope,
        args: v8::FunctionCallbackArguments,
        mut rv: v8::ReturnValue| {
-        let external: v8::Local<v8::External> =
-          args.data().unwrap().try_into().unwrap();
+        let external: v8::Local<v8::External> = args.data().try_into().unwrap();
         // SAFETY: This external is guaranteed to be a pointer to a ServerContext
         let ctx = unsafe { &mut *(external.value() as *mut ServerContext) };
 

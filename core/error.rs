@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use crate::runtime::GetErrorClassFn;
-use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -98,7 +97,7 @@ pub fn to_v8_error<'a>(
   get_class: GetErrorClassFn,
   error: &Error,
 ) -> v8::Local<'a, v8::Value> {
-  let cb = JsRealm::state_from_scope(scope)
+  let cb = JsRuntime::state(scope)
     .borrow()
     .js_build_custom_error_cb
     .clone()
@@ -218,10 +217,10 @@ impl JsError {
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
-    let realm_state_rc = JsRealm::state_from_scope(scope);
+    let state_rc = JsRuntime::state(scope);
 
     let js_format_exception_cb =
-      realm_state_rc.borrow().js_format_exception_cb.clone();
+      state_rc.borrow().js_format_exception_cb.clone();
     if let Some(format_exception_cb) = js_format_exception_cb {
       let format_exception_cb = format_exception_cb.open(scope);
       let this = v8::undefined(scope).into();
@@ -286,7 +285,6 @@ impl JsError {
       let mut source_line = None;
       let mut source_line_frame_index = None;
       {
-        let state_rc = JsRuntime::state(scope);
         let state = &mut *state_rc.borrow_mut();
 
         // When the stack frame array is empty, but the source location given by

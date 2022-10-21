@@ -706,8 +706,7 @@ fn make_sync_fn<'s>(
     |scope: &mut v8::HandleScope,
      args: v8::FunctionCallbackArguments,
      mut rv: v8::ReturnValue| {
-      let external: v8::Local<v8::External> =
-        args.data().unwrap().try_into().unwrap();
+      let external: v8::Local<v8::External> = args.data().try_into().unwrap();
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
