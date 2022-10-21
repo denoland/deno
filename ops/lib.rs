@@ -249,17 +249,15 @@ fn codegen_v8_async(
 
     #arg_decls
 
-    let state = ctx.state.clone();
-
     // Track async call & get copy of get_error_class_fn
     let get_class = {
-      let state = state.borrow();
+      let state = ::std::cell::RefCell::borrow(&ctx.state);
       state.tracker.track_async(op_id);
       state.get_error_class_fn
     };
 
     #pre_result
-    #core::_ops::queue_async_op(state, scope, #deferred, async move {
+    #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
       let result = #result_fut
       #result_wrapper
       (promise_id, op_id, #core::_ops::to_op_result(get_class, result))

@@ -830,7 +830,7 @@ fn op_set_format_exception_callback<'a>(
 
 #[op(v8)]
 fn op_event_loop_has_more_work(scope: &mut v8::HandleScope) -> bool {
-  JsRuntime::event_loop_pending_state(scope).is_pending()
+  JsRuntime::event_loop_pending_state_from_isolate(scope).is_pending()
 }
 
 #[op(v8)]
