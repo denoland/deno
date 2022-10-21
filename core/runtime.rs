@@ -1328,7 +1328,11 @@ impl JsRuntime {
         module: module_global,
       };
 
-      self.state.borrow_mut().pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
+      self
+        .state
+        .borrow_mut()
+        .pending_dyn_mod_evaluate
+        .push(dyn_import_mod_evaluate);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(
         generic_error("Cannot evaluate dynamically imported module, because JavaScript execution has been terminated.")
