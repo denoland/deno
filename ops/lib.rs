@@ -251,7 +251,7 @@ fn codegen_v8_async(
 
     // Track async call & get copy of get_error_class_fn
     let get_class = {
-      let state = ctx.state.borrow();
+      let state = ::std::cell::RefCell::borrow(&ctx.state);
       state.tracker.track_async(op_id);
       state.get_error_class_fn
     };
