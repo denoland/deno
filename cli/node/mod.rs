@@ -101,7 +101,7 @@ impl NodeResolution {
             ModuleSpecifier::parse("deno:///missing_dependency.d.ts").unwrap()
           }
         };
-        (specifier, MediaType::Dcts)
+        (specifier, MediaType::Dts)
       }
     }
   }

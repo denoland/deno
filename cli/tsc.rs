@@ -465,7 +465,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   // handle the request for that module here.
   } else if &v.specifier == "deno:///missing_dependency.d.ts" {
     hash = Some("1".to_string());
-    media_type = MediaType::Dcts;
+    media_type = MediaType::Dts;
     Some(Cow::Borrowed("declare const __: any;\nexport = __;\n"))
   } else if v.specifier.starts_with("asset:///") {
     let name = v.specifier.replace("asset:///", "");
