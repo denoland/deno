@@ -21,6 +21,7 @@ use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
 use super::semver::NpmVersion;
+use super::semver::NpmVersionReq;
 use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
@@ -375,15 +376,57 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    mut package_reqs: Vec<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    // multiple packages are resolved in alphabetical order
-    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
-
     // only allow one thread in here at a time
     let _permit = self.update_sempahore.acquire().await.unwrap();
-    let mut snapshot = self.snapshot.read().clone();
-    let mut pending_dependencies = VecDeque::new();
+    let snapshot = self.snapshot.read().clone();
+
+    let snapshot = self
+      .add_package_reqs_to_snapshot(package_reqs, snapshot)
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+    Ok(())
+  }
+
+  pub async fn set_package_reqs(
+    &self,
+    package_reqs: HashSet<NpmPackageReq>,
+  ) -> Result<(), AnyError> {
+    // only allow one thread in here at a time
+    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let snapshot = self.snapshot.read().clone();
+
+    let has_removed_package = !snapshot
+      .package_reqs
+      .keys()
+      .all(|req| package_reqs.contains(req));
+    // if any packages were removed, we need to completely recreate the npm resolution snapshot
+    let snapshot = if has_removed_package {
+      NpmResolutionSnapshot::default()
+    } else {
+      snapshot
+    };
+    let snapshot = self
+      .add_package_reqs_to_snapshot(
+        package_reqs.into_iter().collect(),
+        snapshot,
+      )
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+
+    Ok(())
+  }
+
+  async fn add_package_reqs_to_snapshot(
+    &self,
+    mut package_reqs: Vec<NpmPackageReq>,
+    mut snapshot: NpmResolutionSnapshot,
+  ) -> Result<NpmResolutionSnapshot, AnyError> {
+    // multiple packages are resolved in alphabetical order
+    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
@@ -418,6 +461,7 @@ impl NpmResolution {
       }));
     }
 
+    let mut pending_dependencies = VecDeque::new();
     for result in futures::future::join_all(unresolved_tasks).await {
       let (package_req, info) = result??;
       let version_and_info = get_resolved_package_version_and_info(
@@ -546,8 +590,7 @@ impl NpmResolution {
       }
     }
 
-    *self.snapshot.write() = snapshot;
-    Ok(())
+    Ok(snapshot)
   }
 
   pub fn resolve_package_from_package(
@@ -601,6 +644,22 @@ fn get_resolved_package_version_and_info(
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
   if let Some(tag) = version_matcher.tag() {
+    // For when someone just specifies @types/node, we want to pull in a
+    // "known good" version of @types/node that works well with Deno and
+    // not necessarily the latest version. For example, we might only be
+    // compatible with Node vX, but then Node vY is published so we wouldn't
+    // want to pull that in.
+    // Note: If the user doesn't want this behavior, then they can specify an
+    // explicit version.
+    if tag == "latest" && pkg_name == "@types/node" {
+      return get_resolved_package_version_and_info(
+        pkg_name,
+        &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+        info,
+        parent,
+      );
+    }
+
     if let Some(version) = info.dist_tags.get(tag) {
       match info.versions.get(version) {
         Some(info) => {

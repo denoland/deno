@@ -7,7 +7,6 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
-use crate::JsRealm;
 use crate::JsRuntime;
 use log::debug;
 use std::option::Option;
@@ -343,7 +342,7 @@ fn import_meta_resolve(
   }
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
-    let url_prop = args.data().unwrap();
+    let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
@@ -425,15 +424,15 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
 
-  if let Some(js_promise_reject_cb) =
-    realm_state_rc.borrow().js_promise_reject_cb.clone()
-  {
+  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
       PromiseRejectWithNoHandler
@@ -456,7 +455,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
@@ -467,8 +465,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
   } else {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
     match message.get_event() {
@@ -487,7 +483,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         // Should not warn. See #1272
       }
     }
-  };
+  }
 }
 
 /// This binding should be used if there's a custom console implementation
