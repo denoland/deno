@@ -128,10 +128,24 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let old_exe_path = std::env::current_exe()?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
+  let metadata = fs::metadata(&old_exe_path)?;
+  let permissions = metadata.permissions();
 
   if permissions.readonly() {
-    bail!("You do not have write permission to {:?}", old_exe_path);
+    bail!(
+      "You do not have write permission to {}",
+      old_exe_path.display()
+    );
+  }
+  #[cfg(unix)]
+  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+    && !nix::unistd::Uid::effective().is_root()
+  {
+    bail!(concat!(
+      "You don't have write permission to {} because it's owned by root.\n",
+      "Consider updating deno through your package manager if its installed from it.\n",
+      "Otherwise run `deno upgrade` as root.",
+    ), old_exe_path.display());
   }
 
   let client = build_http_client(upgrade_flags.ca_file)?;
