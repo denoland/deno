@@ -351,8 +351,7 @@
         }
       }
 
-      const isDenoDirPackage = Deno.core.opSync(
-        "op_require_is_deno_dir_package",
+      const isDenoDirPackage = Deno.core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(
@@ -403,8 +402,7 @@
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
     if (parent?.filename && parent.filename.length > 0) {
-      const denoDirPath = core.opSync(
-        "op_require_resolve_deno_dir",
+      const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
         parent.filename,
       );
@@ -813,7 +811,7 @@
 
   function createRequire(filenameOrUrl) {
     // FIXME: handle URLs and validation
-    const filename = core.opSync("op_require_as_file_path", filenameOrUrl);
+    const filename = core.ops.op_require_as_file_path(filenameOrUrl);
     return createRequireFromPath(filename);
   }
 
