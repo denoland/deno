@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
 
@@ -156,6 +157,20 @@ impl Lockfile {
     }
   }
 
+  pub fn check_or_insert_npm_specifier(
+    &mut self,
+    package_req: &NpmPackageReq,
+    version: String,
+  ) -> bool {
+    if self.write {
+      // In case --lock-write is specified check always passes
+      self.insert_npm_specifier(package_req, version);
+      true
+    } else {
+      self.check_npm_specifier(package_req, version)
+    }
+  }
+
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check(&mut self, specifier: &str, code: &str) -> bool {
@@ -235,6 +250,45 @@ impl Lockfile {
             integrity: package.dist.integrity.as_ref().unwrap().clone(),
             dependencies,
           },
+        );
+      }
+    }
+  }
+
+  fn check_npm_specifier(
+    &mut self,
+    package_req: &NpmPackageReq,
+    version: String,
+  ) -> bool {
+    match &self.content {
+      LockfileContent::V1(_c) => {
+        panic!("Locking npm specifiers is not supported in lockfile v1");
+      }
+      LockfileContent::V2(c) => {
+        if let Some(resolved_specifier) =
+          c.npm.specifiers.get(&package_req.to_string())
+        {
+          &format!("{}@{}", package_req.name, version) == resolved_specifier
+        } else {
+          false
+        }
+      }
+    }
+  }
+
+  fn insert_npm_specifier(
+    &mut self,
+    package_req: &NpmPackageReq,
+    version: String,
+  ) {
+    match &mut self.content {
+      LockfileContent::V1(_c) => {
+        panic!("Locking npm specifiers is not supported in lockfile v1");
+      }
+      LockfileContent::V2(c) => {
+        c.npm.specifiers.insert(
+          package_req.to_string(),
+          format!("{}@{}", package_req.name, version),
         );
       }
     }

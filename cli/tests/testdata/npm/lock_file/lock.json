@@ -2,10 +2,10 @@
   "version": "2",
   "remote": {},
   "npm": {
-    "specifiers": {},
+    "specifiers": { "fs-extra@10.1.0": "fs-extra@10.1.0", "vue": "vue@3.2.40" },
     "packages": {
       "npm:@babel/parser@7.19.0": {
-        "integrity": "sha512-foobar!",
+        "integrity": "sha512-74bEXKX2h+8rrfQUfsBfuZZHzsEs6Eql4pqy/T4Nn6Y9wNPggQOqD6z6pn5Bl8ZfysKouFZT/UXEH94ummEeQw==",
         "dependencies": {}
       },
       "npm:@vue/compiler-core@3.2.38": {
