@@ -34,9 +34,9 @@ use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -433,8 +433,13 @@ impl ProcState {
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
-      let check_result =
-        check::check(&roots, graph_data, &check_cache, options)?;
+      let check_result = check::check(
+        &roots,
+        graph_data,
+        &check_cache,
+        self.npm_resolver.clone(),
+        options,
+      )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -470,7 +475,7 @@ impl ProcState {
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
-      None => bail!("Not found."),
+      None => return Err(generic_error("not found")),
     };
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
@@ -493,6 +498,7 @@ impl ProcState {
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
+            node::NodeResolutionMode::Execution,
             &self.npm_resolver,
           ))
           .with_context(|| {
@@ -516,6 +522,7 @@ impl ProcState {
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
+                node::NodeResolutionMode::Execution,
                 &self.npm_resolver,
               ))
               .with_context(|| format!("Could not resolve '{}'.", reference));

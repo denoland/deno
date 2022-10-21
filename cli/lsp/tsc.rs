@@ -2679,6 +2679,20 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 }
 
 #[op]
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+  let state = state.borrow::<State>();
+  match ModuleSpecifier::parse(&path) {
+    Ok(specifier) => state
+      .state_snapshot
+      .maybe_npm_resolver
+      .as_ref()
+      .map(|r| r.in_npm_package(&specifier))
+      .unwrap_or(false),
+    Err(_) => false,
+  }
+}
+
+#[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
@@ -2692,7 +2706,7 @@ fn op_load(
     Some(doc) => {
       json!({
         "data": doc.text(),
-        "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
+        "scriptKind": crate::tsc::as_ts_script_kind(doc.media_type()),
         "version": state.script_version(&specifier),
       })
     }
@@ -2709,11 +2723,11 @@ fn op_resolve(
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
-  let result = if let Some(resolved) = state
-    .state_snapshot
-    .documents
-    .resolve(args.specifiers, &referrer)
-  {
+  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
+    args.specifiers,
+    &referrer,
+    state.state_snapshot.maybe_npm_resolver.as_ref(),
+  ) {
     Ok(
       resolved
         .into_iter()
@@ -2789,6 +2803,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
+      op_is_node_file::decl(),
       op_load::decl(),
       op_resolve::decl(),
       op_respond::decl(),
