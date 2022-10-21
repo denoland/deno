@@ -3,6 +3,9 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::args::UpgradeFlags;
+use crate::colors;
+use crate::version;
+
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -15,11 +18,110 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
 static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+
+// How often query server for new version. In hours.
+const UPGRADE_CHECK_INTERVAL: i64 = 24;
+const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
+
+const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
+
+pub fn check_for_upgrades(cache_dir: PathBuf) {
+  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+    return;
+  }
+
+  let p = cache_dir.join(UPGRADE_CHECK_FILE_NAME);
+  let content = match std::fs::read_to_string(&p) {
+    Ok(file) => file,
+    Err(_) => "".to_string(),
+  };
+
+  let maybe_file = CheckVersionFile::parse(content);
+
+  let should_check = match &maybe_file {
+    Some(file) => {
+      let last_check_age =
+        chrono::Utc::now().signed_duration_since(file.last_checked);
+      last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
+    }
+    None => true,
+  };
+
+  if should_check {
+    let cache_dir = cache_dir.clone();
+    tokio::spawn(async {
+      // Sleep for a small amount of time to not unnecessarily impact startup
+      // time.
+      tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
+
+      // Fetch latest version or commit hash from server.
+      let client = match build_http_client(None) {
+        Ok(client) => client,
+        Err(_) => return,
+      };
+      let latest_version = match if version::is_canary() {
+        get_latest_canary_version(&client).await
+      } else {
+        get_latest_release_version(&client).await
+      } {
+        Ok(latest_version) => latest_version,
+        Err(_) => return,
+      };
+
+      let file = CheckVersionFile {
+        last_prompt: chrono::Utc::now(),
+        last_checked: chrono::Utc::now(),
+        latest_version,
+      };
+      file.save(cache_dir);
+    });
+  }
+
+  // Return `Some(version)` if a new version is available, `None` otherwise.
+  let new_version_available = maybe_file
+    .as_ref()
+    .map(|f| f.latest_version.to_string())
+    .filter(|latest_version| {
+      latest_version != version::release_version_or_canary_commit_hash()
+    });
+
+  let should_prompt = match &maybe_file {
+    Some(file) => {
+      let last_prompt_age =
+        chrono::Utc::now().signed_duration_since(file.last_prompt);
+      last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
+    }
+    None => true,
+  };
+
+  // Print a message if an update is available, unless:
+  //   * stderr is not a tty
+  //   * we're already running the 'deno upgrade' command.
+  if should_prompt {
+    if let Some(upgrade_version) = new_version_available {
+      if atty::is(atty::Stream::Stderr) {
+        eprint!(
+          "{} ",
+          colors::green(format!("Deno {upgrade_version} has been released."))
+        );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
+
+        if let Some(file) = maybe_file {
+          file.with_last_prompt(chrono::Utc::now()).save(cache_dir);
+        }
+      }
+    }
+  }
+}
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let old_exe_path = std::env::current_exe()?;
@@ -29,17 +131,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     bail!("You do not have write permission to {:?}", old_exe_path);
   }
 
-  let mut client_builder = Client::builder();
-
-  // If we have been provided a CA Certificate, add it into the HTTP client
-  let ca_file = upgrade_flags.ca_file.or_else(|| env::var("DENO_CERT").ok());
-  if let Some(ca_file) = ca_file {
-    let buf = std::fs::read(ca_file)?;
-    let cert = reqwest::Certificate::from_pem(&buf)?;
-    client_builder = client_builder.add_root_certificate(cert);
-  }
-
-  let client = client_builder.build()?;
+  let client = build_http_client(upgrade_flags.ca_file)?;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -73,8 +165,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     }
     None => {
       let latest_version = if upgrade_flags.canary {
+        println!("Looking up latest canary version");
         get_latest_canary_version(&client).await?
       } else {
+        println!("Looking up latest version");
         get_latest_release_version(&client).await?
       };
 
@@ -140,31 +234,44 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+fn build_http_client(
+  ca_file: Option<String>,
+) -> Result<reqwest::Client, AnyError> {
+  let mut client_builder =
+    Client::builder().user_agent(version::get_user_agent());
+
+  // If we have been provided a CA Certificate, add it into the HTTP client
+  let ca_file = ca_file.or_else(|| env::var("DENO_CERT").ok());
+  if let Some(ca_file) = ca_file {
+    let buf = std::fs::read(ca_file)?;
+    let cert = reqwest::Certificate::from_pem(&buf)?;
+    client_builder = client_builder.add_root_certificate(cert);
+  }
+
+  let client = client_builder.build()?;
+
+  Ok(client)
+}
+
 async fn get_latest_release_version(
   client: &Client,
 ) -> Result<String, AnyError> {
-  println!("Looking up latest version");
-
   let res = client
-    .get(&format!("{}/latest", RELEASE_URL))
+    .get("https://dl.deno.land/release-latest.txt")
     .send()
     .await?;
-  let version = res.url().path_segments().unwrap().last().unwrap();
-
+  let version = res.text().await?.trim().to_string();
   Ok(version.replace('v', ""))
 }
 
 async fn get_latest_canary_version(
   client: &Client,
 ) -> Result<String, AnyError> {
-  println!("Looking up latest version");
-
   let res = client
     .get("https://dl.deno.land/canary-latest.txt")
     .send()
     .await?;
   let version = res.text().await?.trim().to_string();
-
   Ok(version)
 }
 
@@ -310,4 +417,110 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
     .output()?;
   assert!(output.status.success());
   Ok(())
+}
+
+struct CheckVersionFile {
+  pub last_prompt: chrono::DateTime<chrono::Utc>,
+  pub last_checked: chrono::DateTime<chrono::Utc>,
+  pub latest_version: String,
+}
+
+impl CheckVersionFile {
+  pub fn parse(content: String) -> Option<Self> {
+    let split_content = content.split('!').collect::<Vec<_>>();
+
+    if split_content.len() != 3 {
+      return None;
+    }
+
+    let latest_version = split_content[2].trim().to_owned();
+    if latest_version.is_empty() {
+      return None;
+    }
+
+    let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[1])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+
+    Some(CheckVersionFile {
+      last_prompt,
+      last_checked,
+      latest_version,
+    })
+  }
+
+  fn serialize(&self) -> String {
+    format!(
+      "{}!{}!{}",
+      self.last_prompt.to_rfc3339(),
+      self.last_checked.to_rfc3339(),
+      self.latest_version
+    )
+  }
+
+  fn with_last_prompt(self, dt: chrono::DateTime<chrono::Utc>) -> Self {
+    Self {
+      last_prompt: dt,
+      ..self
+    }
+  }
+
+  fn save(&self, cache_dir: PathBuf) {
+    let _ =
+      std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), self.serialize());
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_parse_upgrade_check_file() {
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3".to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+      file.last_prompt.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(
+      file.last_checked.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(file.latest_version, "1.2.3".to_string());
+
+    let result =
+      CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("garbage!test".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("test".to_string());
+    assert!(result.is_none());
+  }
+
+  #[test]
+  fn test_serialize_upgrade_check_file() {
+    let file = CheckVersionFile {
+      last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc),
+      last_checked: chrono::DateTime::parse_from_rfc3339(
+        "2020-01-01T00:00:00Z",
+      )
+      .unwrap()
+      .with_timezone(&chrono::Utc),
+      latest_version: "1.2.3".to_string(),
+    };
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3"
+    );
+  }
 }
