@@ -15,6 +15,7 @@ use once_cell::sync::Lazy;
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -75,7 +76,8 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
       };
 
       let file = CheckVersionFile {
-        last_prompt: chrono::Utc::now(),
+        // put a date in the past here so that prompt can be shown on next run
+        last_prompt: chrono::Utc::now().sub(chrono::Duration::days(1)),
         last_checked: chrono::Utc::now(),
         latest_version,
       };
