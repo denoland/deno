@@ -117,11 +117,11 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   }
 
   fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
-    let snapshot = self.resolution.snapshot();
-    eprintln!(
-      "{}",
-      deno_core::serde_json::to_string_pretty(&snapshot).unwrap()
-    );
+    // let snapshot = self.resolution.snapshot();
+    // eprintln!(
+    //   "{}",
+    //   deno_core::serde_json::to_string_pretty(&snapshot).unwrap()
+    // );
     self.resolution.lock(lockfile)
   }
 }

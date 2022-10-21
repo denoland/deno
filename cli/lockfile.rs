@@ -21,10 +21,34 @@ use std::sync::Arc;
 use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpmPackageInfo {
+  integrity: String,
+  dependencies: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpmContent {
+  // Mapping between requests for npm packages and resolved specifiers, eg.
+  // "npm:chalk": "npm:chalk@5.0.0"
+  // "npm:react@17": "npm:react@17.0.1"
+  // "npm:foo@latest": "npm:foo@1.0.0"
+  specifiers: BTreeMap<String, String>,
+  // Mapping between resolved npm specifiers and their associated info, eg.
+  // "chalk@5.0.0": {
+  //   "integrity": "sha512-...",
+  //   "dependencies": {
+  //     "ansi-styles": "npm:ansi-styles@4.1.0",
+  //   }
+  // }
+  packages: BTreeMap<String, NpmPackageInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockfileV2Content {
   version: String,
   // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
+  npm: NpmContent,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,6 +74,10 @@ impl Lockfile {
       LockfileContent::V2(LockfileV2Content {
         version: "2".to_string(),
         remote: BTreeMap::new(),
+        npm: NpmContent {
+          specifiers: BTreeMap::new(),
+          packages: BTreeMap::new(),
+        },
       })
     } else {
       let s = std::fs::read_to_string(&filename).with_context(|| {
@@ -177,8 +205,8 @@ impl Lockfile {
         panic!("Locking npm specifiers is not supported in lockfile v1");
       }
       LockfileContent::V2(c) => {
-        if let Some(lockfile_checksum) = c.remote.get(&specifier) {
-          lockfile_checksum == &checksum
+        if let Some(package_info) = c.npm.packages.get(&specifier) {
+          package_info.integrity == checksum
         } else {
           false
         }
@@ -192,7 +220,13 @@ impl Lockfile {
         panic!("Locking npm specifiers is not supported in lockfile v1");
       }
       LockfileContent::V2(c) => {
-        c.remote.insert(specifier, checksum);
+        c.npm.packages.insert(
+          specifier,
+          NpmPackageInfo {
+            integrity: checksum,
+            dependencies: BTreeMap::new(),
+          },
+        );
       }
     }
   }
@@ -254,6 +288,10 @@ mod tests {
       "remote": {
         "https://deno.land/std@0.71.0/textproto/mod.ts": "3118d7a42c03c242c5a49c2ad91c8396110e14acca1324e7aaefd31a999b71a4",
         "https://deno.land/std@0.71.0/async/delay.ts": "35957d585a6e3dd87706858fb1d6b551cb278271b03f52c5a2cb70e65e00c26a"
+      },
+      "npm": {
+        "specifiers": {},
+        "packages": {}
       }
     });
 

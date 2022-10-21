@@ -1,8 +1,13 @@
 {
   "version": "2",
+  "remote": {},
   "npm": {
-    "dependencies": {
-      "npm:chalk@5.0.1": "sha512-foobar"
+    "specifiers": {},
+    "packages": {
+      "npm:chalk@5.0.1": {
+        "integrity": "sha512-foobar",
+        "dependencies": {}
+      }
     }
   }
 }
