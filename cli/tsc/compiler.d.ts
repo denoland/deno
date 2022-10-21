@@ -12,6 +12,7 @@ declare global {
     var normalizePath: (path: string) => string;
     interface SourceFile {
       version?: string;
+      fileName: string;
     }
 
     interface CompilerHost {
@@ -24,6 +25,12 @@ declare global {
     }
 
     var performance: Performance;
+
+    namespace deno {
+      function setIsNodeSourceFileCallback(
+        callback: (sourceFile: SourceFile) => boolean,
+      );
+    }
   }
 
   namespace ts {
@@ -37,8 +44,6 @@ declare global {
 
   interface DenoCore {
     encode(value: string): Uint8Array;
-    // deno-lint-ignore no-explicit-any
-    opSync<T>(name: string, params: T): any;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;

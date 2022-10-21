@@ -160,13 +160,14 @@ impl ReadonlyNpmCache {
       .take(if is_scoped_package { 3 } else { 2 })
       .map(|(_, part)| part)
       .collect::<Vec<_>>();
+    if parts.len() < 2 {
+      return None;
+    }
     let version = parts.pop().unwrap();
     let name = parts.join("/");
-
-    Some(NpmPackageId {
-      name,
-      version: NpmVersion::parse(version).unwrap(),
-    })
+    NpmVersion::parse(version)
+      .ok()
+      .map(|version| NpmPackageId { name, version })
   }
 
   pub fn get_cache_location(&self) -> PathBuf {

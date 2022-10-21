@@ -66,10 +66,15 @@ use crate::args::LintConfig;
 use crate::args::TsConfig;
 use crate::deno_dir;
 use crate::file_fetcher::get_source_from_data_url;
+use crate::file_fetcher::CacheSetting;
 use crate::fs_util;
 use crate::graph_util::graph_valid;
+use crate::npm::NpmCache;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
+use crate::progress_bar::ProgressBar;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 
@@ -87,6 +92,7 @@ pub struct StateSnapshot {
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub root_uri: Option<Url>,
+  pub maybe_npm_resolver: Option<NpmPackageResolver>,
 }
 
 #[derive(Debug)]
@@ -125,6 +131,8 @@ pub struct Inner {
   pub maybe_lint_config: Option<LintConfig>,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
+  /// Resolver for npm packages.
+  npm_resolver: NpmPackageResolver,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -250,6 +258,26 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
+    let registry_url = NpmRegistryApi::default_url();
+    // Use an "only" cache setting in order to make the
+    // user do an explicit "cache" command and prevent
+    // the cache from being filled with lots of packages while
+    // the user is typing.
+    let cache_setting = CacheSetting::Only;
+    let progress_bar = ProgressBar::default();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cache_setting.clone(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      cache_setting,
+      progress_bar,
+    );
+    let npm_resolver =
+      NpmPackageResolver::new(npm_cache, api, true, false, None);
 
     Self {
       assets,
@@ -267,6 +295,7 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
+      npm_resolver,
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -435,6 +464,7 @@ impl Inner {
       cache_metadata: self.cache_metadata.clone(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
+      maybe_npm_resolver: Some(self.npm_resolver.snapshotted()),
       root_uri: self.config.root_uri.clone(),
     })
   }
@@ -828,7 +858,7 @@ impl Inner {
       if let Err(err) =
         self.client.register_capability(vec![registration]).await
       {
-        warn!("Client errored on capabilities.\n{}", err);
+        warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
     self.config.update_enabled_paths(self.client.clone()).await;
@@ -891,6 +921,7 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          self.refresh_npm_specifiers().await;
           self
             .diagnostics_server
             .invalidate(&self.documents.dependents(&specifier));
@@ -901,6 +932,13 @@ impl Inner {
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
+  }
+
+  async fn refresh_npm_specifiers(&mut self) {
+    let package_reqs = self.documents.npm_package_reqs();
+    if let Err(err) = self.npm_resolver.set_package_reqs(package_reqs).await {
+      warn!("Could not set npm package requirements. {:#}", err);
+    }
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -917,6 +955,7 @@ impl Inner {
       error!("{}", err);
     }
     if self.is_diagnosable(&specifier) {
+      self.refresh_npm_specifiers().await;
       let mut specifiers = self.documents.dependents(&specifier);
       specifiers.push(specifier.clone());
       self.diagnostics_server.invalidate(&specifiers);
@@ -1135,7 +1174,7 @@ impl Inner {
         Ok(None) => Some(Vec::new()),
         Err(err) => {
           // TODO(lucacasonato): handle error properly
-          warn!("Format error: {}", err);
+          warn!("Format error: {:#}", err);
           None
         }
       }
@@ -2476,6 +2515,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let has_specifier_settings =
         inner.config.has_specifier_settings(&specifier);
       if document.is_diagnosable() {
+        inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
@@ -2834,7 +2874,7 @@ impl Inner {
         .collect::<HashMap<_, _>>();
       let ps = ProcState::from_options(Arc::new(cli_options)).await?;
       let mut inner_loader = ps.create_graph_loader();
-      let mut loader = crate::lsp::documents::DocumentsDenoGraphLoader {
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
         inner_loader: &mut inner_loader,
         open_docs: &open_docs,
       };
@@ -2870,6 +2910,9 @@ impl Inner {
         ca_stores: None,
         ca_file: None,
         unsafely_ignore_certificate_errors: None,
+        // this is to allow loading npm specifiers, so we can remove this
+        // once stabilizing them
+        unstable: true,
         ..Default::default()
       },
       self.maybe_config_file.clone(),
@@ -2892,6 +2935,7 @@ impl Inner {
     // For that we're invalidating all the existing diagnostics and restarting
     // the language server for TypeScript (as it might hold to some stale
     // documents).
+    self.refresh_npm_specifiers().await;
     self.diagnostics_server.invalidate_all();
     let _: bool = self
       .ts_server
