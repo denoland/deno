@@ -77,7 +77,8 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
 
       let file = CheckVersionFile {
         // put a date in the past here so that prompt can be shown on next run
-        last_prompt: chrono::Utc::now().sub(chrono::Duration::days(1)),
+        last_prompt: chrono::Utc::now()
+          .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
         last_checked: chrono::Utc::now(),
         latest_version,
       };
