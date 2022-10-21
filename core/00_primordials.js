@@ -275,13 +275,15 @@
 
   const {
     ArrayPrototypeForEach,
+    ArrayPrototypeMap,
     FunctionPrototypeCall,
     Map,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
-    PromiseAll,
+    PromisePrototype,
     PromisePrototypeThen,
     Set,
     SymbolIterator,
@@ -444,12 +446,18 @@
     // Wrapping on a new Promise is necessary to not expose the SafePromise
     // prototype to user-land.
     new Promise((a, b) =>
-      FunctionPrototypeCall(
-        PromiseAll,
-        SafePromise,
-        new SafeArrayIterator(iterable),
-      )
-        .then(a, b)
+      SafePromise.all(
+        ArrayPrototypeMap(
+          new SafeArrayIterator(iterable),
+          (p) => {
+            if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
+              return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
+            }
+
+            return SafePromise.resolve(p);
+          },
+        ),
+      ).then(a, b)
     );
 
   /**
