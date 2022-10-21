@@ -77,6 +77,7 @@ struct IsolateAllocations {
 /// by implementing an async function that takes a serde::Deserialize "control argument"
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
+  state: Rc<RefCell<JsRuntimeState>>,
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
@@ -84,7 +85,6 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
-  state: Rc<RefCell<JsRuntimeState>>,
 }
 
 pub(crate) struct DynImportModEvaluate {
@@ -350,13 +350,14 @@ impl JsRuntime {
       global_realm: None,
     }));
 
+    let weak = Rc::downgrade(&state_rc);
     let op_ctxs = ops
       .into_iter()
       .enumerate()
       .map(|(id, decl)| OpCtx {
         id,
         state: op_state.clone(),
-        runtime_state: state_rc.clone(),
+        runtime_state: weak.clone(),
         decl,
       })
       .collect::<Vec<_>>()
@@ -2117,6 +2118,12 @@ pub fn queue_async_op(
   deferred: bool,
   op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
 ) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:
@@ -2134,7 +2141,7 @@ pub fn queue_async_op(
       ];
 
       let js_recv_cb_handle =
-        ctx.runtime_state.borrow().js_recv_cb.clone().unwrap();
+        runtime_state.borrow().js_recv_cb.clone().unwrap();
       ctx.state.borrow_mut().tracker.track_async_completed(op_id);
 
       let tc_scope = &mut v8::TryCatch::new(scope);
@@ -2144,12 +2151,12 @@ pub fn queue_async_op(
     }
     EagerPollResult::Ready(op) => {
       let ready = OpCall::ready(op);
-      let mut state = ctx.runtime_state.borrow_mut();
+      let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(ready);
       state.have_unpolled_ops = true;
     }
     EagerPollResult::Pending(op) => {
-      let mut state = ctx.runtime_state.borrow_mut();
+      let mut state = runtime_state.borrow_mut();
       state.pending_ops.push(op);
       state.have_unpolled_ops = true;
     }

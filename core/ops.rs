@@ -20,6 +20,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::task::Context;
 use std::task::Poll;
 
@@ -153,7 +154,7 @@ pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
   pub decl: OpDecl,
-  pub runtime_state: Rc<RefCell<JsRuntimeState>>,
+  pub runtime_state: Weak<RefCell<JsRuntimeState>>,
 }
 
 /// Maintains the resources and ops inside a JS runtime.
