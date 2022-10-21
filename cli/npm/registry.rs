@@ -96,7 +96,6 @@ impl NpmPackageVersionInfo {
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
-  pub shasum: String,
   pub integrity: Option<String>,
 }
 

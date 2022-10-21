@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
@@ -91,14 +92,27 @@ impl NpmPackageResolver {
     unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
+    maybe_localfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
+    let initial_snapshot = if let Some(lockfile) = maybe_localfile {
+      let lockfile = lockfile.lock();
+      let snapshot = NpmResolutionSnapshot::from_lockfile(&lockfile);
+      eprintln!(
+        "snapshot from lockfile {}",
+        serde_json::to_string_pretty(&snapshot).unwrap()
+      );
+      Some(snapshot)
+    } else {
+      None
+    };
+
     Self::new_with_maybe_snapshot(
       cache,
       api,
       unstable,
       no_npm,
       local_node_modules_path,
-      None,
+      initial_snapshot,
     )
   }
 

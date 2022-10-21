@@ -23,8 +23,8 @@ use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmPackageInfo {
-  integrity: String,
-  dependencies: BTreeMap<String, String>,
+  pub integrity: String,
+  pub dependencies: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct NpmContent {
   // "npm:chalk": "npm:chalk@5.0.0"
   // "npm:react@17": "npm:react@17.0.1"
   // "npm:foo@latest": "npm:foo@1.0.0"
-  specifiers: BTreeMap<String, String>,
+  pub specifiers: BTreeMap<String, String>,
   // Mapping between resolved npm specifiers and their associated info, eg.
   // "chalk@5.0.0": {
   //   "integrity": "sha512-...",
@@ -41,7 +41,7 @@ pub struct NpmContent {
   //     "ansi-styles": "npm:ansi-styles@4.1.0",
   //   }
   // }
-  packages: BTreeMap<String, NpmPackageInfo>,
+  pub packages: BTreeMap<String, NpmPackageInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,13 +49,13 @@ pub struct LockfileContent {
   version: String,
   // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
-  npm: NpmContent,
+  pub npm: NpmContent,
 }
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
-  write: bool,
-  content: LockfileContent,
+  pub write: bool,
+  pub content: LockfileContent,
   pub filename: PathBuf,
 }
 
@@ -234,8 +234,8 @@ impl Lockfile {
     version: String,
   ) {
     self.content.npm.specifiers.insert(
-      package_req.to_string(),
-      format!("{}@{}", package_req.name, version),
+      format!("npm:{}", package_req),
+      format!("npm:{}@{}", package_req.name, version),
     );
   }
 }

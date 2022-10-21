@@ -179,6 +179,18 @@ impl NpmPackageId {
   pub fn serialize_for_lock_file(&self) -> String {
     format!("npm:{}@{}", self.name, self.version)
   }
+
+  pub fn deserialize_from_lock_file(id: &str) -> Self {
+    eprintln!("deserialize {}", id);
+    let reference = NpmPackageReference::from_str(id).unwrap();
+    Self {
+      name: reference.req.name,
+      version: NpmVersion::parse(
+        &reference.req.version_req.unwrap().to_string(),
+      )
+      .unwrap(),
+    }
+  }
 }
 
 impl std::fmt::Display for NpmPackageId {
@@ -351,6 +363,58 @@ impl NpmResolutionSnapshot {
       }
     }
     maybe_best_version.cloned()
+  }
+
+  pub fn from_lockfile(lockfile: &Lockfile) -> Self {
+    let mut package_reqs = HashMap::new();
+    let mut packages_by_name: HashMap<String, Vec<NpmVersion>> = HashMap::new();
+    let mut packages = HashMap::new();
+
+    for (key, value) in &lockfile.content.npm.specifiers {
+      eprintln!("key: {}", key);
+      let reference = NpmPackageReference::from_str(key).unwrap();
+      let package_id = NpmPackageId::deserialize_from_lock_file(value);
+      package_reqs.insert(reference.req, package_id.version.clone());
+    }
+
+    for (key, value) in &lockfile.content.npm.packages {
+      let package_id = NpmPackageId::deserialize_from_lock_file(key);
+      let dependencies = value
+        .dependencies
+        .iter()
+        .map(|(name, specifier)| {
+          (
+            name.clone(),
+            NpmPackageId::deserialize_from_lock_file(specifier),
+          )
+        })
+        .collect::<HashMap<_, _>>();
+
+      for (name, id) in &dependencies {
+        packages_by_name
+          .entry(name.to_string())
+          .or_default()
+          .push(id.version.clone());
+      }
+
+      let package = NpmResolutionPackage {
+        id: package_id.clone(),
+        dist: NpmPackageVersionDistInfo {
+          // FIXME(bartlomieju):
+          tarball: "foobar".to_string(),
+          integrity: Some(value.integrity.clone()),
+        },
+        dependencies,
+      };
+
+      packages.insert(package_id.clone(), package);
+    }
+
+    Self {
+      package_reqs,
+      packages_by_name,
+      packages,
+    }
   }
 }
 

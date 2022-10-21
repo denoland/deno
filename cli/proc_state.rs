@@ -236,6 +236,15 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
+    let maybe_lockfile = if let Some(lockfile) = &lockfile {
+      if lockfile.lock().write {
+        None
+      } else {
+        Some(lockfile.clone())
+      }
+    } else {
+      None
+    };
     let npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
@@ -246,6 +255,7 @@ impl ProcState {
       cli_options
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
+      maybe_lockfile,
     );
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
