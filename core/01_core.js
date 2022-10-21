@@ -116,6 +116,8 @@
   function opAsync(opName, ...args) {
     const promiseId = nextPromiseId++;
     let p = newPromise();
+    // Save the id on the promise so it can later be ref'ed or unref'ed
+    p[promiseIdSymbol] = promiseId;
     ops[opName](promiseId, p.resolve, ...args);
     p = PromisePrototypeThen(p, unwrapOpResult);
     if (opCallTracingEnabled) {
@@ -128,8 +130,6 @@
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
     }
-    // Save the id on the promise so it can later be ref'ed or unref'ed
-    p[promiseIdSymbol] = promiseId;
     return p;
   }
 
@@ -137,11 +137,21 @@
     return ops[opName](...args);
   }
 
+  function invalidPromise(promiseId) {
+    return promiseId < 0 || promiseId >= nextPromiseId;
+  }
+
   function refOp(promiseId) {
+    if (invalidPromise(promiseId)) {
+      return;
+    }
     ops.op_ref_op(promiseId);
   }
 
   function unrefOp(promiseId) {
+    if (invalidPromise(promiseId)) {
+      return;
+    }
     ops.op_unref_op(promiseId);
   }
 
