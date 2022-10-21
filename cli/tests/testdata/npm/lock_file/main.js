@@ -1,7 +1,5 @@
-import chalk from "npm:chalk@5";
+import fsx from "npm:fs-extra@10.1.0";
+import { createApp } from "npm:vue";
 
-console.log(chalk.green("chalk import map loads"));
-
-export function test(value) {
-  return chalk.red(value);
-}
+console.log(fsx.access);
+console.log(createApp);

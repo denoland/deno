@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,15 +145,14 @@ impl Lockfile {
 
   pub fn check_or_insert_npm_package(
     &mut self,
-    specifier: String,
-    integrity: String,
+    package: &NpmResolutionPackage,
   ) -> bool {
     if self.write {
       // In case --lock-write is specified check always passes
-      self.insert_npm_package(specifier, integrity);
+      self.insert_npm_package(package);
       true
     } else {
-      self.check_npm_package(specifier, integrity)
+      self.check_npm_package(package)
     }
   }
 
@@ -199,14 +199,16 @@ impl Lockfile {
 
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
-  fn check_npm_package(&mut self, specifier: String, checksum: String) -> bool {
+  fn check_npm_package(&mut self, package: &NpmResolutionPackage) -> bool {
     match &self.content {
       LockfileContent::V1(_c) => {
         panic!("Locking npm specifiers is not supported in lockfile v1");
       }
       LockfileContent::V2(c) => {
+        let specifier = package.id.serialize_for_lock_file();
         if let Some(package_info) = c.npm.packages.get(&specifier) {
-          package_info.integrity == checksum
+          // TODO(bartlomieju): remove this unwrap
+          package_info.integrity == package.dist.integrity.clone().unwrap()
         } else {
           false
         }
@@ -214,17 +216,24 @@ impl Lockfile {
     }
   }
 
-  fn insert_npm_package(&mut self, specifier: String, checksum: String) {
+  fn insert_npm_package(&mut self, package: &NpmResolutionPackage) {
     match &mut self.content {
       LockfileContent::V1(_c) => {
         panic!("Locking npm specifiers is not supported in lockfile v1");
       }
       LockfileContent::V2(c) => {
+        let dependencies = package
+          .dependencies
+          .iter()
+          .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
+          .collect::<BTreeMap<String, String>>();
+
         c.npm.packages.insert(
-          specifier,
+          package.id.serialize_for_lock_file(),
           NpmPackageInfo {
-            integrity: checksum,
-            dependencies: BTreeMap::new(),
+            // TODO(bartlomieju): remove this unwrap
+            integrity: package.dist.integrity.as_ref().unwrap().clone(),
+            dependencies,
           },
         );
       }

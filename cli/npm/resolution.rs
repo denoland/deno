@@ -174,6 +174,10 @@ impl NpmPackageId {
       None
     }
   }
+
+  pub fn serialize_for_lock_file(&self) -> String {
+    format!("npm:{}@{}", self.name, self.version)
+  }
 }
 
 impl std::fmt::Display for NpmPackageId {
@@ -591,11 +595,8 @@ impl NpmResolution {
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
     for package in self.all_packages() {
-      let specifier = format!("npm:{}@{}", package.id.name, package.id.version);
-      let valid = lockfile.check_or_insert_npm_package(
-        specifier.clone(),
-        package.dist.integrity.unwrap(),
-      );
+      let specifier = package.id.serialize_for_lock_file();
+      let valid = lockfile.check_or_insert_npm_package(&package);
       if !valid {
         return Err(anyhow!(
           "Integrity check failed for package: {}",

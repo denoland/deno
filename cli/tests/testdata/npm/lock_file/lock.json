@@ -4,9 +4,160 @@
   "npm": {
     "specifiers": {},
     "packages": {
-      "npm:chalk@5.0.1": {
-        "integrity": "sha512-foobar",
+      "npm:@babel/parser@7.19.4": {
+        "integrity": "sha512-fooobar!",
         "dependencies": {}
+      },
+      "npm:@vue/compiler-core@3.2.40": {
+        "integrity": "sha512-2Dc3Stk0J/VyQ4OUr2yEC53kU28614lZS+bnrCbFSAIftBJ40g/2yQzf4mPBiFuqguMB7hyHaujdgZAQ67kZYA==",
+        "dependencies": {
+          "@babel/parser": "npm:@babel/parser@7.19.4",
+          "@vue/shared": "npm:@vue/shared@3.2.40",
+          "estree-walker": "npm:estree-walker@2.0.2",
+          "source-map": "npm:source-map@0.6.1"
+        }
+      },
+      "npm:@vue/compiler-dom@3.2.40": {
+        "integrity": "sha512-OZCNyYVC2LQJy4H7h0o28rtk+4v+HMQygRTpmibGoG9wZyomQiS5otU7qo3Wlq5UfHDw2RFwxb9BJgKjVpjrQw==",
+        "dependencies": {
+          "@vue/compiler-core": "npm:@vue/compiler-core@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40"
+        }
+      },
+      "npm:@vue/compiler-sfc@3.2.40": {
+        "integrity": "sha512-tzqwniIN1fu1PDHC3CpqY/dPCfN/RN1thpBC+g69kJcrl7mbGiHKNwbA6kJ3XKKy8R6JLKqcpVugqN4HkeBFFg==",
+        "dependencies": {
+          "@babel/parser": "npm:@babel/parser@7.19.4",
+          "@vue/compiler-core": "npm:@vue/compiler-core@3.2.40",
+          "@vue/compiler-dom": "npm:@vue/compiler-dom@3.2.40",
+          "@vue/compiler-ssr": "npm:@vue/compiler-ssr@3.2.40",
+          "@vue/reactivity-transform": "npm:@vue/reactivity-transform@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40",
+          "estree-walker": "npm:estree-walker@2.0.2",
+          "magic-string": "npm:magic-string@0.25.9",
+          "postcss": "npm:postcss@8.4.17",
+          "source-map": "npm:source-map@0.6.1"
+        }
+      },
+      "npm:@vue/compiler-ssr@3.2.40": {
+        "integrity": "sha512-80cQcgasKjrPPuKcxwuCx7feq+wC6oFl5YaKSee9pV3DNq+6fmCVwEEC3vvkf/E2aI76rIJSOYHsWSEIxK74oQ==",
+        "dependencies": {
+          "@vue/compiler-dom": "npm:@vue/compiler-dom@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40"
+        }
+      },
+      "npm:@vue/reactivity-transform@3.2.40": {
+        "integrity": "sha512-HQUCVwEaacq6fGEsg2NUuGKIhUveMCjOk8jGHqLXPI2w6zFoPrlQhwWEaINTv5kkZDXKEnCijAp+4gNEHG03yw==",
+        "dependencies": {
+          "@babel/parser": "npm:@babel/parser@7.19.4",
+          "@vue/compiler-core": "npm:@vue/compiler-core@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40",
+          "estree-walker": "npm:estree-walker@2.0.2",
+          "magic-string": "npm:magic-string@0.25.9"
+        }
+      },
+      "npm:@vue/reactivity@3.2.40": {
+        "integrity": "sha512-N9qgGLlZmtUBMHF9xDT4EkD9RdXde1Xbveb+niWMXuHVWQP5BzgRmE3SFyUBBcyayG4y1lhoz+lphGRRxxK4RA==",
+        "dependencies": { "@vue/shared": "npm:@vue/shared@3.2.40" }
+      },
+      "npm:@vue/runtime-core@3.2.40": {
+        "integrity": "sha512-U1+rWf0H8xK8aBUZhnrN97yoZfHbjgw/bGUzfgKPJl69/mXDuSg8CbdBYBn6VVQdR947vWneQBFzdhasyzMUKg==",
+        "dependencies": {
+          "@vue/reactivity": "npm:@vue/reactivity@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40"
+        }
+      },
+      "npm:@vue/runtime-dom@3.2.40": {
+        "integrity": "sha512-AO2HMQ+0s2+MCec8hXAhxMgWhFhOPJ/CyRXnmTJ6XIOnJFLrH5Iq3TNwvVcODGR295jy77I6dWPj+wvFoSYaww==",
+        "dependencies": {
+          "@vue/runtime-core": "npm:@vue/runtime-core@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40",
+          "csstype": "npm:csstype@2.6.21"
+        }
+      },
+      "npm:@vue/server-renderer@3.2.40": {
+        "integrity": "sha512-gtUcpRwrXOJPJ4qyBpU3EyxQa4EkV8I4f8VrDePcGCPe4O/hd0BPS7v9OgjIQob6Ap8VDz9G+mGTKazE45/95w==",
+        "dependencies": {
+          "@vue/compiler-ssr": "npm:@vue/compiler-ssr@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40"
+        }
+      },
+      "npm:@vue/shared@3.2.40": {
+        "integrity": "sha512-0PLQ6RUtZM0vO3teRfzGi4ltLUO5aO+kLgwh4Um3THSR03rpQWLTuRCkuO5A41ITzwdWeKdPHtSARuPkoo5pCQ==",
+        "dependencies": {}
+      },
+      "npm:csstype@2.6.21": {
+        "integrity": "sha512-Z1PhmomIfypOpoMjRQB70jfvy/wxT50qW08YXO5lMIJkrdq4yOTR+AW7FqutScmB9NkLwxo+jU+kZLbofZZq/w==",
+        "dependencies": {}
+      },
+      "npm:estree-walker@2.0.2": {
+        "integrity": "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w==",
+        "dependencies": {}
+      },
+      "npm:fs-extra@10.1.0": {
+        "integrity": "sha512-oRXApq54ETRj4eMiFzGnHWGy+zo5raudjuxN0b8H7s/RU2oW0Wvsx9O0ACRN/kRq9E8Vu/ReskGB5o3ji+FzHQ==",
+        "dependencies": {
+          "graceful-fs": "npm:graceful-fs@4.2.10",
+          "jsonfile": "npm:jsonfile@6.1.0",
+          "universalify": "npm:universalify@2.0.0"
+        }
+      },
+      "npm:graceful-fs@4.2.10": {
+        "integrity": "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA==",
+        "dependencies": {}
+      },
+      "npm:jsonfile@6.1.0": {
+        "integrity": "sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==",
+        "dependencies": {
+          "graceful-fs": "npm:graceful-fs@4.2.10",
+          "universalify": "npm:universalify@2.0.0"
+        }
+      },
+      "npm:magic-string@0.25.9": {
+        "integrity": "sha512-RmF0AsMzgt25qzqqLc1+MbHmhdx0ojF2Fvs4XnOqz2ZOBXzzkEwc/dJQZCYHAn7v1jbVOjAZfK8msRn4BxO4VQ==",
+        "dependencies": { "sourcemap-codec": "npm:sourcemap-codec@1.4.8" }
+      },
+      "npm:nanoid@3.3.4": {
+        "integrity": "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==",
+        "dependencies": {}
+      },
+      "npm:picocolors@1.0.0": {
+        "integrity": "sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==",
+        "dependencies": {}
+      },
+      "npm:postcss@8.4.17": {
+        "integrity": "sha512-UNxNOLQydcOFi41yHNMcKRZ39NeXlr8AxGuZJsdub8vIb12fHzcq37DTU/QtbI6WLxNg2gF9Z+8qtRwTj1UI1Q==",
+        "dependencies": {
+          "nanoid": "npm:nanoid@3.3.4",
+          "picocolors": "npm:picocolors@1.0.0",
+          "source-map-js": "npm:source-map-js@1.0.2"
+        }
+      },
+      "npm:source-map-js@1.0.2": {
+        "integrity": "sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==",
+        "dependencies": {}
+      },
+      "npm:source-map@0.6.1": {
+        "integrity": "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==",
+        "dependencies": {}
+      },
+      "npm:sourcemap-codec@1.4.8": {
+        "integrity": "sha512-9NykojV5Uih4lgo5So5dtw+f0JgJX30KCNI8gwhz2J9A15wD0Ml6tjHKwf6fTSa6fAdVBdZeNOs9eJ71qCk8vA==",
+        "dependencies": {}
+      },
+      "npm:universalify@2.0.0": {
+        "integrity": "sha512-hAZsKq7Yy11Zu1DE0OzWjw7nnLZmJZYTDZZyEFHZdUhV8FkH5MCfoU1XMaxXovpyW5nq5scPqq0ZDP9Zyl04oQ==",
+        "dependencies": {}
+      },
+      "npm:vue@3.2.40": {
+        "integrity": "sha512-1mGHulzUbl2Nk3pfvI5aXYYyJUs1nm4kyvuz38u4xlQkLUn1i2R7nDbI4TufECmY8v1qNBHYy62bCaM+3cHP2A==",
+        "dependencies": {
+          "@vue/compiler-dom": "npm:@vue/compiler-dom@3.2.40",
+          "@vue/compiler-sfc": "npm:@vue/compiler-sfc@3.2.40",
+          "@vue/runtime-dom": "npm:@vue/runtime-dom@3.2.40",
+          "@vue/server-renderer": "npm:@vue/server-renderer@3.2.40",
+          "@vue/shared": "npm:@vue/shared@3.2.40"
+        }
       }
     }
   }
