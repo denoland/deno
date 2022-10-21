@@ -132,7 +132,6 @@ test_util = { path = "../test_util" }
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.0"
 
-
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.
 OriginalFilename = "deno.exe"
