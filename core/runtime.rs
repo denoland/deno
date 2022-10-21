@@ -1888,7 +1888,7 @@ impl JsRuntime {
       let resolver = resolver.open(tc_scope);
       let this = v8::undefined(tc_scope).into();
 
-      resolver.call(tc_scope, this, &[arg]).unwrap();
+      resolver.call(tc_scope, this, &[arg]);
       match tc_scope.exception() {
         None => {}
         Some(exception) => {
