@@ -10,15 +10,11 @@
     TypeError,
     URIError,
     Map,
-    Array,
-    ArrayPrototypeFill,
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
     ObjectFromEntries,
-    MapPrototypeGet,
-    MapPrototypeHas,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
@@ -40,10 +36,6 @@
   registerErrorClass("URIError", URIError);
 
   let nextPromiseId = 1;
-  const promiseMap = new Map();
-  const RING_SIZE = 4 * 1024;
-  const NO_PROMISE = null; // Alias to null is faster than plain nulls
-  const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
   // TODO(bartlomieju): it future use `v8::Private` so it's not visible
   // to users. Currently missing bindings.
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
@@ -59,33 +51,6 @@
     return opCallTracingEnabled;
   }
 
-  function setPromise(promiseId) {
-    const idx = promiseId % RING_SIZE;
-    // Move old promise from ring to map
-    const oldPromise = promiseRing[idx];
-    if (oldPromise !== NO_PROMISE) {
-      const oldPromiseId = promiseId - RING_SIZE;
-      MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
-    }
-    // Set new promise
-    return promiseRing[idx] = newPromise();
-  }
-
-  function getPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      const promise = MapPrototypeGet(promiseMap, promiseId);
-      MapPrototypeDelete(promiseMap, promiseId);
-      return promise;
-    }
-    // Otherwise take from ring
-    const idx = promiseId % RING_SIZE;
-    const promise = promiseRing[idx];
-    promiseRing[idx] = NO_PROMISE;
-    return promise;
-  }
-
   function newPromise() {
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
@@ -95,17 +60,6 @@
     promise.resolve = resolve;
     promise.reject = reject;
     return promise;
-  }
-
-  function hasPromise(promiseId) {
-    // Check if out of ring bounds, fallback to map
-    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
-    if (outOfBounds) {
-      return MapPrototypeHas(promiseMap, promiseId);
-    }
-    // Otherwise check it in ring
-    const idx = promiseId % RING_SIZE;
-    return promiseRing[idx] != NO_PROMISE;
   }
 
   function opresolve() {
@@ -184,16 +138,10 @@
   }
 
   function refOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
     ops.op_ref_op(promiseId);
   }
 
   function unrefOp(promiseId) {
-    if (!hasPromise(promiseId)) {
-      return;
-    }
     ops.op_unref_op(promiseId);
   }
 
