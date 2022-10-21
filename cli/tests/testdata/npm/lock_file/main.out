@@ -48,4 +48,4 @@ Download http://localhost:4545/npm/registry/source-map-js/source-map-js-1.0.2.tg
 Download http://localhost:4545/npm/registry/sourcemap-codec/sourcemap-codec-1.4.8.tgz
 Download http://localhost:4545/npm/registry/universalify/universalify-2.0.0.tgz
 Download http://localhost:4545/npm/registry/vue/vue-3.2.38.tgz
-error: Integrity check failed for package: npm:@babel/parser@7.19.0
+error: Integrity check failed for package: npm:@babel/parser@7.19.0. Pass --lock-write to update the lockfile.

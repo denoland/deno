@@ -599,7 +599,7 @@ impl NpmResolution {
       let valid = lockfile.check_or_insert_npm_package(&package);
       if !valid {
         return Err(anyhow!(
-          "Integrity check failed for package: {}",
+          "Integrity check failed for package: {}. Pass --lock-write to update the lockfile.",
           specifier
         ));
       }
