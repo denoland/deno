@@ -3467,12 +3467,6 @@ itest!(error_cause_recursive_aggregate {
   exit_code: 1,
 });
 
-itest!(error_cause_recursive_non_topmost {
-  args: "run error_cause_recursive_non_topmost.ts",
-  output: "error_cause_recursive_non_topmost.ts.out",
-  exit_code: 1,
-});
-
 itest!(error_cause_recursive_tail {
   args: "run error_cause_recursive_tail.ts",
   output: "error_cause_recursive_tail.ts.out",
