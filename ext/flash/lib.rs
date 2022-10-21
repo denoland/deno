@@ -114,7 +114,10 @@ fn op_flash_respond(
   shutdown: bool,
 ) -> u32 {
   let flash_ctx = op_state.borrow_mut::<FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+  let ctx = match flash_ctx.servers.get_mut(&server_id) {
+    Some(ctx) => ctx,
+    None => return 0,
+  };
   flash_respond(ctx, token, shutdown, &response)
 }
 
@@ -132,7 +135,10 @@ async fn op_flash_respond_async(
   let sock = {
     let mut op_state = state.borrow_mut();
     let flash_ctx = op_state.borrow_mut::<FlashContext>();
-    let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
+    let ctx = match flash_ctx.servers.get_mut(&server_id) {
+      Some(ctx) => ctx,
+      None => return Ok(()),
+    };
 
     match shutdown {
       true => {
@@ -775,7 +781,10 @@ async fn op_flash_read_body(
     {
       let op_state = &mut state.borrow_mut();
       let flash_ctx = op_state.borrow_mut::<FlashContext>();
-      flash_ctx.servers.get_mut(&server_id).unwrap() as *mut ServerContext
+      match flash_ctx.servers.get_mut(&server_id) {
+        Some(ctx) => ctx as *mut ServerContext,
+        None => return 0,
+      }
     }
     .as_mut()
     .unwrap()

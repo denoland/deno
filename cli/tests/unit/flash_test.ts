@@ -70,18 +70,19 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
     onError: createOnErrorCb(ac),
   });
 
-  // assertRejects(
-  //   () =>
-  //     Deno.serve({
-  //       handler: (_req) => new Response("ok"),
-  //       hostname: "localhost",
-  //       port: 4501,
-  //       signal: ac.signal,
-  //       onListen: onListen(listeningPromise),
-  //       onError: createOnErrorCb(ac),
-  //     }),
-  //   Deno.errors.AddrInUse,
-  // );
+  await listeningPromise;
+  assertRejects(
+    () =>
+      Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      }),
+    Deno.errors.AddrInUse,
+  );
   ac.abort();
   await server;
 });
