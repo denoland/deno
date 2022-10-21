@@ -49,7 +49,8 @@ impl Lockfile {
         .context("Unable to parse contents of the lockfile")?;
       let version = value.get("version").and_then(|v| v.as_str());
       if version == Some("2") {
-        serde_json::from_value::<LockfileContent>(value).context("Unable to parse lockfile")?
+        serde_json::from_value::<LockfileContent>(value)
+          .context("Unable to parse lockfile")?
       } else {
         // If there's no version field, we assume that user is using the old
         // version of the lockfile. We'll migrate it in-place into v2 and it
