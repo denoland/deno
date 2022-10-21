@@ -181,7 +181,6 @@ impl NpmPackageId {
   }
 
   pub fn deserialize_from_lock_file(id: &str) -> Self {
-    eprintln!("deserialize {}", id);
     let reference = NpmPackageReference::from_str(id).unwrap();
     Self {
       name: reference.req.name,
@@ -371,7 +370,6 @@ impl NpmResolutionSnapshot {
     let mut packages = HashMap::new();
 
     for (key, value) in &lockfile.content.npm.specifiers {
-      eprintln!("key: {}", key);
       let reference = NpmPackageReference::from_str(key).unwrap();
       let package_id = NpmPackageId::deserialize_from_lock_file(value);
       package_reqs.insert(reference.req, package_id.version.clone());

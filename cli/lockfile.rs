@@ -219,10 +219,13 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) -> bool {
-    if let Some(resolved_specifier) =
-      self.content.npm.specifiers.get(&package_req.to_string())
+    if let Some(resolved_specifier) = self
+      .content
+      .npm
+      .specifiers
+      .get(&format!("npm:{}", package_req.to_string()))
     {
-      &format!("{}@{}", package_req.name, version) == resolved_specifier
+      &format!("npm:{}@{}", package_req.name, version) == resolved_specifier
     } else {
       false
     }

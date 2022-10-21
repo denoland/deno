@@ -97,10 +97,6 @@ impl NpmPackageResolver {
     let initial_snapshot = if let Some(lockfile) = maybe_localfile {
       let lockfile = lockfile.lock();
       let snapshot = NpmResolutionSnapshot::from_lockfile(&lockfile);
-      eprintln!(
-        "snapshot from lockfile {}",
-        serde_json::to_string_pretty(&snapshot).unwrap()
-      );
       Some(snapshot)
     } else {
       None
