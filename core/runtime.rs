@@ -435,7 +435,7 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
     {
       let mut state = state_rc.borrow_mut();
-      state.global_realm = Some(JsRealm(global_context.clone()));
+      state.global_realm = Some(JsRealm(global_context));
       state.op_ctxs = op_ctxs;
       state.inspector = Some(inspector);
     }
