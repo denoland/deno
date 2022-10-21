@@ -8,7 +8,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use std::cell::RefCell;
@@ -46,20 +45,11 @@ pub struct NpmContent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LockfileV2Content {
+pub struct LockfileContent {
   version: String,
   // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
   npm: NpmContent,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LockfileV1Content(BTreeMap<String, String>);
-
-#[derive(Debug, Clone)]
-enum LockfileContent {
-  V1(LockfileV1Content),
-  V2(LockfileV2Content),
 }
 
 #[derive(Debug, Clone)]
@@ -73,14 +63,14 @@ impl Lockfile {
   pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
     let content = if write {
-      LockfileContent::V2(LockfileV2Content {
+      LockfileContent {
         version: "2".to_string(),
         remote: BTreeMap::new(),
         npm: NpmContent {
           specifiers: BTreeMap::new(),
           packages: BTreeMap::new(),
         },
-      })
+      }
     } else {
       let s = std::fs::read_to_string(&filename).with_context(|| {
         format!("Unable to read lockfile: {}", filename.display())
@@ -89,13 +79,22 @@ impl Lockfile {
         .context("Unable to parse contents of the lockfile")?;
       let version = value.get("version").and_then(|v| v.as_str());
       if version == Some("2") {
-        let content: LockfileV2Content =
-          serde_json::from_value(value).context("Unable to parse lockfile")?;
-        LockfileContent::V2(content)
+        serde_json::from_value::<LockfileContent>(value)
+          .context("Unable to parse lockfile")?
       } else {
-        let content: LockfileV1Content =
+        // If there's no version field, we assume that user is using the old
+        // version of the lockfile. We'll migrate it in-place into v2 and it
+        // will be writte in v2 if user uses `--lock-write` flag.
+        let remote: BTreeMap<String, String> =
           serde_json::from_value(value).context("Unable to parse lockfile")?;
-        LockfileContent::V1(content)
+        LockfileContent {
+          version: "2".to_string(),
+          remote,
+          npm: NpmContent {
+            specifiers: BTreeMap::new(),
+            packages: BTreeMap::new(),
+          },
+        }
       }
     };
 
@@ -112,14 +111,7 @@ impl Lockfile {
       return Ok(());
     }
 
-    let json_string = match &self.content {
-      LockfileContent::V1(c) => {
-        let j = json!(&c.0);
-        serde_json::to_string(&j).unwrap()
-      }
-      LockfileContent::V2(c) => serde_json::to_string(&c).unwrap(),
-    };
-
+    let json_string = serde_json::to_string(&self.content).unwrap();
     let format_s = format_json(&json_string, &Default::default())
       .ok()
       .flatten()
@@ -177,23 +169,11 @@ impl Lockfile {
     if specifier.starts_with("file:") {
       return true;
     }
-    match &self.content {
-      LockfileContent::V1(c) => {
-        if let Some(lockfile_checksum) = c.0.get(specifier) {
-          let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
-          lockfile_checksum == &compiled_checksum
-        } else {
-          false
-        }
-      }
-      LockfileContent::V2(c) => {
-        if let Some(lockfile_checksum) = c.remote.get(specifier) {
-          let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
-          lockfile_checksum == &compiled_checksum
-        } else {
-          false
-        }
-      }
+    if let Some(lockfile_checksum) = self.content.remote.get(specifier) {
+      let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
+      lockfile_checksum == &compiled_checksum
+    } else {
+      false
     }
   }
 
@@ -202,57 +182,36 @@ impl Lockfile {
       return;
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
-    match &mut self.content {
-      LockfileContent::V1(c) => {
-        c.0.insert(specifier.to_string(), checksum);
-      }
-      LockfileContent::V2(c) => {
-        c.remote.insert(specifier.to_string(), checksum);
-      }
-    };
+    self.content.remote.insert(specifier.to_string(), checksum);
   }
 
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check_npm_package(&mut self, package: &NpmResolutionPackage) -> bool {
-    match &self.content {
-      LockfileContent::V1(_c) => {
-        panic!("Locking npm specifiers is not supported in lockfile v1");
-      }
-      LockfileContent::V2(c) => {
-        let specifier = package.id.serialize_for_lock_file();
-        if let Some(package_info) = c.npm.packages.get(&specifier) {
-          // TODO(bartlomieju): remove this unwrap
-          package_info.integrity == package.dist.integrity.clone().unwrap()
-        } else {
-          false
-        }
-      }
+    let specifier = package.id.serialize_for_lock_file();
+    if let Some(package_info) = self.content.npm.packages.get(&specifier) {
+      // TODO(bartlomieju): remove this unwrap
+      package_info.integrity == package.dist.integrity.clone().unwrap()
+    } else {
+      false
     }
   }
 
   fn insert_npm_package(&mut self, package: &NpmResolutionPackage) {
-    match &mut self.content {
-      LockfileContent::V1(_c) => {
-        panic!("Locking npm specifiers is not supported in lockfile v1");
-      }
-      LockfileContent::V2(c) => {
-        let dependencies = package
-          .dependencies
-          .iter()
-          .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
-          .collect::<BTreeMap<String, String>>();
+    let dependencies = package
+      .dependencies
+      .iter()
+      .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
+      .collect::<BTreeMap<String, String>>();
 
-        c.npm.packages.insert(
-          package.id.serialize_for_lock_file(),
-          NpmPackageInfo {
-            // TODO(bartlomieju): remove this unwrap
-            integrity: package.dist.integrity.as_ref().unwrap().clone(),
-            dependencies,
-          },
-        );
-      }
-    }
+    self.content.npm.packages.insert(
+      package.id.serialize_for_lock_file(),
+      NpmPackageInfo {
+        // TODO(bartlomieju): remove this unwrap
+        integrity: package.dist.integrity.as_ref().unwrap().clone(),
+        dependencies,
+      },
+    );
   }
 
   fn check_npm_specifier(
@@ -260,19 +219,12 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) -> bool {
-    match &self.content {
-      LockfileContent::V1(_c) => {
-        panic!("Locking npm specifiers is not supported in lockfile v1");
-      }
-      LockfileContent::V2(c) => {
-        if let Some(resolved_specifier) =
-          c.npm.specifiers.get(&package_req.to_string())
-        {
-          &format!("{}@{}", package_req.name, version) == resolved_specifier
-        } else {
-          false
-        }
-      }
+    if let Some(resolved_specifier) =
+      self.content.npm.specifiers.get(&package_req.to_string())
+    {
+      &format!("{}@{}", package_req.name, version) == resolved_specifier
+    } else {
+      false
     }
   }
 
@@ -281,17 +233,10 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) {
-    match &mut self.content {
-      LockfileContent::V1(_c) => {
-        panic!("Locking npm specifiers is not supported in lockfile v1");
-      }
-      LockfileContent::V2(c) => {
-        c.npm.specifiers.insert(
-          package_req.to_string(),
-          format!("{}@{}", package_req.name, version),
-        );
-      }
-    }
+    self.content.npm.specifiers.insert(
+      package_req.to_string(),
+      format!("{}@{}", package_req.name, version),
+    );
   }
 }
 
@@ -376,10 +321,7 @@ mod tests {
 
     let result = Lockfile::new(file_path, false).unwrap();
 
-    let remote = match result.content {
-      LockfileContent::V2(c) => c.remote,
-      _ => unreachable!(),
-    };
+    let remote = result.content.remote;
     let keys: Vec<String> = remote.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
@@ -402,10 +344,7 @@ mod tests {
       "Here is some source code",
     );
 
-    let remote = match lockfile.content {
-      LockfileContent::V2(c) => c.remote,
-      _ => unreachable!(),
-    };
+    let remote = lockfile.content.remote;
     let keys: Vec<String> = remote.keys().cloned().collect();
     let expected_keys = vec![
       String::from("https://deno.land/std@0.71.0/async/delay.ts"),
