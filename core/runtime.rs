@@ -1094,9 +1094,7 @@ Pending dynamic modules:\n".to_string();
     Poll::Pending
   }
 
-  fn event_loop_pending_state(
-    &mut self,
-  ) -> EventLoopPendingState {
+  fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
     let isolate = self.v8_isolate.as_mut().unwrap();
     let module_map_rc = Self::module_map(isolate);
     let state = self.state.borrow_mut();
