@@ -9,9 +9,12 @@ use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
 use std::fmt::Write as _;
 
-/// Uniquely identifies a JsError
+/// Uniquely identifies a JsError.
+/// Other error-handling code can use JS object comparisons or object hashes to
+/// compare errors. We don't have access to these identifiers in
+/// format_js_error(), hence the need for this struct.
 #[derive(Debug, PartialEq, Clone)]
-struct ErrorIdentity {
+struct JsErrorIdentity {
   name: Option<String>,
   message: Option<String>,
   stack: Option<String>,
@@ -24,9 +27,9 @@ struct ErrorIdentity {
   aggregated: Option<Vec<JsError>>,
 }
 
-impl From<&JsError> for ErrorIdentity {
-  fn from(error: &JsError) -> ErrorIdentity {
-    ErrorIdentity {
+impl From<&JsError> for JsErrorIdentity {
+  fn from(error: &JsError) -> JsErrorIdentity {
+    JsErrorIdentity {
       name: error.name.clone(),
       message: error.message.clone(),
       stack: error.stack.clone(),
@@ -41,8 +44,8 @@ impl From<&JsError> for ErrorIdentity {
 
 #[derive(Debug, Clone)]
 struct ErrorReference {
-  from: ErrorIdentity,
-  to: ErrorIdentity,
+  from: JsErrorIdentity,
+  to: JsErrorIdentity,
 }
 
 #[derive(Debug, Clone)]
@@ -193,13 +196,13 @@ fn format_maybe_source_line(
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
-  let mut history = Vec::<ErrorIdentity>::new();
+  let mut history = Vec::<JsErrorIdentity>::new();
 
   let mut current_error: &JsError = js_error;
 
   while let Some(cause) = &current_error.cause {
-    let error_identity = ErrorIdentity::from(current_error);
-    let cause_identity = ErrorIdentity::from(cause.as_ref());
+    let error_identity = JsErrorIdentity::from(current_error);
+    let cause_identity = JsErrorIdentity::from(cause.as_ref());
 
     history.push(error_identity.clone());
 
@@ -250,7 +253,7 @@ fn format_js_error_inner(
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
 ) -> String {
-  let error_identity = ErrorIdentity::from(js_error);
+  let error_identity = JsErrorIdentity::from(js_error);
 
   let mut s = String::new();
 
