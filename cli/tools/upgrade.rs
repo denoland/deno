@@ -125,7 +125,6 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let old_exe_path = std::env::current_exe()?;
-  #[allow(unused_variables)]
   let metadata = fs::metadata(&old_exe_path)?;
   let permissions = metadata.permissions();
 
