@@ -17,6 +17,8 @@ use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_runtime::deno_core::futures;
+use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
 use crate::fs_util;
@@ -124,6 +126,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError> {
     let local_path = self.resolve_folder_for_specifier(referrer)?;
     let package_root_path = self.resolve_package_root(&local_path);
@@ -132,8 +135,28 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
       current_folder = get_next_node_modules_ancestor(current_folder);
       let sub_dir = join_package_name(current_folder, name);
       if sub_dir.is_dir() {
-        return Ok(sub_dir);
+        // if doing types resolution, only resolve the package if it specifies a types property
+        if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+          let package_json = PackageJson::load_skip_read_permission(
+            sub_dir.join("package.json"),
+          )?;
+          if package_json.types.is_some() {
+            return Ok(sub_dir);
+          }
+        } else {
+          return Ok(sub_dir);
+        }
       }
+
+      // if doing type resolution, check for the existance of a @types package
+      if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+        let sub_dir =
+          join_package_name(current_folder, &format!("@types/{}", name));
+        if sub_dir.is_dir() {
+          return Ok(sub_dir);
+        }
+      }
+
       if current_folder == self.root_node_modules_path {
         bail!(
           "could not find package '{}' from referrer '{}'.",
@@ -164,15 +187,20 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
+      sync_resolver_with_fs(&resolver).await?;
+      Ok(())
+    }
+    .boxed()
+  }
 
-      sync_resolution_with_fs(
-        &resolver.resolution.snapshot(),
-        &resolver.cache,
-        &resolver.registry_url,
-        &resolver.root_node_modules_path,
-      )
-      .await?;
-
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      resolver.resolution.set_package_reqs(packages).await?;
+      sync_resolver_with_fs(&resolver).await?;
       Ok(())
     }
     .boxed()
@@ -185,6 +213,18 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
   }
+}
+
+async fn sync_resolver_with_fs(
+  resolver: &LocalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  sync_resolution_with_fs(
+    &resolver.resolution.snapshot(),
+    &resolver.cache,
+    &resolver.registry_url,
+    &resolver.root_node_modules_path,
+  )
+  .await
 }
 
 /// Creates a pnpm style folder structure.

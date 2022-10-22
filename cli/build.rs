@@ -202,6 +202,11 @@ fn create_compiler_snapshot(
   }
 
   #[op]
+  fn op_is_node_file() -> bool {
+    false
+  }
+
+  #[op]
   fn op_script_version(
     _state: &mut OpState,
     _args: Value,
@@ -266,6 +271,7 @@ fn create_compiler_snapshot(
         op_build_info::decl(),
         op_cwd::decl(),
         op_exists::decl(),
+        op_is_node_file::decl(),
         op_load::decl(),
         op_script_version::decl(),
       ])
@@ -355,7 +361,10 @@ fn main() {
   #[cfg(target_os = "linux")]
   {
     let ver = glibc_version::get_version().unwrap();
-    if ver.major <= 2 && ver.minor < 35 {
+
+    // If a custom compiler is set, the glibc version is not reliable.
+    // Here, we assume that if a custom compiler is used, that it will be modern enough to support a dynamic symbol list.
+    if env::var("CC").is_err() && ver.major <= 2 && ver.minor < 35 {
       println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
       println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
     } else {
