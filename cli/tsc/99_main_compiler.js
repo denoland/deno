@@ -312,7 +312,7 @@ delete Object.prototype.__proto__;
 
     releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
       const mapKey = path + key;
-      documentRegistrySourceFileCache.remove(mapKey);
+      documentRegistrySourceFileCache.delete(mapKey);
     },
 
     reportStats() {
