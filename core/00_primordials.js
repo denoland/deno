@@ -448,7 +448,7 @@
     new Promise((a, b) =>
       SafePromise.all(
         ArrayPrototypeMap(
-          new SafeArrayIterator(iterable),
+          [...new SafeArrayIterator(iterable)],
           (p) => {
             if (ObjectPrototypeIsPrototypeOf(PromisePrototype, p)) {
               return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
