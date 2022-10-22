@@ -417,6 +417,7 @@
         }
     }
 
+    let entriesLengthWithoutEmptyItems = entriesLength;
     if (options.typeName === "Array") {
       for (
         let i = 0, j = 0;
@@ -433,7 +434,7 @@
 
         if (skipTo) {
           // subtract skipped (empty) items
-          entriesLength -= skipTo - i;
+          entriesLengthWithoutEmptyItems -= skipTo - i;
           i = skipTo;
         }
       }
@@ -478,8 +479,9 @@
       ArrayPrototypeSort(entries);
     }
 
-    if (entriesLength > inspectOptions.iterableLimit) {
-      const nmore = entriesLength - inspectOptions.iterableLimit;
+    if (entriesLengthWithoutEmptyItems > inspectOptions.iterableLimit) {
+      const nmore = entriesLengthWithoutEmptyItems -
+        inspectOptions.iterableLimit;
       ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 

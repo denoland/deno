@@ -19,6 +19,7 @@ use crate::RequireNpmResolver;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
+pub static TYPES_CONDITIONS: &[&str] = &["types"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeModuleKind {
@@ -251,13 +252,17 @@ fn resolve_package_target_string(
         };
         let package_json_url =
           ModuleSpecifier::from_file_path(package_json_path).unwrap();
-        return package_resolve(
+        return match package_resolve(
           &export_target,
           &package_json_url,
           referrer_kind,
           conditions,
           npm_resolver,
-        );
+        ) {
+          Ok(Some(path)) => Ok(path),
+          Ok(None) => Err(generic_error("not found")),
+          Err(err) => Err(err),
+        };
       }
     }
     return Err(throw_invalid_package_target(
@@ -593,7 +598,7 @@ pub fn package_resolve(
   referrer_kind: NodeModuleKind,
   conditions: &[&str],
   npm_resolver: &dyn RequireNpmResolver,
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   let (package_name, package_subpath, _is_scoped) =
     parse_package_name(specifier, referrer)?;
 
@@ -611,13 +616,15 @@ pub fn package_resolve(
         referrer_kind,
         conditions,
         npm_resolver,
-      );
+      )
+      .map(Some);
     }
   }
 
   let package_dir_path = npm_resolver.resolve_package_folder_from_package(
     &package_name,
     &referrer.to_file_path().unwrap(),
+    conditions,
   )?;
   let package_json_path = package_dir_path.join("package.json");
 
@@ -645,13 +652,16 @@ pub fn package_resolve(
       referrer_kind,
       conditions,
       npm_resolver,
-    );
+    )
+    .map(Some);
   }
   if package_subpath == "." {
-    return legacy_main_resolve(&package_json, referrer_kind);
+    return legacy_main_resolve(&package_json, referrer_kind, conditions);
   }
 
-  Ok(package_json.path.parent().unwrap().join(&package_subpath))
+  Ok(Some(
+    package_json.path.parent().unwrap().join(&package_subpath),
+  ))
 }
 
 pub fn get_package_scope_config(
@@ -706,41 +716,40 @@ fn file_exists(path: &Path) -> bool {
 pub fn legacy_main_resolve(
   package_json: &PackageJson,
   referrer_kind: NodeModuleKind,
-) -> Result<PathBuf, AnyError> {
-  let maybe_main = package_json.main(referrer_kind);
+  conditions: &[&str],
+) -> Result<Option<PathBuf>, AnyError> {
+  let is_types = conditions == TYPES_CONDITIONS;
+  let maybe_main = if is_types {
+    package_json.types.as_ref()
+  } else {
+    package_json.main(referrer_kind)
+  };
   let mut guess;
 
   if let Some(main) = maybe_main {
     guess = package_json.path.parent().unwrap().join(main).clean();
     if file_exists(&guess) {
-      return Ok(guess);
+      return Ok(Some(guess));
     }
 
     let mut found = false;
-    // todo(dsherret): investigate exactly how node handles this
-    let endings = match referrer_kind {
-      NodeModuleKind::Cjs => vec![
-        ".js",
-        ".cjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
-      NodeModuleKind::Esm => vec![
-        ".js",
-        ".mjs",
-        ".json",
-        ".node",
-        "/index.js",
-        "/index.mjs",
-        ".cjs",
-        "/index.cjs",
-        "/index.json",
-        "/index.node",
-      ],
+    // todo(dsherret): investigate exactly how node and typescript handles this
+    let endings = if is_types {
+      match referrer_kind {
+        NodeModuleKind::Cjs => {
+          vec![".d.ts", ".d.cts", "/index.d.ts", "/index.d.cts"]
+        }
+        NodeModuleKind::Esm => vec![
+          ".d.ts",
+          ".d.mts",
+          "/index.d.ts",
+          "/index.d.mts",
+          ".d.cts",
+          "/index.d.cts",
+        ],
+      }
+    } else {
+      vec![".js", "/index.js"]
     };
     for ending in endings {
       guess = package_json
@@ -757,21 +766,18 @@ pub fn legacy_main_resolve(
 
     if found {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
+      return Ok(Some(guess));
     }
   }
 
-  let index_file_names = match referrer_kind {
-    NodeModuleKind::Cjs => {
-      vec!["index.js", "index.cjs", "index.json", "index.node"]
+  let index_file_names = if is_types {
+    // todo(dsherret): investigate exactly how typescript does this
+    match referrer_kind {
+      NodeModuleKind::Cjs => vec!["index.d.ts", "index.d.cts"],
+      NodeModuleKind::Esm => vec!["index.d.ts", "index.d.mts", "index.d.cts"],
     }
-    NodeModuleKind::Esm => vec![
-      "index.js",
-      "index.mjs",
-      "index.cjs",
-      "index.json",
-      "index.node",
-    ],
+  } else {
+    vec!["index.js"]
   };
   for index_file_name in index_file_names {
     guess = package_json
@@ -782,11 +788,11 @@ pub fn legacy_main_resolve(
       .clean();
     if file_exists(&guess) {
       // TODO(bartlomieju): emitLegacyIndexDeprecation()
-      return Ok(guess);
+      return Ok(Some(guess));
     }
   }
 
-  Err(generic_error("not found"))
+  Ok(None)
 }
 
 #[cfg(test)]

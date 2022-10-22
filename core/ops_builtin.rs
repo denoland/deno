@@ -38,6 +38,7 @@ pub(crate) fn init_builtins() -> Extension {
       op_read::decl(),
       op_read_all::decl(),
       op_write::decl(),
+      op_write_all::decl(),
       op_shutdown::decl(),
       op_metrics::decl(),
       op_format_file_name::decl(),
@@ -251,6 +252,18 @@ async fn op_write(
   let view = BufView::from(buf);
   let resp = resource.write(view).await?;
   Ok(resp.nwritten() as u32)
+}
+
+#[op]
+async fn op_write_all(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf: ZeroCopyBuf,
+) -> Result<(), Error> {
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  let view = BufView::from(buf);
+  resource.write_all(view).await?;
+  Ok(())
 }
 
 #[op]

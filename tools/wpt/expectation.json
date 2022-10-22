@@ -1334,8 +1334,8 @@
       "patched-global.any.worker.html": true,
       "reentrant-strategies.any.html": true,
       "reentrant-strategies.any.worker.html": true,
-      "tee.any.html": false,
-      "tee.any.worker.html": false,
+      "tee.any.html": true,
+      "tee.any.worker.html": true,
       "templated.any.html": true,
       "templated.any.worker.html": true
     },
@@ -2919,7 +2919,9 @@
         "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
-        "error-after-response.any.html": false,
+        "error-after-response.any.html": {
+          "ignore": true
+        },
         "header-value-combining.any.html": false,
         "header-value-combining.any.worker.html": false,
         "header-value-null-byte.any.html": true,
@@ -2995,6 +2997,8 @@
         "response-static-error.any.worker.html": true,
         "response-static-redirect.any.html": true,
         "response-static-redirect.any.worker.html": true,
+        "response-stream-bad-chunk.any.html": true,
+        "response-stream-bad-chunk.any.worker.html": true,
         "response-stream-disturbed-1.any.html": true,
         "response-stream-disturbed-1.any.worker.html": true,
         "response-stream-disturbed-2.any.html": true,
@@ -3216,20 +3220,8 @@
       }
     },
     "content-encoding": {
-      "bad-gzip-body.any.html": [
-        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
-        "Consuming the body of a resource with bad gzip content with blob() should reject",
-        "Consuming the body of a resource with bad gzip content with formData() should reject",
-        "Consuming the body of a resource with bad gzip content with json() should reject",
-        "Consuming the body of a resource with bad gzip content with text() should reject"
-      ],
-      "bad-gzip-body.any.worker.html": [
-        "Consuming the body of a resource with bad gzip content with arrayBuffer() should reject",
-        "Consuming the body of a resource with bad gzip content with blob() should reject",
-        "Consuming the body of a resource with bad gzip content with formData() should reject",
-        "Consuming the body of a resource with bad gzip content with json() should reject",
-        "Consuming the body of a resource with bad gzip content with text() should reject"
-      ]
+      "bad-gzip-body.any.html": true,
+      "bad-gzip-body.any.worker.html": true
     },
     "content-length": {
       "api-and-duplicate-headers.any.html": [
@@ -3240,9 +3232,7 @@
         "XMLHttpRequest and duplicate Content-Length/Content-Type headers",
         "fetch() and duplicate Content-Length/Content-Type headers"
       ],
-      "too-long.window.html": [
-        "Content-Length header value of network response exceeds response body"
-      ]
+      "too-long.window.html": true
     },
     "content-type": {
       "multipart.window.html": true
@@ -3274,12 +3264,10 @@
     "range": {
       "general.any.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.any.worker.html": [
         "Privileged header not allowed for guard type: request-no-cors",
-        "Fetch with range header will be sent with Accept-Encoding: identity",
         "Cross Origin Fetch with non safe range header"
       ],
       "general.window.html": false
@@ -4570,8 +4558,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
@@ -4660,8 +4646,6 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
-      "Cache interface: existence and properties of interface object",
-      "Cache interface object length",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",

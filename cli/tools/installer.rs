@@ -135,7 +135,17 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
       stem = parent_name.to_string_lossy().to_string();
     }
   }
-  let stem = stem.split_once('@').map_or(&*stem, |x| x.0).to_string();
+
+  // if atmark symbol appears in the index other than 0 (e.g. `foo@bar`) we use
+  // the former part as the inferred name because the latter part is most likely
+  // a version number.
+  match stem.find('@') {
+    Some(at_index) if at_index > 0 => {
+      stem = stem.split_at(at_index).0.to_string();
+    }
+    _ => {}
+  }
+
   Some(stem)
 }
 
@@ -478,6 +488,24 @@ mod tests {
         &Url::parse("https://example.com/abc@def@ghi").unwrap()
       ),
       Some("abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("https://example.com/@abc.ts").unwrap()),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(
+        &Url::parse("https://example.com/@abc/mod.ts").unwrap()
+      ),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///@abc.ts").unwrap()),
+      Some("@abc".to_string())
+    );
+    assert_eq!(
+      infer_name_from_url(&Url::parse("file:///@abc/cli.ts").unwrap()),
+      Some("@abc".to_string())
     );
   }
 

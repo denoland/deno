@@ -27,6 +27,7 @@
     SymbolFor,
     TypeError,
     Uint8ArrayPrototype,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -168,12 +169,15 @@
                   PromisePrototypeThen(
                     (async () => {
                       while (true) {
-                        const { kind } = await core.opAsync(
+                        const kind = new Uint32Array(2);
+                        await core.opAsync(
                           "op_ws_next_event",
                           create.rid,
+                          kind,
                         );
 
-                        if (kind === "close") {
+                        /* close */
+                        if (kind[0] === 2) {
                           break;
                         }
                       }
@@ -237,35 +241,46 @@
                   await this.closed;
                 },
               });
+
               const pull = async (controller) => {
-                const { kind, value } = await core.opAsync(
+                /* [event type, close code] */
+                const eventBuf = new Uint32Array(2);
+                const value = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
+                  eventBuf,
                 );
-
+                const kind = eventBuf[0];
                 switch (kind) {
-                  case "string": {
+                  /* string */
+                  case 0: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "binary": {
+                  /* binary */
+                  case 1: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "ping": {
+                  /* ping */
+                  case 3: {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "pong",
                     });
                     await pull(controller);
                     break;
                   }
-                  case "closed":
-                  case "close": {
-                    this[_closed].resolve(value);
+                  /* closed */
+                  case 6: // falls through
+                  /* close */
+                  case 2: {
+                    const code = eventBuf[1];
+                    this[_closed].resolve({ code, reason: value });
                     core.tryClose(this[_rid]);
                     break;
                   }
-                  case "error": {
+                  /* error */
+                  case 5: {
                     const err = new Error(value);
                     this[_closed].reject(err);
                     controller.error(err);
@@ -285,7 +300,8 @@
                     return pull(controller);
                   }
 
-                  this[_closed].resolve(value);
+                  const code = eventBuf[1];
+                  this[_closed].resolve({ code, reason: value });
                   core.tryClose(this[_rid]);
                 }
               };

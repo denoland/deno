@@ -418,6 +418,7 @@ pub async fn create_main_worker(
         .log_level()
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
+      locale: deno_core::v8::icu::get_language_tag(),
       location: ps.options.location_flag().map(ToOwned::to_owned),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -534,6 +535,7 @@ fn create_web_worker_callback(
           .log_level()
           .map_or(false, |l| l == log::Level::Debug),
         enable_testing_features: ps.options.enable_testing_features(),
+        locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),

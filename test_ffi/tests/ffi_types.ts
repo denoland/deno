@@ -157,12 +157,12 @@ result2.then((_1: Deno.PointerValue) => {});
 
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
-let r3_0: Deno.TypedArray = result3;
+let r3_0: Deno.BufferSource = result3;
 let r3_1: Deno.UnsafePointer = result3;
 
 const result4 = remote.symbols.method19();
 // @ts-expect-error: Invalid argument
-result4.then((_0: Deno.TypedArray) => {});
+result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
@@ -345,19 +345,6 @@ type AssertNotEqual<
   $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
 > = never;
 
-type TypedArray =
-  | Int8Array
-  | Uint8Array
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Uint8ClampedArray
-  | Float32Array
-  | Float64Array
-  | BigInt64Array
-  | BigUint64Array;
-
 type __Tests__ = [
   empty: AssertEqual<
     { symbols: Record<never, never>; close(): void },
@@ -371,7 +358,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray | null,
+          buf: BufferSource | null,
           ptr: Deno.PointerValue | null,
           func: Deno.PointerValue | null,
         ) => void;
@@ -391,7 +378,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: TypedArray | null,
+          buf: BufferSource | null,
           ptr: Deno.PointerValue | null,
           func: Deno.PointerValue | null,
         ) => Deno.PointerValue;
