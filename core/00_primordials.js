@@ -454,7 +454,7 @@
               return new SafePromise((c, d) => PromisePrototypeThen(p, c, d));
             }
 
-            return SafePromise.resolve(p);
+            return p;
           },
         ),
       ).then(a, b)
