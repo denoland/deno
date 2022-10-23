@@ -16,6 +16,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
@@ -1290,6 +1291,11 @@ Deno.test(
   },
 );
 
+function tmpUnixSocketPath(): string {
+  const folder = Deno.makeTempDirSync();
+  return join(folder, "socket");
+}
+
 // https://github.com/denoland/deno/pull/13628
 Deno.test(
   {
@@ -1297,7 +1303,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function httpServerOnUnixSocket() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
 
     let httpConn: Deno.HttpConn;
     const promise = (async () => {
@@ -2239,7 +2245,7 @@ Deno.test("upgradeHttp unix", {
   permissions: { read: true, write: true },
   ignore: Deno.build.os === "windows",
 }, async () => {
-  const filePath = Deno.makeTempFileSync();
+  const filePath = tmpUnixSocketPath();
   const promise = deferred();
 
   async function client() {
@@ -2435,7 +2441,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function httpServerWithoutExclusiveAccessToUnixSocket() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const listener = Deno.listen({ path: filePath, transport: "unix" });
 
     const [clientConn, serverConn] = await Promise.all([
