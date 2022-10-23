@@ -16,6 +16,7 @@ pub struct BootstrapOptions {
   pub cpu_count: usize,
   pub debug_flag: bool,
   pub enable_testing_features: bool,
+  pub locale: String,
   pub location: Option<ModuleSpecifier>,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
@@ -47,6 +48,7 @@ impl Default for BootstrapOptions {
       enable_testing_features: Default::default(),
       debug_flag: Default::default(),
       ts_version: Default::default(),
+      locale: "en-EN".to_string(),
       location: Default::default(),
       unstable: Default::default(),
       inspect: Default::default(),
@@ -63,6 +65,7 @@ impl BootstrapOptions {
       "cpuCount": self.cpu_count,
       "debugFlag": self.debug_flag,
       "denoVersion": self.runtime_version,
+      "locale": self.locale,
       "location": self.location,
       "noColor": self.no_color,
       "isTty": self.is_tty,

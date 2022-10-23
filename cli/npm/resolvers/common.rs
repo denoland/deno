@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
+use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReq;
@@ -25,6 +27,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -37,6 +40,11 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   fn add_package_reqs(
     &self,
     packages: Vec<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>>;
+
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
@@ -77,12 +85,6 @@ pub async fn cache_packages(
     result??;
   }
   Ok(())
-}
-
-/// For some of the tests, we want downloading of packages
-/// to be deterministic so that the output is always the same
-pub fn should_sync_download() -> bool {
-  std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
 }
 
 pub fn ensure_registry_read_permission(

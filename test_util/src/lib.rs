@@ -49,6 +49,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use url::Url;
 
 pub mod assertions;
 pub mod lsp;
@@ -120,8 +121,17 @@ pub fn napi_tests_path() -> PathBuf {
   root_path().join("test_napi")
 }
 
+/// Test server registry url.
+pub fn npm_registry_url() -> String {
+  "http://localhost:4545/npm/registry/".to_string()
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
+}
+
+pub fn std_file_url() -> String {
+  Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
 pub fn target_dir() -> PathBuf {
