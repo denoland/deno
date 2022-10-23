@@ -25,6 +25,7 @@ use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
+use socket2::Protocol;
 use socket2::Socket;
 use socket2::Type;
 use std::borrow::Cow;
@@ -417,9 +418,11 @@ impl Resource for UdpSocketResource {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IpListenArgs {
   hostname: String,
   port: u16,
+  reuse_address: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -468,11 +471,35 @@ fn listen_tcp(
 fn listen_udp(
   state: &mut OpState,
   addr: SocketAddr,
+  reuse_address: Option<bool>,
 ) -> Result<(u32, SocketAddr), AnyError> {
-  let std_socket = std::net::UdpSocket::bind(&addr)?;
-  std_socket.set_nonblocking(true)?;
+  let domain = if addr.is_ipv4() {
+    Domain::IPV4
+  } else {
+    Domain::IPV6
+  };
+  let socket_tmp = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+  if reuse_address.unwrap_or(false) {
+    // This logic is taken from libuv:
+    //
+    // On the BSDs, SO_REUSEPORT implies SO_REUSEADDR but with some additional
+    // refinements for programs that use multicast.
+    //
+    // Linux as of 3.9 has a SO_REUSEPORT socket option but with semantics that
+    // are different from the BSDs: it _shares_ the port rather than steal it
+    // from the current listener. While useful, it's not something we can
+    // emulate on other platforms so we don't enable it.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    socket_tmp.set_reuse_address(true)?;
+    #[cfg(all(unix, not(target_os = "linux")))]
+    socket_tmp.set_reuse_port(true)?;
+  }
+  let socket_addr = socket2::SockAddr::from(addr);
+  socket_tmp.bind(&socket_addr)?;
+  socket_tmp.set_nonblocking(true)?;
   // Enable messages to be sent to the broadcast address (255.255.255.255) by default
-  std_socket.set_broadcast(true)?;
+  socket_tmp.set_broadcast(true)?;
+  let std_socket: std::net::UdpSocket = socket_tmp.into();
   let socket = UdpSocket::from_std(std_socket)?;
   let local_addr = socket.local_addr()?;
   let socket_resource = UdpSocketResource {
@@ -510,9 +537,14 @@ where
         .next()
         .ok_or_else(|| generic_error("No resolved address found"))?;
       let (rid, local_addr) = if transport == "tcp" {
+        if args.reuse_address.is_some() {
+          return Err(generic_error(
+            "The reuseAddress option is not supported for TCP",
+          ));
+        }
         listen_tcp(state, addr)?
       } else {
-        listen_udp(state, addr)?
+        listen_udp(state, addr, args.reuse_address)?
       };
       debug!(
         "New listener {} {}:{}",
@@ -1099,6 +1131,7 @@ mod tests {
     let ip_args = IpListenArgs {
       hostname: String::from(server_addr[0]),
       port: server_addr[1].parse().unwrap(),
+      reuse_address: None,
     };
     let connect_args = ConnectArgs {
       transport: String::from("tcp"),
