@@ -94,6 +94,12 @@ impl TcpStream {
     let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
+
+  fn try_write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
+    let wr = RcRef::map(self, |r| &r.wr).try_borrow_mut().unwrap();
+    let nwritten = wr.try_write(data)?;
+    Ok(nwritten)
+  }
 }
 
 impl Resource for TcpStream {
@@ -118,7 +124,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let ext = deno_core::Extension::builder()
-    .ops(vec![op_listen::decl(), op_accept::decl()])
+    .ops(vec![op_listen::decl(), op_accept::decl(), op_try_write::decl()])
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
@@ -149,6 +155,16 @@ async fn op_accept(
   let stream = listener.accept().await?;
   let rid = state.borrow_mut().resource_table.add(stream);
   Ok(rid)
+}
+
+#[op(fast)]
+fn op_try_write(
+  state: &mut OpState,
+  rid: u32,
+  value: &[u8],
+) -> Result<bool, Error> {
+  let stream = state.resource_table.get::<TcpStream>(rid)?;
+  Ok(stream.try_write(value).is_ok())
 }
 
 fn main() {

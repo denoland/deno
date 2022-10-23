@@ -300,27 +300,26 @@ fn codegen_fast_impl(
   must_be_fast: bool,
 ) -> (bool, TokenStream2, TokenStream2) {
   if is_async {
-    if must_be_fast {
-      panic!("async op cannot be a fast api. enforced by #[op(fast)]")
+    if !must_be_fast {
+      return (false, quote! {}, quote! { None });
     }
-    return (false, quote! {}, quote! { None });
   }
-  let fast_info = can_be_fast_api(core, f);
+  let fast_info = can_be_fast_api(core, f, is_async);
   if must_be_fast && fast_info.is_none() {
     panic!("op cannot be a fast api. enforced by #[op(fast)]")
   }
-  if !is_async {
     if let Some(FastApiSyn {
       args,
       ret,
       use_op_state,
+      use_op_state_refcell,
       use_fast_cb_opts,
       v8_values,
       returns_result,
       slices,
     }) = fast_info
     {
-      let offset = if use_op_state { 1 } else { 0 };
+      let offset = if use_op_state || use_op_state_refcell { 1 } else { 0 };
       let mut inputs = f
         .sig
         .inputs
@@ -347,7 +346,7 @@ fn codegen_fast_impl(
           quote!(#arg)
         })
         .collect::<Vec<_>>();
-      if (!slices.is_empty() || use_op_state || returns_result)
+        if (!slices.is_empty() || use_op_state || use_op_state_refcell || returns_result || is_async)
         && !use_fast_cb_opts
       {
         inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
@@ -367,13 +366,7 @@ fn codegen_fast_impl(
           };
           if slices.get(&idx).is_some() {
             return quote! {
-              match unsafe { &* #ident }.get_storage_if_aligned() {
-                Some(s) => s,
-                None => {
-                  unsafe { &mut * fast_api_callback_options }.fallback = true;
-                  return Default::default();
-                },
-              }
+              unsafe { &* #ident }.get_storage_if_aligned().unwrap()
             };
           }
           if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
@@ -390,63 +383,61 @@ fn codegen_fast_impl(
         })
         .collect::<Vec<_>>();
       let generics = &f.sig.generics;
-      let (impl_generics, ty_generics, where_clause) =
-        generics.split_for_impl();
+      let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
       let type_params = exclude_lifetime_params(&f.sig.generics.params);
+      let output = if returns_result {
+        get_fast_result_return_type(&f.sig.output)
+      } else {
+        let output = &f.sig.output;
+        quote! { #output }
+      };
+      let func_name = format_ident!("func_{}", name);
+      let op_state_name = if use_op_state || use_op_state_refcell {
+        input_idents.first().unwrap().clone()
+      } else {
+        quote! { op_state }
+      };
+      let recv_decl = if use_op_state || use_op_state_refcell || returns_result || is_async {
+        let op_state_decl = if use_op_state_refcell {
+          quote! { let #op_state_name = ctx.state.clone(); }
+        } else {
+          quote! { let #op_state_name = &mut ctx.state.borrow_mut(); }
+        };
+        quote! {
+          // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
+          let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { &mut *fast_api_callback_options };
+          // SAFETY: data union is always created as the `v8::Local<v8::Value>` version.
+          let data = unsafe { opts.data.data };
+          // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
+          let ctx = unsafe {
+            &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
+            as *const #core::_ops::OpCtx)
+          };
+          #op_state_decl
+        }
+      } else {
+        quote! {}
+      };
+  
       let (trampoline, raw_block) = if is_async {
-        // TODO(@littledivy): Fast async calls.
         (
           quote! {
-            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
-              // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-              let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
-              // SAFETY: data union is always created as the `v8::Local<v8::Value>` version
-              let data = unsafe { opts.data.data };
-              // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
-              let ctx = unsafe {
-                &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
-                as *const #core::_ops::OpCtx)
-              };
-              let op_id = ctx.op_id;
-              #core::_ops::queue_async_op(scope, async move {
-                let result = Self::call(#args);
-                (__promise_id, __op_id, #core::_ops::OpResult::Ok(result))
+            fn #func_name (_recv: #core::v8::Local<#core::v8::Object>, __promise_id: i32, __promise_resolver: v8::Local<v8::Function>, #(#inputs),*) {
+              #recv_decl
+              let __op_id = ctx.id;
+              let isolate = unsafe { &mut *ctx.isolate };
+              let resolver = #core::v8::Global::<#core::v8::Function>::new(isolate, __promise_resolver);
+              #core::_ops::queue_fast_async_op(isolate, async move {
+                let result = #name::call::<#type_params>(#(#input_idents),*).await;
+                (resolver, __promise_id, __op_id, #core::OpResult::Ok(result.into()))
               });
             }
-            func as *const _
           },
-          quote! {},
+          quote! {
+            #func_name::<#type_params> as *const _
+          },
         )
       } else {
-        let output = if returns_result {
-          get_fast_result_return_type(&f.sig.output)
-        } else {
-          let output = &f.sig.output;
-          quote! { #output }
-        };
-        let func_name = format_ident!("func_{}", name);
-        let op_state_name = if use_op_state {
-          input_idents.first().unwrap().clone()
-        } else {
-          quote! { op_state }
-        };
-        let recv_decl = if use_op_state || returns_result {
-          quote! {
-            // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-            let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { &mut *fast_api_callback_options };
-            // SAFETY: data union is always created as the `v8::Local<v8::Value>` version.
-            let data = unsafe { opts.data.data };
-            // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
-            let ctx = unsafe {
-              &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
-              as *const #core::_ops::OpCtx)
-            };
-            let #op_state_name = &mut std::cell::RefCell::borrow_mut(&ctx.state);
-          }
-        } else {
-          quote! {}
-        };
-
         let result_handling = if returns_result {
           quote! {
             match result {
@@ -463,7 +454,7 @@ fn codegen_fast_impl(
         } else {
           quote! { result }
         };
-
+  
         (
           quote! {
             fn #func_name #generics (_recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
@@ -477,18 +468,18 @@ fn codegen_fast_impl(
           },
         )
       };
-
+  
       let fast_struct = format_ident!("fast_{}", name);
-      let (type_params, ty_generics, struct_generics) =
-        if type_params.is_empty() {
-          (quote! { () }, quote! {}, quote! {})
-        } else {
-          (
-            quote! { #type_params },
-            quote! { #ty_generics },
-            quote! { ::<#type_params> },
-          )
-        };
+      let (type_params, ty_generics, struct_generics) = if type_params.is_empty()
+      {
+        (quote! { () }, quote! {}, quote! {})
+      } else {
+        (
+          quote! { #type_params },
+          quote! { #ty_generics },
+          quote! { ::<#type_params> },
+        )
+      };
       return (
         returns_result,
         quote! {
@@ -513,10 +504,9 @@ fn codegen_fast_impl(
         quote! { Some(Box::new(#fast_struct #struct_generics { _phantom: ::std::marker::PhantomData })) },
       );
     }
-  }
-
-  // Default impl to satisfy generic bounds for non-fast ops
-  (false, quote! {}, quote! { None })
+  
+    // Default impl to satisfy generic bounds for non-fast ops
+    (false, quote! {}, quote! { None })
 }
 
 /// Generate the body of a v8 func for a sync op
@@ -583,16 +573,21 @@ struct FastApiSyn {
   args: TokenStream2,
   ret: TokenStream2,
   use_op_state: bool,
+  use_op_state_refcell: bool,
   use_fast_cb_opts: bool,
   v8_values: Vec<usize>,
   returns_result: bool,
   slices: HashMap<usize, TokenStream2>,
 }
 
-fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
+fn can_be_fast_api(
+  core: &TokenStream2,
+  f: &syn::ItemFn,
+  is_async: bool,
+) -> Option<FastApiSyn> {
   let inputs = &f.sig.inputs;
   let mut returns_result = false;
-  let ret = match &f.sig.output {
+  let mut ret = match &f.sig.output {
     syn::ReturnType::Default => quote!(#core::v8::fast_api::CType::Void),
     syn::ReturnType::Type(_, ty) => match is_fast_return_type(core, ty) {
       Some((ret, is_result)) => {
@@ -604,19 +599,30 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
   };
 
   let mut use_op_state = false;
+  let mut use_op_state_refcell = false;
   let mut use_fast_cb_opts = false;
   let mut v8_values = Vec::new();
   let mut slices = HashMap::new();
   let mut args = vec![quote! { #core::v8::fast_api::Type::V8Value }];
+  if is_async {
+    args.push(quote! { #core::v8::fast_api::Type::Int32 });
+    args.push(quote! { #core::v8::fast_api::Type::V8Value });
+  }
   for (pos, input) in inputs.iter().enumerate() {
     if pos == inputs.len() - 1 && is_optional_fast_callback_option(input) {
       use_fast_cb_opts = true;
       continue;
     }
 
-    if pos == 0 && is_mut_ref_opstate(input) {
-      use_op_state = true;
-      continue;
+    if pos == 0 { 
+      if is_mut_ref_opstate(input) {
+        use_op_state = true;
+        continue;
+      }
+      if is_rc_refcell_opstate(input) {
+        use_op_state_refcell = true;
+        continue;
+      }
     }
 
     let ty = match input {
@@ -653,9 +659,14 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     }
   }
 
-  if use_fast_cb_opts || use_op_state {
+  if use_fast_cb_opts || use_op_state || use_op_state_refcell || is_async {
     // Push CallbackOptions into args; it must be the last argument.
     args.push(quote! { #core::v8::fast_api::Type::CallbackOptions });
+  }
+
+  // Currently, fast async ops return a firing status code.
+  if is_async {
+    ret = quote! { #core::v8::fast_api::CType::Void };
   }
 
   let args = args
@@ -667,6 +678,7 @@ fn can_be_fast_api(core: &TokenStream2, f: &syn::ItemFn) -> Option<FastApiSyn> {
     args: args.parse().unwrap(),
     ret,
     use_op_state,
+    use_op_state_refcell,
     slices,
     v8_values,
     use_fast_cb_opts,

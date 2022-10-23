@@ -6,7 +6,7 @@ Deno.core.initializeAsyncOps();
 
 const { ops } = Deno.core;
 
-const requestBuf = new Uint8Array(64 * 1024);
+const requestBuf = new Uint8Array(4 * 1024);
 const responseBuf = new Uint8Array(
   "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n"
     .split("")
@@ -24,17 +24,10 @@ function accept(serverRid) {
 }
 
 async function serve(rid) {
-  try {
-    while (true) {
-      await Deno.core.read(rid, requestBuf);
+  while (true) {
+    await Deno.core.read(rid, requestBuf);
+    if (!ops.op_try_write(rid, responseBuf)) {
       await Deno.core.writeAll(rid, responseBuf);
-    }
-  } catch (e) {
-    if (
-      !e.message.includes("Broken pipe") &&
-      !e.message.includes("Connection reset by peer")
-    ) {
-      throw e;
     }
   }
   Deno.core.close(rid);

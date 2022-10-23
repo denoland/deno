@@ -39,6 +39,7 @@ impl ToV8 for StringOrBuffer {
           ZeroCopyBuf::ToV8(ref mut x) => {
             x.take().expect("ZeroCopyBuf was empty")
           }
+          _ => unreachable!(),
         };
         let backing_store =
           v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);

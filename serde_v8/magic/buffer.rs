@@ -17,7 +17,11 @@ pub enum ZeroCopyBuf {
   // Variant of the ZeroCopyBuf than is never exposed to the JS.
   // Generally used to pass Vec<u8> backed buffers to resource methods.
   Temp(Vec<u8>),
+  UnsafeSlice(*mut u8, usize),
 }
+
+unsafe impl Send for ZeroCopyBuf {}
+unsafe impl Sync for ZeroCopyBuf {}
 
 impl_magic!(ZeroCopyBuf);
 
@@ -43,6 +47,10 @@ impl ZeroCopyBuf {
       _ => unreachable!(),
     }
   }
+
+  pub fn from_slice(slice: &[u8]) -> Self {
+    ZeroCopyBuf::UnsafeSlice(slice.as_ptr() as *mut u8, slice.len())
+  }
 }
 
 impl Clone for ZeroCopyBuf {
@@ -50,6 +58,7 @@ impl Clone for ZeroCopyBuf {
     match self {
       Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
       Self::Temp(vec) => Self::Temp(vec.clone()),
+      Self::UnsafeSlice(ptr, len) => Self::UnsafeSlice(*ptr, *len),
       Self::ToV8(_) => panic!("Don't Clone a ZeroCopyBuf sent to v8"),
     }
   }
@@ -73,6 +82,7 @@ impl Deref for ZeroCopyBuf {
     match self {
       Self::FromV8(buf) => buf,
       Self::Temp(vec) => vec,
+      Self::UnsafeSlice(ptr, len) => unsafe { std::slice::from_raw_parts(*ptr, *len) },
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -83,6 +93,7 @@ impl DerefMut for ZeroCopyBuf {
     match self {
       Self::FromV8(buf) => &mut *buf,
       Self::Temp(vec) => &mut *vec,
+      Self::UnsafeSlice(ptr, len) => unsafe { std::slice::from_raw_parts_mut(*ptr, *len) },
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -110,8 +121,8 @@ impl ToV8 for ZeroCopyBuf {
         let value: &[u8] = buf;
         value.into()
       }
-      Self::Temp(_) => unreachable!(),
       Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
+      Self::UnsafeSlice(_, _) | Self::Temp(_) => unreachable!(),
     };
 
     if buf.is_empty() {
@@ -152,6 +163,7 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
         v.take().expect("ZeroCopyBuf was empty").into()
       }
       ZeroCopyBuf::Temp(v) => v.into(),
+      ZeroCopyBuf::UnsafeSlice(_, _) => todo!(),
     }
   }
 }

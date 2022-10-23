@@ -309,21 +309,6 @@ impl JsRuntime {
       op_state.get_error_class_fn = get_error_class_fn;
     }
     let op_state = Rc::new(RefCell::new(op_state));
-    let op_ctxs = ops
-      .into_iter()
-      .enumerate()
-      .map(|(id, decl)| OpCtx {
-        id,
-        state: op_state.clone(),
-        decl,
-      })
-      .collect::<Vec<_>>()
-      .into_boxed_slice();
-
-    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
-    // V8 takes ownership of external_references.
-    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let global_context;
 
     let align = std::mem::align_of::<usize>();
     let layout = std::alloc::Layout::from_size_align(
@@ -335,6 +320,22 @@ impl JsRuntime {
     let isolate_ptr: *mut v8::OwnedIsolate =
       // SAFETY: we just asserted that layout has non-0 size.
       unsafe { std::alloc::alloc(layout) as *mut _ };
+    let op_ctxs = ops
+      .into_iter()
+      .enumerate()
+      .map(|(id, decl)| OpCtx {
+        id,
+        state: op_state.clone(),
+        decl,
+        isolate: isolate_ptr,
+      })
+      .collect::<Vec<_>>()
+      .into_boxed_slice();
+
+    let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
+    // V8 takes ownership of external_references.
+    let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
+    let global_context;
 
     let mut isolate = if options.will_snapshot {
       // TODO(ry) Support loading snapshots before snapshotting.
@@ -2078,6 +2079,18 @@ impl JsRealm {
 }
 
 #[inline]
+pub fn queue_fast_async_op(
+  scope: &v8::Isolate,
+  op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
+  + 'static,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true; 
+}
+
+#[inline]
 pub fn queue_async_op(
   state: Rc<RefCell<OpState>>,
   scope: &mut v8::HandleScope,
@@ -2085,6 +2098,13 @@ pub fn queue_async_op(
   op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
     + 'static,
 ) {
+  if deferred {
+    let state_rc = JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
+    state.pending_ops.push(OpCall::lazy(op));
+    state.have_unpolled_ops = true;
+    return;
+  }
   match OpCall::eager(op) {
     // This calls promise.resolve() before the control goes back to userland JS. It works something
     // along the lines of:

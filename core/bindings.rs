@@ -167,7 +167,7 @@ pub fn initialize_context<'s>(
     ops_obj.set(scope, key.into(), val.into());
   }
 
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
+  initialize_ops(scope, ops_obj, op_ctxs, !will_snapshot);
   scope.escape(context)
 }
 
