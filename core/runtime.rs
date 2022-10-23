@@ -1894,8 +1894,6 @@ impl JsRuntime {
 
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
-    let isolate = self.v8_isolate.as_mut().unwrap();
-
     loop {
       let mut state = self.state.borrow_mut();
       state.have_unpolled_ops = false;
@@ -2107,12 +2105,16 @@ impl JsRealm {
 
 #[inline]
 pub fn queue_fast_async_op(
-  scope: &v8::Isolate,
+  ctx: &OpCtx,
   op: impl Future<Output = (v8::Global<v8::Function>, PromiseId, OpId, OpResult)>
   + 'static,
 ) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+  let mut state = runtime_state.borrow_mut();
   state.pending_ops.push(OpCall::lazy(op));
   state.have_unpolled_ops = true; 
 }
@@ -2150,7 +2152,7 @@ pub fn queue_async_op(
     // return p;
     EagerPollResult::Ready((resolver, _, op_id, mut resp)) if !deferred => {
       let arg = resp.to_v8(scope).unwrap();
-      state.borrow().tracker.track_async_completed(op_id);
+      ctx.state.borrow().tracker.track_async_completed(op_id);
       let tc_scope = &mut v8::TryCatch::new(scope);
       let js_recv_cb = resolver.open(tc_scope);
       let this = v8::undefined(tc_scope).into();

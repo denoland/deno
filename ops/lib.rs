@@ -262,7 +262,7 @@ fn codegen_v8_async(
       };
 
       #pre_result
-      #core::_ops::queue_async_op(state, scope, #deferred, async move {
+      #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
         let result = #result_fut
         #result_wrapper
         (resolver_global, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
@@ -425,7 +425,7 @@ fn codegen_fast_impl(
               let __op_id = ctx.id;
               let isolate = unsafe { &mut *ctx.isolate };
               let resolver = #core::v8::Global::<#core::v8::Function>::new(isolate, __promise_resolver);
-              #core::_ops::queue_fast_async_op(isolate, async move {
+              #core::_ops::queue_fast_async_op(ctx, async move {
                 let result = #name::call::<#type_params>(#(#input_idents),*).await;
                 (resolver, __promise_id, __op_id, #core::OpResult::Ok(result.into()))
               });
