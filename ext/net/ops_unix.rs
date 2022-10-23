@@ -20,7 +20,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::fs::remove_file;
 use std::path::Path;
 use std::rc::Rc;
 use tokio::net::UnixDatagram;
@@ -143,9 +142,6 @@ pub fn listen_unix(
   state: &mut OpState,
   addr: &Path,
 ) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
-  if addr.exists() {
-    remove_file(&addr)?;
-  }
   let listener = UnixListener::bind(&addr)?;
   let local_addr = listener.local_addr()?;
   let listener_resource = UnixListenerResource {
@@ -161,9 +157,6 @@ pub fn listen_unix_packet(
   state: &mut OpState,
   addr: &Path,
 ) -> Result<(u32, tokio::net::unix::SocketAddr), AnyError> {
-  if addr.exists() {
-    remove_file(&addr)?;
-  }
   let socket = UnixDatagram::bind(&addr)?;
   let local_addr = socket.local_addr()?;
   let datagram_resource = UnixDatagramResource {
