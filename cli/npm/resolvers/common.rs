@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -26,6 +27,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -38,6 +40,11 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   fn add_package_reqs(
     &self,
     packages: Vec<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>>;
+
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;

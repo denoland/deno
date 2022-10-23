@@ -148,10 +148,6 @@
     return ops[opName](...args);
   }
 
-  function opSync(opName, ...args) {
-    return ops[opName](...args);
-  }
-
   function invalidPromise(promiseId) {
     return promiseId < 0 || promiseId >= nextPromiseId;
   }
@@ -273,7 +269,6 @@
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
-    opSync,
     initializeAsyncOps,
     resources,
     metrics,
