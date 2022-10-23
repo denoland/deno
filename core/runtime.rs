@@ -880,13 +880,13 @@ impl JsRuntime {
 
   fn pump_v8_message_loop(&mut self) -> Result<(), Error> {
     let scope = &mut self.handle_scope();
-    while v8::Platform::pump_message_loop(
-      &v8::V8::get_current_platform(),
-      scope,
-      false, // don't block if there are no tasks
-    ) {
-      // do nothing
-    }
+    // while v8::Platform::pump_message_loop(
+    //   &v8::V8::get_current_platform(),
+    //   scope,
+    //   false, // don't block if there are no tasks
+    // ) {
+    //   // do nothing
+    // }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
     tc_scope.perform_microtask_checkpoint();
@@ -966,8 +966,7 @@ impl JsRuntime {
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
     // We always poll the inspector first
-    let _ = self.inspector().borrow_mut().poll_unpin(cx);
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    // let _ = self.inspector().borrow_mut().poll_unpin(cx);
     {
       let state = self.state.borrow();
       state.waker.register(cx.waker());
@@ -978,48 +977,48 @@ impl JsRuntime {
     // Ops
     {
       self.resolve_async_ops(cx)?;
-      self.drain_nexttick()?;
-      self.drain_macrotasks()?;
-      self.check_promise_exceptions()?;
+      // self.drain_nexttick()?;
+      // self.drain_macrotasks()?;
+      // self.check_promise_exceptions()?;
     }
     // Dynamic module loading - ie. modules loaded using "import()"
-    {
-      // Run in a loop so that dynamic imports that only depend on another
-      // dynamic import can be resolved in this event loop iteration.
-      //
-      // For example, a dynamically imported module like the following can be
-      // immediately resolved after `dependency.ts` is fully evaluated, but it
-      // wouldn't if not for this loop.
-      //
-      //    await delay(1000);
-      //    await import("./dependency.ts");
-      //    console.log("test")
-      //
-      loop {
-        let poll_imports = self.prepare_dyn_imports(cx)?;
-        assert!(poll_imports.is_ready());
+    // {
+    //   // Run in a loop so that dynamic imports that only depend on another
+    //   // dynamic import can be resolved in this event loop iteration.
+    //   //
+    //   // For example, a dynamically imported module like the following can be
+    //   // immediately resolved after `dependency.ts` is fully evaluated, but it
+    //   // wouldn't if not for this loop.
+    //   //
+    //   //    await delay(1000);
+    //   //    await import("./dependency.ts");
+    //   //    console.log("test")
+    //   //
+    //   loop {
+    //     let poll_imports = self.prepare_dyn_imports(cx)?;
+    //     assert!(poll_imports.is_ready());
 
-        let poll_imports = self.poll_dyn_imports(cx)?;
-        assert!(poll_imports.is_ready());
+    //     let poll_imports = self.poll_dyn_imports(cx)?;
+    //     assert!(poll_imports.is_ready());
 
-        if !self.evaluate_dyn_imports() {
-          break;
-        }
-      }
+    //     if !self.evaluate_dyn_imports() {
+    //       break;
+    //     }
+    //   }
 
-      self.check_promise_exceptions()?;
-    }
+    //   self.check_promise_exceptions()?;
+    // }
 
     // Event loop middlewares
     let mut maybe_scheduling = false;
-    {
-      let op_state = self.state.borrow().op_state.clone();
-      for f in &self.event_loop_middlewares {
-        if f(op_state.clone(), cx) {
-          maybe_scheduling = true;
-        }
-      }
-    }
+    // {
+    //   let op_state = self.state.borrow().op_state.clone();
+    //   for f in &self.event_loop_middlewares {
+    //     if f(op_state.clone(), cx) {
+    //       maybe_scheduling = true;
+    //     }
+    //   }
+    // }
 
     // Top level module
     self.evaluate_pending_module();
@@ -1036,7 +1035,6 @@ impl JsRuntime {
     }
 
     let mut state = self.state.borrow_mut();
-    let module_map = module_map_rc.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -1078,7 +1076,10 @@ impl JsRuntime {
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
-        for pending_evaluate in &state.pending_dyn_mod_evaluate {
+        drop(state);
+        let module_map_rc = Self::module_map(self.v8_isolate());
+        let module_map = module_map_rc.borrow();
+        for pending_evaluate in &self.state.borrow().pending_dyn_mod_evaluate {
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
@@ -1656,16 +1657,15 @@ impl JsRuntime {
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
   fn evaluate_pending_module(&mut self) {
-    let state_rc = self.state.clone();
-
     let maybe_module_evaluation =
-      state_rc.borrow_mut().pending_mod_evaluate.take();
+    self.state.borrow_mut().pending_mod_evaluate.take();
 
     if maybe_module_evaluation.is_none() {
       return;
     }
 
     let mut module_evaluation = maybe_module_evaluation.unwrap();
+    let state_rc = self.state.clone();
     let scope = &mut self.handle_scope();
 
     let promise_global = module_evaluation.promise.clone().unwrap();
