@@ -349,7 +349,7 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &op_ctxs, false);
+        let context = bindings::initialize_context(scope, &op_ctxs, false, true);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -387,7 +387,7 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, false);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -521,6 +521,7 @@ impl JsRuntime {
         scope,
         &Self::state(self.v8_isolate()).borrow().op_ctxs,
         self.built_from_snapshot,
+        false,
       );
       JsRealm::new(v8::Global::new(scope, context))
     };

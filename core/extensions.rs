@@ -17,6 +17,7 @@ pub struct OpDecl {
   pub is_async: bool,
   pub is_unstable: bool,
   pub is_v8: bool,
+  pub argc: usize,
   pub fast_fn: Option<Box<dyn FastFunction>>,
 }
 

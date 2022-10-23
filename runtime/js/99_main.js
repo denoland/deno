@@ -681,6 +681,7 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
@@ -778,6 +779,7 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
+    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;

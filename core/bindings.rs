@@ -23,6 +23,12 @@ pub fn external_references(
       function: call_console.map_fn_to(),
     },
     v8::ExternalReference {
+      function: async_ops_info.map_fn_to(),
+    },
+    v8::ExternalReference {
+      pointer: ops as *const _ as *mut c_void,
+    },
+    v8::ExternalReference {
       function: import_meta_resolve.map_fn_to(),
     },
     v8::ExternalReference {
@@ -97,6 +103,7 @@ pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -116,7 +123,22 @@ pub fn initialize_context<'s>(
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
-
+    {
+      let key = v8::String::new(scope, "asyncOpsInfo").unwrap();
+      let external = v8::External::new(
+        scope,
+        Box::into_raw(Box::new(AsyncOpsInfo {
+          ptr: op_ctxs as *const [OpCtx] as _,
+          len: op_ctxs.len(),
+        })) as *mut c_void,
+      );
+      let val = v8::Function::builder(async_ops_info)
+        .data(external.into())
+        .build(scope)
+        .unwrap();
+      val.set_name(key);
+      ops_obj.set(scope, key.into(), val.into());
+    }
     return scope.escape(context);
   }
 
@@ -128,9 +150,30 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  if !will_snapshot {
+    let key = v8::String::new(scope, "asyncOpsInfo").unwrap();
+    let external = v8::External::new(
+      scope,
+      Box::into_raw(Box::new(AsyncOpsInfo {
+        ptr: op_ctxs as *const [OpCtx] as _,
+        len: op_ctxs.len(),
+      })) as *mut c_void,
+    );
+    let val = v8::Function::builder(async_ops_info)
+      .data(external.into())
+      .build(scope)
+      .unwrap();
+    val.set_name(key);
+    ops_obj.set(scope, key.into(), val.into());
+  }
 
   initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
   scope.escape(context)
+}
+
+struct AsyncOpsInfo {
+  ptr: *const OpCtx,
+  len: usize,
 }
 
 fn initialize_ops(
@@ -534,6 +577,24 @@ fn call_console(
 
   inspector_console_method.call(scope, receiver.into(), &call_args);
   deno_console_method.call(scope, receiver.into(), &call_args);
+}
+
+fn async_ops_info(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let async_op_names = v8::Object::new(scope);
+  let external: v8::Local<v8::External> = args.data().try_into().unwrap();
+  let info: &AsyncOpsInfo =
+    unsafe { &*(external.value() as *const AsyncOpsInfo) };
+  let op_ctxs = unsafe { std::slice::from_raw_parts(info.ptr, info.len) };
+  for ctx in op_ctxs.iter().filter(|ctx| ctx.decl.is_async) {
+    let name = v8::String::new(scope, &ctx.decl.name).unwrap();
+    let argc = v8::Integer::new(scope, ctx.decl.argc as i32);
+    async_op_names.set(scope, name.into(), argc.into());
+  }
+  rv.set(async_op_names.into());
 }
 
 /// Called by V8 during `JsRuntime::instantiate_module`.
