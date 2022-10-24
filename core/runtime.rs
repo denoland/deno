@@ -369,9 +369,23 @@ impl JsRuntime {
     let global_context;
 
     let mut isolate = if options.will_snapshot {
-      // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(options.startup_snapshot.is_none());
-      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+      let (snapshot_creator, snapshot_loaded) = if let Some(snapshot) = options.startup_snapshot {
+        println!("1");
+        (match snapshot {
+          Snapshot::Static(data) => {
+            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
+          },
+          Snapshot::JustCreated(data) => {
+            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
+          }
+          Snapshot::Boxed(data) => {
+            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
+          }
+        }, true)
+      } else {
+        (v8::Isolate::snapshot_creator(Some(refs)), false)
+      };
+
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -382,7 +396,7 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, true);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -420,7 +434,7 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, false);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -534,7 +548,6 @@ impl JsRuntime {
         scope,
         &self.state.borrow().op_ctxs,
         self.built_from_snapshot,
-        self.snapshot_creator.is_some(),
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -2090,8 +2103,7 @@ impl JsRealm {
     name: &str,
     source_code: &str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    let mut scope1 = self.handle_scope(isolate);
-    let scope = &mut self.context_scope(&mut scope1);
+    let scope = &mut self.handle_scope(isolate);
 
     let source = v8::String::new(scope, source_code).unwrap();
     let name = v8::String::new(scope, name).unwrap();
