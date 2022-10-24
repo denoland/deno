@@ -1885,6 +1885,12 @@ declare namespace Deno {
 
   /** @category I/O */
   export interface SetRawOptions {
+    /**
+     * The `cbreak` option can be used to indicate that characters that
+     * correspond to a signal should still be generated. When disabling raw
+     * mode, this option is ignored. This functionality currently only works on
+     * Linux and Mac OS.
+     */
     cbreak: boolean;
   }
 
@@ -1917,11 +1923,6 @@ declare namespace Deno {
      * characters by the terminal is disabled, including echoing input
      * characters. Reading from a TTY device in raw mode is faster than reading
      * from a TTY device in canonical mode.
-     *
-     * The `cbreak` option can be used to indicate that characters that
-     * correspond to a signal should still be generated. When disabling raw
-     * mode, this option is ignored. This functionality currently only works on
-     * Linux and Mac OS.
      *
      * ```ts
      * Deno.stdin.setRaw(true, { cbreak: true });
