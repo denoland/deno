@@ -906,3 +906,102 @@ Deno.test({
   );
   listener.close();
 });
+
+Deno.test({ permissions: { net: true } }, async function netTcpReuseAddr() {
+  const listener1 = Deno.listen({
+    hostname: "127.0.0.1",
+    port: 3500,
+  });
+  listener1.accept().then(
+    (conn) => {
+      conn.close();
+    },
+  );
+
+  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const buf1 = new Uint8Array(1024);
+  await conn1.read(buf1);
+  listener1.close();
+  conn1.close();
+
+  const listener2 = Deno.listen({
+    hostname: "127.0.0.1",
+    port: 3500,
+  });
+
+  listener2.accept().then(
+    (conn) => {
+      conn.close();
+    },
+  );
+
+  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const buf2 = new Uint8Array(1024);
+  await conn2.read(buf2);
+
+  listener2.close();
+  conn2.close();
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpReuseAddr() {
+    const sender = Deno.listenDatagram({
+      port: 4002,
+      transport: "udp",
+    });
+    const listener1 = Deno.listenDatagram({
+      port: 4000,
+      transport: "udp",
+      reuseAddress: true,
+    });
+    const listener2 = Deno.listenDatagram({
+      port: 4000,
+      transport: "udp",
+      reuseAddress: true,
+    });
+
+    const sent = new Uint8Array([1, 2, 3]);
+    await sender.send(sent, listener1.addr);
+    await Promise.any([listener1.receive(), listener2.receive()]).then(
+      ([recvd, remote]) => {
+        assert(remote.transport === "udp");
+        assertEquals(recvd.length, 3);
+        assertEquals(1, recvd[0]);
+        assertEquals(2, recvd[1]);
+        assertEquals(3, recvd[2]);
+      },
+    );
+    sender.close();
+    listener1.close();
+    listener2.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  function netUdpNoReuseAddr() {
+    let listener1;
+    try {
+      listener1 = Deno.listenDatagram({
+        port: 4001,
+        transport: "udp",
+        reuseAddress: false,
+      });
+    } catch (err) {
+      assert(err);
+      assert(err instanceof Deno.errors.AddrInUse); // AddrInUse from previous test
+    }
+
+    assertThrows(() => {
+      Deno.listenDatagram({
+        port: 4001,
+        transport: "udp",
+        reuseAddress: false,
+      });
+    }, Deno.errors.AddrInUse);
+    if (typeof listener1 !== "undefined") {
+      listener1.close();
+    }
+  },
+);

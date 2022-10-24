@@ -1073,6 +1073,17 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category Network
+   */
+  export interface UdpListenOptions extends ListenOptions {
+    /** When `true` the specified address will be reused, even if another
+     * process has already bound a socket on it. This effectively steals the
+     * socket from the listener. Defaults to `false`. */
+    reuseAddress?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1110,7 +1121,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" },
+    options: UdpListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
