@@ -1883,9 +1883,7 @@ declare namespace Deno {
    */
   export const File: typeof FsFile;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   *  @category I/O */
+  /** @category I/O */
   export interface SetRawOptions {
     cbreak: boolean;
   }
@@ -1913,8 +1911,7 @@ declare namespace Deno {
     readonly rid: number;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
-    /** **UNSTABLE**: new API, yet to be vetted.
-     *
+    /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input
