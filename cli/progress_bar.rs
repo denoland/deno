@@ -126,4 +126,18 @@ impl ProgressBar {
       inner.pb = None;
     }
   }
+
+  pub fn clear_guard(&self) -> ClearGuard {
+    ClearGuard { pb: self.clone() }
+  }
+}
+
+pub struct ClearGuard {
+  pb: ProgressBar,
+}
+
+impl Drop for ClearGuard {
+  fn drop(&mut self) {
+    self.pb.clear();
+  }
 }

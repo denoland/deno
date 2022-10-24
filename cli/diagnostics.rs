@@ -27,7 +27,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Location",
   "Metrics",
   "OpMetrics",
-  "SetRawOptions",
   "SignalStream",
   "StartTlsOptions",
   "SystemMemoryInfo",
