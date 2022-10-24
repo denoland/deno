@@ -57,6 +57,7 @@ delete Intl.v8BreakIterator;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
+  const net = window.__bootstrap.net;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const urlPattern = window.__bootstrap.urlPattern;
@@ -682,6 +683,8 @@ delete Intl.v8BreakIterator;
     }
 
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
@@ -779,6 +782,8 @@ delete Intl.v8BreakIterator;
     }
 
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
