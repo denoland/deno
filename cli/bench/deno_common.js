@@ -31,6 +31,7 @@ sync(); // Warmup
 // Void ops measure op-overhead
 Deno.bench("op_void_sync", () => sync());
 
+// Full event loop tick.
 Deno.bench(
   "op_void_async",
   () => op_void_async(),

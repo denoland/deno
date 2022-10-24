@@ -121,6 +121,8 @@ opt-level = 3
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
 opt-level = 3
+[profile.release.package.polloi]
+opt-level = 3
 [profile.release.package.flate2]
 opt-level = 3
 [profile.release.package.brotli]

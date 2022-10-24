@@ -82,7 +82,9 @@ impl Deref for ZeroCopyBuf {
     match self {
       Self::FromV8(buf) => buf,
       Self::Temp(vec) => vec,
-      Self::UnsafeSlice(ptr, len) => unsafe { std::slice::from_raw_parts(*ptr, *len) },
+      Self::UnsafeSlice(ptr, len) => unsafe {
+        std::slice::from_raw_parts(*ptr, *len)
+      },
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -93,7 +95,9 @@ impl DerefMut for ZeroCopyBuf {
     match self {
       Self::FromV8(buf) => &mut *buf,
       Self::Temp(vec) => &mut *vec,
-      Self::UnsafeSlice(ptr, len) => unsafe { std::slice::from_raw_parts_mut(*ptr, *len) },
+      Self::UnsafeSlice(ptr, len) => unsafe {
+        std::slice::from_raw_parts_mut(*ptr, *len)
+      },
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }

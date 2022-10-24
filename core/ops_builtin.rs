@@ -68,7 +68,9 @@ fn op_add(a: i32, b: i32) -> i32 {
 #[op(fast)]
 pub fn op_void_sync() {}
 
-#[op]
+// Note: this is a "lazy" call with "fast" scheduling to measure
+// call overhead of full event loop tick not just scheduling.
+#[op(fast)]
 pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
@@ -163,11 +165,7 @@ pub fn op_wasm_streaming_set_url(
 }
 
 #[op(fast)]
-async fn op_read(
-  state: Rc<RefCell<OpState>>,
-  rid: u32,
-  buf: &[u8],
-) {
+async fn op_read(state: Rc<RefCell<OpState>>, rid: u32, buf: &[u8]) {
   let resource = state.borrow().resource_table.get_any(rid).unwrap();
   let view = BufMutView::from(ZeroCopyBuf::from_slice(buf));
   let _ = resource.read_byob(view).await.map(|(n, _)| n as u32);

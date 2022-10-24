@@ -1,13 +1,9 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::op;
-use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
 use deno_core::JsRuntime;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use std::cell::RefCell;
@@ -20,9 +16,6 @@ use std::rc::Rc;
 // You can remove this:
 use deno_core::*;
 
-// Note: a `tokio::net::TcpListener` doesn't need to be wrapped in a cell,
-// because it only supports one op (`accept`) which does not require a mutable
-// reference to the listener.
 struct TcpListener {
   inner: polloi::TcpListener,
 }
@@ -52,7 +45,7 @@ impl TcpStream {
   }
 
   fn try_write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    let nwritten = self.inner.try_write2(data)?;
+    let nwritten = self.inner.try_write(data)?;
     Ok(nwritten)
   }
 }
@@ -72,7 +65,11 @@ impl From<polloi::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let ext = deno_core::Extension::builder()
-    .ops(vec![op_listen::decl(), op_accept::decl(), op_try_write::decl()])
+    .ops(vec![
+      op_listen::decl(),
+      op_accept::decl(),
+      op_try_write::decl(),
+    ])
     .build();
 
   JsRuntime::new(deno_core::RuntimeOptions {
@@ -86,9 +83,7 @@ fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();
   let rt = state.borrow::<Rc<polloi::Runtime>>();
   let inner = polloi::TcpListener::bind(&rt, addr)?;
-  let listener = TcpListener {
-    inner,
-  };
+  let listener = TcpListener { inner };
   let rid = state.resource_table.add(listener);
   Ok(rid)
 }
@@ -124,15 +119,14 @@ fn main() {
     let state = js_runtime.op_state();
     state.borrow_mut().put(rt.clone());
   }
-  rt.block_on(
-    async move {
-      js_runtime
-        .execute_script(
-          "http_bench_json_ops.js",
-          include_str!("http_bench_json_ops.js"),
-        )
-        .unwrap();
-      js_runtime.run_event_loop(false).await
-    }
-  ).unwrap();
+  rt.block_on(async move {
+    js_runtime
+      .execute_script(
+        "http_bench_json_ops.js",
+        include_str!("http_bench_json_ops.js"),
+      )
+      .unwrap();
+    js_runtime.run_event_loop(false).await
+  })
+  .unwrap();
 }

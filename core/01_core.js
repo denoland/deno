@@ -57,18 +57,9 @@
       resolve = resolve_;
       reject = reject_;
     });
-    promise.resolve = (value) => resolve(unwrapOpResult(value));
+    promise.resolve = resolve;
     promise.reject = reject;
     return promise;
-  }
-
-  function opresolve() {
-    for (let i = 0; i < arguments.length; i += 2) {
-      const promiseId = arguments[i];
-      const res = arguments[i + 1];
-      const promise = getPromise(promiseId);
-      promise.resolve(res);
-    }
   }
 
   function registerErrorClass(className, errorClass) {
@@ -119,13 +110,14 @@
     for (const ele of Object.entries(ops.asyncOpsInfo())) {
       if (!ele) continue;
       const [name, argc] = ele;
-      
+
       const op = ops[name];
       ops[name] = new Function(
         "newPromise",
         "promiseIdSymbol",
         "nextPromiseId",
         "op",
+        "unwrapOpResult",
         `
         return function ${name}(${
           Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ")
@@ -133,13 +125,16 @@
           const id = nextPromiseId++;
           const promise = newPromise();
           promise[promiseIdSymbol] = id;
-          op(id, promise.resolve, ${
+          function resolve(value) {
+            promise.resolve(unwrapOpResult(value));
+          }
+          op(id, resolve, ${
           Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ")
         });
           return promise;
         }
       `,
-      )(newPromise, promiseIdSymbol, nextPromiseId, op);
+      )(newPromise, promiseIdSymbol, nextPromiseId, op, unwrapOpResult);
     }
   }
 
@@ -275,7 +270,6 @@
     registerErrorBuilder,
     registerErrorClass,
     buildCustomError,
-    opresolve,
     BadResource,
     BadResourcePrototype,
     Interrupted,

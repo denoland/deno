@@ -1106,6 +1106,7 @@ impl ModuleMap {
       .push(fut);
   }
 
+  #[inline]
   pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
       && self.pending_dynamic_imports.is_empty())
