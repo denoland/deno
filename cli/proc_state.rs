@@ -379,6 +379,8 @@ impl ProcState {
     )
     .await;
 
+    self.progress_bar.clear();
+
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
     graph_lock_or_exit(&graph);
@@ -411,8 +413,6 @@ impl ProcState {
         .await?;
       self.prepare_node_std_graph().await?;
     }
-
-    self.progress_bar.clear();
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
