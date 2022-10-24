@@ -58,6 +58,7 @@ pub async fn start() -> Result<(), AnyError> {
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
   )
+  .custom_method(lsp_custom::INLAY_HINT, LanguageServer::inlay_hint)
   .finish();
 
   Server::new(stdin, stdout, socket).serve(service).await;

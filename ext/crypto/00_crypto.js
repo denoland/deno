@@ -393,16 +393,16 @@
         if (algorithm.length === undefined) {
           switch (algorithm.hash.name) {
             case "SHA-1":
-              length = 160;
+              length = 512;
               break;
             case "SHA-256":
-              length = 256;
+              length = 512;
               break;
             case "SHA-384":
-              length = 384;
+              length = 1024;
               break;
             case "SHA-512":
-              length = 512;
+              length = 1024;
               break;
             default:
               throw new DOMException(

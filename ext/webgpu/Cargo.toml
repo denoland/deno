@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.73.0"
+version = "0.74.0"
 authors = ["the Deno authors"]
 edition = "2021"
 license = "MIT"
@@ -11,7 +11,7 @@ repository = "https://github.com/gfx-rs/wgpu"
 description = "WebGPU implementation for Deno"
 
 [dependencies]
-deno_core = { version = "0.154.0", path = "../../core" }
+deno_core = { version = "0.155.0", path = "../../core" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.21", features = ["full"] }
 wgpu-core = { version = "0.13", features = ["trace", "replay", "serde"] }

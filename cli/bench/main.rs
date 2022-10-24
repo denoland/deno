@@ -15,7 +15,6 @@ use std::time::SystemTime;
 
 mod http;
 mod lsp;
-mod metrics;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -181,7 +180,6 @@ fn run_exec_time(
     benchmark_file,
     "--warmup",
     "3",
-    "--show-output",
   ]
   .iter()
   .map(|s| s.to_string())
@@ -453,37 +451,28 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
-  let mut reporter = metrics::Reporter::new().await;
-
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
-    reporter.write("bundle_size", &bundle_size);
     new_data.bundle_size = bundle_size;
   }
 
   if benchmarks.contains(&"exec_time") {
     let exec_times = run_exec_time(&deno_exe, &target_dir)?;
-    for (name, data) in exec_times.iter() {
-      reporter.write_one("exec_time", name, *data.get("mean").unwrap());
-    }
     new_data.benchmark = exec_times;
   }
 
   if benchmarks.contains(&"binary_size") {
     let binary_sizes = get_binary_sizes(&target_dir)?;
-    reporter.write("binary_size", &binary_sizes);
     new_data.binary_size = binary_sizes;
   }
 
   if benchmarks.contains(&"cargo_deps") {
     let cargo_deps = cargo_deps();
-    reporter.write_one("cargo_deps", "cargo_deps", cargo_deps as i64);
     new_data.cargo_deps = cargo_deps;
   }
 
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
-    reporter.write("lsp_exec_time", &lsp_exec_times);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 
@@ -493,14 +482,12 @@ async fn main() -> Result<()> {
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
       .collect();
-    reporter.write("req_per_sec", &req_per_sec);
     new_data.req_per_sec = req_per_sec;
     let max_latency = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.latency))
       .collect();
 
-    reporter.write("max_latency", &max_latency);
     new_data.max_latency = max_latency;
   }
 
@@ -539,19 +526,15 @@ async fn main() -> Result<()> {
       syscall_count.insert(name.to_string(), total as i64);
     }
 
-    reporter.write("thread_count", &thread_count);
     new_data.thread_count = thread_count;
-    reporter.write("syscall_count", &syscall_count);
     new_data.syscall_count = syscall_count;
   }
 
   if benchmarks.contains(&"mem_usage") {
     let max_memory = run_max_mem_benchmark(&deno_exe)?;
-    reporter.write("max_memory", &max_memory);
     new_data.max_memory = max_memory;
   }
 
-  reporter.submit().await;
   if let Some(filename) = target_dir.join("bench.json").to_str() {
     write_json(filename, &serde_json::to_value(&new_data)?)?;
   } else {

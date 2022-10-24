@@ -57,6 +57,7 @@ delete Intl.v8BreakIterator;
   const worker = window.__bootstrap.worker;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
+  const net = window.__bootstrap.net;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const urlPattern = window.__bootstrap.urlPattern;
@@ -335,7 +336,7 @@ delete Intl.v8BreakIterator;
 
   const navigator = webidl.createBranded(Navigator);
 
-  let numCpus, userAgent;
+  let numCpus, userAgent, language;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -360,6 +361,22 @@ delete Intl.v8BreakIterator;
       get() {
         webidl.assertBranded(this, NavigatorPrototype);
         return userAgent;
+      },
+    },
+    language: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return language;
+      },
+    },
+    languages: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, NavigatorPrototype);
+        return [language];
       },
     },
   });
@@ -392,6 +409,22 @@ delete Intl.v8BreakIterator;
       get() {
         webidl.assertBranded(this, WorkerNavigatorPrototype);
         return numCpus;
+      },
+      language: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return language;
+        },
+      },
+      languages: {
+        configurable: true,
+        enumerable: true,
+        get() {
+          webidl.assertBranded(this, WorkerNavigatorPrototype);
+          return [language];
+        },
       },
     },
   });
@@ -650,6 +683,8 @@ delete Intl.v8BreakIterator;
     }
 
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
@@ -705,6 +740,7 @@ delete Intl.v8BreakIterator;
 
     numCpus = runtimeOptions.cpuCount;
     userAgent = runtimeOptions.userAgent;
+    language = runtimeOptions.locale;
 
     const internalSymbol = Symbol("Deno.internal");
 
@@ -746,6 +782,8 @@ delete Intl.v8BreakIterator;
     }
 
     performance.setTimeOrigin(DateNow());
+    net.setup(runtimeOptions.unstableFlag);
+
     const consoleFromV8 = window.console;
     const wrapConsole = window.__bootstrap.console.wrapConsole;
 
@@ -793,6 +831,7 @@ delete Intl.v8BreakIterator;
 
     location.setLocationHref(runtimeOptions.location);
     numCpus = runtimeOptions.cpuCount;
+    language = runtimeOptions.locale;
 
     globalThis.pollForMessages = pollForMessages;
 

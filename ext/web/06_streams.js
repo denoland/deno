@@ -652,6 +652,9 @@
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
     core.tryClose(rid);
   });
+
+  const _readAll = Symbol("[[readAll]]");
+  const _original = Symbol("[[original]]");
   /**
    * Create a new ReadableStream object that is backed by a Resource that
    * implements `Resource::read_return`. This object contains enough metadata to
@@ -681,6 +684,17 @@
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
+          if (controller[_readAll] === true) {
+            // fast path for tee'd streams consuming body
+            const chunk = await core.readAll(rid);
+            if (chunk.byteLength > 0) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+            tryClose();
+            return;
+          }
+
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
             tryClose();
@@ -809,9 +823,24 @@
     /** @type {Uint8Array[]} */
     const chunks = [];
     let totalLength = 0;
+
+    // tee'd stream
+    if (stream[_original]) {
+      // One of the branches is consuming the stream
+      // signal controller.pull that we can consume it in a single op
+      stream[_original][_controller][_readAll] = true;
+    }
+
     while (true) {
       const { value: chunk, done } = await reader.read();
+
       if (done) break;
+
+      if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
+        throw new TypeError(
+          "Can't convert value to Uint8Array while consuming the stream",
+        );
+      }
 
       ArrayPrototypePush(chunks, chunk);
       totalLength += chunk.byteLength;
@@ -824,6 +853,62 @@
       i += chunk.byteLength;
     }
     return finalBuffer;
+  }
+
+  /**
+   * Create a new Writable object that is backed by a Resource that implements
+   * `Resource::write` / `Resource::write_all`. This object contains enough
+   * metadata to allow callers to bypass the JavaScript WritableStream
+   * implementation and write directly to the underlying resource if they so
+   * choose (FastStream).
+   *
+   * @param {number} rid The resource ID to write to.
+   * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+   * @returns {ReadableStream<Uint8Array>}
+   */
+  function writableStreamForRid(rid, autoClose = true) {
+    const stream = webidl.createBranded(WritableStream);
+    stream[_resourceBacking] = { rid, autoClose };
+
+    const tryClose = () => {
+      if (!autoClose) return;
+      RESOURCE_REGISTRY.unregister(stream);
+      core.tryClose(rid);
+    };
+
+    if (autoClose) {
+      RESOURCE_REGISTRY.register(stream, rid, stream);
+    }
+
+    const underlyingSink = {
+      async write(chunk, controller) {
+        try {
+          await core.writeAll(rid, chunk);
+        } catch (e) {
+          controller.error(e);
+          tryClose();
+        }
+      },
+      close() {
+        tryClose();
+      },
+      abort() {
+        tryClose();
+      },
+    };
+    initializeWritableStream(stream);
+    setUpWritableStreamDefaultControllerFromUnderlyingSink(
+      stream,
+      underlyingSink,
+      underlyingSink,
+      1,
+      () => 1,
+    );
+    return stream;
+  }
+
+  function getWritableStreamResourceBacking(stream) {
+    return stream[_resourceBacking];
   }
 
   /*
@@ -2554,6 +2639,7 @@
     assert(typeof cloneForBranch2 === "boolean");
     const reader = acquireReadableStreamDefaultReader(stream);
     let reading = false;
+    let readAgain = false;
     let canceled1 = false;
     let canceled2 = false;
     /** @type {any} */
@@ -2572,6 +2658,7 @@
 
     function pullAlgorithm() {
       if (reading === true) {
+        readAgain = true;
         return resolvePromiseWith(undefined);
       }
       reading = true;
@@ -2579,7 +2666,7 @@
       const readRequest = {
         chunkSteps(value) {
           queueMicrotask(() => {
-            reading = false;
+            readAgain = false;
             const value1 = value;
             const value2 = value;
 
@@ -2601,6 +2688,11 @@
                 value2,
               );
             }
+
+            reading = false;
+            if (readAgain === true) {
+              pullAlgorithm();
+            }
           });
         },
         closeSteps() {
@@ -2619,7 +2711,9 @@
               ],
             );
           }
-          cancelPromise.resolve(undefined);
+          if (canceled1 === false || canceled2 === false) {
+            cancelPromise.resolve(undefined);
+          }
         },
         errorSteps() {
           reading = false;
@@ -2958,6 +3052,10 @@
       pull2Algorithm,
       cancel2Algorithm,
     );
+
+    branch1[_original] = stream;
+    branch2[_original] = stream;
+
     forwardReaderError(reader);
     return [branch1, branch2];
   }
@@ -6059,6 +6157,8 @@
     readableStreamForRidUnrefableUnref,
     readableStreamThrowIfErrored,
     getReadableStreamResourceBacking,
+    writableStreamForRid,
+    getWritableStreamResourceBacking,
     Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
