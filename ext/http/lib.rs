@@ -90,9 +90,7 @@ pub fn init(auto_compression: bool) -> Extension {
       op_http_upgrade_websocket::decl(),
     ])
     .state(move |state| {
-      if auto_compression {
-        state.put(AutoCompression(auto_compression));
-      }
+      state.put(AutoCompression(auto_compression));
       Ok(())
     })
     .build()
