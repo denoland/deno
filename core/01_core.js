@@ -186,10 +186,6 @@
     return p;
   }
 
-  function opSync(opName, ...args) {
-    return ops[opName](...args);
-  }
-
   function refOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
@@ -307,7 +303,6 @@
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
-    opSync,
     resources,
     metrics,
     registerErrorBuilder,
