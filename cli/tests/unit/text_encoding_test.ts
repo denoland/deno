@@ -306,7 +306,7 @@ Deno.test(function binaryEncode() {
     "𝓽𝓮𝔁𝓽",
     "lone𝄞\ud888surrogate",
     "\udc00\ud800",
-    "\ud800"
+    "\ud800",
   ];
   for (const input of inputs) {
     const bytes = new TextEncoder().encode(input);
