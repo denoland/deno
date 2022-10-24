@@ -292,6 +292,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let _pb_clear_guard = self.progress_bar.clear_guard();
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -412,7 +413,7 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
-    self.progress_bar.clear();
+    drop(_pb_clear_guard);
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
