@@ -339,8 +339,8 @@ fn op_encoding_encode_into(
 }
 
 #[op]
-fn op_encode_binary_string(s: &[u8]) -> String {
-  String::from_iter(s.iter().map(|b| *b as char))
+fn op_encode_binary_string(s: &[u8]) -> ByteString {
+  ByteString::from(s)
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
