@@ -413,6 +413,8 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
+    drop(_pb_clear_guard);
+
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
