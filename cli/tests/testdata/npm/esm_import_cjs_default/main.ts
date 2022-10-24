@@ -1,3 +1,4 @@
+// @ts-check
 import cjsDefault, {
   MyClass as MyCjsClass,
 } from "npm:@denotest/cjs-default-export";
