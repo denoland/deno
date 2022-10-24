@@ -94,6 +94,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
+      op_encode_binary_string::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
       op_blob_read_part::decl(),
@@ -335,6 +336,11 @@ fn op_encoding_encode_into(
   ) as u32;
   out_buf[0] = nchars as u32;
   Ok(())
+}
+
+#[op]
+fn op_encode_binary_string(s: &[u8]) -> ByteString {
+  ByteString::from(s)
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
