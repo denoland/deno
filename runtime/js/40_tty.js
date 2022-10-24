@@ -2,35 +2,27 @@
 "use strict";
 
 ((window) => {
+  const {
+    Uint32Array,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
   const core = window.Deno.core;
   const ops = core.ops;
 
-  const consoleSizeBuf = new Uint32Array(2);
-
-  function consoleSize(rid) {
-    ops.op_console_size(rid, consoleSizeBuf);
-    return {
-      columns: consoleSizeBuf[0],
-      rows: consoleSizeBuf[1],
-    };
+  const size = new Uint32Array(2);
+  function consoleSize() {
+    ops.op_console_size(size);
+    return { columns: size[0], rows: size[1] };
   }
 
+  const isattyBuffer = new Uint8Array(1);
   function isatty(rid) {
-    return ops.op_isatty(rid);
-  }
-
-  const DEFAULT_SET_RAW_OPTIONS = {
-    cbreak: false,
-  };
-
-  function setRaw(rid, mode, options = {}) {
-    const rOptions = { ...DEFAULT_SET_RAW_OPTIONS, ...options };
-    ops.op_set_raw({ rid, mode, options: rOptions });
+    ops.op_isatty(rid, isattyBuffer);
+    return !!isattyBuffer[0];
   }
 
   window.__bootstrap.tty = {
     consoleSize,
     isatty,
-    setRaw,
   };
 })(this);

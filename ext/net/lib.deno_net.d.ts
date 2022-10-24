@@ -253,9 +253,18 @@ declare namespace Deno {
    * this function requires that the other end of the connection is prepared for
    * a TLS handshake.
    *
+   * Note that this function *consumes* the TCP connection passed to it, thus the
+   * original TCP connection will be unusable after calling this. Additionally,
+   * you need to ensure that the TCP connection is not being used elsewhere when
+   * calling this function in order for the TCP connection to be consumed properly.
+   * For instance, if there is a `Promise` that is waiting for read operation on
+   * the TCP connection to complete, it is considered that the TCP connection is
+   * being used elsewhere. In such a case, this function will fail.
+   *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * // `conn` becomes unusable after calling `Deno.startTls`
    * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
    * ```
    *

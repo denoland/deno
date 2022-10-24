@@ -22,6 +22,7 @@ mod lockfile;
 mod logger;
 mod lsp;
 mod module_loader;
+mod napi;
 mod node;
 mod npm;
 mod ops;
@@ -217,6 +218,7 @@ pub fn get_types(unstable: bool) -> String {
     tsc::DENO_BROADCAST_CHANNEL_LIB,
     tsc::DENO_NET_LIB,
     tsc::SHARED_GLOBALS_LIB,
+    tsc::DENO_CACHE_LIB,
     tsc::WINDOW_LIB,
   ];
 
@@ -392,6 +394,18 @@ async fn load_and_type_check(
 
   for file in files {
     let specifier = resolve_url_or_path(file)?;
+
+    // TODO(bartlomieju): in the future (after all relevant deno subcommands
+    // have support for npm: specifiers), it would be good to unify this code
+    // in `ProcState::prepare_module_load`.
+    if let Ok(package_ref) = NpmPackageReference::from_specifier(&specifier) {
+      ps.npm_resolver
+        .add_package_reqs(vec![package_ref.req.clone()])
+        .await?;
+      ps.prepare_node_std_graph().await?;
+      continue;
+    }
+
     ps.prepare_module_load(
       vec![specifier],
       false,
@@ -511,6 +525,7 @@ async fn create_graph_and_maybe_check(
       &graph.roots,
       Arc::new(RwLock::new(graph.as_ref().into())),
       &cache,
+      ps.npm_resolver.clone(),
       check::CheckOptions {
         type_check_mode: ps.options.type_check_mode(),
         debug,
@@ -810,6 +825,11 @@ async fn run_command(
   // map specified and bare specifier is used on the command line - this should
   // probably call `ProcState::resolve` instead
   let ps = ProcState::build(flags).await?;
+
+  // Run a background task that checks for available upgrades. If an earlier
+  // run of this background task found a new version of Deno.
+  tools::upgrade::check_for_upgrades(ps.dir.root.clone());
+
   let main_module = if NpmPackageReference::from_str(&run_flags.script).is_ok()
   {
     ModuleSpecifier::parse(&run_flags.script)?

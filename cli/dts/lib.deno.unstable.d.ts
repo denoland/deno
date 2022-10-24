@@ -238,11 +238,11 @@ declare namespace Deno {
    * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    * There are questions around which permission this needs. And maybe should be
    * renamed (loadAverage?).
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Observability
    */
   export function loadavg(): number[];
@@ -255,11 +255,11 @@ declare namespace Deno {
    * console.log(Deno.osRelease());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    * Under consideration to possibly move to Deno.build or Deno.versions and if
    * it should depend sys-info, which may not be desirable.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function osRelease(): string;
@@ -275,9 +275,9 @@ declare namespace Deno {
    * console.log(Deno.systemMemoryInfo());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
@@ -338,9 +338,9 @@ declare namespace Deno {
    * console.log(Deno.networkInterfaces());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Network
    */
   export function networkInterfaces(): NetworkInterfaceInfo[];
@@ -353,9 +353,9 @@ declare namespace Deno {
    * console.log(Deno.getUid());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getUid(): number | null;
@@ -368,9 +368,9 @@ declare namespace Deno {
    * console.log(Deno.getGid());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function getGid(): number | null;
@@ -463,7 +463,7 @@ declare namespace Deno {
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
-    & Record<NativeBufferType, TypedArray | null>;
+    & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -645,23 +645,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category FFI
-   */
-  type TypedArray =
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
-    | Uint8ClampedArray
-    | Float32Array
-    | Float64Array
-    | BigInt64Array
-    | BigUint64Array;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Pointer type depends on the architecture and actual pointer value.
    *
    * On a 32 bit system all pointer values are plain numbers. On a 64 bit
@@ -683,7 +666,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
+    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -696,9 +679,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: bigint);
+    constructor(pointer: PointerValue);
 
-    pointer: bigint;
+    pointer: PointerValue;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -735,11 +718,11 @@ declare namespace Deno {
       offset?: number,
     ): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
-    copyInto(destination: TypedArray, offset?: number): void;
+    copyInto(destination: BufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerValue,
-      destination: TypedArray,
+      destination: BufferSource,
       offset?: number,
     ): void;
   }
@@ -752,10 +735,10 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Fn;
 
-    constructor(pointer: bigint, definition: Fn);
+    constructor(pointer: PointerValue, definition: Fn);
 
     call: FromForeignFunction<Fn>;
   }
@@ -806,7 +789,7 @@ declare namespace Deno {
       >,
     );
 
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Definition;
     callback: UnsafeCallbackFunction<
       Definition["parameters"],
@@ -814,20 +797,22 @@ declare namespace Deno {
     >;
 
     /**
-     * Adds one to this callback's reference counting.
+     * Adds one to this callback's reference counting and returns the
+     * new reference count.
      *
      * If the callback's reference count becomes non-zero, it will keep
      * Deno's process from exiting.
      */
-    ref(): void;
+    ref(): number;
 
     /**
-     * Removes one from this callback's reference counting.
+     * Removes one from this callback's reference counting and returns
+     * the new reference count.
      *
      * If the callback's reference counter becomes zero, it will no longer
      * keep Deno's process from exiting.
      */
-    unref(): void;
+    unref(): number;
 
     /**
      * Removes the C function pointer associated with the UnsafeCallback.
@@ -863,39 +848,7 @@ declare namespace Deno {
     symbols: S,
   ): DynamicLibrary<S>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category I/O
-   */
-  export type SetRawOptions = {
-    cbreak: boolean;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Set TTY to be under raw mode or not. In raw mode, characters are read and
-   * returned as is, without being processed. All special processing of
-   * characters by the terminal is disabled, including echoing input characters.
-   * Reading from a TTY device in raw mode is faster than reading from a TTY
-   * device in canonical mode.
-   *
-   * The `cbreak` option can be used to indicate that characters that correspond
-   * to a signal should still be generated. When disabling raw mode, this option
-   * is ignored. This functionality currently only works on Linux and Mac OS.
-   *
-   * ```ts
-   * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
-   * ```
-   *
-   * @category I/O
-   */
-  export function setRaw(
-    rid: number,
-    mode: boolean,
-    options?: SetRawOptions,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
+  /** **UNSTABLE**: needs investigation into high precision time.
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
@@ -954,23 +907,6 @@ declare namespace Deno {
       uid?: number;
     },
   >(opt: T): Process<T>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Get the `hostname` of the machine the Deno process is running on.
-   *
-   * ```ts
-   * console.log(Deno.hostname());
-   * ```
-   *
-   * Requires `allow-env` permission.
-   * Additional consideration is still necessary around the permissions
-   * required.
-   *
-   * @tags allow-env
-   * @category Runtime Environment
-   */
-  export function hostname(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1120,6 +1056,17 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category Network
+   */
+  export interface UdpListenOptions extends ListenOptions {
+    /** When `true` the specified address will be reused, even if another
+     * process has already bound a socket on it. This effectively steals the
+     * socket from the listener. Defaults to `false`. */
+    reuseAddress?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1157,7 +1104,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" },
+    options: UdpListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1366,22 +1313,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Make the timer of the given id blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function refTimer(id: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Make the timer of the given id not blocking the event loop from finishing.
-   *
-   * @category Timers
-   */
-  export function unrefTimer(id: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A handler for HTTP requests. Consumes a request and returns a response.
    *
    * If a handler throws, the server calling the handler will assume the impact
@@ -1399,6 +1330,9 @@ declare namespace Deno {
   export interface ServeOptions extends Partial<Deno.ListenOptions> {
     /** An AbortSignal to close the server and all connections. */
     signal?: AbortSignal;
+
+    /** Sets SO_REUSEPORT on Linux. */
+    reusePort?: boolean;
 
     /** The handler to invoke when route handlers throw an error. */
     onError?: (error: unknown) => Response | Promise<Response>;
@@ -1585,6 +1519,10 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms. Defaults to "false". */
+    windowsRawArguments?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

@@ -12,8 +12,8 @@
   const core = window.Deno.core;
   const { InterruptedPrototype, ops } = core;
   const webidl = window.__bootstrap.webidl;
-  const { setEventTargetData } = window.__bootstrap.eventTarget;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { EventTarget, setEventTargetData } = window.__bootstrap.eventTarget;
+  const { MessageEvent, defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayBufferPrototype,

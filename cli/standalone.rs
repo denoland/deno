@@ -276,6 +276,7 @@ pub async fn run(
         .unwrap_or(1),
       debug_flag: metadata.log_level.map_or(false, |l| l == Level::Debug),
       enable_testing_features: false,
+      locale: deno_core::v8::icu::get_language_tag(),
       location: metadata.location,
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -300,6 +301,7 @@ pub async fn run(
     module_loader,
     npm_resolver: None, // not currently supported
     get_error_class_fn: Some(&get_error_class_name),
+    cache_storage_dir: None,
     origin_storage_dir: None,
     blob_store,
     broadcast_channel,

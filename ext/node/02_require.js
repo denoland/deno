@@ -109,7 +109,7 @@
       requestPath,
       "package.json",
     );
-    const pkg = core.ops.op_require_read_package_scope(packageJsonPath).main;
+    const pkg = core.ops.op_require_read_package_scope(packageJsonPath)?.main;
     if (!pkg) {
       return tryExtensions(
         pathResolve(requestPath, "index"),
@@ -351,8 +351,7 @@
         }
       }
 
-      const isDenoDirPackage = Deno.core.opSync(
-        "op_require_is_deno_dir_package",
+      const isDenoDirPackage = Deno.core.ops.op_require_is_deno_dir_package(
         curPath,
       );
       const isRelative = ops.op_require_is_request_relative(
@@ -403,8 +402,7 @@
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
     if (parent?.filename && parent.filename.length > 0) {
-      const denoDirPath = core.opSync(
-        "op_require_resolve_deno_dir",
+      const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
         parent.filename,
       );
@@ -773,7 +771,10 @@
 
   // Native extension for .node
   Module._extensions[".node"] = function (module, filename) {
-    throw new Error("not implemented loading .node files");
+    if (filename.endsWith("fsevents.node")) {
+      throw new Error("Using fsevents module is currently not supported");
+    }
+    module.exports = ops.op_napi_open(filename);
   };
 
   function createRequireFromPath(filename) {
@@ -810,7 +811,7 @@
 
   function createRequire(filenameOrUrl) {
     // FIXME: handle URLs and validation
-    const filename = core.opSync("op_require_as_file_path", filenameOrUrl);
+    const filename = core.ops.op_require_as_file_path(filenameOrUrl);
     return createRequireFromPath(filename);
   }
 
@@ -828,25 +829,7 @@
 
   Module.Module = Module;
 
-  const m = {
-    _cache: Module._cache,
-    _extensions: Module._extensions,
-    _findPath: Module._findPath,
-    _initPaths: Module._initPaths,
-    _load: Module._load,
-    _nodeModulePaths: Module._nodeModulePaths,
-    _pathCache: Module._pathCache,
-    _preloadModules: Module._preloadModules,
-    _resolveFilename: Module._resolveFilename,
-    _resolveLookupPaths: Module._resolveLookupPaths,
-    builtinModules: Module.builtinModules,
-    createRequire: Module.createRequire,
-    globalPaths: Module.globalPaths,
-    Module,
-    wrap: Module.wrap,
-  };
-
-  node.nativeModuleExports.module = m;
+  node.nativeModuleExports.module = Module;
 
   function loadNativeModule(_id, request) {
     if (nativeModulePolyfill.has(request)) {
@@ -890,7 +873,6 @@
       toRealPath,
       cjsParseCache,
       readPackageScope,
-      moduleExports: m,
     },
   };
 })(globalThis);

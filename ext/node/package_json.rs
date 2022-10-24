@@ -22,6 +22,7 @@ pub struct PackageJson {
   main: Option<String>,   // use .main(...)
   module: Option<String>, // use .main(...)
   pub name: Option<String>,
+  pub version: Option<String>,
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
@@ -37,6 +38,7 @@ impl PackageJson {
       main: None,
       module: None,
       name: None,
+      version: None,
       path,
       typ: "none".to_string(),
       types: None,
@@ -48,6 +50,12 @@ impl PackageJson {
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(&path)?;
+    Self::load_skip_read_permission(path)
+  }
+
+  pub fn load_skip_read_permission(
+    path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -71,6 +79,7 @@ impl PackageJson {
     let main_val = package_json.get("main");
     let module_val = package_json.get("module");
     let name_val = package_json.get("name");
+    let version_val = package_json.get("version");
     let type_val = package_json.get("type");
     let bin = package_json.get("bin").map(ToOwned::to_owned);
     let exports = package_json.get("exports").map(|exports| {
@@ -88,6 +97,7 @@ impl PackageJson {
       .map(|imp| imp.to_owned());
     let main = main_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let name = name_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+    let version = version_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
 
     // Ignore unknown types for forwards compatibility
@@ -116,6 +126,7 @@ impl PackageJson {
       path,
       main,
       name,
+      version,
       module,
       typ,
       types,
