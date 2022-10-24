@@ -4,6 +4,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
+  const { Event } = window.__bootstrap.event;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { BlobPrototype } = window.__bootstrap.file;
   const {
