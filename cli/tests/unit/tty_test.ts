@@ -1,5 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertThrows } from "./test_util.ts";
+import { assert } from "./test_util.ts";
 
 // Note tests for Deno.stdin.setRaw is in integration tests.
 
