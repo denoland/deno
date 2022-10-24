@@ -302,7 +302,7 @@
         const [rid, addr] = ops.op_net_listen_tcp({
           hostname: args.hostname ?? "0.0.0.0",
           port: args.port,
-        });
+        }, args.reusePort);
         addr.transport = "tcp";
         return new Listener(rid, addr);
       }

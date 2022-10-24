@@ -1410,3 +1410,55 @@ Deno.test(
     listener2.close();
   },
 );
+
+Deno.test({
+  ignore: Deno.build.os !== "linux",
+  permissions: { net: true },
+}, async function listenTlsReusePort() {
+  const hostname = "localhost";
+  const port = 4003;
+  const listener1 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  const listener2 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  const p1 = listener1.accept();
+  const p2 = listener2.accept();
+  const conn1 = await Deno.connectTls({ hostname, port, caCerts });
+  const conn2 = await Deno.connectTls({ hostname, port, caCerts });
+  const [s1, s2] = await Promise.all([p1, p2]);
+  s1.close();
+  s2.close();
+  conn1.close();
+  conn2.close();
+  listener1.close();
+  listener2.close();
+});
+
+Deno.test({
+  ignore: Deno.build.os === "linux",
+  permissions: { net: true },
+}, function listenTlsReusePortDoesNothing() {
+  const hostname = "localhost";
+  const port = 4003;
+  const listener1 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  assertThrows(() => {
+    Deno.listenTls({ hostname, port, cert, key, reusePort: true });
+  }, Deno.errors.AddrInUse);
+  listener1.close();
+});

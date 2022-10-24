@@ -1158,6 +1158,22 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
+  /**
+   * @category Network
+   */
+  export interface TcpListenOptions extends ListenOptions {
+    /** When `true` the SO_REUSEPORT flag will be set on the listener. This
+     * allows multiple processes to listen on the same address and port.
+     *
+     * On Linux this will cause the kernel to distribute incoming connections
+     * across the different processes that are listening on the same address and
+     * port.
+     *
+     * This flag is only supported on Linux. It is silently ignored on other
+     * platforms. Defaults to `false`. */
+    reusePort?: boolean;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Unstable options which can be set when opening a Unix listener via
