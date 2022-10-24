@@ -292,6 +292,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let _pb_clear_gurad = self.progress_bar.clear_guard();
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -378,8 +379,6 @@ impl ProcState {
       maybe_file_watcher_reporter,
     )
     .await;
-
-    self.progress_bar.clear();
 
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
