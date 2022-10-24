@@ -2459,6 +2459,62 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestResponseClone() {
+    const body = "deno".repeat(64 * 1024);
+    let httpConn: Deno.HttpConn;
+    const listener = Deno.listen({ port: 4501 });
+    const promise = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      const clone = request.clone();
+      const reader = clone.body!.getReader();
+
+      // get first chunk from branch2
+      const clonedChunks = [];
+      const { value, done } = await reader.read();
+      assert(!done);
+      clonedChunks.push(value);
+
+      // consume request after first chunk single read
+      // readAll should read correctly the rest of the body.
+      // firstChunk should be in the stream internal buffer
+      const body1 = await request.text();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        clonedChunks.push(value);
+      }
+      let offset = 0;
+      const body2 = new Uint8Array(body.length);
+      for (const chunk of clonedChunks) {
+        body2.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      assertEquals(body1, body);
+      assertEquals(body1, new TextDecoder().decode(body2));
+      await respondWith(new Response(body));
+    })();
+
+    const response = await fetch("http://localhost:4501", {
+      body,
+      method: "POST",
+    });
+    const clone = response.clone();
+    assertEquals(await response.text(), await clone.text());
+
+    await promise;
+    httpConn!.close();
+  },
+);
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);
