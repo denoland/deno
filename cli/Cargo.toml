@@ -50,12 +50,12 @@ winapi = "=0.3.9"
 winres = "=0.1.12"
 
 [dependencies]
-deno_ast = { path = "../../deno_ast", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
+deno_ast = { version = "0.20.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
 deno_core = { version = "0.155.0", path = "../core" }
-deno_doc = { path = "../../deno_doc" }
-deno_emit = { path = "../../deno_emit/rs-lib" }
-deno_graph = { path = "../../deno_graph" }
-deno_lint = { path = "../../deno_lint", features = ["docs"] }
+deno_doc = "0.47.0"
+deno_emit = "0.10.0"
+deno_graph = "0.37.0"
+deno_lint = { version = "0.34.0", features = ["docs"] }
 deno_runtime = { version = "0.81.0", path = "../runtime" }
 deno_task_shell = "0.6.0"
 napi_sym = { path = "./napi_sym", version = "0.3.0" }
@@ -71,10 +71,10 @@ data-url = "=0.2.0"
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.15.6"
 dprint-plugin-markdown = "=0.14.1"
-dprint-plugin-typescript = { path = "../../dprint-plugin-typescript" }
+dprint-plugin-typescript = "=0.76.0"
 encoding_rs = "=0.8.31"
 env_logger = "=0.9.0"
-eszip = { path = "../../eszip" }
+eszip = "=0.29.0"
 fancy-regex = "=0.10.0"
 flate2 = "=1.0.24"
 http = "=0.2.8"
