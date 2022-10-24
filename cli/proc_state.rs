@@ -369,13 +369,15 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
-      is_dynamic,
-      maybe_imports,
       &mut loader,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      maybe_file_watcher_reporter,
+      deno_graph::GraphOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
     )
     .await;
 
@@ -638,13 +640,15 @@ impl ProcState {
 
     let graph = create_graph(
       roots,
-      false,
-      maybe_imports,
       loader,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
     .await;
 

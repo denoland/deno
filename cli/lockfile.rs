@@ -154,11 +154,10 @@ impl deno_graph::source::Locker for Locker {
 
 pub fn as_maybe_locker(
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
+) -> Option<Rc<RefCell<dyn deno_graph::source::Locker>>> {
   lockfile.as_ref().map(|lf| {
-    Rc::new(RefCell::new(
-      Box::new(Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>
-    ))
+    Rc::new(RefCell::new(Locker(Some(lf.clone()))))
+      as Rc<RefCell<dyn deno_graph::source::Locker>>
   })
 }
 
