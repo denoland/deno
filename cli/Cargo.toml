@@ -54,7 +54,7 @@ deno_ast = { version = "0.20.0", features = ["bundler", "cjs", "codegen", "dep_g
 deno_core = { version = "0.155.0", path = "../core" }
 deno_doc = "0.47.0"
 deno_emit = "0.10.0"
-deno_graph = "0.37.0"
+deno_graph = "0.37.1"
 deno_lint = { version = "0.34.0", features = ["docs"] }
 deno_runtime = { version = "0.81.0", path = "../runtime" }
 deno_task_shell = "0.6.0"

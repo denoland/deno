@@ -747,15 +747,6 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "data-url"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a30bfce702bcfa94e906ef82421f2c0e61c076ad76030c16ee5d2e9a32fe193"
-dependencies = [
- "matches",
-]
-
-[[package]]
-name = "data-url"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
@@ -780,7 +771,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "clap_complete_fig",
- "data-url 0.2.0",
+ "data-url",
  "deno_ast",
  "deno_bench_util",
  "deno_broadcast_channel",
@@ -870,7 +861,7 @@ checksum = "322f52615649f4f096eed78ec8e2a7eb68ff0bf5f330d59302c5479c7a8fa158"
 dependencies = [
  "anyhow",
  "base64",
- "data-url 0.2.0",
+ "data-url",
  "dprint-swc-ext",
  "serde",
  "swc_atoms",
@@ -1028,7 +1019,7 @@ name = "deno_fetch"
 version = "0.96.0"
 dependencies = [
  "bytes",
- "data-url 0.2.0",
+ "data-url",
  "deno_core",
  "deno_tls",
  "dyn-clone",
@@ -1074,13 +1065,13 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.37.0"
+version = "0.37.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243dab5334674854bc3a3c648e3e55ede4d86516db7599309edf12efbc2465ec"
+checksum = "349417e459d6ad06c8f502d49a6bef7288bc8c5cedde0d3bb1e60fcaf27ca5f8"
 dependencies = [
  "anyhow",
  "cfg-if",
- "data-url 0.1.1",
+ "data-url",
  "deno_ast",
  "futures",
  "lazy_static",
