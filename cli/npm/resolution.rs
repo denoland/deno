@@ -12,9 +12,11 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
 
 use crate::lockfile::Lockfile;
 
@@ -364,55 +366,86 @@ impl NpmResolutionSnapshot {
     maybe_best_version.cloned()
   }
 
-  pub fn from_lockfile(lockfile: &Lockfile) -> Self {
+  pub async fn from_lockfile(
+    lockfile: Arc<Mutex<Lockfile>>,
+    api: &NpmRegistryApi,
+  ) -> Result<Self, AnyError> {
     let mut package_reqs = HashMap::new();
     let mut packages_by_name: HashMap<String, Vec<NpmVersion>> = HashMap::new();
     let mut packages = HashMap::new();
 
-    for (key, value) in &lockfile.content.npm.specifiers {
-      let reference = NpmPackageReference::from_str(key).unwrap();
-      let package_id = NpmPackageId::deserialize_from_lock_file(value);
-      package_reqs.insert(reference.req, package_id.version.clone());
-    }
+    {
+      let lockfile = lockfile.lock();
 
-    for (key, value) in &lockfile.content.npm.packages {
-      let package_id = NpmPackageId::deserialize_from_lock_file(key);
-      let dependencies = value
-        .dependencies
-        .iter()
-        .map(|(name, specifier)| {
-          (
-            name.clone(),
-            NpmPackageId::deserialize_from_lock_file(specifier),
-          )
-        })
-        .collect::<HashMap<_, _>>();
-
-      for (name, id) in &dependencies {
-        packages_by_name
-          .entry(name.to_string())
-          .or_default()
-          .push(id.version.clone());
+      for (key, value) in &lockfile.content.npm.specifiers {
+        let reference = NpmPackageReference::from_str(key).unwrap();
+        let package_id = NpmPackageId::deserialize_from_lock_file(value);
+        package_reqs.insert(reference.req, package_id.version.clone());
       }
 
-      let package = NpmResolutionPackage {
-        id: package_id.clone(),
-        dist: NpmPackageVersionDistInfo {
-          // FIXME(bartlomieju):
-          tarball: "foobar".to_string(),
-          integrity: Some(value.integrity.clone()),
-        },
-        dependencies,
-      };
+      for (key, value) in &lockfile.content.npm.packages {
+        let package_id = NpmPackageId::deserialize_from_lock_file(key);
+        let dependencies = value
+          .dependencies
+          .iter()
+          .map(|(name, specifier)| {
+            (
+              name.clone(),
+              NpmPackageId::deserialize_from_lock_file(specifier),
+            )
+          })
+          .collect::<HashMap<_, _>>();
 
-      packages.insert(package_id.clone(), package);
+        for (name, id) in &dependencies {
+          packages_by_name
+            .entry(name.to_string())
+            .or_default()
+            .push(id.version.clone());
+        }
+
+        let package = NpmResolutionPackage {
+          id: package_id.clone(),
+          // temporary dummy value
+          dist: NpmPackageVersionDistInfo {
+            tarball: "foobar".to_string(),
+            integrity: Some("foobar".to_string()),
+          },
+          dependencies,
+        };
+
+        packages.insert(package_id.clone(), package);
+      }
     }
 
-    Self {
+    let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
+
+    for package_id in packages.keys() {
+      let package_id = package_id.clone();
+      let api = api.clone();
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = api.package_info(&package_id.name).await?;
+        Result::<_, AnyError>::Ok((package_id, info))
+      }));
+    }
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_id, info) = result??;
+
+      let version_and_info = get_resolved_package_version_and_info(
+        &package_id.name,
+        &NpmVersionReq::parse(&package_id.version.to_string()).unwrap(),
+        info,
+        None,
+      )?;
+
+      let package = packages.get_mut(&package_id).unwrap();
+      package.dist = version_and_info.info.dist;
+    }
+
+    Ok(Self {
       package_reqs,
       packages_by_name,
       packages,
-    }
+    })
   }
 }
 

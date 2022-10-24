@@ -223,7 +223,7 @@ impl Lockfile {
       .content
       .npm
       .specifiers
-      .get(&format!("npm:{}", package_req.to_string()))
+      .get(&format!("npm:{}", package_req))
     {
       &format!("npm:{}@{}", package_req.name, version) == resolved_specifier
     } else {

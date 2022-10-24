@@ -92,24 +92,34 @@ impl NpmPackageResolver {
     unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
-    maybe_localfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
-    let initial_snapshot = if let Some(lockfile) = maybe_localfile {
-      let lockfile = lockfile.lock();
-      let snapshot = NpmResolutionSnapshot::from_lockfile(&lockfile);
-      Some(snapshot)
-    } else {
-      None
-    };
-
     Self::new_with_maybe_snapshot(
       cache,
       api,
       unstable,
       no_npm,
       local_node_modules_path,
-      initial_snapshot,
+      None,
     )
+  }
+
+  pub async fn regenerate_from_lockfile(
+    cache: NpmCache,
+    api: NpmRegistryApi,
+    unstable: bool,
+    no_npm: bool,
+    local_node_modules_path: Option<PathBuf>,
+    lockfile: Arc<Mutex<Lockfile>>,
+  ) -> Result<Self, AnyError> {
+    let snapshot = NpmResolutionSnapshot::from_lockfile(lockfile, &api).await?;
+    Ok(Self::new_with_maybe_snapshot(
+      cache,
+      api,
+      unstable,
+      no_npm,
+      local_node_modules_path,
+      Some(snapshot),
+    ))
   }
 
   fn new_with_maybe_snapshot(

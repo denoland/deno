@@ -245,18 +245,33 @@ impl ProcState {
     } else {
       None
     };
-    let npm_resolver = NpmPackageResolver::new(
-      npm_cache.clone(),
-      api,
-      cli_options.unstable()
-        // don't do the unstable error when in the lsp
-        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
-      cli_options.no_npm(),
-      cli_options
-        .resolve_local_node_modules_folder()
-        .with_context(|| "Resolving local node_modules folder.")?,
-      maybe_lockfile,
-    );
+    let npm_resolver = if let Some(lockfile) = maybe_lockfile.clone() {
+      NpmPackageResolver::regenerate_from_lockfile(
+        npm_cache.clone(),
+        api,
+        cli_options.unstable()
+          // don't do the unstable error when in the lsp
+          || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+        cli_options.no_npm(),
+        cli_options
+          .resolve_local_node_modules_folder()
+          .with_context(|| "Resolving local node_modules folder.")?,
+        lockfile,
+      )
+      .await?
+    } else {
+      NpmPackageResolver::new(
+        npm_cache.clone(),
+        api,
+        cli_options.unstable()
+          // don't do the unstable error when in the lsp
+          || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+        cli_options.no_npm(),
+        cli_options
+          .resolve_local_node_modules_folder()
+          .with_context(|| "Resolving local node_modules folder.")?,
+      )
+    };
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
