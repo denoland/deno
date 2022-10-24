@@ -70,7 +70,9 @@ use tokio_util::io::ReaderStream;
 
 pub mod compressible;
 
-pub fn init() -> Extension {
+pub struct AutoCompression(bool);
+
+pub fn init(auto_compression: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/http",
@@ -87,6 +89,12 @@ pub fn init() -> Extension {
       op_http_websocket_accept_header::decl(),
       op_http_upgrade_websocket::decl(),
     ])
+    .state(move |state| {
+      if auto_compression {
+        state.put(AutoCompression(auto_compression));
+      }
+      Ok(())
+    })
     .build()
 }
 
@@ -490,6 +498,7 @@ async fn op_http_write_headers(
     .borrow_mut()
     .resource_table
     .get::<HttpStreamResource>(rid)?;
+  let auto_compression = state.borrow().borrow::<AutoCompression>().0;
 
   // Track supported encoding
   let encoding = stream.accept_encoding;
@@ -511,7 +520,8 @@ async fn op_http_write_headers(
 
   let accepts_compression =
     matches!(encoding, Encoding::Brotli | Encoding::Gzip);
-  let compressing = accepts_compression
+  let compressing = auto_compression
+    && accepts_compression
     && (matches!(data, Some(ref data) if data.len() > 20) || data.is_none())
     && should_compress(hmap);
 

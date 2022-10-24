@@ -191,7 +191,7 @@ mod not_docs {
         None, false, // No --unstable.
         None,
       ),
-      deno_http::init(),
+      deno_http::init(true),
       deno_flash::init::<Permissions>(false), // No --unstable
     ];
 
