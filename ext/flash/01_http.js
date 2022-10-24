@@ -7,6 +7,7 @@
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
+  const { Event } = window.__bootstrap.event;
   const {
     ReadableStream,
     ReadableStreamPrototype,
@@ -186,7 +187,7 @@
   }
 
   function prepareFastCalls() {
-    return core.opSync("op_flash_make_request");
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {

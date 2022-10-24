@@ -658,6 +658,40 @@ itest!(lock_check_err2 {
   http_server: true,
 });
 
+itest!(lock_v2_check_ok {
+  args:
+    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/003_relative_import.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_check_ok2 {
+  args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_v2_dynamic_imports {
+  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
+  output: "run/lock_v2_dynamic_imports.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err {
+  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
+  output: "run/lock_v2_check_err.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_v2_check_err2 {
+  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
+  output: "run/lock_v2_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
   output: "run/mts_dmts_mjs.out",
@@ -3350,7 +3384,6 @@ async fn http2_request_url() {
 fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
     .arg("eval")
-    .arg("--unstable")
     .arg("Deno.stdin.setRaw(true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())

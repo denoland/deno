@@ -652,6 +652,9 @@
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
     core.tryClose(rid);
   });
+
+  const _readAll = Symbol("[[readAll]]");
+  const _original = Symbol("[[original]]");
   /**
    * Create a new ReadableStream object that is backed by a Resource that
    * implements `Resource::read_return`. This object contains enough metadata to
@@ -681,6 +684,17 @@
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
+          if (controller[_readAll] === true) {
+            // fast path for tee'd streams consuming body
+            const chunk = await core.readAll(rid);
+            if (chunk.byteLength > 0) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+            tryClose();
+            return;
+          }
+
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
             tryClose();
@@ -809,8 +823,17 @@
     /** @type {Uint8Array[]} */
     const chunks = [];
     let totalLength = 0;
+
+    // tee'd stream
+    if (stream[_original]) {
+      // One of the branches is consuming the stream
+      // signal controller.pull that we can consume it in a single op
+      stream[_original][_controller][_readAll] = true;
+    }
+
     while (true) {
       const { value: chunk, done } = await reader.read();
+
       if (done) break;
 
       if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
@@ -3029,6 +3052,10 @@
       pull2Algorithm,
       cancel2Algorithm,
     );
+
+    branch1[_original] = stream;
+    branch2[_original] = stream;
+
     forwardReaderError(reader);
     return [branch1, branch2];
   }

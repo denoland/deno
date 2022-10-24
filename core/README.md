@@ -17,9 +17,9 @@ responsibility to drive that loop by using `JsRuntime::run_event_loop` method -
 it must be executed in the context of Rust's future executor (eg. tokio, smol).
 
 Rust functions can be registered in JavaScript using `deno_core::Extension`. Use
-the `Deno.core.opSync()` and `Deno.core.opAsync()` functions to trigger the op
-function callback. A conventional way to write ops is using the
-[`deno_ops`](https://github.com/denoland/deno/blob/main/ops) crate.
+the `Deno.core.ops.op_name()` and `Deno.core.opAsync("op_name", ...)` functions
+to trigger the op function callback. A conventional way to write ops is using
+the [`deno_ops`](https://github.com/denoland/deno/blob/main/ops) crate.
 
 Documentation for this crate is thin at the moment. Please see
 [hello_world.rs](https://github.com/denoland/deno/blob/main/core/examples/hello_world.rs)

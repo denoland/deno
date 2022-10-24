@@ -16,6 +16,8 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { forgivingBase64Encode } = window.__bootstrap.infra;
+  const { ProgressEvent } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
   const { DOMException } = window.__bootstrap.domException;

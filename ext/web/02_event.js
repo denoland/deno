@@ -1471,19 +1471,6 @@
     reportException(error);
   }
 
-  window[webidl.brand] = webidl.brand;
-  window.Event = Event;
-  window.EventTarget = EventTarget;
-  window.ErrorEvent = ErrorEvent;
-  window.CloseEvent = CloseEvent;
-  window.MessageEvent = MessageEvent;
-  window.CustomEvent = CustomEvent;
-  window.ProgressEvent = ProgressEvent;
-  window.PromiseRejectionEvent = PromiseRejectionEvent;
-  window.dispatchEvent = EventTarget.prototype.dispatchEvent;
-  window.addEventListener = EventTarget.prototype.addEventListener;
-  window.removeEventListener = EventTarget.prototype.removeEventListener;
-  window.reportError = reportError;
   window.__bootstrap.eventTarget = {
     EventTarget,
     setEventTargetData,
@@ -1494,5 +1481,13 @@
     setIsTrusted,
     setTarget,
     defineEventHandler,
+    Event,
+    ErrorEvent,
+    CloseEvent,
+    MessageEvent,
+    CustomEvent,
+    ProgressEvent,
+    PromiseRejectionEvent,
+    reportError,
   };
 })(this);
