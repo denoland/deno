@@ -5,7 +5,7 @@
 /// <reference path="../../core/internal.d.ts" />
 
 ((window) => {
-  const { EventTarget } = window;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     Symbol,
     SymbolToStringTag,

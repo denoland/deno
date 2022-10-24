@@ -2,13 +2,11 @@
 "use strict";
 
 ((window) => {
-  const {
-    Event,
-    EventTarget,
-    Deno: { core: { ops } },
-    __bootstrap: { webUtil: { illegalConstructorKey } },
-  } = window;
+  const { ops } = Deno.core;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { pathFromURL } = window.__bootstrap.util;
+  const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const {
     ArrayIsArray,
     ArrayPrototypeIncludes,
