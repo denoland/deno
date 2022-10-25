@@ -4695,6 +4695,44 @@ declare namespace Deno {
   ): Promise<string[][]>;
 
   /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<
+    | string[]
+    | CAARecord[]
+    | MXRecord[]
+    | NAPTRRecord[]
+    | SOARecord[]
+    | SRVRecord[]
+    | string[][]
+  >;
+
+  /**
    * Make the timer of the given `id` block the event loop from finishing.
    *
    * @category Timers
