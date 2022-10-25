@@ -5,7 +5,20 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const { Listener, Conn } = window.__bootstrap.net;
-  const { TypeError } = window.__bootstrap.primordials;
+
+  function opConnectTls(
+    args,
+  ) {
+    return core.opAsync("op_tls_connect", args);
+  }
+
+  function opAcceptTLS(rid) {
+    return core.opAsync("op_tls_accept", rid);
+  }
+
+  function opListenTls(args) {
+    return ops.op_tls_listen(args);
+  }
 
   function opStartTls(args) {
     return core.opAsync("op_tls_start", args);
@@ -31,28 +44,23 @@
     privateKey = undefined,
     alpnProtocols = undefined,
   }) {
-    if (transport !== "tcp") {
-      throw new TypeError(`Unsupported transport: '${transport}'`);
-    }
-    const [rid, localAddr, remoteAddr] = await core.opAsync(
-      "op_net_connect_tls",
-      { hostname, port },
-      { certFile, caCerts, certChain, privateKey, alpnProtocols },
-    );
-    localAddr.transport = "tcp";
-    remoteAddr.transport = "tcp";
-    return new TlsConn(rid, remoteAddr, localAddr);
+    const res = await opConnectTls({
+      port,
+      hostname,
+      transport,
+      certFile,
+      caCerts,
+      certChain,
+      privateKey,
+      alpnProtocols,
+    });
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   class TlsListener extends Listener {
     async accept() {
-      const [rid, localAddr, remoteAddr] = await core.opAsync(
-        "op_net_accept_tls",
-        this.rid,
-      );
-      localAddr.transport = "tcp";
-      remoteAddr.transport = "tcp";
-      return new TlsConn(rid, remoteAddr, localAddr);
+      const res = await opAcceptTLS(this.rid);
+      return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
     }
   }
 
@@ -66,14 +74,17 @@
     transport = "tcp",
     alpnProtocols = undefined,
   }) {
-    if (transport !== "tcp") {
-      throw new TypeError(`Unsupported transport: '${transport}'`);
-    }
-    const [rid, localAddr] = ops.op_net_listen_tls(
-      { hostname, port },
-      { cert, certFile, key, keyFile, alpnProtocols },
-    );
-    return new TlsListener(rid, localAddr);
+    const res = opListenTls({
+      port,
+      cert,
+      certFile,
+      key,
+      keyFile,
+      hostname,
+      transport,
+      alpnProtocols,
+    });
+    return new TlsListener(res.rid, res.localAddr);
   }
 
   async function startTls(
@@ -85,14 +96,14 @@
       alpnProtocols = undefined,
     } = {},
   ) {
-    const [rid, localAddr, remoteAddr] = await opStartTls({
+    const res = await opStartTls({
       rid: conn.rid,
       hostname,
       certFile,
       caCerts,
       alpnProtocols,
     });
-    return new TlsConn(rid, remoteAddr, localAddr);
+    return new TlsConn(res.rid, res.remoteAddr, res.localAddr);
   }
 
   window.__bootstrap.tls = {

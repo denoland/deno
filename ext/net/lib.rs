@@ -90,6 +90,7 @@ pub fn init<P: NetPermissions + 'static>(
       prefix "deno:ext/net",
       "01_net.js",
       "02_tls.js",
+      "04_net_unstable.js",
     ))
     .ops(ops)
     .state(move |state| {
