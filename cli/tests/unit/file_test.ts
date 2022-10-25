@@ -101,9 +101,11 @@ Deno.test(function fileUsingEmptyStringFileName() {
 });
 
 Deno.test(function fileConstructorOptionsValidation() {
+   // deno-lint-ignore ban-types
+  type AnyFunction = Function
   const assert = {
     strictEqual: assertEquals,
-    throws(fn: Function, expected: Function) {
+    throws(fn: AnyFunction, expected: AnyFunction) {
       try {
         fn();
         throw new Error("Missing expected exception");
@@ -117,7 +119,7 @@ Deno.test(function fileConstructorOptionsValidation() {
     },
   };
 
-  function mustCall(fn: Function, nb = 1) {
+  function mustCall(fn: AnyFunction, nb = 1) {
     const timeout = setTimeout(() => {
       if (nb !== 0) throw new Error(`Expected ${nb} more calls`);
     }, 999);
@@ -132,19 +134,16 @@ Deno.test(function fileConstructorOptionsValidation() {
   }
 
   [undefined, null, Object.create(null), { lastModified: undefined }, {
-    // @ts-ignore
-    get lastModified() {},
+    get lastModified() { return undefined },
   }].forEach((options) => {
     assert.strictEqual(
-      // @ts-ignore
-      new File([], null, options).lastModified,
-      // @ts-ignore
-      new File([], null).lastModified,
+      new File([], '', options).lastModified,
+      new File([], '').lastModified,
     );
   });
 
   Reflect.defineProperty(Object.prototype, "get", {
-    // @ts-ignore
+    // @ts-ignore __proto__ null is important here to avoid prototype pollution.
     __proto__: null,
     configurable: true,
     get() {
@@ -152,7 +151,7 @@ Deno.test(function fileConstructorOptionsValidation() {
     },
   });
   Reflect.defineProperty(Object.prototype, "lastModified", {
-    // @ts-ignore
+    // @ts-ignore __proto__ null is important here to avoid prototype pollution.
     __proto__: null,
     configurable: true,
     get: mustCall(() => 3, 7),
@@ -160,15 +159,13 @@ Deno.test(function fileConstructorOptionsValidation() {
 
   [{}, [], () => {}, Number, new Number(), new String(), new Boolean()].forEach(
     (options) => {
-      // @ts-ignore
-      assert.strictEqual(new File([], null, options).lastModified, 3);
+      assert.strictEqual(new File([], '', options).lastModified, 3);
     },
   );
   [0, "", true, Symbol(), 0n].forEach((options) => {
-    // @ts-ignore
-    assert.throws(() => new File([], null, options), TypeError);
+    assert.throws(() => new File([], '', options), TypeError);
   });
 
-  // @ts-ignore
+  // @ts-ignore cleaning up.
   delete Object.prototype.lastModified;
 });
