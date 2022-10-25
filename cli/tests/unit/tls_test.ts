@@ -1378,7 +1378,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: false, net: true } },
+  { permissions: { net: true } },
   async function listenTlsWithReuseAddr() {
     const resolvable1 = deferred();
     const hostname = "localhost";
@@ -1386,44 +1386,27 @@ Deno.test(
 
     const listener1 = Deno.listenTls({ hostname, port, cert, key });
 
-    const response1 = encoder.encode(
-      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
-    );
-
-    listener1.accept().then(
-      async (conn) => {
-        await conn.write(response1);
-        setTimeout(() => {
-          conn.close();
-          resolvable1.resolve();
-        }, 0);
-      },
-    );
+    listener1.accept().then((conn) => {
+      conn.close();
+      resolvable1.resolve();
+    });
 
     const conn1 = await Deno.connectTls({ hostname, port, caCerts });
     conn1.close();
-    listener1.close();
     await resolvable1;
+    listener1.close();
 
     const resolvable2 = deferred();
     const listener2 = Deno.listenTls({ hostname, port, cert, key });
-    const response2 = encoder.encode(
-      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
-    );
 
-    listener2.accept().then(
-      async (conn) => {
-        await conn.write(response2);
-        setTimeout(() => {
-          conn.close();
-          resolvable2.resolve();
-        }, 0);
-      },
-    );
+    listener2.accept().then((conn) => {
+      conn.close();
+      resolvable2.resolve();
+    });
 
     const conn2 = await Deno.connectTls({ hostname, port, caCerts });
     conn2.close();
-    listener2.close();
     await resolvable2;
+    listener2.close();
   },
 );
