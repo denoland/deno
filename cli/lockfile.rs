@@ -125,7 +125,13 @@ impl Lockfile {
     Ok(())
   }
 
-  pub fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
+  // TODO(bartlomieju): this function should return an error instead of a bool,
+  // but it requires changes to `deno_graph`'s `Locker`.
+  pub fn check_or_insert_remote(
+    &mut self,
+    specifier: &str,
+    code: &str,
+  ) -> bool {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
@@ -271,7 +277,7 @@ impl deno_graph::source::Locker for Locker {
   ) -> bool {
     if let Some(lock_file) = &self.0 {
       let mut lock_file = lock_file.lock();
-      lock_file.check_or_insert(specifier.as_str(), source)
+      lock_file.check_or_insert_remote(specifier.as_str(), source)
     } else {
       true
     }
@@ -445,13 +451,13 @@ mod tests {
       "Here is some source code",
     );
 
-    let check_true = lockfile.check_or_insert(
+    let check_true = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
       "Here is some source code",
     );
     assert!(check_true);
 
-    let check_false = lockfile.check_or_insert(
+    let check_false = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
       "This is new Source code",
     );
