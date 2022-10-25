@@ -53,8 +53,6 @@ fn op_stdin_set_raw(
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.stdin.setRaw");
-
   let rid = 0; // stdin is always rid=0
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs

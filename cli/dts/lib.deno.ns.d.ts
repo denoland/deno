@@ -314,6 +314,24 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
+  /**
+   * Returns an array containing the 1, 5, and 15 minute load averages. The
+   * load average is a measure of CPU and IO utilization of the last one, five,
+   * and 15 minute periods expressed as a fractional number.  Zero means there
+   * is no load. On Windows, the three values are always the same and represent
+   * the current load, not the 1, 5 and 15 minute load averages.
+   *
+   * ```ts
+   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Observability
+   */
+  export function loadavg(): number[];
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * When the value is `true`, the Deno CLI will attempt to not send color codes
@@ -1896,10 +1914,14 @@ declare namespace Deno {
     rows: number;
   };
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   *  @category I/O */
+  /** @category I/O */
   export interface SetRawOptions {
+    /**
+     * The `cbreak` option can be used to indicate that characters that
+     * correspond to a signal should still be generated. When disabling raw
+     * mode, this option is ignored. This functionality currently only works on
+     * Linux and Mac OS.
+     */
     cbreak: boolean;
   }
 
@@ -1926,18 +1948,12 @@ declare namespace Deno {
     readonly rid: number;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
-    /** **UNSTABLE**: new API, yet to be vetted.
-     *
+    /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input
      * characters. Reading from a TTY device in raw mode is faster than reading
      * from a TTY device in canonical mode.
-     *
-     * The `cbreak` option can be used to indicate that characters that
-     * correspond to a signal should still be generated. When disabling raw
-     * mode, this option is ignored. This functionality currently only works on
-     * Linux and Mac OS.
      *
      * ```ts
      * Deno.stdin.setRaw(true, { cbreak: true });
@@ -3958,6 +3974,42 @@ declare namespace Deno {
    * @category File System
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /**
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file stream resource referenced by `rid`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { create: true, write: true });
+   * Deno.futimeSync(file.rid, 1556495550, new Date());
+   * ```
+   *
+   * @category File System
+   */
+  export function futimeSync(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /**
+   * Changes the access (`atime`) and modification (`mtime`) times of a file
+   * stream resource referenced by `rid`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { create: true, write: true });
+   * await Deno.futime(file.rid, 1556495550, new Date());
+   * ```
+   *
+   * @category File System
+   */
+  export function futime(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
 
   /**
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
