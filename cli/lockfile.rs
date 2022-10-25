@@ -57,11 +57,19 @@ pub struct NpmContent {
   pub packages: BTreeMap<String, NpmPackageInfo>,
 }
 
+impl NpmContent {
+  fn is_empty(&self) -> bool {
+    self.specifiers.is_empty() && self.packages.is_empty()
+  }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockfileContent {
   version: String,
   // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
+  #[serde(skip_serializing_if = "NpmContent::is_empty")]
+  #[serde(default)]
   pub npm: NpmContent,
 }
 

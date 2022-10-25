@@ -235,15 +235,7 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let maybe_lockfile = if let Some(lockfile) = &lockfile {
-      if lockfile.lock().write {
-        None
-      } else {
-        Some(lockfile.clone())
-      }
-    } else {
-      None
-    };
+    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
