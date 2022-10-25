@@ -89,6 +89,7 @@
     seekSync: __bootstrap.files.seekSync,
     connect: __bootstrap.net.connect,
     listen: __bootstrap.net.listen,
+    loadavg: __bootstrap.os.loadavg,
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
     startTls: __bootstrap.tls.startTls,
@@ -120,7 +121,6 @@
   __bootstrap.denoNsUnstable = {
     consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    loadavg: __bootstrap.os.loadavg,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
