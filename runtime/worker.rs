@@ -248,6 +248,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 

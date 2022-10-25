@@ -274,6 +274,7 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub inspector: bool,
 }
 
 impl Drop for JsRuntime {
@@ -428,8 +429,14 @@ impl JsRuntime {
     };
 
     op_state.borrow_mut().put(isolate_ptr);
-    let inspector =
-      JsRuntimeInspector::new(&mut isolate, global_context.clone());
+    let inspector = if options.inspector {
+      Some(JsRuntimeInspector::new(
+        &mut isolate,
+        global_context.clone(),
+      ))
+    } else {
+      None
+    };
 
     let loader = options
       .module_loader
@@ -438,7 +445,7 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context));
       state.op_ctxs = op_ctxs;
-      state.inspector = Some(inspector);
+      state.inspector = inspector;
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -962,12 +969,18 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
-    // We always poll the inspector first
-    let _ = self.inspector().borrow_mut().poll_unpin(cx);
+    let has_inspector: bool;
     let module_map_rc = Self::module_map(self.v8_isolate());
+
     {
       let state = self.state.borrow();
+      has_inspector = state.inspector.is_some();
       state.waker.register(cx.waker());
+    }
+
+    if has_inspector {
+      // We poll the inspector first.
+      let _ = self.inspector().borrow_mut().poll_unpin(cx);
     }
 
     self.pump_v8_message_loop()?;
@@ -1023,10 +1036,12 @@ impl JsRuntime {
 
     let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
-      let inspector_has_active_sessions =
-        self.inspector().borrow_mut().has_active_sessions();
-      if wait_for_inspector && inspector_has_active_sessions {
-        return Poll::Pending;
+      if has_inspector {
+        let inspector_has_active_sessions =
+          self.inspector().borrow_mut().has_active_sessions();
+        if wait_for_inspector && inspector_has_active_sessions {
+          return Poll::Pending;
+        }
       }
 
       return Poll::Ready(Ok(()));
