@@ -101,8 +101,8 @@ Deno.test(function fileUsingEmptyStringFileName() {
 });
 
 Deno.test(function fileConstructorOptionsValidation() {
-   // deno-lint-ignore ban-types
-  type AnyFunction = Function
+  // deno-lint-ignore ban-types
+  type AnyFunction = Function;
   const assert = {
     strictEqual: assertEquals,
     throws(fn: AnyFunction, expected: AnyFunction) {
@@ -134,11 +134,13 @@ Deno.test(function fileConstructorOptionsValidation() {
   }
 
   [undefined, null, Object.create(null), { lastModified: undefined }, {
-    get lastModified() { return undefined },
+    get lastModified() {
+      return undefined;
+    },
   }].forEach((options) => {
     assert.strictEqual(
-      new File([], '', options).lastModified,
-      new File([], '').lastModified,
+      new File([], "", options).lastModified,
+      new File([], "").lastModified,
     );
   });
 
@@ -159,11 +161,11 @@ Deno.test(function fileConstructorOptionsValidation() {
 
   [{}, [], () => {}, Number, new Number(), new String(), new Boolean()].forEach(
     (options) => {
-      assert.strictEqual(new File([], '', options).lastModified, 3);
+      assert.strictEqual(new File([], "", options).lastModified, 3);
     },
   );
   [0, "", true, Symbol(), 0n].forEach((options) => {
-    assert.throws(() => new File([], '', options), TypeError);
+    assert.throws(() => new File([], "", options), TypeError);
   });
 
   // @ts-ignore cleaning up.
