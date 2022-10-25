@@ -1376,3 +1376,37 @@ Deno.test(
     await Promise.all([server(), startTlsClient()]);
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function listenTlsWithReuseAddr() {
+    const resolvable1 = deferred();
+    const hostname = "localhost";
+    const port = 3500;
+
+    const listener1 = Deno.listenTls({ hostname, port, cert, key });
+
+    listener1.accept().then((conn) => {
+      conn.close();
+      resolvable1.resolve();
+    });
+
+    const conn1 = await Deno.connectTls({ hostname, port, caCerts });
+    conn1.close();
+    await resolvable1;
+    listener1.close();
+
+    const resolvable2 = deferred();
+    const listener2 = Deno.listenTls({ hostname, port, cert, key });
+
+    listener2.accept().then((conn) => {
+      conn.close();
+      resolvable2.resolve();
+    });
+
+    const conn2 = await Deno.connectTls({ hostname, port, caCerts });
+    conn2.close();
+    await resolvable2;
+    listener2.close();
+  },
+);
