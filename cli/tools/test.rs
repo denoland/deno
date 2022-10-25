@@ -1000,12 +1000,11 @@ async fn test_specifiers(
   };
 
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
-  let mut sender = TestEventSender::new(sender);
+  let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
   let fail_fast = options.fail_fast;
 
-  let join_handles = {
-    let sender = sender.clone();
+  let join_handles =
     specifiers_with_mode.iter().map(move |(specifier, mode)| {
       let ps = ps.clone();
       let permissions = permissions.clone();
@@ -1036,8 +1035,7 @@ async fn test_specifiers(
         }
         Ok(())
       })
-    })
-  };
+    });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
@@ -1076,12 +1074,6 @@ async fn test_specifiers(
           }
 
           TestEvent::Wait(id) => {
-            if !reporter.started_tests {
-              // if tests haven't started, flush the stdout and stderr
-              // capture so that any logging that occurs outside a test
-              // will not end up being captured in a test
-              sender.flush_stdout_and_stderr();
-            }
             reporter.report_wait(tests.get(&id).unwrap());
           }
 
