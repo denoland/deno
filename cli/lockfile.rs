@@ -26,7 +26,7 @@ pub struct NpmPackageInfo {
   pub dependencies: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NpmContent {
   // Mapping between requests for npm packages and resolved specifiers, eg.
   // {
@@ -69,10 +69,7 @@ impl Lockfile {
       LockfileContent {
         version: "2".to_string(),
         remote: BTreeMap::new(),
-        npm: NpmContent {
-          specifiers: BTreeMap::new(),
-          packages: BTreeMap::new(),
-        },
+        npm: NpmContent::default(),
       }
     } else {
       let s = std::fs::read_to_string(&filename).with_context(|| {
@@ -93,10 +90,7 @@ impl Lockfile {
         LockfileContent {
           version: "2".to_string(),
           remote,
-          npm: NpmContent {
-            specifiers: BTreeMap::new(),
-            packages: BTreeMap::new(),
-          },
+          npm: NpmContent::default(),
         }
       }
     };
