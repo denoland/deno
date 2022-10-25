@@ -4870,4 +4870,32 @@ declare namespace Deno {
    * @category Timers
    */
   export function unrefTimer(id: number): void;
+
+  /**
+   * Returns the user id of the process on POSIX platforms. Returns null on Windows.
+   *
+   * ```ts
+   * console.log(Deno.uid());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function uid(): number | null;
+
+  /**
+   * Returns the group id of the process on POSIX platforms. Returns null on windows.
+   *
+   * ```ts
+   * console.log(Deno.gid());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function gid(): number | null;
 }

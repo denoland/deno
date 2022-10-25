@@ -121,6 +121,8 @@
     unrefTimer: __bootstrap.timers.unrefTimer,
     hostname: __bootstrap.os.hostname,
     consoleSize: __bootstrap.tty.consoleSize,
+    gid: __bootstrap.os.gid,
+    uid: __bootstrap.os.uid,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -128,8 +130,6 @@
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
-    gid: __bootstrap.os.gid,
-    uid: __bootstrap.os.uid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
     HttpClient: __bootstrap.fetch.HttpClient,
