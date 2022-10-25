@@ -160,7 +160,6 @@ fn op_exit(state: &mut OpState) {
 
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
-  super::check_unstable(state, "Deno.loadavg");
   state
     .borrow_mut::<Permissions>()
     .sys
