@@ -430,6 +430,13 @@ fn codegen_fast_impl(
     };
 
     let (trampoline, raw_block) = if is_async {
+      let result_cvt = if returns_result {
+        quote! {
+          #core::_ops::to_op_result(get_class, result)
+        }
+      } else {
+        quote! { #core::OpResult::Ok(result.into()) }
+      };
       (
         quote! {
           fn #func_name (_recv: #core::v8::Local<#core::v8::Object>, __promise_id: i32, __promise_resolver: v8::Local<v8::Function>, #(#inputs),*) {
@@ -437,9 +444,15 @@ fn codegen_fast_impl(
             let __op_id = ctx.id;
             let isolate = unsafe { &mut *ctx.isolate };
             let resolver = #core::v8::Global::<#core::v8::Function>::new(isolate, __promise_resolver);
+            // Track async call & get copy of get_error_class_fn
+            let get_class = {
+              let state = ::std::cell::RefCell::borrow(&ctx.state);
+              state.tracker.track_async(__op_id);
+              state.get_error_class_fn
+            };
             #core::_ops::queue_fast_async_op(ctx, async move {
               let result = #name::call::<#type_params>(#(#input_idents),*).await;
-              (resolver, __promise_id, __op_id, #core::OpResult::Ok(result.into()))
+              (resolver, __promise_id, __op_id, #result_cvt)
             });
           }
         },

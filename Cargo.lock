@@ -947,6 +947,7 @@ dependencies = [
  "serde_json",
  "serde_v8",
  "sourcemap",
+ "tokio",
  "url",
  "v8",
 ]

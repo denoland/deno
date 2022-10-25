@@ -28,9 +28,9 @@ use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::Future;
-use futures::FutureExt;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use futures::FutureExt;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -125,7 +125,7 @@ struct IsolateAllocations {
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
   state: Rc<RefCell<JsRuntimeState>>,
-  module_map: Rc<RefCell<ModuleMap>>,
+  module_map: Option<Rc<RefCell<ModuleMap>>>,
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
@@ -478,7 +478,10 @@ impl JsRuntime {
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
-      Some(JsRuntimeInspector::new(&mut isolate, global_context.clone()))
+      Some(JsRuntimeInspector::new(
+        &mut isolate,
+        global_context.clone(),
+      ))
     } else {
       None
     };
@@ -508,7 +511,7 @@ impl JsRuntime {
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
       state: state_rc,
-      module_map: module_map_rc,
+      module_map: Some(module_map_rc),
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -561,6 +564,11 @@ impl JsRuntime {
   pub fn global_realm(&mut self) -> JsRealm {
     let state = self.state.borrow();
     state.global_realm.clone().unwrap()
+  }
+
+  #[inline]
+  fn get_module_map<'a>(&'a mut self) -> &'a Rc<RefCell<ModuleMap>> {
+    self.module_map.as_ref().unwrap()
   }
 
   /// Creates a new realm (V8 context) in this JS execution context,
@@ -830,6 +838,8 @@ impl JsRuntime {
 
     // Drop existing ModuleMap to drop v8::Global handles
     {
+      self.module_map.take();
+
       let v8_isolate = self.v8_isolate();
       Self::drop_state_and_module_map(v8_isolate);
     }
@@ -1019,9 +1029,10 @@ impl JsRuntime {
     if has_inspector {
       // We poll the inspector first.
       let _ = self.inspector().borrow_mut().poll_unpin(cx);
+    }
+    {
       self.pump_v8_message_loop()?;
     }
-
     // Ops
     {
       self.resolve_async_ops(cx)?;
@@ -1071,11 +1082,13 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
     let pending_state = self.event_loop_pending_state();
-    if has_inspector || !pending_state.is_pending() && !maybe_scheduling {
-      let inspector_has_active_sessions =
-        self.inspector().borrow_mut().has_active_sessions();
-      if wait_for_inspector && inspector_has_active_sessions {
-        return Poll::Pending;
+    if !pending_state.is_pending() && !maybe_scheduling {
+      if has_inspector {
+        let inspector_has_active_sessions =
+          self.inspector().borrow_mut().has_active_sessions();
+        if wait_for_inspector && inspector_has_active_sessions {
+          return Poll::Pending;
+        }
       }
 
       return Poll::Ready(Ok(()));
@@ -1123,9 +1136,8 @@ impl JsRuntime {
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
-        drop(state);
-        let module_map = self.module_map.borrow();
-        for pending_evaluate in &self.state.borrow().pending_dyn_mod_evaluate {
+        let module_map = self.module_map.as_mut().unwrap().borrow_mut();
+        for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
@@ -1148,7 +1160,7 @@ Pending dynamic modules:\n".to_string();
   fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
     let isolate = self.v8_isolate.as_mut().unwrap();
     let state = self.state.borrow_mut();
-    let module_map = self.module_map.borrow();
+    let module_map = self.module_map.as_mut().unwrap().borrow();
 
     EventLoopPendingState {
       has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
@@ -1574,7 +1586,7 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
     if self
-      .module_map
+      .get_module_map()
       .borrow()
       .preparing_dynamic_imports
       .is_empty()
@@ -1582,7 +1594,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.module_map.clone();
+    let module_map_rc = self.get_module_map().clone();
     loop {
       let poll_result = module_map_rc
         .borrow_mut()
@@ -1615,11 +1627,16 @@ impl JsRuntime {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
-    if self.module_map.borrow().pending_dynamic_imports.is_empty() {
+    if self
+      .get_module_map()
+      .borrow()
+      .pending_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.module_map.clone();
+    let module_map_rc = self.get_module_map().clone();
     loop {
       let poll_result = module_map_rc
         .borrow_mut()
@@ -1976,7 +1993,13 @@ impl JsRuntime {
           .to_v8(&mut scope)
           .unwrap(),
       };
-      resolver.call(&mut scope, this, &[arg]);
+      let tc_scope = &mut v8::TryCatch::new(&mut scope); 
+
+      resolver.call(tc_scope, this, &[arg]);
+      match tc_scope.exception() {
+        None => {},
+        Some(exception) => return exception_to_err_result(tc_scope, exception, false),
+      }
     }
 
     Ok(())
@@ -2252,6 +2275,7 @@ pub mod tests {
   #[derive(Copy, Clone)]
   enum Mode {
     Async,
+    AsyncDeferred,
     AsyncZeroCopy(bool),
   }
 
@@ -2260,7 +2284,7 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  #[op(deferred)]
+  #[op]
   async fn op_test(
     rc_op_state: Rc<RefCell<OpState>>,
     control: u8,
@@ -2271,6 +2295,11 @@ pub mod tests {
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
     match test_state.mode {
       Mode::Async => {
+        assert_eq!(control, 42);
+        Ok(43)
+      }
+      Mode::AsyncDeferred => {
+        tokio::task::yield_now().await;
         assert_eq!(control, 42);
         Ok(43)
       }
@@ -2323,14 +2352,15 @@ pub mod tests {
 
   #[test]
   fn test_ref_unref_ops() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.opAsync("op_test", 42);
-        var p2 = Deno.core.opAsync("op_test", 42);
+        var p1 = Deno.core.ops.op_test(42);
+        var p2 = Deno.core.ops.op_test(42);
         "#,
       )
       .unwrap();
@@ -2383,6 +2413,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2401,6 +2432,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2417,6 +2449,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2431,6 +2464,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -3236,7 +3270,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.opAsync('op_async_borrow')",
+        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -3310,7 +3344,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
+Deno.core.initializeAsyncOps();
+Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
   lines: {
     100: {
       unit: "m"
@@ -3348,6 +3383,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
+        Deno.core.initializeAsyncOps();
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
