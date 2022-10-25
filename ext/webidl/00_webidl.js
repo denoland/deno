@@ -729,7 +729,13 @@
           }`;
           const converter = member.converter;
           const idlMemberValue = converter(esMemberValue, { ...opts, context });
-          idlDict[key] = idlMemberValue;
+          ObjectDefineProperty(idlDict, key, {
+            __proto__: null,
+            configurable: true,
+            enumerable: true,
+            value: idlMemberValue,
+            writable: true,
+          })
         } else if (member.required) {
           throw makeException(
             TypeError,

@@ -99,3 +99,76 @@ Deno.test(function fileUsingNumberFileName() {
 Deno.test(function fileUsingEmptyStringFileName() {
   testSecondArgument("", "");
 });
+
+Deno.test(function fileConstructorOptionsValidation() {
+  const assert = {
+    strictEqual: assertEquals,
+    throws(fn: Function, expected: Function) {
+      try {
+        fn();
+        throw new Error("Missing expected exception");
+      } catch (e) {
+        if (e instanceof expected) {
+          return;
+        }
+
+        throw new Error("Wrong type of error", { cause: e });
+      }
+    },
+  };
+
+  function mustCall(fn: Function, nb = 1) {
+    const timeout = setTimeout(() => {
+      if (nb !== 0) throw new Error(`Expected ${nb} more calls`);
+    }, 999);
+    return function (this: unknown) {
+      nb--;
+      if (nb === 0) clearTimeout(timeout);
+      else if (nb < 0) {
+        throw new Error("Function has been called more times than expected");
+      }
+      return Reflect.apply(fn, this, arguments);
+    };
+  }
+
+  [undefined, null, Object.create(null), { lastModified: undefined }, {
+    // @ts-ignore
+    get lastModified() {},
+  }].forEach((options) => {
+    assert.strictEqual(
+      // @ts-ignore
+      new File([], null, options).lastModified,
+      // @ts-ignore
+      new File([], null).lastModified,
+    );
+  });
+
+  Reflect.defineProperty(Object.prototype, "get", {
+    // @ts-ignore
+    __proto__: null,
+    configurable: true,
+    get() {
+      throw new Error();
+    },
+  });
+  Reflect.defineProperty(Object.prototype, "lastModified", {
+    // @ts-ignore
+    __proto__: null,
+    configurable: true,
+    get: mustCall(() => 3, 7),
+  });
+
+  [{}, [], () => {}, Number, new Number(), new String(), new Boolean()].forEach(
+    (options) => {
+      // @ts-ignore
+      assert.strictEqual(new File([], null, options).lastModified, 3);
+    },
+  );
+  [0, "", true, Symbol(), 0n].forEach((options) => {
+    // @ts-ignore
+    assert.throws(() => new File([], null, options), TypeError);
+  });
+
+  // @ts-ignore
+  delete Object.prototype.lastModified;
+});
