@@ -201,8 +201,12 @@ impl Lockfile {
         .unwrap_or(&package.dist.shasum);
       if &package_info.integrity != integrity {
         return Err(anyhow!(
-          "Integrity check failed for npm package: {}. Pass --lock-write to update the lockfile.",
-          package.id
+          "Integrity check failed for npm package: \"{}\".
+  Cache has \"{}\" and lockfile has \"{}\".
+  Use \"--lock-write\" flag to update the lockfile.",
+          package.id,
+          integrity,
+          package_info.integrity
         ));
       }
     }
@@ -241,8 +245,13 @@ impl Lockfile {
     {
       if &format!("{}@{}", package_req.name, version) != resolved_specifier {
         return Err(anyhow!(
-          "Specifier resolution check failed for npm package: {}. Pass --lock-write to update the lockfile.",
-          package_req.name
+          "Specifier resolution check failed for npm package: \"{}\".
+  Resolved to \"{}@{}\" and lockfile expects \"{}\".
+  Use \"--lock-write\" flag to update the lockfile.",
+          package_req.name,
+          package_req.name,
+          version,
+          resolved_specifier
         ));
       }
     }
