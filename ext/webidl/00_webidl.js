@@ -735,7 +735,7 @@
             enumerable: true,
             value: idlMemberValue,
             writable: true,
-          })
+          });
         } else if (member.required) {
           throw makeException(
             TypeError,
