@@ -315,7 +315,6 @@ declare namespace Deno {
   export function hostname(): string;
 
   /**
-   *
    * Returns an array containing the 1, 5, and 15 minute load averages. The
    * load average is a measure of CPU and IO utilization of the last one, five,
    * and 15 minute periods expressed as a fractional number.  Zero means there
