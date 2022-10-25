@@ -494,7 +494,7 @@ impl JsRuntime {
   }
 
   #[inline]
-  fn get_module_map<'a>(&'a mut self) -> &'a Rc<RefCell<ModuleMap>> {
+  fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
     self.module_map.as_ref().unwrap()
   }
 
