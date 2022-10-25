@@ -299,13 +299,14 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-sys` permission.
+   *
    * There are questions around which permission this needs. And maybe should be
-   * renamed (loadAverage?).
+   * renamed.
    *
    * @tags allow-sys
    * @category Observability
    */
-  export function loadavg(): number[];
+  export function loadavg(): [number, number, number];
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -316,8 +317,9 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-sys` permission.
-   * Under consideration to possibly move to Deno.build or Deno.versions and if
-   * it should depend sys-info, which may not be desirable.
+   *
+   * Under consideration to possibly move to {@linkcode Deno.build} or
+   * {@linkcode Deno.versions} and if it should depend sys-info.
    *
    * @tags allow-sys
    * @category Runtime Environment
@@ -344,49 +346,52 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Information returned from a call to {@linkcode Deno.systemMemoryInfo}.
+   *
    * @category Runtime Environment
    */
   export interface SystemMemoryInfo {
-    /** Total installed memory */
+    /** Total installed memory in bytes. */
     total: number;
-    /** Unused memory */
+    /** Unused memory in bytes. */
     free: number;
-    /** Estimation of how much memory is available  for  starting  new
-     * applications, without  swapping. Unlike the data provided by the cache or
+    /** Estimation of how much memory, in bytes, is available for starting new
+     * applications, without swapping. Unlike the data provided by the cache or
      * free fields, this field takes into account page cache and also that not
-     * all reclaimable memory slabs will be reclaimed due to items being in use
+     * all reclaimable memory will be reclaimed due to items being in use.
      */
     available: number;
-    /** Memory used by kernel buffers */
+    /** Memory used by kernel buffers. */
     buffers: number;
-    /** Memory used by the page cache and slabs */
+    /** Memory used by the page cache and slabs. */
     cached: number;
-    /** Total swap memory */
+    /** Total swap memory. */
     swapTotal: number;
-    /** Unused swap memory */
+    /** Unused swap memory. */
     swapFree: number;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The information of the network interface.
+   * The information for a network interface returned from a call to
+   * {@linkcode Deno.networkInterfaces}.
    *
    * @category Network
    */
   export interface NetworkInterfaceInfo {
-    /** The network interface name */
+    /** The network interface name. */
     name: string;
-    /** The IP protocol version */
+    /** The IP protocol version. */
     family: "IPv4" | "IPv6";
-    /** The IP address */
+    /** The IP address bound to the interface. */
     address: string;
-    /** The netmask */
+    /** The netmask applied to the interface. */
     netmask: string;
-    /** The IPv6 scope id or null */
+    /** The IPv6 scope id or `null`. */
     scopeid: number | null;
-    /** The CIDR range */
+    /** The CIDR range. */
     cidr: string;
-    /** The MAC address */
+    /** The MAC address. */
     mac: string;
   }
 
@@ -407,7 +412,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the user id of the process on POSIX platforms. Returns null on Windows.
+   * Returns the user id of the Deno process on POSIX platforms. Returns `null`
+   * on Windows.
    *
    * ```ts
    * console.log(Deno.getUid());
@@ -422,7 +428,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the group id of the process on POSIX platforms. Returns null on windows.
+   * Returns the group id of the process on POSIX platforms. Returns `null` on
+   * Windows.
    *
    * ```ts
    * console.log(Deno.getGid());
@@ -465,11 +472,15 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The native boolean type for interfacing to foreign functions.
+   *
    * @category FFI
    */
   type NativeBooleanType = "bool";
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The native pointer type for interfacing to foreign functions.
    *
    * @category FFI
    */
@@ -477,11 +488,15 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The native buffer type for interfacing to foreign functions.
+   *
    * @category FFI
    */
   type NativeBufferType = "buffer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * The native function type for interfacing with foreign functions.
    *
    * @category FFI
    */
@@ -489,13 +504,15 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The native void type for interfacing with foreign functions.
+   *
    * @category FFI
    */
   type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * All possible types for interfacing with foreign functions.
+   * All supported types for interfacing with foreign functions.
    *
    * @category FFI
    */
@@ -514,6 +531,9 @@ declare namespace Deno {
   export type NativeResultType = NativeType | NativeVoidType;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A utility type conversion for foreign symbol parameters and unsafe callback
+   * return types.
    *
    * @category FFI
    */
@@ -536,6 +556,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * A utility type for conversion for unsafe callback return types.
+   *
    * @category FFI
    */
   type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
@@ -551,6 +573,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * A utility type for conversion of parameter types of foreign functions.
+   *
    * @category FFI
    */
   type ToNativeParameterTypes<T extends readonly NativeType[]> =
@@ -564,6 +588,9 @@ declare namespace Deno {
       : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A utility type for conversion of foreign symbol return types and unsafe
+   * callback parameters.
    *
    * @category FFI
    */
@@ -585,6 +612,8 @@ declare namespace Deno {
   type FromNativeType<T extends NativeType = NativeType> = FromNativeTypeMap[T];
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A utility type for conversion for foreign symbol return types.
    *
    * @category FFI
    */
@@ -619,7 +648,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A foreign function as defined by its parameter and result types.
+   * The interface for a foreign function as defined by its parameter and result
+   * types.
    *
    * @category FFI
    */
@@ -628,13 +658,21 @@ declare namespace Deno {
     Result extends NativeResultType = NativeResultType,
     NonBlocking extends boolean = boolean,
   > {
-    /** Name of the symbol, defaults to the key name in symbols object. */
+    /** Name of the symbol.
+     *
+     * Defaults to the key name in symbols object. */
     name?: string;
+    /** The parameters of the foreign function. */
     parameters: Parameters;
+    /** The result (return value) of the foreign function. */
     result: Result;
-    /** When true, function calls will run on a dedicated blocking thread and will return a Promise resolving to the `result`. */
+    /** When `true`, function calls will run on a dedicated blocking thread and
+     * will return a `Promise` resolving to the `result`. */
     nonblocking?: NonBlocking;
-    /** When true, function calls can safely callback into JS or trigger a GC event. Default is `false`. */
+    /** When `true`, function calls can safely callback into JavaScript or
+     * trigger a garbage collection event.
+     *
+     * Default is `false`. */
     callback?: boolean;
   }
 
@@ -645,6 +683,7 @@ declare namespace Deno {
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
     name?: string;
+    /** The type of the foreign static value. */
     type: Type;
   }
 
@@ -660,7 +699,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Infers a foreign symbol.
+   * A utility type that infers a foreign symbol.
    *
    * @category FFI
    */
@@ -695,7 +734,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Infers a foreign library interface.
+   * A utility type that infers a foreign library interface.
    *
    * @category FFI
    */
@@ -707,9 +746,9 @@ declare namespace Deno {
    *
    * Pointer type depends on the architecture and actual pointer value.
    *
-   * On a 32 bit system all pointer values are plain numbers. On a 64 bit
-   * system pointer values are represented as numbers if the value is below
-   * `Number.MAX_SAFE_INTEGER`.
+   * On a 32 bit host system all pointer values are plain numbers. On a 64 bit
+   * host system pointer values are represented as numbers if the value is below
+   * `Number.MAX_SAFE_INTEGER`, otherwise they are provided as bigints.
    *
    * @category FFI
    */
@@ -723,18 +762,16 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointer {
-    /**
-     * Return the direct memory pointer to the typed array in memory
-     */
+    /** Return the direct memory pointer to the typed array in memory. */
     static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * An unsafe pointer view to a memory location as specified by the `pointer`
-   * value. The `UnsafePointerView` API mimics the standard built in interface
-   * `DataView` for accessing the underlying types at an memory location
-   * (numbers, strings and raw bytes).
+   * value. The `UnsafePointerView` API follows the standard built in interface
+   * {@linkcode DataView} for accessing the underlying types at an memory
+   * location (numbers, strings and raw bytes).
    *
    * @category FFI
    */
@@ -745,41 +782,63 @@ declare namespace Deno {
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
-    /** Gets an unsigned 8-bit integer at the specified byte offset from the pointer. */
+    /** Gets an unsigned 8-bit integer at the specified byte offset from the
+     * pointer. */
     getUint8(offset?: number): number;
-    /** Gets a signed 8-bit integer at the specified byte offset from the pointer. */
+    /** Gets a signed 8-bit integer at the specified byte offset from the
+     * pointer. */
     getInt8(offset?: number): number;
-    /** Gets an unsigned 16-bit integer at the specified byte offset from the pointer. */
+    /** Gets an unsigned 16-bit integer at the specified byte offset from the
+     * pointer. */
     getUint16(offset?: number): number;
-    /** Gets a signed 16-bit integer at the specified byte offset from the pointer. */
+    /** Gets a signed 16-bit integer at the specified byte offset from the
+     * pointer. */
     getInt16(offset?: number): number;
-    /** Gets an unsigned 32-bit integer at the specified byte offset from the pointer. */
+    /** Gets an unsigned 32-bit integer at the specified byte offset from the
+     * pointer. */
     getUint32(offset?: number): number;
-    /** Gets a signed 32-bit integer at the specified byte offset from the pointer. */
+    /** Gets a signed 32-bit integer at the specified byte offset from the
+     * pointer. */
     getInt32(offset?: number): number;
-    /** Gets an unsigned 64-bit integer at the specified byte offset from the pointer. */
+    /** Gets an unsigned 64-bit integer at the specified byte offset from the
+     * pointer. */
     getBigUint64(offset?: number): PointerValue;
-    /** Gets a signed 64-bit integer at the specified byte offset from the pointer. */
+    /** Gets a signed 64-bit integer at the specified byte offset from the
+     * pointer. */
     getBigInt64(offset?: number): PointerValue;
-    /** Gets a signed 32-bit float at the specified byte offset from the pointer. */
+    /** Gets a signed 32-bit float at the specified byte offset from the
+     * pointer. */
     getFloat32(offset?: number): number;
-    /** Gets a signed 64-bit float at the specified byte offset from the pointer. */
+    /** Gets a signed 64-bit float at the specified byte offset from the
+     * pointer. */
     getFloat64(offset?: number): number;
-    /** Gets a C string (null terminated string) at the specified byte offset from the pointer. */
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the pointer. */
     getCString(offset?: number): string;
-    /** Gets a C string (null terminated string) at the specified byte offset from the specified pointer. */
+    /** Gets a C string (`null` terminated string) at the specified byte offset
+     * from the specified pointer. */
     static getCString(pointer: PointerValue, offset?: number): string;
-    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the pointer. */
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the pointer. */
     getArrayBuffer(byteLength: number, offset?: number): ArrayBuffer;
-    /** Gets an ArrayBuffer of length `byteLength` at the specified byte offset from the specified pointer. */
+    /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
+     * offset from the specified pointer. */
     static getArrayBuffer(
       pointer: PointerValue,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
-    /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
+    /** Copies the memory of the pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
     copyInto(destination: BufferSource, offset?: number): void;
-    /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
+    /** Copies the memory of the specified pointer into a typed array.
+     *
+     * Length is determined from the typed array's `byteLength`.
+     *
+     * Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerValue,
       destination: BufferSource,
@@ -789,21 +848,26 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe pointer to a function, for calling functions that are not
-   * present as symbols.
+   * An unsafe pointer to a function, for calling functions that are not present
+   * as symbols.
    *
    * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
+    /** The pointer to the function. */
     pointer: PointerValue;
+    /** The definition of the function. */
     definition: Fn;
 
     constructor(pointer: PointerValue, definition: Fn);
 
+    /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Definition of a unsafe callback function.
    *
    * @category FFI
    */
@@ -811,11 +875,15 @@ declare namespace Deno {
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
   > {
+    /** The parameters of the callbacks. */
     parameters: Parameters;
+    /** The current result of the callback. */
     result: Result;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An unsafe callback function.
    *
    * @category FFI
    */
@@ -828,13 +896,13 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe function pointer for passing JavaScript functions
-   * as C function pointers to ffi calls.
+   * An unsafe function pointer for passing JavaScript functions as C function
+   * pointers to foreign function calls.
    *
    * The function pointer remains valid until the `close()` method is called.
    *
-   * The callback can be explicitly ref'ed and deref'ed to stop Deno's
-   * process from exiting.
+   * The callback can be explicitly referenced via `ref()` and dereferenced via
+   * `deref()` to stop Deno's process from exiting.
    *
    * @category FFI
    */
@@ -849,35 +917,39 @@ declare namespace Deno {
       >,
     );
 
+    /** The pointer to the unsafe callback. */
     pointer: PointerValue;
+    /** The definition of the unsafe callback. */
     definition: Definition;
+    /** The callback function. */
     callback: UnsafeCallbackFunction<
       Definition["parameters"],
       Definition["result"]
     >;
 
     /**
-     * Adds one to this callback's reference counting and returns the
-     * new reference count.
+     * Adds one to this callback's reference counting and returns the new
+     * reference count.
      *
-     * If the callback's reference count becomes non-zero, it will keep
-     * Deno's process from exiting.
+     * If the callback's reference count is non-zero, it will keep Deno's
+     * process from exiting.
      */
     ref(): number;
 
     /**
-     * Removes one from this callback's reference counting and returns
-     * the new reference count.
+     * Removes one from this callback's reference counting and returns the new
+     * reference count.
      *
-     * If the callback's reference counter becomes zero, it will no longer
-     * keep Deno's process from exiting.
+     * If the callback's reference counter is zero, it will no longer keep
+     * Deno's process from exiting.
      */
     unref(): number;
 
     /**
-     * Removes the C function pointer associated with the UnsafeCallback.
-     * Continuing to use the instance after calling this object will lead to errors
-     * and crashes.
+     * Removes the C function pointer associated with this instance.
+     *
+     * Continuing to use the instance after calling this object will lead to
+     * errors and crashes.
      *
      * Calling this method will also immediately set the callback's reference
      * counting to zero and it will no longer keep Deno's process from exiting.
@@ -887,20 +959,70 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A dynamic library resource
+   * A dynamic library resource.  Use {@linkcode Deno.dlopen} to load a dynamic
+   * library and return this interface.
    *
    * @category FFI
    */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
-    /** All of the registered library along with functions for calling them */
+    /** All of the registered library along with functions for calling them. */
     symbols: StaticForeignLibraryInterface<S>;
+    /** Removes the pointers associated with the library symbols.
+     *
+     * Continuing to use symbols that are part of the library will lead to
+     * errors and crashes.
+     *
+     * Calling this method will also immediately set any references to zero and
+     * will no longer keep Deno's process from exiting.
+     */
     close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Opens a dynamic library and registers symbols
+   * Opens an external dynamic library and registers symbols, making foreign
+   * functions available to be called.
    *
+   * Requires `allow-ffi` permission. Loading foreign dynamic libraries can in
+   * theory bypass all of the sandbox permissions. While it is a separate
+   * permission users should acknowledge in practice that is effectively the
+   * same as running with the `allow-all` permission.
+   *
+   * An example, given a C library which exports a foreign function named
+   * `add()`:
+   *
+   * ```ts
+   * // Determine library extension based on
+   * // your OS.
+   * let libSuffix = "";
+   * switch (Deno.build.os) {
+   *   case "windows":
+   *     libSuffix = "dll";
+   *     break;
+   *   case "darwin":
+   *     libSuffix = "dylib";
+   *     break;
+   *   default:
+   *     libSuffix = "so";
+   *     break;
+   * }
+   *
+   * const libName = `./libadd.${libSuffix}`;
+   * // Open library and define exported symbols
+   * const dylib = Deno.dlopen(
+   *   libName,
+   *   {
+   *     "add": { parameters: ["isize", "isize"], result: "isize" },
+   *   } as const,
+   * );
+   *
+   * // Call the symbol `add`
+   * const result = dylib.symbols.add(35, 34); // 69
+   *
+   * console.log(`Result from external addition of 35 and 34: ${result}`);
+   * ```
+   *
+   * @tags allow-ffi
    * @category FFI
    */
   export function dlopen<S extends ForeignLibraryInterface>(
@@ -912,14 +1034,13 @@ declare namespace Deno {
    *
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
    * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
+   * seconds (UNIX epoch time) or as {@linkcode Date} objects.
    *
    * ```ts
    * Deno.utimeSync("myfile.txt", 1556495550, new Date());
    * ```
    *
    * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
    *
    * @tags allow-write
    * @category File System
@@ -934,14 +1055,13 @@ declare namespace Deno {
    *
    * Changes the access (`atime`) and modification (`mtime`) times of a file
    * system object referenced by `path`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
+   * (UNIX epoch time) or as {@linkcode Date} objects.
    *
    * ```ts
    * await Deno.utime("myfile.txt", 1556495550, new Date());
    * ```
    *
    * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
    *
    * @tags allow-write
    * @category File System
@@ -954,23 +1074,76 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category Sub Process
+   * These are unstable options which can be used with {@linkcode Deno.run}.
    */
-  export function run<
-    T extends RunOptions & {
-      clearEnv?: boolean;
-      gid?: number;
-      uid?: number;
-    } = RunOptions & {
-      clearEnv?: boolean;
-      gid?: number;
-      uid?: number;
-    },
-  >(opt: T): Process<T>;
+  interface UnstableRunOptions extends RunOptions {
+    /** If `true`, clears the environment variables before executing the
+     * sub-process.  Defaults to `false`. */
+    clearEnv?: boolean;
+    /** For POSIX systems, sets the group ID for the sub process. */
+    gid?: number;
+    /** For POSIX systems, sets the user ID for the sub process. */
+    uid?: number;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A custom HttpClient for use with `fetch`.
+   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
+   * an array of program arguments, the first of which is the binary.
+   *
+   * ```ts
+   * const p = Deno.run({
+   *   cmd: ["curl", "https://example.com"],
+   * });
+   * const status = await p.status();
+   * ```
+   *
+   * Subprocess uses same working directory as parent process unless `opt.cwd`
+   * is specified.
+   *
+   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
+   * Doesn't guarantee that only `opt.env` variables are present,
+   * as the OS may set environmental variables for processes.
+   *
+   * Environmental variables for subprocess can be specified using `opt.env`
+   * mapping.
+   *
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
+   *
+   * By default subprocess inherits stdio of parent process. To change
+   * this this, `opt.stdin`, `opt.stdout`, and `opt.stderr` can be set
+   * independently to a resource ID (_rid_) of an open file, `"inherit"`,
+   * `"piped"`, or `"null"`:
+   *
+   * - _number_: the resource ID of an open file/resource. This allows you to
+   *   read or write to a file.
+   * - `"inherit"`: The default if unspecified. The subprocess inherits from the
+   *   parent.
+   * - `"piped"`: A new pipe should be arranged to connect the parent and child
+   *   sub-process.
+   * - `"null"`: This stream will be ignored. This is the equivalent of attaching
+   *   the stream to `/dev/null`.
+   *
+   * Details of the spawned process are returned as an instance of
+   * {@linkcode Deno.Process}.
+   *
+   * Requires `allow-run` permission.
+   *
+   * @tags allow-run
+   * @category Sub Process
+   */
+  export function run<T extends UnstableRunOptions = UnstableRunOptions>(
+    opt: T,
+  ): Process<T>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
+   * designed to allow custom certificates or proxies to be used with `fetch()`.
    *
    * ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
@@ -980,14 +1153,16 @@ declare namespace Deno {
    *
    * @category Fetch API
    */
-  export class HttpClient {
+  export interface HttpClient {
+    /** The resource ID associated with the client. */
     rid: number;
+    /** Close the HTTP client. */
     close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The options used when creating a [HttpClient].
+   * The options used when creating a {@linkcode Deno.HttpClient}.
    *
    * @category Fetch API
    */
@@ -1007,25 +1182,37 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The definition of a proxy when specifying
+   * {@linkcode Deno.CreateHttpClientOptions}.
+   *
    * @category Fetch API
    */
   export interface Proxy {
+    /** The string URL of the proxy server to use. */
     url: string;
+    /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
+   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
+   *
    * @category Fetch API
    */
   export interface BasicAuth {
+    /** The username to be used against the proxy server. */
     username: string;
+    /** The password to be used against the proxy server. */
     password: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Create a custom HttpClient for to use with `fetch`.
+   * Create a custom HttpClient for to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
    *
    * ```ts
    * const caCert = await Deno.readTextFile("./ca.pem");
@@ -1034,7 +1221,9 @@ declare namespace Deno {
    * ```
    *
    * ```ts
-   * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
+   * const client = Deno.createHttpClient({
+   *   proxy: { url: "http://myproxy.com:8080" }
+   * });
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
@@ -1043,27 +1232,6 @@ declare namespace Deno {
   export function createHttpClient(
     options: CreateHttpClientOptions,
   ): HttpClient;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * Needs investigation into high precision time.
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1076,8 +1244,6 @@ declare namespace Deno {
    * await Deno.futime(file.rid, 1556495550, new Date());
    * ```
    *
-   * Needs investigation into high precision time.
-   *
    * @category File System
    */
   export function futime(
@@ -1088,40 +1254,77 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A generic transport listener for message-oriented protocols.
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file stream resource referenced by `rid`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { create: true, write: true });
+   * Deno.futimeSync(file.rid, 1556495550, new Date());
+   * ```
+   *
+   * @category File System
+   */
+  export function futimeSync(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A generic transport listener for message-oriented protocols, which is
+   * returned from a call to {@linkcode Deno.listenDatagram}.
+   *
+   * The connection is an async iterator where received messages are yielded up
+   * in the format of a tuple containing the data array and the address
+   * information.
    *
    * @category Network
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
-    /** Waits for and resolves to the next message to the `UDPConn`. */
+    /** Waits for and resolves to the next message to the instance.
+     *
+     * Messages are received in the format of a tuple containing the data array
+     * and the address information.
+     */
     receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
-    /** Sends a message to the target. */
+    /** Sends a message to the target via the connection. The method resolves
+     * with the number of bytes sent. */
     send(p: Uint8Array, addr: Addr): Promise<number>;
     /** Close closes the socket. Any pending message promises will be rejected
      * with errors. */
     close(): void;
-    /** Return the address of the `UDPConn`. */
+    /** Return the address of the instance. */
     readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Unstable options which can be set when opening a Unix listener via
+   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
+   *
    * @category Network
    */
   export interface UnixListenOptions {
-    /** A Path to the Unix Socket. */
+    /** A path to the Unix Socket. */
     path: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Unstable options which can be set when opening a datagram listener via
+   * {@linkcode Deno.listenDatagram}.
    *
    * @category Network
    */
   export interface UdpListenOptions extends ListenOptions {
     /** When `true` the specified address will be reused, even if another
      * process has already bound a socket on it. This effectively steals the
-     * socket from the listener. Defaults to `false`. */
+     * socket from the listener.
+     *
+     * Defaults to `false`. */
     reuseAddress?: boolean;
   }
 
@@ -1214,12 +1417,26 @@ declare namespace Deno {
    * @tags allow-net, allow-read
    * @category Network
    */
-  export function connect(
-    options: ConnectOptions,
-  ): Promise<TcpConn>;
-  export function connect(
-    options: UnixConnectOptions,
-  ): Promise<UnixConn>;
+  export function connect(options: ConnectOptions): Promise<TcpConn>;
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Connects to the hostname (default is "127.0.0.1") and port on the named
+   * transport (default is "tcp"), and resolves to the connection (`Conn`).
+   *
+   * ```ts
+   * const conn1 = await Deno.connect({ port: 80 });
+   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
+   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
+   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
+   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
+   * ```
+   *
+   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   *
+   * @tags allow-net, allow-read
+   * @category Network
+   */
+  export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
