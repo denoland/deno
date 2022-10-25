@@ -442,6 +442,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+    self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }
 

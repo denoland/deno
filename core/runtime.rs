@@ -908,6 +908,18 @@ impl JsRuntime {
     }
   }
 
+  pub fn maybe_init_inspector(&mut self) {
+    if self.state.borrow().inspector.is_some() {
+      return;
+    }
+
+    let mut state = self.state.borrow_mut();
+    state.inspector = Some(JsRuntimeInspector::new(
+      self.v8_isolate.as_mut().unwrap(),
+      state.global_realm.clone().unwrap().0,
+    ));
+  }
+
   pub fn poll_value(
     &mut self,
     global: &v8::Global<v8::Value>,
