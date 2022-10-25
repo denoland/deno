@@ -534,7 +534,7 @@ impl Resource for FetchResponseBodyResource {
   }
 
   fn size_hint(&self) -> (u64, Option<u64>) {
-    (0, self.size)
+    (self.size.unwrap_or(0), self.size)
   }
 
   fn close(self: Rc<Self>) {
