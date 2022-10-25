@@ -3245,13 +3245,7 @@
     },
     "data-urls": {
       "base64.any.html": true,
-      "base64.any.worker.html": true,
-      "processing.any.html": [
-        "\"data:text/plain;a=\\\",\\\",X\""
-      ],
-      "processing.any.worker.html": [
-        "\"data:text/plain;a=\\\",\\\",X\""
-      ]
+      "base64.any.worker.html": true
     },
     "h1-parsing": {
       "lone-cr.window.html": [
