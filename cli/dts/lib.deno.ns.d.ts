@@ -314,6 +314,25 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
+  /**
+   *
+   * Returns an array containing the 1, 5, and 15 minute load averages. The
+   * load average is a measure of CPU and IO utilization of the last one, five,
+   * and 15 minute periods expressed as a fractional number.  Zero means there
+   * is no load. On Windows, the three values are always the same and represent
+   * the current load, not the 1, 5 and 15 minute load averages.
+   *
+   * ```ts
+   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Observability
+   */
+  export function loadavg(): number[];
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * When the value is `true`, the Deno CLI will attempt to not send color codes
