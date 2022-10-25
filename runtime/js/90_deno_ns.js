@@ -120,10 +120,10 @@
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
     hostname: __bootstrap.os.hostname,
+    consoleSize: __bootstrap.tty.consoleSize,
   };
 
   __bootstrap.denoNsUnstable = {
-    consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,

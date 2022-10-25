@@ -4,6 +4,9 @@ import { assert } from "./test_util.ts";
 // Note tests for Deno.stdin.setRaw is in integration tests.
 
 Deno.test(function consoleSize() {
+  if (!Deno.isatty(Deno.stdout.rid)) {
+    return;
+  }
   const result = Deno.consoleSize();
   assert(typeof result.columns !== "undefined");
   assert(typeof result.rows !== "undefined");
