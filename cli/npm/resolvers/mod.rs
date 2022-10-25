@@ -103,23 +103,30 @@ impl NpmPackageResolver {
     )
   }
 
-  pub async fn regenerate_from_lockfile(
-    cache: NpmCache,
-    api: NpmRegistryApi,
-    unstable: bool,
-    no_npm: bool,
-    local_node_modules_path: Option<PathBuf>,
+  /// This function will replace current resolver with a new one built from a
+  /// snapshot created out of the lockfile.
+  pub async fn add_lockfile(
+    &mut self,
     lockfile: Arc<Mutex<Lockfile>>,
-  ) -> Result<Self, AnyError> {
-    let snapshot = NpmResolutionSnapshot::from_lockfile(lockfile, &api).await?;
-    Ok(Self::new_with_maybe_snapshot(
-      cache,
-      api,
-      unstable,
-      no_npm,
-      local_node_modules_path,
-      Some(snapshot),
-    ))
+  ) -> Result<(), AnyError> {
+    let snapshot =
+      NpmResolutionSnapshot::from_lockfile(lockfile, &self.api).await?;
+
+    if let Some(node_modules_folder) = &self.local_node_modules_path {
+      self.inner = Arc::new(LocalNpmPackageResolver::new(
+        self.cache.clone(),
+        self.api.clone(),
+        node_modules_folder.clone(),
+        Some(snapshot),
+      ));
+    } else {
+      self.inner = Arc::new(GlobalNpmPackageResolver::new(
+        self.cache.clone(),
+        self.api.clone(),
+        Some(snapshot),
+      ));
+    }
+    Ok(())
   }
 
   fn new_with_maybe_snapshot(
