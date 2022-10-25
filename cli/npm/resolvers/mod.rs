@@ -72,6 +72,7 @@ pub struct NpmPackageResolver {
   local_node_modules_path: Option<PathBuf>,
   api: NpmRegistryApi,
   cache: NpmCache,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl std::fmt::Debug for NpmPackageResolver {
@@ -110,8 +111,8 @@ impl NpmPackageResolver {
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
     let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile, &self.api).await?;
-
+      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api).await?;
+    self.maybe_lockfile = Some(lockfile);
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
         self.cache.clone(),
@@ -166,6 +167,7 @@ impl NpmPackageResolver {
       local_node_modules_path,
       api,
       cache,
+      maybe_lockfile: None,
     }
   }
 
@@ -252,7 +254,18 @@ impl NpmPackageResolver {
       ));
     }
 
-    self.inner.add_package_reqs(packages).await
+    self.inner.add_package_reqs(packages).await?;
+
+    // If there's a lock file, update it with all discovered npm packages
+    if let Some(lockfile_mutex) = &self.maybe_lockfile {
+      let mut lockfile = lockfile_mutex.lock();
+      if let Err(err) = self.lock(&mut lockfile) {
+        log::error!("{} {}", crate::colors::red("error:"), err);
+        std::process::exit(10);
+      }
+    }
+
+    Ok(())
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
