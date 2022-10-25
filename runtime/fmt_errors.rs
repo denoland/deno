@@ -9,48 +9,34 @@ use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
 use std::fmt::Write as _;
 
-/// Uniquely identifies a JsError.
-/// Other error-handling code can use JS object comparisons or object hashes to
-/// compare errors. We don't have access to these identifiers in
-/// format_js_error(), hence the need for this struct.
-#[derive(Debug, PartialEq, Clone)]
-struct JsErrorIdentity {
-  name: Option<String>,
-  message: Option<String>,
-  stack: Option<String>,
-  // `cause` omitted, because it is absent in recursive errors, despite the
-  // error being identical to a previously seen one.
-  exception_message: String,
-  frames: Vec<JsStackFrame>,
-  source_line: Option<String>,
-  source_line_frame_index: Option<usize>,
-  aggregated: Option<Vec<JsError>>,
-}
-
-impl From<&JsError> for JsErrorIdentity {
-  fn from(error: &JsError) -> JsErrorIdentity {
-    JsErrorIdentity {
-      name: error.name.clone(),
-      message: error.message.clone(),
-      stack: error.stack.clone(),
-      exception_message: error.exception_message.clone(),
-      frames: error.frames.clone(),
-      source_line: error.source_line.clone(),
-      source_line_frame_index: error.source_line_frame_index,
-      aggregated: error.aggregated.clone(),
-    }
-  }
+/// Compares all properties of JsError, except for JsError::cause.
+/// This function is used to detect that 2 JsError objects in a JsError::cause
+/// chain are identical, ie. there is a recursive cause.
+/// 02_console.js, which also detects recursive causes, can use JS object
+/// comparisons to compare errors. We don't have access to JS object identity in
+/// format_js_error().
+fn errors_are_equal_without_cause(a: &JsError, b: &JsError) -> bool {
+  a.name == b.name
+    && a.message == b.message
+    && a.stack == b.stack
+    // `a.cause == b.cause` omitted, because it is absent in recursive errors,
+    // despite the error being identical to a previously seen one.
+    && a.exception_message == b.exception_message
+    && a.frames == b.frames
+    && a.source_line == b.source_line
+    && a.source_line_frame_index == b.source_line_frame_index
+    && a.aggregated == b.aggregated
 }
 
 #[derive(Debug, Clone)]
-struct ErrorReference {
-  from: JsErrorIdentity,
-  to: JsErrorIdentity,
+struct ErrorReference<'a> {
+  from: &'a JsError,
+  to: &'a JsError,
 }
 
 #[derive(Debug, Clone)]
-struct IndexedErrorReference {
-  reference: ErrorReference,
+struct IndexedErrorReference<'a> {
+  reference: ErrorReference<'a>,
   index: usize,
 }
 
@@ -196,20 +182,20 @@ fn format_maybe_source_line(
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
-  let mut history = Vec::<JsErrorIdentity>::new();
+  let mut history = Vec::<&JsError>::new();
 
   let mut current_error: &JsError = js_error;
 
   while let Some(cause) = &current_error.cause {
-    let error_identity = JsErrorIdentity::from(current_error);
-    let cause_identity = JsErrorIdentity::from(cause.as_ref());
+    history.push(current_error);
 
-    history.push(error_identity.clone());
-
-    if let Some(seen) = history.iter().find(|&el| el == &cause_identity) {
+    if let Some(seen) = history
+      .iter()
+      .find(|&el| errors_are_equal_without_cause(el, cause.as_ref()))
+    {
       return Some(ErrorReference {
-        from: error_identity,
-        to: seen.clone(),
+        from: current_error,
+        to: *seen,
       });
     } else {
       current_error = cause;
@@ -253,14 +239,12 @@ fn format_js_error_inner(
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
 ) -> String {
-  let error_identity = JsErrorIdentity::from(js_error);
-
   let mut s = String::new();
 
   s.push_str(&js_error.exception_message);
 
   if let Some(circular) = &circular {
-    if error_identity == circular.reference.to {
+    if errors_are_equal_without_cause(js_error, circular.reference.to) {
       write!(s, " {}", cyan(format!("<ref *{}>", circular.index))).unwrap();
     }
   }
@@ -290,9 +274,9 @@ fn format_js_error_inner(
     write!(s, "\n    at {}", format_frame(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
-    let is_caused_by_circular = circular
-      .as_ref()
-      .map_or(false, |circular| circular.reference.from == error_identity);
+    let is_caused_by_circular = circular.as_ref().map_or(false, |circular| {
+      errors_are_equal_without_cause(circular.reference.from, js_error)
+    });
 
     let error_string = if is_caused_by_circular {
       cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()

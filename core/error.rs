@@ -119,7 +119,8 @@ pub fn to_v8_error<'a>(
 /// A `JsError` represents an exception coming from V8, with stack frames and
 /// line numbers. The deno_cli crate defines another `JsError` type, which wraps
 /// the one defined here, that adds source map support and colorful formatting.
-/// When updating this struct, also update JsErrorIdentity in fmt_error.rs.
+/// When updating this struct, also update errors_are_equal_without_cause() in
+/// fmt_error.rs.
 #[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
