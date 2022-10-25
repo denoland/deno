@@ -739,8 +739,7 @@ impl NpmResolution {
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), AnyError> {
     for (package_req, version) in snapshot.package_reqs.iter() {
-      lockfile
-        .check_or_insert_npm_specifier(package_req, version.to_string())?;
+      lockfile.insert_npm_specifier(package_req, version.to_string());
     }
     for package in self.all_packages() {
       lockfile.check_or_insert_npm_package(&package)?;

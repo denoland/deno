@@ -170,20 +170,6 @@ impl Lockfile {
     }
   }
 
-  pub fn check_or_insert_npm_specifier(
-    &mut self,
-    package_req: &NpmPackageReq,
-    version: String,
-  ) -> Result<(), LockfileError> {
-    if self.write {
-      // In case --lock-write is specified check always passes
-      self.insert_npm_specifier(package_req, version);
-      Ok(())
-    } else {
-      self.check_npm_specifier(package_req, version)
-    }
-  }
-
   /// Checks the given module is included.
   /// Returns Ok(true) if check passed.
   fn check(&mut self, specifier: &str, code: &str) -> bool {
@@ -251,36 +237,17 @@ impl Lockfile {
     );
   }
 
-  fn check_npm_specifier(
-    &mut self,
-    package_req: &NpmPackageReq,
-    version: String,
-  ) -> Result<(), LockfileError> {
-    if let Some(resolved_specifier) =
-      self.content.npm.specifiers.get(&package_req.to_string())
-    {
-      if &format!("{}@{}", package_req.name, version) != resolved_specifier {
-        return Err(LockfileError(format!(
-          "Specifier resolution check failed for npm package: \"{}\".
-  Resolved to \"{}@{}\" and lockfile expects \"{}\".
-  Use \"--lock-write\" flag to update the lockfile.",
-          package_req.name, package_req.name, version, resolved_specifier
-        )));
-      }
-    }
-
-    Ok(())
-  }
-
-  fn insert_npm_specifier(
+  pub fn insert_npm_specifier(
     &mut self,
     package_req: &NpmPackageReq,
     version: String,
   ) {
-    self.content.npm.specifiers.insert(
-      package_req.to_string(),
-      format!("{}@{}", package_req.name, version),
-    );
+    if self.write {
+      self.content.npm.specifiers.insert(
+        package_req.to_string(),
+        format!("{}@{}", package_req.name, version),
+      );
+    }
   }
 }
 
