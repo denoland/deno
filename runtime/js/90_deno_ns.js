@@ -55,6 +55,8 @@
     truncate: __bootstrap.fs.truncate,
     ftruncateSync: __bootstrap.fs.ftruncateSync,
     ftruncate: __bootstrap.fs.ftruncate,
+    futime: __bootstrap.fs.futime,
+    futimeSync: __bootstrap.fs.futimeSync,
     errors: __bootstrap.errors.errors,
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
@@ -128,8 +130,6 @@
     getUid: __bootstrap.os.getUid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
-    futime: __bootstrap.fs.futime,
-    futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,
     utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,

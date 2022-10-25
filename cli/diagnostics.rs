@@ -37,8 +37,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "connect",
   "consoleSize",
   "createHttpClient",
-  "futime",
-  "futimeSync",
   "kill",
   "listen",
   "listenDatagram",
