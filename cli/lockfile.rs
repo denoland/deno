@@ -28,22 +28,22 @@ pub struct NpmPackageInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NpmContent {
-  // Mapping between requests for npm packages and resolved specifiers, eg.
-  // {
-  //   "chalk": "chalk@5.0.0"
-  //   "react@17": "react@17.0.1"
-  //   "foo@latest": "foo@1.0.0"
-  // }
+  /// Mapping between requests for npm packages and resolved specifiers, eg.
+  /// {
+  ///   "chalk": "chalk@5.0.0"
+  ///   "react@17": "react@17.0.1"
+  ///   "foo@latest": "foo@1.0.0"
+  /// }
   pub specifiers: BTreeMap<String, String>,
-  // Mapping between resolved npm specifiers and their associated info, eg.
-  // {
-  //   "chalk@5.0.0": {
-  //     "integrity": "sha512-...",
-  //     "dependencies": {
-  //       "ansi-styles": "ansi-styles@4.1.0",
-  //     }
-  //   }
-  // }
+  /// Mapping between resolved npm specifiers and their associated info, eg.
+  /// {
+  ///   "chalk@5.0.0": {
+  ///     "integrity": "sha512-...",
+  ///     "dependencies": {
+  ///       "ansi-styles": "ansi-styles@4.1.0",
+  ///     }
+  ///   }
+  /// }
   pub packages: BTreeMap<String, NpmPackageInfo>,
 }
 
