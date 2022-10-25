@@ -288,28 +288,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns an array containing the 1, 5, and 15 minute load averages. The
-   * load average is a measure of CPU and IO utilization of the last one, five,
-   * and 15 minute periods expressed as a fractional number.  Zero means there
-   * is no load. On Windows, the three values are always the same and represent
-   * the current load, not the 1, 5 and 15 minute load averages.
-   *
-   * ```ts
-   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * There are questions around which permission this needs. And maybe should be
-   * renamed.
-   *
-   * @tags allow-sys
-   * @category Observability
-   */
-  export function loadavg(): [number, number, number];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the release version of the Operating System.
    *
    * ```ts
@@ -1235,50 +1213,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @category File System
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A generic transport listener for message-oriented protocols, which is
-   * returned from a call to {@linkcode Deno.listenDatagram}.
-   *
-   * The connection is an async iterator where received messages are yielded up
-   * in the format of a tuple containing the data array and the address
-   * information.
+   * A generic transport listener for message-oriented protocols.
    *
    * @category Network
    */

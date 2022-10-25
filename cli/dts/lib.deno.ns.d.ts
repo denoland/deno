@@ -314,6 +314,24 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
+  /**
+   * Returns an array containing the 1, 5, and 15 minute load averages. The
+   * load average is a measure of CPU and IO utilization of the last one, five,
+   * and 15 minute periods expressed as a fractional number.  Zero means there
+   * is no load. On Windows, the three values are always the same and represent
+   * the current load, not the 1, 5 and 15 minute load averages.
+   *
+   * ```ts
+   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Observability
+   */
+  export function loadavg(): number[];
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * When the value is `true`, the Deno CLI will attempt to not send color codes
@@ -4154,7 +4172,43 @@ declare namespace Deno {
   export function ftruncateSync(rid: number, len?: number): void;
 
   /**
-   * Returns a {@linkcode Deno.FileInfo} for the given file stream.
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file stream resource referenced by `rid`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = Deno.openSync("file.txt", { create: true, write: true });
+   * Deno.futimeSync(file.rid, 1556495550, new Date());
+   * ```
+   *
+   * @category File System
+   */
+  export function futimeSync(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /**
+   * Changes the access (`atime`) and modification (`mtime`) times of a file
+   * stream resource referenced by `rid`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * const file = await Deno.open("file.txt", { create: true, write: true });
+   * await Deno.futime(file.rid, 1556495550, new Date());
+   * ```
+   *
+   * @category File System
+   */
+  export function futime(
+    rid: number,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
+
+  /**
+   * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
    * import { assert } from "https://deno.land/std/testing/asserts.ts";
