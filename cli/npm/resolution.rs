@@ -181,16 +181,18 @@ impl NpmPackageId {
     format!("{}@{}", self.name, self.version)
   }
 
-  pub fn deserialize_from_lock_file(id: &str) -> Self {
-    let reference =
-      NpmPackageReference::from_str(&format!("npm:{}", id)).unwrap();
-    Self {
+  pub fn deserialize_from_lock_file(id: &str) -> Result<Self, AnyError> {
+    let reference = NpmPackageReference::from_str(&format!("npm:{}", id))
+      .with_context(|| {
+        format!("Unable to deserialize npm package reference: {}", id)
+      })?;
+    let version =
+      NpmVersion::parse(&reference.req.version_req.unwrap().to_string())
+        .unwrap();
+    Ok(Self {
       name: reference.req.name,
-      version: NpmVersion::parse(
-        &reference.req.version_req.unwrap().to_string(),
-      )
-      .unwrap(),
-    }
+      version,
+    })
   }
 }
 
@@ -378,24 +380,22 @@ impl NpmResolutionSnapshot {
       let lockfile = lockfile.lock();
 
       for (key, value) in &lockfile.content.npm.specifiers {
-        let reference =
-          NpmPackageReference::from_str(&format!("npm:{}", key)).unwrap();
-        let package_id = NpmPackageId::deserialize_from_lock_file(value);
+        let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
+          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+        let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
         package_reqs.insert(reference.req, package_id.version.clone());
       }
 
       for (key, value) in &lockfile.content.npm.packages {
-        let package_id = NpmPackageId::deserialize_from_lock_file(key);
-        let dependencies = value
-          .dependencies
-          .iter()
-          .map(|(name, specifier)| {
-            (
-              name.clone(),
-              NpmPackageId::deserialize_from_lock_file(specifier),
-            )
-          })
-          .collect::<HashMap<_, _>>();
+        let package_id = NpmPackageId::deserialize_from_lock_file(key)?;
+        let mut dependencies = HashMap::default();
+
+        for (name, specifier) in &value.dependencies {
+          dependencies.insert(
+            name.to_string(),
+            NpmPackageId::deserialize_from_lock_file(specifier)?,
+          );
+        }
 
         for (name, id) in &dependencies {
           packages_by_name
