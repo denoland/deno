@@ -2,6 +2,8 @@
 
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
+use crate::ops::OpAddr;
+use crate::ops::OpConn;
 use crate::ops::TlsHandshakeInfo;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -656,9 +658,9 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
   vec![
     op_tls_start::decl::<P>(),
-    op_net_connect_tls::decl::<P>(),
-    op_net_listen_tls::decl::<P>(),
-    op_net_accept_tls::decl(),
+    op_tls_connect::decl::<P>(),
+    op_tls_listen::decl::<P>(),
+    op_tls_accept::decl(),
     op_tls_handshake::decl(),
   ]
 }
@@ -749,6 +751,9 @@ impl Resource for TlsStreamResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectTlsArgs {
+  transport: String,
+  hostname: String,
+  port: u16,
   cert_file: Option<String>,
   ca_certs: Vec<String>,
   cert_chain: Option<String>,
@@ -769,7 +774,7 @@ pub struct StartTlsArgs {
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
+) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
 {
@@ -848,18 +853,33 @@ where
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 #[op]
-pub async fn op_net_connect_tls<NP>(
+pub async fn op_tls_connect<NP>(
   state: Rc<RefCell<OpState>>,
-  addr: IpAddr,
   args: ConnectTlsArgs,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
+) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  assert_eq!(args.transport, "tcp");
+  let hostname = match &*args.hostname {
+    "" => "localhost",
+    n => n,
+  };
+  let port = args.port;
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
     .borrow()
@@ -876,8 +896,7 @@ where
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.connectTls()")?;
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path), "Deno.connectTls()")?;
     }
@@ -900,9 +919,10 @@ where
     .borrow::<DefaultTlsOptions>()
     .root_cert_store
     .clone();
-  let hostname_dns = ServerName::try_from(&*addr.hostname)
-    .map_err(|_| invalid_hostname(&addr.hostname))?;
-  let connect_addr = resolve_addr(&addr.hostname, addr.port)
+  let hostname_dns =
+    ServerName::try_from(hostname).map_err(|_| invalid_hostname(hostname))?;
+
+  let connect_addr = resolve_addr(hostname, port)
     .await?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -948,7 +968,17 @@ where
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
@@ -983,6 +1013,9 @@ impl Resource for TlsListenerResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
+  transport: String,
+  hostname: String,
+  port: u16,
   cert: Option<String>,
   // TODO(kt3k): Remove this option at v2.0.
   cert_file: Option<String>,
@@ -993,14 +1026,16 @@ pub struct ListenTlsArgs {
 }
 
 #[op]
-pub fn op_net_listen_tls<NP>(
+pub fn op_tls_listen<NP>(
   state: &mut OpState,
-  addr: IpAddr,
   args: ListenTlsArgs,
-) -> Result<(ResourceId, IpAddr), AnyError>
+) -> Result<OpConn, AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  assert_eq!(args.transport, "tcp");
+  let hostname = &*args.hostname;
+  let port = args.port;
   let cert_file = args.cert_file.as_deref();
   let key_file = args.key_file.as_deref();
   let cert = args.cert.as_deref();
@@ -1008,8 +1043,7 @@ where
 
   {
     let permissions = state.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
+    permissions.check_net(&(hostname, Some(port)), "Deno.listenTls()")?;
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path), "Deno.listenTls()")?;
     }
@@ -1050,7 +1084,7 @@ where
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
 
-  let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
+  let bind_addr = resolve_addr_sync(hostname, port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let domain = if bind_addr.is_ipv4() {
@@ -1077,14 +1111,21 @@ where
 
   let rid = state.resource_table.add(tls_listener_resource);
 
-  Ok((rid, IpAddr::from(local_addr)))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: None,
+  })
 }
 
 #[op]
-pub async fn op_net_accept_tls(
+pub async fn op_tls_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
+) -> Result<OpConn, AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -1118,7 +1159,17 @@ pub async fn op_net_accept_tls(
       .add(TlsStreamResource::new(tls_stream.into_split()))
   };
 
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok(OpConn {
+    rid,
+    local_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: local_addr.ip().to_string(),
+      port: local_addr.port(),
+    })),
+    remote_addr: Some(OpAddr::Tcp(IpAddr {
+      hostname: remote_addr.ip().to_string(),
+      port: remote_addr.port(),
+    })),
+  })
 }
 
 #[op]
