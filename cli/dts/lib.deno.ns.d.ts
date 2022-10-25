@@ -4039,6 +4039,46 @@ declare namespace Deno {
    */
   export function fstat(rid: number): Promise<FileInfo>;
 
+  /**
+   * Synchronously changes the access (`atime`) and modification (`mtime`) times
+   * of a file system object referenced by `path`. Given times are either in
+   * seconds (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
+   * ```
+   *
+   * Requires `allow-write` permission.
+   *
+   * @tags allow-write
+   * @category File System
+   */
+  export function utimeSync(
+    path: string | URL,
+    atime: number | Date,
+    mtime: number | Date,
+  ): void;
+
+  /**
+   * Changes the access (`atime`) and modification (`mtime`) times of a file
+   * system object referenced by `path`. Given times are either in seconds
+   * (UNIX epoch time) or as `Date` objects.
+   *
+   * ```ts
+   * await Deno.utime("myfile.txt", 1556495550, new Date());
+   * ```
+   *
+   * Requires `allow-write` permission.
+   *
+   * @tags allow-write
+   * @category File System
+   */
+  export function utime(
+    path: string | URL,
+    atime: number | Date,
+    mtime: number | Date,
+  ): Promise<void>;
+
   /** @category HTTP Server */
   export interface RequestEvent {
     readonly request: Request;

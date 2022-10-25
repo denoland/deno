@@ -48,8 +48,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "startTls",
   "systemMemoryInfo",
   "umask",
-  "utime",
-  "utimeSync",
   "spawnChild",
   "Child",
   "spawn",
