@@ -1917,6 +1917,19 @@ declare namespace Deno {
    */
   export const File: typeof FsFile;
 
+  /** Gets the size of the console as columns/rows.
+   *
+   * ```ts
+   * const { columns, rows } = Deno.consoleSize();
+   * ```
+   *
+   * @category I/O
+   */
+  export function consoleSize(): {
+    columns: number;
+    rows: number;
+  };
+
   /** @category I/O */
   export interface SetRawOptions {
     /**

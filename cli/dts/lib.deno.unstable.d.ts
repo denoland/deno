@@ -228,23 +228,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Gets the size of the console as columns/rows.
-   *
-   * ```ts
-   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
-   * ```
-   *
-   * @category I/O
-   */
-  export function consoleSize(
-    rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
    *
