@@ -29,15 +29,19 @@ pub struct NpmPackageInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmContent {
   // Mapping between requests for npm packages and resolved specifiers, eg.
-  // "npm:chalk": "npm:chalk@5.0.0"
-  // "npm:react@17": "npm:react@17.0.1"
-  // "npm:foo@latest": "npm:foo@1.0.0"
+  // {
+  //   "chalk": "chalk@5.0.0"
+  //   "react@17": "react@17.0.1"
+  //   "foo@latest": "foo@1.0.0"
+  // }
   pub specifiers: BTreeMap<String, String>,
   // Mapping between resolved npm specifiers and their associated info, eg.
-  // "chalk@5.0.0": {
-  //   "integrity": "sha512-...",
-  //   "dependencies": {
-  //     "ansi-styles": "npm:ansi-styles@4.1.0",
+  // {
+  //   "chalk@5.0.0": {
+  //     "integrity": "sha512-...",
+  //     "dependencies": {
+  //       "ansi-styles": "ansi-styles@4.1.0",
+  //     }
   //   }
   // }
   pub packages: BTreeMap<String, NpmPackageInfo>,
@@ -194,18 +198,19 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), AnyError> {
-    let mut valid = false;
     let specifier = package.id.serialize_for_lock_file();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
-      // TODO(bartlomieju): remove this unwrap
-      valid = package_info.integrity == package.dist.integrity.clone().unwrap()
-    }
-
-    if !valid {
-      return Err(anyhow!(
-        "Integrity check failed for package: {}. Pass --lock-write to update the lockfile.",
-        package.id
-      ));
+      let integrity = package
+        .dist
+        .integrity
+        .as_ref()
+        .unwrap_or(&package.dist.shasum);
+      if &package_info.integrity != integrity {
+        return Err(anyhow!(
+          "Integrity check failed for npm package: {}. Pass --lock-write to update the lockfile.",
+          package.id
+        ));
+      }
     }
 
     Ok(())
@@ -218,11 +223,15 @@ impl Lockfile {
       .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
       .collect::<BTreeMap<String, String>>();
 
+    let integrity = package
+      .dist
+      .integrity
+      .as_ref()
+      .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
       package.id.serialize_for_lock_file(),
       NpmPackageInfo {
-        // TODO(bartlomieju): remove this unwrap
-        integrity: package.dist.integrity.as_ref().unwrap().clone(),
+        integrity: integrity.to_string(),
         dependencies,
       },
     );
@@ -233,22 +242,15 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) -> Result<(), AnyError> {
-    let mut valid = false;
-    if let Some(resolved_specifier) = self
-      .content
-      .npm
-      .specifiers
-      .get(&format!("npm:{}", package_req))
+    if let Some(resolved_specifier) =
+      self.content.npm.specifiers.get(&package_req.to_string())
     {
-      valid =
-        &format!("npm:{}@{}", package_req.name, version) == resolved_specifier
-    }
-
-    if !valid {
-      return Err(anyhow!(
-        "Specifier resolution check failed for package: {}. Pass --lock-write to update the lockfile.",
-        package_req.name
-      ));
+      if &format!("{}@{}", package_req.name, version) != resolved_specifier {
+        return Err(anyhow!(
+          "Specifier resolution check failed for npm package: {}. Pass --lock-write to update the lockfile.",
+          package_req.name
+        ));
+      }
     }
 
     Ok(())
@@ -260,8 +262,8 @@ impl Lockfile {
     version: String,
   ) {
     self.content.npm.specifiers.insert(
-      format!("npm:{}", package_req),
-      format!("npm:{}@{}", package_req.name, version),
+      package_req.to_string(),
+      format!("{}@{}", package_req.name, version),
     );
   }
 }

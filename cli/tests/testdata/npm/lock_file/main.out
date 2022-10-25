@@ -1,2 +1,2 @@
 Download [WILDCARD]
-error: Integrity check failed for package: npm:@babel/parser@7.19.0. Pass --lock-write to update the lockfile.
+error: Integrity check failed for npm package: @babel/parser@7.19.0. Pass --lock-write to update the lockfile.

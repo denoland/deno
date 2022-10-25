@@ -178,11 +178,12 @@ impl NpmPackageId {
   }
 
   pub fn serialize_for_lock_file(&self) -> String {
-    format!("npm:{}@{}", self.name, self.version)
+    format!("{}@{}", self.name, self.version)
   }
 
   pub fn deserialize_from_lock_file(id: &str) -> Self {
-    let reference = NpmPackageReference::from_str(id).unwrap();
+    let reference =
+      NpmPackageReference::from_str(&format!("npm:{}", id)).unwrap();
     Self {
       name: reference.req.name,
       version: NpmVersion::parse(
@@ -377,7 +378,8 @@ impl NpmResolutionSnapshot {
       let lockfile = lockfile.lock();
 
       for (key, value) in &lockfile.content.npm.specifiers {
-        let reference = NpmPackageReference::from_str(key).unwrap();
+        let reference =
+          NpmPackageReference::from_str(&format!("npm:{}", key)).unwrap();
         let package_id = NpmPackageId::deserialize_from_lock_file(value);
         package_reqs.insert(reference.req, package_id.version.clone());
       }
@@ -407,6 +409,7 @@ impl NpmResolutionSnapshot {
           // temporary dummy value
           dist: NpmPackageVersionDistInfo {
             tarball: "foobar".to_string(),
+            shasum: "foobar".to_string(),
             integrity: Some("foobar".to_string()),
           },
           dependencies,
