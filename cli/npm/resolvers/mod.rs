@@ -259,10 +259,7 @@ impl NpmPackageResolver {
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
       let mut lockfile = lockfile_mutex.lock();
-      if let Err(err) = self.lock(&mut lockfile) {
-        log::error!("{} {}", crate::colors::red("error:"), err);
-        std::process::exit(10);
-      }
+      self.lock(&mut lockfile)?;
     }
 
     Ok(())

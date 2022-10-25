@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -19,6 +18,17 @@ use std::sync::Arc;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
+
+#[derive(Debug)]
+pub struct LockfileError(String);
+
+impl std::fmt::Display for LockfileError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    f.write_str(&self.0)
+  }
+}
+
+impl std::error::Error for LockfileError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpmPackageInfo {
@@ -142,7 +152,7 @@ impl Lockfile {
   pub fn check_or_insert_npm_package(
     &mut self,
     package: &NpmResolutionPackage,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LockfileError> {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert_npm_package(package);
@@ -156,7 +166,7 @@ impl Lockfile {
     &mut self,
     package_req: &NpmPackageReq,
     version: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LockfileError> {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert_npm_specifier(package_req, version);
@@ -191,7 +201,7 @@ impl Lockfile {
   fn check_npm_package(
     &mut self,
     package: &NpmResolutionPackage,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LockfileError> {
     let specifier = package.id.serialize_for_lock_file();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
       let integrity = package
@@ -200,14 +210,12 @@ impl Lockfile {
         .as_ref()
         .unwrap_or(&package.dist.shasum);
       if &package_info.integrity != integrity {
-        return Err(anyhow!(
+        return Err(LockfileError(format!(
           "Integrity check failed for npm package: \"{}\".
   Cache has \"{}\" and lockfile has \"{}\".
   Use \"--lock-write\" flag to update the lockfile.",
-          package.id,
-          integrity,
-          package_info.integrity
-        ));
+          package.id, integrity, package_info.integrity
+        )));
       }
     }
 
@@ -239,20 +247,17 @@ impl Lockfile {
     &mut self,
     package_req: &NpmPackageReq,
     version: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LockfileError> {
     if let Some(resolved_specifier) =
       self.content.npm.specifiers.get(&package_req.to_string())
     {
       if &format!("{}@{}", package_req.name, version) != resolved_specifier {
-        return Err(anyhow!(
+        return Err(LockfileError(format!(
           "Specifier resolution check failed for npm package: \"{}\".
   Resolved to \"{}@{}\" and lockfile expects \"{}\".
   Use \"--lock-write\" flag to update the lockfile.",
-          package_req.name,
-          package_req.name,
-          version,
-          resolved_specifier
-        ));
+          package_req.name, package_req.name, version, resolved_specifier
+        )));
       }
     }
 
