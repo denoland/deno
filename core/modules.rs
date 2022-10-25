@@ -5,6 +5,7 @@ use crate::error::generic_error;
 use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
+use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -125,10 +126,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = tc_scope
-    .get_slot::<Rc<RefCell<ModuleMap>>>()
-    .unwrap()
-    .clone();
+  let module_map = JsRuntime::module_map(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map

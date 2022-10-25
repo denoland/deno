@@ -4,12 +4,14 @@
 ((window) => {
   const core = window.Deno.core;
   const ops = core.ops;
+  const { Event } = window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     Error,
     SymbolFor,
   } = window.__bootstrap.primordials;
 
-  const windowDispatchEvent = window.dispatchEvent.bind(window);
+  const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(window);
 
   function loadavg() {
     return ops.op_loadavg();

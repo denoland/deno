@@ -1883,10 +1883,14 @@ declare namespace Deno {
    */
   export const File: typeof FsFile;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   *  @category I/O */
+  /** @category I/O */
   export interface SetRawOptions {
+    /**
+     * The `cbreak` option can be used to indicate that characters that
+     * correspond to a signal should still be generated. When disabling raw
+     * mode, this option is ignored. This functionality currently only works on
+     * Linux and Mac OS.
+     */
     cbreak: boolean;
   }
 
@@ -1913,18 +1917,12 @@ declare namespace Deno {
     readonly rid: number;
     /** A readable stream interface to `stdin`. */
     readonly readable: ReadableStream<Uint8Array>;
-    /** **UNSTABLE**: new API, yet to be vetted.
-     *
+    /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
      * characters by the terminal is disabled, including echoing input
      * characters. Reading from a TTY device in raw mode is faster than reading
      * from a TTY device in canonical mode.
-     *
-     * The `cbreak` option can be used to indicate that characters that
-     * correspond to a signal should still be generated. When disabling raw
-     * mode, this option is ignored. This functionality currently only works on
-     * Linux and Mac OS.
      *
      * ```ts
      * Deno.stdin.setRaw(true, { cbreak: true });
@@ -4262,6 +4260,15 @@ declare namespace Deno {
    * Also see the experimental Flash HTTP server {@linkcode Deno.serve} which
    * provides a ground up rewrite of handling of HTTP requests and responses
    * within the Deno CLI.
+   *
+   * Note that this function *consumes* the given connection passed to it, thus
+   * the original connection will be unusable after calling this. Additionally,
+   * you need to ensure that the connection is not being used elsewhere when
+   * calling this function in order for the connection to be consumed properly.
+   *
+   * For instance, if there is a `Promise` that is waiting for read operation on
+   * the connection to complete, it is considered that the connection is being
+   * used elsewhere. In such a case, this function will fail.
    *
    * @category HTTP Server
    */

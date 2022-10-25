@@ -34,9 +34,9 @@ use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -292,6 +292,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let _pb_clear_guard = self.progress_bar.clear_guard();
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -412,7 +413,7 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
-    self.progress_bar.clear();
+    drop(_pb_clear_guard);
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -433,8 +434,13 @@ impl ProcState {
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
-      let check_result =
-        check::check(&roots, graph_data, &check_cache, options)?;
+      let check_result = check::check(
+        &roots,
+        graph_data,
+        &check_cache,
+        self.npm_resolver.clone(),
+        options,
+      )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -470,7 +476,7 @@ impl ProcState {
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
-      None => bail!("Not found."),
+      None => return Err(generic_error("not found")),
     };
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
@@ -493,6 +499,7 @@ impl ProcState {
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
+            node::NodeResolutionMode::Execution,
             &self.npm_resolver,
           ))
           .with_context(|| {
@@ -516,6 +523,7 @@ impl ProcState {
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
+                node::NodeResolutionMode::Execution,
                 &self.npm_resolver,
               ))
               .with_context(|| format!("Could not resolve '{}'.", reference));
@@ -589,16 +597,29 @@ impl ProcState {
     Ok(())
   }
 
-  pub async fn create_graph(
-    &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = cache::FetchCacher::new(
+  /// Creates the default loader used for creating a graph.
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-    );
+    )
+  }
+
+  pub async fn create_graph(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self.create_graph_with_loader(roots, &mut cache).await
+  }
+
+  pub async fn create_graph_with_loader(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    loader: &mut dyn Loader,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_import_map_resolver =
       self.maybe_import_map.clone().map(ImportMapResolver::new);
@@ -620,7 +641,7 @@ impl ProcState {
       roots,
       false,
       maybe_imports,
-      &mut cache,
+      loader,
       maybe_resolver,
       maybe_locker,
       Some(&*analyzer),

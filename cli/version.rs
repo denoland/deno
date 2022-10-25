@@ -14,6 +14,14 @@ pub fn is_canary() -> bool {
   option_env!("DENO_CANARY").is_some()
 }
 
+pub fn release_version_or_canary_commit_hash() -> &'static str {
+  if is_canary() {
+    GIT_COMMIT_HASH
+  } else {
+    env!("CARGO_PKG_VERSION")
+  }
+}
+
 pub fn get_user_agent() -> String {
   format!("Deno/{}", deno())
 }

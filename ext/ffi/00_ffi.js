@@ -6,38 +6,23 @@
   const ops = core.ops;
   const __bootstrap = window.__bootstrap;
   const {
-    BigInt,
     ObjectDefineProperty,
     ArrayPrototypeMap,
     Number,
     NumberIsSafeInteger,
     ArrayPrototypeJoin,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeThen,
     TypeError,
     Int32Array,
     Uint32Array,
     BigInt64Array,
+    BigUint64Array,
     Function,
   } = window.__bootstrap.primordials;
 
-  function unpackU64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    return BigInt(hi) << 32n | BigInt(lo);
-  }
-
-  function unpackI64(returnValue) {
-    if (typeof returnValue === "number") {
-      return returnValue;
-    }
-    const [hi, lo] = returnValue;
-    const u64 = unpackU64([hi, lo]);
-    return u64 >> 63n ? u64 - 0x10000000000000000n : u64;
-  }
-
+  const U32_BUFFER = new Uint32Array(2);
+  const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
+  const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
   class UnsafePointerView {
     pointer;
 
@@ -47,99 +32,119 @@
 
     getBool(offset = 0) {
       return ops.op_ffi_read_bool(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint8(offset = 0) {
       return ops.op_ffi_read_u8(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt8(offset = 0) {
       return ops.op_ffi_read_i8(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint16(offset = 0) {
       return ops.op_ffi_read_u16(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt16(offset = 0) {
       return ops.op_ffi_read_i16(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getUint32(offset = 0) {
       return ops.op_ffi_read_u32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getInt32(offset = 0) {
       return ops.op_ffi_read_i32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getBigUint64(offset = 0) {
-      return ops.op_ffi_read_u64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+      ops.op_ffi_read_u64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
       );
+      return U64_BUFFER[0];
     }
 
     getBigInt64(offset = 0) {
-      return ops.op_ffi_read_i64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+      ops.op_ffi_read_i64(
+        this.pointer,
+        offset,
+        U32_BUFFER,
       );
+      return I64_BUFFER[0];
     }
 
     getFloat32(offset = 0) {
       return ops.op_ffi_read_f32(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getFloat64(offset = 0) {
       return ops.op_ffi_read_f64(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     getCString(offset = 0) {
       return ops.op_ffi_cstr_read(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
       );
     }
 
     static getCString(pointer, offset = 0) {
       return ops.op_ffi_cstr_read(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
       );
     }
 
     getArrayBuffer(byteLength, offset = 0) {
       return ops.op_ffi_get_buf(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
         byteLength,
       );
     }
 
     static getArrayBuffer(pointer, byteLength, offset = 0) {
       return ops.op_ffi_get_buf(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
         byteLength,
       );
     }
 
     copyInto(destination, offset = 0) {
       ops.op_ffi_buf_copy_into(
-        offset ? BigInt(this.pointer) + BigInt(offset) : this.pointer,
+        this.pointer,
+        offset,
         destination,
         destination.byteLength,
       );
@@ -147,38 +152,27 @@
 
     static copyInto(pointer, destination, offset = 0) {
       ops.op_ffi_buf_copy_into(
-        offset ? BigInt(pointer) + BigInt(offset) : pointer,
+        pointer,
+        offset,
         destination,
         destination.byteLength,
       );
     }
   }
 
+  const OUT_BUFFER = new Uint32Array(2);
+  const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
   class UnsafePointer {
     static of(value) {
       if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
         return value.pointer;
       }
-      return ops.op_ffi_ptr_of(value);
-    }
-  }
-
-  function unpackNonblockingReturnValue(type, result) {
-    if (
-      typeof type === "object" && type !== null && "function" in type ||
-      type === "pointer"
-    ) {
-      return unpackU64(result);
-    }
-    switch (type) {
-      case "isize":
-      case "i64":
-        return unpackI64(result);
-      case "usize":
-      case "u64":
-        return unpackU64(result);
-      default:
+      ops.op_ffi_ptr_of(value, OUT_BUFFER);
+      const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
+      if (NumberIsSafeInteger(result)) {
         return result;
+      }
+      return OUT_BUFFER_64[0];
     }
   }
 
@@ -192,25 +186,13 @@
     }
 
     call(...parameters) {
-      const resultType = this.definition.result;
       if (this.definition.nonblocking) {
-        const promise = core.opAsync(
+        return core.opAsync(
           "op_ffi_call_ptr_nonblocking",
           this.pointer,
           this.definition,
           parameters,
         );
-
-        if (
-          isReturnedAsBigInt(resultType)
-        ) {
-          return PromisePrototypeThen(
-            promise,
-            (result) => unpackNonblockingReturnValue(resultType, result),
-          );
-        }
-
-        return promise;
       } else {
         return ops.op_ffi_call_ptr(
           this.pointer,
@@ -221,13 +203,9 @@
     }
   }
 
-  function isPointerType(type) {
-    return type === "buffer" || type === "pointer" ||
-      typeof type === "object" && type !== null && "function" in type;
-  }
-
   function isReturnedAsBigInt(type) {
-    return isPointerType(type) || type === "u64" || type === "i64" ||
+    return type === "buffer" || type === "pointer" || type === "function" ||
+      type === "u64" || type === "i64" ||
       type === "usize" || type === "isize";
   }
 
@@ -237,6 +215,8 @@
 
   class UnsafeCallback {
     #refcount;
+    // Internal promise only meant to keep Deno from exiting
+    #refpromise;
     #rid;
     definition;
     callback;
@@ -261,23 +241,25 @@
 
     ref() {
       if (this.#refcount++ === 0) {
-        ops.op_ffi_unsafe_callback_ref(true);
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
       }
+      return this.#refcount;
     }
 
     unref() {
       // Only decrement refcount if it is positive, and only
       // unref the callback if refcount reaches zero.
       if (this.#refcount > 0 && --this.#refcount === 0) {
-        ops.op_ffi_unsafe_callback_ref(false);
+        ops.op_ffi_unsafe_callback_unref(this.#rid);
       }
+      return this.#refcount;
     }
 
     close() {
-      if (this.#refcount) {
-        this.#refcount = 0;
-        ops.op_ffi_unsafe_callback_ref(false);
-      }
+      this.#refcount = 0;
       core.close(this.#rid);
     }
   }
@@ -329,22 +311,12 @@
               configurable: false,
               enumerable: true,
               value: (...parameters) => {
-                const promise = core.opAsync(
+                return core.opAsync(
                   "op_ffi_call_nonblocking",
                   this.#rid,
                   symbol,
                   parameters,
                 );
-
-                if (needsUnpacking) {
-                  return PromisePrototypeThen(
-                    promise,
-                    (result) =>
-                      unpackNonblockingReturnValue(resultType, result),
-                  );
-                }
-
-                return promise;
               },
               writable: false,
             },

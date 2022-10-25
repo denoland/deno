@@ -6,7 +6,6 @@
   [`denoland/deno`](https://github.com/denoland/deno/),
   [`denoland/deno_std`](https://github.com/denoland/deno_std/),
   [`denoland/dotland`](https://github.com/denoland/dotland/),
-  [`denoland/docland`](https://github.com/denoland/docland/),
   [`denoland/deno_docker`](https://github.com/denoland/deno_docker/)
   [`denoland/manual`](https://github.com/denoland/manual/)
 
@@ -176,22 +175,19 @@ verify on GitHub that everything looks correct.
       automatically opened that forwards the release commit back to main. If so,
       merge it. If not and it failed, please manually create one.
 
-## Updating `doc.deno.land`
+## Updating `deno.land/api` & `deno.land/std` symbols
 
-This should occur after the Deno CLI is fully published, as the build script
-queries the GitHub API to determine what it needs to change and update.
+This should occur after the Deno CLI & std are fully published, as the build
+script generates the symbols based on the latest tags.
 
-- [ ] Run the update_deno workflow in the docland repo on the main branch:
-      https://github.com/denoland/docland/actions/workflows/update_deno.yml
-  - This will open a PR. Review it and merge, which will trigger a deployment.
+- [ ] Run the release workflow in the apiland_scripts repo on the main branch:
+      https://github.com/denoland/apiland_scripts/actions/workflows/release.yml
 
   <details>
      <summary>Failure Steps</summary>
 
-  1. Checkout a new branch for docland (e.g. `git checkout -b deno_1.17.0`).
-  2. Execute `deno task build`
-  3. Commit changes and raise a PR on `denoland/docland`.
-  4. Merging the approved PR will trigger deployment to Deploy of the updates.
+  1. Clone `deno/apliland_scripts`.
+  2. Execute `deno task release`.
   </details>
 
 ## Updating `deno_docker`

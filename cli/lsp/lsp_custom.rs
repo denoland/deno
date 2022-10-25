@@ -11,6 +11,9 @@ pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
   "deno/reloadImportRegistries";
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 
+// While lsp_types supports inlay hints currently, tower_lsp does not.
+pub const INLAY_HINT: &str = "textDocument/inlayHint";
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheParams {

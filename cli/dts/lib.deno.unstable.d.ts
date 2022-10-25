@@ -523,7 +523,7 @@ declare namespace Deno {
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
-    & Record<NativeBufferType, TypedArray | null>;
+    & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -705,23 +705,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category FFI
-   */
-  type TypedArray =
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
-    | Uint8ClampedArray
-    | Float32Array
-    | Float64Array
-    | BigInt64Array
-    | BigUint64Array;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Pointer type depends on the architecture and actual pointer value.
    *
    * On a 32 bit system all pointer values are plain numbers. On a 64 bit
@@ -743,7 +726,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
+    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -756,9 +739,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: bigint);
+    constructor(pointer: PointerValue);
 
-    pointer: bigint;
+    pointer: PointerValue;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -795,11 +778,11 @@ declare namespace Deno {
       offset?: number,
     ): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
-    copyInto(destination: TypedArray, offset?: number): void;
+    copyInto(destination: BufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerValue,
-      destination: TypedArray,
+      destination: BufferSource,
       offset?: number,
     ): void;
   }
@@ -812,10 +795,10 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Fn;
 
-    constructor(pointer: bigint, definition: Fn);
+    constructor(pointer: PointerValue, definition: Fn);
 
     call: FromForeignFunction<Fn>;
   }
@@ -866,7 +849,7 @@ declare namespace Deno {
       >,
     );
 
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Definition;
     callback: UnsafeCallbackFunction<
       Definition["parameters"],
@@ -874,20 +857,22 @@ declare namespace Deno {
     >;
 
     /**
-     * Adds one to this callback's reference counting.
+     * Adds one to this callback's reference counting and returns the
+     * new reference count.
      *
      * If the callback's reference count becomes non-zero, it will keep
      * Deno's process from exiting.
      */
-    ref(): void;
+    ref(): number;
 
     /**
-     * Removes one from this callback's reference counting.
+     * Removes one from this callback's reference counting and returns
+     * the new reference count.
      *
      * If the callback's reference counter becomes zero, it will no longer
      * keep Deno's process from exiting.
      */
-    unref(): void;
+    unref(): number;
 
     /**
      * Removes the C function pointer associated with the UnsafeCallback.
@@ -1131,6 +1116,17 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category Network
+   */
+  export interface UdpListenOptions extends ListenOptions {
+    /** When `true` the specified address will be reused, even if another
+     * process has already bound a socket on it. This effectively steals the
+     * socket from the listener. Defaults to `false`. */
+    reuseAddress?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -1168,7 +1164,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" },
+    options: UdpListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1583,6 +1579,10 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms. Defaults to "false". */
+    windowsRawArguments?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
