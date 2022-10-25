@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-#![allow(dead_code)]
-
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -139,11 +138,11 @@ impl Lockfile {
   pub fn check_or_insert_npm_package(
     &mut self,
     package: &NpmResolutionPackage,
-  ) -> bool {
+  ) -> Result<(), AnyError> {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert_npm_package(package);
-      true
+      Ok(())
     } else {
       self.check_npm_package(package)
     }
@@ -153,11 +152,11 @@ impl Lockfile {
     &mut self,
     package_req: &NpmPackageReq,
     version: String,
-  ) -> bool {
+  ) -> Result<(), AnyError> {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert_npm_specifier(package_req, version);
-      true
+      Ok(())
     } else {
       self.check_npm_specifier(package_req, version)
     }
@@ -185,16 +184,25 @@ impl Lockfile {
     self.content.remote.insert(specifier.to_string(), checksum);
   }
 
-  /// Checks the given module is included.
-  /// Returns Ok(true) if check passed.
-  fn check_npm_package(&mut self, package: &NpmResolutionPackage) -> bool {
+  fn check_npm_package(
+    &mut self,
+    package: &NpmResolutionPackage,
+  ) -> Result<(), AnyError> {
+    let mut valid = false;
     let specifier = package.id.serialize_for_lock_file();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
       // TODO(bartlomieju): remove this unwrap
-      package_info.integrity == package.dist.integrity.clone().unwrap()
-    } else {
-      false
+      valid = package_info.integrity == package.dist.integrity.clone().unwrap()
     }
+
+    if !valid {
+      return Err(anyhow!(
+        "Integrity check failed for package: {}. Pass --lock-write to update the lockfile.",
+        package.id
+      ));
+    }
+
+    Ok(())
   }
 
   fn insert_npm_package(&mut self, package: &NpmResolutionPackage) {
@@ -218,17 +226,26 @@ impl Lockfile {
     &mut self,
     package_req: &NpmPackageReq,
     version: String,
-  ) -> bool {
+  ) -> Result<(), AnyError> {
+    let mut valid = false;
     if let Some(resolved_specifier) = self
       .content
       .npm
       .specifiers
       .get(&format!("npm:{}", package_req))
     {
-      &format!("npm:{}@{}", package_req.name, version) == resolved_specifier
-    } else {
-      false
+      valid =
+        &format!("npm:{}@{}", package_req.name, version) == resolved_specifier
     }
+
+    if !valid {
+      return Err(anyhow!(
+        "Specifier resolution check failed for package: {}. Pass --lock-write to update the lockfile.",
+        package_req.name
+      ));
+    }
+
+    Ok(())
   }
 
   fn insert_npm_specifier(

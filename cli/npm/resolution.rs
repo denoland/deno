@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -737,24 +736,11 @@ impl NpmResolution {
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), AnyError> {
     for (package_req, version) in snapshot.package_reqs.iter() {
-      let valid = lockfile
-        .check_or_insert_npm_specifier(package_req, version.to_string());
-      if !valid {
-        return Err(anyhow!(
-          "Specifier resolution check failed for package: {}. Pass --lock-write to update the lockfile.",
-          package_req.name
-        ));
-      }
+      lockfile
+        .check_or_insert_npm_specifier(package_req, version.to_string())?;
     }
     for package in self.all_packages() {
-      let specifier = package.id.serialize_for_lock_file();
-      let valid = lockfile.check_or_insert_npm_package(&package);
-      if !valid {
-        return Err(anyhow!(
-          "Integrity check failed for package: {}. Pass --lock-write to update the lockfile.",
-          specifier
-        ));
-      }
+      lockfile.check_or_insert_npm_package(&package)?;
     }
     Ok(())
   }
