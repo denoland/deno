@@ -23,6 +23,12 @@ use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
 use super::NpmPackageId;
 
+/// For some of the tests, we want downloading of packages
+/// to be deterministic so that the output is always the same
+pub fn should_sync_download() -> bool {
+  std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
+}
+
 pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
 #[derive(Clone, Debug)]
@@ -154,13 +160,14 @@ impl ReadonlyNpmCache {
       .take(if is_scoped_package { 3 } else { 2 })
       .map(|(_, part)| part)
       .collect::<Vec<_>>();
+    if parts.len() < 2 {
+      return None;
+    }
     let version = parts.pop().unwrap();
     let name = parts.join("/");
-
-    Some(NpmPackageId {
-      name,
-      version: NpmVersion::parse(version).unwrap(),
-    })
+    NpmVersion::parse(version)
+      .ok()
+      .map(|version| NpmPackageId { name, version })
   }
 
   pub fn get_cache_location(&self) -> PathBuf {
@@ -199,11 +206,24 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    self
+      .ensure_package_inner(id, dist, registry_url)
+      .await
+      .with_context(|| format!("Failed caching npm package '{}'.", id))
+  }
+
+  async fn ensure_package_inner(
+    &self,
+    id: &NpmPackageId,
+    dist: &NpmPackageVersionDistInfo,
+    registry_url: &Url,
+  ) -> Result<(), AnyError> {
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && self.cache_setting.should_use_for_npm_package(&id.name)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {

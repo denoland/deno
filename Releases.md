@@ -6,6 +6,147 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.26.2 / 2022.10.17
+
+- feat(core): Reorder extension initialization (#16136)
+- feat(core): add Deno.core.writeAll(rid, chunk) (#16228)
+- feat(core): improve resource read & write traits (#16115)
+- feat(unstable): add windowsRawArguments to SpawnOptions (#16319)
+- feat(unstable/npm): support providing npm dist-tag in npm package specifier
+  (#16293)
+- feat(unstable/task): add `INIT_CWD` env var (#16110)
+- fix sparse array inspection (#16204)
+- fix(build) fix linux symbols export list format (#16313)
+- fix(cli): allow importMap to be an absolute URL within the deno config file
+  (#16234)
+- fix(cli): skip removing the latter part if `@` appears at the beginning
+  (#16244)
+- fix(cli/bench): skip strace table border (#16310)
+- fix(docs): Documentation improvements related to `JsRealm`. (#16247)
+- fix(ext/cache): illegal constructor (#16205)
+- fix(ext/crypto): correct HMAC get key length op (#16201)
+- fix(ext/fetch): fix illegal header regex (#16236)
+- fix(ext/fetch): reject immediately on aborted signal (#16190)
+- fix(ext/fetch): set accept-encoding: identity if range header is present
+  (#16197)
+- fix(ext/fetch): support empty formdata (#16165)
+- fix(ext/fetch): throw TypeError on non-Uint8Array chunk (#16262)
+- fix(ext/fetch): throw TypeError on read failure (#16219)
+- fix(ext/ffi): Fix UnsafeCallback ref'ing making Deno enter a live-loop
+  (#16216)
+- fix(ext/ffi): Fix usize and isize FFI callback parameters missing match arm
+  (#16172)
+- fix(ext/ffi): Invalid 'function' return type check logic, remove U32x2 as
+  unnecessary (#16259)
+- fix(ext/web/streams): enqueue to second branch before closing (#16269)
+- fix(ext/web/streams): resolve cancelPromise in ReadableStreamTee (#16266)
+- fix(ext/websocket): panic on no next ws message from an already closed stream
+  (#16004)
+- fix(lsp): properly handle snippets on completions (#16274)
+- fix(lsp): treat empty import map value config as none (#16224)
+- fix(napi): move napi symbols file (#16179)
+- fix(npm): disable loading native module for "fsevents" package (#16273)
+- fix(npm): support compiling on linux/aarch64 (#16208)
+- fix(serde_v8): avoid creating unsound slice reference (#16189)
+- fix: add error cause in recursive cause tail (#16306)
+- perf(ext/cache): set journal_mode=wal (#16231)
+- perf(ext/crypto): optimize `getRandomValues` (#16212)
+- perf(ext/web): optimize `op_cancel_handle` (#16318)
+- perf(ext/web): optimize timer cancellation (#16316)
+- perf(napi): optimize primitive napi functions (#16163)
+- perf(npm): parallelize caching of npm specifier package infos (#16323)
+
+### 1.26.1 / 2022.10.06
+
+- feat(npm): implement Node API (#13633)
+- feat(unstable): add support for npm specifier cli arguments for 'deno cache'
+  (#16141)
+- fix(build): don't export all symbols to dynamic symbol table (#16171)
+- fix(ext/cache): acquire reader lock before async op (#16126)
+- fix(ext/cache): close resource on error (#16129)
+- fix(ext/cache): prevent cache insert if body is not fully written (#16138)
+- fix(ext/crypto): ECDH and X25519 non byte length and 0 length fixes (#16146)
+- fix(ext/crypto): curve25519 import export (#16140)
+- fix(ext/crypto): deriveBits for ECDH not taking length into account (#16128)
+- fix(ext/crypto): ecdh spki key import/export roundtrip (#16152)
+- fix(ext/crypto): fix importKey error when leading zeroes (#16009)
+- fix(ext/crypto): interoperable import/export (#16153)
+- fix(ext/crypto): use correct handle for public keys (#16099)
+- fix(ext/fetch): `Body#bodyUsed` for static body (#16080)
+- fix(ext/flash): Avoid sending Content-Length when status code is 204 (#15901)
+- fix(node): add dns/promises and stream/consumers (#16169)
+- fix(npm): better error is version is specified after subpath (#16131)
+- fix(npm): handle json files in require (#16125)
+- fix(npm): panic on invalid package name (#16123)
+- fix(runtime): no FastStream for unrefable streams (#16095)
+- fix(serde_v8): Implement MapAccess for StructAccess (#15962)
+- fix(serde_v8): serialize objects with numeric keys correctly (#15946)
+- fix: move Deno.hostname() from denoNsUnstable to denoNs (#16086)
+- lsp: use deno:/asset instead of deno:asset (#16023)
+- perf(ext/fetch): consume body using ops (#16038)
+- perf: node cjs & esm analysis cache (#16097)
+
+### 1.26.0 / 2022.09.28
+
+- feat: add --allow-sys permission flag (#16028)
+- feat: add --no-npm flag to disable npm: imports (#15673)
+- feat: Add requesting API name to permission prompt (#15936)
+- feat: allow exiting on two consecutive ctrl+c presses (#15981)
+- feat: download progress bar (#15814)
+- feat: implement Web Cache API (#15829)
+- feat: Refresh interactive permission prompt (#15907)
+- feat: Stabilize Deno.hostname() API (#15932)
+- feat: Stabilize Deno.refTimer() and Deno.unrefTimer() APIs (#16036)
+- feat: TypeScript 4.8 update (#16040)
+- feat(cli): update to TypeScript 4.8 (#15064)
+- feat(core): add Deno.core.setPromiseHooks (#15475)
+- feat(ext/crypto): add x25519 and Ed25519 CFRG curves (#14119)
+- feat(ext/flash): add `reuseport` option on Linux (#16022)
+- feat(info): add information about npm modules cache (#15750)
+- feat(lint): add --compact flag for terse output (#15926)
+- feat(npm): functionality to support child_process.fork (#15891)
+- feat(ops): Fallible fast ops (#15989)
+- feat(unstable): Deno.setRaw -> Deno.stdin.setRaw (#15797)
+- fix(cli/bench): strace numeric format (#16055)
+- fix(cli/vendor): handle assert type json during vendoring (#16059)
+- fix(ext/console): fix error when logging a proxied Date (#16018)
+- fix(ext/fetch): blob url (#16057)
+- fix(ext/flash): reregister socket on partial read on Windows (#16076)
+- fix(fmt): keep type args in type queries and keep empty array expr element's
+  trailing comma (#16034)
+- fix(npm): use ntfs junctions in node_modules folder on Windows (#16061)
+- fix(require): tryPackage uses optional chaining (#16020)
+- fix(runtime): refresh perm prompt 3 lines instead of 4 (#16049)
+- perf: don't re-download package tarball to global cache if local node_modules
+  folder exists for package (#16005)
+- perf: use fast ops for tty (#15976)
+- perf(ext/console): break on iterableLimit & better sparse array handling
+  (#15935)
+- perf(ext/fetch): use content-length in InnerBody.consume (#15925)
+
+### 1.25.4 / 2022.09.22
+
+- feat(unstable/npm): add flag for creating and resolving npm packages to a
+  local node_modules folder (#15971)
+- feat(unstable/npm): add support for --reload=npm: and --reload=npm:<package>
+  (#15972)
+- feat(internal/ops): Automatic fast ops creation (#15527)
+- fix(compile): keep non-exe extension in output name on Windows (#15994)
+- fix(doc): deno doc should parse modules if they haven't been parsed before
+  (#15941)
+- fix(ext/node): fix builtin module module (#15904)
+- fix(ext/webgpu): make GPUDevice.features SetLike (#15853)
+- fix(flash): panic if response if undefined (#15964)
+- fix(runtime): better error message with Deno.env.get/set (#15966)
+- fix(runtime): fix permission status cache keys (#15899)
+- perf(cli): avoid `canonicalize_path` if config file does not exist (#15957)
+- perf(cli): avoid `clap::App::clone` (#15951)
+- perf(cli): use -O3 instead of -Oz (#15952)
+- perf(core): use single ObjectTemplate for ops in `initialize_ops` (#15959)
+- perf(ext/console): avoid `wrapConsole` when not inspecting (#15931)
+- perf(web): optimize encodeInto() (#15922)
+- perf: fs optimizations - part 1 (#15873)
+
 ### 1.25.3 / 2022.09.15
 
 - doc(unstable): mention that `signal` input isn't supported in `spawnSync`

@@ -61,10 +61,11 @@ fn noop_op() -> Result<(), AnyError> {
 #[op]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<Permissions>()
-    .read
-    .check_blind(&current_exe, "exec_path")?;
+  state.borrow_mut::<Permissions>().read.check_blind(
+    &current_exe,
+    "exec_path",
+    "Deno.execPath()",
+  )?;
   // Now apply URL parser to current exe to get fully resolved path, otherwise
   // we might get `./` and `../` bits in `exec_path`
   let exe_url = Url::from_file_path(current_exe).unwrap();
@@ -80,10 +81,20 @@ fn op_set_env(
   value: String,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<Permissions>().env.check(&key)?;
-  let invalid_key = key.is_empty() || key.contains(&['=', '\0'] as &[char]);
-  let invalid_value = value.contains('\0');
-  if invalid_key || invalid_value {
-    return Err(type_error("Key or value contains invalid characters."));
+  if key.is_empty() {
+    return Err(type_error("Key is an empty string."));
+  }
+  if key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error(format!(
+      "Key contains invalid characters: {:?}",
+      key
+    )));
+  }
+  if value.contains('\0') {
+    return Err(type_error(format!(
+      "Value contains invalid characters: {:?}",
+      value
+    )));
   }
   env::set_var(key, value);
   Ok(())
@@ -108,9 +119,17 @@ fn op_get_env(
     state.borrow_mut::<Permissions>().env.check(&key)?;
   }
 
-  if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error("Key contains invalid characters."));
+  if key.is_empty() {
+    return Err(type_error("Key is an empty string."));
   }
+
+  if key.contains(&['=', '\0'] as &[char]) {
+    return Err(type_error(format!(
+      "Key contains invalid characters: {:?}",
+      key
+    )));
+  }
+
   let r = match env::var(key) {
     Err(env::VarError::NotPresent) => None,
     v => Some(v?),
@@ -141,8 +160,10 @@ fn op_exit(state: &mut OpState) {
 
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
-  super::check_unstable(state, "Deno.loadavg");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("loadavg", Some("Deno.loadavg()"))?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
@@ -151,15 +172,20 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
 
 #[op]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
-  super::check_unstable(state, "Deno.hostname");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("hostname", Some("Deno.hostname()"))?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
 
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("osRelease", Some("Deno.osRelease()"))?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }
@@ -169,7 +195,10 @@ fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
   super::check_unstable(state, "Deno.networkInterfaces");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("networkInterfaces", Some("Deno.networkInterfaces()"))?;
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
@@ -235,7 +264,10 @@ fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
   match sys_info::mem_info() {
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,
@@ -254,7 +286,10 @@ fn op_system_memory_info(
 #[op]
 fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getGid");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getGid", Some("Deno.getGid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -266,7 +301,10 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getGid");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getGid", Some("Deno.getGid()"))?;
   Ok(None)
 }
 
@@ -274,7 +312,10 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getUid", Some("Deno.getUid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -286,6 +327,9 @@ fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[op]
 fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   super::check_unstable(state, "Deno.getUid");
-  state.borrow_mut::<Permissions>().env.check_all()?;
+  state
+    .borrow_mut::<Permissions>()
+    .sys
+    .check("getUid", Some("Deno.getUid()"))?;
   Ok(None)
 }

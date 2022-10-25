@@ -49,6 +49,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
+use url::Url;
 
 pub mod assertions;
 pub mod lsp;
@@ -116,8 +117,21 @@ pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
 
+pub fn napi_tests_path() -> PathBuf {
+  root_path().join("test_napi")
+}
+
+/// Test server registry url.
+pub fn npm_registry_url() -> String {
+  "http://localhost:4545/npm/registry/".to_string()
+}
+
 pub fn std_path() -> PathBuf {
   root_path().join("test_util").join("std")
+}
+
+pub fn std_file_url() -> String {
+  Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
 pub fn target_dir() -> PathBuf {
@@ -1861,6 +1875,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub http_server: bool,
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
+  pub temp_cwd: bool,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
@@ -1874,6 +1889,11 @@ impl<'a> CheckOutputIntegrationTest<'a> {
       );
       std::borrow::Cow::Borrowed(&self.args_vec)
     };
+    let testdata_dir = testdata_path();
+    let args = args
+      .iter()
+      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
+      .collect::<Vec<_>>();
     let deno_exe = deno_exe_path();
     println!("deno_exe path {}", deno_exe.display());
 
@@ -1884,17 +1904,21 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let testdata_dir = testdata_path();
     let deno_dir = new_deno_dir(); // keep this alive for the test
     let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    println!("deno_exe args {}", self.args);
-    println!("deno_exe testdata path {:?}", &testdata_dir);
+    let cwd = if self.temp_cwd {
+      deno_dir.path()
+    } else {
+      testdata_dir.as_path()
+    };
+    println!("deno_exe args {}", args.join(" "));
+    println!("deno_exe cwd {:?}", &testdata_dir);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
     command.envs(self.envs.clone());
-    command.current_dir(&testdata_dir);
+    command.current_dir(&cwd);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1949,7 +1973,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
     // deno test's output capturing flushes with a zero-width space in order to
     // synchronize the output pipes. Occassionally this zero width space
     // might end up in the output so strip it from the output comparison here.
-    if args.first() == Some(&"test") {
+    if args.first().map(|s| s.as_str()) == Some("test") {
       actual = actual.replace('\u{200B}', "");
     }
 
@@ -2184,9 +2208,12 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   // Filter out non-relevant lines. See the error log at
   // https://github.com/denoland/deno/pull/3715/checks?check_run_id=397365887
   // This is checked in testdata/strace_summary2.out
-  let mut lines = output
-    .lines()
-    .filter(|line| !line.is_empty() && !line.contains("detached ..."));
+  let mut lines = output.lines().filter(|line| {
+    !line.is_empty()
+      && !line.contains("detached ...")
+      && !line.contains("unfinished ...")
+      && !line.contains("????")
+  });
   let count = lines.clone().count();
 
   if count < 4 {
@@ -2201,7 +2228,6 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
     let syscall_fields = line.split_whitespace().collect::<Vec<_>>();
     let len = syscall_fields.len();
     let syscall_name = syscall_fields.last().unwrap();
-
     if (5..=6).contains(&len) {
       summary.insert(
         syscall_name.to_string(),

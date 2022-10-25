@@ -4,7 +4,7 @@ import {
   BufReader,
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
   assert,
@@ -16,6 +16,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
@@ -30,7 +31,7 @@ async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const tpr = new TextProtoReader(r);
   const statusLine = await tpr.readLine();
   assert(statusLine !== null);
-  const headers = await tpr.readMIMEHeader();
+  const headers = await tpr.readMimeHeader();
   assert(headers !== null);
 
   const chunkedReader = chunkedBodyReader(headers, r);
@@ -605,7 +606,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -751,7 +752,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -1290,6 +1291,11 @@ Deno.test(
   },
 );
 
+function tmpUnixSocketPath(): string {
+  const folder = Deno.makeTempDirSync();
+  return join(folder, "socket");
+}
+
 // https://github.com/denoland/deno/pull/13628
 Deno.test(
   {
@@ -1297,7 +1303,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function httpServerOnUnixSocket() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
 
     let httpConn: Deno.HttpConn;
     const promise = (async () => {
@@ -2239,7 +2245,7 @@ Deno.test("upgradeHttp unix", {
   permissions: { read: true, write: true },
   ignore: Deno.build.os === "windows",
 }, async () => {
-  const filePath = Deno.makeTempFileSync();
+  const filePath = tmpUnixSocketPath();
   const promise = deferred();
 
   async function client() {
@@ -2291,6 +2297,223 @@ Deno.test("upgradeHttp unix", {
 
   await Promise.all([server, client()]);
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReadLargeBodyWithContentLength() {
+    const TLS_PACKET_SIZE = 16 * 1024 + 256;
+    // We want the body to be read in multiple packets
+    const body = "aa\n" + "deno.land large body\n".repeat(TLS_PACKET_SIZE) +
+      "zz";
+
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      assertEquals(await request.text(), body);
+      await respondWith(new Response(body));
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      headers: { "connection": "close" },
+      body,
+    });
+    const text = await resp.text();
+    assertEquals(text, body);
+    await promise;
+
+    httpConn!.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerReadLargeBodyWithTransferChunked() {
+    const TLS_PACKET_SIZE = 16 * 1024 + 256;
+
+    // We want the body to be read in multiple packets
+    const chunks = [
+      "aa\n",
+      "deno.land large body\n".repeat(TLS_PACKET_SIZE),
+      "zz",
+    ];
+
+    const body = chunks.join("");
+
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    for (const chunk of chunks) {
+      writer.write(new TextEncoder().encode(chunk));
+    }
+    writer.close();
+
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      assertEquals(await request.text(), body);
+      await respondWith(new Response(body));
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/", {
+      method: "POST",
+      headers: { "connection": "close" },
+      body: stream.readable,
+    });
+    const text = await resp.text();
+    assertEquals(text, body);
+    await promise;
+
+    httpConn!.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function httpServerWithoutExclusiveAccessToTcp() {
+    const port = 4506;
+    const listener = Deno.listen({ port });
+
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connect({ port }),
+      listener.accept(),
+    ]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, read: true },
+  },
+  async function httpServerWithoutExclusiveAccessToTls() {
+    const hostname = "localhost";
+    const port = 4507;
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
+    });
+
+    const caCerts = [
+      await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem"),
+    ];
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connectTls({ hostname, port, caCerts }),
+      listener.accept(),
+    ]);
+    await Promise.all([clientConn.handshake(), serverConn.handshake()]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function httpServerWithoutExclusiveAccessToUnixSocket() {
+    const filePath = tmpUnixSocketPath();
+    const listener = Deno.listen({ path: filePath, transport: "unix" });
+
+    const [clientConn, serverConn] = await Promise.all([
+      Deno.connect({ path: filePath, transport: "unix" }),
+      listener.accept(),
+    ]);
+
+    const buf = new Uint8Array(128);
+    const readPromise = serverConn.read(buf);
+    assertThrows(() => Deno.serveHttp(serverConn), Deno.errors.BadResource);
+
+    clientConn.close();
+    listener.close();
+    await readPromise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestResponseClone() {
+    const body = "deno".repeat(64 * 1024);
+    let httpConn: Deno.HttpConn;
+    const listener = Deno.listen({ port: 4501 });
+    const promise = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      const clone = request.clone();
+      const reader = clone.body!.getReader();
+
+      // get first chunk from branch2
+      const clonedChunks = [];
+      const { value, done } = await reader.read();
+      assert(!done);
+      clonedChunks.push(value);
+
+      // consume request after first chunk single read
+      // readAll should read correctly the rest of the body.
+      // firstChunk should be in the stream internal buffer
+      const body1 = await request.text();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        clonedChunks.push(value);
+      }
+      let offset = 0;
+      const body2 = new Uint8Array(body.length);
+      for (const chunk of clonedChunks) {
+        body2.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      assertEquals(body1, body);
+      assertEquals(body1, new TextDecoder().decode(body2));
+      await respondWith(new Response(body));
+    })();
+
+    const response = await fetch("http://localhost:4501", {
+      body,
+      method: "POST",
+    });
+    const clone = response.clone();
+    assertEquals(await response.text(), await clone.text());
+
+    await promise;
+    httpConn!.close();
+  },
+);
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
@@ -2378,7 +2601,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

@@ -7,7 +7,6 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
-use crate::JsRealm;
 use crate::JsRuntime;
 use log::debug;
 use std::option::Option;
@@ -140,33 +139,21 @@ fn initialize_ops(
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
 ) {
-  let object_template = v8::ObjectTemplate::new(scope);
-  assert!(object_template.set_internal_field_count(
-    (crate::runtime::V8_WRAPPER_OBJECT_INDEX + 1) as usize
-  ));
-
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
     if ctx.decl.fast_fn.is_some() && snapshot_loaded {
-      let method_obj = object_template.new_instance(scope).unwrap();
-      method_obj.set_aligned_pointer_in_internal_field(
-        crate::runtime::V8_WRAPPER_OBJECT_INDEX,
-        ctx_ptr,
-      );
       set_func_raw(
         scope,
-        method_obj,
-        "fast",
+        ops_obj,
+        ctx.decl.name,
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
         snapshot_loaded,
       );
-      let method_key = v8::String::new(scope, ctx.decl.name).unwrap();
-      ops_obj.set(scope, method_key.into(), method_obj.into());
     } else {
       set_func_raw(
         scope,
@@ -240,16 +227,13 @@ pub extern "C" fn wasm_async_resolve_promise_callback(
   }
 }
 
-pub extern "C" fn host_import_module_dynamically_callback(
-  context: v8::Local<v8::Context>,
-  _host_defined_options: v8::Local<v8::Data>,
-  resource_name: v8::Local<v8::Value>,
-  specifier: v8::Local<v8::String>,
-  import_assertions: v8::Local<v8::FixedArray>,
-) -> *mut v8::Promise {
-  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
+pub fn host_import_module_dynamically_callback<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  _host_defined_options: v8::Local<'s, v8::Data>,
+  resource_name: v8::Local<'s, v8::Value>,
+  specifier: v8::Local<'s, v8::String>,
+  import_assertions: v8::Local<'s, v8::FixedArray>,
+) -> Option<v8::Local<'s, v8::Promise>> {
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
     .to_string(scope)
@@ -310,7 +294,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
 
   let promise = promise.catch(scope, map_err).unwrap();
 
-  &*promise as *const _ as *mut _
+  Some(promise)
 }
 
 pub extern "C" fn host_initialize_import_meta_object_callback(
@@ -358,7 +342,7 @@ fn import_meta_resolve(
   }
   let specifier = maybe_arg_str.unwrap();
   let referrer = {
-    let url_prop = args.data().unwrap();
+    let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
   let module_map_rc = JsRuntime::module_map(scope);
@@ -440,15 +424,15 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   // SAFETY: `CallbackScope` can be safely constructed from `&PromiseRejectMessage`
   let scope = &mut unsafe { v8::CallbackScope::new(&message) };
 
-  let realm_state_rc = JsRealm::state_from_scope(scope);
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
 
-  if let Some(js_promise_reject_cb) =
-    realm_state_rc.borrow().js_promise_reject_cb.clone()
-  {
+  if let Some(js_promise_reject_cb) = state.js_promise_reject_cb.clone() {
     let tc_scope = &mut v8::TryCatch::new(scope);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc_scope).into();
     let type_ = v8::Integer::new(tc_scope, message.get_event() as i32);
     let promise = message.get_promise();
+    drop(state); // Drop borrow, callbacks can call back into runtime.
 
     let reason = match message.get_event() {
       PromiseRejectWithNoHandler
@@ -471,7 +455,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
@@ -482,8 +465,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       }
     }
   } else {
-    let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let promise = message.get_promise();
     let promise_global = v8::Global::new(scope, promise);
     match message.get_event() {
@@ -502,7 +483,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
         // Should not warn. See #1272
       }
     }
-  };
+  }
 }
 
 /// This binding should be used if there's a custom console implementation

@@ -16,12 +16,16 @@
     PromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
-  const { readableStreamForRid, writableStreamForRid } =
-    window.__bootstrap.streamUtils;
+  const {
+    readableStreamForRidUnrefable,
+    readableStreamForRidUnrefableRef,
+    readableStreamForRidUnrefableUnref,
+    writableStreamForRid,
+  } = window.__bootstrap.streams;
 
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
-  function spawnChild(command, {
+  function spawnChildInner(command, apiName, {
     args = [],
     cwd = undefined,
     clearEnv = false,
@@ -32,6 +36,7 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    windowsRawArguments = false,
   } = {}) {
     const child = ops.op_spawn_child({
       cmd: pathFromURL(command),
@@ -44,11 +49,16 @@
       stdin,
       stdout,
       stderr,
-    });
+      windowsRawArguments,
+    }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
       signal,
     });
+  }
+
+  function spawnChild(command, options = {}) {
+    return spawnChildInner(command, "Deno.spawnChild()", options);
   }
 
   async function collectOutput(readableStream) {
@@ -132,18 +142,12 @@
 
       if (stdoutRid !== null) {
         this.#stdoutRid = stdoutRid;
-        this.#stdout = readableStreamForRid(stdoutRid, (promise) => {
-          this.#stdoutPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stdoutPromiseId);
-        });
+        this.#stdout = readableStreamForRidUnrefable(stdoutRid);
       }
 
       if (stderrRid !== null) {
         this.#stderrRid = stderrRid;
-        this.#stderr = readableStreamForRid(stderrRid, (promise) => {
-          this.#stderrPromiseId = promise[promiseIdSymbol];
-          if (this.#unrefed) core.unrefOp(this.#stderrPromiseId);
-        });
+        this.#stderr = readableStreamForRidUnrefable(stderrRid);
       }
 
       const onAbort = () => this.kill("SIGTERM");
@@ -204,21 +208,21 @@
       if (this.#rid === null) {
         throw new TypeError("Child process has already terminated.");
       }
-      ops.op_kill(this.#pid, signo);
+      ops.op_kill(this.#pid, signo, "Deno.Child.kill()");
     }
 
     ref() {
       this.#unrefed = false;
       core.refOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.refOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.refOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
     }
 
     unref() {
       this.#unrefed = true;
       core.unrefOp(this.#waitPromiseId);
-      if (this.#stdoutPromiseId) core.unrefOp(this.#stdoutPromiseId);
-      if (this.#stderrPromiseId) core.unrefOp(this.#stderrPromiseId);
+      if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
+      if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
     }
   }
 
@@ -228,7 +232,7 @@
         "Piped stdin is not supported for this function, use 'Deno.spawnChild()' instead",
       );
     }
-    return spawnChild(command, options).output();
+    return spawnChildInner(command, "Deno.spawn()", options).output();
   }
 
   function spawnSync(command, {
@@ -241,6 +245,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    windowsRawArguments = false,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
@@ -258,6 +263,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     });
     return {
       success: result.status.success,

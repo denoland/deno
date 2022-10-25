@@ -81,23 +81,36 @@ pub fn err_invalid_package_target(
 }
 
 pub fn err_package_path_not_exported(
-  pkg_path: String,
+  mut pkg_path: String,
   subpath: String,
   maybe_referrer: Option<String>,
 ) -> AnyError {
   let mut msg = "[ERR_PACKAGE_PATH_NOT_EXPORTED]".to_string();
 
+  #[cfg(windows)]
+  {
+    if !pkg_path.ends_with('\\') {
+      pkg_path.push('\\');
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    if !pkg_path.ends_with('/') {
+      pkg_path.push('/');
+    }
+  }
+
   if subpath == "." {
     msg = format!(
-      "{} No \"exports\" main defined in {}package.json",
+      "{} No \"exports\" main defined in '{}package.json'",
       msg, pkg_path
     );
   } else {
-    msg = format!("{} Package subpath \'{}\' is not defined by \"exports\" in {}package.json", msg, subpath, pkg_path);
+    msg = format!("{} Package subpath '{}' is not defined by \"exports\" in '{}package.json'", msg, subpath, pkg_path);
   };
 
   if let Some(referrer) = maybe_referrer {
-    msg = format!("{} imported from {}", msg, referrer);
+    msg = format!("{} imported from '{}'", msg, referrer);
   }
 
   generic_error(msg)
