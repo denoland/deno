@@ -179,7 +179,7 @@ pub struct JsRuntimeState {
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
-  inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
 
