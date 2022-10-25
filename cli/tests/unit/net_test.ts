@@ -9,6 +9,7 @@ import {
   delay,
   execCode,
 } from "./test_util.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 let isCI: boolean;
 try {
@@ -43,13 +44,18 @@ Deno.test(
   },
 );
 
+function tmpUnixSocketPath(): string {
+  const folder = Deno.makeTempDirSync();
+  return join(folder, "socket");
+}
+
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
   },
   function netUnixListenClose() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
     const socket = Deno.listen({
       path: filePath,
       transport: "unix",
@@ -66,7 +72,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   function netUnixPacketListenClose() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
     const socket = Deno.listenDatagram({
       path: filePath,
       transport: "unixpacket",
@@ -84,7 +90,7 @@ Deno.test(
   },
   function netUnixListenWritePermission() {
     assertThrows(() => {
-      const filePath = Deno.makeTempFileSync();
+      const filePath = tmpUnixSocketPath();
       const socket = Deno.listen({
         path: filePath,
         transport: "unix",
@@ -103,7 +109,7 @@ Deno.test(
   },
   function netUnixPacketListenWritePermission() {
     assertThrows(() => {
-      const filePath = Deno.makeTempFileSync();
+      const filePath = tmpUnixSocketPath();
       const socket = Deno.listenDatagram({
         path: filePath,
         transport: "unixpacket",
@@ -139,7 +145,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixCloseWhileAccept() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const listener = Deno.listen({
       path: filePath,
       transport: "unix",
@@ -183,7 +189,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixConcurrentAccept() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const listener = Deno.listen({ transport: "unix", path: filePath });
     let acceptErrCount = 0;
     const checkErr = (e: Error) => {
@@ -317,7 +323,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixDialListen() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const listener = Deno.listen({ path: filePath, transport: "unix" });
     listener.accept().then(
       async (conn) => {
@@ -463,20 +469,21 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixPacketSendReceive() {
-    const filePath = await Deno.makeTempFile();
+    const aliceFilePath = tmpUnixSocketPath();
     const alice = Deno.listenDatagram({
-      path: filePath,
+      path: aliceFilePath,
       transport: "unixpacket",
     });
     assert(alice.addr.transport === "unixpacket");
-    assertEquals(alice.addr.path, filePath);
+    assertEquals(alice.addr.path, aliceFilePath);
 
+    const bobFilePath = tmpUnixSocketPath();
     const bob = Deno.listenDatagram({
-      path: filePath,
+      path: bobFilePath,
       transport: "unixpacket",
     });
     assert(bob.addr.transport === "unixpacket");
-    assertEquals(bob.addr.path, filePath);
+    assertEquals(bob.addr.path, bobFilePath);
 
     const sent = new Uint8Array([1, 2, 3]);
     const byteLength = await alice.send(sent, bob.addr);
@@ -484,7 +491,7 @@ Deno.test(
 
     const [recvd, remote] = await bob.receive();
     assert(remote.transport === "unixpacket");
-    assertEquals(remote.path, filePath);
+    assertEquals(remote.path, aliceFilePath);
     assertEquals(recvd.length, 3);
     assertEquals(1, recvd[0]);
     assertEquals(2, recvd[1]);
@@ -494,11 +501,11 @@ Deno.test(
   },
 );
 
-// TODO(piscisaureus): Enable after Tokio v0.3/v1.0 upgrade.
+// TODO(lucacasonato): support concurrent reads and writes on unixpacket sockets
 Deno.test(
   { ignore: true, permissions: { read: true, write: true } },
   async function netUnixPacketConcurrentSendReceive() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const socket = Deno.listenDatagram({
       path: filePath,
       transport: "unixpacket",
@@ -584,7 +591,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixListenCloseWhileIterating() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
     const socket = Deno.listen({ path: filePath, transport: "unix" });
     const nextWhileClosing = socket[Symbol.asyncIterator]().next();
     socket.close();
@@ -601,7 +608,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function netUnixPacketListenCloseWhileIterating() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
     const socket = Deno.listenDatagram({
       path: filePath,
       transport: "unixpacket",
@@ -882,5 +889,119 @@ Deno.test(
     }, Deno.errors.Busy);
     listener.close();
     clearTimeout(timer);
+  },
+);
+
+Deno.test({
+  ignore: Deno.build.os === "windows",
+  permissions: { read: true, write: true },
+}, function netUnixListenAddrAlreadyInUse() {
+  const filePath = tmpUnixSocketPath();
+  const listener = Deno.listen({ path: filePath, transport: "unix" });
+  assertThrows(
+    () => {
+      Deno.listen({ path: filePath, transport: "unix" });
+    },
+    Deno.errors.AddrInUse,
+  );
+  listener.close();
+});
+
+Deno.test({ permissions: { net: true } }, async function netTcpReuseAddr() {
+  const listener1 = Deno.listen({
+    hostname: "127.0.0.1",
+    port: 3500,
+  });
+  listener1.accept().then(
+    (conn) => {
+      conn.close();
+    },
+  );
+
+  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const buf1 = new Uint8Array(1024);
+  await conn1.read(buf1);
+  listener1.close();
+  conn1.close();
+
+  const listener2 = Deno.listen({
+    hostname: "127.0.0.1",
+    port: 3500,
+  });
+
+  listener2.accept().then(
+    (conn) => {
+      conn.close();
+    },
+  );
+
+  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: 3500 });
+  const buf2 = new Uint8Array(1024);
+  await conn2.read(buf2);
+
+  listener2.close();
+  conn2.close();
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function netUdpReuseAddr() {
+    const sender = Deno.listenDatagram({
+      port: 4002,
+      transport: "udp",
+    });
+    const listener1 = Deno.listenDatagram({
+      port: 4000,
+      transport: "udp",
+      reuseAddress: true,
+    });
+    const listener2 = Deno.listenDatagram({
+      port: 4000,
+      transport: "udp",
+      reuseAddress: true,
+    });
+
+    const sent = new Uint8Array([1, 2, 3]);
+    await sender.send(sent, listener1.addr);
+    await Promise.any([listener1.receive(), listener2.receive()]).then(
+      ([recvd, remote]) => {
+        assert(remote.transport === "udp");
+        assertEquals(recvd.length, 3);
+        assertEquals(1, recvd[0]);
+        assertEquals(2, recvd[1]);
+        assertEquals(3, recvd[2]);
+      },
+    );
+    sender.close();
+    listener1.close();
+    listener2.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  function netUdpNoReuseAddr() {
+    let listener1;
+    try {
+      listener1 = Deno.listenDatagram({
+        port: 4001,
+        transport: "udp",
+        reuseAddress: false,
+      });
+    } catch (err) {
+      assert(err);
+      assert(err instanceof Deno.errors.AddrInUse); // AddrInUse from previous test
+    }
+
+    assertThrows(() => {
+      Deno.listenDatagram({
+        port: 4001,
+        transport: "udp",
+        reuseAddress: false,
+      });
+    }, Deno.errors.AddrInUse);
+    if (typeof listener1 !== "undefined") {
+      listener1.close();
+    }
   },
 );
