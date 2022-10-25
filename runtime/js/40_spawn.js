@@ -13,8 +13,8 @@
     String,
     TypeError,
     Uint8Array,
-    SafePromiseAll,
     PromisePrototypeThen,
+    SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
