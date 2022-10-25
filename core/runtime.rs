@@ -78,6 +78,7 @@ struct IsolateAllocations {
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
   state: Rc<RefCell<JsRuntimeState>>,
+  module_map: Option<Rc<RefCell<ModuleMap>>>,
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
@@ -448,7 +449,7 @@ impl JsRuntime {
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     isolate.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
-      Rc::into_raw(module_map_rc) as *mut c_void,
+      Rc::into_raw(module_map_rc.clone()) as *mut c_void,
     );
 
     let mut js_runtime = Self {
@@ -458,6 +459,7 @@ impl JsRuntime {
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
       state: state_rc,
+      module_map: Some(module_map_rc),
     };
 
     // Init resources and ops before extensions to make sure they are
@@ -489,6 +491,11 @@ impl JsRuntime {
     // the runtime.
     unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
     drop(module_map_rc);
+  }
+
+  #[inline]
+  fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
+    self.module_map.as_ref().unwrap()
   }
 
   #[inline]
@@ -782,6 +789,7 @@ impl JsRuntime {
 
     // Drop existing ModuleMap to drop v8::Global handles
     {
+      self.module_map.take();
       let v8_isolate = self.v8_isolate();
       Self::drop_state_and_module_map(v8_isolate);
     }
@@ -964,7 +972,6 @@ impl JsRuntime {
   ) -> Poll<Result<(), Error>> {
     // We always poll the inspector first
     let _ = self.inspector().borrow_mut().poll_unpin(cx);
-    let module_map_rc = Self::module_map(self.v8_isolate());
     {
       let state = self.state.borrow();
       state.waker.register(cx.waker());
@@ -1033,7 +1040,6 @@ impl JsRuntime {
     }
 
     let mut state = self.state.borrow_mut();
-    let module_map = module_map_rc.borrow();
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
@@ -1075,6 +1081,7 @@ impl JsRuntime {
       } else if state.dyn_module_evaluate_idle_counter >= 1 {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promises.
 Pending dynamic modules:\n".to_string();
+        let module_map = self.module_map.as_mut().unwrap().borrow_mut();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
@@ -1097,9 +1104,8 @@ Pending dynamic modules:\n".to_string();
 
   fn event_loop_pending_state(&mut self) -> EventLoopPendingState {
     let isolate = self.v8_isolate.as_mut().unwrap();
-    let module_map_rc = Self::module_map(isolate);
     let state = self.state.borrow_mut();
-    let module_map = module_map_rc.borrow();
+    let module_map = self.module_map.as_mut().unwrap().borrow();
 
     EventLoopPendingState {
       has_pending_refed_ops: state.pending_ops.len() > state.unrefed_ops.len(),
@@ -1524,11 +1530,16 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
+    if self
+      .get_module_map()
+      .borrow()
+      .preparing_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
+
+    let module_map_rc = self.get_module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1562,11 +1573,16 @@ impl JsRuntime {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-
-    if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
+    if self
+      .get_module_map()
+      .borrow()
+      .pending_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
+
+    let module_map_rc = self.get_module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1653,16 +1669,15 @@ impl JsRuntime {
   /// resolved or rejected the promise. If the promise is still pending
   /// then another turn of event loop must be performed.
   fn evaluate_pending_module(&mut self) {
-    let state_rc = self.state.clone();
-
     let maybe_module_evaluation =
-      state_rc.borrow_mut().pending_mod_evaluate.take();
+      self.state.borrow_mut().pending_mod_evaluate.take();
 
     if maybe_module_evaluation.is_none() {
       return;
     }
 
     let mut module_evaluation = maybe_module_evaluation.unwrap();
+    let state_rc = self.state.clone();
     let scope = &mut self.handle_scope();
 
     let promise_global = module_evaluation.promise.clone().unwrap();
@@ -1703,10 +1718,13 @@ impl JsRuntime {
 
   // Returns true if some dynamic import was resolved.
   fn evaluate_dyn_imports(&mut self) -> bool {
-    let mut resolved_any = false;
-    let mut still_pending = vec![];
     let pending =
       std::mem::take(&mut self.state.borrow_mut().pending_dyn_mod_evaluate);
+    if pending.is_empty() {
+      return false;
+    }
+    let mut resolved_any = false;
+    let mut still_pending = vec![];
     for pending_dyn_evaluate in pending {
       let maybe_result = {
         let scope = &mut self.handle_scope();
