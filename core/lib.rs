@@ -6,6 +6,7 @@ pub mod error;
 mod error_codes;
 mod extensions;
 mod flags;
+mod futures_list;
 mod gotham_state;
 mod inspector;
 mod io;

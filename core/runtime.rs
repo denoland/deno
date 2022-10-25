@@ -6,6 +6,7 @@ use crate::error::to_v8_type_error;
 use crate::error::JsError;
 use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
+use crate::futures_list::FuturesList;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleError;
@@ -29,7 +30,6 @@ use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
 use std::any::Any;
@@ -164,7 +164,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub(crate) source_map_cache: SourceMapCache,
-  pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
+  pub(crate) pending_ops: FuturesList<PendingOpFuture>,
   pub(crate) unrefed_ops: HashSet<i32>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
@@ -336,7 +336,7 @@ impl JsRuntime {
       js_wasm_streaming_cb: None,
       source_map_getter: options.source_map_getter,
       source_map_cache: Default::default(),
-      pending_ops: FuturesUnordered::new(),
+      pending_ops: FuturesList::new(),
       unrefed_ops: HashSet::new(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
