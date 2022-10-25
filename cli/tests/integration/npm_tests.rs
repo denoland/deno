@@ -158,6 +158,14 @@ itest!(import_map {
   http_server: true,
 });
 
+itest!(lock_file {
+  args: "run --allow-read --allow-env --unstable --lock npm/lock_file/lock.json npm/lock_file/main.js",
+  output: "npm/lock_file/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 10,
+});
+
 itest!(sub_paths {
   args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",

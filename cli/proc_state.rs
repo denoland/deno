@@ -235,7 +235,8 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let npm_resolver = NpmPackageResolver::new(
+    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
+    let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
       cli_options.unstable()
@@ -246,6 +247,9 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
+    if let Some(lockfile) = maybe_lockfile.clone() {
+      npm_resolver.add_lockfile(lockfile).await?;
+    }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -464,6 +468,8 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
+  // FIXME(bartlomieju): appears this function can be called more than once
+  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
