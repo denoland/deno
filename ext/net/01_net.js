@@ -9,7 +9,6 @@
   const {
     Error,
     ObjectPrototypeIsPrototypeOf,
-    PromisePrototypeThen,
     PromiseResolve,
     SymbolAsyncIterator,
     SymbolFor,

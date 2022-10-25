@@ -2232,7 +2232,9 @@ Deno.test(
   async function serveWithPromisePrototypeThenOverride() {
     const originalThen = Promise.prototype.then;
     try {
-      Promise.prototype.then = () => { throw new Error() };
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
       const ac = new AbortController();
       const listeningPromise = deferred();
       const server = Deno.serve({

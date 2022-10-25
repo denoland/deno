@@ -818,7 +818,9 @@ Deno.test(
   async function spawnWithPromisePrototypeThenOverride() {
     const originalThen = Promise.prototype.then;
     try {
-      Promise.prototype.then = () => { throw new Error() };
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
       await Deno.spawn(Deno.execPath(), {
         args: ["eval", "console.log('hello world')"],
       });
