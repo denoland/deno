@@ -3439,6 +3439,7 @@ declare namespace Deno {
     /** Clean up resources associated with the sub-process instance. */
     close(): void;
     /** Send a signal to process.
+     * Default signal is `"SIGTERM"`.
      *
      * ```ts
      * const p = Deno.run({ cmd: [ "sleep", "20" ]});
@@ -3446,11 +3447,11 @@ declare namespace Deno {
      * p.close();
      * ```
      */
-    kill(signo: Signal): void;
+    kill(signo?: Signal): void;
   }
 
   /** Operating signals which can be listened for or sent to sub-processes. What
-   * signals and what their standard behaviors are are OS dependent.
+   * signals and what their standard behaviors are OS dependent.
    *
    * @category Runtime Environment */
   export type Signal =
@@ -4471,7 +4472,8 @@ declare namespace Deno {
 
   /** Send a signal to process under given `pid`. The value and meaning of the
    * `signal` to the process is operating system and process dependant.
-   * {@linkcode Signal} provides the most common signals.
+   * {@linkcode Signal} provides the most common signals. Default signal
+   * is `"SIGTERM"`.
    *
    * The term `kill` is adopted from the UNIX-like command line command `kill`
    * which also signals processes.
@@ -4493,7 +4495,7 @@ declare namespace Deno {
    * @tags allow-run
    * @category Sub Process
    */
-  export function kill(pid: number, signal: Signal): void;
+  export function kill(pid: number, signo?: Signal): void;
 
   /** The type of the resource record to resolve via DNS using
    * {@linkcode Deno.resolveDns}.
