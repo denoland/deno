@@ -3762,8 +3762,8 @@ declare namespace Deno {
       | "systemMemoryInfo"
       | "networkInterfaces"
       | "osRelease"
-      | "getUid"
-      | "getGid";
+      | "uid"
+      | "gid";
   }
 
   /** The permission descriptor for the `allow-ffi` permissions, which controls

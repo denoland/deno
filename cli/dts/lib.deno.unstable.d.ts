@@ -359,7 +359,7 @@ declare namespace Deno {
    * on Windows.
    *
    * ```ts
-   * console.log(Deno.getUid());
+   * console.log(Deno.uid());
    * ```
    *
    * Requires `allow-sys` permission.
@@ -367,7 +367,7 @@ declare namespace Deno {
    * @tags allow-sys
    * @category Runtime Environment
    */
-  export function getUid(): number | null;
+  export function uid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -375,7 +375,7 @@ declare namespace Deno {
    * Windows.
    *
    * ```ts
-   * console.log(Deno.getGid());
+   * console.log(Deno.gid());
    * ```
    *
    * Requires `allow-sys` permission.
@@ -383,7 +383,7 @@ declare namespace Deno {
    * @tags allow-sys
    * @category Runtime Environment
    */
-  export function getGid(): number | null;
+  export function gid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
