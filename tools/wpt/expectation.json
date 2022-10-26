@@ -1302,8 +1302,8 @@
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
         "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
       ],
-      "non-transferable-buffers.any.html": false,
-      "non-transferable-buffers.any.worker.html": false,
+      "non-transferable-buffers.any.html": true,
+      "non-transferable-buffers.any.worker.html": true,
       "enqueue-with-detached-buffer.window.html": false,
       "tee.any.html": true,
       "tee.any.worker.html": true,
