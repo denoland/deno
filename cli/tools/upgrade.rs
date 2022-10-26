@@ -175,7 +175,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
       } else {
         eprint!(
           "{} {} → {} ",
-          colors::green(format!("A new release of Deno is available:")),
+          colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
           colors::cyan(upgrade_version)
         );
