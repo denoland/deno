@@ -168,7 +168,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
   //   * stderr is not a tty
   //   * we're already running the 'deno upgrade' command.
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    if atty::is(atty::Stream::Stderr) {
+    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
       eprint!(
         "{} ",
         colors::green(format!("Deno {upgrade_version} has been released."))
