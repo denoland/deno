@@ -1075,7 +1075,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sourcemap",
- "termcolor",
  "url",
 ]
 
