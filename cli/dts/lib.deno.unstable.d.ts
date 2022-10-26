@@ -1441,8 +1441,8 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Acquire an advisory file-system lock for the provided file. `exclusive`
-   * defaults to `false`.
+   * Acquire an advisory file-system lock synchronously for the provided file.
+   * `exclusive` defaults to `false`.
    *
    * @category File System
    */
@@ -1458,7 +1458,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Release an advisory file-system lock for the provided file.
+   * Release an advisory file-system lock for the provided file synchronously.
    *
    * @category File System
    */
@@ -1478,23 +1478,27 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Options which can be set when calling {@linkcode Deno.serve}.
+   *
    * @category HTTP Server
    */
   export interface ServeOptions extends Partial<Deno.ListenOptions> {
-    /** An AbortSignal to close the server and all connections. */
+    /** An {@linkcode AbortSignal} to close the server and all connections. */
     signal?: AbortSignal;
 
-    /** Sets SO_REUSEPORT on Linux. */
+    /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
 
     /** The handler to invoke when route handlers throw an error. */
     onError?: (error: unknown) => Response | Promise<Response>;
 
-    /** The callback which is called when the server started listening */
+    /** The callback which is called when the server starts listening. */
     onListen?: (params: { hostname: string; port: number }) => void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Additional options which are used when opening a TLS (HTTPS) server.
    *
    * @category HTTP Server
    */
@@ -1520,25 +1524,25 @@ declare namespace Deno {
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
-   * address to listen on. The default is port 9000 on hostname "127.0.0.1".
+   * address to listen on. The default is port `9000` on hostname `"127.0.0.1"`.
    *
-   * The below example serves with the port 9000.
+   * The below example serves with the port `9000`.
    *
    * ```ts
    * Deno.serve((_req) => new Response("Hello, world"));
    * ```
    *
    * You can change the address to listen on using the `hostname` and `port`
-   * options. The below example serves on port 3000.
+   * options. The below example serves on port `3000`.
    *
    * ```ts
    * Deno.serve({ port: 3000 }, (_req) => new Response("Hello, world"));
    * ```
    *
-   * You can stop the server with an AbortSignal. The abort signal needs to be
-   * passed as the `signal` option in the options bag. The server aborts when
-   * the abort signal is aborted. To wait for the server to close, await the
-   * promise returned from the `Deno.serve` API.
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
    *
    * ```ts
    * const ac = new AbortController();
@@ -1550,9 +1554,9 @@ declare namespace Deno {
    * ac.abort();
    * ```
    *
-   * By default `Deno.serve` prints the message `Listening on http://<hostname>:<port>/`
-   * on start up. If you like to change this behaviour, you can specify a custom
-   * `onListen` callback.
+   * By default `Deno.serve` prints the message
+   * `Listening on http://<hostname>:<port>/` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
    *
    * ```ts
    * Deno.serve({
@@ -1578,19 +1582,137 @@ declare namespace Deno {
     handler: ServeHandler,
     options?: ServeOptions | ServeTlsOptions,
   ): Promise<void>;
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Serves HTTP requests with the given handler.
+   *
+   * You can specify an object with a port and hostname option, which is the
+   * address to listen on. The default is port `9000` on hostname `"127.0.0.1"`.
+   *
+   * The below example serves with the port `9000`.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can change the address to listen on using the `hostname` and `port`
+   * options. The below example serves on port `3000`.
+   *
+   * ```ts
+   * Deno.serve({ port: 3000 }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
+   *  .then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message
+   * `Listening on http://<hostname>:<port>/` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ port, hostname }) {
+   *     console.log(`Server started at http://${hostname}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   handler: (_req) => new Response("Hello, world"),
+   * });
+   * ```
+   *
+   * To enable TLS you must specify the `key` and `cert` options.
+   *
+   * ```ts
+   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
+   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
+   * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
   ): Promise<void>;
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Serves HTTP requests with the given handler.
+   *
+   * You can specify an object with a port and hostname option, which is the
+   * address to listen on. The default is port `9000` on hostname `"127.0.0.1"`.
+   *
+   * The below example serves with the port `9000`.
+   *
+   * ```ts
+   * Deno.serve((_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can change the address to listen on using the `hostname` and `port`
+   * options. The below example serves on port `3000`.
+   *
+   * ```ts
+   * Deno.serve({ port: 3000 }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * You can stop the server with an {@linkcode AbortSignal}. The abort signal
+   * needs to be passed as the `signal` option in the options bag. The server
+   * aborts when the abort signal is aborted. To wait for the server to close,
+   * await the promise returned from the `Deno.serve` API.
+   *
+   * ```ts
+   * const ac = new AbortController();
+   *
+   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
+   *  .then(() => console.log("Server closed"));
+   *
+   * console.log("Closing server...");
+   * ac.abort();
+   * ```
+   *
+   * By default `Deno.serve` prints the message
+   * `Listening on http://<hostname>:<port>/` on listening. If you like to
+   * change this behavior, you can specify a custom `onListen` callback.
+   *
+   * ```ts
+   * Deno.serve({
+   *   onListen({ port, hostname }) {
+   *     console.log(`Server started at http://${hostname}:${port}`);
+   *     // ... more info specific to your server ..
+   *   },
+   *   handler: (_req) => new Response("Hello, world"),
+   * });
+   * ```
+   *
+   * To enable TLS you must specify the `key` and `cert` options.
+   *
+   * ```ts
+   * const cert = "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n";
+   * const key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n";
+   * Deno.serve({ cert, key }, (_req) => new Response("Hello, world"));
+   * ```
+   *
+   * @category HTTP Server
+   */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with.
-   * This can be used to implement protocols that build on top of HTTP (eg.
-   * WebSockets).
+   * Allows "hijacking" the connection that the request is associated with. This
+   * can be used to implement protocols that build on top of HTTP (eg.
+   * {@linkcode WebSocket}).
    *
    * The returned promise returns underlying connection and first packet
    * received. The promise shouldn't be awaited before responding to the
@@ -1605,8 +1727,8 @@ declare namespace Deno {
    * }
    * ```
    *
-   * This method can only be called on requests originating the `Deno.serveHttp`
-   * server.
+   * This method can only be called on requests originating the
+   * {@linkcode Deno.serveHttp} server.
    *
    * @category HTTP Server
    */
@@ -1618,21 +1740,25 @@ declare namespace Deno {
    *
    * Allows "hijacking" the connection that the request is associated with.
    * This can be used to implement protocols that build on top of HTTP (eg.
-   * WebSockets).
-
-   * Unlike `Deno.upgradeHttp` this function does not require that you respond
-   * to the request with a `Response` object. Instead this function returns
-   * the underlying connection and first packet received immediately, and then
-   * the caller is responsible for writing the response to the connection.
+   * {@linkcode WebSocket}).
    *
-   * This method can only be called on requests originating the `Deno.serve`
-   * server.
+   * Unlike {@linkcode Deno.upgradeHttp} this function does not require that you
+   * respond to the request with a {@linkcode Response} object. Instead this
+   * function returns the underlying connection and first packet received
+   * immediately, and then the caller is responsible for writing the response to
+   * the connection.
+   *
+   * This method can only be called on requests originating the
+   * {@linkcode Deno.serve} server.
    *
    * @category HTTP Server
    */
   export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
 
   /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Options which can be set when calling {@linkcode Deno.spawn},
+   * {@linkcode Deno.spawnSync}, and {@linkcode Deno.spawnChild}.
    *
    * @category Sub Process
    */
@@ -1641,40 +1767,50 @@ declare namespace Deno {
     args?: string[];
     /**
      * The working directory of the process.
-     * If not specified, the cwd of the parent process is used.
+     *
+     * If not specified, the `cwd` of the parent process is used.
      */
     cwd?: string | URL;
     /**
      * Clear environmental variables from parent process.
-     * Doesn't guarantee that only `opt.env` variables are present,
-     * as the OS may set environmental variables for processes.
+     *
+     * Doesn't guarantee that only `env` variables are present, as the OS may
+     * set environmental variables for processes.
      */
     clearEnv?: boolean;
     /** Environmental variables to pass to the subprocess. */
     env?: Record<string, string>;
     /**
-     * Sets the child process’s user ID. This translates to a setuid call
-     * in the child process. Failure in the setuid call will cause the spawn to fail.
+     * Sets the child process’s user ID. This translates to a setuid call in the
+     * child process. Failure in the set uid call will cause the spawn to fail.
      */
     uid?: number;
     /** Similar to `uid`, but sets the group ID of the child process. */
     gid?: number;
     /**
-     * An AbortSignal that allows closing the process using the corresponding
-     * AbortController by sending the process a SIGTERM signal.
-     * Not supported in spawnSync.
+     * An {@linkcode AbortSignal} that allows closing the process using the
+     * corresponding {@linkcode AbortController} by sending the process a
+     * SIGTERM signal.
+     *
+     * Not supported in {@linkcode Deno.spawnSync}.
      */
     signal?: AbortSignal;
 
-    /** Defaults to "null". */
+    /** How `stdin` of the spawned process should be handled.
+     *
+     * Defaults to `"null"`. */
     stdin?: "piped" | "inherit" | "null";
-    /** Defaults to "piped". */
+    /**  How `stdout` of the spawned process should be handled.
+     *
+     * Defaults to `"piped"`. */
     stdout?: "piped" | "inherit" | "null";
-    /** Defaults to "piped". */
+    /**  How `stderr` of the spawned process should be handled.
+     *
+     * Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
 
     /** Skips quoting and escaping of the arguments on windows. This option
-     * is ignored on non-windows platforms. Defaults to "false". */
+     * is ignored on non-windows platforms. Defaults to `false`. */
     windowsRawArguments?: boolean;
   }
 
@@ -1685,8 +1821,8 @@ declare namespace Deno {
    * If any stdio options are not set to `"piped"`, accessing the corresponding
    * field on the `Child` or its `SpawnOutput` will throw a `TypeError`.
    *
-   * If stdin is set to `"piped"`, the stdin WritableStream needs to be closed
-   * manually.
+   * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
+   * needs to be closed manually.
    *
    * ```ts
    * const child = Deno.spawnChild(Deno.execPath(), {
@@ -1714,6 +1850,9 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The interface for handling a child process returned from
+   * {@linkcode Deno.spawnChild}.
+   *
    * @category Sub Process
    */
   export class Child {
@@ -1724,19 +1863,26 @@ declare namespace Deno {
     /** Get the status of the child. */
     readonly status: Promise<ChildStatus>;
 
-    /** Waits for the child to exit completely, returning all its output and status. */
+    /** Waits for the child to exit completely, returning all its output and
+     * status. */
     output(): Promise<SpawnOutput>;
-    /** Kills the process with given Signal. Defaults to SIGTERM. */
+    /** Kills the process with given {@linkcode Deno.Signal}. Defaults to
+     * `"SIGTERM"`. */
     kill(signo?: Signal): void;
 
+    /** Ensure that the status of the child process prevents the Deno process
+     * from exiting. */
     ref(): void;
+    /** Ensure that the status of the child process does not block the Deno
+     * process from exiting. */
     unref(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Executes a subprocess, waiting for it to finish and
-   * collecting all of its output.
+   * Executes a subprocess, waiting for it to finish and collecting all of its
+   * output.
+   *
    * Will throw an error if `stdin: "piped"` is passed.
    *
    * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
@@ -1765,6 +1911,7 @@ declare namespace Deno {
    *
    * Synchronously executes a subprocess, waiting for it to finish and
    * collecting all of its output.
+   *
    * Will throw an error if `stdin: "piped"` is passed.
    *
    * If options `stdout` or `stderr` are not set to `"piped"`, accessing the
@@ -1794,22 +1941,37 @@ declare namespace Deno {
    * @category Sub Process
    */
   export interface ChildStatus {
+    /** If the child process exits with a 0 status code, `success` will be set
+     * to `true`, otherwise `false`. */
     success: boolean;
+    /** The exit code of the child process. */
     code: number;
+    /** The signal associated with the child process, present if
+     * {@linkcode Deno.spawn} was called. */
     signal: Signal | null;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * The interface returned from calling {@linkcode Deno.spawn} or
+   * {@linkcode Deno.spawnSync} which represents the result of spawning the
+   * child process.
+   *
    * @category Sub Process
    */
   export interface SpawnOutput extends ChildStatus {
-    get stdout(): Uint8Array;
-    get stderr(): Uint8Array;
+    /** The buffered output from the child processes `stdout`. */
+    readonly stdout: Uint8Array;
+    /** The buffered output from the child processes `stderr`. */
+    readonly stderr: Uint8Array;
   }
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * The [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+ * which also supports setting a {@linkcode Deno.HttpClient} which provides a
+ * way to connect via proxies and use custom TLS certificates.
  *
  * @tags allow-net, allow-read
  * @category Fetch API
@@ -1829,10 +1991,13 @@ declare interface WorkerOptions {
    * Configure permissions options to change the level of access the worker will
    * have. By default it will have no permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
-   * - "inherit" will take the permissions of the thread the worker is created in
-   * - "none" will use the default behavior and have no permission
-   * - You can provide a list of routes relative to the file the worker
-   *   is created in to limit the access of the worker (read/write permissions only)
+   *
+   * - `"inherit"` will take the permissions of the thread the worker is created
+   *   in.
+   * - `"none"` will use the default behavior and have no permission
+   * - A list of routes can be provided that are relative to the file the worker
+   *   is created in to limit the access of the worker (read/write permissions
+   *   only)
    *
    * Example:
    *
