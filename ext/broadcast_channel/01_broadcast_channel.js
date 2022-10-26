@@ -8,7 +8,9 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
-  const { defineEventHandler, setTarget } = window.__bootstrap.event;
+  const { MessageEvent, defineEventHandler, setTarget } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,

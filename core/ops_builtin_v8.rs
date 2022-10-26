@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 use crate::bindings::script_origin;
+use crate::error::custom_error;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
 use crate::error::type_error;
@@ -51,6 +52,7 @@ pub(crate) fn init_builtins_v8() -> Vec<OpDecl> {
     op_store_pending_promise_exception::decl(),
     op_remove_pending_promise_exception::decl(),
     op_has_pending_promise_exception::decl(),
+    op_arraybuffer_was_detached::decl(),
   ]
 }
 
@@ -448,22 +450,27 @@ fn op_serialize(
   if let Some(transferred_array_buffers) = transferred_array_buffers {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
-    for i in 0..transferred_array_buffers.length() {
-      let i = v8::Number::new(scope, i as f64).into();
+    for index in 0..transferred_array_buffers.length() {
+      let i = v8::Number::new(scope, index as f64).into();
       let buf = transferred_array_buffers.get(scope, i).unwrap();
       let buf = v8::Local::<v8::ArrayBuffer>::try_from(buf).map_err(|_| {
         type_error("item in transferredArrayBuffers not an ArrayBuffer")
       })?;
       if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store
       {
-        // TODO(lucacasonato): we need to check here that the buffer is not
-        // already detached. We can not do that because V8 does not provide
-        // a way to check if a buffer is already detached.
         if !buf.is_detachable() {
           return Err(type_error(
             "item in transferredArrayBuffers is not transferable",
           ));
         }
+
+        if buf.was_detached() {
+          return Err(custom_error(
+            "DOMExceptionOperationError",
+            format!("ArrayBuffer at index {} is already detached", index),
+          ));
+        }
+
         let backing_store = buf.get_backing_store();
         buf.detach();
         let id = shared_array_buffer_store.insert(backing_store);
@@ -759,6 +766,10 @@ fn op_dispatch_exception(
     .dispatched_exceptions
     .push_front(v8::Global::new(scope, exception.v8_value));
   // Only terminate execution if there are no inspector sessions.
+  if state.inspector.is_none() {
+    scope.terminate_execution();
+    return;
+  }
   match state.inspector().try_borrow() {
     Ok(inspector) if !inspector.has_active_sessions() => {
       scope.terminate_execution();
@@ -876,4 +887,13 @@ fn op_has_pending_promise_exception<'a>(
   state
     .pending_promise_exceptions
     .contains_key(&promise_global)
+}
+
+#[op(v8)]
+fn op_arraybuffer_was_detached<'a>(
+  _scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<bool, Error> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  Ok(ab.was_detached())
 }

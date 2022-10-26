@@ -235,7 +235,8 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let npm_resolver = NpmPackageResolver::new(
+    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
+    let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
       cli_options.unstable()
@@ -246,6 +247,9 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
+    if let Some(lockfile) = maybe_lockfile.clone() {
+      npm_resolver.add_lockfile(lockfile).await?;
+    }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -292,6 +296,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let _pb_clear_guard = self.progress_bar.clear_guard();
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -369,13 +374,15 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
-      is_dynamic,
-      maybe_imports,
       &mut loader,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      maybe_file_watcher_reporter,
+      deno_graph::GraphOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
     )
     .await;
 
@@ -412,7 +419,7 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
-    self.progress_bar.clear();
+    drop(_pb_clear_guard);
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -461,6 +468,8 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
+  // FIXME(bartlomieju): appears this function can be called more than once
+  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
@@ -638,13 +647,15 @@ impl ProcState {
 
     let graph = create_graph(
       roots,
-      false,
-      maybe_imports,
       loader,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
     .await;
 

@@ -158,6 +158,14 @@ itest!(import_map {
   http_server: true,
 });
 
+itest!(lock_file {
+  args: "run --allow-read --allow-env --unstable --lock npm/lock_file/lock.json npm/lock_file/main.js",
+  output: "npm/lock_file/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 10,
+});
+
 itest!(sub_paths {
   args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",
@@ -702,6 +710,14 @@ fn ensure_registry_files_local() {
     }
   }
 }
+
+itest!(compile_errors {
+  args: "compile -A --quiet --unstable npm/esm/main.js",
+  output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
