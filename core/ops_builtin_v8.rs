@@ -766,6 +766,10 @@ fn op_dispatch_exception(
     .dispatched_exceptions
     .push_front(v8::Global::new(scope, exception.v8_value));
   // Only terminate execution if there are no inspector sessions.
+  if state.inspector.is_none() {
+    scope.terminate_execution();
+    return;
+  }
   match state.inspector().try_borrow() {
     Ok(inspector) if !inspector.has_active_sessions() => {
       scope.terminate_execution();

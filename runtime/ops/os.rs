@@ -182,7 +182,6 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
-  super::check_unstable(state, "Deno.osRelease");
   state
     .borrow_mut::<Permissions>()
     .sys

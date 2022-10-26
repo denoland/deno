@@ -271,24 +271,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the release version of the Operating System.
-   *
-   * ```ts
-   * console.log(Deno.osRelease());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * Under consideration to possibly move to {@linkcode Deno.build} or
-   * {@linkcode Deno.versions} and if it should depend sys-info.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function osRelease(): string;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
    *
