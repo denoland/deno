@@ -1010,17 +1010,32 @@ Deno.test({
   ignore: Deno.build.os !== "linux",
   permissions: { net: true },
 }, async function netTcpListenReusePort() {
-  const listener1 = Deno.listen({ port: 4003, reusePort: true });
-  const listener2 = Deno.listen({ port: 4003, reusePort: true });
-  const p1 = listener1.accept();
-  const p2 = listener2.accept();
-  const conn1 = await Deno.connect({ port: 4003 });
-  const conn2 = await Deno.connect({ port: 4003 });
-  const [s1, s2] = await Promise.all([p1, p2]);
-  s1.close();
-  s2.close();
-  conn1.close();
-  conn2.close();
+  const port = 4003;
+  const listener1 = Deno.listen({ port, reusePort: true });
+  const listener2 = Deno.listen({ port, reusePort: true });
+  let p1;
+  let p2;
+  let listener1Recv = false;
+  let listener2Recv = false;
+  while (!listener1Recv || !listener2Recv) {
+    if (!p1) {
+      p1 = listener1.accept().then((conn) => {
+        conn.close();
+        listener1Recv = true;
+        p1 = undefined;
+      }).catch(() => {});
+    }
+    if (!p2) {
+      p2 = listener2.accept().then((conn) => {
+        conn.close();
+        listener2Recv = true;
+        p2 = undefined;
+      }).catch(() => {});
+    }
+    const conn = await Deno.connect({ port });
+    conn.close();
+    await Promise.race([p1, p2]);
+  }
   listener1.close();
   listener2.close();
 });

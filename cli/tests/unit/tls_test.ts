@@ -1431,15 +1431,29 @@ Deno.test({
     key,
     reusePort: true,
   });
-  const p1 = listener1.accept();
-  const p2 = listener2.accept();
-  const conn1 = await Deno.connectTls({ hostname, port, caCerts });
-  const conn2 = await Deno.connectTls({ hostname, port, caCerts });
-  const [s1, s2] = await Promise.all([p1, p2]);
-  s1.close();
-  s2.close();
-  conn1.close();
-  conn2.close();
+  let p1;
+  let p2;
+  let listener1Recv = false;
+  let listener2Recv = false;
+  while (!listener1Recv || !listener2Recv) {
+    if (!p1) {
+      p1 = listener1.accept().then((conn) => {
+        conn.close();
+        listener1Recv = true;
+        p1 = undefined;
+      }).catch(() => {});
+    }
+    if (!p2) {
+      p2 = listener2.accept().then((conn) => {
+        conn.close();
+        listener2Recv = true;
+        p2 = undefined;
+      }).catch(() => {});
+    }
+    const conn = await Deno.connectTls({ hostname, port, caCerts });
+    conn.close();
+    await Promise.race([p1, p2]);
+  }
   listener1.close();
   listener2.close();
 });
