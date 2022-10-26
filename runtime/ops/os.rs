@@ -160,7 +160,6 @@ fn op_exit(state: &mut OpState) {
 
 #[op]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
-  super::check_unstable(state, "Deno.loadavg");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -183,7 +182,6 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
-  super::check_unstable(state, "Deno.osRelease");
   state
     .borrow_mut::<Permissions>()
     .sys
