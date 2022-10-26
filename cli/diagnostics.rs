@@ -35,7 +35,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "addSignalListener",
   "bench",
   "connect",
-  "consoleSize",
   "createHttpClient",
   "kill",
   "listen",

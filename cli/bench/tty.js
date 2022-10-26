@@ -17,5 +17,5 @@ function bench(fun) {
 }
 
 bench(() => {
-  Deno.consoleSize(0);
+  Deno.consoleSize();
 });
