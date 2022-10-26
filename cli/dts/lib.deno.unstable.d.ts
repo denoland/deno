@@ -271,23 +271,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Gets the size of the console as columns/rows.
-   *
-   * ```ts
-   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
-   * ```
-   *
-   * @category I/O
-   */
-  export function consoleSize(
-    rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the release version of the Operating System.
    *
    * ```ts
@@ -1007,48 +990,6 @@ declare namespace Deno {
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
-
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as {@linkcode Date} objects.
-   *
-   * ```ts
-   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utimeSync(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * system object referenced by `path`. Given times are either in seconds
-   * (UNIX epoch time) or as {@linkcode Date} objects.
-   *
-   * ```ts
-   * await Deno.utime("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utime(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

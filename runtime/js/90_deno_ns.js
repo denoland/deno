@@ -112,16 +112,18 @@
     serveHttp: __bootstrap.http.serveHttp,
     resolveDns: __bootstrap.net.resolveDns,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
+    utime: __bootstrap.fs.utime,
+    utimeSync: __bootstrap.fs.utimeSync,
     kill: __bootstrap.process.kill,
     addSignalListener: __bootstrap.signals.addSignalListener,
     removeSignalListener: __bootstrap.signals.removeSignalListener,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
     hostname: __bootstrap.os.hostname,
+    consoleSize: __bootstrap.tty.consoleSize,
   };
 
   __bootstrap.denoNsUnstable = {
-    consoleSize: __bootstrap.tty.consoleSize,
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
@@ -130,8 +132,6 @@
     getUid: __bootstrap.os.getUid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
-    utime: __bootstrap.fs.utime,
-    utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
