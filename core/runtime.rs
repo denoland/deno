@@ -2214,6 +2214,7 @@ pub mod tests {
     control: u8,
     buf: Option<ZeroCopyBuf>,
   ) -> Result<u8, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // False positive.
     let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
