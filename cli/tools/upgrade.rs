@@ -167,10 +167,19 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
-      eprint!(
-        "{} ",
-        colors::green(format!("Deno {upgrade_version} has been released."))
-      );
+      if version::is_canary() {
+        eprint!(
+          "{} ",
+          colors::green("A new canary release of Deno is available.")
+        );
+      } else {
+        eprint!(
+          "{} {} → {} ",
+          colors::green(format!("A new release of Deno is available:")),
+          colors::cyan(version::deno()),
+          colors::cyan(upgrade_version)
+        );
+      }
       eprintln!(
         "{}",
         colors::italic_gray("Run `deno upgrade` to install it.")
