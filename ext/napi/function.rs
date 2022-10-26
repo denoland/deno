@@ -27,13 +27,12 @@ impl CallbackInfo {
 }
 
 extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
-  let args =
-    unsafe { v8::FunctionCallbackArguments::from_function_callback_info(info) };
-  let mut rv = unsafe { v8::ReturnValue::from_function_callback_info(info) };
+  let info = unsafe { &*info };
+  let args = v8::FunctionCallbackArguments::from_function_callback_info(info);
+  let mut rv = v8::ReturnValue::from_function_callback_info(info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
-    let external_value =
-      v8::Local::<v8::External>::cast(args.data().unwrap_unchecked());
+    let external_value = v8::Local::<v8::External>::cast(args.data());
     external_value.value() as _
   };
 

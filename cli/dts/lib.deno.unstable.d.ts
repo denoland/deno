@@ -228,44 +228,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Gets the size of the console as columns/rows.
-   *
-   * ```ts
-   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
-   * ```
-   *
-   * @category I/O
-   */
-  export function consoleSize(
-    rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns an array containing the 1, 5, and 15 minute load averages. The
-   * load average is a measure of CPU and IO utilization of the last one, five,
-   * and 15 minute periods expressed as a fractional number.  Zero means there
-   * is no load. On Windows, the three values are always the same and represent
-   * the current load, not the 1, 5 and 15 minute load averages.
-   *
-   * ```ts
-   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   * There are questions around which permission this needs. And maybe should be
-   * renamed (loadAverage?).
-   *
-   * @tags allow-sys
-   * @category Observability
-   */
-  export function loadavg(): number[];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the release version of the Operating System.
    *
    * ```ts
@@ -480,7 +442,7 @@ declare namespace Deno {
     & Record<NativeBooleanType, boolean>
     & Record<NativePointerType, PointerValue | null>
     & Record<NativeFunctionType, PointerValue | null>
-    & Record<NativeBufferType, TypedArray | null>;
+    & Record<NativeBufferType, BufferSource | null>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -662,23 +624,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category FFI
-   */
-  type TypedArray =
-    | Int8Array
-    | Uint8Array
-    | Int16Array
-    | Uint16Array
-    | Int32Array
-    | Uint32Array
-    | Uint8ClampedArray
-    | Float32Array
-    | Float64Array
-    | BigInt64Array
-    | BigUint64Array;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Pointer type depends on the architecture and actual pointer value.
    *
    * On a 32 bit system all pointer values are plain numbers. On a 64 bit
@@ -700,7 +645,7 @@ declare namespace Deno {
     /**
      * Return the direct memory pointer to the typed array in memory
      */
-    static of(value: Deno.UnsafeCallback | TypedArray): PointerValue;
+    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -713,9 +658,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: bigint);
+    constructor(pointer: PointerValue);
 
-    pointer: bigint;
+    pointer: PointerValue;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -752,11 +697,11 @@ declare namespace Deno {
       offset?: number,
     ): ArrayBuffer;
     /** Copies the memory of the pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
-    copyInto(destination: TypedArray, offset?: number): void;
+    copyInto(destination: BufferSource, offset?: number): void;
     /** Copies the memory of the specified pointer into a typed array. Length is determined from the typed array's `byteLength`. Also takes optional byte offset from the pointer. */
     static copyInto(
       pointer: PointerValue,
-      destination: TypedArray,
+      destination: BufferSource,
       offset?: number,
     ): void;
   }
@@ -769,10 +714,10 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Fn;
 
-    constructor(pointer: bigint, definition: Fn);
+    constructor(pointer: PointerValue, definition: Fn);
 
     call: FromForeignFunction<Fn>;
   }
@@ -823,7 +768,7 @@ declare namespace Deno {
       >,
     );
 
-    pointer: bigint;
+    pointer: PointerValue;
     definition: Definition;
     callback: UnsafeCallbackFunction<
       Definition["parameters"],
@@ -881,50 +826,6 @@ declare namespace Deno {
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
-
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utimeSync(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * system object referenced by `path`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * await Deno.utime("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utime(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1020,48 +921,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * Needs investigation into high precision time.
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * Needs investigation into high precision time.
-   *
-   * @category File System
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
@@ -1086,6 +945,17 @@ declare namespace Deno {
   export interface UnixListenOptions {
     /** A Path to the Unix Socket. */
     path: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @category Network
+   */
+  export interface UdpListenOptions extends ListenOptions {
+    /** When `true` the specified address will be reused, even if another
+     * process has already bound a socket on it. This effectively steals the
+     * socket from the listener. Defaults to `false`. */
+    reuseAddress?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1127,7 +997,7 @@ declare namespace Deno {
    * @category Network
    */
   export function listenDatagram(
-    options: ListenOptions & { transport: "udp" },
+    options: UdpListenOptions & { transport: "udp" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1542,6 +1412,10 @@ declare namespace Deno {
     stdout?: "piped" | "inherit" | "null";
     /** Defaults to "piped". */
     stderr?: "piped" | "inherit" | "null";
+
+    /** Skips quoting and escaping of the arguments on windows. This option
+     * is ignored on non-windows platforms. Defaults to "false". */
+    windowsRawArguments?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

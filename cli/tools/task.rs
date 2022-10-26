@@ -25,10 +25,6 @@ pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  log::warn!(
-    "{} deno task is unstable and may drastically change in the future",
-    crate::colors::yellow("Warning"),
-  );
   let ps = ProcState::build(flags).await?;
   let tasks_config = ps.options.resolve_tasks_config()?;
   let config_file_url = ps.options.maybe_config_file_specifier().unwrap();
@@ -70,7 +66,18 @@ pub async fn execute_script(
     );
     let seq_list = deno_task_shell::parser::parse(script)
       .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-    let env_vars = std::env::vars().collect::<HashMap<String, String>>();
+
+    // get the starting env vars (the PWD env var will be set by deno_task_shell)
+    let mut env_vars = std::env::vars().collect::<HashMap<String, String>>();
+    const INIT_CWD_NAME: &str = "INIT_CWD";
+    if !env_vars.contains_key(INIT_CWD_NAME) {
+      if let Ok(cwd) = std::env::current_dir() {
+        // if not set, set an INIT_CWD env var that has the cwd
+        env_vars
+          .insert(INIT_CWD_NAME.to_string(), cwd.to_string_lossy().to_string());
+      }
+    }
+
     let exit_code = deno_task_shell::execute(seq_list, env_vars, &cwd).await;
     Ok(exit_code)
   } else {

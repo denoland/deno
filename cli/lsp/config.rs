@@ -106,6 +106,101 @@ impl Default for CompletionSettings {
   }
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsSettings {
+  #[serde(default)]
+  pub parameter_names: InlayHintsParamNamesOptions,
+  #[serde(default)]
+  pub parameter_types: InlayHintsParamTypesOptions,
+  #[serde(default)]
+  pub variable_types: InlayHintsVarTypesOptions,
+  #[serde(default)]
+  pub property_declaration_types: InlayHintsPropDeclTypesOptions,
+  #[serde(default)]
+  pub function_like_return_types: InlayHintsFuncLikeReturnTypesOptions,
+  #[serde(default)]
+  pub enum_member_values: InlayHintsEnumMemberValuesOptions,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamNamesOptions {
+  #[serde(default)]
+  pub enabled: InlayHintsParamNamesEnabled,
+  #[serde(default = "is_true")]
+  pub suppress_when_argument_matches_name: bool,
+}
+
+impl Default for InlayHintsParamNamesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: InlayHintsParamNamesEnabled::None,
+      suppress_when_argument_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum InlayHintsParamNamesEnabled {
+  None,
+  Literals,
+  All,
+}
+
+impl Default for InlayHintsParamNamesEnabled {
+  fn default() -> Self {
+    Self::None
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsParamTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsVarTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+  #[serde(default = "is_true")]
+  pub suppress_when_argument_matches_name: bool,
+}
+
+impl Default for InlayHintsVarTypesOptions {
+  fn default() -> Self {
+    Self {
+      enabled: false,
+      suppress_when_argument_matches_name: true,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsPropDeclTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsFuncLikeReturnTypesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InlayHintsEnumMemberValuesOptions {
+  #[serde(default)]
+  pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
@@ -202,6 +297,9 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub code_lens: CodeLensSettings,
 
+  #[serde(default)]
+  pub inlay_hints: InlayHintsSettings,
+
   /// A flag that indicates if internal debug logging should be made available.
   #[serde(default)]
   pub internal_debug: bool,
@@ -237,6 +335,19 @@ impl WorkspaceSettings {
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
     self.code_lens.implementations || self.code_lens.references
+  }
+
+  /// Determine if any inlay hints are enabled. This allows short circuiting
+  /// when there are no inlay hints enabled.
+  pub fn enabled_inlay_hints(&self) -> bool {
+    !matches!(
+      self.inlay_hints.parameter_names.enabled,
+      InlayHintsParamNamesEnabled::None
+    ) || self.inlay_hints.parameter_types.enabled
+      || self.inlay_hints.variable_types.enabled
+      || self.inlay_hints.property_declaration_types.enabled
+      || self.inlay_hints.function_like_return_types.enabled
+      || self.inlay_hints.enum_member_values.enabled
   }
 }
 
@@ -565,6 +676,26 @@ mod tests {
           references: false,
           references_all_functions: false,
           test: true,
+        },
+        inlay_hints: InlayHintsSettings {
+          parameter_names: InlayHintsParamNamesOptions {
+            enabled: InlayHintsParamNamesEnabled::None,
+            suppress_when_argument_matches_name: true
+          },
+          parameter_types: InlayHintsParamTypesOptions { enabled: false },
+          variable_types: InlayHintsVarTypesOptions {
+            enabled: false,
+            suppress_when_argument_matches_name: true
+          },
+          property_declaration_types: InlayHintsPropDeclTypesOptions {
+            enabled: false
+          },
+          function_like_return_types: InlayHintsFuncLikeReturnTypesOptions {
+            enabled: false
+          },
+          enum_member_values: InlayHintsEnumMemberValuesOptions {
+            enabled: false
+          },
         },
         internal_debug: false,
         lint: true,
