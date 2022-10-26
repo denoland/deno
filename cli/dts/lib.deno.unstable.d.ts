@@ -228,44 +228,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Gets the size of the console as columns/rows.
-   *
-   * ```ts
-   * const { columns, rows } = Deno.consoleSize(Deno.stdout.rid);
-   * ```
-   *
-   * @category I/O
-   */
-  export function consoleSize(
-    rid: number,
-  ): {
-    columns: number;
-    rows: number;
-  };
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns an array containing the 1, 5, and 15 minute load averages. The
-   * load average is a measure of CPU and IO utilization of the last one, five,
-   * and 15 minute periods expressed as a fractional number.  Zero means there
-   * is no load. On Windows, the three values are always the same and represent
-   * the current load, not the 1, 5 and 15 minute load averages.
-   *
-   * ```ts
-   * console.log(Deno.loadavg());  // e.g. [ 0.71, 0.44, 0.44 ]
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   * There are questions around which permission this needs. And maybe should be
-   * renamed (loadAverage?).
-   *
-   * @tags allow-sys
-   * @category Observability
-   */
-  export function loadavg(): number[];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the release version of the Operating System.
    *
    * ```ts
@@ -865,50 +827,6 @@ declare namespace Deno {
     symbols: S,
   ): DynamicLibrary<S>;
 
-  /** **UNSTABLE**: needs investigation into high precision time.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file system object referenced by `path`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * Deno.utimeSync("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utimeSync(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * system object referenced by `path`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * await Deno.utime("myfile.txt", 1556495550, new Date());
-   * ```
-   *
-   * Requires `allow-write` permission.
-   * Needs investigation into high precision time.
-   *
-   * @tags allow-write
-   * @category File System
-   */
-  export function utime(
-    path: string | URL,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category Sub Process
@@ -1000,48 +918,6 @@ declare namespace Deno {
   export function createHttpClient(
     options: CreateHttpClientOptions,
   ): HttpClient;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Synchronously changes the access (`atime`) and modification (`mtime`) times
-   * of a file stream resource referenced by `rid`. Given times are either in
-   * seconds (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { create: true, write: true });
-   * Deno.futimeSync(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * Needs investigation into high precision time.
-   *
-   * @category File System
-   */
-  export function futimeSync(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Changes the access (`atime`) and modification (`mtime`) times of a file
-   * stream resource referenced by `rid`. Given times are either in seconds
-   * (UNIX epoch time) or as `Date` objects.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { create: true, write: true });
-   * await Deno.futime(file.rid, 1556495550, new Date());
-   * ```
-   *
-   * Needs investigation into high precision time.
-   *
-   * @category File System
-   */
-  export function futime(
-    rid: number,
-    atime: number | Date,
-    mtime: number | Date,
-  ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

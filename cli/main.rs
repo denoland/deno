@@ -492,13 +492,15 @@ async fn create_graph_and_maybe_check(
   let graph = Arc::new(
     deno_graph::create_graph(
       vec![(root, deno_graph::ModuleKind::Esm)],
-      false,
-      maybe_imports,
       &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
     .await,
   );
@@ -1058,16 +1060,22 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let error_string = match error.downcast_ref::<JsError>() {
-        Some(e) => format_js_error(e),
-        None => format!("{:?}", error),
-      };
+      let mut error_string = format!("{:?}", error);
+      let mut error_code = 1;
+
+      if let Some(e) = error.downcast_ref::<JsError>() {
+        error_string = format_js_error(e);
+      } else if let Some(e) = error.downcast_ref::<lockfile::LockfileError>() {
+        error_string = e.to_string();
+        error_code = 10;
+      }
+
       eprintln!(
         "{}: {}",
         colors::red_bold("error"),
         error_string.trim_start_matches("error: ")
       );
-      std::process::exit(1);
+      std::process::exit(error_code);
     }
   }
 }

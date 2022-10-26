@@ -10,8 +10,8 @@
   const ops = core.ops;
 
   const size = new Uint32Array(2);
-  function consoleSize(rid) {
-    ops.op_console_size(rid, size);
+  function consoleSize() {
+    ops.op_console_size(size);
     return { columns: size[0], rows: size[1] };
   }
 

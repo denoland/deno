@@ -11,6 +11,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
+use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
@@ -50,6 +51,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 
   fn snapshot(&self) -> NpmResolutionSnapshot;
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError>;
 }
 
 /// Caches all the packages in parallel.

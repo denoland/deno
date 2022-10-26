@@ -22,6 +22,7 @@ use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
 use crate::fs_util;
+use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
@@ -212,6 +213,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
+  }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.resolution.lock(lockfile, &self.snapshot())
   }
 }
 

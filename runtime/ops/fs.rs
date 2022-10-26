@@ -1916,7 +1916,6 @@ fn op_futime_sync(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.futimeSync");
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
@@ -1937,7 +1936,6 @@ async fn op_futime_async(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable2(&state, "Deno.futime");
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
 
@@ -1957,8 +1955,6 @@ fn op_utime_sync(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.utime");
-
   let path = PathBuf::from(&path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
@@ -1982,8 +1978,6 @@ async fn op_utime_async(
   mtime_secs: i64,
   mtime_nanos: u32,
 ) -> Result<(), AnyError> {
-  super::check_unstable(&state.borrow(), "Deno.utime");
-
   let path = PathBuf::from(&path);
   let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
   let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
