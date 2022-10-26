@@ -180,7 +180,7 @@ pub struct JsRuntimeState {
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
-  inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
 
@@ -203,6 +203,7 @@ fn v8_init(
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
     " --noexperimental-async-stack-tagging-api",
+    " --harmony-change-array-by-copy",
   );
 
   if predictable {
@@ -275,6 +276,7 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub inspector: bool,
 }
 
 impl Drop for JsRuntime {
@@ -429,8 +431,14 @@ impl JsRuntime {
     };
 
     op_state.borrow_mut().put(isolate_ptr);
-    let inspector =
-      JsRuntimeInspector::new(&mut isolate, global_context.clone());
+    let inspector = if options.inspector {
+      Some(JsRuntimeInspector::new(
+        &mut isolate,
+        global_context.clone(),
+      ))
+    } else {
+      None
+    };
 
     let loader = options
       .module_loader
@@ -439,7 +447,7 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context));
       state.op_ctxs = op_ctxs;
-      state.inspector = Some(inspector);
+      state.inspector = inspector;
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -901,6 +909,18 @@ impl JsRuntime {
     }
   }
 
+  pub fn maybe_init_inspector(&mut self) {
+    if self.state.borrow().inspector.is_some() {
+      return;
+    }
+
+    let mut state = self.state.borrow_mut();
+    state.inspector = Some(JsRuntimeInspector::new(
+      self.v8_isolate.as_mut().unwrap(),
+      state.global_realm.clone().unwrap().0,
+    ));
+  }
+
   pub fn poll_value(
     &mut self,
     global: &v8::Global<v8::Value>,
@@ -970,11 +990,17 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
-    // We always poll the inspector first
-    let _ = self.inspector().borrow_mut().poll_unpin(cx);
+    let has_inspector: bool;
+
     {
       let state = self.state.borrow();
+      has_inspector = state.inspector.is_some();
       state.waker.register(cx.waker());
+    }
+
+    if has_inspector {
+      // We poll the inspector first.
+      let _ = self.inspector().borrow_mut().poll_unpin(cx);
     }
 
     self.pump_v8_message_loop()?;
@@ -1030,10 +1056,12 @@ impl JsRuntime {
 
     let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
-      let inspector_has_active_sessions =
-        self.inspector().borrow_mut().has_active_sessions();
-      if wait_for_inspector && inspector_has_active_sessions {
-        return Poll::Pending;
+      if has_inspector {
+        let inspector_has_active_sessions =
+          self.inspector().borrow_mut().has_active_sessions();
+        if wait_for_inspector && inspector_has_active_sessions {
+          return Poll::Pending;
+        }
       }
 
       return Poll::Ready(Ok(()));
@@ -3878,5 +3906,24 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
 
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn test_array_by_copy() {
+    // Verify that "array by copy" proposal is enabled (https://github.com/tc39/proposal-change-array-by-copy)
+    let mut runtime = JsRuntime::new(Default::default());
+    assert!(runtime
+      .execute_script(
+        "test_array_by_copy.js",
+        "const a = [1, 2, 3];
+        const b = a.toReversed();
+        if (!(a[0] === 1 && a[1] === 2 && a[2] === 3)) {
+          throw new Error('Expected a to be intact');
+        }
+        if (!(b[0] === 3 && b[1] === 2 && b[2] === 1)) {
+          throw new Error('Expected b to be reversed');
+        }",
+      )
+      .is_ok());
   }
 }
