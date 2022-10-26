@@ -645,8 +645,8 @@ fn async_ops_info(
 ) {
   let async_op_names = v8::Object::new(scope);
   let external: v8::Local<v8::External> = args.data().try_into().unwrap();
-  // SAFETY: external is guaranteed to be a valid pointer to AsyncOpsInfo
   let info: &AsyncOpsInfo =
+    // SAFETY: external is guaranteed to be a valid pointer to AsyncOpsInfo
     unsafe { &*(external.value() as *const AsyncOpsInfo) };
   for ctx in info {
     let name = v8::String::new(scope, ctx.decl.name).unwrap();
