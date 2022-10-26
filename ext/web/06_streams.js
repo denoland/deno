@@ -4622,6 +4622,8 @@
           prefix,
           context: "Argument 1",
         });
+      } else {
+        underlyingSource = null;
       }
       if (strategy !== undefined) {
         strategy = webidl.converters.QueuingStrategy(strategy, {
