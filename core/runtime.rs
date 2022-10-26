@@ -203,6 +203,7 @@ fn v8_init(
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
     " --noexperimental-async-stack-tagging-api",
+    " --harmony-change-array-by-copy",
   );
 
   if predictable {
