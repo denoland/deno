@@ -301,7 +301,7 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
     if env!("TARGET") == "aarch64-apple-darwin" {
       bail!("Canary builds are not available for M1");
     }
-  
+
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
