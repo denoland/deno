@@ -456,7 +456,6 @@ mod tests {
   use deno_graph::source::CacheInfo;
   use deno_graph::source::MemoryLoader;
   use deno_graph::source::Source;
-  use deno_graph::DefaultModuleAnalyzer;
   use test_util::strip_ansi_codes;
 
   use super::*;
@@ -589,17 +588,19 @@ mod tests {
     );
     let root_specifier =
       ModuleSpecifier::parse("https://deno.land/x/example/a.ts").unwrap();
-    let module_analyzer = DefaultModuleAnalyzer::default();
-    let builder = Builder::new(
+    let graph = deno_graph::create_graph(
       vec![(root_specifier, ModuleKind::Esm)],
-      false,
       &mut loader,
-      None,
-      None,
-      &module_analyzer,
-      None,
-    );
-    let graph = builder.build(BuildKind::All, None).await;
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: None,
+        reporter: None,
+      },
+    )
+    .await;
     let mut output = String::new();
     fmt_module_graph(&graph, &mut output).unwrap();
     assert_eq!(
@@ -672,17 +673,19 @@ https://deno.land/x/example/a.ts (129B)
     );
     let root_specifier =
       ModuleSpecifier::parse("https://deno.land/x/example/a.ts").unwrap();
-    let module_analyzer = DefaultModuleAnalyzer::default();
-    let builder = Builder::new(
+    let graph = deno_graph::create_graph(
       vec![(root_specifier, ModuleKind::Esm)],
-      false,
       &mut loader,
-      None,
-      None,
-      &module_analyzer,
-      None,
-    );
-    let graph = builder.build(BuildKind::All, None).await;
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: None,
+        reporter: None,
+      },
+    )
+    .await;
     let mut output = String::new();
     fmt_module_graph(&graph, &mut output).unwrap();
     assert_eq!(
