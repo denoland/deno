@@ -105,7 +105,7 @@ pub fn to_v8_error<'a>(
   let cb = cb.open(scope);
   let this = v8::undefined(scope).into();
   let class = v8::String::new(scope, get_class(error)).unwrap();
-  let message = v8::String::new(scope, &error.to_string()).unwrap();
+  let message = v8::String::new(scope, &format!("{:#}", error)).unwrap();
   let mut args = vec![class.into(), message.into()];
   if let Some(code) = crate::error_codes::get_error_code(error) {
     args.push(v8::String::new(scope, code).unwrap().into());
