@@ -192,48 +192,66 @@ fn op_isatty(
 #[op(fast)]
 fn op_console_size(
   state: &mut OpState,
-  rid: u32,
   result: &mut [u32],
 ) -> Result<(), AnyError> {
-  super::check_unstable(state, "Deno.consoleSize");
-  StdFileResource::with_file(state, rid, move |std_file| {
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawHandle;
-      let handle = std_file.as_raw_handle();
+  fn check_console_size(
+    state: &mut OpState,
+    result: &mut [u32],
+    rid: u32,
+  ) -> Result<(), AnyError> {
+    StdFileResource::with_file(state, rid, move |std_file| {
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawHandle;
+        let handle = std_file.as_raw_handle();
 
-      // SAFETY: winapi calls
-      unsafe {
-        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-          std::mem::zeroed();
+        // SAFETY: winapi calls
+        unsafe {
+          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+            std::mem::zeroed();
 
-        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
-          == 0
-        {
-          return Err(Error::last_os_error().into());
+          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut bufinfo,
+          ) == 0
+          {
+            return Err(Error::last_os_error().into());
+          }
+          result[0] = bufinfo.dwSize.X as u32;
+          result[1] = bufinfo.dwSize.Y as u32;
+          Ok(())
         }
-        result[0] = bufinfo.dwSize.X as u32;
-        result[1] = bufinfo.dwSize.Y as u32;
-        Ok(())
       }
-    }
 
-    #[cfg(unix)]
-    {
-      use std::os::unix::io::AsRawFd;
+      #[cfg(unix)]
+      {
+        use std::os::unix::io::AsRawFd;
 
-      let fd = std_file.as_raw_fd();
-      // TODO(bartlomieju):
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        let mut size: libc::winsize = std::mem::zeroed();
-        if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-          return Err(Error::last_os_error().into());
+        let fd = std_file.as_raw_fd();
+        // TODO(bartlomieju):
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          let mut size: libc::winsize = std::mem::zeroed();
+          if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+            return Err(Error::last_os_error().into());
+          }
+          result[0] = size.ws_col as u32;
+          result[1] = size.ws_row as u32;
+          Ok(())
         }
-        result[0] = size.ws_col as u32;
-        result[1] = size.ws_row as u32;
-        Ok(())
       }
+    })
+  }
+
+  let mut last_result = Ok(());
+  // Since stdio might be piped we try to get the size of the console for all
+  // of them and return the first one that succeeds.
+  for rid in [0, 1, 2] {
+    last_result = check_console_size(state, result, rid);
+    if last_result.is_ok() {
+      return last_result;
     }
-  })
+  }
+
+  last_result
 }
