@@ -2217,7 +2217,9 @@ pub mod tests {
     let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    match test_state.mode {
+    let mode = test_state.mode;
+    drop(op_state_);
+    match mode {
       Mode::Async => {
         assert_eq!(control, 42);
         Ok(43)
@@ -3015,8 +3017,8 @@ main();
     );
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
-    at main (error_stack.js:9:3)
-    at error_stack.js:12:1"#;
+    at main (error_stack.js:8:3)
+    at error_stack.js:10:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -3046,7 +3048,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5"#;
+    at async error_async_stack.js:9:5"#;
 
       match runtime.poll_event_loop(cx, false) {
         Poll::Ready(Err(e)) => {
