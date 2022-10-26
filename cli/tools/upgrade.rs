@@ -164,9 +164,7 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
     });
   }
 
-  // Print a message if an update is available, unless:
-  //   * stderr is not a tty
-  //   * we're already running the 'deno upgrade' command.
+  // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
       eprint!(
