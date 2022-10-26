@@ -1410,3 +1410,69 @@ Deno.test(
     listener2.close();
   },
 );
+
+Deno.test({
+  ignore: Deno.build.os !== "linux",
+  permissions: { net: true },
+}, async function listenTlsReusePort() {
+  const hostname = "localhost";
+  const port = 4003;
+  const listener1 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  const listener2 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  let p1;
+  let p2;
+  let listener1Recv = false;
+  let listener2Recv = false;
+  while (!listener1Recv || !listener2Recv) {
+    if (!p1) {
+      p1 = listener1.accept().then((conn) => {
+        conn.close();
+        listener1Recv = true;
+        p1 = undefined;
+      }).catch(() => {});
+    }
+    if (!p2) {
+      p2 = listener2.accept().then((conn) => {
+        conn.close();
+        listener2Recv = true;
+        p2 = undefined;
+      }).catch(() => {});
+    }
+    const conn = await Deno.connectTls({ hostname, port, caCerts });
+    conn.close();
+    await Promise.race([p1, p2]);
+  }
+  listener1.close();
+  listener2.close();
+});
+
+Deno.test({
+  ignore: Deno.build.os === "linux",
+  permissions: { net: true },
+}, function listenTlsReusePortDoesNothing() {
+  const hostname = "localhost";
+  const port = 4003;
+  const listener1 = Deno.listenTls({
+    hostname,
+    port,
+    cert,
+    key,
+    reusePort: true,
+  });
+  assertThrows(() => {
+    Deno.listenTls({ hostname, port, cert, key, reusePort: true });
+  }, Deno.errors.AddrInUse);
+  listener1.close();
+});
