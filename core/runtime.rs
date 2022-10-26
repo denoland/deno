@@ -3880,4 +3880,23 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
   }
+
+  #[test]
+  fn test_array_by_copy() {
+    // Verify that "array by copy" proposal is enabled (https://github.com/tc39/proposal-change-array-by-copy)
+    let mut runtime = JsRuntime::new(Default::default());
+    assert!(runtime
+      .execute_script(
+        "test_array_by_copy.js",
+        "const a = [1, 2, 3];
+        const b = a.toReversed();
+        if (!(a[0] === 1 && a[1] === 2 && a[2] === 3)) {
+          throw new Error('Expected a to be intact');
+        }
+        if (!(b[0] === 3 && b[1] === 2 && b[2] === 1)) {
+          throw new Error('Expected b to be reversed');
+        }",
+      )
+      .is_ok());
+  }
 }
