@@ -3049,6 +3049,73 @@ main();
   }
 
   #[test]
+  fn test_error_context() {
+    use anyhow::anyhow;
+
+    #[op]
+    fn op_err_sync() -> Result<(), Error> {
+      Err(anyhow!("original sync error").context("higher-level sync error"))
+    }
+
+    #[op]
+    async fn op_err_async() -> Result<(), Error> {
+      Err(anyhow!("original async error").context("higher-level async error"))
+    }
+
+    run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+        .build();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "test_error_context_sync.js",
+          r#"
+let errMessage;
+try {
+  Deno.core.ops.op_err_sync();
+} catch (err) {
+  errMessage = err.message;
+}
+if (errMessage !== "higher-level sync error: original sync error") {
+  throw new Error("unexpected error message from op_err_sync: " + errMessage);
+}
+"#,
+        )
+        .unwrap();
+
+      let promise = runtime
+        .execute_script(
+          "test_error_context_async.js",
+          r#"
+(async () => {
+  let errMessage;
+  try {
+    await Deno.core.opAsync("op_err_async");
+  } catch (err) {
+    errMessage = err.message;
+  }
+  if (errMessage !== "higher-level async error: original async error") {
+    throw new Error("unexpected error message from op_err_async: " + errMessage);
+  }
+})()
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_value(&promise, cx) {
+        Poll::Ready(Ok(_)) => {}
+        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        _ => panic!(),
+      }
+    })
+  }
+
+  #[test]
   fn test_pump_message_loop() {
     run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions::default());
