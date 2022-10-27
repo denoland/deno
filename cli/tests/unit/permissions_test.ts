@@ -25,8 +25,8 @@ Deno.test(async function permissionSysValidKind() {
   await Deno.permissions.query({ name: "sys", kind: "networkInterfaces" });
   await Deno.permissions.query({ name: "sys", kind: "systemMemoryInfo" });
   await Deno.permissions.query({ name: "sys", kind: "hostname" });
-  await Deno.permissions.query({ name: "sys", kind: "getUid" });
-  await Deno.permissions.query({ name: "sys", kind: "getGid" });
+  await Deno.permissions.query({ name: "sys", kind: "uid" });
+  await Deno.permissions.query({ name: "sys", kind: "gid" });
 });
 
 Deno.test(async function permissionSysInvalidKind() {

@@ -203,6 +203,7 @@ fn v8_init(
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
     " --noexperimental-async-stack-tagging-api",
+    " --harmony-change-array-by-copy",
   );
 
   if predictable {
@@ -3094,6 +3095,73 @@ main();
   }
 
   #[test]
+  fn test_error_context() {
+    use anyhow::anyhow;
+
+    #[op]
+    fn op_err_sync() -> Result<(), Error> {
+      Err(anyhow!("original sync error").context("higher-level sync error"))
+    }
+
+    #[op]
+    async fn op_err_async() -> Result<(), Error> {
+      Err(anyhow!("original async error").context("higher-level async error"))
+    }
+
+    run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+        .build();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "test_error_context_sync.js",
+          r#"
+let errMessage;
+try {
+  Deno.core.ops.op_err_sync();
+} catch (err) {
+  errMessage = err.message;
+}
+if (errMessage !== "higher-level sync error: original sync error") {
+  throw new Error("unexpected error message from op_err_sync: " + errMessage);
+}
+"#,
+        )
+        .unwrap();
+
+      let promise = runtime
+        .execute_script(
+          "test_error_context_async.js",
+          r#"
+(async () => {
+  let errMessage;
+  try {
+    await Deno.core.opAsync("op_err_async");
+  } catch (err) {
+    errMessage = err.message;
+  }
+  if (errMessage !== "higher-level async error: original async error") {
+    throw new Error("unexpected error message from op_err_async: " + errMessage);
+  }
+})()
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_value(&promise, cx) {
+        Poll::Ready(Ok(_)) => {}
+        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        _ => panic!(),
+      }
+    })
+  }
+
+  #[test]
   fn test_pump_message_loop() {
     run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions::default());
@@ -3905,5 +3973,24 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
 
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn test_array_by_copy() {
+    // Verify that "array by copy" proposal is enabled (https://github.com/tc39/proposal-change-array-by-copy)
+    let mut runtime = JsRuntime::new(Default::default());
+    assert!(runtime
+      .execute_script(
+        "test_array_by_copy.js",
+        "const a = [1, 2, 3];
+        const b = a.toReversed();
+        if (!(a[0] === 1 && a[1] === 2 && a[2] === 3)) {
+          throw new Error('Expected a to be intact');
+        }
+        if (!(b[0] === 3 && b[1] === 2 && b[2] === 1)) {
+          throw new Error('Expected b to be reversed');
+        }",
+      )
+      .is_ok());
   }
 }

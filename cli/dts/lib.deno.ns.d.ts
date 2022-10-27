@@ -345,6 +345,22 @@ declare namespace Deno {
   export const noColor: boolean;
 
   /**
+   * Returns the release version of the Operating System.
+   *
+   * ```ts
+   * console.log(Deno.osRelease());
+   * ```
+   *
+   * Requires `allow-env` permission.
+   * Under consideration to possibly move to Deno.build or Deno.versions and if
+   * it should depend sys-info, which may not be desirable.
+   *
+   * @tags allow-env
+   * @category Runtime Environment
+   */
+  export function osRelease(): string;
+
+  /**
    * Options which define the permissions within a test or worker context.
    *
    * `"inherit"` ensures that all permissions of the parent process will be
@@ -3423,6 +3439,7 @@ declare namespace Deno {
     /** Clean up resources associated with the sub-process instance. */
     close(): void;
     /** Send a signal to process.
+     * Default signal is `"SIGTERM"`.
      *
      * ```ts
      * const p = Deno.run({ cmd: [ "sleep", "20" ]});
@@ -3430,11 +3447,11 @@ declare namespace Deno {
      * p.close();
      * ```
      */
-    kill(signo: Signal): void;
+    kill(signo?: Signal): void;
   }
 
   /** Operating signals which can be listened for or sent to sub-processes. What
-   * signals and what their standard behaviors are are OS dependent.
+   * signals and what their standard behaviors are OS dependent.
    *
    * @category Runtime Environment */
   export type Signal =
@@ -3653,25 +3670,60 @@ declare namespace Deno {
    */
   export type PermissionState = "granted" | "denied" | "prompt";
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-run` permission, which controls
+   * access to what sub-processes can be executed by Deno. The option `command`
+   * allows scoping the permission to a specific executable.
+   *
+   * **Warning, in practice, `allow-run` is effectively the same as `allow-all`
+   * in the sense that malicious code could execute any arbitrary code on the
+   * host.**
+   *
+   * @category Permissions */
   export interface RunPermissionDescriptor {
     name: "run";
+    /** The `allow-run` permission can be scoped to a specific executable,
+     * which would be relative to the start-up CWD of the Deno CLI. */
     command?: string | URL;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-read` permissions, which controls
+   * access to reading resources from the local host. The option `path` allows
+   * scoping the permission to a specific path (and if the path is a directory
+   * any sub paths).
+   *
+   * Permission granted under `allow-read` only allows runtime code to attempt
+   * to read, the underlying operating system may apply additional permissions.
+   *
+   * @category Permissions */
   export interface ReadPermissionDescriptor {
     name: "read";
+    /** The `allow-read` permission can be scoped to a specific path (and if
+     * the path is a directory, any sub paths). */
     path?: string | URL;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-write` permissions, which
+   * controls access to writing to resources from the local host. The option
+   * `path` allow scoping the permission to a specific path (and if the path is
+   * a directory any sub paths).
+   *
+   * Permission granted under `allow-write` only allows runtime code to attempt
+   * to write, the underlying operating system may apply additional permissions.
+   *
+   * @category Permissions */
   export interface WritePermissionDescriptor {
     name: "write";
+    /** The `allow-write` permission can be scoped to a specific path (and if
+     * the path is a directory, any sub paths). */
     path?: string | URL;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-net` permissions, which controls
+   * access to opening network ports and connecting to remote hosts via the
+   * network. The option `host` allows scoping the permission for outbound
+   * connection to a specific host and port.
+   *
+   * @category Permissions */
   export interface NetPermissionDescriptor {
     name: "net";
     /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
@@ -3682,38 +3734,67 @@ declare namespace Deno {
     host?: string;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-env` permissions, which controls
+   * access to being able to read and write to the process environment variables
+   * as well as access other information about the environment. The option
+   * `variable` allows scoping the permission to a specific environment
+   * variable.
+   *
+   * @category Permissions */
   export interface EnvPermissionDescriptor {
     name: "env";
+    /** Optional environment variable name (e.g. `PATH`). */
     variable?: string;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-sys` permissions, which controls
+   * access to sensitive host system information, which malicious code might
+   * attempt to exploit. The option `kind` allows scoping the permission to a
+   * specific piece of information.
+   *
+   * @category Permissions */
   export interface SysPermissionDescriptor {
     name: "sys";
+    /** The specific information to scope the permission to. */
     kind?:
       | "loadavg"
       | "hostname"
       | "systemMemoryInfo"
       | "networkInterfaces"
       | "osRelease"
-      | "getUid"
-      | "getGid";
+      | "uid"
+      | "gid";
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-ffi` permissions, which controls
+   * access to loading _foreign_ code and interfacing with it via the
+   * [Foreign Function Interface API](https://deno.land/manual/runtime/ffi_api)
+   * available in Deno.  The option `path` allows scoping the permission to a
+   * specific path on the host.
+   *
+   * @category Permissions */
   export interface FfiPermissionDescriptor {
     name: "ffi";
+    /** Optional path on the local host to scope the permission to. */
     path?: string | URL;
   }
 
-  /** @category Permissions */
+  /** The permission descriptor for the `allow-hrtime` permission, which
+   * controls if the runtime code has access to high resolution time. High
+   * resolution time is consider sensitive information, because it can be used
+   * by malicious code to gain information about the host that it might
+   * otherwise have access to.
+   *
+   * @category Permissions */
   export interface HrtimePermissionDescriptor {
     name: "hrtime";
   }
 
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
+   *
+   * View the specifics of the individual descriptors for more information about
+   * each permission kind.
    *
    * @category Permissions
    */
@@ -3727,12 +3808,18 @@ declare namespace Deno {
     | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
-  /** @category Permissions */
+  /** The interface which defines what event types are supported by
+   * {@linkcode PermissionStatus} instances.
+   *
+   * @category Permissions */
   export interface PermissionStatusEventMap {
     "change": Event;
   }
 
-  /** @category Permissions */
+  /** An {@linkcode EventTarget} returned from the {@linkcode Deno.permissions}
+   * API which can provide updates to any state changes of the permission.
+   *
+   * @category Permissions */
   export class PermissionStatus extends EventTarget {
     // deno-lint-ignore no-explicit-any
     onchange: ((this: PermissionStatus, ev: Event) => any) | null;
@@ -3765,9 +3852,34 @@ declare namespace Deno {
     ): void;
   }
 
-  /** @category Permissions */
+  /**
+   * Deno's permission management API.
+   *
+   * The class which provides the interface for the {@linkcode Deno.permissions}
+   * global instance and is based on the web platform
+   * [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API),
+   * though some proposed parts of the API which are useful in a server side
+   * runtime context were removed or abandoned in the web platform specification
+   * which is why it was chosen to locate it in the {@linkcode Deno} namespace
+   * instead.
+   *
+   * By default, if the `stdin`/`stdout` is TTY for the Deno CLI (meaning it can
+   * send and receive text), then the CLI will prompt the user to grant
+   * permission when an un-granted permission is requested. This behavior can
+   * be changed by using the `--no-prompt` command at startup. When prompting
+   * the CLI will request the narrowest permission possible, potentially making
+   * it annoying to the user. The permissions APIs allow the code author to
+   * request a wider set of permissions at one time in order to provide a better
+   * user experience.
+   *
+   * @category Permissions */
   export class Permissions {
     /** Resolves to the current status of a permission.
+     *
+     * Note, if the permission is already granted, `request()` will not prompt
+     * the user again, therefore `query()` is only necessary if you are going
+     * to react differently existing permissions without wanting to modify them
+     * or prompt the user to modify them.
      *
      * ```ts
      * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
@@ -3789,6 +3901,9 @@ declare namespace Deno {
 
     /** Requests the permission, and resolves to the state of the permission.
      *
+     * If the permission is already granted, the user will not be prompted to
+     * grant the permission again.
+     *
      * ```ts
      * const status = await Deno.permissions.request({ name: "env" });
      * if (status.state === "granted") {
@@ -3803,48 +3918,127 @@ declare namespace Deno {
 
   /** Deno's permission management API.
    *
+   * It is a singleton instance of the {@linkcode Permissions} object and is
+   * based on the web platform
+   * [Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API),
+   * though some proposed parts of the API which are useful in a server side
+   * runtime context were removed or abandoned in the web platform specification
+   * which is why it was chosen to locate it in the {@linkcode Deno} namespace
+   * instead.
+   *
+   * By default, if the `stdin`/`stdout` is TTY for the Deno CLI (meaning it can
+   * send and receive text), then the CLI will prompt the user to grant
+   * permission when an un-granted permission is requested. This behavior can
+   * be changed by using the `--no-prompt` command at startup. When prompting
+   * the CLI will request the narrowest permission possible, potentially making
+   * it annoying to the user. The permissions APIs allow the code author to
+   * request a wider set of permissions at one time in order to provide a better
+   * user experience.
+   *
+   * Requesting already granted permissions will not prompt the user and will
+   * return that the permission was granted.
+   *
+   * ### Querying
+   *
+   * ```ts
+   * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
+   * console.log(status.state);
+   * ```
+   *
+   * ### Revoking
+   *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * const status = await Deno.permissions.revoke({ name: "run" });
+   * assert(status.state !== "granted")
+   * ```
+   *
+   * ### Requesting
+   *
+   * ```ts
+   * const status = await Deno.permissions.request({ name: "env" });
+   * if (status.state === "granted") {
+   *   console.log("'env' permission is granted.");
+   * } else {
+   *   console.log("'env' permission is denied.");
+   * }
+   * ```
+   *
    * @category Permissions
    */
   export const permissions: Permissions;
 
-  /** Build related information.
+  /** Information related to the build of the current Deno runtime.
+   *
+   * Users are discouraged from code branching based on this information, as
+   * assumptions about what is available in what build environment might change
+   * over time. Developers should specifically sniff out the features they
+   * intend to use.
+   *
+   * The intended use for the information is for logging and debugging purposes.
    *
    * @category Runtime Environment
    */
   export const build: {
-    /** The LLVM target triple */
+    /** The [LLVM](https://llvm.org/) target triple, which is the combination
+     * of `${arch}-${vendor}-${os}` and represent the specific build target that
+     * the current runtime was built for. */
     target: string;
-    /** Instruction set architecture */
+    /** Instruction set architecture that the Deno CLI was built for. */
     arch: "x86_64" | "aarch64";
-    /** Operating system */
+    /** The operating system that the Deno CLI was built for. `"darwin"` is
+     * also known as OSX or MacOS. */
     os: "darwin" | "linux" | "windows";
-    /** Computer vendor */
+    /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
-    /** Optional environment */
+    /** Optional environment flags that were set for this build of Deno CLI. */
     env?: string;
   };
 
-  /** Version related information.
+  /** Version information related to the current Deno CLI runtime environment.
+   *
+   * Users are discouraged from code branching based on this information, as
+   * assumptions about what is available in what build environment might change
+   * over time. Developers should specifically sniff out the features they
+   * intend to use.
+   *
+   * The intended use for the information is for logging and debugging purposes.
    *
    * @category Runtime Environment
    */
   export const version: {
-    /** Deno's version. For example: `"1.0.0"` */
+    /** Deno CLI's version. For example: `"1.26.0"`. */
     deno: string;
-    /** The V8 version used by Deno. For example: `"8.0.0.0"` */
+    /** The V8 version used by Deno. For example: `"10.7.100.0"`.
+     *
+     * V8 is the underlying JavaScript runtime platform that Deno is built on
+     * top of. */
     v8: string;
-    /** The TypeScript version used by Deno. For example: `"4.0.0"` */
+    /** The TypeScript version used by Deno. For example: `"4.8.3"`.
+     *
+     * A version of the TypeScript type checker and language server is built-in
+     * to the Deno CLI. */
     typescript: string;
   };
 
-  /** Returns the script arguments to the program. If for example we run a
-   * program:
+  /** Returns the script arguments to the program.
    *
+   * Give the following command line invocation of Deno:
+   *
+   * ```sh
    * deno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd
+   * ```
    *
    * Then `Deno.args` will contain:
    *
+   * ```
    * [ "/etc/passwd" ]
+   * ```
+   *
+   * If you are looking for a structured way to parse arguments, there is the
+   * [`std/flags`](https://deno.land/std/flags) module as part of the Deno
+   * standard library.
    *
    * @category Runtime Environment
    */
@@ -3862,43 +4056,31 @@ declare namespace Deno {
    */
   export const customInspect: unique symbol;
 
-  /** The URL of the entrypoint module entered from the command-line.
+  /** The URL of the entrypoint module entered from the command-line. It
+   * requires read permission to the CWD.
    *
+   * Also see {@linkcode ImportMeta} for other related information.
+   *
+   * @tags allow-read
    * @category Runtime Environment
    */
   export const mainModule: string;
 
-  /** @category File System */
-  export type SymlinkOptions = {
+  /** Options that can be used with {@linkcode symlink} and
+   * {@linkcode symlinkSync}.
+   *
+   * @category File System */
+  export interface SymlinkOptions {
+    /** If the symbolic link should be either a file or directory. This option
+     * only applies to Windows and is ignored on other operating systems. */
     type: "file" | "dir";
-  };
+  }
 
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
-   *
-   * ```ts
-   * Deno.symlinkSync("old/name", "new/name");
-   * ```
-   *
-   * Requires full `allow-read` and `allow-write` permissions.
-   *
-   * @tags allow-read, allow-write
-   * @category File System
-   */
-  export function symlinkSync(
-    oldpath: string | URL,
-    newpath: string | URL,
-    options?: SymlinkOptions,
-  ): void;
-
-  /**
-   * Creates `newpath` as a symbolic link to `oldpath`.
-   *
-   * The options.type parameter can be set to `file` or `dir`. This argument is only
-   * available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
+   * argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * await Deno.symlink("old/name", "new/name");
@@ -3916,24 +4098,97 @@ declare namespace Deno {
   ): Promise<void>;
 
   /**
+   * Creates `newpath` as a symbolic link to `oldpath`.
+   *
+   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
+   * argument is only available on Windows and ignored on other platforms.
+   *
+   * ```ts
+   * Deno.symlinkSync("old/name", "new/name");
+   * ```
+   *
+   * Requires full `allow-read` and `allow-write` permissions.
+   *
+   * @tags allow-read, allow-write
+   * @category File System
+   */
+  export function symlinkSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+    options?: SymlinkOptions,
+  ): void;
+
+  /**
+   * Truncates or extends the specified file stream, to reach the specified
+   * `len`.
+   *
+   * If `len` is not specified then the entire file contents are truncated as if
+   * `len` was set to `0`.
+   *
+   * If the file previously was larger than this new length, the extra data is
+   * lost.
+   *
+   * If the file previously was shorter, it is extended, and the extended part
+   * reads as null bytes ('\0').
+   *
+   * ### Truncate the entire file
+   *
+   * ```ts
+   * const file = await Deno.open(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true }
+   * );
+   * await Deno.ftruncate(file.rid);
+   * ```
+   *
+   * ### Truncate part of the file
+   *
+   * ```ts
+   * const file = await Deno.open(
+   *   "my_file.txt",
+   *   { read: true, write: true, create: true }
+   * );
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * await Deno.ftruncate(file.rid, 7);
+   * const data = new Uint8Array(32);
+   * await Deno.read(file.rid, data);
+   * console.log(new TextDecoder().decode(data)); // Hello W
+   * ```
+   *
+   * @category File System
+   */
+  export function ftruncate(rid: number, len?: number): Promise<void>;
+
+  /**
    * Synchronously truncates or extends the specified file stream, to reach the
    * specified `len`.
    *
-   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
+   * If `len` is not specified then the entire file contents are truncated as if
+   * `len` was set to `0`.
    *
-   * if the file previously was larger than this new length, the extra  data  is  lost.
+   * If the file previously was larger than this new length, the extra data is
+   * lost.
    *
-   * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
+   * If the file previously was shorter, it is extended, and the extended part
+   * reads as null bytes ('\0').
+   *
+   * ### Truncate the entire file
    *
    * ```ts
-   * // truncate the entire file
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * const file = Deno.openSync(
+   *   "my_file.txt",
+   *   { read: true, write: true, truncate: true, create: true }
+   * );
    * Deno.ftruncateSync(file.rid);
    * ```
    *
+   * ### Truncate part of the file
+   *
    * ```ts
-   * // truncate part of the file
-   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * const file = Deno.openSync(
+   *  "my_file.txt",
+   *  { read: true, write: true, create: true }
+   * );
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
    * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
@@ -3945,35 +4200,6 @@ declare namespace Deno {
    * @category File System
    */
   export function ftruncateSync(rid: number, len?: number): void;
-
-  /**
-   * Truncates or extends the specified file stream, to reach the specified `len`.
-   *
-   * If `len` is not specified then the entire file contents are truncated as if len was set to 0.
-   *
-   * If the file previously was larger than this new length, the extra  data  is  lost.
-   *
-   * If  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
-   *
-   * ```ts
-   * // truncate the entire file
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.ftruncate(file.rid);
-   * ```
-   *
-   * ```ts
-   * // truncate part of the file
-   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * await Deno.read(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   *
-   * @category File System
-   */
-  export function ftruncate(rid: number, len?: number): Promise<void>;
 
   /**
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
@@ -4012,24 +4238,11 @@ declare namespace Deno {
   ): Promise<void>;
 
   /**
-   * Synchronously returns a `Deno.FileInfo` for the given file stream.
-   *
-   * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const file = Deno.openSync("file.txt", { read: true });
-   * const fileInfo = Deno.fstatSync(file.rid);
-   * assert(fileInfo.isFile);
-   * ```
-   *
-   * @category File System
-   */
-  export function fstatSync(rid: number): FileInfo;
-
-  /**
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
    * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
    * assert(fileInfo.isFile);
@@ -4038,6 +4251,22 @@ declare namespace Deno {
    * @category File System
    */
   export function fstat(rid: number): Promise<FileInfo>;
+
+  /**
+   * Synchronously returns a {@linkcode Deno.FileInfo} for the given file
+   * stream.
+   *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   *
+   * const file = Deno.openSync("file.txt", { read: true });
+   * const fileInfo = Deno.fstatSync(file.rid);
+   * assert(fileInfo.isFile);
+   * ```
+   *
+   * @category File System
+   */
+  export function fstatSync(rid: number): FileInfo;
 
   /**
    * Synchronously changes the access (`atime`) and modification (`mtime`) times
@@ -4079,22 +4308,52 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
-  /** @category HTTP Server */
+  /** The event yielded from an {@linkcode HttpConn} which represents an HTTP
+   * request from a remote client.
+   *
+   * @category HTTP Server */
   export interface RequestEvent {
+    /** The request from the client in the form of the web platform
+     * {@linkcode Request}. */
     readonly request: Request;
-    respondWith(r: Response | Promise<Response>): Promise<void>;
+    /** The method to be used to respond to the event. The response needs to
+     * either be an instance of {@linkcode Response} or a promise that resolves
+     * with an instance of `Response`.
+     *
+     * When the response is successfully processed then the promise returned
+     * will be resolved. If there are any issues with sending the response,
+     * the promise will be rejected. */
+    respondWith(r: Response | PromiseLike<Response>): Promise<void>;
   }
 
-  /** @category HTTP Server */
+  /** The async iterable that is returned from {@linkcode Deno.serveHttp} which
+   * yields up {@linkcode RequestEvent} events, representing individual
+   * requests on the HTTP server connection.
+   *
+   * @category HTTP Server */
   export interface HttpConn extends AsyncIterable<RequestEvent> {
+    /** The resource ID associated with this connection. Generally users do not
+     * need to be aware of this identifier. */
     readonly rid: number;
 
+    /** An alternative to the async iterable interface which provides promises
+     * which resolve with either a {@linkcode RequestEvent} when there is
+     * another request or `null` when the client has closed the connection. */
     nextRequest(): Promise<RequestEvent | null>;
+    /** Initiate a server side closure of the connection, indicating to the
+     * client that you refuse to accept any more requests on this connection.
+     *
+     * Typically the client closes the connection, which will result in the
+     * async iterable terminating or the `nextRequest()` method returning
+     * `null`. */
     close(): void;
   }
 
   /**
-   * Services HTTP requests given a TCP or TLS socket.
+   * Provides an interface to handle HTTP request and responses over TCP or TLS
+   * connections. The method returns an {@linkcode HttpConn} which yields up
+   * {@linkcode RequestEvent} events, which utilize the web platform standard
+   * {@linkcode Request} and {@linkcode Response} objects to handle the request.
    *
    * ```ts
    * const conn = Deno.listen({ port: 80 });
@@ -4105,10 +4364,7 @@ declare namespace Deno {
    * }
    * ```
    *
-   * If `httpConn.nextRequest()` encounters an error or returns `null`
-   * then the underlying HttpConn resource is closed automatically.
-   *
-   * Alternatively, you can also use the Async Iterator approach:
+   * Alternatively, you can also use the async iterator approach:
    *
    * ```ts
    * async function handleHttp(conn: Deno.Conn) {
@@ -4122,10 +4378,18 @@ declare namespace Deno {
    * }
    * ```
    *
-   * Note that this function *consumes* the given connection passed to it, thus the
-   * original connection will be unusable after calling this. Additionally, you
-   * need to ensure that the connection is not being used elsewhere when calling
-   * this function in order for the connection to be consumed properly.
+   * If `httpConn.nextRequest()` encounters an error or returns `null` then the
+   * underlying {@linkcode HttpConn} resource is closed automatically.
+   *
+   * Also see the experimental Flash HTTP server {@linkcode Deno.serve} which
+   * provides a ground up rewrite of handling of HTTP requests and responses
+   * within the Deno CLI.
+   *
+   * Note that this function *consumes* the given connection passed to it, thus
+   * the original connection will be unusable after calling this. Additionally,
+   * you need to ensure that the connection is not being used elsewhere when
+   * calling this function in order for the connection to be consumed properly.
+   *
    * For instance, if there is a `Promise` that is waiting for read operation on
    * the connection to complete, it is considered that the connection is being
    * used elsewhere. In such a case, this function will fail.
@@ -4134,31 +4398,45 @@ declare namespace Deno {
    */
   export function serveHttp(conn: Conn): HttpConn;
 
-  /** @category Web Sockets */
+  /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
+   * request.
+   *
+   * @category Web Sockets */
   export interface WebSocketUpgrade {
+    /** The response object that represents the HTTP response to the client,
+     * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
+     * the upgrade to be successful. */
     response: Response;
+    /** The {@linkcode WebSocket} interface to communicate to the client via a
+     * web socket. */
     socket: WebSocket;
   }
 
-  /** @category Web Sockets */
+  /** Options which can be set when performing a
+   * {@linkcode Deno.upgradeWebSocket} upgrade of a {@linkcode Request}
+   *
+   * @category Web Sockets */
   export interface UpgradeWebSocketOptions {
+    /** Sets the `.protocol` property on the client side web socket to the
+     * value provided here, which should be one of the strings specified in the
+     * `protocols` parameter when requesting the web socket. This is intended
+     * for clients and servers to specify sub-protocols to use to communicate to
+     * each other. */
     protocol?: string;
-    /**
-     * If the client does not respond to this frame with a
+    /** If the client does not respond to this frame with a
      * `pong` within the timeout specified, the connection is deemed
      * unhealthy and is closed. The `close` and `error` event will be emitted.
      *
-     * The default is 120 seconds. Set to 0 to disable timeouts.
-     */
+     * The default is 120 seconds. Set to `0` to disable timeouts. */
     idleTimeout?: number;
   }
 
   /**
-   * Used to upgrade an incoming HTTP request to a WebSocket.
+   * Upgrade an incoming HTTP request to a WebSocket.
    *
-   * Given a request, returns a pair of WebSocket and Response. The original
-   * request must be responded to with the returned response for the websocket
-   * upgrade to be successful.
+   * Given a {@linkcode Request}, returns a pair of {@linkcode WebSocket} and
+   * {@linkcode Response} instances. The original request must be responded to
+   * with the returned response for the websocket upgrade to be successful.
    *
    * ```ts
    * const conn = Deno.listen({ port: 80 });
@@ -4183,7 +4461,7 @@ declare namespace Deno {
    * completed, upgrading fails.
    *
    * This operation does not yet consume the request or open the websocket. This
-   * only happens once the returned response has been passed to `respondWith`.
+   * only happens once the returned response has been passed to `respondWith()`.
    *
    * @category Web Sockets
    */
@@ -4192,11 +4470,17 @@ declare namespace Deno {
     options?: UpgradeWebSocketOptions,
   ): WebSocketUpgrade;
 
-  /** Send a signal to process under given `pid`.
+  /** Send a signal to process under given `pid`. The value and meaning of the
+   * `signal` to the process is operating system and process dependant.
+   * {@linkcode Signal} provides the most common signals. Default signal
+   * is `"SIGTERM"`.
+   *
+   * The term `kill` is adopted from the UNIX-like command line command `kill`
+   * which also signals processes.
    *
    * If `pid` is negative, the signal will be sent to the process group
-   * identified by `pid`. An error will be thrown if a negative
-   * `pid` is used on Windows.
+   * identified by `pid`. An error will be thrown if a negative `pid` is used on
+   * Windows.
    *
    * ```ts
    * const p = Deno.run({
@@ -4211,9 +4495,11 @@ declare namespace Deno {
    * @tags allow-run
    * @category Sub Process
    */
-  export function kill(pid: number, signo: Signal): void;
+  export function kill(pid: number, signo?: Signal): void;
 
-  /** The type of the resource record.
+  /** The type of the resource record to resolve via DNS using
+   * {@linkcode Deno.resolveDns}.
+   *
    * Only the listed types are supported currently.
    *
    * @category Network
@@ -4232,45 +4518,62 @@ declare namespace Deno {
     | "SRV"
     | "TXT";
 
-  /** @category Network */
+  /**
+   * Options which can be set when using {@linkcode Deno.resolveDns}.
+   *
+   * @category Network */
   export interface ResolveDnsOptions {
     /** The name server to be used for lookups.
-     * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
+     *
+     * If not specified, defaults to the system configuration. For example
+     * `/etc/resolv.conf` on Unix-like systems. */
     nameServer?: {
-      /** The IP address of the name server */
+      /** The IP address of the name server. */
       ipAddr: string;
       /** The port number the query will be sent to.
-       * If not specified, defaults to 53. */
+       *
+       * If not specified, defaults to `53`. */
       port?: number;
     };
   }
 
-  /** If `resolveDns` is called with "CAA" record type specified, it will return
-   * an array of this interface.
+  /** If {@linkcode Deno.resolveDns} is called with `"CAA"` record type
+   * specified, it will resolve with an array of objects with this interface.
    *
    * @category Network
    */
   export interface CAARecord {
+    /** If `true`, indicates that the corresponding property tag **must** be
+     * understood if the semantics of the CAA record are to be correctly
+     * interpreted by an issuer.
+     *
+     * Issuers **must not** issue certificates for a domain if the relevant CAA
+     * Resource Record set contains unknown property tags that have `critical`
+     * set. */
     critical: boolean;
+    /** An string that represents the identifier of the property represented by
+     * the record. */
     tag: string;
+    /** The value associated with the tag. */
     value: string;
   }
 
-  /** If `resolveDns` is called with "MX" record type specified, it will return
-   * an array of this interface.
+  /** If {@linkcode Deno.resolveDns} is called with `"MX"` record type
+   * specified, it will return an array of objects with this interface.
    *
-   * @category Network
-   */
+   * @category Network */
   export interface MXRecord {
+    /** A priority value, which is a relative value compared to the other
+     * preferences of MX records for the domain. */
     preference: number;
+    /** The server that mail should be delivered to. */
     exchange: string;
   }
 
-  /** If `resolveDns` is called with "NAPTR" record type specified, it will
-   * return an array of this interface.
+  /** If {@linkcode Deno.resolveDns} is called with `"NAPTR"` record type
+   * specified, it will return an array of objects with this interface.
    *
-   * @category Network
-   */
+   * @category Network */
   export interface NAPTRRecord {
     order: number;
     preference: number;
@@ -4280,11 +4583,10 @@ declare namespace Deno {
     replacement: string;
   }
 
-  /** If `resolveDns` is called with "SOA" record type specified, it will return
-   * an array of this interface.
+  /** If {@linkcode Deno.resolveDns} is called with `"SOA"` record type
+   * specified, it will return an array of objects with this interface.
    *
-   * @category Network
-   */
+   * @category Network */
   export interface SOARecord {
     mname: string;
     rname: string;
@@ -4295,8 +4597,8 @@ declare namespace Deno {
     minimum: number;
   }
 
-  /** If `resolveDns` is called with "SRV" record type specified, it will return
-   * an array of this interface.
+  /** If {@linkcode Deno.resolveDns} is called with `"SRV"` record type
+   * specified, it will return an array of objects with this interface.
    *
    * @category Network
    */
@@ -4307,49 +4609,210 @@ declare namespace Deno {
     target: string;
   }
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "NS" | "PTR",
     options?: ResolveDnsOptions,
   ): Promise<string[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "CAA",
     options?: ResolveDnsOptions,
   ): Promise<CAARecord[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "MX",
     options?: ResolveDnsOptions,
   ): Promise<MXRecord[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "NAPTR",
     options?: ResolveDnsOptions,
   ): Promise<NAPTRRecord[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "SOA",
     options?: ResolveDnsOptions,
   ): Promise<SOARecord[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "SRV",
     options?: ResolveDnsOptions,
   ): Promise<SRVRecord[]>;
 
-  /** @category Network */
+  /**
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
+   * Fails in the cases such as:
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
+   *
+   * ```ts
+   * const a = await Deno.resolveDns("example.com", "A");
+   *
+   * const aaaa = await Deno.resolveDns("example.com", "AAAA", {
+   *   nameServer: { ipAddr: "8.8.8.8", port: 53 },
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function resolveDns(
     query: string,
     recordType: "TXT",
@@ -4357,11 +4820,15 @@ declare namespace Deno {
   ): Promise<string[][]>;
 
   /**
-   * Performs DNS resolution against the given query, returning resolved records.
+   * Performs DNS resolution against the given query, returning resolved
+   * records.
+   *
    * Fails in the cases such as:
-   * - the query is in invalid format
-   * - the options have an invalid parameter, e.g. `nameServer.port` is beyond the range of 16-bit unsigned integer
-   * - timed out
+   *
+   * - the query is in invalid format.
+   * - the options have an invalid parameter. For example `nameServer.port` is
+   *   beyond the range of 16-bit unsigned integer.
+   * - the request timed out.
    *
    * ```ts
    * const a = await Deno.resolveDns("example.com", "A");

@@ -711,6 +711,14 @@ fn ensure_registry_files_local() {
   }
 }
 
+itest!(compile_errors {
+  args: "compile -A --quiet --unstable npm/esm/main.js",
+  output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),

@@ -65,13 +65,14 @@
     hostname = "0.0.0.0",
     transport = "tcp",
     alpnProtocols = undefined,
+    reusePort = false,
   }) {
     if (transport !== "tcp") {
       throw new TypeError(`Unsupported transport: '${transport}'`);
     }
     const [rid, localAddr] = ops.op_net_listen_tls(
       { hostname, port },
-      { cert, certFile, key, keyFile, alpnProtocols },
+      { cert, certFile, key, keyFile, alpnProtocols, reusePort },
     );
     return new TlsListener(rid, localAddr);
   }
