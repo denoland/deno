@@ -121,6 +121,10 @@
     unrefTimer: __bootstrap.timers.unrefTimer,
     hostname: __bootstrap.os.hostname,
     consoleSize: __bootstrap.tty.consoleSize,
+    Child: __bootstrap.spawn.Child,
+    spawnChild: __bootstrap.spawn.spawnChild,
+    spawn: __bootstrap.spawn.spawn,
+    spawnSync: __bootstrap.spawn.spawnSync,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -144,10 +148,6 @@
     flockSync: __bootstrap.fs.flockSync,
     funlock: __bootstrap.fs.funlock,
     funlockSync: __bootstrap.fs.funlockSync,
-    Child: __bootstrap.spawn.Child,
-    spawnChild: __bootstrap.spawn.spawnChild,
-    spawn: __bootstrap.spawn.spawn,
-    spawnSync: __bootstrap.spawn.spawnSync,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
