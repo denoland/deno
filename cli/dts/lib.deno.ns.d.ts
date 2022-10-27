@@ -332,6 +332,49 @@ declare namespace Deno {
    */
   export function loadavg(): number[];
 
+  /**
+   * Displays the total amount of free and used physical and swap memory in the
+   * system, as well as the buffers and caches used by the kernel.
+   *
+   * This is similar to the `free` command in Linux
+   *
+   * ```ts
+   * console.log(Deno.systemMemoryInfo());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Runtime Environment
+   */
+  export function systemMemoryInfo(): SystemMemoryInfo;
+
+  /**
+   * Information returned from a call to {@linkcode Deno.systemMemoryInfo}.
+   *
+   * @category Runtime Environment
+   */
+  export interface SystemMemoryInfo {
+    /** Total installed memory in bytes. */
+    total: number;
+    /** Unused memory in bytes. */
+    free: number;
+    /** Estimation of how much memory, in bytes, is available for starting new
+     * applications, without swapping. Unlike the data provided by the cache or
+     * free fields, this field takes into account page cache and also that not
+     * all reclaimable memory will be reclaimed due to items being in use.
+     */
+    available: number;
+    /** Memory used by kernel buffers. */
+    buffers: number;
+    /** Memory used by the page cache and slabs. */
+    cached: number;
+    /** Total swap memory. */
+    swapTotal: number;
+    /** Unused swap memory. */
+    swapFree: number;
+  }
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * When the value is `true`, the Deno CLI will attempt to not send color codes

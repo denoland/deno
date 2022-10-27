@@ -263,7 +263,6 @@ struct MemInfo {
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<MemInfo>, AnyError> {
-  super::check_unstable(state, "Deno.systemMemoryInfo");
   state
     .borrow_mut::<Permissions>()
     .sys
