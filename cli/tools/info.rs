@@ -128,28 +128,6 @@ const CHILD_NO_DEPS_CONNECTOR: char = '─';
 const VERTICAL_CONNECTOR: char = '│';
 const EMPTY_CONNECTOR: char = ' ';
 
-/// A function that converts a float to a string the represents a human
-/// readable version of that number.
-fn human_size(size: f64) -> String {
-  let negative = if size.is_sign_positive() { "" } else { "-" };
-  let size = size.abs();
-  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
-  if size < 1_f64 {
-    return format!("{}{}{}", negative, size, "B");
-  }
-  let delimiter = 1024_f64;
-  let exponent = std::cmp::min(
-    (size.ln() / delimiter.ln()).floor() as i32,
-    (units.len() - 1) as i32,
-  );
-  let pretty_bytes = format!("{:.2}", size / delimiter.powi(exponent))
-    .parse::<f64>()
-    .unwrap()
-    * 1_f64;
-  let unit = units[exponent as usize];
-  format!("{}{}{}", negative, pretty_bytes, unit)
-}
-
 fn fmt_module_graph(graph: &ModuleGraph, f: &mut impl Write) -> fmt::Result {
   if graph.roots.is_empty() || graph.roots.len() > 1 {
     return writeln!(
@@ -186,13 +164,13 @@ fn fmt_module_graph(graph: &ModuleGraph, f: &mut impl Write) -> fmt::Result {
         "{} {} unique {}",
         colors::bold("dependencies:"),
         dep_count,
-        colors::gray(format!("(total {})", human_size(total_size)))
+        colors::gray(format!("(total {})", display::human_size(total_size)))
       )?;
       writeln!(
         f,
         "\n{} {}",
         root_specifier,
-        colors::gray(format!("({})", human_size(root.size() as f64)))
+        colors::gray(format!("({})", display::human_size(root.size() as f64)))
       )?;
       let mut seen = HashSet::new();
       let dep_len = root.dependencies.len();
@@ -272,7 +250,7 @@ fn fmt_module_info<S: AsRef<str> + fmt::Display + Clone>(
       module.specifier.to_string()
     };
     let size_str =
-      colors::gray(format!(" ({})", human_size(module.size() as f64)))
+      colors::gray(format!(" ({})", display::human_size(module.size() as f64)))
         .to_string();
     (specifier_str, size_str)
   };
