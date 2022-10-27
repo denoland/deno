@@ -194,7 +194,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
-  super::check_unstable(state, "Deno.networkInterfaces");
   state
     .borrow_mut::<Permissions>()
     .sys
