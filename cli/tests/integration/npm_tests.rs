@@ -110,6 +110,20 @@ itest!(child_process_fork_test {
   http_server: true,
 });
 
+itest!(cjs_module_export_assignment {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  output: "npm/cjs_module_export_assignment/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_module_export_assignment_number {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  output: "npm/cjs_module_export_assignment_number/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
