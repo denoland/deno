@@ -7,6 +7,7 @@
   const { fromFlashRequest, toInnerResponse, _flash } =
     window.__bootstrap.fetch;
   const core = window.Deno.core;
+  const { Event } = window.__bootstrap.event;
   const {
     ReadableStream,
     ReadableStreamPrototype,
@@ -152,7 +153,8 @@
     }
 
     // MUST NOT send Content-Length or Transfer-Encoding if status code is 1xx or 204.
-    if (status == 204 && status <= 100) {
+    if (status === 204 || status < 200) {
+      str += "\r\n";
       return str;
     }
 
@@ -185,7 +187,7 @@
   }
 
   function prepareFastCalls() {
-    return core.opSync("op_flash_make_request");
+    return core.ops.op_flash_make_request();
   }
 
   function hostnameForDisplay(hostname) {
@@ -364,6 +366,8 @@
           }
         } else {
           const reader = respBody.getReader();
+          const { value, done } = await reader.read();
+          // Best case: sends headers + first chunk in a single go.
           writeFixedResponse(
             serverId,
             i,
@@ -378,14 +382,21 @@
             false,
             respondFast,
           );
-          while (true) {
-            const { value, done } = await reader.read();
-            await respondChunked(
-              i,
-              value,
-              done,
-            );
-            if (done) break;
+          await respondChunked(
+            i,
+            value,
+            done,
+          );
+          if (!done) {
+            while (true) {
+              const chunk = await reader.read();
+              await respondChunked(
+                i,
+                chunk.value,
+                chunk.done,
+              );
+              if (chunk.done) break;
+            }
           }
         }
       }
@@ -590,13 +601,22 @@
     });
 
     function respondChunked(token, chunk, shutdown) {
-      return core.opAsync(
-        "op_flash_respond_chuncked",
+      const nwritten = core.ops.op_try_flash_respond_chuncked(
         serverId,
         token,
-        chunk,
+        chunk ?? new Uint8Array(),
         shutdown,
       );
+      if (nwritten > 0) {
+        return core.opAsync(
+          "op_flash_respond_chuncked",
+          serverId,
+          token,
+          chunk,
+          shutdown,
+          nwritten,
+        );
+      }
     }
 
     const fastOp = prepareFastCalls();

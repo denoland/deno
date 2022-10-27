@@ -34,7 +34,6 @@ use crate::tools::check;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -247,7 +246,8 @@ impl ProcState {
     } else {
       dir.root.join("npm")
     };
-    let npm_resolver = NpmPackageResolver::new(
+    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
+    let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
       cli_options.unstable()
@@ -256,6 +256,9 @@ impl ProcState {
       cli_options.no_npm(),
       local_node_modules_dir,
     );
+    if let Some(lockfile) = maybe_lockfile.clone() {
+      npm_resolver.add_lockfile(lockfile).await?;
+    }
     let node_analysis_cache =
       NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
@@ -303,6 +306,7 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
+    let _pb_clear_guard = self.progress_bar.clear_guard();
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -385,13 +389,15 @@ impl ProcState {
     let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
-      is_dynamic,
-      maybe_imports,
       &mut loader,
-      Some(&deny_resolver),
-      maybe_locker,
-      Some(&*analyzer),
-      maybe_file_watcher_reporter,
+      deno_graph::GraphOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
     )
     .await;
 
@@ -428,7 +434,7 @@ impl ProcState {
       self.prepare_node_std_graph().await?;
     }
 
-    self.progress_bar.clear();
+    drop(_pb_clear_guard);
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
@@ -449,8 +455,13 @@ impl ProcState {
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
-      let check_result =
-        check::check(&roots, graph_data, &check_cache, options)?;
+      let check_result = check::check(
+        &roots,
+        graph_data,
+        &check_cache,
+        self.npm_resolver.clone(),
+        options,
+      )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -472,6 +483,8 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
+  // FIXME(bartlomieju): appears this function can be called more than once
+  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
@@ -486,7 +499,7 @@ impl ProcState {
   ) -> Result<ModuleSpecifier, AnyError> {
     let response = match result? {
       Some(response) => response,
-      None => bail!("Not found."),
+      None => return Err(generic_error("not found")),
     };
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
@@ -509,6 +522,7 @@ impl ProcState {
           .handle_node_resolve_result(node::node_resolve(
             specifier,
             &referrer,
+            node::NodeResolutionMode::Execution,
             &self.npm_resolver,
           ))
           .with_context(|| {
@@ -532,6 +546,7 @@ impl ProcState {
             return self
               .handle_node_resolve_result(node::node_resolve_npm_reference(
                 &reference,
+                node::NodeResolutionMode::Execution,
                 &self.npm_resolver,
               ))
               .with_context(|| format!("Could not resolve '{}'.", reference));
@@ -605,16 +620,29 @@ impl ProcState {
     Ok(())
   }
 
-  pub async fn create_graph(
-    &self,
-    roots: Vec<(ModuleSpecifier, ModuleKind)>,
-  ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = cache::FetchCacher::new(
+  /// Creates the default loader used for creating a graph.
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    cache::FetchCacher::new(
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       Permissions::allow_all(),
       Permissions::allow_all(),
-    );
+    )
+  }
+
+  pub async fn create_graph(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self.create_graph_with_loader(roots, &mut cache).await
+  }
+
+  pub async fn create_graph_with_loader(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    loader: &mut dyn Loader,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_import_map_resolver =
       self.maybe_import_map.clone().map(ImportMapResolver::new);
@@ -634,13 +662,15 @@ impl ProcState {
 
     let graph = create_graph(
       roots,
-      false,
-      maybe_imports,
-      &mut cache,
-      maybe_resolver,
-      maybe_locker,
-      Some(&*analyzer),
-      None,
+      loader,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
     .await;
 

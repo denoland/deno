@@ -7,7 +7,7 @@ import {
   BufReader,
   BufWriter,
 } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
@@ -763,7 +763,7 @@ Deno.test(
       const tpr = new TextProtoReader(r);
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
 
       const chunkedReader = chunkedBodyReader(headers, r);
@@ -920,7 +920,7 @@ Deno.test(
       assert(m !== null, "must be matched");
       const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
-      const headers = await tpr.readMIMEHeader();
+      const headers = await tpr.readMimeHeader();
       assert(headers !== null);
     }
 
@@ -1890,6 +1890,33 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServer204ResponseDoesntSendContentLength() {
+    const listeningPromise = deferred();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (_request) => new Response(null, { status: 204 }),
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    try {
+      await listeningPromise;
+      const resp = await fetch("http://127.0.0.1:4501/", {
+        method: "GET",
+        headers: { "connection": "close" },
+      });
+      assertEquals(resp.headers.get("Content-Length"), null);
+    } finally {
+      ac.abort();
+      await server;
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServer304ResponseDoesntSendBody() {
     const promise = deferred();
     const ac = new AbortController();
@@ -2315,7 +2342,7 @@ async function readTrailers(
   if (trailers == null) return;
   const trailerNames = [...trailers.keys()];
   const tp = new TextProtoReader(r);
-  const result = await tp.readMIMEHeader();
+  const result = await tp.readMimeHeader();
   if (result == null) {
     throw new Deno.errors.InvalidData("Missing trailer header.");
   }

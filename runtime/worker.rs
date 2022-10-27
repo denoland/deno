@@ -18,6 +18,7 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
@@ -105,6 +106,41 @@ fn grab_cb(
   v8::Global::new(scope, cb)
 }
 
+impl Default for WorkerOptions {
+  fn default() -> Self {
+    Self {
+      web_worker_preload_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      web_worker_pre_execute_module_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      create_web_worker_cb: Arc::new(|_| {
+        unimplemented!("web workers are not supported")
+      }),
+      module_loader: Rc::new(FsModuleLoader),
+      seed: None,
+      unsafely_ignore_certificate_errors: Default::default(),
+      should_break_on_first_statement: Default::default(),
+      compiled_wasm_module_store: Default::default(),
+      shared_array_buffer_store: Default::default(),
+      maybe_inspector_server: Default::default(),
+      format_js_error_fn: Default::default(),
+      get_error_class_fn: Default::default(),
+      origin_storage_dir: Default::default(),
+      cache_storage_dir: Default::default(),
+      broadcast_channel: Default::default(),
+      source_map_getter: Default::default(),
+      root_cert_store: Default::default(),
+      npm_resolver: Default::default(),
+      blob_store: Default::default(),
+      extensions: Default::default(),
+      bootstrap: Default::default(),
+      stdio: Default::default(),
+    }
+  }
+}
+
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -189,6 +225,7 @@ impl MainWorker {
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
+      deno_napi::init::<Permissions>(unstable),
       deno_node::init::<Permissions>(unstable, options.npm_resolver),
       ops::os::init(exit_code.clone()),
       ops::permissions::init(),
@@ -211,6 +248,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
@@ -404,6 +442,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+    self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }
 
@@ -512,6 +551,7 @@ mod tests {
         cpu_count: 1,
         debug_flag: false,
         enable_testing_features: false,
+        locale: deno_core::v8::icu::get_language_tag(),
         location: None,
         no_color: true,
         is_tty: false,
@@ -532,7 +572,7 @@ mod tests {
       create_web_worker_cb: Arc::new(|_| unreachable!()),
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
-      module_loader: Rc::new(deno_core::FsModuleLoader),
+      module_loader: Rc::new(FsModuleLoader),
       npm_resolver: None,
       get_error_class_fn: None,
       cache_storage_dir: None,

@@ -6,6 +6,151 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.27.0 / 2022.10.27
+
+- feat(core): enable --harmony-change-array-by-copy V8 flag (#16429)
+- feat(cli): check for updates in background (#15974)
+- feat(cli): show error cause recursion information (#16384)
+- feat(ext/ffi): Make op_ffi_ptr_of fast (#16297)
+- feat(ext/net): add reuseAddress option for UDP (#13849)
+- feat(ext/net): reusePort for TCP on Linux (#16398)
+- feat(ext/web): use ArrayBuffer.was_detached() (#16307)
+- feat(lint): add a report lint config setting (#16045)
+- feat(runtime): make kill signal optional (#16299)
+- feat(task): remove warning about being unstable (#16281)
+- feat(task): support `sleep` suffixes (#16425)
+- feat(unstable/npm): initial type checking of npm specifiers (#16332)
+- feat(unstable/task): fail task on async command failure (#16301)
+- feat(update): prompt for new version once per day (#16375)
+- feat(upgrade): check if user has write access to deno exe (#16378)
+- feat: Add new lockfile format (#16349)
+- feat: Stabilize Deno.consoleSize() API (#15933)
+- feat: Stabilize Deno.osRelease() API (#15973)
+- feat: Stabilize Deno.stdin.setRaw() (#16399)
+- feat: introduce navigator.language (#12322)
+- feat: stabilize Deno.futime() and Deno.futimeSync() (#16415)
+- feat: stabilize Deno.loadavg() (#16412)
+- feat: stabilize Deno.utime() and Deno.utimeSync() (#16421)
+- feat: support inlay hints (#16287)
+- fix(build) assume a custom compiler will support --export-dynamic-symbol-list
+  linker flag. (#16387)
+- fix(cli): Fixed bug where the progress bar did not clear (#16401)
+- fix(cli): do not log update checker when log level is quiet (#16433)
+- fix(compile): show an error when using npm specifiers (#16430)
+- fix(core) Include causes when converting anyhow errors to JS exceptions
+  (#16397)
+- fix(ext/fetch): fix `size_hint` on response body resource (#16254)
+- fix(ext/ffi): Use BufferSource for FFI buffer types (#16355)
+- fix(ext/ffi): Use PointerValue in UnsafePointerView and UnsafeFnPointer types
+  (#16354)
+- fix(ext/net): don't remove sockets on unix listen (#16394)
+- fix(ext/net): return an error from `startTls` and `serveHttp` if the original
+  connection is captured elsewhere (#16242)
+- fix(lsp): allow caching deps in non-saved files (#16353)
+- fix(lsp): regression - error when removing file (#16388)
+- fix(npm): add support for npm packages in lock files (#15938)
+- fix(typescript): allow synthetic default imports when using
+  `ModuleKind.ESNext` (#16438)
+- fix(upgrade): Added error message when using canary option with M1 (#16382)
+- fix(upgrade): put prompt date in the past when creating a file (#16380)
+- fix: listenTlsWithReuseAddr test (#16420)
+- fix: move generated napi symbols to cli/ (#16330)
+- fix: upgrade swc_ecma_parser to 0.122.19 - deno_ast 0.20 (#16406)
+- perf(core): avoid creating global handles in `op_queue_microtask` (#16359)
+- perf(core): avoid isolate slots for ModuleMap (#16409)
+- perf(core): do not drive JsInspector by default (#16410)
+- perf(core): don't access isolate slots for JsRuntimeState (#16376)
+- perf(ext/ffi): Fast UnsafePointerView read functions (#16351)
+- perf(ext/flash): optimize path response streams (#16284)
+- perf(ext/streams): fast path when consuming body of tee'd stream (#16329)
+- perf(ext/web): add op_encode_binary_string (#16352)
+- perf(ext/web): optimize transferArrayBuffer (#16294)
+- perf(ext/web/encoding): avoid copy in decode (#16364)
+- perf(ext/websocket): optimize `op_ws_next_event` (#16325)
+- perf(ext/websocket): optimize socket.send (#16320)
+- perf(serde_v8): `serde_v8::StringOrBuffer` return JS ArrayBuffer instead of
+  Uint8Array (#16360)
+
+### 1.26.2 / 2022.10.17
+
+- feat(core): Reorder extension initialization (#16136)
+- feat(core): add Deno.core.writeAll(rid, chunk) (#16228)
+- feat(core): improve resource read & write traits (#16115)
+- feat(unstable): add windowsRawArguments to SpawnOptions (#16319)
+- feat(unstable/npm): support providing npm dist-tag in npm package specifier
+  (#16293)
+- feat(unstable/task): add `INIT_CWD` env var (#16110)
+- fix sparse array inspection (#16204)
+- fix(build) fix linux symbols export list format (#16313)
+- fix(cli): allow importMap to be an absolute URL within the deno config file
+  (#16234)
+- fix(cli): skip removing the latter part if `@` appears at the beginning
+  (#16244)
+- fix(cli/bench): skip strace table border (#16310)
+- fix(docs): Documentation improvements related to `JsRealm`. (#16247)
+- fix(ext/cache): illegal constructor (#16205)
+- fix(ext/crypto): correct HMAC get key length op (#16201)
+- fix(ext/fetch): fix illegal header regex (#16236)
+- fix(ext/fetch): reject immediately on aborted signal (#16190)
+- fix(ext/fetch): set accept-encoding: identity if range header is present
+  (#16197)
+- fix(ext/fetch): support empty formdata (#16165)
+- fix(ext/fetch): throw TypeError on non-Uint8Array chunk (#16262)
+- fix(ext/fetch): throw TypeError on read failure (#16219)
+- fix(ext/ffi): Fix UnsafeCallback ref'ing making Deno enter a live-loop
+  (#16216)
+- fix(ext/ffi): Fix usize and isize FFI callback parameters missing match arm
+  (#16172)
+- fix(ext/ffi): Invalid 'function' return type check logic, remove U32x2 as
+  unnecessary (#16259)
+- fix(ext/web/streams): enqueue to second branch before closing (#16269)
+- fix(ext/web/streams): resolve cancelPromise in ReadableStreamTee (#16266)
+- fix(ext/websocket): panic on no next ws message from an already closed stream
+  (#16004)
+- fix(lsp): properly handle snippets on completions (#16274)
+- fix(lsp): treat empty import map value config as none (#16224)
+- fix(napi): move napi symbols file (#16179)
+- fix(npm): disable loading native module for "fsevents" package (#16273)
+- fix(npm): support compiling on linux/aarch64 (#16208)
+- fix(serde_v8): avoid creating unsound slice reference (#16189)
+- fix: add error cause in recursive cause tail (#16306)
+- perf(ext/cache): set journal_mode=wal (#16231)
+- perf(ext/crypto): optimize `getRandomValues` (#16212)
+- perf(ext/web): optimize `op_cancel_handle` (#16318)
+- perf(ext/web): optimize timer cancellation (#16316)
+- perf(napi): optimize primitive napi functions (#16163)
+- perf(npm): parallelize caching of npm specifier package infos (#16323)
+
+### 1.26.1 / 2022.10.06
+
+- feat(npm): implement Node API (#13633)
+- feat(unstable): add support for npm specifier cli arguments for 'deno cache'
+  (#16141)
+- fix(build): don't export all symbols to dynamic symbol table (#16171)
+- fix(ext/cache): acquire reader lock before async op (#16126)
+- fix(ext/cache): close resource on error (#16129)
+- fix(ext/cache): prevent cache insert if body is not fully written (#16138)
+- fix(ext/crypto): ECDH and X25519 non byte length and 0 length fixes (#16146)
+- fix(ext/crypto): curve25519 import export (#16140)
+- fix(ext/crypto): deriveBits for ECDH not taking length into account (#16128)
+- fix(ext/crypto): ecdh spki key import/export roundtrip (#16152)
+- fix(ext/crypto): fix importKey error when leading zeroes (#16009)
+- fix(ext/crypto): interoperable import/export (#16153)
+- fix(ext/crypto): use correct handle for public keys (#16099)
+- fix(ext/fetch): `Body#bodyUsed` for static body (#16080)
+- fix(ext/flash): Avoid sending Content-Length when status code is 204 (#15901)
+- fix(node): add dns/promises and stream/consumers (#16169)
+- fix(npm): better error is version is specified after subpath (#16131)
+- fix(npm): handle json files in require (#16125)
+- fix(npm): panic on invalid package name (#16123)
+- fix(runtime): no FastStream for unrefable streams (#16095)
+- fix(serde_v8): Implement MapAccess for StructAccess (#15962)
+- fix(serde_v8): serialize objects with numeric keys correctly (#15946)
+- fix: move Deno.hostname() from denoNsUnstable to denoNs (#16086)
+- lsp: use deno:/asset instead of deno:asset (#16023)
+- perf(ext/fetch): consume body using ops (#16038)
+- perf: node cjs & esm analysis cache (#16097)
+
 ### 1.26.0 / 2022.09.28
 
 - feat: add --allow-sys permission flag (#16028)

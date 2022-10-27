@@ -308,7 +308,7 @@ pub struct SysDescriptor(pub String);
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "getUid" | "getGid" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{}\"", kind))),
   }
 }
@@ -1653,6 +1653,14 @@ impl deno_websocket::WebSocketPermissions for Permissions {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.net.check_url(url, Some(api_name))
+  }
+}
+
+// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
+// change in the future.
+impl deno_napi::NapiPermissions for Permissions {
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    self.ffi.check(path)
   }
 }
 

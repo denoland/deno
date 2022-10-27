@@ -420,6 +420,10 @@ fn resolve_import_map_specifier(
     // and with config files, we support both local and remote config files,
     // so we have treat them differently.
     if let Some(import_map_path) = config_file.to_import_map_path() {
+      // if the import map is an absolute URL, use it as is
+      if let Ok(specifier) = deno_core::resolve_url(&import_map_path) {
+        return Ok(Some(specifier));
+      }
       let specifier =
           // with local config files, it might be common to specify an import
           // map like `"importMap": "import-map.json"`, which is resolvable if
@@ -468,6 +472,25 @@ mod test {
     assert_eq!(
       actual,
       Some(ModuleSpecifier::parse("file:///deno/import_map.json").unwrap())
+    );
+  }
+
+  #[test]
+  fn resolve_import_map_remote_config_file_local() {
+    let config_text = r#"{
+      "importMap": "https://example.com/import_map.json"
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(None, Some(&config_file));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(
+      actual,
+      Some(
+        ModuleSpecifier::parse("https://example.com/import_map.json").unwrap()
+      )
     );
   }
 
