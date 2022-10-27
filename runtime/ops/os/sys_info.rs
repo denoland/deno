@@ -160,25 +160,6 @@ pub fn mem_info() -> Option<MemInfo> {
   #[cfg(any(target_vendor = "apple"))]
   {
     let mut mib: [i32; 2] = [0, 0];
-    let mut xs: libc::xsw_usage =
-      unsafe { std::mem::zeroed::<libc::xsw_usage>() };
-    mib[0] = libc::CTL_VM;
-    mib[1] = libc::VM_SWAPUSAGE;
-    if unsafe {
-      libc::sysctl(
-        mib.as_mut_ptr(),
-        mib.len() as _,
-        &mut xs as *mut _ as *mut libc::c_void,
-        std::mem::size_of::<libc::xsw_usage>() as *mut _,
-        std::ptr::null_mut(),
-        0,
-      )
-    } == 0
-    {
-      mem_info.swap_total = xs.xsu_total;
-      mem_info.swap_free = xs.xsu_avail;
-    }
-
     mib[0] = libc::CTL_HW;
     mib[1] = libc::HW_MEMSIZE;
     unsafe {
@@ -192,6 +173,25 @@ pub fn mem_info() -> Option<MemInfo> {
         0,
       );
     }
+    mem_info.total /= 1024;
+
+    let mut xs: libc::xsw_usage =
+      unsafe { std::mem::zeroed::<libc::xsw_usage>() };
+    mib[0] = libc::CTL_VM;
+    mib[1] = libc::VM_SWAPUSAGE;
+    unsafe {
+      let mut size = std::mem::size_of::<libc::xsw_usage>();
+      libc::sysctl(
+        mib.as_mut_ptr(),
+        mib.len() as _,
+        &mut xs as *mut _ as *mut libc::c_void,
+        &mut size,
+        std::ptr::null_mut(),
+        0,
+      );
+    }
+    mem_info.swap_total = xs.xsu_total;
+    mem_info.swap_free = xs.xsu_avail;
 
     let mut count: u32 = libc::HOST_VM_INFO64_COUNT as _;
     let mut stat = unsafe { std::mem::zeroed::<libc::vm_statistics64>() };
