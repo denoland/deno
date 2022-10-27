@@ -8,14 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.27.0 / 2022.10.27
 
-- Revert "Revert "refactor(ext/net): clean up variadic network ops (#16…
-  (#16422)
-- Revert "refactor(ext/net): clean up variadic network ops (#16392)" (#16417)
-- Revert realms from deno_core (#16366)
-- core: enable --harmony-change-array-by-copy V8 flag (#16429)
-- enable bench bot (#16339)
-- experiment(ext/web): Don't expose event classes during the bootstrap phase
-  (#16213)
+- feat(core): enable --harmony-change-array-by-copy V8 flag (#16429)
 - feat(cli): check for updates in background (#15974)
 - feat(cli): show error cause recursion information (#16384)
 - feat(ext/ffi): Make op_ffi_ptr_of fast (#16297)
