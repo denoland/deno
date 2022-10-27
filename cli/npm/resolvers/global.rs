@@ -15,6 +15,7 @@ use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::TYPES_CONDITIONS;
 
+use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
@@ -108,6 +109,11 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
       .cache
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.package_folder(&pkg_id))
+  }
+
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+    let package_folder = self.package_folder(package_id);
+    Ok(fs_util::dir_size(&package_folder)?)
   }
 
   fn has_packages(&self) -> bool {
