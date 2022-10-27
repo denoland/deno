@@ -333,13 +333,12 @@ declare namespace Deno {
   export function loadavg(): number[];
 
   /**
-   *
    * The information for a network interface returned from a call to
    * {@linkcode Deno.networkInterfaces}.
    *
    * @category Network
    */
-   export interface NetworkInterfaceInfo {
+  export interface NetworkInterfaceInfo {
     /** The network interface name. */
     name: string;
     /** The IP protocol version. */
@@ -357,7 +356,6 @@ declare namespace Deno {
   }
 
   /**
-   *
    * Returns an array of the network interface information.
    *
    * ```ts
