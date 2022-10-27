@@ -692,7 +692,6 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
@@ -792,7 +791,6 @@ delete Intl.v8BreakIterator;
       throw new Error("Worker runtime already bootstrapped");
     }
 
-    core.initializeAsyncOps();
     performance.setTimeOrigin(DateNow());
     net.setup(runtimeOptions.unstableFlag);
 
