@@ -69,6 +69,30 @@ pub fn os_release() -> String {
     // without the NUL terminator
     return String::from_utf8_lossy(&s[..len - 1]).to_string();
   }
+  #[cfg(target_family = "windows")]
+  {
+    use ntapi::ntrtl::RtlGetVersion;
+    use winapi::shared::ntdef::NT_SUCCESS;
+    use winapi::um::winnt::RTL_OSVERSIONINFOEXW;
+
+    let mut version_info: RTL_OSVERSIONINFOEXW =
+      unsafe { std::mem::MaybeUninit::zeroed().assume_init() };
+
+    version_info.dwOSVersionInfoSize =
+      std::mem::size_of::<RTL_OSVERSIONINFOEXW>() as u32;
+    if !NT_SUCCESS(unsafe {
+      RtlGetVersion(&mut version_info as *mut RTL_OSVERSIONINFOEXW as *mut _)
+    }) {
+      String::from("")
+    } else {
+      format!(
+        "{}.{}.{}",
+        version_info.dwMajorVersion,
+        version_info.dwMinorVersion,
+        version_info.dwBuildNumber
+      )
+    }
+  }
 }
 
 pub fn hostname() -> String {
@@ -89,7 +113,24 @@ pub fn hostname() -> String {
   }
   #[cfg(target_family = "windows")]
   {
-    // GetHostNameW
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use winapi::um::winsock2::GetHostNameW;
+
+    let namelen = 256;
+    let mut name: Vec<u16> = std::iter::repeat(0).take(namelen).collect();
+    let err =
+      unsafe { GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int) };
+
+    if err == 0 {
+      // TODO(@littledivy): Probably not the most efficient way.
+      let len = name.iter().take_while(|&&c| c != 0).count();
+      OsString::from_wide(&name[..len])
+        .to_string_lossy()
+        .into_owned()
+    } else {
+      String::from("")
+    }
   }
 }
 
@@ -173,6 +214,33 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.free = (stat.free_count as u64 - stat.speculative_count as u64)
         * page_size
         / 1024;
+    }
+  }
+  #[cfg(target_family = "windows")]
+  unsafe {
+    use std::mem;
+    use winapi::shared::minwindef;
+    use winapi::um::sysinfoapi;
+
+    let mut mem_status =
+      mem::MaybeUninit::<sysinfoapi::MEMORYSTATUSEX>::uninit();
+    let length =
+      mem::size_of::<sysinfoapi::MEMORYSTATUSEX>() as minwindef::DWORD;
+    (*mem_status.as_mut_ptr()).dwLength = length;
+
+    let result = sysinfoapi::GlobalMemoryStatusEx(mem_status.as_mut_ptr());
+    if result != 0 {
+      let stat = mem_status.assume_init();
+      mem_info.total = stat.ullTotalPhys / 1024;
+      mem_info.available = 0;
+      mem_info.free = stat.ullAvailPhys / 1024;
+      mem_info.cached = 0;
+      mem_info.buffers = 0;
+      mem_info.swap_total = (stat.ullTotalPageFile - stat.ullTotalPhys) / 1024;
+      mem_info.swap_free = (stat.ullAvailPageFile - stat.ullAvailPhys) / 1024;
+      if mem_info.swap_free > mem_info.swap_total {
+        mem_info.swap_free = mem_info.swap_total;
+      }
     }
   }
 

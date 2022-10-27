@@ -1210,6 +1210,7 @@ dependencies = [
  "netif",
  "nix",
  "notify",
+ "ntapi",
  "once_cell",
  "regex",
  "ring",
@@ -2904,6 +2905,15 @@ dependencies = [
  "libc",
  "mio",
  "walkdir",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "ntapi"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc51db7b362b205941f71232e56c625156eb9a929f8cf74a428fd5bc094a4afc"
+dependencies = [
  "winapi 0.3.9",
 ]
 

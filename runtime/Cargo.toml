@@ -93,6 +93,7 @@ uuid = { version = "1.0.0", features = ["v4"] }
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"
 winapi = { version = "0.3.9", features = ["commapi", "knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = "=0.24.2"
