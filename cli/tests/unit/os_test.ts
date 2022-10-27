@@ -241,21 +241,21 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { sys: ["getUid"] } }, function getUid() {
+Deno.test({ permissions: { sys: ["uid"] } }, function getUid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getUid(), null);
+    assertEquals(Deno.uid(), null);
   } else {
-    const uid = Deno.getUid();
+    const uid = Deno.uid();
     assert(typeof uid === "number");
     assert(uid > 0);
   }
 });
 
-Deno.test({ permissions: { sys: ["getGid"] } }, function getGid() {
+Deno.test({ permissions: { sys: ["gid"] } }, function getGid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getGid(), null);
+    assertEquals(Deno.gid(), null);
   } else {
-    const gid = Deno.getGid();
+    const gid = Deno.gid();
     assert(typeof gid === "number");
     assert(gid > 0);
   }

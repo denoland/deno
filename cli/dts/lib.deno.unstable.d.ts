@@ -359,7 +359,7 @@ declare namespace Deno {
    * on Windows.
    *
    * ```ts
-   * console.log(Deno.getUid());
+   * console.log(Deno.uid());
    * ```
    *
    * Requires `allow-sys` permission.
@@ -367,7 +367,7 @@ declare namespace Deno {
    * @tags allow-sys
    * @category Runtime Environment
    */
-  export function getUid(): number | null;
+  export function uid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -375,7 +375,7 @@ declare namespace Deno {
    * Windows.
    *
    * ```ts
-   * console.log(Deno.getGid());
+   * console.log(Deno.gid());
    * ```
    *
    * Requires `allow-sys` permission.
@@ -383,7 +383,7 @@ declare namespace Deno {
    * @tags allow-sys
    * @category Runtime Environment
    */
-  export function getGid(): number | null;
+  export function gid(): number | null;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1156,6 +1156,22 @@ declare namespace Deno {
     /** Return the address of the instance. */
     readonly addr: Addr;
     [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+  }
+
+  /**
+   * @category Network
+   */
+  export interface TcpListenOptions extends ListenOptions {
+    /** When `true` the SO_REUSEPORT flag will be set on the listener. This
+     * allows multiple processes to listen on the same address and port.
+     *
+     * On Linux this will cause the kernel to distribute incoming connections
+     * across the different processes that are listening on the same address and
+     * port.
+     *
+     * This flag is only supported on Linux. It is silently ignored on other
+     * platforms. Defaults to `false`. */
+    reusePort?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

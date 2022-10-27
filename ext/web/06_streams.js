@@ -187,20 +187,12 @@
     );
   }
 
-  const isFakeDetached = Symbol("<<detached>>");
-
   /**
    * @param {ArrayBufferLike} O
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    if (O.byteLength !== 0) {
-      return false;
-    }
-    // TODO(marcosc90) remove isFakeDetached once transferArrayBuffer
-    // actually detaches the buffer
-    return ReflectHas(O, isFakeDetached) ||
-      core.ops.op_arraybuffer_was_detached(O);
+    return O.byteLength === 0 && ops.op_arraybuffer_was_detached(O);
   }
 
   /**
@@ -225,9 +217,7 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    const v = ops.op_transfer_arraybuffer(O);
-    O[isFakeDetached] = true;
-    return v;
+    return ops.op_transfer_arraybuffer(O);
   }
 
   /**

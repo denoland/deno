@@ -84,6 +84,6 @@ Deno.test(function opNamesMatch() {
     // @ts-ignore: Deno.core allowed
     Deno.core.opNames().sort(),
     // @ts-ignore: Deno.core allowed
-    Object.keys(Deno.core.ops).sort(),
+    Object.keys(Deno.core.ops).sort().filter((name) => name !== "asyncOpsInfo"),
   );
 });
