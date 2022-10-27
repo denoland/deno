@@ -6,8 +6,15 @@ const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 pub fn loadavg() -> LoadAvg {
   #[cfg(target_os = "linux")]
   {
-    let mut s = String::new();
-    File::open("/proc/loadavg")?.read_to_string(&mut s)?;
+    fn read_loadavg() -> Result<String, std::io::Error> {
+      let mut s = String::new();
+      File::open("/proc/loadavg")?.read_to_string(&mut s)?;
+      s
+    }
+    let s = match read_loadavg() {
+      Ok(s) => s,
+      Err(_) => return DEFAULT_LOADAVG,
+    };
     let loads = s
       .trim()
       .split(' ')
@@ -156,7 +163,33 @@ pub fn mem_info() -> Option<MemInfo> {
     swap_total: 0,
     swap_free: 0,
   };
-
+  #[cfg(target_os = "linux")]
+  {
+    fn read_meminfo(mem_info: &mut MemInfo) -> Result<(), AnyError> {
+      let mut s = String::new();
+      File::open("/proc/meminfo")?.read_to_string(&mut s)?;
+      for line in s.lines() {
+        let mut split_line = line.split_whitespace();
+        let label = split_line.next();
+        let value = split_line.next();
+        if value.is_some() && label.is_some() {
+          let label = label.unwrap().split(':').nth(0)?;
+          let value = value.unwrap().parse::<u64>()?;
+          match label {
+            "MemTotal" => mem_info.total = value,
+            "MemFree" => mem_info.free = value,
+            "MemAvailable" => mem_info.available = value,
+            "Buffers" => mem_info.buffers = value,
+            "Cached" => mem_info.cached = value,
+            "SwapTotal" => mem_info.swap_total = value,
+            "SwapFree" => mem_info.swap_free = value,
+            _ => (),
+          }
+        }
+      }
+    }
+    read_meminfo(&mut mem_info).ok()?;
+  }
   #[cfg(any(target_vendor = "apple"))]
   {
     let mut mib: [i32; 2] = [0, 0];
