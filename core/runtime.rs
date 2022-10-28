@@ -82,6 +82,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
+  snapshot_options: SnapshotOptions,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -279,6 +280,38 @@ pub struct RuntimeOptions {
   pub inspector: bool,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum SnapshotOptions {
+  Load,
+  CreateFromExisting,
+  Create,
+  None,
+}
+
+impl SnapshotOptions {
+  pub fn loaded(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
+    )
+  }
+  pub fn will_snapshot(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
+    )
+  }
+
+  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
+    match (snapshot_loaded, will_snapshot) {
+      (true, true) => SnapshotOptions::CreateFromExisting,
+      (false, true) => SnapshotOptions::Create,
+      (true, false) => SnapshotOptions::Load,
+      (false, false) => SnapshotOptions::None,
+    }
+  }
+}
+
 impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
@@ -371,10 +404,39 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
 
-    let mut isolate = if options.will_snapshot {
-      // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(options.startup_snapshot.is_none());
-      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+    let (mut isolate, snapshot_options) = if options.will_snapshot {
+      let (snapshot_creator, snapshot_loaded) =
+        if let Some(snapshot) = options.startup_snapshot {
+          (
+            match snapshot {
+              Snapshot::Static(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::JustCreated(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::Boxed(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+            },
+            true,
+          )
+        } else {
+          (v8::Isolate::snapshot_creator(Some(refs)), false)
+        };
+
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -385,11 +447,11 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, false, true);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
-      isolate
+      (isolate, snapshot_options)
     } else {
       let mut params = options
         .create_params
@@ -412,6 +474,9 @@ impl JsRuntime {
         false
       };
 
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -423,12 +488,12 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, false);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         global_context = v8::Global::new(scope, context);
       }
 
-      isolate
+      (isolate, snapshot_options)
     };
 
     op_state.borrow_mut().put(isolate_ptr);
@@ -464,6 +529,7 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       built_from_snapshot: has_startup_snapshot,
+      snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
@@ -550,8 +616,10 @@ impl JsRuntime {
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        self.built_from_snapshot,
-        false,
+        SnapshotOptions::from_bools(
+          self.built_from_snapshot,
+          self.snapshot_options.will_snapshot(),
+        ),
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -2749,6 +2817,48 @@ pub mod tests {
       .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
+
+  #[test]
+  fn will_snapshot2() {
+    let startup_data = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime.execute_script("a.js", "let a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      will_snapshot: true,
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    let startup_data = {
+      runtime
+        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+        .unwrap();
+      runtime.execute_script("b.js", "b = 2 + 3").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        startup_snapshot: Some(snapshot),
+        ..Default::default()
+      });
+      runtime
+        .execute_script("check_b.js", "if (b != 5) throw Error('x')")
+        .unwrap();
+      runtime
+        .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
+        .unwrap();
+    }
+  }
+
   #[test]
   fn test_snapshot_callbacks() {
     let snapshot = {
