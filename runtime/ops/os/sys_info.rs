@@ -6,22 +6,20 @@ const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 pub fn loadavg() -> LoadAvg {
   #[cfg(target_os = "linux")]
   {
-    fn read_loadavg() -> Result<String, std::io::Error> {
-      let mut s = String::new();
-      File::open("/proc/loadavg")?.read_to_string(&mut s)?;
-      s
+    use libc::SI_LOAD_SHIFT;
+
+    let mut info = std::mem::MaybeUninit::uninit();
+    let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
+    if res == 0 {
+      let info = unsafe { info.assume_init() };
+      (
+        info.loads[0] as f64 / (1 << SI_LOAD_SHIFT) as f64,
+        info.loads[1] as f64 / (1 << SI_LOAD_SHIFT) as f64,
+        info.loads[2] as f64 / (1 << SI_LOAD_SHIFT) as f64,
+      )
+    } else {
+      DEFAULT_LOADAVG
     }
-    let s = match read_loadavg() {
-      Ok(s) => s,
-      Err(_) => return DEFAULT_LOADAVG,
-    };
-    let loads = s
-      .trim()
-      .split(' ')
-      .take(3)
-      .map(|val| val.parse::<f64>().unwrap())
-      .collect::<Vec<f64>>();
-    (loads[0], loads[1], loads[2])
   }
   #[cfg(any(
     target_vendor = "apple",
@@ -46,10 +44,13 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
-    let mut s = String::new();
-    File::open("/proc/sys/kernel/osrelease")?.read_to_string(&mut s)?;
-    s.pop(); // pop '\n'
-    s
+    match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
+      Ok(mut s) => {
+        s.pop(); // pop '\n'
+        s
+      }
+      _ => String::from(""),
+    }
   }
   #[cfg(target_vendor = "apple")]
   {
@@ -165,30 +166,17 @@ pub fn mem_info() -> Option<MemInfo> {
   };
   #[cfg(target_os = "linux")]
   {
-    fn read_meminfo(mem_info: &mut MemInfo) -> Result<(), AnyError> {
-      let mut s = String::new();
-      File::open("/proc/meminfo")?.read_to_string(&mut s)?;
-      for line in s.lines() {
-        let mut split_line = line.split_whitespace();
-        let label = split_line.next();
-        let value = split_line.next();
-        if value.is_some() && label.is_some() {
-          let label = label.unwrap().split(':').nth(0)?;
-          let value = value.unwrap().parse::<u64>()?;
-          match label {
-            "MemTotal" => mem_info.total = value,
-            "MemFree" => mem_info.free = value,
-            "MemAvailable" => mem_info.available = value,
-            "Buffers" => mem_info.buffers = value,
-            "Cached" => mem_info.cached = value,
-            "SwapTotal" => mem_info.swap_total = value,
-            "SwapFree" => mem_info.swap_free = value,
-            _ => (),
-          }
-        }
-      }
+    let mut info = std::mem::MaybeUninit::uninit();
+    let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
+    if res == 0 {
+      let info = unsafe { info.assume_init() };
+      let mem_unit = info.mem_unit as u64;
+      mem_info.swap_total = info.totalswap * mem_unit;
+      mem_info.swap_free = info.freeswap * mem_unit;
+      mem_info.total = info.totalram * mem_unit;
+      mem_info.free = info.freeram * mem_unit;
+      mem_info.buffers = info.bufferram * mem_unit;
     }
-    read_meminfo(&mut mem_info).ok()?;
   }
   #[cfg(any(target_vendor = "apple"))]
   {
