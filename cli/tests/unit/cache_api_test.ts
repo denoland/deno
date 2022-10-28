@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertFalse,
   assertRejects,
+  assertThrows,
 } from "./test_util.ts";
 
 Deno.test(async function cacheStorage() {
@@ -93,6 +94,13 @@ Deno.test(async function cacheApi() {
 
   assert(await caches.delete(cacheName));
   assertFalse(await caches.has(cacheName));
+});
+
+Deno.test(function cacheIllegalConstructor() {
+  // @ts-expect-error illegal constructor
+  assertThrows(() => new Cache(), TypeError, "Illegal constructor");
+  // @ts-expect-error illegal constructor
+  assertThrows(() => new Cache("foo", "bar"), TypeError, "Illegal constructor");
 });
 
 Deno.test(async function cachePutReaderLock() {

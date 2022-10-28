@@ -118,7 +118,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let (has_fallible_fast_call, fast_impl, fast_field) =
     codegen_fast_impl(&core, &func, name, is_async, must_be_fast);
 
-  let v8_body = if is_async {
+  let (v8_body, argc) = if is_async {
     codegen_v8_async(&core, &func, margs, asyncness, deferred)
   } else {
     codegen_v8_sync(&core, &func, margs, has_fallible_fast_call)
@@ -154,6 +154,7 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
           is_async: #is_async,
           is_unstable: #is_unstable,
           is_v8: #is_v8,
+          argc: #argc,
         }
       }
 
@@ -181,7 +182,7 @@ fn codegen_v8_async(
   margs: MacroArgs,
   asyncness: bool,
   deferred: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -194,7 +195,7 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 1);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 1);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let (pre_result, mut result_fut) = match asyncness {
@@ -215,7 +216,7 @@ fn codegen_v8_async(
         quote! {
           let result = match result {
             Ok(fut) => fut.await,
-            Err(e) => return (context, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
+            Err(e) => return (promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
           };
         }
       } else {
@@ -225,51 +226,47 @@ fn codegen_v8_async(
     false => quote! { let result = Ok(result); },
   };
 
-  quote! {
-    use #core::futures::FutureExt;
-    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
-    let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
-    };
-    let op_id = ctx.id;
+  (
+    quote! {
+      use #core::futures::FutureExt;
+      // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+      let ctx = unsafe {
+        &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
+        as *const #core::_ops::OpCtx)
+      };
+      let op_id = ctx.id;
 
-    let promise_id = args.get(0);
-    let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
-      .map(|l| l.value() as #core::PromiseId)
-      .map_err(#core::anyhow::Error::from);
-    // Fail if promise id invalid (not an int)
-    let promise_id: #core::PromiseId = match promise_id {
-      Ok(promise_id) => promise_id,
-      Err(err) => {
-        #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
-        return;
-      }
-    };
+      let promise_id = args.get(0);
+      let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
+        .map(|l| l.value() as #core::PromiseId)
+        .map_err(#core::anyhow::Error::from);
+      // Fail if promise id invalid (not an int)
+      let promise_id: #core::PromiseId = match promise_id {
+        Ok(promise_id) => promise_id,
+        Err(err) => {
+          #core::_ops::throw_type_error(scope, format!("invalid promise id: {}", err));
+          return;
+        }
+      };
 
-    #arg_decls
+      #arg_decls
 
-    let state = ctx.state.clone();
+      // Track async call & get copy of get_error_class_fn
+      let get_class = {
+        let state = ::std::cell::RefCell::borrow(&ctx.state);
+        state.tracker.track_async(op_id);
+        state.get_error_class_fn
+      };
 
-    // Track async call & get copy of get_error_class_fn
-    let get_class = {
-      let state = state.borrow();
-      state.tracker.track_async(op_id);
-      state.get_error_class_fn
-    };
-
-    let context = {
-      let local = scope.get_current_context();
-      #core::v8::Global::new(scope, local)
-    };
-
-    #pre_result
-    #core::_ops::queue_async_op(state, scope, #deferred, async move {
-      let result = #result_fut
-      #result_wrapper
-      (context, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    });
-  }
+      #pre_result
+      #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
+        let result = #result_fut
+        #result_wrapper
+        (promise_id, op_id, #core::_ops::to_op_result(get_class, result))
+      });
+    },
+    argc,
+  )
 }
 
 fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
@@ -284,7 +281,7 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
   match arg {
     arg if is_rc_refcell_opstate(arg) => Some(quote! { ctx.state.clone(), }),
     arg if is_mut_ref_opstate(arg) => {
-      Some(quote! { &mut ctx.state.borrow_mut(), })
+      Some(quote! { &mut std::cell::RefCell::borrow_mut(&ctx.state), })
     }
     _ => None,
   }
@@ -439,7 +436,7 @@ fn codegen_fast_impl(
               &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
               as *const #core::_ops::OpCtx)
             };
-            let #op_state_name = &mut ctx.state.borrow_mut();
+            let #op_state_name = &mut std::cell::RefCell::borrow_mut(&ctx.state);
           }
         } else {
           quote! {}
@@ -523,7 +520,7 @@ fn codegen_v8_sync(
   f: &syn::ItemFn,
   margs: MacroArgs,
   has_fallible_fast_call: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let MacroArgs { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -535,14 +532,14 @@ fn codegen_v8_sync(
     .collect::<Vec<_>>();
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
-  let (arg_decls, args_tail) = codegen_args(core, f, rust_i0, 0);
+  let (arg_decls, args_tail, argc) = codegen_args(core, f, rust_i0, 0);
   let ret = codegen_sync_ret(core, &f.sig.output);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let fast_error_handler = if has_fallible_fast_call {
     quote! {
       {
-        let op_state = &mut ctx.state.borrow_mut();
+        let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
         if let Some(err) = op_state.last_fast_op_error.take() {
           let exception = #core::error::to_v8_error(scope, op_state.get_error_class_fn, &err);
           scope.throw_exception(exception);
@@ -554,24 +551,27 @@ fn codegen_v8_sync(
     quote! {}
   };
 
-  quote! {
-    // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
-    let ctx = unsafe {
-      &*(#core::v8::Local::<#core::v8::External>::cast(args.data().unwrap_unchecked()).value()
-      as *const #core::_ops::OpCtx)
-    };
+  (
+    quote! {
+      // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
+      let ctx = unsafe {
+        &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
+        as *const #core::_ops::OpCtx)
+      };
 
-    #fast_error_handler
-    #arg_decls
+      #fast_error_handler
+      #arg_decls
 
-    let result = Self::call::<#type_params>(#args_head #args_tail);
+      let result = Self::call::<#type_params>(#args_head #args_tail);
 
-    // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
-    let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
-    op_state.tracker.track_sync(ctx.id);
+      // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
+      let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
+      op_state.tracker.track_sync(ctx.id);
 
-    #ret
-  }
+      #ret
+    },
+    argc,
+  )
 }
 
 struct FastApiSyn {
@@ -774,6 +774,35 @@ fn is_fast_scalar(
   match tokens(&ty).as_str() {
     "u32" => Some(quote! { #core::v8::fast_api::#cty::Uint32 }),
     "i32" => Some(quote! { #core::v8::fast_api::#cty::Int32 }),
+    "u64" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Uint64 })
+      }
+    }
+    "i64" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Int64 })
+      }
+    }
+    // TODO(@aapoalas): Support 32 bit machines
+    "usize" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Uint64 })
+      }
+    }
+    "isize" => {
+      if is_ret {
+        None
+      } else {
+        Some(quote! { #core::v8::fast_api::#cty::Int64 })
+      }
+    }
     "f32" => Some(quote! { #core::v8::fast_api::#cty::Float32 }),
     "f64" => Some(quote! { #core::v8::fast_api::#cty::Float64 }),
     "bool" => Some(quote! { #core::v8::fast_api::#cty::Bool }),
@@ -781,12 +810,15 @@ fn is_fast_scalar(
   }
 }
 
+/// (full declarations, idents, v8 argument count)
+type ArgumentDecl = (TokenStream2, TokenStream2, usize);
+
 fn codegen_args(
   core: &TokenStream2,
   f: &syn::ItemFn,
   rust_i0: usize, // Index of first generic arg in rust
   v8_i0: usize,   // Index of first generic arg in v8/js
-) -> (TokenStream2, TokenStream2) {
+) -> ArgumentDecl {
   let inputs = &f.sig.inputs.iter().skip(rust_i0).enumerate();
   let ident_seq: TokenStream2 = inputs
     .clone()
@@ -801,7 +833,7 @@ fn codegen_args(
       codegen_arg(core, arg, format!("arg_{i}").as_ref(), v8_i0 + i)
     })
     .collect();
-  (decls, ident_seq)
+  (decls, ident_seq, inputs.len())
 }
 
 fn codegen_arg(

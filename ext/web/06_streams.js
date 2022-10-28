@@ -61,6 +61,7 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
+  const ops = core.ops;
   const { AssertionError, assert } = window.__bootstrap.infra;
 
   /** @template T */
@@ -187,14 +188,12 @@
     );
   }
 
-  const isFakeDetached = Symbol("<<detached>>");
-
   /**
    * @param {ArrayBufferLike} O
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    return ReflectHas(O, isFakeDetached);
+    return O.byteLength === 0 && ops.op_arraybuffer_was_detached(O);
   }
 
   /**
@@ -219,15 +218,7 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    assert(!isDetachedBuffer(O));
-    const transferredIshVersion = O.slice(0);
-    ObjectDefineProperty(O, "byteLength", {
-      get() {
-        return 0;
-      },
-    });
-    O[isFakeDetached] = true;
-    return transferredIshVersion;
+    return ops.op_transfer_arraybuffer(O);
   }
 
   /**
@@ -653,6 +644,9 @@
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
     core.tryClose(rid);
   });
+
+  const _readAll = Symbol("[[readAll]]");
+  const _original = Symbol("[[original]]");
   /**
    * Create a new ReadableStream object that is backed by a Resource that
    * implements `Resource::read_return`. This object contains enough metadata to
@@ -682,6 +676,17 @@
       async pull(controller) {
         const v = controller.byobRequest.view;
         try {
+          if (controller[_readAll] === true) {
+            // fast path for tee'd streams consuming body
+            const chunk = await core.readAll(rid);
+            if (chunk.byteLength > 0) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+            tryClose();
+            return;
+          }
+
           const bytesRead = await core.read(rid, v);
           if (bytesRead === 0) {
             tryClose();
@@ -810,8 +815,17 @@
     /** @type {Uint8Array[]} */
     const chunks = [];
     let totalLength = 0;
+
+    // tee'd stream
+    if (stream[_original]) {
+      // One of the branches is consuming the stream
+      // signal controller.pull that we can consume it in a single op
+      stream[_original][_controller][_readAll] = true;
+    }
+
     while (true) {
       const { value: chunk, done } = await reader.read();
+
       if (done) break;
 
       if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)) {
@@ -3030,6 +3044,10 @@
       pull2Algorithm,
       cancel2Algorithm,
     );
+
+    branch1[_original] = stream;
+    branch2[_original] = stream;
+
     forwardReaderError(reader);
     return [branch1, branch2];
   }
@@ -4630,26 +4648,32 @@
      * @param {UnderlyingSource<R>=} underlyingSource
      * @param {QueuingStrategy<R>=} strategy
      */
-    constructor(underlyingSource = undefined, strategy = {}) {
+    constructor(underlyingSource = undefined, strategy = undefined) {
       const prefix = "Failed to construct 'ReadableStream'";
       if (underlyingSource !== undefined) {
         underlyingSource = webidl.converters.object(underlyingSource, {
           prefix,
           context: "Argument 1",
         });
-      }
-      strategy = webidl.converters.QueuingStrategy(strategy, {
-        prefix,
-        context: "Argument 2",
-      });
-      this[webidl.brand] = webidl.brand;
-      if (underlyingSource === undefined) {
+      } else {
         underlyingSource = null;
       }
-      const underlyingSourceDict = webidl.converters.UnderlyingSource(
-        underlyingSource,
-        { prefix, context: "underlyingSource" },
-      );
+      if (strategy !== undefined) {
+        strategy = webidl.converters.QueuingStrategy(strategy, {
+          prefix,
+          context: "Argument 2",
+        });
+      } else {
+        strategy = {};
+      }
+      this[webidl.brand] = webidl.brand;
+      let underlyingSourceDict = {};
+      if (underlyingSource !== undefined) {
+        underlyingSourceDict = webidl.converters.UnderlyingSource(
+          underlyingSource,
+          { prefix, context: "underlyingSource" },
+        );
+      }
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
@@ -4710,13 +4734,17 @@
      * @param {ReadableStreamGetReaderOptions=} options
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
-    getReader(options = {}) {
+    getReader(options = undefined) {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
-      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
-        prefix,
-        context: "Argument 1",
-      });
+      if (options !== undefined) {
+        options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+          prefix,
+          context: "Argument 1",
+        });
+      } else {
+        options = {};
+      }
       if (options.mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       } else {

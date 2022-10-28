@@ -17,6 +17,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::ExitStatus;
 use std::rc::Rc;
 
@@ -55,6 +57,8 @@ pub struct SpawnArgs {
   gid: Option<u32>,
   #[cfg(unix)]
   uid: Option<u32>,
+  #[cfg(windows)]
+  windows_raw_arguments: bool,
 
   #[serde(flatten)]
   stdio: ChildStdio,
@@ -131,6 +135,17 @@ fn create_command(
     .check(&args.cmd, Some(api_name))?;
 
   let mut command = std::process::Command::new(args.cmd);
+
+  #[cfg(windows)]
+  if args.windows_raw_arguments {
+    for arg in args.args.iter() {
+      command.raw_arg(arg);
+    }
+  } else {
+    command.args(args.args);
+  }
+
+  #[cfg(not(windows))]
   command.args(args.args);
 
   if let Some(cwd) = args.cwd {
