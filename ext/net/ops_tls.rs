@@ -990,6 +990,7 @@ pub struct ListenTlsArgs {
   // TODO(kt3k): Remove this option at v2.0.
   key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
+  reuse_port: bool,
 }
 
 #[op]
@@ -1001,6 +1002,10 @@ pub fn op_net_listen_tls<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  if args.reuse_port {
+    super::check_unstable(state, "Deno.listenTls({ reusePort: true })");
+  }
+
   let cert_file = args.cert_file.as_deref();
   let key_file = args.key_file.as_deref();
   let cert = args.cert.as_deref();
@@ -1061,6 +1066,10 @@ where
   let socket = Socket::new(domain, Type::STREAM, None)?;
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
+  if args.reuse_port {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
   let socket_addr = socket2::SockAddr::from(bind_addr);
   socket.bind(&socket_addr)?;
   socket.listen(128)?;

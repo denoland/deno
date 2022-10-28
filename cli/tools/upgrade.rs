@@ -164,15 +164,22 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
     });
   }
 
-  // Print a message if an update is available, unless:
-  //   * stderr is not a tty
-  //   * we're already running the 'deno upgrade' command.
+  // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    if atty::is(atty::Stream::Stderr) {
-      eprint!(
-        "{} ",
-        colors::green(format!("Deno {upgrade_version} has been released."))
-      );
+    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
+      if version::is_canary() {
+        eprint!(
+          "{} ",
+          colors::green("A new canary release of Deno is available.")
+        );
+      } else {
+        eprint!(
+          "{} {} → {} ",
+          colors::green("A new release of Deno is available:"),
+          colors::cyan(version::deno()),
+          colors::cyan(upgrade_version)
+        );
+      }
       eprintln!(
         "{}",
         colors::italic_gray("Run `deno upgrade` to install it.")
@@ -298,6 +305,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   };
 
   let download_url = if upgrade_flags.canary {
+    if env!("TARGET") == "aarch64-apple-darwin" {
+      bail!("Canary builds are not available for M1");
+    }
+
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME

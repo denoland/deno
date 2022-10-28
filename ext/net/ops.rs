@@ -246,10 +246,14 @@ impl Resource for UdpSocketResource {
 fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   addr: IpAddr,
+  reuse_port: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  if reuse_port {
+    super::check_unstable(state, "Deno.listen({ reusePort: true })");
+  }
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
@@ -264,6 +268,10 @@ where
   let socket = Socket::new(domain, Type::STREAM, None)?;
   #[cfg(not(windows))]
   socket.set_reuse_address(true)?;
+  if reuse_port {
+    #[cfg(target_os = "linux")]
+    socket.set_reuse_port(true)?;
+  }
   let socket_addr = socket2::SockAddr::from(addr);
   socket.bind(&socket_addr)?;
   socket.listen(128)?;

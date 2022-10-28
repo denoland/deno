@@ -76,6 +76,7 @@ use crate::tools::check;
 
 use args::CliOptions;
 use deno_ast::MediaType;
+use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -255,6 +256,21 @@ async fn compile_command(
   })?;
 
   graph.valid().unwrap();
+
+  // at the moment, we don't support npm specifiers in deno_compile, so show an error
+  let first_npm_specifier = graph
+    .specifiers()
+    .values()
+    .filter_map(|r| match r {
+      Ok((specifier, kind, _)) if *kind == deno_graph::ModuleKind::External => {
+        Some(specifier.clone())
+      }
+      _ => None,
+    })
+    .next();
+  if let Some(npm_specifier) = first_npm_specifier {
+    bail!("npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: {}", npm_specifier)
+  }
 
   let parser = ps.parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;

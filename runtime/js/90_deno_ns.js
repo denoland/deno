@@ -119,17 +119,17 @@
     removeSignalListener: __bootstrap.signals.removeSignalListener,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    osRelease: __bootstrap.os.osRelease,
     hostname: __bootstrap.os.hostname,
     consoleSize: __bootstrap.tty.consoleSize,
   };
 
   __bootstrap.denoNsUnstable = {
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
-    getGid: __bootstrap.os.getGid,
-    getUid: __bootstrap.os.getUid,
+    gid: __bootstrap.os.gid,
+    uid: __bootstrap.os.uid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
     HttpClient: __bootstrap.fetch.HttpClient,

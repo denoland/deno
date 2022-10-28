@@ -110,6 +110,20 @@ itest!(child_process_fork_test {
   http_server: true,
 });
 
+itest!(cjs_module_export_assignment {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  output: "npm/cjs_module_export_assignment/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_module_export_assignment_number {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  output: "npm/cjs_module_export_assignment_number/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -710,6 +724,14 @@ fn ensure_registry_files_local() {
     }
   }
 }
+
+itest!(compile_errors {
+  args: "compile -A --quiet --unstable npm/esm/main.js",
+  output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
