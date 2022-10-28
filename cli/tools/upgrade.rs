@@ -123,6 +123,14 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
       return None;
     }
 
+    if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
+      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+        if current >= latest {
+          return None;
+        }
+      }
+    }
+
     let last_prompt_age = self
       .env
       .current_time()
@@ -768,6 +776,27 @@ mod test {
     // this will silently fail
     fetch_and_store_latest_version(&env).await;
     assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[tokio::test]
+  async fn test_update_checker_current_newer_than_latest() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    env.set_current_version("1.27.0");
+    env.set_latest_version("1.26.2");
+    let checker = UpdateChecker::new(env);
+
+    // since currently running version is newer than latest available (eg. CDN
+    // propagation might be delated) we should not prompt
     assert_eq!(checker.should_prompt(), None);
   }
 }
