@@ -7,6 +7,7 @@ use crate::modules::validate_import_assertions;
 use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::ops::OpCtx;
+use crate::runtime::SnapshotOptions;
 use crate::JsRuntime;
 use log::debug;
 use std::option::Option;
@@ -96,8 +97,7 @@ pub fn module_origin<'a>(
 pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
-  snapshot_loaded: bool,
-  will_snapshot: bool,
+  snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -108,12 +108,12 @@ pub fn initialize_context<'s>(
 
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
-  if snapshot_loaded {
+  if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded, will_snapshot);
-    if !will_snapshot {
+    initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
+    if snapshot_options != SnapshotOptions::CreateFromExisting {
       initialize_async_ops_info(scope, ops_obj, op_ctxs);
     }
     return scope.escape(context);
@@ -127,10 +127,10 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
-  if !will_snapshot {
+  if !snapshot_options.will_snapshot() {
     initialize_async_ops_info(scope, ops_obj, op_ctxs);
   }
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded, will_snapshot);
+  initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
   scope.escape(context)
 }
 
@@ -138,15 +138,14 @@ fn initialize_ops(
   scope: &mut v8::HandleScope,
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
-  snapshot_loaded: bool,
-  will_snapshot: bool,
+  snapshot_options: SnapshotOptions,
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
 
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_loaded {
+    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
       set_func_raw(
         scope,
         ops_obj,
@@ -154,8 +153,7 @@ fn initialize_ops(
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &ctx.decl.fast_fn,
-        snapshot_loaded,
-        will_snapshot,
+        snapshot_options,
       );
     } else {
       set_func_raw(
@@ -165,8 +163,7 @@ fn initialize_ops(
         ctx.decl.v8_fn_ptr,
         ctx_ptr,
         &None,
-        snapshot_loaded,
-        will_snapshot,
+        snapshot_options,
       );
     }
   }
@@ -186,7 +183,6 @@ pub fn set_func(
 
 // Register a raw v8::FunctionCallback
 // with some external data.
-#[allow(clippy::too_many_arguments)]
 pub fn set_func_raw(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,
@@ -194,8 +190,7 @@ pub fn set_func_raw(
   callback: v8::FunctionCallback,
   external_data: *const c_void,
   fast_function: &Option<Box<dyn FastFunction>>,
-  snapshot_loaded: bool,
-  will_snapshot: bool,
+  snapshot_options: SnapshotOptions,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
@@ -203,7 +198,7 @@ pub fn set_func_raw(
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if snapshot_loaded && !will_snapshot {
+    if snapshot_options == SnapshotOptions::Load {
       // TODO(@littledivy): Support fast api overloads in ops.
       builder.build_fast(scope, &**fast_function, None)
     } else {

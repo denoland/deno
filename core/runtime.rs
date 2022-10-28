@@ -82,7 +82,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  will_snapshot: bool,
+  snapshot_options: SnapshotOptions,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -280,6 +280,32 @@ pub struct RuntimeOptions {
   pub inspector: bool,
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum SnapshotOptions {
+  Load,
+  CreateFromExisting,
+  Create,
+  None,
+}
+
+impl SnapshotOptions {
+  pub fn loaded(&self) -> bool {
+    matches!(self, SnapshotOptions::Load | SnapshotOptions::CreateFromExisting)
+  }
+  pub fn will_snapshot(&self) -> bool {
+    matches!(self, SnapshotOptions::Create | SnapshotOptions::CreateFromExisting)
+  }
+
+  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
+    match (snapshot_loaded, will_snapshot) {
+      (true, true) => SnapshotOptions::CreateFromExisting,
+      (false, true) => SnapshotOptions::Create,
+      (true, false) => SnapshotOptions::Load,
+      (false, false) => SnapshotOptions::None,
+    }
+  }
+}
+
 impl Drop for JsRuntime {
   fn drop(&mut self) {
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
@@ -372,7 +398,7 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
 
-    let mut isolate = if options.will_snapshot {
+    let (mut isolate, snapshot_options) = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) =
         if let Some(snapshot) = options.startup_snapshot {
           (
@@ -402,6 +428,9 @@ impl JsRuntime {
           (v8::Isolate::snapshot_creator(Some(refs)), false)
         };
 
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -411,16 +440,12 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &op_ctxs,
-          snapshot_loaded,
-          options.will_snapshot,
-        );
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
-      isolate
+      (isolate, snapshot_options)
     } else {
       let mut params = options
         .create_params
@@ -443,6 +468,9 @@ impl JsRuntime {
         false
       };
 
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -453,17 +481,13 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &op_ctxs,
-          snapshot_loaded,
-          options.will_snapshot,
-        );
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         global_context = v8::Global::new(scope, context);
       }
 
-      isolate
+      (isolate, snapshot_options)
     };
 
     op_state.borrow_mut().put(isolate_ptr);
@@ -499,7 +523,7 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       built_from_snapshot: has_startup_snapshot,
-      will_snapshot: options.will_snapshot,
+      snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
@@ -586,8 +610,7 @@ impl JsRuntime {
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        self.built_from_snapshot,
-        self.will_snapshot,
+        SnapshotOptions::from_bools(self.built_from_snapshot, self.snapshot_options.will_snapshot()),
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
