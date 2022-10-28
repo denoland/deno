@@ -792,7 +792,7 @@ mod test {
     env.write_check_file(&file_content);
     env.set_current_version("1.27.0");
     env.set_latest_version("1.26.2");
-    let checker = UpdateChecker::new(env.clone());
+    let checker = UpdateChecker::new(env);
 
     // since currently running version is newer than latest available (eg. CDN
     // propagation might be delated) we should not prompt
