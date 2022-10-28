@@ -2880,10 +2880,10 @@
 
         // 7.
         if (
-          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sign"
+          keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
         ) {
           throw new DOMException(
-            "'use' property of JsonWebKey must be 'sign'",
+            "'use' property of JsonWebKey must be 'sig'",
             "DataError",
           );
         }
