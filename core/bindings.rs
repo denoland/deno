@@ -198,7 +198,10 @@ pub fn set_func_raw(
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if snapshot_options == SnapshotOptions::Load {
+    if matches!(
+      snapshot_options,
+      SnapshotOptions::Load | SnapshotOptions::None
+    ) {
       // TODO(@littledivy): Support fast api overloads in ops.
       builder.build_fast(scope, &**fast_function, None)
     } else {

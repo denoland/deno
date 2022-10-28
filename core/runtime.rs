@@ -280,7 +280,7 @@ pub struct RuntimeOptions {
   pub inspector: bool,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum SnapshotOptions {
   Load,
   CreateFromExisting,
@@ -290,10 +290,16 @@ pub enum SnapshotOptions {
 
 impl SnapshotOptions {
   pub fn loaded(&self) -> bool {
-    matches!(self, SnapshotOptions::Load | SnapshotOptions::CreateFromExisting)
+    matches!(
+      self,
+      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
+    )
   }
   pub fn will_snapshot(&self) -> bool {
-    matches!(self, SnapshotOptions::Create | SnapshotOptions::CreateFromExisting)
+    matches!(
+      self,
+      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
+    )
   }
 
   fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
@@ -610,7 +616,10 @@ impl JsRuntime {
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        SnapshotOptions::from_bools(self.built_from_snapshot, self.snapshot_options.will_snapshot()),
+        SnapshotOptions::from_bools(
+          self.built_from_snapshot,
+          self.snapshot_options.will_snapshot(),
+        ),
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
