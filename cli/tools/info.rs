@@ -226,8 +226,8 @@ impl NpmInfo {
         if let Ok(package) =
           npm_snapshot.resolve_package_from_deno_module(&reference.req)
         {
+          info.resolved_reqs.insert(reference.req, package.id.clone());
           if !info.packages.contains_key(&package.id) {
-            info.resolved_reqs.insert(reference.req, package.id.clone());
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
         }
