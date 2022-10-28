@@ -429,6 +429,7 @@ pub async fn create_main_worker(
       inspect: ps.options.is_inspecting(),
     },
     extensions,
+    startup_snapshot: Some(crate::js::deno_isolate_init()),
     unsafely_ignore_certificate_errors: ps
       .options
       .unsafely_ignore_certificate_errors()

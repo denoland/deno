@@ -26,6 +26,7 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
+deno_runtime = { version = "0.82.0", path = "../runtime" }
 deno_broadcast_channel = { version = "0.68.0", path = "../ext/broadcast_channel" }
 deno_cache = { version = "0.6.0", path = "../ext/cache" }
 deno_console = { version = "0.74.0", path = "../ext/console" }
@@ -44,6 +45,8 @@ serde = { version = "=1.0.144", features = ["derive"] }
 serde_json = "1.0.64"
 zstd = '=0.11.2'
 glibc_version = "0.1.2"
+
+lzzzz = '1.0'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "=0.3.9"

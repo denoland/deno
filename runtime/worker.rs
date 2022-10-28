@@ -74,6 +74,7 @@ pub struct MainWorker {
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
   pub extensions: Vec<Extension>,
+  pub startup_snapshot: Option<deno_core::Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub seed: Option<u64>,
@@ -137,6 +138,7 @@ impl Default for WorkerOptions {
       extensions: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
+      startup_snapshot: Default::default(),
     }
   }
 }
@@ -242,7 +244,11 @@ impl MainWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: Some(
+        options
+          .startup_snapshot
+          .unwrap_or_else(js::deno_isolate_init),
+      ),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

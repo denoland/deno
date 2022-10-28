@@ -815,6 +815,7 @@ dependencies = [
  "libc",
  "log",
  "lsp-types",
+ "lzzzz",
  "mitata",
  "monch",
  "napi_sym",

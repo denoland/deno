@@ -18,6 +18,7 @@ mod fs_util;
 mod graph_util;
 mod http_cache;
 mod http_util;
+mod js;
 mod lockfile;
 mod logger;
 mod lsp;
