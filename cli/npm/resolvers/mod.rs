@@ -67,7 +67,6 @@ impl NpmProcessState {
 
 #[derive(Clone)]
 pub struct NpmPackageResolver {
-  unstable: bool,
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
@@ -79,7 +78,6 @@ pub struct NpmPackageResolver {
 impl std::fmt::Debug for NpmPackageResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("NpmPackageResolver")
-      .field("unstable", &self.unstable)
       .field("no_npm", &self.no_npm)
       .field("inner", &"<omitted>")
       .field("local_node_modules_path", &self.local_node_modules_path)
@@ -91,14 +89,12 @@ impl NpmPackageResolver {
   pub fn new(
     cache: NpmCache,
     api: NpmRegistryApi,
-    unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
   ) -> Self {
     Self::new_with_maybe_snapshot(
       cache,
       api,
-      unstable,
       no_npm,
       local_node_modules_path,
       None,
@@ -134,7 +130,6 @@ impl NpmPackageResolver {
   fn new_with_maybe_snapshot(
     cache: NpmCache,
     api: NpmRegistryApi,
-    unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
     initial_snapshot: Option<NpmResolutionSnapshot>,
@@ -162,7 +157,6 @@ impl NpmPackageResolver {
       )),
     };
     Self {
-      unstable,
       no_npm,
       inner,
       local_node_modules_path,
@@ -242,12 +236,6 @@ impl NpmPackageResolver {
       return Ok(());
     }
 
-    if !self.unstable {
-      bail!(
-        "Unstable use of npm specifiers. The --unstable flag must be provided."
-      )
-    }
-
     if self.no_npm {
       let fmt_reqs = packages
         .iter()
@@ -307,7 +295,6 @@ impl NpmPackageResolver {
     Self::new_with_maybe_snapshot(
       self.cache.clone(),
       self.api.clone(),
-      self.unstable,
       self.no_npm,
       self.local_node_modules_path.clone(),
       Some(self.snapshot()),

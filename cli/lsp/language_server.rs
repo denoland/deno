@@ -276,8 +276,7 @@ impl Inner {
       cache_setting,
       progress_bar,
     );
-    let npm_resolver =
-      NpmPackageResolver::new(npm_cache, api, true, false, None);
+    let npm_resolver = NpmPackageResolver::new(npm_cache, api, false, None);
 
     Self {
       assets,
