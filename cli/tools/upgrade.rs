@@ -124,9 +124,10 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
     }
 
     if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
-      let latest = semver::Version::parse(&file.latest_version).unwrap();
-      if current >= latest {
-        return None;
+      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+        if current >= latest {
+          return None;
+        }
       }
     }
 
