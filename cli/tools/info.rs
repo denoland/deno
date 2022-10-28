@@ -411,7 +411,7 @@ impl<'a> GraphDisplayContext<'a> {
         Some(package) => Package(package.clone()),
         None => Specifier(module.specifier.clone()),
       };
-    let was_seen = self.seen.insert(match &package_or_specifier {
+    let was_seen = !self.seen.insert(match &package_or_specifier {
       Package(package) => package.id.to_string(),
       Specifier(specifier) => specifier.to_string(),
     });
