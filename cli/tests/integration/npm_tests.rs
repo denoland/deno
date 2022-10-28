@@ -733,6 +733,14 @@ itest!(compile_errors {
   http_server: true,
 });
 
+itest!(info_chalk {
+  args: "info --quiet --unstable npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main.info.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
