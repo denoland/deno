@@ -38,7 +38,9 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let graph = ps.create_graph(vec![(specifier, ModuleKind::Esm)]).await?;
 
     if info_flags.json {
-      display::write_json_to_stdout(&json!(graph))?;
+      let mut json_graph = json!(graph);
+      add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
+      display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
       GraphDisplayContext::write(&graph, &ps.npm_resolver, &mut output)?;
@@ -126,6 +128,97 @@ fn print_cache_info(
     }
     Ok(())
   }
+}
+
+fn add_npm_packages_to_json(
+  json: &mut serde_json::Value,
+  npm_resolver: &NpmPackageResolver,
+) {
+  // ideally deno_graph could handle this, but for now we just modify the json here
+  let snapshot = npm_resolver.snapshot();
+  let json = json.as_object_mut().unwrap();
+  let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
+  if let Some(modules) = modules {
+    let modules_count = modules.len();
+
+    if modules_count > 1 {
+      // In this case, npm packages could be listed here as a module, but we
+      // want to filter them out and only have them listed as dependencies.
+      // This is done because various npm specifiers will be listed as "modules"
+      // but really they're just unresolved references. So there could be listed
+      // multiple npm specifiers
+      for i in (0..modules.len()).rev() {
+        if modules[i].get("kind").and_then(|k| k.as_str()) == Some("external") {
+          modules.remove(i);
+        }
+      }
+    } else if modules_count == 1
+      && modules[0].get("kind").and_then(|k| k.as_str()) == Some("external")
+    {
+      let module = &mut modules[0];
+      let maybe_package = module
+        .get("specifier")
+        .and_then(|k| k.as_str())
+        .and_then(|specifier| NpmPackageReference::from_str(specifier).ok())
+        .and_then(|package_ref| {
+          snapshot
+            .resolve_package_from_deno_module(&package_ref.req)
+            .ok()
+        });
+      if let Some(pkg) = maybe_package {
+        if let Some(module) = module.as_object_mut() {
+          module.insert("npmPackage".to_string(), format!("{}", pkg.id).into());
+          // change the "kind" to be "npm"
+          module.insert("kind".to_string(), "npm".into());
+        }
+      }
+    }
+
+    for module in modules.iter_mut() {
+      let dependencies = module
+        .get_mut("dependencies")
+        .and_then(|d| d.as_array_mut());
+      if let Some(dependencies) = dependencies {
+        for dep in dependencies.iter_mut() {
+          if let serde_json::Value::Object(dep) = dep {
+            let specifier = dep.get("specifier").and_then(|s| s.as_str());
+            if let Some(specifier) = specifier {
+              if let Ok(npm_ref) = NpmPackageReference::from_str(specifier) {
+                if let Ok(pkg) =
+                  snapshot.resolve_package_from_deno_module(&npm_ref.req)
+                {
+                  dep.insert(
+                    "npmPackage".to_string(),
+                    format!("{}", pkg.id).into(),
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  let mut sorted_packages = snapshot.all_packages();
+  sorted_packages.sort_by(|a, b| a.id.cmp(&b.id));
+  let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
+  for pkg in sorted_packages {
+    let mut kv = serde_json::Map::new();
+    kv.insert("name".to_string(), pkg.id.name.to_string().into());
+    kv.insert("version".to_string(), pkg.id.version.to_string().into());
+    let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
+    deps.sort();
+    let deps = deps
+      .into_iter()
+      .map(|id| serde_json::Value::String(format!("{}", id)))
+      .collect::<Vec<_>>();
+    kv.insert("dependencies".to_string(), deps.into());
+
+    json_packages.insert(format!("{}", &pkg.id), kv.into());
+  }
+
+  json.insert("npmPackages".to_string(), json_packages.into());
 }
 
 struct TreeNode {
