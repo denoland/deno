@@ -268,13 +268,15 @@ async fn build_test_graph(
     original_import_map.map(|m| ImportMapResolver::new(Arc::new(m)));
   deno_graph::create_graph(
     roots,
-    false,
-    None,
     &mut loader,
-    resolver.as_ref().map(|im| im.as_resolver()),
-    None,
-    Some(analyzer),
-    None,
+    deno_graph::GraphOptions {
+      is_dynamic: false,
+      imports: None,
+      resolver: resolver.as_ref().map(|im| im.as_resolver()),
+      locker: None,
+      module_analyzer: Some(analyzer),
+      reporter: None,
+    },
   )
   .await
 }

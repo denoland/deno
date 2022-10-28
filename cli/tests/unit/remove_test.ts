@@ -251,9 +251,7 @@ Deno.test(
       Deno.statSync(path); // check if unix socket exists
 
       await Deno[method](path);
-      assertThrows(() => {
-        Deno.statSync(path);
-      }, Deno.errors.NotFound);
+      assertThrows(() => Deno.statSync(path), Deno.errors.NotFound);
     }
   },
 );

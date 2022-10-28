@@ -18,6 +18,7 @@
 
   const { webidl, structuredClone } = window.__bootstrap;
   const consoleInternal = window.__bootstrap.console;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 

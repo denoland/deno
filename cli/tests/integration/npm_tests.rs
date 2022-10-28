@@ -1,6 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::url::Url;
 use std::process::Stdio;
 use test_util as util;
 use util::assert_contains;
@@ -34,7 +33,7 @@ itest!(esm_module_deno_test {
 });
 
 itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --unstable --quiet npm/esm_import_cjs_default/main.js",
+  args: "run --allow-read --allow-env --unstable --quiet --check=all npm/esm_import_cjs_default/main.ts",
   output: "npm/esm_import_cjs_default/main.out",
   envs: env_vars(),
   http_server: true,
@@ -84,7 +83,7 @@ itest!(translate_cjs_to_esm {
 });
 
 itest!(compare_globals {
-  args: "run --allow-read --unstable npm/compare_globals/main.js",
+  args: "run --allow-read --unstable --check=all npm/compare_globals/main.ts",
   output: "npm/compare_globals/main.out",
   envs: env_vars(),
   http_server: true,
@@ -107,6 +106,20 @@ itest!(dual_cjs_esm {
 itest!(child_process_fork_test {
   args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
   output: "npm/child_process_fork_test/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_module_export_assignment {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment/main.ts",
+  output: "npm/cjs_module_export_assignment/main.out",
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(cjs_module_export_assignment_number {
+  args: "run -A --unstable --quiet --check=all npm/cjs_module_export_assignment_number/main.ts",
+  output: "npm/cjs_module_export_assignment_number/main.out",
   envs: env_vars(),
   http_server: true,
 });
@@ -159,6 +172,14 @@ itest!(import_map {
   http_server: true,
 });
 
+itest!(lock_file {
+  args: "run --allow-read --allow-env --unstable --lock npm/lock_file/lock.json npm/lock_file/main.js",
+  output: "npm/lock_file/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 10,
+});
+
 itest!(sub_paths {
   args: "run --unstable -A --quiet npm/sub_paths/main.jsx",
   output: "npm/sub_paths/main.out",
@@ -208,6 +229,38 @@ itest!(deno_cache {
   output: "npm/deno_cache.out",
   envs: env_vars(),
   http_server: true,
+});
+
+itest!(check_all {
+  args: "check --unstable --remote npm/check_errors/main.ts",
+  output: "npm/check_errors/main_all.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(check_local {
+  args: "check --unstable npm/check_errors/main.ts",
+  output: "npm/check_errors/main_local.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(types_ambient_module {
+  args: "check --unstable --quiet npm/types_ambient_module/main.ts",
+  output: "npm/types_ambient_module/main.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(types_ambient_module_import_map {
+  args: "check --unstable --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  output: "npm/types_ambient_module/main_import_map.out",
+  envs: env_vars(),
+  http_server: true,
+  exit_code: 1,
 });
 
 #[test]
@@ -672,18 +725,18 @@ fn ensure_registry_files_local() {
   }
 }
 
-fn std_file_url() -> String {
-  let u = Url::from_directory_path(util::std_path()).unwrap();
-  u.to_string()
-}
+itest!(compile_errors {
+  args: "compile -A --quiet --unstable npm/esm/main.js",
+  output_str: Some("error: npm specifiers have not yet been implemented for deno compile (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5\n"),
+  exit_code: 1,
+  envs: env_vars(),
+  http_server: true,
+});
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
-    ("DENO_NODE_COMPAT_URL".to_string(), std_file_url()),
-    (
-      "DENO_NPM_REGISTRY".to_string(),
-      "http://localhost:4545/npm/registry/".to_string(),
-    ),
+    ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
+    ("DENO_NPM_REGISTRY".to_string(), util::npm_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }

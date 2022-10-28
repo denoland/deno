@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use deno_core::futures;
 use deno_core::futures::future::BoxFuture;
 use deno_core::url::Url;
 
+use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
@@ -26,6 +28,7 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -40,9 +43,16 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     packages: Vec<NpmPackageReq>,
   ) -> BoxFuture<'static, Result<(), AnyError>>;
 
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>>;
+
   fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
 
   fn snapshot(&self) -> NpmResolutionSnapshot;
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError>;
 }
 
 /// Caches all the packages in parallel.

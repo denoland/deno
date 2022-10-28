@@ -17,7 +17,9 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { serializePermissions } = window.__bootstrap.permissions;
   const { log } = window.__bootstrap.util;
-  const { defineEventHandler } = window.__bootstrap.event;
+  const { ErrorEvent, MessageEvent, defineEventHandler } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const {
     deserializeJsMessageData,
     serializeJsMessageData,

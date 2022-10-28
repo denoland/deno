@@ -3,16 +3,22 @@
 //! This module provides feature to upgrade deno executable
 
 use crate::args::UpgradeFlags;
+use crate::colors;
 use crate::version;
+
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::future::BoxFuture;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -29,74 +35,213 @@ const UPGRADE_CHECK_FILE_NAME: &str = "latest.txt";
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
-pub fn check_for_upgrades(cache_dir: PathBuf) -> Option<String> {
-  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
-    return None;
+/// Environment necessary for doing the update checker.
+/// An alternate trait implementation can be provided for testing purposes.
+trait UpdateCheckerEnvironment: Clone + Send + Sync {
+  fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>>;
+  fn current_version(&self) -> Cow<str>;
+  fn read_check_file(&self) -> String;
+  fn write_check_file(&self, text: &str);
+  fn current_time(&self) -> chrono::DateTime<chrono::Utc>;
+}
+
+#[derive(Clone)]
+struct RealUpdateCheckerEnvironment {
+  cache_dir: PathBuf,
+  current_time: chrono::DateTime<chrono::Utc>,
+}
+
+impl RealUpdateCheckerEnvironment {
+  pub fn new(cache_dir: PathBuf) -> Self {
+    Self {
+      cache_dir,
+      // cache the current time
+      current_time: chrono::Utc::now(),
+    }
+  }
+}
+
+impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
+  fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
+    async {
+      let client = build_http_client(None)?;
+      if version::is_canary() {
+        get_latest_canary_version(&client).await
+      } else {
+        get_latest_release_version(&client).await
+      }
+    }
+    .boxed()
   }
 
-  let p = cache_dir.join(UPGRADE_CHECK_FILE_NAME);
-  let content = match std::fs::read_to_string(&p) {
-    Ok(file) => file,
-    Err(_) => "".to_string(),
-  };
+  fn current_version(&self) -> Cow<str> {
+    Cow::Borrowed(version::release_version_or_canary_commit_hash())
+  }
 
-  let (last_checked, latest_version) = parse_upgrade_check_file(content);
+  fn read_check_file(&self) -> String {
+    std::fs::read_to_string(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME))
+      .unwrap_or_default()
+  }
 
-  if latest_version.is_none() || latest_version.as_ref().unwrap().is_empty() {
-    let last_checked_dt = last_checked.and_then(|last_checked| {
-      chrono::DateTime::parse_from_rfc3339(&last_checked)
-        .map(|dt| dt.with_timezone(&chrono::Utc))
-        .ok()
-    });
+  fn write_check_file(&self, text: &str) {
+    let _ = std::fs::write(self.cache_dir.join(UPGRADE_CHECK_FILE_NAME), text);
+  }
 
-    let should_check = match last_checked_dt {
-      Some(last_checked_dt) => {
-        let last_check_age =
-          chrono::Utc::now().signed_duration_since(last_checked_dt);
+  fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
+    self.current_time
+  }
+}
+
+struct UpdateChecker<TEnvironment: UpdateCheckerEnvironment> {
+  env: TEnvironment,
+  maybe_file: Option<CheckVersionFile>,
+}
+
+impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
+  pub fn new(env: TEnvironment) -> Self {
+    let maybe_file = CheckVersionFile::parse(env.read_check_file());
+    Self { env, maybe_file }
+  }
+
+  pub fn should_check_for_new_version(&self) -> bool {
+    match &self.maybe_file {
+      Some(file) => {
+        let last_check_age = self
+          .env
+          .current_time()
+          .signed_duration_since(file.last_checked);
         last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
       }
       None => true,
-    };
-
-    if should_check {
-      tokio::spawn(async move {
-        // Sleep for a small amount of time to not unnecessarily impact startup
-        // time.
-        tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
-
-        // Fetch latest version or commit hash from server.
-        let client = match build_http_client(None) {
-          Ok(client) => client,
-          Err(_) => return,
-        };
-        let latest_version = match if version::is_canary() {
-          get_latest_canary_version(&client).await
-        } else {
-          get_latest_release_version(&client).await
-        } {
-          Ok(latest_version) => latest_version,
-          Err(_) => return,
-        };
-
-        let contents =
-          serialize_upgrade_check_file(chrono::Utc::now(), latest_version);
-        let _ =
-          std::fs::write(cache_dir.join(UPGRADE_CHECK_FILE_NAME), contents);
-      });
     }
   }
 
-  // Return `Some(version)` if a new version is available, `None` otherwise.
-  latest_version
-    .filter(|v| v != version::release_version_or_canary_commit_hash())
+  /// Returns the version if a new one is available and it should be prompted about.
+  pub fn should_prompt(&self) -> Option<String> {
+    let file = self.maybe_file.as_ref()?;
+    if file.latest_version == self.env.current_version() {
+      return None;
+    }
+
+    if let Ok(current) = semver::Version::parse(&self.env.current_version()) {
+      if let Ok(latest) = semver::Version::parse(&file.latest_version) {
+        if current >= latest {
+          return None;
+        }
+      }
+    }
+
+    let last_prompt_age = self
+      .env
+      .current_time()
+      .signed_duration_since(file.last_prompt);
+    if last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
+      Some(file.latest_version.clone())
+    } else {
+      None
+    }
+  }
+
+  /// Store that we showed the update message to the user.
+  pub fn store_prompted(self) {
+    if let Some(file) = self.maybe_file {
+      self.env.write_check_file(
+        &file.with_last_prompt(self.env.current_time()).serialize(),
+      );
+    }
+  }
+}
+
+pub fn check_for_upgrades(cache_dir: PathBuf) {
+  if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
+    return;
+  }
+
+  let env = RealUpdateCheckerEnvironment::new(cache_dir);
+  let update_checker = UpdateChecker::new(env);
+
+  if update_checker.should_check_for_new_version() {
+    let env = update_checker.env.clone();
+    // do this asynchronously on a separate task
+    tokio::spawn(async move {
+      // Sleep for a small amount of time to not unnecessarily impact startup
+      // time.
+      tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
+
+      fetch_and_store_latest_version(&env).await;
+    });
+  }
+
+  // Print a message if an update is available
+  if let Some(upgrade_version) = update_checker.should_prompt() {
+    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
+      if version::is_canary() {
+        eprint!(
+          "{} ",
+          colors::green("A new canary release of Deno is available.")
+        );
+      } else {
+        eprint!(
+          "{} {} → {} ",
+          colors::green("A new release of Deno is available:"),
+          colors::cyan(version::deno()),
+          colors::cyan(upgrade_version)
+        );
+      }
+      eprintln!(
+        "{}",
+        colors::italic_gray("Run `deno upgrade` to install it.")
+      );
+
+      update_checker.store_prompted();
+    }
+  }
+}
+
+async fn fetch_and_store_latest_version<
+  TEnvironment: UpdateCheckerEnvironment,
+>(
+  env: &TEnvironment,
+) {
+  // Fetch latest version or commit hash from server.
+  let latest_version = match env.latest_version().await {
+    Ok(latest_version) => latest_version,
+    Err(_) => return,
+  };
+
+  env.write_check_file(
+    &CheckVersionFile {
+      // put a date in the past here so that prompt can be shown on next run
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version,
+    }
+    .serialize(),
+  );
 }
 
 pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   let old_exe_path = std::env::current_exe()?;
-  let permissions = fs::metadata(&old_exe_path)?.permissions();
+  let metadata = fs::metadata(&old_exe_path)?;
+  let permissions = metadata.permissions();
 
   if permissions.readonly() {
-    bail!("You do not have write permission to {:?}", old_exe_path);
+    bail!(
+      "You do not have write permission to {}",
+      old_exe_path.display()
+    );
+  }
+  #[cfg(unix)]
+  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+    && !nix::unistd::Uid::effective().is_root()
+  {
+    bail!(concat!(
+      "You don't have write permission to {} because it's owned by root.\n",
+      "Consider updating deno through your package manager if its installed from it.\n",
+      "Otherwise run `deno upgrade` as root.",
+    ), old_exe_path.display());
   }
 
   let client = build_http_client(upgrade_flags.ca_file)?;
@@ -168,6 +313,10 @@ pub async fn upgrade(upgrade_flags: UpgradeFlags) -> Result<(), AnyError> {
   };
 
   let download_url = if upgrade_flags.canary {
+    if env!("TARGET") == "aarch64-apple-darwin" {
+      bail!("Canary builds are not available for M1");
+    }
+
     format!(
       "https://dl.deno.land/canary/{}/{}",
       install_version, *ARCHIVE_NAME
@@ -387,55 +536,267 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-fn parse_upgrade_check_file(
-  content: String,
-) -> (Option<String>, Option<String>) {
-  let (mut last_checked, mut latest_version) = (None, None);
-  let split_content = content.split('!').collect::<Vec<_>>();
+#[derive(Debug)]
+struct CheckVersionFile {
+  pub last_prompt: chrono::DateTime<chrono::Utc>,
+  pub last_checked: chrono::DateTime<chrono::Utc>,
+  pub latest_version: String,
+}
 
-  if split_content.len() == 2 {
-    last_checked = Some(split_content[0].to_owned());
+impl CheckVersionFile {
+  pub fn parse(content: String) -> Option<Self> {
+    let split_content = content.split('!').collect::<Vec<_>>();
 
-    if !split_content[1].is_empty() {
-      latest_version = Some(split_content[1].to_owned());
+    if split_content.len() != 3 {
+      return None;
+    }
+
+    let latest_version = split_content[2].trim().to_owned();
+    if latest_version.is_empty() {
+      return None;
+    }
+
+    let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[1])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+
+    Some(CheckVersionFile {
+      last_prompt,
+      last_checked,
+      latest_version,
+    })
+  }
+
+  fn serialize(&self) -> String {
+    format!(
+      "{}!{}!{}",
+      self.last_prompt.to_rfc3339(),
+      self.last_checked.to_rfc3339(),
+      self.latest_version
+    )
+  }
+
+  fn with_last_prompt(self, dt: chrono::DateTime<chrono::Utc>) -> Self {
+    Self {
+      last_prompt: dt,
+      ..self
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::sync::Arc;
+
+  use deno_core::parking_lot::Mutex;
+
+  use super::*;
+
+  #[test]
+  fn test_parse_upgrade_check_file() {
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3".to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+      file.last_prompt.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(
+      file.last_checked.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(file.latest_version, "1.2.3".to_string());
+
+    let result =
+      CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("garbage!test".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("test".to_string());
+    assert!(result.is_none());
+  }
+
+  #[test]
+  fn test_serialize_upgrade_check_file() {
+    let file = CheckVersionFile {
+      last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc),
+      last_checked: chrono::DateTime::parse_from_rfc3339(
+        "2020-01-01T00:00:00Z",
+      )
+      .unwrap()
+      .with_timezone(&chrono::Utc),
+      latest_version: "1.2.3".to_string(),
+    };
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3"
+    );
+  }
+
+  #[derive(Clone)]
+  struct TestUpdateCheckerEnvironment {
+    file_text: Arc<Mutex<String>>,
+    current_version: Arc<Mutex<String>>,
+    latest_version: Arc<Mutex<Result<String, String>>>,
+    time: Arc<Mutex<chrono::DateTime<chrono::Utc>>>,
+  }
+
+  impl TestUpdateCheckerEnvironment {
+    pub fn new() -> Self {
+      Self {
+        file_text: Default::default(),
+        current_version: Default::default(),
+        latest_version: Arc::new(Mutex::new(Ok("".to_string()))),
+        time: Arc::new(Mutex::new(chrono::Utc::now())),
+      }
+    }
+
+    pub fn add_hours(&self, hours: i64) {
+      let mut time = self.time.lock();
+      *time = time
+        .checked_add_signed(chrono::Duration::hours(hours))
+        .unwrap();
+    }
+
+    pub fn set_file_text(&self, text: &str) {
+      *self.file_text.lock() = text.to_string();
+    }
+
+    pub fn set_current_version(&self, version: &str) {
+      *self.current_version.lock() = version.to_string();
+    }
+
+    pub fn set_latest_version(&self, version: &str) {
+      *self.latest_version.lock() = Ok(version.to_string());
+    }
+
+    pub fn set_latest_version_err(&self, err: &str) {
+      *self.latest_version.lock() = Err(err.to_string());
     }
   }
 
-  (last_checked, latest_version)
-}
+  impl UpdateCheckerEnvironment for TestUpdateCheckerEnvironment {
+    fn latest_version(&self) -> BoxFuture<'static, Result<String, AnyError>> {
+      let env = self.clone();
+      async move {
+        match env.latest_version.lock().clone() {
+          Ok(result) => Ok(result),
+          Err(err) => bail!("{}", err),
+        }
+      }
+      .boxed()
+    }
 
-#[test]
-fn test_parse_upgrade_check_file() {
-  let (last_checked, latest_version) =
-    parse_upgrade_check_file("2020-01-01T00:00:00+00:00!1.2.3".to_string());
-  assert_eq!(last_checked, Some("2020-01-01T00:00:00+00:00".to_string()));
-  assert_eq!(latest_version, Some("1.2.3".to_string()));
+    fn current_version(&self) -> Cow<str> {
+      Cow::Owned(self.current_version.lock().clone())
+    }
 
-  let (last_checked, latest_version) =
-    parse_upgrade_check_file("2020-01-01T00:00:00+00:00!".to_string());
-  assert_eq!(last_checked, Some("2020-01-01T00:00:00+00:00".to_string()));
-  assert_eq!(latest_version, None);
+    fn read_check_file(&self) -> String {
+      self.file_text.lock().clone()
+    }
 
-  let (last_checked, latest_version) =
-    parse_upgrade_check_file("2020-01-01T00:00:00+00:00".to_string());
-  assert_eq!(last_checked, None);
-  assert_eq!(latest_version, None);
-}
+    fn write_check_file(&self, text: &str) {
+      self.set_file_text(text);
+    }
 
-fn serialize_upgrade_check_file(
-  dt: chrono::DateTime<chrono::Utc>,
-  version: String,
-) -> String {
-  format!("{}!{}", dt.to_rfc3339(), version)
-}
+    fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
+      *self.time.lock()
+    }
+  }
 
-#[test]
-fn test_serialize_upgrade_check_file() {
-  let s = serialize_upgrade_check_file(
-    chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
-      .unwrap()
-      .with_timezone(&chrono::Utc),
-    "1.2.3".to_string(),
-  );
-  assert_eq!(s, "2020-01-01T00:00:00+00:00!1.2.3");
+  #[tokio::test]
+  async fn test_update_checker() {
+    let env = TestUpdateCheckerEnvironment::new();
+    env.set_current_version("1.0.0");
+    env.set_latest_version("1.1.0");
+    let checker = UpdateChecker::new(env.clone());
+
+    // no version, so we should check, but not prompt
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // store the latest version
+    fetch_and_store_latest_version(&env).await;
+
+    // reload
+    let checker = UpdateChecker::new(env.clone());
+
+    // should not check for latest version because we just did
+    assert!(!checker.should_check_for_new_version());
+    // but should prompt
+    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+
+    // fast forward an hour and bump the latest version
+    env.add_hours(1);
+    env.set_latest_version("1.2.0");
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+
+    // fast forward again and it should check for a newer version
+    env.add_hours(UPGRADE_CHECK_INTERVAL);
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+
+    fetch_and_store_latest_version(&env).await;
+
+    // reload and store that we prompted
+    let checker = UpdateChecker::new(env.clone());
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+    checker.store_prompted();
+
+    // reload and it should now say not to prompt
+    let checker = UpdateChecker::new(env.clone());
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // but if we fast forward past the upgrade interval it should prompt again
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+
+    // upgrade the version and it should stop prompting
+    env.set_current_version("1.2.0");
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // now try failing when fetching the latest version
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+    env.set_latest_version_err("Failed");
+    env.set_latest_version("1.3.0");
+
+    // this will silently fail
+    fetch_and_store_latest_version(&env).await;
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[tokio::test]
+  async fn test_update_checker_current_newer_than_latest() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    env.set_current_version("1.27.0");
+    env.set_latest_version("1.26.2");
+    let checker = UpdateChecker::new(env);
+
+    // since currently running version is newer than latest available (eg. CDN
+    // propagation might be delated) we should not prompt
+    assert_eq!(checker.should_prompt(), None);
+  }
 }

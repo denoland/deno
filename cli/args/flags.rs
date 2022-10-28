@@ -506,7 +506,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (defaults to $HOME/.deno/bin)
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
-    DENO_NO_UPDATE_CHECK Set to disable checking if newer Deno version is 
+    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
