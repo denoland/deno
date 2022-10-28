@@ -180,14 +180,17 @@ fn print_tree_node<TWrite: Write>(
         )),
         child.text
       )?;
-      let mut prefix = prefix.to_string();
-      if is_last {
-        prefix.push(EMPTY_CONNECTOR);
-      } else {
-        prefix.push(VERTICAL_CONNECTOR);
-      }
-      prefix.push(EMPTY_CONNECTOR);
-      print_children(writer, &prefix, &child.children)?;
+      let child_prefix = format!(
+        "{}{}{}",
+        prefix,
+        if is_last {
+          EMPTY_CONNECTOR
+        } else {
+          VERTICAL_CONNECTOR
+        },
+        EMPTY_CONNECTOR
+      );
+      print_children(writer, &child_prefix, &child.children)?;
     }
 
     Ok(())
@@ -343,23 +346,18 @@ impl<'a> GraphDisplayContext<'a> {
           - self.npm_info.resolved_reqs.len();
         writeln!(
           writer,
-          "{} {} unique {}",
+          "{} {} unique",
           colors::bold("dependencies:"),
           dep_count,
-          colors::gray(format!("(total {})", display::human_size(total_size)))
+        )?;
+        writeln!(
+          writer,
+          "{} {}",
+          colors::bold("size:"),
+          display::human_size(total_size),
         )?;
         writeln!(writer)?;
-        let mut root_node = TreeNode::from_text(format!(
-          "{} {}",
-          root_specifier,
-          colors::gray(format!(
-            "({})",
-            display::human_size(root.size() as f64)
-          ))
-        ));
-        for dep in root.dependencies.values() {
-          root_node.children.extend(self.build_dep_info(dep));
-        }
+        let root_node = self.build_module_info(root, false);
         print_tree_node(&root_node, writer)?;
         Ok(())
       }

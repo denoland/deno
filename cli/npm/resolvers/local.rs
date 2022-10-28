@@ -30,7 +30,6 @@ use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolutionPackage;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
@@ -102,20 +101,6 @@ impl LocalNpmPackageResolver {
     // it's within the directory, so use it
     specifier.to_file_path().ok()
   }
-
-  fn resolve_folder_for_package(
-    &self,
-    package: &NpmResolutionPackage,
-  ) -> PathBuf {
-    // it might be at the full path if there are duplicate names
-    let fully_resolved_folder_path =
-      join_package_name(&self.root_node_modules_path, &package.id.to_string());
-    if fully_resolved_folder_path.exists() {
-      fully_resolved_folder_path
-    } else {
-      join_package_name(&self.root_node_modules_path, &package.id.name)
-    }
-  }
 }
 
 impl InnerNpmPackageResolver for LocalNpmPackageResolver {
@@ -126,7 +111,16 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     let resolved_package =
       self.resolution.resolve_package_from_deno_module(pkg_req)?;
 
-    Ok(self.resolve_folder_for_package(&resolved_package))
+    // it might be at the full path if there are duplicate names
+    let fully_resolved_folder_path = join_package_name(
+      &self.root_node_modules_path,
+      &resolved_package.id.to_string(),
+    );
+    Ok(if fully_resolved_folder_path.exists() {
+      fully_resolved_folder_path
+    } else {
+      join_package_name(&self.root_node_modules_path, &resolved_package.id.name)
+    })
   }
 
   fn resolve_package_folder_from_package(
@@ -186,7 +180,14 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
     match self.resolution.resolve_package_from_id(package_id) {
       Some(package) => Ok(fs_util::dir_size(
-        &self.resolve_folder_for_package(&package),
+        // package is stored at:
+        // node_modules/.deno/<package_id>/node_modules/<package_name>
+        &self
+          .root_node_modules_path
+          .join(".deno")
+          .join(package.id.to_string())
+          .join("node_modules")
+          .join(package.id.name),
       )?),
       None => bail!("Could not find package folder for '{}'", package_id),
     }

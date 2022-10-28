@@ -1,6 +1,7 @@
 local: [WILDCARD]main.js
 type: JavaScript
-dependencies: 14 unique (total [WILDCARD])
+dependencies: 14 unique
+size: [WILDCARD]
 
 file:///[WILDCARD]/npm/cjs_with_deps/main.js ([WILDCARD])
 ├─┬ npm:chai@4.3 - 4.3.6 ([WILDCARD])
