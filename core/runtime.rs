@@ -2172,14 +2172,6 @@ impl JsRealm {
     v8::HandleScope::with_context(isolate, &self.0)
   }
 
-  pub fn context_scope<'s>(
-    &self,
-    scope: &'s mut v8::HandleScope<'s>,
-  ) -> v8::ContextScope<'s, v8::HandleScope<'s>> {
-    let context = v8::Context::new(scope);
-    v8::ContextScope::new(scope, context)
-  }
-
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
