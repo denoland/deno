@@ -44,13 +44,15 @@ pub async fn print_docs(
     let analyzer = deno_graph::CapturingModuleAnalyzer::default();
     let graph = deno_graph::create_graph(
       vec![(source_file_specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
       &mut loader,
-      None,
-      None,
-      Some(&analyzer),
-      None,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: None,
+        resolver: None,
+        locker: None,
+        module_analyzer: Some(&analyzer),
+        reporter: None,
+      },
     )
     .await;
     let doc_parser = doc::DocParser::new(

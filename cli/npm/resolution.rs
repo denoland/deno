@@ -11,9 +11,13 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
+
+use crate::lockfile::Lockfile;
 
 use super::cache::should_sync_download;
 use super::registry::NpmPackageInfo;
@@ -171,6 +175,24 @@ impl NpmPackageId {
     } else {
       None
     }
+  }
+
+  pub fn serialize_for_lock_file(&self) -> String {
+    format!("{}@{}", self.name, self.version)
+  }
+
+  pub fn deserialize_from_lock_file(id: &str) -> Result<Self, AnyError> {
+    let reference = NpmPackageReference::from_str(&format!("npm:{}", id))
+      .with_context(|| {
+        format!("Unable to deserialize npm package reference: {}", id)
+      })?;
+    let version =
+      NpmVersion::parse(&reference.req.version_req.unwrap().to_string())
+        .unwrap();
+    Ok(Self {
+      name: reference.req.name,
+      version,
+    })
   }
 }
 
@@ -344,6 +366,88 @@ impl NpmResolutionSnapshot {
       }
     }
     maybe_best_version.cloned()
+  }
+
+  pub async fn from_lockfile(
+    lockfile: Arc<Mutex<Lockfile>>,
+    api: &NpmRegistryApi,
+  ) -> Result<Self, AnyError> {
+    let mut package_reqs = HashMap::new();
+    let mut packages_by_name: HashMap<String, Vec<NpmVersion>> = HashMap::new();
+    let mut packages = HashMap::new();
+
+    {
+      let lockfile = lockfile.lock();
+
+      for (key, value) in &lockfile.content.npm.specifiers {
+        let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
+          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+        let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
+        package_reqs.insert(reference.req, package_id.version.clone());
+      }
+
+      for (key, value) in &lockfile.content.npm.packages {
+        let package_id = NpmPackageId::deserialize_from_lock_file(key)?;
+        let mut dependencies = HashMap::default();
+
+        for (name, specifier) in &value.dependencies {
+          dependencies.insert(
+            name.to_string(),
+            NpmPackageId::deserialize_from_lock_file(specifier)?,
+          );
+        }
+
+        for (name, id) in &dependencies {
+          packages_by_name
+            .entry(name.to_string())
+            .or_default()
+            .push(id.version.clone());
+        }
+
+        let package = NpmResolutionPackage {
+          id: package_id.clone(),
+          // temporary dummy value
+          dist: NpmPackageVersionDistInfo {
+            tarball: "foobar".to_string(),
+            shasum: "foobar".to_string(),
+            integrity: Some("foobar".to_string()),
+          },
+          dependencies,
+        };
+
+        packages.insert(package_id.clone(), package);
+      }
+    }
+
+    let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
+
+    for package_id in packages.keys() {
+      let package_id = package_id.clone();
+      let api = api.clone();
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = api.package_info(&package_id.name).await?;
+        Result::<_, AnyError>::Ok((package_id, info))
+      }));
+    }
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_id, info) = result??;
+
+      let version_and_info = get_resolved_package_version_and_info(
+        &package_id.name,
+        &NpmVersionReq::parse(&package_id.version.to_string()).unwrap(),
+        info,
+        None,
+      )?;
+
+      let package = packages.get_mut(&package_id).unwrap();
+      package.dist = version_and_info.info.dist;
+    }
+
+    Ok(Self {
+      package_reqs,
+      packages_by_name,
+      packages,
+    })
   }
 }
 
@@ -627,6 +731,20 @@ impl NpmResolution {
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
+  }
+
+  pub fn lock(
+    &self,
+    lockfile: &mut Lockfile,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<(), AnyError> {
+    for (package_req, version) in snapshot.package_reqs.iter() {
+      lockfile.insert_npm_specifier(package_req, version.to_string());
+    }
+    for package in self.all_packages() {
+      lockfile.check_or_insert_npm_package(&package)?;
+    }
+    Ok(())
   }
 }
 
