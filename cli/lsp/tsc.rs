@@ -3009,7 +3009,7 @@ impl From<&config::WorkspaceSettings> for UserPreferences {
         (&inlay_hints.parameter_names.enabled).into(),
       ),
       include_inlay_parameter_name_hints_when_argument_matches_name: Some(
-        inlay_hints
+        !inlay_hints
           .parameter_names
           .suppress_when_argument_matches_name,
       ),
@@ -3020,9 +3020,7 @@ impl From<&config::WorkspaceSettings> for UserPreferences {
         inlay_hints.variable_types.enabled,
       ),
       include_inlay_variable_type_hints_when_type_matches_name: Some(
-        inlay_hints
-          .variable_types
-          .suppress_when_argument_matches_name,
+        !inlay_hints.variable_types.suppress_when_type_matches_name,
       ),
       include_inlay_property_declaration_type_hints: Some(
         inlay_hints.property_declaration_types.enabled,
@@ -3447,6 +3445,7 @@ mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
   use crate::http_util::HeadersMap;
+  use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
@@ -4305,5 +4304,28 @@ mod tests {
         }
       );
     }
+  }
+
+  #[test]
+  fn include_supress_inlay_hit_settings() {
+    let mut settings = WorkspaceSettings::default();
+    settings
+      .inlay_hints
+      .parameter_names
+      .suppress_when_argument_matches_name = true;
+    settings
+      .inlay_hints
+      .variable_types
+      .suppress_when_type_matches_name = true;
+    let user_preferences: UserPreferences = (&settings).into();
+    assert_eq!(
+      user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
+      Some(false)
+    );
+    assert_eq!(
+      user_preferences
+        .include_inlay_parameter_name_hints_when_argument_matches_name,
+      Some(false)
+    );
   }
 }
