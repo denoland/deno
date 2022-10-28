@@ -3020,9 +3020,7 @@ impl From<&config::WorkspaceSettings> for UserPreferences {
         inlay_hints.variable_types.enabled,
       ),
       include_inlay_variable_type_hints_when_type_matches_name: Some(
-        !inlay_hints
-          .variable_types
-          .suppress_when_argument_matches_name,
+        !inlay_hints.variable_types.suppress_when_type_matches_name,
       ),
       include_inlay_property_declaration_type_hints: Some(
         inlay_hints.property_declaration_types.enabled,
@@ -4318,7 +4316,7 @@ mod tests {
     settings
       .inlay_hints
       .variable_types
-      .suppress_when_argument_matches_name = true;
+      .suppress_when_type_matches_name = true;
     let user_preferences: UserPreferences = (&settings).into();
     assert_eq!(
       user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
