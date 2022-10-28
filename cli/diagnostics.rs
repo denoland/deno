@@ -40,7 +40,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "listen",
   "listenDatagram",
   "dlopen",
-  "osRelease",
   "ppid",
   "removeSignalListener",
   "shutdown",

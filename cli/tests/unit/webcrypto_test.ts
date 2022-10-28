@@ -1965,3 +1965,18 @@ Deno.test(async function testECspkiRoundTrip() {
   const spki = await crypto.subtle.exportKey("spki", publicKey);
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
+
+Deno.test(async function testHmacJwkImport() {
+  await crypto.subtle.importKey(
+    "jwk",
+    {
+      kty: "oct",
+      use: "sig",
+      alg: "HS256",
+      k: "hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg",
+    },
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+});
