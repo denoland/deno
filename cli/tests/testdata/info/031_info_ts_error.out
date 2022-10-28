@@ -1,5 +1,7 @@
 [WILDCARD]
 local: [WILDCARD]031_info_ts_error.ts
 type: TypeScript
-dependencies: 0 unique (total [WILDCARD])
+dependencies: 0 unique
+size: [WILDCARD]
+
 [WILDCARD]031_info_ts_error.ts ([WILDCARD])

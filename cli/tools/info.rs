@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
@@ -22,6 +23,12 @@ use crate::args::InfoFlags;
 use crate::checksum;
 use crate::display;
 use crate::lsp;
+use crate::npm::NpmPackageId;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageReq;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmResolutionPackage;
+use crate::npm::NpmResolutionSnapshot;
 use crate::proc_state::ProcState;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
@@ -34,7 +41,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       display::write_json_to_stdout(&json!(graph))?;
     } else {
       let mut output = String::new();
-      fmt_module_graph(&graph, &mut output)?;
+      GraphDisplayContext::write(&graph, &ps.npm_resolver, &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
@@ -121,564 +128,454 @@ fn print_cache_info(
   }
 }
 
-const SIBLING_CONNECTOR: char = '├';
-const LAST_SIBLING_CONNECTOR: char = '└';
-const CHILD_DEPS_CONNECTOR: char = '┬';
-const CHILD_NO_DEPS_CONNECTOR: char = '─';
-const VERTICAL_CONNECTOR: char = '│';
-const EMPTY_CONNECTOR: char = ' ';
+struct TreeNode {
+  text: String,
+  children: Vec<TreeNode>,
+}
 
-fn fmt_module_graph(graph: &ModuleGraph, f: &mut impl Write) -> fmt::Result {
-  if graph.roots.is_empty() || graph.roots.len() > 1 {
-    return writeln!(
-      f,
-      "{} displaying graphs that have multiple roots is not supported.",
-      colors::red("error:")
-    );
-  }
-  let root_specifier = graph.resolve(&graph.roots[0].0);
-  match graph.try_get(&root_specifier) {
-    Ok(Some(root)) => {
-      if let Some(cache_info) = root.maybe_cache_info.as_ref() {
-        if let Some(local) = &cache_info.local {
-          writeln!(
-            f,
-            "{} {}",
-            colors::bold("local:"),
-            local.to_string_lossy()
-          )?;
-        }
-        if let Some(emit) = &cache_info.emit {
-          writeln!(f, "{} {}", colors::bold("emit:"), emit.to_string_lossy())?;
-        }
-        if let Some(map) = &cache_info.map {
-          writeln!(f, "{} {}", colors::bold("map:"), map.to_string_lossy())?;
-        }
-      }
-      writeln!(f, "{} {}", colors::bold("type:"), root.media_type)?;
-      let modules = graph.modules();
-      let total_size: f64 = modules.iter().map(|m| m.size() as f64).sum();
-      let dep_count = modules.len() - 1;
-      writeln!(
-        f,
-        "{} {} unique {}",
-        colors::bold("dependencies:"),
-        dep_count,
-        colors::gray(format!("(total {})", display::human_size(total_size)))
-      )?;
-      writeln!(
-        f,
-        "\n{} {}",
-        root_specifier,
-        colors::gray(format!("({})", display::human_size(root.size() as f64)))
-      )?;
-      let mut seen = HashSet::new();
-      let dep_len = root.dependencies.len();
-      for (idx, (_, dep)) in root.dependencies.iter().enumerate() {
-        fmt_dep_info(
-          dep,
-          f,
-          "",
-          idx == dep_len - 1 && root.maybe_types_dependency.is_none(),
-          graph,
-          &mut seen,
-        )?;
-      }
-      Ok(())
-    }
-    Err(ModuleGraphError::Missing(_)) => {
-      writeln!(f, "{} module could not be found", colors::red("error:"))
-    }
-    Err(err) => {
-      writeln!(f, "{} {}", colors::red("error:"), err)
-    }
-    Ok(None) => {
-      writeln!(f, "{} an internal error occurred", colors::red("error:"))
+impl TreeNode {
+  pub fn from_text(text: String) -> Self {
+    Self {
+      text,
+      children: Default::default(),
     }
   }
 }
 
-fn fmt_dep_info<S: AsRef<str> + fmt::Display + Clone>(
-  dep: &Dependency,
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  graph: &ModuleGraph,
-  seen: &mut HashSet<ModuleSpecifier>,
+fn print_tree_node<TWrite: Write>(
+  tree_node: &TreeNode,
+  writer: &mut TWrite,
 ) -> fmt::Result {
-  if !dep.maybe_code.is_none() {
-    fmt_resolved_info(
-      &dep.maybe_code,
-      f,
-      prefix.clone(),
-      dep.maybe_type.is_none() && last,
+  fn print_children<TWrite: Write>(
+    writer: &mut TWrite,
+    prefix: &str,
+    children: &Vec<TreeNode>,
+  ) -> fmt::Result {
+    const SIBLING_CONNECTOR: char = '├';
+    const LAST_SIBLING_CONNECTOR: char = '└';
+    const CHILD_DEPS_CONNECTOR: char = '┬';
+    const CHILD_NO_DEPS_CONNECTOR: char = '─';
+    const VERTICAL_CONNECTOR: char = '│';
+    const EMPTY_CONNECTOR: char = ' ';
+
+    let child_len = children.len();
+    for (index, child) in children.iter().enumerate() {
+      let is_last = index + 1 == child_len;
+      let sibling_connector = if is_last {
+        LAST_SIBLING_CONNECTOR
+      } else {
+        SIBLING_CONNECTOR
+      };
+      let child_connector = if child.children.is_empty() {
+        CHILD_NO_DEPS_CONNECTOR
+      } else {
+        CHILD_DEPS_CONNECTOR
+      };
+      writeln!(
+        writer,
+        "{} {}",
+        colors::gray(format!(
+          "{}{}─{}",
+          prefix, sibling_connector, child_connector
+        )),
+        child.text
+      )?;
+      let child_prefix = format!(
+        "{}{}{}",
+        prefix,
+        if is_last {
+          EMPTY_CONNECTOR
+        } else {
+          VERTICAL_CONNECTOR
+        },
+        EMPTY_CONNECTOR
+      );
+      print_children(writer, &child_prefix, &child.children)?;
+    }
+
+    Ok(())
+  }
+
+  writeln!(writer, "{}", tree_node.text)?;
+  print_children(writer, "", &tree_node.children)?;
+  Ok(())
+}
+
+/// Precached information about npm packages that are used in deno info.
+#[derive(Default)]
+struct NpmInfo {
+  package_sizes: HashMap<NpmPackageId, u64>,
+  resolved_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  specifiers: HashMap<ModuleSpecifier, NpmPackageReq>,
+}
+
+impl NpmInfo {
+  pub fn build<'a>(
+    graph: &'a ModuleGraph,
+    npm_resolver: &'a NpmPackageResolver,
+    npm_snapshot: &'a NpmResolutionSnapshot,
+  ) -> Self {
+    let mut info = NpmInfo::default();
+    if !npm_resolver.has_packages() {
+      return info; // skip going over the specifiers if there's no npm packages
+    }
+
+    for (specifier, _) in graph.specifiers() {
+      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        info
+          .specifiers
+          .insert(specifier.clone(), reference.req.clone());
+        if let Ok(package) =
+          npm_snapshot.resolve_package_from_deno_module(&reference.req)
+        {
+          info.resolved_reqs.insert(reference.req, package.id.clone());
+          if !info.packages.contains_key(&package.id) {
+            info.fill_package_info(package, npm_resolver, npm_snapshot);
+          }
+        }
+      }
+    }
+
+    info
+  }
+
+  fn fill_package_info<'a>(
+    &mut self,
+    package: &NpmResolutionPackage,
+    npm_resolver: &'a NpmPackageResolver,
+    npm_snapshot: &'a NpmResolutionSnapshot,
+  ) {
+    self.packages.insert(package.id.clone(), package.clone());
+    if let Ok(size) = npm_resolver.package_size(&package.id) {
+      self.package_sizes.insert(package.id.clone(), size);
+    }
+    for id in package.dependencies.values() {
+      if !self.packages.contains_key(id) {
+        if let Some(package) = npm_snapshot.package_from_id(id) {
+          self.fill_package_info(package, npm_resolver, npm_snapshot);
+        }
+      }
+    }
+  }
+
+  pub fn package_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<&NpmResolutionPackage> {
+    self
+      .specifiers
+      .get(specifier)
+      .and_then(|package_req| self.resolved_reqs.get(package_req))
+      .and_then(|id| self.packages.get(id))
+  }
+}
+
+struct GraphDisplayContext<'a> {
+  graph: &'a ModuleGraph,
+  npm_info: NpmInfo,
+  seen: HashSet<String>,
+}
+
+impl<'a> GraphDisplayContext<'a> {
+  pub fn write<TWrite: Write>(
+    graph: &'a ModuleGraph,
+    npm_resolver: &'a NpmPackageResolver,
+    writer: &mut TWrite,
+  ) -> fmt::Result {
+    let npm_snapshot = npm_resolver.snapshot();
+    let npm_info = NpmInfo::build(graph, npm_resolver, &npm_snapshot);
+    Self {
       graph,
-      false,
-      seen,
-    )?;
+      npm_info,
+      seen: Default::default(),
+    }
+    .into_writer(writer)
   }
-  if !dep.maybe_type.is_none() {
-    fmt_resolved_info(&dep.maybe_type, f, prefix, last, graph, true, seen)?;
-  }
-  Ok(())
-}
 
-fn fmt_module_info<S: AsRef<str> + fmt::Display + Clone>(
-  module: &Module,
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  graph: &ModuleGraph,
-  type_dep: bool,
-  seen: &mut HashSet<ModuleSpecifier>,
-) -> fmt::Result {
-  let was_seen = seen.contains(&module.specifier);
-  let children = !((module.dependencies.is_empty()
-    && module.maybe_types_dependency.is_none())
-    || was_seen);
-  let (specifier_str, size_str) = if was_seen {
-    let specifier_str = if type_dep {
-      colors::italic_gray(&module.specifier).to_string()
-    } else {
-      colors::gray(&module.specifier).to_string()
-    };
-    (specifier_str, colors::gray(" *").to_string())
-  } else {
-    let specifier_str = if type_dep {
-      colors::italic(&module.specifier).to_string()
-    } else {
-      module.specifier.to_string()
-    };
-    let size_str =
-      colors::gray(format!(" ({})", display::human_size(module.size() as f64)))
-        .to_string();
-    (specifier_str, size_str)
-  };
+  fn into_writer<TWrite: Write>(mut self, writer: &mut TWrite) -> fmt::Result {
+    if self.graph.roots.is_empty() || self.graph.roots.len() > 1 {
+      return writeln!(
+        writer,
+        "{} displaying graphs that have multiple roots is not supported.",
+        colors::red("error:")
+      );
+    }
 
-  seen.insert(module.specifier.clone());
-
-  fmt_info_msg(
-    f,
-    prefix.clone(),
-    last,
-    children,
-    format!("{}{}", specifier_str, size_str),
-  )?;
-
-  if !was_seen {
-    let mut prefix = prefix.to_string();
-    if last {
-      prefix.push(EMPTY_CONNECTOR);
-    } else {
-      prefix.push(VERTICAL_CONNECTOR);
-    }
-    prefix.push(EMPTY_CONNECTOR);
-    let dep_len = module.dependencies.len();
-    if let Some((_, type_dep)) = &module.maybe_types_dependency {
-      fmt_resolved_info(type_dep, f, &prefix, dep_len == 0, graph, true, seen)?;
-    }
-    for (idx, (_, dep)) in module.dependencies.iter().enumerate() {
-      fmt_dep_info(
-        dep,
-        f,
-        &prefix,
-        idx == dep_len - 1 && module.maybe_types_dependency.is_none(),
-        graph,
-        seen,
-      )?;
-    }
-  }
-  Ok(())
-}
-
-fn fmt_error_info<S: AsRef<str> + fmt::Display + Clone>(
-  err: &ModuleGraphError,
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  specifier: &ModuleSpecifier,
-  seen: &mut HashSet<ModuleSpecifier>,
-) -> fmt::Result {
-  seen.insert(specifier.clone());
-  match err {
-    ModuleGraphError::InvalidSource(_, _) => {
-      fmt_error_msg(f, prefix, last, specifier, "(invalid source)")
-    }
-    ModuleGraphError::InvalidTypeAssertion { .. } => {
-      fmt_error_msg(f, prefix, last, specifier, "(invalid import assertion)")
-    }
-    ModuleGraphError::LoadingErr(_, _) => {
-      fmt_error_msg(f, prefix, last, specifier, "(loading error)")
-    }
-    ModuleGraphError::ParseErr(_, _) => {
-      fmt_error_msg(f, prefix, last, specifier, "(parsing error)")
-    }
-    ModuleGraphError::ResolutionError(_) => {
-      fmt_error_msg(f, prefix, last, specifier, "(resolution error)")
-    }
-    ModuleGraphError::UnsupportedImportAssertionType(_, _) => fmt_error_msg(
-      f,
-      prefix,
-      last,
-      specifier,
-      "(unsupported import assertion)",
-    ),
-    ModuleGraphError::UnsupportedMediaType(_, _) => {
-      fmt_error_msg(f, prefix, last, specifier, "(unsupported)")
-    }
-    ModuleGraphError::Missing(_) => {
-      fmt_error_msg(f, prefix, last, specifier, "(missing)")
-    }
-  }
-}
-
-fn fmt_info_msg<S, M>(
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  children: bool,
-  msg: M,
-) -> fmt::Result
-where
-  S: AsRef<str> + fmt::Display + Clone,
-  M: AsRef<str> + fmt::Display,
-{
-  let sibling_connector = if last {
-    LAST_SIBLING_CONNECTOR
-  } else {
-    SIBLING_CONNECTOR
-  };
-  let child_connector = if children {
-    CHILD_DEPS_CONNECTOR
-  } else {
-    CHILD_NO_DEPS_CONNECTOR
-  };
-  writeln!(
-    f,
-    "{} {}",
-    colors::gray(format!(
-      "{}{}─{}",
-      prefix, sibling_connector, child_connector
-    )),
-    msg
-  )
-}
-
-fn fmt_error_msg<S, M>(
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  specifier: &ModuleSpecifier,
-  error_msg: M,
-) -> fmt::Result
-where
-  S: AsRef<str> + fmt::Display + Clone,
-  M: AsRef<str> + fmt::Display,
-{
-  fmt_info_msg(
-    f,
-    prefix,
-    last,
-    false,
-    format!("{} {}", colors::red(specifier), colors::red_bold(error_msg)),
-  )
-}
-
-fn fmt_resolved_info<S: AsRef<str> + fmt::Display + Clone>(
-  resolved: &Resolved,
-  f: &mut impl Write,
-  prefix: S,
-  last: bool,
-  graph: &ModuleGraph,
-  type_dep: bool,
-  seen: &mut HashSet<ModuleSpecifier>,
-) -> fmt::Result {
-  match resolved {
-    Resolved::Ok { specifier, .. } => {
-      let resolved_specifier = graph.resolve(specifier);
-      match graph.try_get(&resolved_specifier) {
-        Ok(Some(module)) => {
-          fmt_module_info(module, f, prefix, last, graph, type_dep, seen)
+    let root_specifier = self.graph.resolve(&self.graph.roots[0].0);
+    match self.graph.try_get(&root_specifier) {
+      Ok(Some(root)) => {
+        if let Some(cache_info) = root.maybe_cache_info.as_ref() {
+          if let Some(local) = &cache_info.local {
+            writeln!(
+              writer,
+              "{} {}",
+              colors::bold("local:"),
+              local.to_string_lossy()
+            )?;
+          }
+          if let Some(emit) = &cache_info.emit {
+            writeln!(
+              writer,
+              "{} {}",
+              colors::bold("emit:"),
+              emit.to_string_lossy()
+            )?;
+          }
+          if let Some(map) = &cache_info.map {
+            writeln!(
+              writer,
+              "{} {}",
+              colors::bold("map:"),
+              map.to_string_lossy()
+            )?;
+          }
         }
-        Err(err) => {
-          fmt_error_info(&err, f, prefix, last, &resolved_specifier, seen)
+        writeln!(writer, "{} {}", colors::bold("type:"), root.media_type)?;
+        let modules = self.graph.modules();
+        let total_modules_size =
+          modules.iter().map(|m| m.size() as f64).sum::<f64>();
+        let total_npm_package_size = self
+          .npm_info
+          .package_sizes
+          .values()
+          .map(|s| *s as f64)
+          .sum::<f64>();
+        let total_size = total_modules_size + total_npm_package_size;
+        let dep_count = modules.len() - 1 + self.npm_info.packages.len()
+          - self.npm_info.resolved_reqs.len();
+        writeln!(
+          writer,
+          "{} {} unique",
+          colors::bold("dependencies:"),
+          dep_count,
+        )?;
+        writeln!(
+          writer,
+          "{} {}",
+          colors::bold("size:"),
+          display::human_size(total_size),
+        )?;
+        writeln!(writer)?;
+        let root_node = self.build_module_info(root, false);
+        print_tree_node(&root_node, writer)?;
+        Ok(())
+      }
+      Err(ModuleGraphError::Missing(_)) => {
+        writeln!(
+          writer,
+          "{} module could not be found",
+          colors::red("error:")
+        )
+      }
+      Err(err) => {
+        writeln!(writer, "{} {}", colors::red("error:"), err)
+      }
+      Ok(None) => {
+        writeln!(
+          writer,
+          "{} an internal error occurred",
+          colors::red("error:")
+        )
+      }
+    }
+  }
+
+  fn build_dep_info(&mut self, dep: &Dependency) -> Vec<TreeNode> {
+    let mut children = Vec::with_capacity(2);
+    if !dep.maybe_code.is_none() {
+      if let Some(child) = self.build_resolved_info(&dep.maybe_code, false) {
+        children.push(child);
+      }
+    }
+    if !dep.maybe_type.is_none() {
+      if let Some(child) = self.build_resolved_info(&dep.maybe_type, true) {
+        children.push(child);
+      }
+    }
+    children
+  }
+
+  fn build_module_info(&mut self, module: &Module, type_dep: bool) -> TreeNode {
+    enum PackageOrSpecifier {
+      Package(NpmResolutionPackage),
+      Specifier(ModuleSpecifier),
+    }
+
+    use PackageOrSpecifier::*;
+
+    let package_or_specifier =
+      match self.npm_info.package_from_specifier(&module.specifier) {
+        Some(package) => Package(package.clone()),
+        None => Specifier(module.specifier.clone()),
+      };
+    let was_seen = !self.seen.insert(match &package_or_specifier {
+      Package(package) => package.id.to_string(),
+      Specifier(specifier) => specifier.to_string(),
+    });
+    let header_text = if was_seen {
+      let specifier_str = if type_dep {
+        colors::italic_gray(&module.specifier).to_string()
+      } else {
+        colors::gray(&module.specifier).to_string()
+      };
+      format!("{} {}", specifier_str, colors::gray("*"))
+    } else {
+      let specifier_str = if type_dep {
+        colors::italic(&module.specifier).to_string()
+      } else {
+        module.specifier.to_string()
+      };
+      let header_text = match &package_or_specifier {
+        Package(package) => {
+          format!("{} - {}", specifier_str, package.id.version)
         }
-        Ok(None) => fmt_info_msg(
-          f,
-          prefix,
-          last,
-          false,
-          format!(
+        Specifier(_) => specifier_str,
+      };
+      let maybe_size = match &package_or_specifier {
+        Package(package) => self
+          .npm_info
+          .package_sizes
+          .get(&package.id)
+          .map(|s| *s as u64),
+        Specifier(_) => module
+          .maybe_source
+          .as_ref()
+          .map(|s| s.as_bytes().len() as u64),
+      };
+      format!("{} {}", header_text, maybe_size_to_text(maybe_size))
+    };
+
+    let mut tree_node = TreeNode::from_text(header_text);
+
+    if !was_seen {
+      if let Some((_, type_dep)) = &module.maybe_types_dependency {
+        if let Some(child) = self.build_resolved_info(type_dep, true) {
+          tree_node.children.push(child);
+        }
+      }
+      match &package_or_specifier {
+        Package(package) => {
+          tree_node.children.extend(self.build_npm_deps(package));
+        }
+        Specifier(_) => {
+          for dep in module.dependencies.values() {
+            tree_node.children.extend(self.build_dep_info(dep));
+          }
+        }
+      }
+    }
+    tree_node
+  }
+
+  fn build_npm_deps(
+    &mut self,
+    package: &NpmResolutionPackage,
+  ) -> Vec<TreeNode> {
+    let mut deps = package.dependencies.values().collect::<Vec<_>>();
+    deps.sort();
+    let mut children = Vec::with_capacity(deps.len());
+    for dep_id in deps.into_iter() {
+      let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
+      let size_str = maybe_size_to_text(maybe_size);
+      let mut child =
+        TreeNode::from_text(format!("npm:{} {}", dep_id, size_str));
+      if let Some(package) = self.npm_info.packages.get(dep_id) {
+        if !package.dependencies.is_empty() {
+          if self.seen.contains(&package.id.to_string()) {
+            child.text = format!("{} {}", child.text, colors::gray("*"));
+          } else {
+            let package = package.clone();
+            child.children.extend(self.build_npm_deps(&package));
+          }
+        }
+      }
+      children.push(child);
+    }
+    children
+  }
+
+  fn build_error_info(
+    &mut self,
+    err: &ModuleGraphError,
+    specifier: &ModuleSpecifier,
+  ) -> TreeNode {
+    self.seen.insert(specifier.to_string());
+    match err {
+      ModuleGraphError::InvalidSource(_, _) => {
+        self.build_error_msg(specifier, "(invalid source)")
+      }
+      ModuleGraphError::InvalidTypeAssertion { .. } => {
+        self.build_error_msg(specifier, "(invalid import assertion)")
+      }
+      ModuleGraphError::LoadingErr(_, _) => {
+        self.build_error_msg(specifier, "(loading error)")
+      }
+      ModuleGraphError::ParseErr(_, _) => {
+        self.build_error_msg(specifier, "(parsing error)")
+      }
+      ModuleGraphError::ResolutionError(_) => {
+        self.build_error_msg(specifier, "(resolution error)")
+      }
+      ModuleGraphError::UnsupportedImportAssertionType(_, _) => {
+        self.build_error_msg(specifier, "(unsupported import assertion)")
+      }
+      ModuleGraphError::UnsupportedMediaType(_, _) => {
+        self.build_error_msg(specifier, "(unsupported)")
+      }
+      ModuleGraphError::Missing(_) => {
+        self.build_error_msg(specifier, "(missing)")
+      }
+    }
+  }
+
+  fn build_error_msg(
+    &self,
+    specifier: &ModuleSpecifier,
+    error_msg: &str,
+  ) -> TreeNode {
+    TreeNode::from_text(format!(
+      "{} {}",
+      colors::red(specifier),
+      colors::red_bold(error_msg)
+    ))
+  }
+
+  fn build_resolved_info(
+    &mut self,
+    resolved: &Resolved,
+    type_dep: bool,
+  ) -> Option<TreeNode> {
+    match resolved {
+      Resolved::Ok { specifier, .. } => {
+        let resolved_specifier = self.graph.resolve(specifier);
+        Some(match self.graph.try_get(&resolved_specifier) {
+          Ok(Some(module)) => self.build_module_info(module, type_dep),
+          Err(err) => self.build_error_info(&err, &resolved_specifier),
+          Ok(None) => TreeNode::from_text(format!(
             "{} {}",
             colors::red(specifier),
             colors::red_bold("(missing)")
-          ),
-        ),
+          )),
+        })
       }
-    }
-    Resolved::Err(err) => fmt_info_msg(
-      f,
-      prefix,
-      last,
-      false,
-      format!(
+      Resolved::Err(err) => Some(TreeNode::from_text(format!(
         "{} {}",
         colors::italic(err.to_string()),
         colors::red_bold("(resolve error)")
-      ),
-    ),
-    _ => Ok(()),
+      ))),
+      _ => None,
+    }
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use deno_graph::source::CacheInfo;
-  use deno_graph::source::MemoryLoader;
-  use deno_graph::source::Source;
-  use test_util::strip_ansi_codes;
-
-  use super::*;
-  use std::path::PathBuf;
-
-  #[tokio::test]
-  async fn test_info_graph() {
-    let mut loader = MemoryLoader::new(
-      vec![
-        (
-          "https://deno.land/x/example/a.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/a.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"import * as b from "./b.ts";
-            import type { F } from "./f.d.ts";
-            import * as g from "./g.js";
-            "#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/b.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/b.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"
-            // @deno-types="./c.d.ts"
-            import * as c from "./c.js";
-            import * as d from "./d.ts";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/c.js",
-          Source::Module {
-            specifier: "https://deno.land/x/example/c.js",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/javascript",
-            )]),
-            content: r#"export const c = "c";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/c.d.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/c.d.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"export const c: "c";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/d.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/d.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"import * as e from "./e.ts";
-            export const d = "d";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/e.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/e.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"import * as b from "./b.ts";
-            export const e = "e";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/f.d.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/f.d.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"export interface F { }"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/g.js",
-          Source::Module {
-            specifier: "https://deno.land/x/example/g.js",
-            maybe_headers: Some(vec![
-              ("content-type", "application/javascript"),
-              ("x-typescript-types", "./g.d.ts"),
-            ]),
-            content: r#"export const g = "g";"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/g.d.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/g.d.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"export const g: "g";"#,
-          },
-        ),
-      ],
-      vec![(
-        "https://deno.land/x/example/a.ts",
-        CacheInfo {
-          local: Some(PathBuf::from(
-            "/cache/deps/https/deno.land/x/example/a.ts",
-          )),
-          emit: Some(PathBuf::from(
-            "/cache/deps/https/deno.land/x/example/a.js",
-          )),
-          ..Default::default()
-        },
-      )],
-    );
-    let root_specifier =
-      ModuleSpecifier::parse("https://deno.land/x/example/a.ts").unwrap();
-    let graph = deno_graph::create_graph(
-      vec![(root_specifier, ModuleKind::Esm)],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        locker: None,
-        module_analyzer: None,
-        reporter: None,
-      },
-    )
-    .await;
-    let mut output = String::new();
-    fmt_module_graph(&graph, &mut output).unwrap();
-    assert_eq!(
-      strip_ansi_codes(&output),
-      r#"local: /cache/deps/https/deno.land/x/example/a.ts
-emit: /cache/deps/https/deno.land/x/example/a.js
-type: TypeScript
-dependencies: 8 unique (total 477B)
-
-https://deno.land/x/example/a.ts (129B)
-├─┬ https://deno.land/x/example/b.ts (120B)
-│ ├── https://deno.land/x/example/c.js (21B)
-│ ├── https://deno.land/x/example/c.d.ts (20B)
-│ └─┬ https://deno.land/x/example/d.ts (62B)
-│   └─┬ https://deno.land/x/example/e.ts (62B)
-│     └── https://deno.land/x/example/b.ts *
-├── https://deno.land/x/example/f.d.ts (22B)
-└─┬ https://deno.land/x/example/g.js (21B)
-  └── https://deno.land/x/example/g.d.ts (20B)
-"#
-    );
-  }
-
-  #[tokio::test]
-  async fn test_info_graph_import_assertion() {
-    let mut loader = MemoryLoader::new(
-      vec![
-        (
-          "https://deno.land/x/example/a.ts",
-          Source::Module {
-            specifier: "https://deno.land/x/example/a.ts",
-            maybe_headers: Some(vec![(
-              "content-type",
-              "application/typescript",
-            )]),
-            content: r#"import b from "./b.json" assert { type: "json" };
-            const c = await import("./c.json", { assert: { type: "json" } });
-            "#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/b.json",
-          Source::Module {
-            specifier: "https://deno.land/x/example/b.json",
-            maybe_headers: Some(vec![("content-type", "application/json")]),
-            content: r#"{"b":"c"}"#,
-          },
-        ),
-        (
-          "https://deno.land/x/example/c.json",
-          Source::Module {
-            specifier: "https://deno.land/x/example/c.json",
-            maybe_headers: Some(vec![("content-type", "application/json")]),
-            content: r#"{"c":1}"#,
-          },
-        ),
-      ],
-      vec![(
-        "https://deno.land/x/example/a.ts",
-        CacheInfo {
-          local: Some(PathBuf::from(
-            "/cache/deps/https/deno.land/x/example/a.ts",
-          )),
-          emit: Some(PathBuf::from(
-            "/cache/deps/https/deno.land/x/example/a.js",
-          )),
-          ..Default::default()
-        },
-      )],
-    );
-    let root_specifier =
-      ModuleSpecifier::parse("https://deno.land/x/example/a.ts").unwrap();
-    let graph = deno_graph::create_graph(
-      vec![(root_specifier, ModuleKind::Esm)],
-      &mut loader,
-      deno_graph::GraphOptions {
-        is_dynamic: false,
-        imports: None,
-        resolver: None,
-        locker: None,
-        module_analyzer: None,
-        reporter: None,
-      },
-    )
-    .await;
-    let mut output = String::new();
-    fmt_module_graph(&graph, &mut output).unwrap();
-    assert_eq!(
-      strip_ansi_codes(&output),
-      r#"local: /cache/deps/https/deno.land/x/example/a.ts
-emit: /cache/deps/https/deno.land/x/example/a.js
-type: TypeScript
-dependencies: 2 unique (total 156B)
-
-https://deno.land/x/example/a.ts (140B)
-├── https://deno.land/x/example/b.json (9B)
-└── https://deno.land/x/example/c.json (7B)
-"#
-    );
-  }
+fn maybe_size_to_text(maybe_size: Option<u64>) -> String {
+  colors::gray(format!(
+    "({})",
+    match maybe_size {
+      Some(size) => display::human_size(size as f64),
+      None => "unknown".to_string(),
+    }
+  ))
+  .to_string()
 }
