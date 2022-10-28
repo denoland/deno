@@ -2268,6 +2268,7 @@ pub mod tests {
   #[derive(Copy, Clone)]
   enum Mode {
     Async,
+    AsyncDeferred,
     AsyncZeroCopy(bool),
   }
 
@@ -2276,17 +2277,25 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  #[op(deferred)]
+  #[op]
   async fn op_test(
     rc_op_state: Rc<RefCell<OpState>>,
     control: u8,
     buf: Option<ZeroCopyBuf>,
   ) -> Result<u8, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // False positive.
     let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    match test_state.mode {
+    let mode = test_state.mode;
+    drop(op_state_);
+    match mode {
       Mode::Async => {
+        assert_eq!(control, 42);
+        Ok(43)
+      }
+      Mode::AsyncDeferred => {
+        tokio::task::yield_now().await;
         assert_eq!(control, 42);
         Ok(43)
       }
@@ -2339,14 +2348,15 @@ pub mod tests {
 
   #[test]
   fn test_ref_unref_ops() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.opAsync("op_test", 42);
-        var p2 = Deno.core.opAsync("op_test", 42);
+        var p1 = Deno.core.ops.op_test(42);
+        var p2 = Deno.core.ops.op_test(42);
         "#,
       )
       .unwrap();
@@ -2399,6 +2409,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2417,6 +2428,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2433,6 +2445,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2447,6 +2460,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -3090,7 +3104,6 @@ pub mod tests {
 function main() {
   console.log("asdf);
 }
-
 main();
 "#,
     );
@@ -3110,18 +3123,16 @@ function assert(cond) {
     throw Error("assert");
   }
 }
-
 function main() {
   assert(false);
 }
-
 main();
         "#,
     );
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
-    at main (error_stack.js:9:3)
-    at error_stack.js:12:1"#;
+    at main (error_stack.js:8:3)
+    at error_stack.js:10:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -3139,7 +3150,6 @@ main();
       throw new Error("async");
     });
   })();
-
   try {
     await p;
   } catch (error) {
@@ -3152,7 +3162,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5"#;
+    at async error_async_stack.js:9:5"#;
 
       match runtime.poll_event_loop(cx, false) {
         Poll::Ready(Err(e)) => {
@@ -3207,6 +3217,7 @@ if (errMessage !== "higher-level sync error: original sync error") {
         .execute_script(
           "test_error_context_async.js",
           r#"
+Deno.core.initializeAsyncOps();
 (async () => {
   let errMessage;
   try {
@@ -3245,7 +3256,6 @@ function assertEquals(a, b) {
 const sab = new SharedArrayBuffer(16);
 const i32a = new Int32Array(sab);
 globalThis.resolved = false;
-
 (function() {
   const result = Atomics.waitAsync(i32a, 0, 0);
   result.value.then(
@@ -3253,7 +3263,6 @@ globalThis.resolved = false;
     () => { assertUnreachable();
   });
 })();
-
 const notify_return_value = Atomics.notify(i32a, 0, 1);
 assertEquals(1, notify_return_value);
 "#,
@@ -3363,7 +3372,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.opAsync('op_async_borrow')",
+        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -3437,7 +3446,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
+Deno.core.initializeAsyncOps();
+Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
   lines: {
     100: {
       unit: "m"
@@ -3475,6 +3485,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
+        Deno.core.initializeAsyncOps();
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -3485,7 +3496,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             results.push("nextTick");
             Deno.core.ops.op_set_has_tick_scheduled(false);
           });
-
           Deno.core.ops.op_set_has_tick_scheduled(true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
@@ -3696,7 +3706,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           Deno.core.ops.op_store_pending_promise_exception(promise);
           Deno.core.ops.op_promise_reject();
         });
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3714,7 +3723,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             prev(...args);
           });
         }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3764,7 +3772,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
           Deno.core.ops.op_promise_reject();
         });
-
         throw new Error('top level throw');
         "#;
 
@@ -3895,8 +3902,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-
-
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3907,7 +3912,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a1.length > 0 || a1b.length > 0) {
           throw new Error("expecting a1 & a1b to be detached");
         }
-
         const a3 = Deno.core.ops.op_boomerang(a2b);
         if (a3.byteLength != 3) {
           throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
@@ -3918,7 +3922,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;
