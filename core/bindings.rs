@@ -107,10 +107,6 @@ pub fn initialize_context<'s>(
 
   // Snapshot already registered `Deno.core.ops` but
   // extensions may provide ops that aren't part of the snapshot.
-  //
-  // TODO(@littledivy): This is extra complexity for
-  // a really weird usecase. Remove this once all
-  // tsc ops are static at snapshot time.
   if snapshot_loaded {
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
