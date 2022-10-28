@@ -1,17 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::op;
-use deno_core::serde::Deserialize;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::Extension;
-use deno_core::JsRuntime;
-use deno_core::OpState;
-use deno_core::RuntimeOptions;
-use regex::Regex;
-use std::collections::HashMap;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
@@ -316,8 +304,6 @@ mod ts {
 
 mod js {
   use super::*;
-  use deno_cache::SqliteBackedCache;
-  use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
 
@@ -379,7 +365,6 @@ mod js {
     let js_runtime = JsRuntime::new(RuntimeOptions {
       will_snapshot: true,
       startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
-      extensions,
       ..Default::default()
     });
     create_snapshot(js_runtime, snapshot_path, files);
