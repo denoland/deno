@@ -97,6 +97,7 @@ pub fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s, ()>,
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
+  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
@@ -111,7 +112,7 @@ pub fn initialize_context<'s>(
     // Grab the Deno.core.ops object & init it
     let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
-    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
+    initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded, will_snapshot);
 
     return scope.escape(context);
   }
@@ -125,7 +126,7 @@ pub fn initialize_context<'s>(
   // Bind functions to Deno.core.ops.*
   let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
 
-  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded);
+  initialize_ops(scope, ops_obj, op_ctxs, snapshot_loaded, will_snapshot);
   scope.escape(context)
 }
 
@@ -134,6 +135,7 @@ fn initialize_ops(
   ops_obj: v8::Local<v8::Object>,
   op_ctxs: &[OpCtx],
   snapshot_loaded: bool,
+  will_snapshot: bool,
 ) {
   for ctx in op_ctxs {
     let ctx_ptr = ctx as *const OpCtx as *const c_void;
@@ -149,6 +151,7 @@ fn initialize_ops(
         ctx_ptr,
         &ctx.decl.fast_fn,
         snapshot_loaded,
+        will_snapshot,
       );
     } else {
       set_func_raw(
@@ -159,6 +162,7 @@ fn initialize_ops(
         ctx_ptr,
         &None,
         snapshot_loaded,
+        will_snapshot,
       );
     }
   }
@@ -186,6 +190,7 @@ pub fn set_func_raw(
   external_data: *const c_void,
   fast_function: &Option<Box<dyn FastFunction>>,
   snapshot_loaded: bool,
+  will_snapshot: bool,
 ) {
   let key = v8::String::new(scope, name).unwrap();
   let external = v8::External::new(scope, external_data as *mut c_void);
@@ -193,11 +198,11 @@ pub fn set_func_raw(
     v8::FunctionTemplate::builder_raw(callback).data(external.into());
   let templ = if let Some(fast_function) = fast_function {
     // Don't initialize fast ops when snapshotting, the external references count mismatch.
-    if !snapshot_loaded {
-      builder.build(scope)
-    } else {
+    if snapshot_loaded && !will_snapshot {
       // TODO(@littledivy): Support fast api overloads in ops.
       builder.build_fast(scope, &**fast_function, None)
+    } else {
+      builder.build(scope)
     }
   } else {
     builder.build(scope)

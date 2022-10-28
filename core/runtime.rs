@@ -82,6 +82,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
+  will_snapshot: bool,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -373,7 +374,6 @@ impl JsRuntime {
 
     let mut isolate = if options.will_snapshot {
       let (snapshot_creator, snapshot_loaded) = if let Some(snapshot) = options.startup_snapshot {
-        println!("1");
         (match snapshot {
           Snapshot::Static(data) => {
             v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
@@ -399,7 +399,7 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, options.will_snapshot);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -437,7 +437,7 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, options.will_snapshot);
 
         global_context = v8::Global::new(scope, context);
       }
@@ -478,6 +478,7 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       built_from_snapshot: has_startup_snapshot,
+      will_snapshot: options.will_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
@@ -490,8 +491,10 @@ impl JsRuntime {
     js_runtime.init_extension_ops().unwrap();
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
-    let realm = js_runtime.global_realm();
-    js_runtime.init_extension_js(&realm).unwrap();
+    if !has_startup_snapshot {
+      let realm = js_runtime.global_realm();
+      js_runtime.init_extension_js(&realm).unwrap();
+    }
     // Init callbacks (opresolve)
     js_runtime.init_cbs();
 
@@ -563,6 +566,7 @@ impl JsRuntime {
         scope,
         &self.state.borrow().op_ctxs,
         self.built_from_snapshot,
+        self.will_snapshot,
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -2795,6 +2799,7 @@ pub mod tests {
         .unwrap();
     }
   }
+
   #[test]
   fn test_snapshot_callbacks() {
     let snapshot = {
