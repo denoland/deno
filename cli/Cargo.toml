@@ -84,6 +84,7 @@ indicatif = "=0.17.1"
 jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
+lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 mitata = "=0.0.7"
 monch = "=0.2.1"
 notify = "=5.0.0"
