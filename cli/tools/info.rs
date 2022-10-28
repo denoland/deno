@@ -139,22 +139,12 @@ fn add_npm_packages_to_json(
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
   if let Some(modules) = modules {
-    let modules_count = modules.len();
-
-    if modules_count > 1 {
-      // In this case, npm packages could be listed here as a module, but we
-      // want to filter them out and only have them listed as dependencies.
-      // This is done because various npm specifiers will be listed as "modules"
-      // but really they're just unresolved references. So there could be listed
-      // multiple npm specifiers
-      for i in (0..modules.len()).rev() {
-        if modules[i].get("kind").and_then(|k| k.as_str()) == Some("external") {
-          modules.remove(i);
-        }
-      }
-    } else if modules_count == 1
+    if modules.len() == 1
       && modules[0].get("kind").and_then(|k| k.as_str()) == Some("external")
     {
+      // If there is only one module and it's "external", then that means
+      // someone provided an npm specifier as a cli argument. In this case,
+      // we want to show which npm package the cli argument resolved to.
       let module = &mut modules[0];
       let maybe_package = module
         .get("specifier")
@@ -170,6 +160,17 @@ fn add_npm_packages_to_json(
           module.insert("npmPackage".to_string(), format!("{}", pkg.id).into());
           // change the "kind" to be "npm"
           module.insert("kind".to_string(), "npm".into());
+        }
+      }
+    } else {
+      // Filter out npm package references from the modules and instead
+      // have them only listed as dependencies. This is done because various
+      // npm specifiers modules in the graph are really just unresolved
+      // references. So there could be listed multiple npm specifiers
+      // that would resolve to a single npm package.
+      for i in (0..modules.len()).rev() {
+        if modules[i].get("kind").and_then(|k| k.as_str()) == Some("external") {
+          modules.remove(i);
         }
       }
     }
