@@ -3150,6 +3150,7 @@ if (errMessage !== "higher-level sync error: original sync error") {
         .execute_script(
           "test_error_context_async.js",
           r#"
+Deno.core.initializeAsyncOps();
 (async () => {
   let errMessage;
   try {
