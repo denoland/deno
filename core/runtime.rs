@@ -2957,7 +2957,6 @@ pub mod tests {
   }
 
   #[test]
-  #[ignore]
   fn test_heap_limits() {
     let create_params =
       v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
@@ -3002,7 +3001,6 @@ pub mod tests {
   }
 
   #[test]
-  #[ignore]
   fn test_heap_limit_cb_multiple() {
     let create_params =
       v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
