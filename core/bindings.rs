@@ -186,6 +186,7 @@ pub fn set_func(
 
 // Register a raw v8::FunctionCallback
 // with some external data.
+#[allow(clippy::too_many_arguments)]
 pub fn set_func_raw(
   scope: &mut v8::HandleScope<'_>,
   obj: v8::Local<v8::Object>,

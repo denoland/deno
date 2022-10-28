@@ -373,21 +373,34 @@ impl JsRuntime {
     let global_context;
 
     let mut isolate = if options.will_snapshot {
-      let (snapshot_creator, snapshot_loaded) = if let Some(snapshot) = options.startup_snapshot {
-        (match snapshot {
-          Snapshot::Static(data) => {
-            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
-          },
-          Snapshot::JustCreated(data) => {
-            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
-          }
-          Snapshot::Boxed(data) => {
-            v8::Isolate::snapshot_creator_from_existing_snapshot(data, Some(refs))
-          }
-        }, true)
-      } else {
-        (v8::Isolate::snapshot_creator(Some(refs)), false)
-      };
+      let (snapshot_creator, snapshot_loaded) =
+        if let Some(snapshot) = options.startup_snapshot {
+          (
+            match snapshot {
+              Snapshot::Static(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::JustCreated(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::Boxed(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+            },
+            true,
+          )
+        } else {
+          (v8::Isolate::snapshot_creator(Some(refs)), false)
+        };
 
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
@@ -398,8 +411,12 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, options.will_snapshot);
+        let context = bindings::initialize_context(
+          scope,
+          &op_ctxs,
+          snapshot_loaded,
+          options.will_snapshot,
+        );
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
@@ -436,8 +453,12 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded, options.will_snapshot);
+        let context = bindings::initialize_context(
+          scope,
+          &op_ctxs,
+          snapshot_loaded,
+          options.will_snapshot,
+        );
 
         global_context = v8::Global::new(scope, context);
       }
