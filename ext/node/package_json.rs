@@ -50,6 +50,12 @@ impl PackageJson {
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(&path)?;
+    Self::load_skip_read_permission(path)
+  }
+
+  pub fn load_skip_read_permission(
+    path: PathBuf,
+  ) -> Result<PackageJson, AnyError> {
     let source = match std::fs::read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {

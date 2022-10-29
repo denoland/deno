@@ -770,6 +770,16 @@ Deno.test(function consoleTestStringifyIterable() {
     `[ <1 empty item> ]`,
   );
 
+  assertEquals(
+    stringify([, , 1]),
+    `[ <2 empty items>, 1 ]`,
+  );
+
+  assertEquals(
+    stringify([1, , , 1]),
+    `[ 1, <2 empty items>, 1 ]`,
+  );
+
   const withEmptyElAndMoreItems = Array(500);
   withEmptyElAndMoreItems.fill(0, 50, 80);
   withEmptyElAndMoreItems.fill(2, 100, 120);

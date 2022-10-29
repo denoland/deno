@@ -13,7 +13,8 @@
     String,
     TypeError,
     Uint8Array,
-    PromiseAll,
+    PromisePrototypeThen,
+    SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
@@ -36,6 +37,7 @@
     stdout = "piped",
     stderr = "piped",
     signal = undefined,
+    windowsRawArguments = false,
   } = {}) {
     const child = ops.op_spawn_child({
       cmd: pathFromURL(command),
@@ -48,6 +50,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     }, apiName);
     return new Child(illegalConstructorKey, {
       ...child,
@@ -153,7 +156,7 @@
 
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
-      this.#status = waitPromise.then((res) => {
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -177,7 +180,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await PromiseAll([
+      const [status, stdout, stderr] = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),
@@ -243,6 +246,7 @@
     stdin = "null",
     stdout = "piped",
     stderr = "piped",
+    windowsRawArguments = false,
   } = {}) {
     if (stdin === "piped") {
       throw new TypeError(
@@ -260,6 +264,7 @@
       stdin,
       stdout,
       stderr,
+      windowsRawArguments,
     });
     return {
       success: result.status.success,

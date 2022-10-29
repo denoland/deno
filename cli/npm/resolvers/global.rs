@@ -2,6 +2,7 @@
 
 //! Code for global npm cache resolution.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,7 +12,11 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
+use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_node::TYPES_CONDITIONS;
 
+use crate::fs_util;
+use crate::lockfile::Lockfile;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::resolvers::common::cache_packages;
@@ -65,14 +70,35 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
+    conditions: &[&str],
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
       .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
-    let pkg = self
+    let pkg_result = self
       .resolution
-      .resolve_package_from_package(name, &referrer_pkg_id)?;
-    Ok(self.package_folder(&pkg.id))
+      .resolve_package_from_package(name, &referrer_pkg_id);
+    if conditions == TYPES_CONDITIONS && !name.starts_with("@types/") {
+      // When doing types resolution, the package must contain a "types"
+      // entry, or else it will then search for a @types package
+      if let Ok(pkg) = pkg_result {
+        let package_folder = self.package_folder(&pkg.id);
+        let package_json = PackageJson::load_skip_read_permission(
+          package_folder.join("package.json"),
+        )?;
+        if package_json.types.is_some() {
+          return Ok(package_folder);
+        }
+      }
+
+      let name = format!("@types/{}", name);
+      let pkg = self
+        .resolution
+        .resolve_package_from_package(&name, &referrer_pkg_id)?;
+      Ok(self.package_folder(&pkg.id))
+    } else {
+      Ok(self.package_folder(&pkg_result?.id))
+    }
   }
 
   fn resolve_package_folder_from_specifier(
@@ -83,6 +109,11 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
       .cache
       .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
     Ok(self.package_folder(&pkg_id))
+  }
+
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+    let package_folder = self.package_folder(package_id);
+    Ok(fs_util::dir_size(&package_folder)?)
   }
 
   fn has_packages(&self) -> bool {
@@ -96,12 +127,19 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     let resolver = self.clone();
     async move {
       resolver.resolution.add_package_reqs(packages).await?;
-      cache_packages(
-        resolver.resolution.all_packages(),
-        &resolver.cache,
-        &resolver.registry_url,
-      )
-      .await
+      cache_packages_in_resolver(&resolver).await
+    }
+    .boxed()
+  }
+
+  fn set_package_reqs(
+    &self,
+    packages: HashSet<NpmPackageReq>,
+  ) -> BoxFuture<'static, Result<(), AnyError>> {
+    let resolver = self.clone();
+    async move {
+      resolver.resolution.set_package_reqs(packages).await?;
+      cache_packages_in_resolver(&resolver).await
     }
     .boxed()
   }
@@ -114,4 +152,20 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
   }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    let snapshot = self.resolution.snapshot();
+    self.resolution.lock(lockfile, &snapshot)
+  }
+}
+
+async fn cache_packages_in_resolver(
+  resolver: &GlobalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  cache_packages(
+    resolver.resolution.all_packages(),
+    &resolver.cache,
+    &resolver.registry_url,
+  )
+  .await
 }

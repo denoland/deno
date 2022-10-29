@@ -60,6 +60,7 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
+      self.ps.prepare_node_std_graph().await?;
       self.initialize_main_module_for_node().await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
@@ -280,6 +281,9 @@ impl CliMainWorker {
   async fn execute_main_module_possibly_with_npm(
     &mut self,
   ) -> Result<(), AnyError> {
+    if self.ps.npm_resolver.has_packages() {
+      self.ps.prepare_node_std_graph().await?;
+    }
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
   }
@@ -302,6 +306,7 @@ impl CliMainWorker {
   }
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
+    self.ps.prepare_node_std_graph().await?;
     node::initialize_runtime(&mut self.worker.js_runtime).await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
@@ -372,10 +377,6 @@ pub async fn create_main_worker(
     (main_module, false)
   };
 
-  if ps.npm_resolver.has_packages() {
-    ps.prepare_node_std_graph().await?;
-  }
-
   let module_loader = CliModuleLoader::new(ps.clone());
 
   let maybe_inspector_server = ps.maybe_inspector_server.clone();
@@ -418,6 +419,7 @@ pub async fn create_main_worker(
         .log_level()
         .map_or(false, |l| l == log::Level::Debug),
       enable_testing_features: ps.options.enable_testing_features(),
+      locale: deno_core::v8::icu::get_language_tag(),
       location: ps.options.location_flag().map(ToOwned::to_owned),
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
@@ -534,6 +536,7 @@ fn create_web_worker_callback(
           .log_level()
           .map_or(false, |l| l == log::Level::Debug),
         enable_testing_features: ps.options.enable_testing_features(),
+        locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
         is_tty: colors::is_tty(),

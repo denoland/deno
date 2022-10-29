@@ -1,0 +1,4 @@
+Download [WILDCARD]
+error: Integrity check failed for npm package: "@babel/parser@7.19.0".
+  Cache has "sha512-74bEXKX2h+8rrfQUfsBfuZZHzsEs6Eql4pqy/T4Nn6Y9wNPggQOqD6z6pn5Bl8ZfysKouFZT/UXEH94ummEeQw==" and lockfile has "sha512-foobar!".
+  Use "--lock-write" flag to update the lockfile.

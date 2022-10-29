@@ -11,22 +11,28 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
 
+use crate::lockfile::Lockfile;
+
+use super::cache::should_sync_download;
 use super::registry::NpmPackageInfo;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::NpmPackageVersionInfo;
 use super::registry::NpmRegistryApi;
 use super::semver::NpmVersion;
+use super::semver::NpmVersionReq;
 use super::semver::SpecifierVersionReq;
 
 /// The version matcher used for npm schemed urls is more strict than
 /// the one used by npm packages and so we represent either via a trait.
 pub trait NpmVersionMatcher {
+  fn tag(&self) -> Option<&str>;
   fn matches(&self, version: &NpmVersion) -> bool;
-  fn is_latest(&self) -> bool;
   fn version_text(&self) -> String;
 }
 
@@ -124,15 +130,24 @@ impl std::fmt::Display for NpmPackageReq {
 }
 
 impl NpmVersionMatcher for NpmPackageReq {
-  fn matches(&self, version: &NpmVersion) -> bool {
+  fn tag(&self) -> Option<&str> {
     match &self.version_req {
-      Some(req) => req.matches(version),
-      None => version.pre.is_empty(),
+      Some(version_req) => version_req.tag(),
+      None => Some("latest"),
     }
   }
 
-  fn is_latest(&self) -> bool {
-    self.version_req.is_none()
+  fn matches(&self, version: &NpmVersion) -> bool {
+    match self.version_req.as_ref() {
+      Some(req) => {
+        assert_eq!(self.tag(), None);
+        match req.range() {
+          Some(range) => range.satisfies(version),
+          None => false,
+        }
+      }
+      None => version.pre.is_empty(),
+    }
   }
 
   fn version_text(&self) -> String {
@@ -160,6 +175,24 @@ impl NpmPackageId {
     } else {
       None
     }
+  }
+
+  pub fn serialize_for_lock_file(&self) -> String {
+    format!("{}@{}", self.name, self.version)
+  }
+
+  pub fn deserialize_from_lock_file(id: &str) -> Result<Self, AnyError> {
+    let reference = NpmPackageReference::from_str(&format!("npm:{}", id))
+      .with_context(|| {
+        format!("Unable to deserialize npm package reference: {}", id)
+      })?;
+    let version =
+      NpmVersion::parse(&reference.req.version_req.unwrap().to_string())
+        .unwrap();
+    Ok(Self {
+      name: reference.req.name,
+      version,
+    })
   }
 }
 
@@ -334,6 +367,88 @@ impl NpmResolutionSnapshot {
     }
     maybe_best_version.cloned()
   }
+
+  pub async fn from_lockfile(
+    lockfile: Arc<Mutex<Lockfile>>,
+    api: &NpmRegistryApi,
+  ) -> Result<Self, AnyError> {
+    let mut package_reqs = HashMap::new();
+    let mut packages_by_name: HashMap<String, Vec<NpmVersion>> = HashMap::new();
+    let mut packages = HashMap::new();
+
+    {
+      let lockfile = lockfile.lock();
+
+      for (key, value) in &lockfile.content.npm.specifiers {
+        let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
+          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+        let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
+        package_reqs.insert(reference.req, package_id.version.clone());
+      }
+
+      for (key, value) in &lockfile.content.npm.packages {
+        let package_id = NpmPackageId::deserialize_from_lock_file(key)?;
+        let mut dependencies = HashMap::default();
+
+        for (name, specifier) in &value.dependencies {
+          dependencies.insert(
+            name.to_string(),
+            NpmPackageId::deserialize_from_lock_file(specifier)?,
+          );
+        }
+
+        for (name, id) in &dependencies {
+          packages_by_name
+            .entry(name.to_string())
+            .or_default()
+            .push(id.version.clone());
+        }
+
+        let package = NpmResolutionPackage {
+          id: package_id.clone(),
+          // temporary dummy value
+          dist: NpmPackageVersionDistInfo {
+            tarball: "foobar".to_string(),
+            shasum: "foobar".to_string(),
+            integrity: Some("foobar".to_string()),
+          },
+          dependencies,
+        };
+
+        packages.insert(package_id.clone(), package);
+      }
+    }
+
+    let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
+
+    for package_id in packages.keys() {
+      let package_id = package_id.clone();
+      let api = api.clone();
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = api.package_info(&package_id.name).await?;
+        Result::<_, AnyError>::Ok((package_id, info))
+      }));
+    }
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_id, info) = result??;
+
+      let version_and_info = get_resolved_package_version_and_info(
+        &package_id.name,
+        &NpmVersionReq::parse(&package_id.version.to_string()).unwrap(),
+        info,
+        None,
+      )?;
+
+      let package = packages.get_mut(&package_id).unwrap();
+      package.dist = version_and_info.info.dist;
+    }
+
+    Ok(Self {
+      package_reqs,
+      packages_by_name,
+      packages,
+    })
+  }
 }
 
 pub struct NpmResolution {
@@ -365,41 +480,102 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    mut packages: Vec<NpmPackageReq>,
+    package_reqs: Vec<NpmPackageReq>,
   ) -> Result<(), AnyError> {
-    // multiple packages are resolved in alphabetical order
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
-
     // only allow one thread in here at a time
     let _permit = self.update_sempahore.acquire().await.unwrap();
-    let mut snapshot = self.snapshot.read().clone();
-    let mut pending_dependencies = VecDeque::new();
+    let snapshot = self.snapshot.read().clone();
+
+    let snapshot = self
+      .add_package_reqs_to_snapshot(package_reqs, snapshot)
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+    Ok(())
+  }
+
+  pub async fn set_package_reqs(
+    &self,
+    package_reqs: HashSet<NpmPackageReq>,
+  ) -> Result<(), AnyError> {
+    // only allow one thread in here at a time
+    let _permit = self.update_sempahore.acquire().await.unwrap();
+    let snapshot = self.snapshot.read().clone();
+
+    let has_removed_package = !snapshot
+      .package_reqs
+      .keys()
+      .all(|req| package_reqs.contains(req));
+    // if any packages were removed, we need to completely recreate the npm resolution snapshot
+    let snapshot = if has_removed_package {
+      NpmResolutionSnapshot::default()
+    } else {
+      snapshot
+    };
+    let snapshot = self
+      .add_package_reqs_to_snapshot(
+        package_reqs.into_iter().collect(),
+        snapshot,
+      )
+      .await?;
+
+    *self.snapshot.write() = snapshot;
+
+    Ok(())
+  }
+
+  async fn add_package_reqs_to_snapshot(
+    &self,
+    mut package_reqs: Vec<NpmPackageReq>,
+    mut snapshot: NpmResolutionSnapshot,
+  ) -> Result<NpmResolutionSnapshot, AnyError> {
+    // multiple packages are resolved in alphabetical order
+    package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
     // go over the top level packages first, then down the
     // tree one level at a time through all the branches
-    for package_ref in packages {
-      if snapshot.package_reqs.contains_key(&package_ref) {
+    let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
+    for package_req in package_reqs {
+      if snapshot.package_reqs.contains_key(&package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
       }
       // inspect the list of current packages
       if let Some(version) =
-        snapshot.resolve_best_package_version(&package_ref.name, &package_ref)
+        snapshot.resolve_best_package_version(&package_req.name, &package_req)
       {
-        snapshot.package_reqs.insert(package_ref, version);
+        snapshot.package_reqs.insert(package_req, version);
         continue; // done, no need to continue
       }
 
       // no existing best version, so resolve the current packages
-      let info = self.api.package_info(&package_ref.name).await?;
+      let api = self.api.clone();
+      let maybe_info = if should_sync_download() {
+        // for deterministic test output
+        Some(api.package_info(&package_req.name).await)
+      } else {
+        None
+      };
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        let info = match maybe_info {
+          Some(info) => info?,
+          None => api.package_info(&package_req.name).await?,
+        };
+        Result::<_, AnyError>::Ok((package_req, info))
+      }));
+    }
+
+    let mut pending_dependencies = VecDeque::new();
+    for result in futures::future::join_all(unresolved_tasks).await {
+      let (package_req, info) = result??;
       let version_and_info = get_resolved_package_version_and_info(
-        &package_ref.name,
-        &package_ref,
+        &package_req.name,
+        &package_req,
         info,
         None,
       )?;
       let id = NpmPackageId {
-        name: package_ref.name.clone(),
+        name: package_req.name.clone(),
         version: version_and_info.version.clone(),
       };
       let dependencies = version_and_info
@@ -418,12 +594,12 @@ impl NpmResolution {
       );
       snapshot
         .packages_by_name
-        .entry(package_ref.name.clone())
+        .entry(package_req.name.clone())
         .or_default()
         .push(version_and_info.version.clone());
       snapshot
         .package_reqs
-        .insert(package_ref, version_and_info.version);
+        .insert(package_req, version_and_info.version);
     }
 
     // now go down through the dependencies by tree depth
@@ -440,9 +616,8 @@ impl NpmResolution {
         ordering => ordering,
       });
 
-      // cache all the dependencies' registry infos in parallel when this env var isn't set
-      if std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") != Ok("1".to_string())
-      {
+      // cache all the dependencies' registry infos in parallel if should
+      if !should_sync_download() {
         let handles = deps
           .iter()
           .map(|dep| {
@@ -519,8 +694,14 @@ impl NpmResolution {
       }
     }
 
-    *self.snapshot.write() = snapshot;
-    Ok(())
+    Ok(snapshot)
+  }
+
+  pub fn resolve_package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<NpmResolutionPackage> {
+    self.snapshot.read().package_from_id(id).cloned()
   }
 
   pub fn resolve_package_from_package(
@@ -558,6 +739,20 @@ impl NpmResolution {
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
     self.snapshot.read().clone()
   }
+
+  pub fn lock(
+    &self,
+    lockfile: &mut Lockfile,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<(), AnyError> {
+    for (package_req, version) in snapshot.package_reqs.iter() {
+      lockfile.insert_npm_specifier(package_req, version.to_string());
+    }
+    for package in self.all_packages() {
+      lockfile.check_or_insert_npm_package(&package)?;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Clone)]
@@ -573,8 +768,24 @@ fn get_resolved_package_version_and_info(
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
-  if version_matcher.is_latest() {
-    if let Some(version) = info.dist_tags.get("latest") {
+  if let Some(tag) = version_matcher.tag() {
+    // For when someone just specifies @types/node, we want to pull in a
+    // "known good" version of @types/node that works well with Deno and
+    // not necessarily the latest version. For example, we might only be
+    // compatible with Node vX, but then Node vY is published so we wouldn't
+    // want to pull that in.
+    // Note: If the user doesn't want this behavior, then they can specify an
+    // explicit version.
+    if tag == "latest" && pkg_name == "@types/node" {
+      return get_resolved_package_version_and_info(
+        pkg_name,
+        &NpmVersionReq::parse("18.0.0 - 18.8.2").unwrap(),
+        info,
+        parent,
+      );
+    }
+
+    if let Some(version) = info.dist_tags.get(tag) {
       match info.versions.get(version) {
         Some(info) => {
           return Ok(VersionAndInfo {
@@ -584,26 +795,29 @@ fn get_resolved_package_version_and_info(
         }
         None => {
           bail!(
-            "Could not find version '{}' referenced in dist-tag 'latest'.",
+            "Could not find version '{}' referenced in dist-tag '{}'.",
             version,
+            tag,
           )
         }
       }
+    } else {
+      bail!("Could not find dist-tag '{}'.", tag,)
     }
-  }
-
-  for (_, version_info) in info.versions.into_iter() {
-    let version = NpmVersion::parse(&version_info.version)?;
-    if version_matcher.matches(&version) {
-      let is_best_version = maybe_best_version
-        .as_ref()
-        .map(|best_version| best_version.version.cmp(&version).is_lt())
-        .unwrap_or(true);
-      if is_best_version {
-        maybe_best_version = Some(VersionAndInfo {
-          version,
-          info: version_info,
-        });
+  } else {
+    for (_, version_info) in info.versions.into_iter() {
+      let version = NpmVersion::parse(&version_info.version)?;
+      if version_matcher.matches(&version) {
+        let is_best_version = maybe_best_version
+          .as_ref()
+          .map(|best_version| best_version.version.cmp(&version).is_lt())
+          .unwrap_or(true);
+        if is_best_version {
+          maybe_best_version = Some(VersionAndInfo {
+            version,
+            info: version_info,
+          });
+        }
       }
     }
   }

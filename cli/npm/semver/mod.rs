@@ -174,12 +174,12 @@ pub struct NpmVersionReq {
 }
 
 impl NpmVersionMatcher for NpmVersionReq {
-  fn matches(&self, version: &NpmVersion) -> bool {
-    self.satisfies(version)
+  fn tag(&self) -> Option<&str> {
+    None
   }
 
-  fn is_latest(&self) -> bool {
-    false
+  fn matches(&self, version: &NpmVersion) -> bool {
+    self.satisfies(version)
   }
 
   fn version_text(&self) -> String {
