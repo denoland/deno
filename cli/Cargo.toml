@@ -27,19 +27,7 @@ path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
 deno_runtime = { version = "0.82.0", path = "../runtime" }
-deno_broadcast_channel = { version = "0.68.0", path = "../ext/broadcast_channel" }
-deno_cache = { version = "0.6.0", path = "../ext/cache" }
-deno_console = { version = "0.74.0", path = "../ext/console" }
 deno_core = { version = "0.156.0", path = "../core" }
-deno_crypto = { version = "0.88.0", path = "../ext/crypto" }
-deno_fetch = { version = "0.97.0", path = "../ext/fetch" }
-deno_net = { version = "0.66.0", path = "../ext/net" }
-deno_node = { version = "0.11.0", path = "../ext/node" }
-deno_url = { version = "0.74.0", path = "../ext/url" }
-deno_web = { version = "0.105.0", path = "../ext/web" }
-deno_webgpu = { version = "0.75.0", path = "../ext/webgpu" }
-deno_websocket = { version = "0.79.0", path = "../ext/websocket" }
-deno_webstorage = { version = "0.69.0", path = "../ext/webstorage" }
 regex = "=1.6.0"
 serde = { version = "=1.0.144", features = ["derive"] }
 serde_json = "1.0.64"
@@ -88,6 +76,7 @@ jsonc-parser = { version = "=0.21.0", features = ["serde"] }
 libc = "=0.2.126"
 log = { version = "=0.4.17", features = ["serde"] }
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+lzzzz = '1.0'
 mitata = "=0.0.7"
 monch = "=0.2.1"
 notify = "=5.0.0"

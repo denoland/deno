@@ -400,9 +400,6 @@ impl JsRuntime {
       .into_boxed_slice();
 
     let refs = bindings::external_references(&op_ctxs, !options.will_snapshot);
-    use std::io::Write;
-    let mut x = std::fs::OpenOptions::new().write(true).append(true).create(true).open("../log.txt").unwrap();
-    write!(&mut x, "{} ", refs.len()).unwrap();
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;

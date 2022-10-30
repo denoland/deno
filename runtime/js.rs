@@ -41,7 +41,7 @@ mod tests {
   #[test]
   fn runtime_snapshot() {
     let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-      startup_snapshot: Some(snapshot()),
+      startup_snapshot: Some(deno_isolate_init()),
       ..Default::default()
     });
     js_runtime

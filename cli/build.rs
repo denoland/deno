@@ -4,7 +4,10 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_runtime::*;
+
 mod ts {
+  use super::*;
   use crate::deno_webgpu_get_declaration;
   use deno_core::error::{custom_error, AnyError};
   use deno_core::{op, Extension, JsRuntime, OpState, RuntimeOptions};
@@ -12,7 +15,6 @@ mod ts {
   use serde::Deserialize;
   use serde_json::{json, Value};
   use std::collections::HashMap;
-  use std::path::{Path, PathBuf};
 
   // TODO(bartlomieju): this module contains a lot of duplicated
   // logic with `runtime/build.rs`, factor out to `deno_core`.
@@ -304,8 +306,11 @@ mod ts {
 
 mod js {
   use super::*;
+  use deno_cache::SqliteBackedCache;
+  use deno_core::Extension;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
+  use permissions::Permissions;
 
   // TODO(bartlomieju): this module contains a lot of duplicated
   // logic with `cli/build.rs`, factor out to `deno_core`.
@@ -362,8 +367,39 @@ mod js {
   }
 
   pub fn create_cli_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
+    let extensions: Vec<Extension> = vec![
+      deno_webidl::init(),
+      deno_console::init(),
+      deno_url::init(),
+      deno_tls::init(),
+      deno_web::init::<Permissions>(
+        deno_web::BlobStore::default(),
+        Default::default(),
+      ),
+      deno_fetch::init::<Permissions>(Default::default()),
+      deno_cache::init::<SqliteBackedCache>(None),
+      deno_websocket::init::<Permissions>("".to_owned(), None, None),
+      deno_webstorage::init(None),
+      deno_crypto::init(None),
+      deno_webgpu::init(false),
+      deno_broadcast_channel::init(
+        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+        false, // No --unstable.
+      ),
+      deno_node::init::<Permissions>(false, None), // No --unstable.
+      deno_ffi::init::<Permissions>(false),
+      deno_net::init::<Permissions>(
+        None, false, // No --unstable.
+        None,
+      ),
+      deno_napi::init::<Permissions>(false),
+      deno_http::init(),
+      deno_flash::init::<Permissions>(false), // No --unstable
+    ];
+
     let js_runtime = JsRuntime::new(RuntimeOptions {
       will_snapshot: true,
+      extensions,
       startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
       ..Default::default()
     });
