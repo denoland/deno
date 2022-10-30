@@ -9,6 +9,7 @@
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
+  const { getLocationHref } = window.__bootstrap.location;
   const { DOMException } = window.__bootstrap.domException;
   const { Event, ErrorEvent, CloseEvent, MessageEvent, defineEventHandler } =
     window.__bootstrap.event;
@@ -174,9 +175,10 @@
       );
 
       let wsURL;
+      const baseURL = getLocationHref();
 
       try {
-        wsURL = new URL(url);
+        wsURL = new URL(url, baseURL);
       } catch (e) {
         throw new DOMException(e.message, "SyntaxError");
       }
