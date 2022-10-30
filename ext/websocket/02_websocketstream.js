@@ -7,6 +7,7 @@
   const core = window.Deno.core;
   const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
+  const { getLocationHref } = window.__bootstrap.location;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
   const { add, remove } = window.__bootstrap.abortSignal;
@@ -95,7 +96,8 @@
         context: "Argument 2",
       });
 
-      const wsURL = new URL(url);
+      const baseURL = getLocationHref();
+      const wsURL = new URL(url, baseURL);
 
       if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:" && wsURL.protocol !== "http:" && wsURL.protocol !== "https:") {
         throw new DOMException(
