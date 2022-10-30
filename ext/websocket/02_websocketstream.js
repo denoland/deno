@@ -97,7 +97,7 @@
 
       const wsURL = new URL(url);
 
-      if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
+      if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:" && wsURL.protocol !== "http:" && wsURL.protocol !== "https:") {
         throw new DOMException(
           "Only ws & wss schemes are allowed in a WebSocket URL.",
           "SyntaxError",
