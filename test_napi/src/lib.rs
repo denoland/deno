@@ -5,6 +5,7 @@
 use napi_sys::*;
 
 pub mod array;
+pub mod arraybuffer;
 pub mod r#async;
 pub mod callback;
 pub mod coerce;
@@ -67,6 +68,7 @@ unsafe extern "C" fn napi_register_module_v1(
   strings::init(env, exports);
   numbers::init(env, exports);
   typedarray::init(env, exports);
+  arraybuffer::init(env, exports);
   array::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
