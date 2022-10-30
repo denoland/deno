@@ -99,9 +99,14 @@
       const baseURL = getLocationHref();
       const wsURL = new URL(url, baseURL);
 
-      if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:" && wsURL.protocol !== "http:" && wsURL.protocol !== "https:") {
+      if (
+        wsURL.protocol !== "ws:" &&
+        wsURL.protocol !== "wss:" &&
+        wsURL.protocol !== "http:" &&
+        wsURL.protocol !== "https:"
+      ) {
         throw new DOMException(
-          "Only ws & wss schemes are allowed in a WebSocket URL.",
+          "Only ws, wss, http, and https schemes are allowed in a WebSocket URL.",
           "SyntaxError",
         );
       }
