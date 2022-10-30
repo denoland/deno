@@ -363,16 +363,16 @@ where
   let request = request.body(())?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
-    Some("wss") => 443,
-    Some("ws") => 80,
+    Some("wss") | Some("https") => 443,
+    Some("ws") | Some("http") => 80,
     _ => unreachable!(),
   });
   let addr = format!("{}:{}", domain, port);
   let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
-    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
-    Some("wss") => {
+    Some("ws") | Some("http") => MaybeTlsStream::Plain(tcp_socket),
+    Some("wss") | Some("https") => {
       let tls_config = create_client_config(
         root_cert_store,
         vec![],
