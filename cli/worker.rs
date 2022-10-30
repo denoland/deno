@@ -7,7 +7,11 @@ use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::serde_json::json;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::Extension;
+use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
@@ -38,6 +42,11 @@ pub struct CliMainWorker {
   is_main_cjs: bool,
   worker: MainWorker,
   ps: ProcState,
+
+  js_run_tests_callback: v8::Global<v8::Function>,
+  js_run_benchmarks_callback: v8::Global<v8::Function>,
+  js_enable_test_callback: v8::Global<v8::Function>,
+  js_enable_bench_callback: v8::Global<v8::Function>,
 }
 
 impl CliMainWorker {
@@ -171,7 +180,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.enable_test();
+    self.enable_test();
 
     // Enable op call tracing in core to enable better debugging of op sanitizer
     // failures.
@@ -197,10 +206,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self
-      .worker
-      .run_tests(&self.ps.options.shuffle_tests())
-      .await?;
+    self.run_tests(&self.ps.options.shuffle_tests()).await?;
     loop {
       if !self
         .worker
@@ -226,7 +232,7 @@ impl CliMainWorker {
     &mut self,
     mode: TestMode,
   ) -> Result<(), AnyError> {
-    self.worker.enable_test();
+    self.enable_test();
 
     self
       .worker
@@ -242,7 +248,7 @@ impl CliMainWorker {
     }
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self.worker.run_tests(&None).await?;
+    self.run_tests(&None).await?;
     loop {
       if !self
         .worker
@@ -257,13 +263,13 @@ impl CliMainWorker {
   }
 
   pub async fn run_bench_specifier(&mut self) -> Result<(), AnyError> {
-    self.worker.enable_bench();
+    self.enable_bench();
 
     // We execute the module module as a side module so that import.meta.main is not set.
     self.execute_side_module_possibly_with_npm().await?;
 
     self.worker.dispatch_load_event(&located_script_name!())?;
-    self.worker.run_benchmarks().await?;
+    self.run_benchmarks().await?;
     loop {
       if !self
         .worker
@@ -339,6 +345,70 @@ impl CliMainWorker {
       Ok(None)
     }
   }
+
+  /// Run tests declared with `Deno.test()`. Test events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
+  pub async fn run_tests(
+    &mut self,
+    shuffle: &Option<u64>,
+  ) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let cb = self.js_run_tests_callback.open(scope);
+      let this = v8::undefined(scope).into();
+      let options =
+        serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
+      let promise = cb.call(scope, this, &[options]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.worker.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
+  /// by calling ops which are currently only implemented in the CLI crate.
+  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
+  pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
+    let promise = {
+      let scope = &mut self.worker.js_runtime.handle_scope();
+      let cb = self.js_run_benchmarks_callback.open(scope);
+      let this = v8::undefined(scope).into();
+      let promise = cb.call(scope, this, &[]).unwrap();
+      v8::Global::new(scope, promise)
+    };
+    self.worker.js_runtime.resolve_value(promise).await?;
+    Ok(())
+  }
+
+  /// Enable `Deno.test()`. If this isn't called before executing user code,
+  /// `Deno.test()` calls will noop.
+  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
+  pub fn enable_test(&mut self) {
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let cb = self.js_enable_test_callback.open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
+  }
+
+  /// Enable `Deno.bench()`. If this isn't called before executing user code,
+  /// `Deno.bench()` calls will noop.
+  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
+  pub fn enable_bench(&mut self) {
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let cb = self.js_enable_bench_callback.open(scope);
+    let this = v8::undefined(scope).into();
+    cb.call(scope, this, &[]).unwrap();
+  }
+}
+
+fn grab_cb(
+  scope: &mut v8::HandleScope,
+  path: &str,
+) -> v8::Global<v8::Function> {
+  let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
+    .unwrap_or_else(|| panic!("{} must be defined", path));
+  v8::Global::new(scope, cb)
 }
 
 pub async fn create_main_worker(
@@ -455,16 +525,36 @@ pub async fn create_main_worker(
     stdio,
   };
 
-  let worker = MainWorker::bootstrap_from_options(
+  let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
     permissions,
     options,
   );
+
+  let (
+    js_run_tests_callback,
+    js_run_benchmarks_callback,
+    js_enable_test_callback,
+    js_enable_bench_callback,
+  ) = {
+    let scope = &mut worker.js_runtime.handle_scope();
+    (
+      grab_cb(scope, "__bootstrap.testing.runTests"),
+      grab_cb(scope, "__bootstrap.testing.runBenchmarks"),
+      grab_cb(scope, "__bootstrap.testing.enableTest"),
+      grab_cb(scope, "__bootstrap.testing.enableBench"),
+    )
+  };
+
   Ok(CliMainWorker {
     main_module,
     is_main_cjs,
     worker,
     ps: ps.clone(),
+    js_run_tests_callback,
+    js_run_benchmarks_callback,
+    js_enable_test_callback,
+    js_enable_bench_callback,
   })
 }
 
