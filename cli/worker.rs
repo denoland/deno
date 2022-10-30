@@ -672,11 +672,10 @@ fn create_web_worker_callback(
   })
 }
 
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::{FsModuleLoader, resolve_url_or_path};
+  use deno_core::{resolve_url_or_path, FsModuleLoader};
   use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
   use deno_runtime::deno_web::BlobStore;
 
