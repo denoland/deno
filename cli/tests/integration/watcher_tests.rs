@@ -582,7 +582,7 @@ fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
-#[cfg(not(macos))]
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn run_watch_external_watch_files() {
   let t = TempDir::new();
