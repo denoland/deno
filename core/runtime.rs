@@ -82,6 +82,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
+  snapshot_options: SnapshotOptions,
   built_from_snapshot: bool,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
@@ -180,7 +181,7 @@ pub struct JsRuntimeState {
   // TODO(nayeemrmn): This is polled in `exception_to_err_result()` which is
   // flimsy. Try to poll it similarly to `pending_promise_exceptions`.
   pub(crate) dispatched_exceptions: VecDeque<v8::Global<v8::Value>>,
-  inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
 }
 
@@ -203,6 +204,7 @@ fn v8_init(
     // This flag prevents "unresolved external reference" panic during
     // build, which started happening in V8 10.6
     " --noexperimental-async-stack-tagging-api",
+    " --harmony-change-array-by-copy",
   );
 
   if predictable {
@@ -275,6 +277,39 @@ pub struct RuntimeOptions {
   /// [CompiledWasmModuleStore]. If no [CompiledWasmModuleStore] is specified,
   /// `WebAssembly.Module` objects cannot be serialized.
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
+  pub inspector: bool,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum SnapshotOptions {
+  Load,
+  CreateFromExisting,
+  Create,
+  None,
+}
+
+impl SnapshotOptions {
+  pub fn loaded(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Load | SnapshotOptions::CreateFromExisting
+    )
+  }
+  pub fn will_snapshot(&self) -> bool {
+    matches!(
+      self,
+      SnapshotOptions::Create | SnapshotOptions::CreateFromExisting
+    )
+  }
+
+  fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
+    match (snapshot_loaded, will_snapshot) {
+      (true, true) => SnapshotOptions::CreateFromExisting,
+      (false, true) => SnapshotOptions::Create,
+      (true, false) => SnapshotOptions::Load,
+      (false, false) => SnapshotOptions::None,
+    }
+  }
 }
 
 impl Drop for JsRuntime {
@@ -369,10 +404,39 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
 
-    let mut isolate = if options.will_snapshot {
-      // TODO(ry) Support loading snapshots before snapshotting.
-      assert!(options.startup_snapshot.is_none());
-      let snapshot_creator = v8::Isolate::snapshot_creator(Some(refs));
+    let (mut isolate, snapshot_options) = if options.will_snapshot {
+      let (snapshot_creator, snapshot_loaded) =
+        if let Some(snapshot) = options.startup_snapshot {
+          (
+            match snapshot {
+              Snapshot::Static(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::JustCreated(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+              Snapshot::Boxed(data) => {
+                v8::Isolate::snapshot_creator_from_existing_snapshot(
+                  data,
+                  Some(refs),
+                )
+              }
+            },
+            true,
+          )
+        } else {
+          (v8::Isolate::snapshot_creator(Some(refs)), false)
+        };
+
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
       {
         // SAFETY: this is first use of `isolate_ptr` so we are sure we're
@@ -382,11 +446,12 @@ impl JsRuntime {
           isolate_ptr.read()
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(scope, &op_ctxs, false);
+        let context =
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
         global_context = v8::Global::new(scope, context);
         scope.set_default_context(context);
       }
-      isolate
+      (isolate, snapshot_options)
     } else {
       let mut params = options
         .create_params
@@ -409,6 +474,9 @@ impl JsRuntime {
         false
       };
 
+      let snapshot_options =
+        SnapshotOptions::from_bools(snapshot_loaded, options.will_snapshot);
+
       let isolate = v8::Isolate::new(params);
       let mut isolate = JsRuntime::setup_isolate(isolate);
       {
@@ -420,17 +488,23 @@ impl JsRuntime {
         };
         let scope = &mut v8::HandleScope::new(&mut isolate);
         let context =
-          bindings::initialize_context(scope, &op_ctxs, snapshot_loaded);
+          bindings::initialize_context(scope, &op_ctxs, snapshot_options);
 
         global_context = v8::Global::new(scope, context);
       }
 
-      isolate
+      (isolate, snapshot_options)
     };
 
     op_state.borrow_mut().put(isolate_ptr);
-    let inspector =
-      JsRuntimeInspector::new(&mut isolate, global_context.clone());
+    let inspector = if options.inspector {
+      Some(JsRuntimeInspector::new(
+        &mut isolate,
+        global_context.clone(),
+      ))
+    } else {
+      None
+    };
 
     let loader = options
       .module_loader
@@ -439,7 +513,7 @@ impl JsRuntime {
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm(global_context));
       state.op_ctxs = op_ctxs;
-      state.inspector = Some(inspector);
+      state.inspector = inspector;
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -455,6 +529,7 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       built_from_snapshot: has_startup_snapshot,
+      snapshot_options,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
       extensions: options.extensions,
@@ -541,7 +616,10 @@ impl JsRuntime {
       let context = bindings::initialize_context(
         scope,
         &self.state.borrow().op_ctxs,
-        self.built_from_snapshot,
+        SnapshotOptions::from_bools(
+          self.built_from_snapshot,
+          self.snapshot_options.will_snapshot(),
+        ),
       );
       JsRealm::new(v8::Global::new(scope, context))
     };
@@ -901,6 +979,18 @@ impl JsRuntime {
     }
   }
 
+  pub fn maybe_init_inspector(&mut self) {
+    if self.state.borrow().inspector.is_some() {
+      return;
+    }
+
+    let mut state = self.state.borrow_mut();
+    state.inspector = Some(JsRuntimeInspector::new(
+      self.v8_isolate.as_mut().unwrap(),
+      state.global_realm.clone().unwrap().0,
+    ));
+  }
+
   pub fn poll_value(
     &mut self,
     global: &v8::Global<v8::Value>,
@@ -970,11 +1060,17 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), Error>> {
-    // We always poll the inspector first
-    let _ = self.inspector().borrow_mut().poll_unpin(cx);
+    let has_inspector: bool;
+
     {
       let state = self.state.borrow();
+      has_inspector = state.inspector.is_some();
       state.waker.register(cx.waker());
+    }
+
+    if has_inspector {
+      // We poll the inspector first.
+      let _ = self.inspector().borrow_mut().poll_unpin(cx);
     }
 
     self.pump_v8_message_loop()?;
@@ -1030,10 +1126,12 @@ impl JsRuntime {
 
     let pending_state = self.event_loop_pending_state();
     if !pending_state.is_pending() && !maybe_scheduling {
-      let inspector_has_active_sessions =
-        self.inspector().borrow_mut().has_active_sessions();
-      if wait_for_inspector && inspector_has_active_sessions {
-        return Poll::Pending;
+      if has_inspector {
+        let inspector_has_active_sessions =
+          self.inspector().borrow_mut().has_active_sessions();
+        if wait_for_inspector && inspector_has_active_sessions {
+          return Poll::Pending;
+        }
       }
 
       return Poll::Ready(Ok(()));
@@ -2215,6 +2313,7 @@ pub mod tests {
   #[derive(Copy, Clone)]
   enum Mode {
     Async,
+    AsyncDeferred,
     AsyncZeroCopy(bool),
   }
 
@@ -2223,17 +2322,25 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  #[op(deferred)]
+  #[op]
   async fn op_test(
     rc_op_state: Rc<RefCell<OpState>>,
     control: u8,
     buf: Option<ZeroCopyBuf>,
   ) -> Result<u8, AnyError> {
+    #![allow(clippy::await_holding_refcell_ref)] // False positive.
     let op_state_ = rc_op_state.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
-    match test_state.mode {
+    let mode = test_state.mode;
+    drop(op_state_);
+    match mode {
       Mode::Async => {
+        assert_eq!(control, 42);
+        Ok(43)
+      }
+      Mode::AsyncDeferred => {
+        tokio::task::yield_now().await;
         assert_eq!(control, 42);
         Ok(43)
       }
@@ -2286,14 +2393,15 @@ pub mod tests {
 
   #[test]
   fn test_ref_unref_ops() {
-    let (mut runtime, _dispatch_count) = setup(Mode::Async);
+    let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         var promiseIdSymbol = Symbol.for("Deno.core.internalPromiseId");
-        var p1 = Deno.core.opAsync("op_test", 42);
-        var p2 = Deno.core.opAsync("op_test", 42);
+        var p1 = Deno.core.ops.op_test(42);
+        var p2 = Deno.core.ops.op_test(42);
         "#,
       )
       .unwrap();
@@ -2346,6 +2454,7 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test", control);
         async function main() {
           Deno.core.opAsync("op_test", control);
@@ -2364,6 +2473,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         const p = Deno.core.opAsync("op_test", 42);
         if (p[Symbol.for("Deno.core.internalPromiseId")] == undefined) {
           throw new Error("missing id on returned promise");
@@ -2380,6 +2490,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         Deno.core.opAsync("op_test");
         "#,
       )
@@ -2394,6 +2505,7 @@ pub mod tests {
       .execute_script(
         "filename.js",
         r#"
+        Deno.core.initializeAsyncOps();
         let zero_copy_a = new Uint8Array([0]);
         Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
@@ -2705,6 +2817,48 @@ pub mod tests {
       .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
+
+  #[test]
+  fn will_snapshot2() {
+    let startup_data = {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        will_snapshot: true,
+        ..Default::default()
+      });
+      runtime.execute_script("a.js", "let a = 1 + 2").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      will_snapshot: true,
+      startup_snapshot: Some(snapshot),
+      ..Default::default()
+    });
+
+    let startup_data = {
+      runtime
+        .execute_script("check_a.js", "if (a != 3) throw Error('x')")
+        .unwrap();
+      runtime.execute_script("b.js", "b = 2 + 3").unwrap();
+      runtime.snapshot()
+    };
+
+    let snapshot = Snapshot::JustCreated(startup_data);
+    {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        startup_snapshot: Some(snapshot),
+        ..Default::default()
+      });
+      runtime
+        .execute_script("check_b.js", "if (b != 5) throw Error('x')")
+        .unwrap();
+      runtime
+        .execute_script("check2.js", "if (!Deno.core) throw Error('x')")
+        .unwrap();
+    }
+  }
+
   #[test]
   fn test_snapshot_callbacks() {
     let snapshot = {
@@ -2993,7 +3147,6 @@ pub mod tests {
 function main() {
   console.log("asdf);
 }
-
 main();
 "#,
     );
@@ -3013,18 +3166,16 @@ function assert(cond) {
     throw Error("assert");
   }
 }
-
 function main() {
   assert(false);
 }
-
 main();
         "#,
     );
     let expected_error = r#"Error: assert
     at assert (error_stack.js:4:11)
-    at main (error_stack.js:9:3)
-    at error_stack.js:12:1"#;
+    at main (error_stack.js:8:3)
+    at error_stack.js:10:1"#;
     assert_eq!(result.unwrap_err().to_string(), expected_error);
   }
 
@@ -3042,7 +3193,6 @@ main();
       throw new Error("async");
     });
   })();
-
   try {
     await p;
   } catch (error) {
@@ -3055,7 +3205,7 @@ main();
       let expected_error = r#"Error: async
     at error_async_stack.js:5:13
     at async error_async_stack.js:4:5
-    at async error_async_stack.js:10:5"#;
+    at async error_async_stack.js:9:5"#;
 
       match runtime.poll_event_loop(cx, false) {
         Poll::Ready(Err(e)) => {
@@ -3063,6 +3213,74 @@ main();
         }
         _ => panic!(),
       };
+    })
+  }
+
+  #[test]
+  fn test_error_context() {
+    use anyhow::anyhow;
+
+    #[op]
+    fn op_err_sync() -> Result<(), Error> {
+      Err(anyhow!("original sync error").context("higher-level sync error"))
+    }
+
+    #[op]
+    async fn op_err_async() -> Result<(), Error> {
+      Err(anyhow!("original async error").context("higher-level async error"))
+    }
+
+    run_in_task(|cx| {
+      let ext = Extension::builder()
+        .ops(vec![op_err_sync::decl(), op_err_async::decl()])
+        .build();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "test_error_context_sync.js",
+          r#"
+let errMessage;
+try {
+  Deno.core.ops.op_err_sync();
+} catch (err) {
+  errMessage = err.message;
+}
+if (errMessage !== "higher-level sync error: original sync error") {
+  throw new Error("unexpected error message from op_err_sync: " + errMessage);
+}
+"#,
+        )
+        .unwrap();
+
+      let promise = runtime
+        .execute_script(
+          "test_error_context_async.js",
+          r#"
+Deno.core.initializeAsyncOps();
+(async () => {
+  let errMessage;
+  try {
+    await Deno.core.opAsync("op_err_async");
+  } catch (err) {
+    errMessage = err.message;
+  }
+  if (errMessage !== "higher-level async error: original async error") {
+    throw new Error("unexpected error message from op_err_async: " + errMessage);
+  }
+})()
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_value(&promise, cx) {
+        Poll::Ready(Ok(_)) => {}
+        Poll::Ready(Err(err)) => panic!("{:?}", err),
+        _ => panic!(),
+      }
     })
   }
 
@@ -3081,7 +3299,6 @@ function assertEquals(a, b) {
 const sab = new SharedArrayBuffer(16);
 const i32a = new Int32Array(sab);
 globalThis.resolved = false;
-
 (function() {
   const result = Atomics.waitAsync(i32a, 0, 0);
   result.value.then(
@@ -3089,7 +3306,6 @@ globalThis.resolved = false;
     () => { assertUnreachable();
   });
 })();
-
 const notify_return_value = Atomics.notify(i32a, 0, 1);
 assertEquals(1, notify_return_value);
 "#,
@@ -3199,7 +3415,7 @@ assertEquals(1, notify_return_value);
     runtime
       .execute_script(
         "op_async_borrow.js",
-        "Deno.core.opAsync('op_async_borrow')",
+        "Deno.core.initializeAsyncOps(); Deno.core.ops.op_async_borrow()",
       )
       .unwrap();
     runtime.run_event_loop(false).await.unwrap();
@@ -3273,7 +3489,8 @@ Deno.core.ops.op_sync_serialize_object_with_numbers_as_keys({
       .execute_script(
         "op_async_serialize_object_with_numbers_as_keys.js",
         r#"
-Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
+Deno.core.initializeAsyncOps();
+Deno.core.ops.op_async_serialize_object_with_numbers_as_keys({
   lines: {
     100: {
       unit: "m"
@@ -3311,6 +3528,7 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
       .execute_script(
         "macrotasks_and_nextticks.js",
         r#"
+        Deno.core.initializeAsyncOps();
         (async function () {
           const results = [];
           Deno.core.ops.op_set_macrotask_callback(() => {
@@ -3321,7 +3539,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             results.push("nextTick");
             Deno.core.ops.op_set_has_tick_scheduled(false);
           });
-
           Deno.core.ops.op_set_has_tick_scheduled(true);
           await Deno.core.opAsync('op_async_sleep');
           if (results[0] != "nextTick") {
@@ -3532,7 +3749,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
           Deno.core.ops.op_store_pending_promise_exception(promise);
           Deno.core.ops.op_promise_reject();
         });
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3550,7 +3766,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
             prev(...args);
           });
         }
-
         new Promise((_, reject) => reject(Error("reject")));
         "#,
       )
@@ -3600,7 +3815,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         Deno.core.ops.op_set_promise_reject_callback((type, promise, reason) => {
           Deno.core.ops.op_promise_reject();
         });
-
         throw new Error('top level throw');
         "#;
 
@@ -3731,8 +3945,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         const a1b = a1.subarray(0, 3);
         const a2 = new Uint8Array([5,10,15]);
         const a2b = a2.subarray(0, 3);
-
-
         if (!(a1.length > 0 && a1b.length > 0)) {
           throw new Error("a1 & a1b should have a length");
         }
@@ -3743,7 +3955,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a1.length > 0 || a1b.length > 0) {
           throw new Error("expecting a1 & a1b to be detached");
         }
-
         const a3 = Deno.core.ops.op_boomerang(a2b);
         if (a3.byteLength != 3) {
           throw new Error(`Expected a3.byteLength === 3, got ${a3.byteLength}`);
@@ -3754,7 +3965,6 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
         if (a2.byteLength > 0 || a2b.byteLength > 0) {
           throw new Error("expecting a2 & a2b to be detached, a3 re-attached");
         }
-
         const wmem = new WebAssembly.Memory({ initial: 1, maximum: 2 });
         const w32 = new Uint32Array(wmem.buffer);
         w32[0] = 1; w32[1] = 2; w32[2] = 3;
@@ -3878,5 +4088,24 @@ Deno.core.opAsync('op_async_serialize_object_with_numbers_as_keys', {
 
     let scope = &mut realm.handle_scope(runtime.v8_isolate());
     assert_eq!(ret, serde_v8::to_v8(scope, "Test").unwrap());
+  }
+
+  #[test]
+  fn test_array_by_copy() {
+    // Verify that "array by copy" proposal is enabled (https://github.com/tc39/proposal-change-array-by-copy)
+    let mut runtime = JsRuntime::new(Default::default());
+    assert!(runtime
+      .execute_script(
+        "test_array_by_copy.js",
+        "const a = [1, 2, 3];
+        const b = a.toReversed();
+        if (!(a[0] === 1 && a[1] === 2 && a[2] === 3)) {
+          throw new Error('Expected a to be intact');
+        }
+        if (!(b[0] === 3 && b[1] === 2 && b[2] === 1)) {
+          throw new Error('Expected b to be reversed');
+        }",
+      )
+      .is_ok());
   }
 }

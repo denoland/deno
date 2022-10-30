@@ -22,6 +22,7 @@ use deno_runtime::deno_node::TYPES_CONDITIONS;
 use tokio::task::JoinHandle;
 
 use crate::fs_util;
+use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
@@ -176,6 +177,22 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     Ok(package_root_path)
   }
 
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
+    match self.resolution.resolve_package_from_id(package_id) {
+      Some(package) => Ok(fs_util::dir_size(
+        // package is stored at:
+        // node_modules/.deno/<package_id>/node_modules/<package_name>
+        &self
+          .root_node_modules_path
+          .join(".deno")
+          .join(package.id.to_string())
+          .join("node_modules")
+          .join(package.id.name),
+      )?),
+      None => bail!("Could not find package folder for '{}'", package_id),
+    }
+  }
+
   fn has_packages(&self) -> bool {
     self.resolution.has_packages()
   }
@@ -212,6 +229,10 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 
   fn snapshot(&self) -> NpmResolutionSnapshot {
     self.resolution.snapshot()
+  }
+
+  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.resolution.lock(lockfile, &self.snapshot())
   }
 }
 

@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_runtime::deno_node::PathClean;
 use deno_runtime::deno_node::RequireNpmResolver;
@@ -21,10 +22,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::fs_util;
+use crate::lockfile::Lockfile;
 
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
+use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
@@ -70,6 +73,7 @@ pub struct NpmPackageResolver {
   local_node_modules_path: Option<PathBuf>,
   api: NpmRegistryApi,
   cache: NpmCache,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl std::fmt::Debug for NpmPackageResolver {
@@ -99,6 +103,32 @@ impl NpmPackageResolver {
       local_node_modules_path,
       None,
     )
+  }
+
+  /// This function will replace current resolver with a new one built from a
+  /// snapshot created out of the lockfile.
+  pub async fn add_lockfile(
+    &mut self,
+    lockfile: Arc<Mutex<Lockfile>>,
+  ) -> Result<(), AnyError> {
+    let snapshot =
+      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api).await?;
+    self.maybe_lockfile = Some(lockfile);
+    if let Some(node_modules_folder) = &self.local_node_modules_path {
+      self.inner = Arc::new(LocalNpmPackageResolver::new(
+        self.cache.clone(),
+        self.api.clone(),
+        node_modules_folder.clone(),
+        Some(snapshot),
+      ));
+    } else {
+      self.inner = Arc::new(GlobalNpmPackageResolver::new(
+        self.cache.clone(),
+        self.api.clone(),
+        Some(snapshot),
+      ));
+    }
+    Ok(())
   }
 
   fn new_with_maybe_snapshot(
@@ -138,6 +168,7 @@ impl NpmPackageResolver {
       local_node_modules_path,
       api,
       cache,
+      maybe_lockfile: None,
     }
   }
 
@@ -182,6 +213,14 @@ impl NpmPackageResolver {
     Ok(path)
   }
 
+  /// Attempts to get the package size in bytes.
+  pub fn package_size(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Result<u64, AnyError> {
+    self.inner.package_size(package_id)
+  }
+
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
@@ -224,7 +263,15 @@ impl NpmPackageResolver {
       ));
     }
 
-    self.inner.add_package_reqs(packages).await
+    self.inner.add_package_reqs(packages).await?;
+
+    // If there's a lock file, update it with all discovered npm packages
+    if let Some(lockfile_mutex) = &self.maybe_lockfile {
+      let mut lockfile = lockfile_mutex.lock();
+      self.lock(&mut lockfile)?;
+    }
+
+    Ok(())
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
@@ -263,8 +310,16 @@ impl NpmPackageResolver {
       self.unstable,
       self.no_npm,
       self.local_node_modules_path.clone(),
-      Some(self.inner.snapshot()),
+      Some(self.snapshot()),
     )
+  }
+
+  pub fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.inner.snapshot()
+  }
+
+  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+    self.inner.lock(lockfile)
   }
 }
 

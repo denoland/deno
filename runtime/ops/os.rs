@@ -20,8 +20,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
     op_exit::decl(),
     op_delete_env::decl(),
     op_get_env::decl(),
-    op_getgid::decl(),
-    op_getuid::decl(),
+    op_gid::decl(),
     op_hostname::decl(),
     op_loadavg::decl(),
     op_network_interfaces::decl(),
@@ -29,6 +28,7 @@ fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
     op_set_env::decl(),
     op_set_exit_code::decl(),
     op_system_memory_info::decl(),
+    op_uid::decl(),
   ])
 }
 
@@ -182,7 +182,6 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
 
 #[op]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
-  super::check_unstable(state, "Deno.osRelease");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -285,12 +284,12 @@ fn op_system_memory_info(
 
 #[cfg(not(windows))]
 #[op]
-fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.getGid");
+fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("getGid", Some("Deno.getGid()"))?;
+    .check("gid", Some("Deno.gid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -300,23 +299,23 @@ fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 
 #[cfg(windows)]
 #[op]
-fn op_getgid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.getGid");
+fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("getGid", Some("Deno.getGid()"))?;
+    .check("gid", Some("Deno.gid()"))?;
   Ok(None)
 }
 
 #[cfg(not(windows))]
 #[op]
-fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.getUid");
+fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("getUid", Some("Deno.getUid()"))?;
+    .check("uid", Some("Deno.uid()"))?;
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
@@ -326,11 +325,11 @@ fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 
 #[cfg(windows)]
 #[op]
-fn op_getuid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.getUid");
+fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
+  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys
-    .check("getUid", Some("Deno.getUid()"))?;
+    .check("uid", Some("Deno.uid()"))?;
   Ok(None)
 }

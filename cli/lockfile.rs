@@ -1,7 +1,5 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-#![allow(dead_code)]
-
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -17,19 +15,68 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::npm::NpmPackageReq;
+use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
+
+#[derive(Debug)]
+pub struct LockfileError(String);
+
+impl std::fmt::Display for LockfileError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    f.write_str(&self.0)
+  }
+}
+
+impl std::error::Error for LockfileError {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NpmPackageInfo {
+  pub integrity: String,
+  pub dependencies: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct NpmContent {
+  /// Mapping between requests for npm packages and resolved specifiers, eg.
+  /// {
+  ///   "chalk": "chalk@5.0.0"
+  ///   "react@17": "react@17.0.1"
+  ///   "foo@latest": "foo@1.0.0"
+  /// }
+  pub specifiers: BTreeMap<String, String>,
+  /// Mapping between resolved npm specifiers and their associated info, eg.
+  /// {
+  ///   "chalk@5.0.0": {
+  ///     "integrity": "sha512-...",
+  ///     "dependencies": {
+  ///       "ansi-styles": "ansi-styles@4.1.0",
+  ///     }
+  ///   }
+  /// }
+  pub packages: BTreeMap<String, NpmPackageInfo>,
+}
+
+impl NpmContent {
+  fn is_empty(&self) -> bool {
+    self.specifiers.is_empty() && self.packages.is_empty()
+  }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockfileContent {
   version: String,
-  // Mapping between URLs and their checksums
+  // Mapping between URLs and their checksums for "http:" and "https:" deps
   remote: BTreeMap<String, String>,
+  #[serde(skip_serializing_if = "NpmContent::is_empty")]
+  #[serde(default)]
+  pub npm: NpmContent,
 }
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
-  write: bool,
-  content: LockfileContent,
+  pub write: bool,
+  pub content: LockfileContent,
   pub filename: PathBuf,
 }
 
@@ -40,6 +87,7 @@ impl Lockfile {
       LockfileContent {
         version: "2".to_string(),
         remote: BTreeMap::new(),
+        npm: NpmContent::default(),
       }
     } else {
       let s = std::fs::read_to_string(&filename).with_context(|| {
@@ -60,6 +108,7 @@ impl Lockfile {
         LockfileContent {
           version: "2".to_string(),
           remote,
+          npm: NpmContent::default(),
         }
       }
     };
@@ -92,13 +141,32 @@ impl Lockfile {
     Ok(())
   }
 
-  pub fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
+  // TODO(bartlomieju): this function should return an error instead of a bool,
+  // but it requires changes to `deno_graph`'s `Locker`.
+  pub fn check_or_insert_remote(
+    &mut self,
+    specifier: &str,
+    code: &str,
+  ) -> bool {
     if self.write {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
       true
     } else {
       self.check(specifier, code)
+    }
+  }
+
+  pub fn check_or_insert_npm_package(
+    &mut self,
+    package: &NpmResolutionPackage,
+  ) -> Result<(), LockfileError> {
+    if self.write {
+      // In case --lock-write is specified check always passes
+      self.insert_npm_package(package);
+      Ok(())
+    } else {
+      self.check_npm_package(package)
     }
   }
 
@@ -123,6 +191,64 @@ impl Lockfile {
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.content.remote.insert(specifier.to_string(), checksum);
   }
+
+  fn check_npm_package(
+    &mut self,
+    package: &NpmResolutionPackage,
+  ) -> Result<(), LockfileError> {
+    let specifier = package.id.serialize_for_lock_file();
+    if let Some(package_info) = self.content.npm.packages.get(&specifier) {
+      let integrity = package
+        .dist
+        .integrity
+        .as_ref()
+        .unwrap_or(&package.dist.shasum);
+      if &package_info.integrity != integrity {
+        return Err(LockfileError(format!(
+          "Integrity check failed for npm package: \"{}\".
+  Cache has \"{}\" and lockfile has \"{}\".
+  Use \"--lock-write\" flag to update the lockfile.",
+          package.id, integrity, package_info.integrity
+        )));
+      }
+    }
+
+    Ok(())
+  }
+
+  fn insert_npm_package(&mut self, package: &NpmResolutionPackage) {
+    let dependencies = package
+      .dependencies
+      .iter()
+      .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
+      .collect::<BTreeMap<String, String>>();
+
+    let integrity = package
+      .dist
+      .integrity
+      .as_ref()
+      .unwrap_or(&package.dist.shasum);
+    self.content.npm.packages.insert(
+      package.id.serialize_for_lock_file(),
+      NpmPackageInfo {
+        integrity: integrity.to_string(),
+        dependencies,
+      },
+    );
+  }
+
+  pub fn insert_npm_specifier(
+    &mut self,
+    package_req: &NpmPackageReq,
+    version: String,
+  ) {
+    if self.write {
+      self.content.npm.specifiers.insert(
+        package_req.to_string(),
+        format!("{}@{}", package_req.name, version),
+      );
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -136,7 +262,7 @@ impl deno_graph::source::Locker for Locker {
   ) -> bool {
     if let Some(lock_file) = &self.0 {
       let mut lock_file = lock_file.lock();
-      lock_file.check_or_insert(specifier.as_str(), source)
+      lock_file.check_or_insert_remote(specifier.as_str(), source)
     } else {
       true
     }
@@ -154,11 +280,10 @@ impl deno_graph::source::Locker for Locker {
 
 pub fn as_maybe_locker(
   lockfile: Option<Arc<Mutex<Lockfile>>>,
-) -> Option<Rc<RefCell<Box<dyn deno_graph::source::Locker>>>> {
+) -> Option<Rc<RefCell<dyn deno_graph::source::Locker>>> {
   lockfile.as_ref().map(|lf| {
-    Rc::new(RefCell::new(
-      Box::new(Locker(Some(lf.clone()))) as Box<dyn deno_graph::source::Locker>
-    ))
+    Rc::new(RefCell::new(Locker(Some(lf.clone()))))
+      as Rc<RefCell<dyn deno_graph::source::Locker>>
   })
 }
 
@@ -181,6 +306,10 @@ mod tests {
       "remote": {
         "https://deno.land/std@0.71.0/textproto/mod.ts": "3118d7a42c03c242c5a49c2ad91c8396110e14acca1324e7aaefd31a999b71a4",
         "https://deno.land/std@0.71.0/async/delay.ts": "35957d585a6e3dd87706858fb1d6b551cb278271b03f52c5a2cb70e65e00c26a"
+      },
+      "npm": {
+        "specifiers": {},
+        "packages": {}
       }
     });
 
@@ -306,13 +435,13 @@ mod tests {
       "Here is some source code",
     );
 
-    let check_true = lockfile.check_or_insert(
+    let check_true = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
       "Here is some source code",
     );
     assert!(check_true);
 
-    let check_false = lockfile.check_or_insert(
+    let check_false = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
       "This is new Source code",
     );

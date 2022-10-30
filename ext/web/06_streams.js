@@ -35,7 +35,6 @@
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
-    PromiseAll,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     PromiseReject,
@@ -43,6 +42,7 @@
     queueMicrotask,
     RangeError,
     ReflectHas,
+    SafePromiseAll,
     SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
@@ -60,6 +60,7 @@
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
   const consoleInternal = window.__bootstrap.console;
+  const ops = core.ops;
   const { AssertionError, assert } = window.__bootstrap.infra;
 
   /** @template T */
@@ -186,20 +187,12 @@
     );
   }
 
-  const isFakeDetached = Symbol("<<detached>>");
-
   /**
    * @param {ArrayBufferLike} O
    * @returns {boolean}
    */
   function isDetachedBuffer(O) {
-    if (O.byteLength !== 0) {
-      return false;
-    }
-    // TODO(marcosc90) remove isFakeDetached once transferArrayBuffer
-    // actually detaches the buffer
-    return ReflectHas(O, isFakeDetached) ||
-      core.ops.op_arraybuffer_was_detached(O);
+    return O.byteLength === 0 && ops.op_arraybuffer_was_detached(O);
   }
 
   /**
@@ -224,15 +217,7 @@
    * @returns {ArrayBufferLike}
    */
   function transferArrayBuffer(O) {
-    assert(!isDetachedBuffer(O));
-    const transferredIshVersion = O.slice(0);
-    ObjectDefineProperty(O, "byteLength", {
-      get() {
-        return 0;
-      },
-    });
-    O[isFakeDetached] = true;
-    return transferredIshVersion;
+    return ops.op_transfer_arraybuffer(O);
   }
 
   /**
@@ -2317,7 +2302,8 @@
           });
         }
         shutdownWithAction(
-          () => PromiseAll(ArrayPrototypeMap(actions, (action) => action())),
+          () =>
+            SafePromiseAll(ArrayPrototypeMap(actions, (action) => action())),
           true,
           error,
         );
@@ -4620,26 +4606,32 @@
      * @param {UnderlyingSource<R>=} underlyingSource
      * @param {QueuingStrategy<R>=} strategy
      */
-    constructor(underlyingSource = undefined, strategy = {}) {
+    constructor(underlyingSource = undefined, strategy = undefined) {
       const prefix = "Failed to construct 'ReadableStream'";
       if (underlyingSource !== undefined) {
         underlyingSource = webidl.converters.object(underlyingSource, {
           prefix,
           context: "Argument 1",
         });
-      }
-      strategy = webidl.converters.QueuingStrategy(strategy, {
-        prefix,
-        context: "Argument 2",
-      });
-      this[webidl.brand] = webidl.brand;
-      if (underlyingSource === undefined) {
+      } else {
         underlyingSource = null;
       }
-      const underlyingSourceDict = webidl.converters.UnderlyingSource(
-        underlyingSource,
-        { prefix, context: "underlyingSource" },
-      );
+      if (strategy !== undefined) {
+        strategy = webidl.converters.QueuingStrategy(strategy, {
+          prefix,
+          context: "Argument 2",
+        });
+      } else {
+        strategy = {};
+      }
+      this[webidl.brand] = webidl.brand;
+      let underlyingSourceDict = {};
+      if (underlyingSource !== undefined) {
+        underlyingSourceDict = webidl.converters.UnderlyingSource(
+          underlyingSource,
+          { prefix, context: "underlyingSource" },
+        );
+      }
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
@@ -4700,13 +4692,17 @@
      * @param {ReadableStreamGetReaderOptions=} options
      * @returns {ReadableStreamDefaultReader<R> | ReadableStreamBYOBReader}
      */
-    getReader(options = {}) {
+    getReader(options = undefined) {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
-      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
-        prefix,
-        context: "Argument 1",
-      });
+      if (options !== undefined) {
+        options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+          prefix,
+          context: "Argument 1",
+        });
+      } else {
+        options = {};
+      }
       if (options.mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       } else {
