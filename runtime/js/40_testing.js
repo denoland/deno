@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console } = window.__bootstrap.console;
   const { serializePermissions } = window.__bootstrap.permissions;
@@ -15,6 +16,7 @@
     ArrayPrototypePush,
     ArrayPrototypeShift,
     ArrayPrototypeSort,
+    BigInt,
     DateNow,
     Error,
     FunctionPrototype,
@@ -73,8 +75,10 @@
     "op_crypto_sign_key": ["sign data", "awaiting the result of a `crypto.subtle.sign` call"],
     "op_crypto_subtle_digest": ["digest data", "awaiting the result of a `crypto.subtle.digest` call"],
     "op_crypto_verify_key": ["verify data", "awaiting the result of a `crypto.subtle.verify` call"],
-    "op_dgram_recv": ["receive a datagram message", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
-    "op_dgram_send": ["send a datagram message", "awaiting the result of `Deno.DatagramConn#send` call"],
+    "op_net_recv_udp": ["receive a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
+    "op_net_recv_unixpacket": ["receive a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
+    "op_net_send_udp": ["send a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#send` call"],
+    "op_net_send_unixpacket": ["send a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#send` call"],
     "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
     "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
     "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
@@ -88,7 +92,6 @@
     "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
     "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
     "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
-    "op_http_read": ["read the body of a HTTP request", "consuming the entire request body"],
     "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
     "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],
@@ -98,8 +101,10 @@
     "op_make_temp_file_async": ["create a temporary file", "awaiting the result of a `Deno.makeTempFile` call"],
     "op_message_port_recv_message": ["receive a message from a MessagePort", "awaiting the result of not closing a `MessagePort`"],
     "op_mkdir_async": ["create a directory", "awaiting the result of a `Deno.mkdir` call"],
-    "op_net_accept": ["accept a TCP connection", "closing a `Deno.Listener`"],
-    "op_net_connect": ["connect to a TCP or UDP server", "awaiting a `Deno.connect` call"],
+    "op_net_accept_tcp": ["accept a TCP stream", "closing a `Deno.Listener`"],
+    "op_net_accept_unix": ["accept a Unix stream", "closing a `Deno.Listener`"],
+    "op_net_connect_tcp": ["connect to a TCP server", "awaiting a `Deno.connect` call"],
+    "op_net_connect_unix": ["connect to a Unix server", "awaiting a `Deno.connect` call"],
     "op_open_async": ["open a file", "awaiting the result of a `Deno.open` call"],
     "op_read_dir_async": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
     "op_read_link_async": ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
@@ -112,8 +117,8 @@
     "op_sleep": ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
     "op_stat_async": ["get file metadata", "awaiting the result of a `Deno.stat` call"],
     "op_symlink_async": ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
-    "op_tls_accept": ["accept a TLS connection", "closing a `Deno.TlsListener`"],
-    "op_tls_connect": ["connect to a TLS server", "awaiting a `Deno.connectTls` call"],
+    "op_net_accept_tls": ["accept a TLS stream", "closing a `Deno.TlsListener`"],
+    "op_net_connect_tls": ["connect to a TLS server", "awaiting a `Deno.connectTls` call"],
     "op_tls_handshake": ["perform a TLS handshake", "awaiting a `Deno.TlsConn#handshake` call"],
     "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
     "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
@@ -144,6 +149,7 @@
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
         // false positives may occur (https://github.com/denoland/deno/issues/4591)
+        await opSanitizerDelay();
         await opSanitizerDelay();
       }
 
@@ -510,14 +516,13 @@
   }
 
   function pledgePermissions(permissions) {
-    return core.opSync(
-      "op_pledge_test_permissions",
+    return ops.op_pledge_test_permissions(
       serializePermissions(permissions),
     );
   }
 
   function restorePermissions(token) {
-    core.opSync("op_restore_test_permissions", token);
+    ops.op_restore_test_permissions(token);
   }
 
   function withPermissions(fn, permissions) {
@@ -600,7 +605,8 @@
   const testStates = new Map();
   /** @type {BenchDescription[]} */
   const benchDescs = [];
-  let isTestOrBenchSubcommand = false;
+  let isTestSubcommand = false;
+  let isBenchSubcommand = false;
 
   // Main test function provided by Deno.
   function test(
@@ -608,7 +614,7 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isTestSubcommand) {
       return;
     }
 
@@ -709,7 +715,7 @@
       columnNumber: jsError.frames[1].columnNumber,
     };
 
-    const { id, filteredOut } = core.opSync("op_register_test", testDesc);
+    const { id, filteredOut } = ops.op_register_test(testDesc);
     testDesc.id = id;
     testDesc.filteredOut = filteredOut;
 
@@ -727,11 +733,11 @@
     optionsOrFn,
     maybeFn,
   ) {
-    if (!isTestOrBenchSubcommand) {
+    if (!isBenchSubcommand) {
       return;
     }
 
-    core.opSync("op_bench_check_unstable");
+    ops.op_bench_check_unstable();
     let benchDesc;
     const defaults = {
       ignore: false,
@@ -815,7 +821,7 @@
     const AsyncFunction = (async () => {}).constructor;
     benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
 
-    const { id, filteredOut } = core.opSync("op_register_bench", benchDesc);
+    const { id, filteredOut } = ops.op_register_bench(benchDesc);
     benchDesc.id = id;
     benchDesc.filteredOut = filteredOut;
 
@@ -1016,27 +1022,28 @@
 
   function getTestOrigin() {
     if (origin == null) {
-      origin = core.opSync("op_get_test_origin");
+      origin = ops.op_get_test_origin();
     }
     return origin;
   }
 
   function getBenchOrigin() {
     if (origin == null) {
-      origin = core.opSync("op_get_bench_origin");
+      origin = ops.op_get_bench_origin();
     }
     return origin;
   }
 
   function benchNow() {
-    return core.opSync("op_bench_now");
+    return ops.op_bench_now();
   }
 
-  // This function is called by Rust side if we're in `deno test` or
-  // `deno bench` subcommand. If this function is not called then `Deno.test()`
-  // and `Deno.bench()` become noops.
-  function enableTestAndBench() {
-    isTestOrBenchSubcommand = true;
+  function enableTest() {
+    isTestSubcommand = true;
+  }
+
+  function enableBench() {
+    isBenchSubcommand = true;
   }
 
   async function runTests({
@@ -1051,7 +1058,7 @@
       (desc) => !desc.filteredOut,
     );
 
-    core.opSync("op_dispatch_test_event", {
+    ops.op_dispatch_test_event({
       plan: {
         origin,
         total: filtered.length,
@@ -1062,15 +1069,16 @@
 
     if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
+      // Use BigInt for everything because the random seed is u64.
       const nextInt = (function (state) {
-        const m = 0x80000000;
-        const a = 1103515245;
-        const c = 12345;
+        const m = 0x80000000n;
+        const a = 1103515245n;
+        const c = 12345n;
 
         return function (max) {
-          return state = ((a * state + c) % m) % max;
+          return state = ((a * state + c) % m) % BigInt(max);
         };
-      }(shuffle));
+      }(BigInt(shuffle)));
 
       for (let i = filtered.length - 1; i > 0; i--) {
         const j = nextInt(i);
@@ -1079,11 +1087,11 @@
     }
 
     for (const desc of filtered) {
-      core.opSync("op_dispatch_test_event", { wait: desc.id });
+      ops.op_dispatch_test_event({ wait: desc.id });
       const earlier = DateNow();
       const result = await runTest(desc);
       const elapsed = DateNow() - earlier;
-      core.opSync("op_dispatch_test_event", {
+      ops.op_dispatch_test_event({
         result: [desc.id, result, elapsed],
       });
     }
@@ -1096,7 +1104,7 @@
     const originalConsole = globalThis.console;
 
     globalThis.console = new Console((s) => {
-      core.opSync("op_dispatch_bench_event", { output: s });
+      ops.op_dispatch_bench_event({ output: s });
     });
 
     const only = ArrayPrototypeFilter(benchDescs, (bench) => bench.only);
@@ -1120,7 +1128,7 @@
       (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
     );
 
-    core.opSync("op_dispatch_bench_event", {
+    ops.op_dispatch_bench_event({
       plan: {
         origin,
         total: filtered.length,
@@ -1131,8 +1139,8 @@
 
     for (const desc of filtered) {
       desc.baseline = !!desc.baseline;
-      core.opSync("op_dispatch_bench_event", { wait: desc.id });
-      core.opSync("op_dispatch_bench_event", {
+      ops.op_dispatch_bench_event({ wait: desc.id });
+      ops.op_dispatch_bench_event({
         result: [desc.id, await runBench(desc)],
       });
     }
@@ -1173,7 +1181,7 @@
     if (state.reportedWait) {
       return;
     }
-    core.opSync("op_dispatch_test_event", { stepWait: desc.id });
+    ops.op_dispatch_test_event({ stepWait: desc.id });
     state.reportedWait = true;
   }
 
@@ -1194,7 +1202,7 @@
     } else {
       result = state.status;
     }
-    core.opSync("op_dispatch_test_event", {
+    ops.op_dispatch_test_event({
       stepResult: [desc.id, result, state.elapsed],
     });
     state.reportedResult = true;
@@ -1293,7 +1301,7 @@
         stepDesc.parent = desc;
         stepDesc.rootId = rootId;
         stepDesc.rootName = rootName;
-        const { id } = core.opSync("op_register_test_step", stepDesc);
+        const { id } = ops.op_register_test_step(stepDesc);
         stepDesc.id = id;
         const state = {
           context: createTestContext(stepDesc),
@@ -1390,15 +1398,12 @@
     return testFn;
   }
 
-  window.__bootstrap.internals = {
-    ...window.__bootstrap.internals ?? {},
-    enableTestAndBench,
-    runTests,
-    runBenchmarks,
-  };
-
   window.__bootstrap.testing = {
-    test,
     bench,
+    enableBench,
+    enableTest,
+    runBenchmarks,
+    runTests,
+    test,
   };
 })(this);

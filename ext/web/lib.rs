@@ -10,7 +10,9 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -19,12 +21,11 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::U16String;
 use deno_core::ZeroCopyBuf;
+
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
-use serde::Deserialize;
-use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
@@ -93,6 +94,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_encoding_new_decoder::decl(),
       op_encoding_decode::decl(),
       op_encoding_encode_into::decl(),
+      op_encode_binary_string::decl(),
       op_blob_create_part::decl(),
       op_blob_slice_part::decl(),
       op_blob_read_part::decl(),
@@ -110,6 +112,7 @@ pub fn init<P: TimersPermission + 'static>(
       op_timer_handle::decl(),
       op_cancel_handle::decl(),
       op_sleep::decl(),
+      op_transfer_arraybuffer::decl(),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -148,8 +151,8 @@ fn forgiving_base64_decode(input: &mut [u8]) -> Result<usize, AnyError> {
 }
 
 #[op]
-fn op_base64_encode(s: ZeroCopyBuf) -> String {
-  forgiving_base64_encode(s.as_ref())
+fn op_base64_encode(s: &[u8]) -> String {
+  forgiving_base64_encode(s)
 }
 
 #[op]
@@ -162,14 +165,6 @@ fn op_base64_btoa(s: ByteString) -> String {
 fn forgiving_base64_encode(s: &[u8]) -> String {
   const BASE64_STANDARD: base64_simd::Base64 = base64_simd::Base64::STANDARD;
   BASE64_STANDARD.encode_to_boxed_str(s).into_string()
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecoderOptions {
-  label: String,
-  ignore_bom: bool,
-  fatal: bool,
 }
 
 #[op]
@@ -186,15 +181,11 @@ fn op_encoding_normalize_label(label: String) -> Result<String, AnyError> {
 
 #[op]
 fn op_encoding_decode_single(
-  data: ZeroCopyBuf,
-  options: DecoderOptions,
+  data: &[u8],
+  label: String,
+  fatal: bool,
+  ignore_bom: bool,
 ) -> Result<U16String, AnyError> {
-  let DecoderOptions {
-    label,
-    ignore_bom,
-    fatal,
-  } = options;
-
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{}') is invalid.",
@@ -216,7 +207,7 @@ fn op_encoding_decode_single(
 
   if fatal {
     let (result, _, written) =
-      decoder.decode_to_utf16_without_replacement(&data, &mut output, true);
+      decoder.decode_to_utf16_without_replacement(data, &mut output, true);
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
@@ -231,7 +222,7 @@ fn op_encoding_decode_single(
     }
   } else {
     let (result, _, written, _) =
-      decoder.decode_to_utf16(&data, &mut output, true);
+      decoder.decode_to_utf16(data, &mut output, true);
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
@@ -245,14 +236,10 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  options: DecoderOptions,
+  label: String,
+  fatal: bool,
+  ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
-  let DecoderOptions {
-    label,
-    fatal,
-    ignore_bom,
-  } = options;
-
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{}') is invalid.",
@@ -274,21 +261,13 @@ fn op_encoding_new_decoder(
   Ok(rid)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecodeOptions {
-  rid: ResourceId,
-  stream: bool,
-}
-
 #[op]
 fn op_encoding_decode(
   state: &mut OpState,
-  data: ZeroCopyBuf,
-  options: DecodeOptions,
+  data: &[u8],
+  rid: ResourceId,
+  stream: bool,
 ) -> Result<U16String, AnyError> {
-  let DecodeOptions { rid, stream } = options;
-
   let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
 
   let mut decoder = resource.decoder.borrow_mut();
@@ -302,7 +281,7 @@ fn op_encoding_decode(
 
   if fatal {
     let (result, _, written) =
-      decoder.decode_to_utf16_without_replacement(&data, &mut output, !stream);
+      decoder.decode_to_utf16_without_replacement(data, &mut output, !stream);
     match result {
       DecoderResult::InputEmpty => {
         output.truncate(written);
@@ -317,7 +296,7 @@ fn op_encoding_decode(
     }
   } else {
     let (result, _, written, _) =
-      decoder.decode_to_utf16(&data, &mut output, !stream);
+      decoder.decode_to_utf16(data, &mut output, !stream);
     match result {
       CoderResult::InputEmpty => {
         output.truncate(written);
@@ -339,51 +318,52 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct EncodeIntoResult {
-  read: usize,
-  written: usize,
+#[op(v8)]
+fn op_encoding_encode_into(
+  scope: &mut v8::HandleScope,
+  input: serde_v8::Value,
+  buffer: &mut [u8],
+  out_buf: &mut [u32],
+) -> Result<(), AnyError> {
+  let s = v8::Local::<v8::String>::try_from(input.v8_value)?;
+
+  let mut nchars = 0;
+  out_buf[1] = s.write_utf8(
+    scope,
+    buffer,
+    Some(&mut nchars),
+    v8::WriteOptions::NO_NULL_TERMINATION
+      | v8::WriteOptions::REPLACE_INVALID_UTF8,
+  ) as u32;
+  out_buf[0] = nchars as u32;
+  Ok(())
+}
+
+#[op(v8)]
+fn op_transfer_arraybuffer<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  input: serde_v8::Value<'a>,
+) -> Result<serde_v8::Value<'a>, AnyError> {
+  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  if !ab.is_detachable() {
+    return Err(type_error("ArrayBuffer is not detachable"));
+  }
+  let bs = ab.get_backing_store();
+  ab.detach();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+  Ok(serde_v8::Value {
+    v8_value: ab.into(),
+  })
 }
 
 #[op]
-fn op_encoding_encode_into(
-  input: String,
-  mut buffer: ZeroCopyBuf,
-) -> EncodeIntoResult {
-  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
-  // point boundary from input that fits in `buffer`, and copy the bytes up to
-  // that point.
-  let boundary = if buffer.len() >= input.len() {
-    input.len()
-  } else {
-    let mut boundary = buffer.len();
-
-    // The maximum length of a UTF-8 code point is 4 bytes.
-    for _ in 0..4 {
-      if input.is_char_boundary(boundary) {
-        break;
-      }
-      debug_assert!(boundary > 0);
-      boundary -= 1;
-    }
-
-    debug_assert!(input.is_char_boundary(boundary));
-    boundary
-  };
-
-  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
-
-  EncodeIntoResult {
-    // The `read` output parameter is measured in UTF-16 code units.
-    read: input[..boundary].encode_utf16().count(),
-    written: boundary,
-  }
+fn op_encode_binary_string(s: &[u8]) -> ByteString {
+  ByteString::from(s)
 }
 
 /// Creates a [`CancelHandle`] resource that can be used to cancel invocations of certain ops.
-#[op]
-pub fn op_cancel_handle(state: &mut OpState) -> ResourceId {
+#[op(fast)]
+pub fn op_cancel_handle(state: &mut OpState) -> u32 {
   state.resource_table.add(CancelHandle::new())
 }
 

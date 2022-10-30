@@ -714,7 +714,12 @@ Deno.test(function spawnSyncStdinPipedFails() {
 });
 
 Deno.test(
-  { permissions: { write: true, run: true, read: true } },
+  // TODO(bartlomieju): this test became flaky on Windows CI
+  // raising "PermissionDenied" instead of "NotFound".
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { write: true, run: true, read: true },
+  },
   async function spawnChildUnref() {
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
@@ -728,7 +733,7 @@ const child = await Deno.spawnChild(Deno.execPath(), {
 });
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
 const reader = readable.getReader();
-// set up an interval that will end after reading a few messages from stdout, 
+// set up an interval that will end after reading a few messages from stdout,
 // to verify that stdio streams are properly unrefed
 let count = 0;
 let interval;
@@ -780,5 +785,47 @@ setInterval(() => {
     assertThrows(() => {
       Deno.kill(pid, "SIGTERM");
     }, Deno.errors.NotFound);
+  },
+);
+
+Deno.test(
+  { ignore: Deno.build.os !== "windows" },
+  async function spawnWindowsRawArguments() {
+    let { success, stdout } = await Deno.spawn("cmd", {
+      args: ["/d", "/s", "/c", '"deno ^"--version^""'],
+      windowsRawArguments: true,
+    });
+    assert(success);
+    let stdoutText = new TextDecoder().decode(stdout);
+    assertStringIncludes(stdoutText, "deno");
+    assertStringIncludes(stdoutText, "v8");
+    assertStringIncludes(stdoutText, "typescript");
+
+    ({ success, stdout } = Deno.spawnSync("cmd", {
+      args: ["/d", "/s", "/c", '"deno ^"--version^""'],
+      windowsRawArguments: true,
+    }));
+    assert(success);
+    stdoutText = new TextDecoder().decode(stdout);
+    assertStringIncludes(stdoutText, "deno");
+    assertStringIncludes(stdoutText, "v8");
+    assertStringIncludes(stdoutText, "typescript");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, run: true } },
+  async function spawnWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      await Deno.spawn(Deno.execPath(), {
+        args: ["eval", "console.log('hello world')"],
+      });
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
   },
 );

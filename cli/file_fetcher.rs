@@ -7,6 +7,7 @@ use crate::http_util::fetch_once;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
+use crate::progress_bar::ProgressBar;
 use crate::text_encoding;
 use crate::version::get_user_agent;
 
@@ -143,6 +144,23 @@ impl CacheSetting {
         }
         true
       }
+    }
+  }
+
+  pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
+    match self {
+      CacheSetting::ReloadAll => false,
+      CacheSetting::ReloadSome(list) => {
+        if list.contains(&"npm:".to_string()) {
+          return false;
+        }
+        let specifier = format!("npm:{}", package_name);
+        if list.contains(&specifier) {
+          return false;
+        }
+        true
+      }
+      _ => true,
     }
   }
 }
@@ -318,6 +336,7 @@ pub struct FileFetcher {
   http_client: reqwest::Client,
   blob_store: BlobStore,
   download_log_level: log::Level,
+  progress_bar: Option<ProgressBar>,
 }
 
 impl FileFetcher {
@@ -328,6 +347,7 @@ impl FileFetcher {
     root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
+    progress_bar: Option<ProgressBar>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
@@ -345,6 +365,7 @@ impl FileFetcher {
       )?,
       blob_store,
       download_log_level: log::Level::Info,
+      progress_bar,
     })
   }
 
@@ -584,12 +605,17 @@ impl FileFetcher {
       .boxed();
     }
 
-    log::log!(
-      self.download_log_level,
-      "{} {}",
-      colors::green("Download"),
-      specifier
-    );
+    let mut _maybe_guard = None;
+    if let Some(pb) = self.progress_bar.as_ref() {
+      _maybe_guard = Some(pb.update(specifier.as_str()));
+    } else {
+      log::log!(
+        self.download_log_level,
+        "{} {}",
+        colors::green("Download"),
+        specifier
+      );
+    }
 
     let maybe_etag = match self.http_cache.get(specifier) {
       Ok((_, headers, _)) => headers.get("etag").cloned(),
@@ -770,6 +796,7 @@ mod tests {
       true,
       None,
       blob_store.clone(),
+      None,
       None,
     )
     .unwrap();
@@ -1212,6 +1239,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let result = file_fetcher
@@ -1237,6 +1265,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1264,6 +1293,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1408,6 +1438,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let specifier =
@@ -1436,6 +1467,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
       None,
     )
     .unwrap();
@@ -1537,9 +1569,11 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1547,7 +1581,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
-    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/002_hello.ts\", but --no-remote is specified.");
+    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
   }
 
   #[tokio::test]
@@ -1562,6 +1596,7 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
     let file_fetcher_02 = FileFetcher::new(
@@ -1571,9 +1606,11 @@ mod tests {
       None,
       BlobStore::default(),
       None,
+      None,
     )
     .unwrap();
-    let specifier = resolve_url("http://localhost:4545/002_hello.ts").unwrap();
+    let specifier =
+      resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1581,7 +1618,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotCached"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())

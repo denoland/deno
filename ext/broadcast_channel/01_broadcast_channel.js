@@ -6,8 +6,11 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
-  const { defineEventHandler, setTarget } = window.__bootstrap.event;
+  const { MessageEvent, defineEventHandler, setTarget } =
+    window.__bootstrap.event;
+  const { EventTarget } = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,
@@ -92,7 +95,7 @@
       if (rid === null) {
         // Create the rid immediately, otherwise there is a time window (and a
         // race condition) where messages can get lost, because recv() is async.
-        rid = core.opSync("op_broadcast_subscribe");
+        rid = ops.op_broadcast_subscribe();
         recv();
       }
     }
@@ -128,7 +131,9 @@
       if (index === -1) return;
 
       ArrayPrototypeSplice(channels, index, 1);
-      if (channels.length === 0) core.opSync("op_broadcast_unsubscribe", rid);
+      if (channels.length === 0) {
+        ops.op_broadcast_unsubscribe(rid);
+      }
     }
   }
 

@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const { FsFile } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
   const { pathFromURL } = window.__bootstrap.util;
@@ -15,8 +16,12 @@
     String,
   } = window.__bootstrap.primordials;
 
-  function opKill(pid, signo) {
-    core.opSync("op_kill", pid, signo);
+  function opKill(pid, signo, apiName) {
+    ops.op_kill(pid, signo, apiName);
+  }
+
+  function kill(pid, signo = "SIGTERM") {
+    opKill(pid, signo, "Deno.kill()");
   }
 
   function opRunStatus(rid) {
@@ -25,7 +30,7 @@
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return core.opSync("op_run", request);
+    return ops.op_run(request);
   }
 
   async function runStatus(rid) {
@@ -89,8 +94,8 @@
       core.close(this.rid);
     }
 
-    kill(signo) {
-      opKill(this.pid, signo);
+    kill(signo = "SIGTERM") {
+      opKill(this.pid, signo, "Deno.Process.kill()");
     }
   }
 
@@ -125,6 +130,6 @@
   window.__bootstrap.process = {
     run,
     Process,
-    kill: opKill,
+    kill,
   };
 })(this);

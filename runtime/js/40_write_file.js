@@ -2,6 +2,7 @@
 "use strict";
 ((window) => {
   const core = window.__bootstrap.core;
+  const ops = core.ops;
   const { abortSignal } = window.__bootstrap;
   const { pathFromURL } = window.__bootstrap.util;
 
@@ -11,13 +12,13 @@
     options = {},
   ) {
     options.signal?.throwIfAborted();
-    core.opSync("op_write_file_sync", {
-      path: pathFromURL(path),
+    ops.op_write_file_sync(
+      pathFromURL(path),
+      options.mode,
+      options.append ?? false,
+      options.create ?? true,
       data,
-      mode: options.mode,
-      append: options.append ?? false,
-      create: options.create ?? true,
-    });
+    );
   }
 
   async function writeFile(
@@ -29,19 +30,20 @@
     let abortHandler;
     if (options.signal) {
       options.signal.throwIfAborted();
-      cancelRid = core.opSync("op_cancel_handle");
+      cancelRid = ops.op_cancel_handle();
       abortHandler = () => core.tryClose(cancelRid);
       options.signal[abortSignal.add](abortHandler);
     }
     try {
-      await core.opAsync("op_write_file_async", {
-        path: pathFromURL(path),
+      await core.opAsync(
+        "op_write_file_async",
+        pathFromURL(path),
+        options.mode,
+        options.append ?? false,
+        options.create ?? true,
         data,
-        mode: options.mode,
-        append: options.append ?? false,
-        create: options.create ?? true,
         cancelRid,
-      });
+      );
     } finally {
       if (options.signal) {
         options.signal[abortSignal.remove](abortHandler);

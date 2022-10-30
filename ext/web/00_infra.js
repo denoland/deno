@@ -10,6 +10,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const {
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
@@ -239,7 +240,7 @@
    * @returns {string}
    */
   function forgivingBase64Encode(data) {
-    return core.opSync("op_base64_encode", data);
+    return ops.op_base64_encode(data);
   }
 
   /**
@@ -247,7 +248,7 @@
    * @returns {Uint8Array}
    */
   function forgivingBase64Decode(data) {
-    return core.opSync("op_base64_decode", data);
+    return ops.op_base64_decode(data);
   }
 
   /**

@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayIsArray,
@@ -18,9 +19,9 @@
     ArrayPrototypeSort,
     ArrayPrototypeSplice,
     ObjectKeys,
+    Uint32Array,
     SafeArrayIterator,
     StringPrototypeSlice,
-    StringPrototypeSplit,
     Symbol,
     SymbolFor,
     SymbolIterator,
@@ -43,39 +44,37 @@
 
   // Helper functions
   function opUrlReparse(href, setter, value) {
-    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
-  }
-  function opUrlParse(href, maybeBase) {
-    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
-  }
-  function _urlParts(internalParts) {
-    // WARNING: must match UrlParts serialization rust's url_result()
-    const {
-      0: href,
-      1: hash,
-      2: host,
-      3: hostname,
-      4: origin,
-      5: password,
-      6: pathname,
-      7: port,
-      8: protocol,
-      9: search,
-      10: username,
-    } = StringPrototypeSplit(internalParts, "\n");
-    return {
+    const status = ops.op_url_reparse(
       href,
-      hash,
-      host,
-      hostname,
-      origin,
-      password,
-      pathname,
-      port,
-      protocol,
-      search,
-      username,
-    };
+      setter,
+      value,
+      componentsBuf.buffer,
+    );
+    return getSerialization(status, href);
+  }
+
+  function opUrlParse(href, maybeBase) {
+    let status;
+    if (maybeBase === undefined) {
+      status = ops.op_url_parse(href, componentsBuf.buffer);
+    } else {
+      status = core.ops.op_url_parse_with_base(
+        href,
+        maybeBase,
+        componentsBuf.buffer,
+      );
+    }
+    return getSerialization(status, href);
+  }
+
+  function getSerialization(status, href) {
+    if (status === 0) {
+      return href;
+    } else if (status === 1) {
+      return core.ops.op_url_get_serialization();
+    } else {
+      throw new TypeError("Invalid URL");
+    }
   }
 
   class URLSearchParams {
@@ -93,6 +92,11 @@
           { prefix, context: "Argument 1" },
         );
       this[webidl.brand] = webidl.brand;
+      if (!init) {
+        // if there is no query string, return early
+        this[_list] = [];
+        return;
+      }
 
       if (typeof init === "string") {
         // Overload: USVString
@@ -101,7 +105,7 @@
         if (init[0] == "?") {
           init = StringPrototypeSlice(init, 1);
         }
-        this[_list] = core.opSync("op_url_parse_search_params", init);
+        this[_list] = ops.op_url_parse_search_params(init);
       } else if (ArrayIsArray(init)) {
         // Overload: sequence<sequence<USVString>>
         this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -128,7 +132,7 @@
       if (url === null) {
         return;
       }
-      url[_url] = opUrlReparse(url.href, SET_SEARCH, this.toString());
+      url[_updateUrlSearch](this.toString());
     }
 
     /**
@@ -291,7 +295,7 @@
      */
     toString() {
       webidl.assertBranded(this, URLSearchParamsPrototype);
-      return core.opSync("op_url_stringify_search_params", this[_list]);
+      return ops.op_url_stringify_search_params(this[_list]);
     }
   }
 
@@ -305,11 +309,37 @@
     URLSearchParamsPrototype,
   );
 
-  const _url = Symbol("url");
+  const _updateUrlSearch = Symbol("updateUrlSearch");
 
+  function trim(s) {
+    if (s.length === 1) return "";
+    return s;
+  }
+
+  // Represents a "no port" value. A port in URL cannot be greater than 2^16 − 1
+  const NO_PORT = 65536;
+
+  const componentsBuf = new Uint32Array(8);
   class URL {
-    [_url];
     #queryObject = null;
+    #serialization;
+    #schemeEnd;
+    #usernameEnd;
+    #hostStart;
+    #hostEnd;
+    #port;
+    #pathStart;
+    #queryStart;
+    #fragmentStart;
+
+    [_updateUrlSearch](value) {
+      this.#serialization = opUrlReparse(
+        this.#serialization,
+        SET_SEARCH,
+        value,
+      );
+      this.#updateComponents();
+    }
 
     /**
      * @param {string} url
@@ -325,7 +355,21 @@
         });
       }
       this[webidl.brand] = webidl.brand;
-      this[_url] = opUrlParse(url, base);
+      this.#serialization = opUrlParse(url, base);
+      this.#updateComponents();
+    }
+
+    #updateComponents() {
+      [
+        this.#schemeEnd,
+        this.#usernameEnd,
+        this.#hostStart,
+        this.#hostEnd,
+        this.#port,
+        this.#pathStart,
+        this.#queryStart,
+        this.#fragmentStart,
+      ] = componentsBuf;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -348,8 +392,7 @@
     #updateSearchParams() {
       if (this.#queryObject !== null) {
         const params = this.#queryObject[_list];
-        const newParams = core.opSync(
-          "op_url_parse_search_params",
+        const newParams = ops.op_url_parse_search_params(
           StringPrototypeSlice(this.search, 1),
         );
         ArrayPrototypeSplice(
@@ -361,10 +404,18 @@
       }
     }
 
+    #hasAuthority() {
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
+      return this.#serialization.slice(this.#schemeEnd).startsWith("://");
+    }
+
     /** @return {string} */
     get hash() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].hash;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
+      return this.#fragmentStart
+        ? trim(this.#serialization.slice(this.#fragmentStart))
+        : "";
     }
 
     /** @param {string} value */
@@ -377,7 +428,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HASH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HASH,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -386,7 +442,8 @@
     /** @return {string} */
     get host() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].host;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L101
+      return this.#serialization.slice(this.#hostStart, this.#pathStart);
     }
 
     /** @param {string} value */
@@ -399,7 +456,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOST, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOST,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -408,7 +470,8 @@
     /** @return {string} */
     get hostname() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].hostname;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L988
+      return this.#serialization.slice(this.#hostStart, this.#hostEnd);
     }
 
     /** @param {string} value */
@@ -421,7 +484,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_HOSTNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_HOSTNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -430,7 +498,7 @@
     /** @return {string} */
     get href() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.#serialization;
     }
 
     /** @param {string} value */
@@ -442,20 +510,50 @@
         prefix,
         context: "Argument 1",
       });
-      this[_url] = opUrlParse(value);
+      this.#serialization = opUrlParse(value);
+      this.#updateComponents();
       this.#updateSearchParams();
     }
 
     /** @return {string} */
     get origin() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].origin;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/origin.rs#L14
+      const scheme = this.#serialization.slice(0, this.#schemeEnd);
+      if (
+        scheme === "http" || scheme === "https" || scheme === "ftp" ||
+        scheme === "ws" || scheme === "wss"
+      ) {
+        return `${scheme}://${this.host}`;
+      }
+
+      if (scheme === "blob") {
+        // TODO(@littledivy): Fast path.
+        try {
+          return new URL(this.pathname).origin;
+        } catch {
+          return "null";
+        }
+      }
+
+      return "null";
     }
 
     /** @return {string} */
     get password() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].password;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L914
+      if (
+        this.#hasAuthority() &&
+        this.#usernameEnd !== this.#serialization.length &&
+        this.#serialization[this.#usernameEnd] === ":"
+      ) {
+        return this.#serialization.slice(
+          this.#usernameEnd + 1,
+          this.#hostStart - 1,
+        );
+      }
+      return "";
     }
 
     /** @param {string} value */
@@ -468,7 +566,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PASSWORD, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PASSWORD,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -477,7 +580,13 @@
     /** @return {string} */
     get pathname() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].pathname;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L1203
+      if (!this.#queryStart && !this.#fragmentStart) {
+        return this.#serialization.slice(this.#pathStart);
+      }
+
+      const nextComponentStart = this.#queryStart || this.#fragmentStart;
+      return this.#serialization.slice(this.#pathStart, nextComponentStart);
     }
 
     /** @param {string} value */
@@ -490,7 +599,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PATHNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PATHNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -499,7 +613,15 @@
     /** @return {string} */
     get port() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].port;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
+      if (this.#port === NO_PORT) {
+        return this.#serialization.slice(this.#hostEnd, this.#pathStart);
+      } else {
+        return this.#serialization.slice(
+          this.#hostEnd + 1, /* : */
+          this.#pathStart,
+        );
+      }
     }
 
     /** @param {string} value */
@@ -512,7 +634,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PORT, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PORT,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -521,7 +648,8 @@
     /** @return {string} */
     get protocol() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].protocol;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L56
+      return this.#serialization.slice(0, this.#schemeEnd + 1 /* : */);
     }
 
     /** @param {string} value */
@@ -534,7 +662,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_PROTOCOL, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_PROTOCOL,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -543,7 +676,11 @@
     /** @return {string} */
     get search() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].search;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L249
+      const afterPath = this.#queryStart || this.#fragmentStart ||
+        this.#serialization.length;
+      const afterQuery = this.#fragmentStart || this.#serialization.length;
+      return trim(this.#serialization.slice(afterPath, afterQuery));
     }
 
     /** @param {string} value */
@@ -556,7 +693,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_SEARCH, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_SEARCH,
+          value,
+        );
+        this.#updateComponents();
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -566,7 +708,19 @@
     /** @return {string} */
     get username() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].username;
+      // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L881
+      const schemeSeperatorLen = 3; /* :// */
+      if (
+        this.#hasAuthority() &&
+        this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
+      ) {
+        return this.#serialization.slice(
+          this.#schemeEnd + schemeSeperatorLen,
+          this.#usernameEnd,
+        );
+      } else {
+        return "";
+      }
     }
 
     /** @param {string} value */
@@ -579,7 +733,12 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = opUrlReparse(this[_url].href, SET_USERNAME, value);
+        this.#serialization = opUrlReparse(
+          this.#serialization,
+          SET_USERNAME,
+          value,
+        );
+        this.#updateComponents();
       } catch {
         /* pass */
       }
@@ -597,13 +756,13 @@
     /** @return {string} */
     toString() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.#serialization;
     }
 
     /** @return {string} */
     toJSON() {
       webidl.assertBranded(this, URLPrototype);
-      return this[_url].href;
+      return this.#serialization;
     }
   }
 
@@ -617,7 +776,7 @@
    * @returns {[string, string][]}
    */
   function parseUrlEncoded(bytes) {
-    return core.opSync("op_url_parse_search_params", null, bytes);
+    return ops.op_url_parse_search_params(null, bytes);
   }
 
   webidl

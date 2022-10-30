@@ -42,6 +42,13 @@ itest!(json {
     exit_code: 1,
 });
 
+itest!(compact {
+  args:
+    "lint --compact lint/without_config/file1.js lint/without_config/ignored_file.tss",
+    output: "lint/expected_compact.out",
+    exit_code: 1,
+});
+
 itest!(ignore {
   args:
     "lint --ignore=lint/without_config/file1.js,lint/without_config/malformed.js,lint/without_config/lint_with_config/ lint/without_config/",
@@ -88,7 +95,19 @@ itest!(lint_with_config {
   exit_code: 1,
 });
 
+itest!(lint_with_report_config {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/",
+  output: "lint/with_report_config_compact.out",
+  exit_code: 1,
+});
+
 // Check if CLI flags take precedence
+itest!(lint_with_report_config_override {
+  args: "lint --config lint/Deno.compact.format.jsonc lint/with_config/ --json",
+  output: "lint/with_report_config_override.out",
+  exit_code: 1,
+});
+
 itest!(lint_with_config_and_flags {
   args: "lint --config lint/Deno.jsonc --ignore=lint/with_config/a.ts",
   output: "lint/with_config_and_flags.out",

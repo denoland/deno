@@ -21,9 +21,11 @@ pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
     &mut self,
     _host: &(T, Option<u16>),
+    _api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
-  fn check_write(&mut self, _p: &Path) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
+  fn check_write(&mut self, _p: &Path, _api_name: &str)
+    -> Result<(), AnyError>;
 }
 
 /// `UnstableChecker` is a struct so it can be placed inside `GothamState`;
@@ -81,14 +83,15 @@ pub fn init<P: NetPermissions + 'static>(
   unstable: bool,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
+  let mut ops = ops::init::<P>();
+  ops.extend(ops_tls::init::<P>());
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:ext/net",
       "01_net.js",
       "02_tls.js",
-      "04_net_unstable.js",
     ))
-    .ops([&ops::init::<P>()[..], &ops_tls::init::<P>()[..]].concat())
+    .ops(ops)
     .state(move |state| {
       state.put(DefaultTlsOptions {
         root_cert_store: root_cert_store.clone(),

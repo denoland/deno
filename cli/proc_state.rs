@@ -7,11 +7,10 @@ use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
+use crate::cache::NodeAnalysisCache;
+use crate::cache::ParsedSourceCache;
 use crate::cache::TypeCheckCache;
-use crate::compat;
-use crate::compat::NodeEsmResolver;
 use crate::deno_dir;
-use crate::emit;
 use crate::emit::emit_parsed_source;
 use crate::emit::TsConfigType;
 use crate::emit::TsTypeLib;
@@ -23,12 +22,22 @@ use crate::graph_util::ModuleEntry;
 use crate::http_cache;
 use crate::lockfile::as_maybe_locker;
 use crate::lockfile::Lockfile;
+use crate::node;
+use crate::node::NodeResolution;
+use crate::npm::NpmCache;
+use crate::npm::NpmPackageReference;
+use crate::npm::NpmPackageResolver;
+use crate::npm::NpmRegistryApi;
+use crate::progress_bar::ProgressBar;
 use crate::resolver::ImportMapResolver;
 use crate::resolver::JsxResolver;
+use crate::tools::check;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -41,7 +50,6 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
-use deno_graph::source::ResolveResponse;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -52,9 +60,10 @@ use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use log::warn;
 use std::collections::HashSet;
-use std::env;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -65,7 +74,6 @@ pub struct ProcState(Arc<Inner>);
 
 pub struct Inner {
   pub dir: deno_dir::DenoDir,
-  pub coverage_dir: Option<String>,
   pub file_fetcher: FileFetcher,
   pub options: Arc<CliOptions>,
   pub emit_cache: EmitCache,
@@ -80,8 +88,15 @@ pub struct Inner {
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
+  pub parsed_source_cache: ParsedSourceCache,
   maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  pub node_analysis_cache: NodeAnalysisCache,
+  pub npm_cache: NpmCache,
+  pub npm_resolver: NpmPackageResolver,
+  pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
+  progress_bar: ProgressBar,
+  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -141,6 +156,7 @@ impl ProcState {
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let root_cert_store = cli_options.resolve_root_cert_store()?;
     let cache_usage = cli_options.cache_setting();
+    let progress_bar = ProgressBar::default();
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
@@ -150,6 +166,7 @@ impl ProcState {
       cli_options
         .unsafely_ignore_certificate_errors()
         .map(ToOwned::to_owned),
+      Some(progress_bar.clone()),
     )?;
 
     let lockfile = cli_options
@@ -177,26 +194,16 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let coverage_dir = cli_options
-      .coverage_dir()
-      .map(ToOwned::to_owned)
-      .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok());
-
     // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
     // created below
-    let node_resolver = NodeEsmResolver::new(
-      maybe_import_map.clone().map(ImportMapResolver::new),
-    );
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver: Option<
       Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if cli_options.compat() {
-      Some(Arc::new(node_resolver))
-    } else if let Some(jsx_resolver) = maybe_jsx_resolver {
+    > = if let Some(jsx_resolver) = maybe_jsx_resolver {
       // the JSX resolver offloads to the import map if present, otherwise uses
       // the default Deno explicit import resolution.
       Some(Arc::new(jsx_resolver))
@@ -218,17 +225,47 @@ impl ProcState {
       warn!("{}", ignored_options);
     }
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
+    let parsed_source_cache =
+      ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
+    let registry_url = NpmRegistryApi::default_url();
+    let npm_cache = NpmCache::from_deno_dir(
+      &dir,
+      cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let api = NpmRegistryApi::new(
+      registry_url,
+      npm_cache.clone(),
+      cli_options.cache_setting(),
+      progress_bar.clone(),
+    );
+    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
+    let mut npm_resolver = NpmPackageResolver::new(
+      npm_cache.clone(),
+      api,
+      cli_options.unstable()
+        // don't do the unstable error when in the lsp
+        || matches!(cli_options.sub_command(), DenoSubcommand::Lsp),
+      cli_options.no_npm(),
+      cli_options
+        .resolve_local_node_modules_folder()
+        .with_context(|| "Resolving local node_modules folder.")?,
+    );
+    if let Some(lockfile) = maybe_lockfile.clone() {
+      npm_resolver.add_lockfile(lockfile).await?;
+    }
+    let node_analysis_cache =
+      NodeAnalysisCache::new(Some(dir.node_analysis_db_file_path()));
 
+    let emit_options: deno_ast::EmitOptions = ts_config_result.ts_config.into();
     Ok(ProcState(Arc::new(Inner {
       dir,
-      coverage_dir,
       options: cli_options,
       emit_cache,
       emit_options_hash: FastInsecureHasher::new()
-        // todo(dsherret): use hash of emit options instead as it's more specific
-        .write(&ts_config_result.ts_config.as_bytes())
+        .write_hashable(&emit_options)
         .finish(),
-      emit_options: ts_config_result.ts_config.into(),
+      emit_options,
       file_fetcher,
       graph_data: Default::default(),
       lockfile,
@@ -239,8 +276,15 @@ impl ProcState {
       broadcast_channel,
       shared_array_buffer_store,
       compiled_wasm_module_store,
+      parsed_source_cache,
       maybe_resolver,
       maybe_file_watcher_reporter,
+      node_analysis_cache,
+      npm_cache,
+      npm_resolver,
+      cjs_resolutions: Default::default(),
+      progress_bar,
+      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -257,49 +301,21 @@ impl ProcState {
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
+    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let mut npm_package_reqs = vec![];
 
-    // NOTE(@bartlomieju):
-    // Even though `roots` are fully resolved at this point, we are going
-    // to resolve them through `maybe_resolver` to get module kind for the graph
-    // or default to ESM.
-    //
-    // One might argue that this is a code smell, and I would agree. However
-    // due to flux in "Node compatibility" it's not clear where it should be
-    // decided what `ModuleKind` is decided for root specifier.
+    for root in &roots {
+      if let Ok(package_ref) = NpmPackageReference::from_specifier(root) {
+        npm_package_reqs.push(package_ref.req);
+      }
+    }
+
     let roots = roots
       .into_iter()
-      .map(|r| {
-        if let Some(resolver) = &maybe_resolver {
-          let response =
-            resolver.resolve(r.as_str(), &Url::parse("unused:").unwrap());
-          // TODO(bartlomieju): this should be implemented in `deno_graph`
-          match response {
-            ResolveResponse::CommonJs(_) => (r, ModuleKind::CommonJs),
-            ResolveResponse::Err(_) => unreachable!(),
-            _ => (r, ModuleKind::Esm),
-          }
-        } else {
-          (r, ModuleKind::Esm)
-        }
-      })
-      .collect();
+      .map(|s| (s, ModuleKind::Esm))
+      .collect::<Vec<_>>();
 
-    // TODO(bartlomieju): this is very make-shift, is there an existing API
-    // that we could include it like with "maybe_imports"?
-    let roots = if self.options.compat() {
-      let mut r = vec![(compat::GLOBAL_URL.clone(), ModuleKind::Esm)];
-      r.extend(roots);
-      r
-    } else {
-      roots
-    };
-    if !reload_on_watch {
+    if !reload_on_watch && npm_package_reqs.is_empty() {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -321,6 +337,12 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
+      if let Some(resolver) = &self.maybe_resolver {
+        Some(resolver.as_ref())
+      } else {
+        None
+      };
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -362,44 +384,20 @@ impl ProcState {
         None
       };
 
+    let analyzer = self.parsed_source_cache.as_analyzer();
     let graph = create_graph(
       roots.clone(),
-      is_dynamic,
-      maybe_imports,
       &mut loader,
-      maybe_resolver,
-      maybe_locker,
-      None,
-      maybe_file_watcher_reporter,
+      deno_graph::GraphOptions {
+        is_dynamic,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: maybe_file_watcher_reporter,
+      },
     )
     .await;
-
-    let needs_cjs_esm_translation = graph
-      .modules()
-      .iter()
-      .any(|m| m.kind == ModuleKind::CommonJs);
-
-    if needs_cjs_esm_translation {
-      for module in graph.modules() {
-        // TODO(bartlomieju): this is overly simplistic heuristic, once we are
-        // in compat mode, all files ending with plain `.js` extension are
-        // considered CommonJs modules. Which leads to situation where valid
-        // ESM modules with `.js` extension might undergo translation (it won't
-        // work in this situation).
-        if module.kind == ModuleKind::CommonJs {
-          let translated_source = compat::translate_cjs_to_esm(
-            &self.file_fetcher,
-            &module.specifier,
-            module.maybe_source.as_ref().unwrap().to_string(),
-            module.media_type,
-          )
-          .await?;
-          let mut graph_data = self.graph_data.write();
-          graph_data
-            .add_cjs_esm_translation(&module.specifier, translated_source);
-        }
-      }
-    }
 
     // If there was a locker, validate the integrity of all the modules in the
     // locker.
@@ -423,13 +421,21 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
+      npm_package_reqs.extend(graph_data.npm_package_reqs());
+    };
+
+    if !npm_package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
+      self.prepare_node_std_graph().await?;
     }
+
+    drop(_pb_clear_guard);
 
     // type check if necessary
     if self.options.type_check_mode() != TypeCheckMode::None {
       let maybe_config_specifier = self.options.maybe_config_file_specifier();
       let roots = roots.clone();
-      let options = emit::CheckOptions {
+      let options = check::CheckOptions {
         type_check_mode: self.options.type_check_mode(),
         debug: self.options.log_level() == Some(log::Level::Debug),
         maybe_config_specifier,
@@ -444,8 +450,13 @@ impl ProcState {
       let check_cache =
         TypeCheckCache::new(&self.dir.type_checking_cache_db_file_path());
       let graph_data = self.graph_data.clone();
-      let check_result =
-        emit::check(&roots, graph_data, &check_cache, options)?;
+      let check_result = check::check(
+        &roots,
+        graph_data,
+        &check_cache,
+        self.npm_resolver.clone(),
+        options,
+      )?;
       if !check_result.diagnostics.is_empty() {
         return Err(anyhow!(check_result.diagnostics));
       }
@@ -466,12 +477,59 @@ impl ProcState {
     Ok(())
   }
 
+  /// Add the builtin node modules to the graph data.
+  // FIXME(bartlomieju): appears this function can be called more than once
+  // if we have npm imports
+  pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
+      return Ok(());
+    }
+
+    let node_std_graph = self
+      .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
+      .await?;
+    self.graph_data.write().add_graph(&node_std_graph, false);
+    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
+    Ok(())
+  }
+
+  fn handle_node_resolve_result(
+    &self,
+    result: Result<Option<node::NodeResolution>, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    let response = match result? {
+      Some(response) => response,
+      None => return Err(generic_error("not found")),
+    };
+    if let NodeResolution::CommonJs(specifier) = &response {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.lock().insert(specifier.clone());
+    } else if let NodeResolution::BuiltIn(specifier) = &response {
+      return node::resolve_builtin_node_module(specifier);
+    }
+    Ok(response.into_url())
+  }
+
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
     if let Ok(referrer) = deno_core::resolve_url(referrer) {
+      if self.npm_resolver.in_npm_package(&referrer) {
+        // we're in an npm package, so use node resolution
+        return self
+          .handle_node_resolve_result(node::node_resolve(
+            specifier,
+            &referrer,
+            node::NodeResolutionMode::Execution,
+            &self.npm_resolver,
+          ))
+          .with_context(|| {
+            format!("Could not resolve '{}' from '{}'.", specifier, referrer)
+          });
+      }
+
       let graph_data = self.graph_data.read();
       let found_referrer = graph_data.follow_redirect(&referrer);
       let maybe_resolved = match graph_data.get(&found_referrer) {
@@ -482,7 +540,20 @@ impl ProcState {
       };
 
       match maybe_resolved {
-        Some(Resolved::Ok { specifier, .. }) => return Ok(specifier.clone()),
+        Some(Resolved::Ok { specifier, .. }) => {
+          if let Ok(reference) = NpmPackageReference::from_specifier(specifier)
+          {
+            return self
+              .handle_node_resolve_result(node::node_resolve_npm_reference(
+                &reference,
+                node::NodeResolutionMode::Execution,
+                &self.npm_resolver,
+              ))
+              .with_context(|| format!("Could not resolve '{}'.", reference));
+          } else {
+            return Ok(specifier.clone());
+          }
+        }
         Some(Resolved::Err(err)) => {
           return Err(custom_error(
             "TypeError",
@@ -535,40 +606,64 @@ impl ProcState {
     let graph_data = self.graph_data.read();
     for (specifier, entry) in graph_data.entries() {
       if let ModuleEntry::Module {
-        maybe_parsed_source: Some(parsed_source),
-        ..
+        code, media_type, ..
       } = entry
       {
-        emit_parsed_source(
-          &self.emit_cache,
-          specifier,
-          parsed_source,
-          &self.emit_options,
-          self.emit_options_hash,
-        )?;
+        let is_emittable = matches!(
+          media_type,
+          MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx
+        );
+        if is_emittable {
+          emit_parsed_source(
+            &self.emit_cache,
+            &self.parsed_source_cache,
+            specifier,
+            *media_type,
+            code,
+            &self.emit_options,
+            self.emit_options_hash,
+          )?;
+        }
       }
     }
     Ok(())
+  }
+
+  /// Creates the default loader used for creating a graph.
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    cache::FetchCacher::new(
+      self.emit_cache.clone(),
+      self.file_fetcher.clone(),
+      Permissions::allow_all(),
+      Permissions::allow_all(),
+    )
   }
 
   pub async fn create_graph(
     &self,
     roots: Vec<(ModuleSpecifier, ModuleKind)>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
-    let mut cache = cache::FetchCacher::new(
-      self.emit_cache.clone(),
-      self.file_fetcher.clone(),
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    );
+    let mut cache = self.create_graph_loader();
+    self.create_graph_with_loader(roots, &mut cache).await
+  }
+
+  pub async fn create_graph_with_loader(
+    &self,
+    roots: Vec<(ModuleSpecifier, ModuleKind)>,
+    loader: &mut dyn Loader,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_import_map_resolver =
       self.maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_jsx_resolver = self
       .options
-      .to_maybe_jsx_import_source_module()
-      .map(|im| JsxResolver::new(im, maybe_import_map_resolver.clone()));
+      .to_maybe_jsx_import_source_config()
+      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
     let maybe_resolver = if maybe_jsx_resolver.is_some() {
       maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
     } else {
@@ -576,20 +671,34 @@ impl ProcState {
         .as_ref()
         .map(|im| im.as_resolver())
     };
+    let analyzer = self.parsed_source_cache.as_analyzer();
 
-    Ok(
-      create_graph(
-        roots,
-        false,
-        maybe_imports,
-        &mut cache,
-        maybe_resolver,
-        maybe_locker,
-        None,
-        None,
-      )
-      .await,
+    let graph = create_graph(
+      roots,
+      loader,
+      deno_graph::GraphOptions {
+        is_dynamic: false,
+        imports: maybe_imports,
+        resolver: maybe_resolver,
+        locker: maybe_locker,
+        module_analyzer: Some(&*analyzer),
+        reporter: None,
+      },
     )
+    .await;
+
+    // add the found npm package references to the npm resolver and cache them
+    let mut package_reqs = Vec::new();
+    for (specifier, _) in graph.specifiers() {
+      if let Ok(reference) = NpmPackageReference::from_specifier(&specifier) {
+        package_reqs.push(reference.req);
+      }
+    }
+    if !package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(package_reqs).await?;
+    }
+
+    Ok(graph)
   }
 }
 

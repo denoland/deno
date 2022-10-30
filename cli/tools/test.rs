@@ -5,13 +5,11 @@ use crate::args::TestFlags;
 use crate::args::TypeCheckMode;
 use crate::checksum;
 use crate::colors;
-use crate::compat;
 use crate::create_main_worker;
 use crate::display;
 use crate::file_fetcher::File;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
-use crate::fmt_errors::format_js_error;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
@@ -19,10 +17,8 @@ use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::fs_util::specifier_to_file_path;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
-use crate::located_script_name;
 use crate::ops;
 use crate::proc_state::ProcState;
-use crate::tools::coverage::CoverageCollector;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -35,10 +31,10 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::ModuleKind;
+use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::io::Stdio;
 use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
@@ -64,7 +60,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// The test mode is used to determine how a specifier is to be tested.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
@@ -149,13 +145,14 @@ impl TestDescription {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
   String(String),
   Bytes(Vec<u8>),
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
@@ -165,7 +162,7 @@ pub enum TestResult {
   Cancelled,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestStepDescription {
   pub id: usize,
@@ -188,6 +185,7 @@ impl TestStepDescription {
   }
 }
 
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -207,7 +205,7 @@ impl TestStepResult {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,
@@ -248,12 +246,9 @@ pub struct TestSummary {
 
 #[derive(Debug, Clone)]
 struct TestSpecifierOptions {
-  compat_mode: bool,
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   filter: TestFilter,
-  shuffle: Option<u64>,
-  trace_ops: bool,
 }
 
 impl TestSummary {
@@ -731,92 +726,10 @@ async fn test_specifier(
       stdout: StdioPipe::File(sender.stdout()),
       stderr: StdioPipe::File(sender.stderr()),
     },
-  );
+  )
+  .await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].enableTestAndBench()"#,
-  )?;
-
-  let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
-    ps.coverage_dir
-  {
-    let session = worker.create_inspector_session().await;
-    let coverage_dir = PathBuf::from(coverage_dir);
-    let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-    worker
-      .with_event_loop(coverage_collector.start_collecting().boxed_local())
-      .await?;
-
-    Some(coverage_collector)
-  } else {
-    None
-  };
-
-  // Enable op call tracing in core to enable better debugging of op sanitizer
-  // failures.
-  if options.trace_ops {
-    worker
-      .execute_script(
-        &located_script_name!(),
-        "Deno.core.enableOpCallTracing();",
-      )
-      .unwrap();
-  }
-
-  // We only execute the specifier as a module if it is tagged with TestMode::Module or
-  // TestMode::Both.
-  if mode != TestMode::Documentation {
-    if options.compat_mode {
-      worker.execute_side_module(&compat::GLOBAL_URL).await?;
-      worker.execute_side_module(&compat::MODULE_URL).await?;
-
-      let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
-
-      if use_esm_loader {
-        worker.execute_side_module(&specifier).await?;
-      } else {
-        compat::load_cjs_module(
-          &mut worker.js_runtime,
-          &specifier.to_file_path().unwrap().display().to_string(),
-          false,
-        )?;
-        worker.run_event_loop(false).await?;
-      }
-    } else {
-      // We execute the module module as a side module so that import.meta.main is not set.
-      worker.execute_side_module(&specifier).await?;
-    }
-  }
-
-  worker.dispatch_load_event(&located_script_name!())?;
-
-  let test_result = worker.js_runtime.execute_script(
-    &located_script_name!(),
-    &format!(
-      r#"Deno[Deno.internal].runTests({})"#,
-      json!({ "shuffle": options.shuffle }),
-    ),
-  )?;
-
-  worker.js_runtime.resolve_value(test_result).await?;
-
-  loop {
-    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
-
-  worker.dispatch_unload_event(&located_script_name!())?;
-
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-      .await?;
-  }
-
-  Ok(())
+  worker.run_test_specifier(mode).await
 }
 
 fn extract_files_from_regex_blocks(
@@ -843,7 +756,7 @@ fn extract_files_from_regex_blocks(
           return None;
         }
 
-        match attributes.get(0) {
+        match attributes.first() {
           Some(&"js") => MediaType::JavaScript,
           Some(&"javascript") => MediaType::JavaScript,
           Some(&"mjs") => MediaType::Mjs,
@@ -1077,7 +990,7 @@ async fn test_specifiers(
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   let log_level = ps.options.log_level();
-  let specifiers_with_mode = if let Some(seed) = options.shuffle {
+  let specifiers_with_mode = if let Some(seed) = ps.options.shuffle_tests() {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
     specifiers_with_mode.sort_by_key(|(specifier, _)| specifier.clone());
@@ -1406,18 +1319,14 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let compat = ps.options.compat();
   test_specifiers(
     ps,
     permissions,
     specifiers_with_mode,
     TestSpecifierOptions {
-      compat_mode: compat,
       concurrent_jobs: test_flags.concurrent_jobs,
       fail_fast: test_flags.fail_fast,
       filter: TestFilter::from_flag(&test_flags.filter),
-      shuffle: test_flags.shuffle,
-      trace_ops: test_flags.trace_ops,
     },
   )
   .await?;
@@ -1562,7 +1471,6 @@ pub async fn run_tests_with_watch(
 
   let cli_options = ps.options.clone();
   let operation = |modules_to_reload: Vec<(ModuleSpecifier, ModuleKind)>| {
-    let cli_options = cli_options.clone();
     let filter = test_flags.filter.clone();
     let include = include.clone();
     let ignore = ignore.clone();
@@ -1596,12 +1504,9 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         TestSpecifierOptions {
-          compat_mode: cli_options.compat(),
           concurrent_jobs: test_flags.concurrent_jobs,
           fail_fast: test_flags.fail_fast,
           filter: TestFilter::from_flag(&filter),
-          shuffle: test_flags.shuffle,
-          trace_ops: test_flags.trace_ops,
         },
       )
       .await?;

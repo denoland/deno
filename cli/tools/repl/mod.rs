@@ -82,6 +82,7 @@ pub async fn run(
 ) -> Result<i32, AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let mut rustyline_channel = rustyline_channel();
+  let mut should_exit_on_interrupt = false;
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
@@ -119,7 +120,7 @@ pub async fn run(
   }
 
   println!("Deno {}", crate::version::deno());
-  println!("exit using ctrl+d or close()");
+  println!("exit using ctrl+d, ctrl+c, or close()");
 
   loop {
     let line = read_line_and_poll(
@@ -130,6 +131,7 @@ pub async fn run(
     .await;
     match line {
       Ok(line) => {
+        should_exit_on_interrupt = false;
         let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
@@ -143,7 +145,11 @@ pub async fn run(
         editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
-        println!("exit using ctrl+d or close()");
+        if should_exit_on_interrupt {
+          break;
+        }
+        should_exit_on_interrupt = true;
+        println!("press ctrl+c again to exit");
         continue;
       }
       Err(ReadlineError::Eof) => {

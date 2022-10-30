@@ -13,6 +13,7 @@
 
 ((window) => {
   const core = Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const {
     ArrayBufferIsView,
@@ -22,8 +23,8 @@
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
     TypedArrayPrototypeSubarray,
-    TypedArrayPrototypeSlice,
     Uint8Array,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   class TextDecoder {
@@ -51,7 +52,7 @@
         prefix,
         context: "Argument 2",
       });
-      const encoding = core.opSync("op_encoding_normalize_label", label);
+      const encoding = ops.op_encoding_normalize_label(label);
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
@@ -124,24 +125,22 @@
         }
 
         if (!options.stream && this.#rid === null) {
-          return core.opSync("op_encoding_decode_single", input, {
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          return ops.op_encoding_decode_single(
+            input,
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
 
         if (this.#rid === null) {
-          this.#rid = core.opSync("op_encoding_new_decoder", {
-            label: this.#encoding,
-            fatal: this.#fatal,
-            ignoreBom: this.#ignoreBOM,
-          });
+          this.#rid = ops.op_encoding_new_decoder(
+            this.#encoding,
+            this.#fatal,
+            this.#ignoreBOM,
+          );
         }
-        return core.opSync("op_encoding_decode", input, {
-          rid: this.#rid,
-          stream: options.stream,
-        });
+        return ops.op_encoding_decode(input, this.#rid, options.stream);
       } finally {
         if (!options.stream && this.#rid !== null) {
           core.close(this.#rid);
@@ -200,9 +199,15 @@
         context: "Argument 2",
         allowShared: true,
       });
-      return core.opSync("op_encoding_encode_into", source, destination);
+      ops.op_encoding_encode_into(source, destination, encodeIntoBuf);
+      return {
+        read: encodeIntoBuf[0],
+        written: encodeIntoBuf[1],
+      };
     }
   }
+
+  const encodeIntoBuf = new Uint32Array(2);
 
   webidl.configurePrototype(TextEncoder);
   const TextEncoderPrototype = TextEncoder.prototype;
@@ -398,27 +403,23 @@
    */
   function decode(bytes, encoding) {
     const BOMEncoding = BOMSniff(bytes);
-    let start = 0;
     if (BOMEncoding !== null) {
       encoding = BOMEncoding;
-      if (BOMEncoding === "UTF-8") start = 3;
-      else start = 2;
+      const start = BOMEncoding === "UTF-8" ? 3 : 2;
+      bytes = TypedArrayPrototypeSubarray(bytes, start);
     }
-    return new TextDecoder(encoding).decode(
-      TypedArrayPrototypeSlice(bytes, start),
-    );
+    return new TextDecoder(encoding).decode(bytes);
   }
 
   /**
    * @param {Uint8Array} bytes
    */
   function BOMSniff(bytes) {
-    const BOM = TypedArrayPrototypeSubarray(bytes, 0, 3);
-    if (BOM[0] === 0xEF && BOM[1] === 0xBB && BOM[2] === 0xBF) {
+    if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
       return "UTF-8";
     }
-    if (BOM[0] === 0xFE && BOM[1] === 0xFF) return "UTF-16BE";
-    if (BOM[0] === 0xFF && BOM[1] === 0xFE) return "UTF-16LE";
+    if (bytes[0] === 0xFE && bytes[1] === 0xFF) return "UTF-16BE";
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) return "UTF-16LE";
     return null;
   }
 

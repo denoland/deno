@@ -4,7 +4,6 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::colors;
-use crate::compat;
 use crate::create_main_worker;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -13,7 +12,6 @@ use crate::fs_util::is_supported_bench_path;
 use crate::fs_util::resolve_url_or_path_at_cwd;
 use crate::graph_util::contains_specifier;
 use crate::graph_util::graph_valid;
-use crate::located_script_name;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::tools::test::format_test_error;
@@ -41,11 +39,10 @@ use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone, Deserialize)]
 struct BenchSpecifierOptions {
-  compat_mode: bool,
   filter: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BenchPlan {
   pub total: usize,
@@ -64,7 +61,7 @@ pub enum BenchEvent {
   Result(usize, BenchResult),
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
@@ -88,7 +85,7 @@ pub struct BenchDescription {
   pub group: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchStats {
   pub n: u64,
   pub min: f64,
@@ -366,52 +363,10 @@ async fn bench_specifier(
       ps.options.unstable(),
     )],
     Default::default(),
-  );
+  )
+  .await?;
 
-  worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].enableTestAndBench()"#,
-  )?;
-
-  if options.compat_mode {
-    worker.execute_side_module(&compat::GLOBAL_URL).await?;
-    worker.execute_side_module(&compat::MODULE_URL).await?;
-
-    let use_esm_loader = compat::check_if_should_use_esm_loader(&specifier)?;
-
-    if use_esm_loader {
-      worker.execute_side_module(&specifier).await?;
-    } else {
-      compat::load_cjs_module(
-        &mut worker.js_runtime,
-        &specifier.to_file_path().unwrap().display().to_string(),
-        false,
-      )?;
-      worker.run_event_loop(false).await?;
-    }
-  } else {
-    // We execute the module module as a side module so that import.meta.main is not set.
-    worker.execute_side_module(&specifier).await?;
-  }
-
-  worker.dispatch_load_event(&located_script_name!())?;
-
-  let bench_result = worker.js_runtime.execute_script(
-    &located_script_name!(),
-    r#"Deno[Deno.internal].runBenchmarks()"#,
-  )?;
-
-  worker.js_runtime.resolve_value(bench_result).await?;
-
-  loop {
-    if !worker.dispatch_beforeunload_event(&located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
-  worker.dispatch_unload_event(&located_script_name!())?;
-
-  Ok(())
+  worker.run_bench_specifier().await
 }
 
 /// Test a collection of specifiers with test modes concurrently.
@@ -538,13 +493,11 @@ pub async fn run_benchmarks(
 
   check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
-  let compat = ps.options.compat();
   bench_specifiers(
     ps,
     permissions,
     specifiers,
     BenchSpecifierOptions {
-      compat_mode: compat,
       filter: bench_flags.filter,
     },
   )
@@ -704,7 +657,6 @@ pub async fn run_benchmarks_with_watch(
       check_specifiers(&ps, permissions.clone(), specifiers.clone()).await?;
 
       let specifier_options = BenchSpecifierOptions {
-        compat_mode: ps.options.compat(),
         filter: filter.clone(),
       };
       bench_specifiers(ps, permissions.clone(), specifiers, specifier_options)

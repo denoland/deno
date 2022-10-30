@@ -26,10 +26,11 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_url = deno_core::resolve_url_or_path(&main, Some(&cwd))?;
   if main_url.scheme() == "file" {
     let main_path = main_url.to_file_path().unwrap();
-    state
-      .borrow_mut::<Permissions>()
-      .read
-      .check_blind(&main_path, "main_module")?;
+    state.borrow_mut::<Permissions>().read.check_blind(
+      &main_path,
+      "main_module",
+      "Deno.mainModule",
+    )?;
   }
   Ok(main)
 }

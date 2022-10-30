@@ -15,6 +15,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   /** @type {DenoCore} */
   const core = window.Deno.core;
+  const ops = core.ops;
 
   let logDebug = false;
   let logSource = "JS";
@@ -28,6 +29,7 @@ delete Object.prototype.__proto__;
   // This map stores that relationship, and the original can be restored by the
   // normalized specifier.
   // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
+  /** @type {Map<string, string>} */
   const normalizedToOriginalMap = new Map();
 
   /**
@@ -37,6 +39,16 @@ delete Object.prototype.__proto__;
   function isCreateSourceFileOptions(value) {
     return value != null && typeof value === "object" &&
       "languageVersion" in value;
+  }
+
+  /**
+   * @param {ts.ScriptTarget | ts.CreateSourceFileOptions | undefined} versionOrOptions
+   * @returns {ts.CreateSourceFileOptions}
+   */
+  function getCreateSourceFileOptions(versionOrOptions) {
+    return isCreateSourceFileOptions(versionOrOptions)
+      ? versionOrOptions
+      : { languageVersion: versionOrOptions ?? ts.ScriptTarget.ESNext };
   }
 
   function setLogDebug(debug, source) {
@@ -118,8 +130,23 @@ delete Object.prototype.__proto__;
     return result;
   }
 
-  // In the case of the LSP, this is initialized with the assets
-  // when snapshotting and never added to or removed after that.
+  class SpecifierIsCjsCache {
+    /** @type {Set<string>} */
+    #cache = new Set();
+
+    /** @param {[string, ts.Extension]} param */
+    add([specifier, ext]) {
+      if (ext === ".cjs" || ext === ".d.cts" || ext === ".cts") {
+        this.#cache.add(specifier);
+      }
+    }
+
+    has(specifier) {
+      return this.#cache.has(specifier);
+    }
+  }
+
+  // In the case of the LSP, this will only ever contain the assets.
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
@@ -128,6 +155,181 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
+
+  /** @type {Map<string, boolean>} */
+  const isNodeSourceFileCache = new Map();
+
+  const isCjsCache = new SpecifierIsCjsCache();
+
+  /**
+   * @param {ts.CompilerOptions | ts.MinimalResolutionCacheHost} settingsOrHost
+   * @returns {ts.CompilerOptions}
+   */
+  function getCompilationSettings(settingsOrHost) {
+    if (typeof settingsOrHost.getCompilationSettings === "function") {
+      return settingsOrHost.getCompilationSettings();
+    }
+    return /** @type {ts.CompilerOptions} */ (settingsOrHost);
+  }
+
+  // We need to use a custom document registry in order to provide source files
+  // with an impliedNodeFormat to the ts language service
+
+  /** @type {Map<string, ts.SourceFile} */
+  const documentRegistrySourceFileCache = new Map();
+  const { getKeyForCompilationSettings } = ts.createDocumentRegistry(); // reuse this code
+  /** @type {ts.DocumentRegistry} */
+  const documentRegistry = {
+    acquireDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.acquireDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    acquireDocumentWithKey(
+      fileName,
+      path,
+      _compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey);
+      if (!sourceFile || sourceFile.version !== version) {
+        sourceFile = ts.createLanguageServiceSourceFile(
+          fileName,
+          scriptSnapshot,
+          {
+            ...getCreateSourceFileOptions(sourceFileOptions),
+            impliedNodeFormat: isCjsCache.has(fileName)
+              ? ts.ModuleKind.CommonJS
+              : ts.ModuleKind.ESNext,
+          },
+          version,
+          true,
+          scriptKind,
+        );
+        documentRegistrySourceFileCache.set(mapKey, sourceFile);
+      }
+      return sourceFile;
+    },
+
+    updateDocument(
+      fileName,
+      compilationSettingsOrHost,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const key = getKeyForCompilationSettings(
+        getCompilationSettings(compilationSettingsOrHost),
+      );
+      return this.updateDocumentWithKey(
+        fileName,
+        /** @type {ts.Path} */ (fileName),
+        compilationSettingsOrHost,
+        key,
+        scriptSnapshot,
+        version,
+        scriptKind,
+        sourceFileOptions,
+      );
+    },
+
+    updateDocumentWithKey(
+      fileName,
+      path,
+      compilationSettingsOrHost,
+      key,
+      scriptSnapshot,
+      version,
+      scriptKind,
+      sourceFileOptions,
+    ) {
+      const mapKey = path + key;
+      let sourceFile = documentRegistrySourceFileCache.get(mapKey) ??
+        this.acquireDocumentWithKey(
+          fileName,
+          path,
+          compilationSettingsOrHost,
+          key,
+          scriptSnapshot,
+          version,
+          scriptKind,
+          sourceFileOptions,
+        );
+
+      if (sourceFile.version !== version) {
+        sourceFile = ts.updateLanguageServiceSourceFile(
+          sourceFile,
+          scriptSnapshot,
+          version,
+          scriptSnapshot.getChangeRange(sourceFile.scriptSnapShot),
+        );
+      }
+      return sourceFile;
+    },
+
+    getKeyForCompilationSettings(settings) {
+      return getKeyForCompilationSettings(settings);
+    },
+
+    releaseDocument(
+      fileName,
+      compilationSettings,
+      scriptKind,
+      impliedNodeFormat,
+    ) {
+      const key = getKeyForCompilationSettings(compilationSettings);
+      return this.releaseDocumentWithKey(
+        /** @type {ts.Path} */ (fileName),
+        key,
+        scriptKind,
+        impliedNodeFormat,
+      );
+    },
+
+    releaseDocumentWithKey(path, key, _scriptKind, _impliedNodeFormat) {
+      const mapKey = path + key;
+      documentRegistrySourceFileCache.delete(mapKey);
+    },
+
+    reportStats() {
+      return "[]";
+    },
+  };
+
+  ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
+    const fileName = sourceFile.fileName;
+    let isNodeSourceFile = isNodeSourceFileCache.get(fileName);
+    if (isNodeSourceFile == null) {
+      const result = ops.op_is_node_file(fileName);
+      isNodeSourceFile = /** @type {boolean} */ (result);
+      isNodeSourceFileCache.set(fileName, isNodeSourceFile);
+    }
+    return isNodeSourceFile;
+  });
 
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
@@ -188,6 +390,10 @@ delete Object.prototype.__proto__;
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
   const IGNORED_DIAGNOSTICS = [
+    // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
+    // We specify the resolution mode to be CommonJS for some npm files and this
+    // diagnostic gets generated even though we're using custom module resolution.
+    1452,
     // TS2306: File '.../index.d.ts' is not a module.
     // We get this for `x-typescript-types` declaration files which don't export
     // anything. We prefer to treat these as modules with no exports.
@@ -227,10 +433,12 @@ delete Object.prototype.__proto__;
     target: ts.ScriptTarget.ESNext,
   };
 
+  // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
   /** Error thrown on cancellation. */
   class OperationCanceledError extends Error {
   }
 
+  // todo(dsherret): we should investigate if throttling is really necessary
   /**
    * Inspired by ThrottledCancellationToken in ts server.
    *
@@ -250,7 +458,7 @@ delete Object.prototype.__proto__;
       }
 
       this.#lastCheckTimeMs = timeMs;
-      return core.opSync("op_is_cancelled", {});
+      return ops.op_is_cancelled();
     }
 
     throwIfCancellationRequested() {
@@ -274,11 +482,11 @@ delete Object.prototype.__proto__;
     fileExists(specifier) {
       debug(`host.fileExists("${specifier}")`);
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
-      return core.opSync("op_exists", { specifier });
+      return ops.op_exists({ specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.opSync("op_load", { specifier }).data;
+      return ops.op_load({ specifier }).data;
     },
     getCancellationToken() {
       // createLanguageService will call this immediately and cache it
@@ -290,13 +498,10 @@ delete Object.prototype.__proto__;
       _onError,
       _shouldCreateNewSourceFile,
     ) {
+      const createOptions = getCreateSourceFileOptions(languageVersion);
       debug(
         `host.getSourceFile("${specifier}", ${
-          ts.ScriptTarget[
-            isCreateSourceFileOptions(languageVersion)
-              ? languageVersion.languageVersion
-              : languageVersion
-          ]
+          ts.ScriptTarget[createOptions.languageVersion]
         })`,
       );
 
@@ -309,8 +514,7 @@ delete Object.prototype.__proto__;
       }
 
       /** @type {{ data: string; scriptKind: ts.ScriptKind; version: string; }} */
-      const { data, scriptKind, version } = core.opSync(
-        "op_load",
+      const { data, scriptKind, version } = ops.op_load(
         { specifier },
       );
       assert(
@@ -320,7 +524,12 @@ delete Object.prototype.__proto__;
       sourceFile = ts.createSourceFile(
         specifier,
         data,
-        languageVersion,
+        {
+          ...createOptions,
+          impliedNodeFormat: isCjsCache.has(specifier)
+            ? ts.ModuleKind.CommonJS
+            : ts.ModuleKind.ESNext,
+        },
         false,
         scriptKind,
       );
@@ -338,14 +547,13 @@ delete Object.prototype.__proto__;
     },
     writeFile(fileName, data, _writeByteOrderMark, _onError, _sourceFiles) {
       debug(`host.writeFile("${fileName}")`);
-      return core.opSync(
-        "op_emit",
+      return ops.op_emit(
         { fileName, data },
       );
     },
     getCurrentDirectory() {
       debug(`host.getCurrentDirectory()`);
-      return cwd ?? core.opSync("op_cwd", null);
+      return cwd ?? ops.op_cwd();
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -356,19 +564,68 @@ delete Object.prototype.__proto__;
     getNewLine() {
       return "\n";
     },
+    resolveTypeReferenceDirectives(
+      typeDirectiveNames,
+      containingFilePath,
+      redirectedReference,
+      options,
+      containingFileMode,
+    ) {
+      return typeDirectiveNames.map((arg) => {
+        /** @type {ts.FileReference} */
+        const fileReference = typeof arg === "string"
+          ? {
+            pos: -1,
+            end: -1,
+            fileName: arg,
+          }
+          : arg;
+        if (fileReference.fileName.startsWith("npm:")) {
+          /** @type {[string, ts.Extension] | undefined} */
+          const resolved = ops.op_resolve({
+            specifiers: [fileReference.fileName],
+            base: containingFilePath,
+          })?.[0];
+          if (resolved) {
+            isCjsCache.add(resolved);
+            return {
+              primary: true,
+              resolvedFileName: resolved[0],
+            };
+          } else {
+            return undefined;
+          }
+        } else {
+          return ts.resolveTypeReferenceDirective(
+            fileReference.fileName,
+            containingFilePath,
+            options,
+            host,
+            redirectedReference,
+            undefined,
+            containingFileMode ?? fileReference.resolutionMode,
+          ).resolvedTypeReferenceDirective;
+        }
+      });
+    },
     resolveModuleNames(specifiers, base) {
       debug(`host.resolveModuleNames()`);
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.opSync("op_resolve", {
+      const resolved = ops.op_resolve({
         specifiers,
         base,
       });
       if (resolved) {
         const result = resolved.map((item) => {
           if (item) {
+            isCjsCache.add(item);
             const [resolvedFileName, extension] = item;
+            if (resolvedFileName.startsWith("node:")) {
+              // probably means the user doesn't have @types/node, so resolve to undefined
+              return undefined;
+            }
             return {
               resolvedFileName,
               extension,
@@ -384,7 +641,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.opSync("op_create_hash", { data }).hash;
+      return ops.op_create_hash({ data }).hash;
     },
 
     // LanguageServiceHost
@@ -399,7 +656,7 @@ delete Object.prototype.__proto__;
       if (scriptFileNamesCache) {
         return scriptFileNamesCache;
       }
-      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
+      return scriptFileNamesCache = ops.op_script_names();
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -412,7 +669,7 @@ delete Object.prototype.__proto__;
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
-      const scriptVersion = core.opSync("op_script_version", { specifier });
+      const scriptVersion = ops.op_script_version({ specifier });
       scriptVersionCache.set(specifier, scriptVersion);
       return scriptVersion;
     },
@@ -433,8 +690,7 @@ delete Object.prototype.__proto__;
         };
       }
 
-      const fileInfo = core.opSync(
-        "op_load",
+      const fileInfo = ops.op_load(
         { specifier },
       );
       if (fileInfo) {
@@ -445,6 +701,23 @@ delete Object.prototype.__proto__;
       }
     },
   };
+
+  // override the npm install @types package diagnostics to be deno specific
+  ts.setLocalizedDiagnosticMessages((() => {
+    const nodeMessage = "Cannot find name '{0}'."; // don't offer any suggestions
+    const jqueryMessage =
+      "Cannot find name '{0}'. Did you mean to import jQuery? Try adding `import $ from \"npm:jquery\";`.";
+    return {
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2580":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_node_Try_npm_i_save_dev_types_Slashno_2591":
+        nodeMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2581":
+        jqueryMessage,
+      "Cannot_find_name_0_Do_you_need_to_install_type_definitions_for_jQuery_Try_npm_i_save_dev_types_Slash_2592":
+        jqueryMessage,
+    };
+  })());
 
   /** @type {Array<[string, number]>} */
   const stats = [];
@@ -559,7 +832,25 @@ delete Object.prototype.__proto__;
       ...program.getOptionsDiagnostics(),
       ...program.getGlobalDiagnostics(),
       ...program.getSemanticDiagnostics(),
-    ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
+    ].filter((diagnostic) => {
+      if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
+        return false;
+      } else if (
+        diagnostic.code === 1259 &&
+        typeof diagnostic.messageText === "string" &&
+        diagnostic.messageText.startsWith(
+          "Module '\"deno:///missing_dependency.d.ts\"' can only be default-imported using the 'allowSyntheticDefaultImports' flag",
+        )
+      ) {
+        // For now, ignore diagnostics like:
+        // > TS1259 [ERROR]: Module '"deno:///missing_dependency.d.ts"' can only be default-imported using the 'allowSyntheticDefaultImports' flag
+        // This diagnostic has surfaced due to supporting node cjs imports because this module does `export =`.
+        // See discussion in https://github.com/microsoft/TypeScript/pull/51136
+        return false;
+      } else {
+        return true;
+      }
+    });
 
     // emit the tsbuildinfo file
     // @ts-ignore: emitBuildInfo is not exposed (https://github.com/microsoft/TypeScript/issues/49871)
@@ -567,7 +858,7 @@ delete Object.prototype.__proto__;
 
     performanceProgram({ program });
 
-    core.opSync("op_respond", {
+    ops.op_respond({
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -579,7 +870,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.opSync("op_respond", { id, data });
+    ops.op_respond({ id, data });
   }
 
   /**
@@ -900,6 +1191,15 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "provideInlayHints":
+        return respond(
+          id,
+          languageService.provideInlayHints(
+            request.specifier,
+            request.span,
+            request.preferences,
+          ),
+        );
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -915,13 +1215,14 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     cwd = rootUri;
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
 
   function serverRestart() {
-    languageService = ts.createLanguageService(host);
+    languageService = ts.createLanguageService(host, documentRegistry);
+    isNodeSourceFileCache.clear();
     debug("serverRestart()");
   }
 
@@ -942,7 +1243,7 @@ delete Object.prototype.__proto__;
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
 
-  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
+  const { buildSpecifier, libs } = ops.op_build_info();
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into

@@ -12,6 +12,7 @@
     Map,
     Array,
     ArrayPrototypeFill,
+    ArrayPrototypePush,
     ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
@@ -27,7 +28,7 @@
     SymbolFor,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
-  const ops = window.Deno.core.ops;
+  const { ops } = window.Deno.core;
 
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -158,15 +159,63 @@
     return res;
   }
 
-  function opAsync(opName, ...args) {
-    const promiseId = nextPromiseId++;
-    const maybeError = ops[opName](promiseId, ...args);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) return unwrapOpResult(maybeError);
-    let p = PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
+  function rollPromiseId() {
+    return nextPromiseId++;
+  }
+
+  // Generate async op wrappers. See core/bindings.rs
+  function initializeAsyncOps() {
+    function genAsyncOp(op, name, args) {
+      return new Function(
+        "setPromise",
+        "getPromise",
+        "promiseIdSymbol",
+        "rollPromiseId",
+        "handleOpCallTracing",
+        "op",
+        "unwrapOpResult",
+        "PromisePrototypeThen",
+        `
+        return function ${name}(${args}) {
+          const id = rollPromiseId();
+          let promise = PromisePrototypeThen(setPromise(id), unwrapOpResult);
+          try {
+            op(id, ${args});
+          } catch (err) {
+            // Cleanup the just-created promise
+            getPromise(id);
+            // Rethrow the error
+            throw err;
+          }
+          handleOpCallTracing("${name}", id, promise);
+          promise[promiseIdSymbol] = id;          
+          return promise;
+        }
+      `,
+      )(
+        setPromise,
+        getPromise,
+        promiseIdSymbol,
+        rollPromiseId,
+        handleOpCallTracing,
+        op,
+        unwrapOpResult,
+        PromisePrototypeThen,
+      );
+    }
+
+    // { <name>: <argc>, ... }
+    for (const ele of Object.entries(ops.asyncOpsInfo())) {
+      if (!ele) continue;
+      const [name, argc] = ele;
+      const op = ops[name];
+      const args = Array.from({ length: argc }, (_, i) => `arg${i}`).join(", ");
+      ops[name] = genAsyncOp(op, name, args);
+    }
+  }
+
+  function handleOpCallTracing(opName, promiseId, p) {
     if (opCallTracingEnabled) {
-      // Capture a stack trace by creating a new `Error` object. We remove the
-      // first 6 characters (the `Error\n` prefix) to get just the stack trace.
       const stack = StringPrototypeSlice(new Error().stack, 6);
       MapPrototypeSet(opCallTraces, promiseId, { opName, stack });
       p = PromisePrototypeFinally(
@@ -174,12 +223,9 @@
         () => MapPrototypeDelete(opCallTraces, promiseId),
       );
     }
-    // Save the id on the promise so it can later be ref'ed or unref'ed
-    p[promiseIdSymbol] = promiseId;
-    return p;
   }
 
-  function opSync(opName, ...args) {
+  function opAsync(opName, ...args) {
     return ops[opName](...args);
   }
 
@@ -187,31 +233,58 @@
     if (!hasPromise(promiseId)) {
       return;
     }
-    opSync("op_ref_op", promiseId);
+    ops.op_ref_op(promiseId);
   }
 
   function unrefOp(promiseId) {
     if (!hasPromise(promiseId)) {
       return;
     }
-    opSync("op_unref_op", promiseId);
+    ops.op_unref_op(promiseId);
   }
 
   function resources() {
-    return ObjectFromEntries(opSync("op_resources"));
+    return ObjectFromEntries(ops.op_resources());
   }
 
   function metrics() {
-    const [aggregate, perOps] = opSync("op_metrics");
+    const [aggregate, perOps] = ops.op_metrics();
     aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      core.opSync("op_op_names"),
+      ops.op_op_names(),
       (opName, opId) => [opName, perOps[opId]],
     ));
     return aggregate;
   }
 
-  function queueMicrotask(...args) {
-    return opSync("op_queue_microtask", ...args);
+  let reportExceptionCallback = undefined;
+
+  // Used to report errors thrown from functions passed to `queueMicrotask()`.
+  // The callback will be passed the thrown error. For example, you can use this
+  // to dispatch an error event to the global scope.
+  // In other words, set the implementation for
+  // https://html.spec.whatwg.org/multipage/webappapis.html#report-the-exception
+  function setReportExceptionCallback(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    reportExceptionCallback = cb;
+  }
+
+  function queueMicrotask(cb) {
+    if (typeof cb != "function") {
+      throw new TypeError("expected a function");
+    }
+    return ops.op_queue_microtask(() => {
+      try {
+        cb();
+      } catch (error) {
+        if (reportExceptionCallback) {
+          reportExceptionCallback(error);
+        } else {
+          throw error;
+        }
+      }
+    });
   }
 
   // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
@@ -233,10 +306,47 @@
   }
   const InterruptedPrototype = Interrupted.prototype;
 
+  const promiseHooks = {
+    init: [],
+    before: [],
+    after: [],
+    resolve: [],
+    hasBeenSet: false,
+  };
+
+  function setPromiseHooks(init, before, after, resolve) {
+    if (init) ArrayPrototypePush(promiseHooks.init, init);
+    if (before) ArrayPrototypePush(promiseHooks.before, before);
+    if (after) ArrayPrototypePush(promiseHooks.after, after);
+    if (resolve) ArrayPrototypePush(promiseHooks.resolve, resolve);
+
+    if (!promiseHooks.hasBeenSet) {
+      promiseHooks.hasBeenSet = true;
+
+      ops.op_set_promise_hooks((promise, parentPromise) => {
+        for (let i = 0; i < promiseHooks.init.length; ++i) {
+          promiseHooks.init[i](promise, parentPromise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.before.length; ++i) {
+          promiseHooks.before[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.after.length; ++i) {
+          promiseHooks.after[i](promise);
+        }
+      }, (promise) => {
+        for (let i = 0; i < promiseHooks.resolve.length; ++i) {
+          promiseHooks.resolve[i](promise);
+        }
+      });
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
-    opSync,
+    initializeAsyncOps,
     resources,
     metrics,
     registerErrorBuilder,
@@ -252,40 +362,48 @@
     opCallTraces,
     refOp,
     unrefOp,
-    close: opSync.bind(null, "op_close"),
-    tryClose: opSync.bind(null, "op_try_close"),
-    read: opAsync.bind(null, "op_read"),
-    write: opAsync.bind(null, "op_write"),
-    shutdown: opAsync.bind(null, "op_shutdown"),
-    print: opSync.bind(null, "op_print"),
-    setMacrotaskCallback: opSync.bind(null, "op_set_macrotask_callback"),
-    setNextTickCallback: opSync.bind(null, "op_set_next_tick_callback"),
-    runMicrotasks: opSync.bind(null, "op_run_microtasks"),
-    hasTickScheduled: opSync.bind(null, "op_has_tick_scheduled"),
-    setHasTickScheduled: opSync.bind(null, "op_set_has_tick_scheduled"),
-    evalContext: opSync.bind(null, "op_eval_context"),
-    createHostObject: opSync.bind(null, "op_create_host_object"),
-    encode: opSync.bind(null, "op_encode"),
-    decode: opSync.bind(null, "op_decode"),
-    serialize: opSync.bind(null, "op_serialize"),
-    deserialize: opSync.bind(null, "op_deserialize"),
-    getPromiseDetails: opSync.bind(null, "op_get_promise_details"),
-    getProxyDetails: opSync.bind(null, "op_get_proxy_details"),
-    isProxy: opSync.bind(null, "op_is_proxy"),
-    memoryUsage: opSync.bind(null, "op_memory_usage"),
-    setWasmStreamingCallback: opSync.bind(
-      null,
-      "op_set_wasm_streaming_callback",
-    ),
-    abortWasmStreaming: opSync.bind(null, "op_abort_wasm_streaming"),
-    destructureError: opSync.bind(null, "op_destructure_error"),
-    terminate: opSync.bind(null, "op_terminate"),
-    opNames: opSync.bind(null, "op_op_names"),
-    eventLoopHasMoreWork: opSync.bind(null, "op_event_loop_has_more_work"),
-    setPromiseRejectCallback: opSync.bind(
-      null,
-      "op_set_promise_reject_callback",
-    ),
+    setReportExceptionCallback,
+    setPromiseHooks,
+    close: (rid) => ops.op_close(rid),
+    tryClose: (rid) => ops.op_try_close(rid),
+    read: (rid, buffer) => ops.op_read(rid, buffer),
+    readAll: (rid) => ops.op_read_all(rid),
+    write: (rid, buffer) => ops.op_write(rid, buffer),
+    writeAll: (rid, buffer) => ops.op_write_all(rid, buffer),
+    shutdown: (rid) => ops.op_shutdown(rid),
+    print: (msg, isErr) => ops.op_print(msg, isErr),
+    setMacrotaskCallback: (fn) => ops.op_set_macrotask_callback(fn),
+    setNextTickCallback: (fn) => ops.op_set_next_tick_callback(fn),
+    runMicrotasks: () => ops.op_run_microtasks(),
+    hasTickScheduled: () => ops.op_has_tick_scheduled(),
+    setHasTickScheduled: (bool) => ops.op_set_has_tick_scheduled(bool),
+    evalContext: (
+      source,
+      specifier,
+    ) => ops.op_eval_context(source, specifier),
+    createHostObject: () => ops.op_create_host_object(),
+    encode: (text) => ops.op_encode(text),
+    decode: (buffer) => ops.op_decode(buffer),
+    serialize: (
+      value,
+      options,
+      errorCallback,
+    ) => ops.op_serialize(value, options, errorCallback),
+    deserialize: (buffer, options) => ops.op_deserialize(buffer, options),
+    getPromiseDetails: (promise) => ops.op_get_promise_details(promise),
+    getProxyDetails: (proxy) => ops.op_get_proxy_details(proxy),
+    isProxy: (value) => ops.op_is_proxy(value),
+    memoryUsage: () => ops.op_memory_usage(),
+    setWasmStreamingCallback: (fn) => ops.op_set_wasm_streaming_callback(fn),
+    abortWasmStreaming: (
+      rid,
+      error,
+    ) => ops.op_abort_wasm_streaming(rid, error),
+    destructureError: (error) => ops.op_destructure_error(error),
+    opNames: () => ops.op_op_names(),
+    eventLoopHasMoreWork: () => ops.op_event_loop_has_more_work(),
+    setPromiseRejectCallback: (fn) => ops.op_set_promise_reject_callback(fn),
+    byteLength: (str) => ops.op_str_byte_length(str),
   });
 
   ObjectAssign(globalThis.__bootstrap, { core });

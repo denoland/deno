@@ -4,20 +4,26 @@
 /// <reference lib="esnext" />
 
 declare namespace Deno {
+  /** @category Network */
   export interface NetAddr {
     transport: "tcp" | "udp";
     hostname: string;
     port: number;
   }
 
+  /** @category Network */
   export interface UnixAddr {
     transport: "unix" | "unixpacket";
     path: string;
   }
 
+  /** @category Network */
   export type Addr = NetAddr | UnixAddr;
 
-  /** A generic network listener for stream-oriented protocols. */
+  /** A generic network listener for stream-oriented protocols.
+   *
+   * @category Network
+   */
   export interface Listener extends AsyncIterable<Conn> {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<Conn>;
@@ -33,13 +39,17 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
   }
 
-  /** Specialized listener that accepts TLS connections. */
+  /** Specialized listener that accepts TLS connections.
+   *
+   * @category Network
+   */
   export interface TlsListener extends Listener, AsyncIterable<TlsConn> {
     /** Waits for a TLS client to connect and accepts the connection. */
     accept(): Promise<TlsConn>;
     [Symbol.asyncIterator](): AsyncIterableIterator<TlsConn>;
   }
 
+  /** @category Network */
   export interface Conn extends Reader, Writer, Closer {
     /** The local address of the connection. */
     readonly localAddr: Addr;
@@ -55,9 +65,11 @@ declare namespace Deno {
     readonly writable: WritableStream<Uint8Array>;
   }
 
+  /** @category Network */
   // deno-lint-ignore no-empty-interface
   export interface TlsHandshakeInfo {}
 
+  /** @category Network */
   export interface TlsConn extends Conn {
     /** Runs the client or server handshake protocol to completion if that has
      * not happened yet. Calling this method is optional; the TLS handshake
@@ -65,6 +77,7 @@ declare namespace Deno {
     handshake(): Promise<TlsHandshakeInfo>;
   }
 
+  /** @category Network */
   export interface ListenOptions {
     /** The port to listen on. */
     port: number;
@@ -78,6 +91,11 @@ declare namespace Deno {
     hostname?: string;
   }
 
+  /** @category Network */
+  // deno-lint-ignore no-empty-interface
+  export interface TcpListenOptions extends ListenOptions {
+  }
+
   /** Listen announces on the local transport address.
    *
    * ```ts
@@ -87,12 +105,17 @@ declare namespace Deno {
    * const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
    * ```
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function listen(
-    options: ListenOptions & { transport?: "tcp" },
+    options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
-  export interface ListenTlsOptions extends ListenOptions {
+  /** @category Network */
+  export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
     key?: string;
     /** Cert chain in PEM format */
@@ -100,11 +123,13 @@ declare namespace Deno {
     /** Path to a file containing a PEM formatted CA certificate. Requires
      * `--allow-read`.
      *
+     * @tags allow-read
      * @deprecated This option is deprecated and will be removed in Deno 2.0.
      */
     certFile?: string;
     /** Server private key file. Requires `--allow-read`.
      *
+     * @tags allow-read
      * @deprecated This option is deprecated and will be removed in Deno 2.0.
      */
     keyFile?: string;
@@ -119,9 +144,14 @@ declare namespace Deno {
    * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
    * ```
    *
-   * Requires `allow-net` permission. */
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function listenTls(options: ListenTlsOptions): TlsListener;
 
+  /** @category Network */
   export interface ConnectOptions {
     /** The port to connect to. */
     port: number;
@@ -142,9 +172,14 @@ declare namespace Deno {
    * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp". */
+   * Requires `allow-net` permission for "tcp".
+   *
+   * @tags allow-net
+   * @category Network
+   */
   export function connect(options: ConnectOptions): Promise<TcpConn>;
 
+  /** @category Network */
   export interface TcpConn extends Conn {
     /**
      * **UNSTABLE**: new API, see https://github.com/denoland/deno/issues/13617.
@@ -160,9 +195,11 @@ declare namespace Deno {
     setKeepAlive(keepalive?: boolean): void;
   }
 
+  /** @category Network */
   // deno-lint-ignore no-empty-interface
   export interface UnixConn extends Conn {}
 
+  /** @category Network */
   export interface ConnectTlsOptions {
     /** The port to connect to. */
     port: number;
@@ -197,9 +234,13 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
 
+  /** @category Network */
   export interface StartTlsOptions {
     /** A literal IP address or host name that can be resolved to an IP address.
      * If not specified, defaults to `127.0.0.1`. */
@@ -217,13 +258,25 @@ declare namespace Deno {
    * this function requires that the other end of the connection is prepared for
    * a TLS handshake.
    *
+   * Note that this function *consumes* the TCP connection passed to it, thus the
+   * original TCP connection will be unusable after calling this. Additionally,
+   * you need to ensure that the TCP connection is not being used elsewhere when
+   * calling this function in order for the TCP connection to be consumed properly.
+   * For instance, if there is a `Promise` that is waiting for read operation on
+   * the TCP connection to complete, it is considered that the TCP connection is
+   * being used elsewhere. In such a case, this function will fail.
+   *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * // `conn` becomes unusable after calling `Deno.startTls`
    * const tlsConn = await Deno.startTls(conn, { caCerts: [caCert], hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
    */
   export function startTls(
     conn: Conn,
@@ -239,6 +292,8 @@ declare namespace Deno {
    * const conn = await listener.accept();
    * Deno.shutdown(conn.rid);
    * ```
+   *
+   * @category Network
    */
   export function shutdown(rid: number): Promise<void>;
 }

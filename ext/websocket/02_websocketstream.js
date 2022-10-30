@@ -5,6 +5,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const ops = core.ops;
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
@@ -26,6 +27,7 @@
     SymbolFor,
     TypeError,
     Uint8ArrayPrototype,
+    Uint32Array,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
@@ -63,11 +65,14 @@
     ],
   );
 
+  const CLOSE_RESPONSE_TIMEOUT = 5000;
+
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
   const _earlyClose = Symbol("[[earlyClose]]");
+  const _closeSent = Symbol("[[closeSent]]");
   class WebSocketStream {
     [_rid];
 
@@ -128,8 +133,8 @@
         fillHeaders(headers, options.headers);
       }
 
-      const cancelRid = core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
+      const cancelRid = ops.op_ws_check_permission_and_cancel_handle(
+        "WebSocketStream.abort()",
         this[_url],
         true,
       );
@@ -147,6 +152,7 @@
         PromisePrototypeThen(
           core.opAsync(
             "op_ws_create",
+            "new WebSocketStream()",
             this[_url],
             options.protocols
               ? ArrayPrototypeJoin(options.protocols, ", ")
@@ -163,12 +169,15 @@
                   PromisePrototypeThen(
                     (async () => {
                       while (true) {
-                        const { kind } = await core.opAsync(
+                        const kind = new Uint32Array(2);
+                        await core.opAsync(
                           "op_ws_next_event",
                           create.rid,
+                          kind,
                         );
 
-                        if (kind === "close") {
+                        /* close */
+                        if (kind[0] === 2) {
                           break;
                         }
                       }
@@ -232,41 +241,68 @@
                   await this.closed;
                 },
               });
+
               const pull = async (controller) => {
-                const { kind, value } = await core.opAsync(
+                /* [event type, close code] */
+                const eventBuf = new Uint32Array(2);
+                const value = await core.opAsync(
                   "op_ws_next_event",
                   this[_rid],
+                  eventBuf,
                 );
-
+                const kind = eventBuf[0];
                 switch (kind) {
-                  case "string": {
+                  /* string */
+                  case 0: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "binary": {
+                  /* binary */
+                  case 1: {
                     controller.enqueue(value);
                     break;
                   }
-                  case "ping": {
+                  /* ping */
+                  case 3: {
                     await core.opAsync("op_ws_send", this[_rid], {
                       kind: "pong",
                     });
                     await pull(controller);
                     break;
                   }
-                  case "closed":
-                  case "close": {
-                    this[_closed].resolve(value);
+                  /* closed */
+                  case 6: // falls through
+                  /* close */
+                  case 2: {
+                    const code = eventBuf[1];
+                    this[_closed].resolve({ code, reason: value });
                     core.tryClose(this[_rid]);
                     break;
                   }
-                  case "error": {
+                  /* error */
+                  case 5: {
                     const err = new Error(value);
                     this[_closed].reject(err);
                     controller.error(err);
                     core.tryClose(this[_rid]);
                     break;
                   }
+                }
+
+                if (
+                  this[_closeSent].state === "fulfilled" &&
+                  this[_closed].state === "pending"
+                ) {
+                  if (
+                    new Date().getTime() - await this[_closeSent].promise <=
+                      CLOSE_RESPONSE_TIMEOUT
+                  ) {
+                    return pull(controller);
+                  }
+
+                  const code = eventBuf[1];
+                  this[_closed].resolve({ code, reason: value });
+                  core.tryClose(this[_rid]);
                 }
               };
               const readable = new ReadableStream({
@@ -284,6 +320,12 @@
                       );
                     } catch (_) {
                       // needed to ignore warnings & assertions
+                    }
+                  });
+
+                  PromisePrototypeThen(this[_closeSent].promise, () => {
+                    if (this[_closed].state === "pending") {
+                      return pull(controller);
                     }
                   });
                 },
@@ -328,6 +370,7 @@
 
     [_earlyClose] = false;
     [_closed] = new Deferred();
+    [_closeSent] = new Deferred();
     get closed() {
       webidl.assertBranded(this, WebSocketStreamPrototype);
       return this[_closed].promise;
@@ -369,8 +412,13 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        PromisePrototypeCatch(
+        PromisePrototypeThen(
           core.opAsync("op_ws_close", this[_rid], code, closeInfo.reason),
+          () => {
+            setTimeout(() => {
+              this[_closeSent].resolve(new Date().getTime());
+            }, 0);
+          },
           (err) => {
             this[_rid] && core.tryClose(this[_rid]);
             this[_closed].reject(err);

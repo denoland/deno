@@ -6,18 +6,22 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.cache" />
 
+/** @category Web APIs */
 interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
 }
 
+/** @category Web APIs */
 declare class Window extends EventTarget {
   new(): Window;
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
   onload: ((this: Window, ev: Event) => any) | null;
+  onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
@@ -34,6 +38,7 @@ declare class Window extends EventTarget {
   location: Location;
   localStorage: Storage;
   sessionStorage: Storage;
+  caches: CacheStorage;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -63,47 +68,78 @@ declare class Window extends EventTarget {
   ): void;
 }
 
+/** @category Web APIs */
 declare var window: Window & typeof globalThis;
+/** @category Web APIs */
 declare var self: Window & typeof globalThis;
+/** @category DOM Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
+/** @category DOM Events */
 declare var onload: ((this: Window, ev: Event) => any) | null;
+/** @category DOM Events */
+declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
+/** @category DOM Events */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
+/** @category Observability */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
+/** @category Web Storage API */
 declare var localStorage: Storage;
+/** @category Web Storage API */
 declare var sessionStorage: Storage;
+/** @category Cache API */
+declare var caches: CacheStorage;
 
+/** @category Web APIs */
 declare class Navigator {
   constructor();
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
+  readonly language: string;
+  readonly languages: string[];
 }
 
+/** @category Web APIs */
 declare var navigator: Navigator;
 
 /**
  * Shows the given message and waits for the enter key pressed.
+ *
  * If the stdin is not interactive, it does nothing.
+ *
+ * @category Web APIs
+ *
  * @param message
  */
 declare function alert(message?: string): void;
 
 /**
  * Shows the given message and waits for the answer. Returns the user's answer as boolean.
+ *
  * Only `y` and `Y` are considered as true.
+ *
  * If the stdin is not interactive, it returns false.
+ *
+ * @category Web APIs
+ *
  * @param message
  */
 declare function confirm(message?: string): boolean;
 
 /**
  * Shows the given message and waits for the user's input. Returns the user's input as string.
+ *
  * If the default value is given and the user inputs the empty string, then it returns the given
  * default value.
+ *
  * If the default value is not given and the user inputs the empty string, it returns null.
+ *
  * If the stdin is not interactive, it returns null.
+ *
+ * @category Web APIs
+ *
  * @param message
  * @param defaultValue
  */
@@ -117,6 +153,8 @@ declare function prompt(message?: string, defaultValue?: string): string | null;
  * ...
  * dispatchEvent(new Event('unload'));
  * ```
+ *
+ * @category DOM Events
  */
 declare function addEventListener<
   K extends keyof WindowEventMap,
@@ -125,6 +163,7 @@ declare function addEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
+/** @category DOM Events */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -138,6 +177,8 @@ declare function addEventListener(
  * addEventListener('load', listener);
  * removeEventListener('load', listener);
  * ```
+ *
+ * @category DOM Events
  */
 declare function removeEventListener<
   K extends keyof WindowEventMap,
@@ -156,7 +197,10 @@ declare function removeEventListener(
 // The types there must first be split into window, worker and global types.
 /** The location (URL) of the object it is linked to. Changes done on it are
  * reflected on the object it relates to. Accessible via
- * `globalThis.location`. */
+ * `globalThis.location`.
+ *
+ * @category Web APIs
+ */
 declare class Location {
   constructor();
   /** Returns a DOMStringList object listing the origins of the ancestor
@@ -222,4 +266,5 @@ declare class Location {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
+/** @category Web APIs */
 declare var location: Location;
