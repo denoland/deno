@@ -193,8 +193,6 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
-    // created below
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
@@ -477,8 +475,6 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
-  // FIXME(bartlomieju): appears this function can be called more than once
-  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
     if self.node_std_graph_prepared.load(Ordering::Relaxed) {
       return Ok(());
