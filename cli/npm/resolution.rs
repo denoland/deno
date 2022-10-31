@@ -697,6 +697,13 @@ impl NpmResolution {
     Ok(snapshot)
   }
 
+  pub fn resolve_package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<NpmResolutionPackage> {
+    self.snapshot.read().package_from_id(id).cloned()
+  }
+
   pub fn resolve_package_from_package(
     &self,
     name: &str,
