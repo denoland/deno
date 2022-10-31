@@ -2668,8 +2668,14 @@
           "Check that no-cors request constructor is filtering headers provided as init parameter",
           "Check that no-cors request constructor is filtering headers provided as part of request parameter"
         ],
-        "request-init-contenttype.any.html": true,
-        "request-init-contenttype.any.worker.html": true,
+        "request-init-contenttype.any.html": [
+          "Default Content-Type for Request with Blob body (set type)",
+          "Default Content-Type for Request with FormData body"
+        ],
+        "request-init-contenttype.any.worker.html": [
+          "Default Content-Type for Request with Blob body (set type)",
+          "Default Content-Type for Request with FormData body"
+        ],
         "request-structure.any.html": [
           "Check destination attribute",
           "Check referrer attribute",
@@ -3075,8 +3081,14 @@
         ],
         "response-consume-stream.any.html": true,
         "response-consume-stream.any.worker.html": true,
-        "response-init-contenttype.any.html": true,
-        "response-init-contenttype.any.worker.html": true,
+        "response-init-contenttype.any.html": [
+          "Default Content-Type for Response with Blob body (set type)",
+          "Default Content-Type for Response with FormData body"
+        ],
+        "response-init-contenttype.any.worker.html": [
+          "Default Content-Type for Response with Blob body (set type)",
+          "Default Content-Type for Response with FormData body"
+        ],
         "response-static-json.any.html": true,
         "response-static-json.any.worker.html": true
       },
@@ -3346,8 +3358,14 @@
       "Blob-in-worker.worker.html": true
     },
     "file": {
-      "File-constructor.any.html": true,
-      "File-constructor.any.worker.html": true,
+      "File-constructor.any.html": [
+        "Using type in File constructor: text/plain;charset=UTF-8",
+        "Using type in File constructor: nonparsable"
+      ],
+      "File-constructor.any.worker.html": [
+        "Using type in File constructor: text/plain;charset=UTF-8",
+        "Using type in File constructor: nonparsable"
+      ],
       "send-file-formdata-controls.any.html": true,
       "send-file-formdata-controls.any.worker.html": true,
       "send-file-formdata-punctuation.any.html": true,
