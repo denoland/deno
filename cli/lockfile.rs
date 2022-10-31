@@ -124,7 +124,7 @@ impl Lockfile {
 
   // Synchronize lock file to disk - noop if --lock-write file is not specified.
   pub fn write(&self) -> Result<(), AnyError> {
-    if !self.has_content_changed {
+    if !self.has_content_changed && !self.overwrite {
       return Ok(());
     }
 
