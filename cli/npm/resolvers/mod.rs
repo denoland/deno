@@ -265,6 +265,11 @@ impl NpmPackageResolver {
 
     self.inner.add_package_reqs(packages).await?;
 
+    eprintln!(
+      "add package reqs {} {}",
+      self.maybe_lockfile.is_some(),
+      std::process::id()
+    );
     // If there's a lock file, update it with all discovered npm packages
     if let Some(lockfile_mutex) = &self.maybe_lockfile {
       let mut lockfile = lockfile_mutex.lock();

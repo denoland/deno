@@ -99,6 +99,13 @@ impl CliOptions {
 
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let maybe_config_file = ConfigFile::discover(&flags)?;
+    eprintln!(
+      "config file discovered {}",
+      maybe_config_file
+        .as_ref()
+        .map(|cf| cf.specifier.as_str())
+        .unwrap_or("no name")
+    );
     let maybe_lock_file =
       Lockfile::discover(&flags, maybe_config_file.as_ref())?;
     Ok(Self::new(flags, maybe_config_file, maybe_lock_file))

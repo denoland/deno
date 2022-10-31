@@ -453,6 +453,7 @@ impl ConfigFile {
       ConfigFlag::Disabled => Ok(None),
       ConfigFlag::Path(config_path) => Ok(Some(ConfigFile::read(config_path)?)),
       ConfigFlag::Discover => {
+        eprintln!("config path args {:?}", flags.config_path_args());
         if let Some(config_path_args) = flags.config_path_args() {
           let mut checked = HashSet::new();
           for f in config_path_args {
@@ -490,6 +491,7 @@ impl ConfigFile {
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
     for ancestor in start.ancestors() {
+      eprintln!("discover try {}", ancestor.to_path_buf().display());
       if checked.insert(ancestor.to_path_buf()) {
         for config_filename in CONFIG_FILE_NAMES {
           let f = ancestor.join(config_filename);

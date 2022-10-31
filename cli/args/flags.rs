@@ -458,7 +458,9 @@ impl Flags {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file" {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
           if let Ok(p) = module_specifier.to_file_path() {
             Some(vec![p])
           } else {

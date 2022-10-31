@@ -89,10 +89,22 @@ impl Lockfile {
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
     // TODO(bartlomieju): handle autodiscovery next to configuration file
+    eprintln!("flags {:#?}", flags);
+    eprintln!(
+      "has name {:?} {:?}",
+      flags.lock,
+      maybe_config_file
+        .map(|cf| cf.specifier.as_str())
+        .unwrap_or("no name")
+    );
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match maybe_config_file {
         Some(config_file) => {
+          eprintln!(
+            "name from config file name {:?}",
+            config_file.specifier.as_str()
+          );
           if config_file.specifier.scheme() == "file" {
             let mut path = config_file.specifier.to_file_path().unwrap();
             path.set_file_name("deno.lock");
