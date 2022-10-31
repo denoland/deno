@@ -527,7 +527,7 @@ interface BigInt64Array {
    * [11,2,22,1].sort((a, b) => a - b)
    * ```
    */
-  toSorted(compareFn?: (a: number, b: number) => number): BigInt64Array;
+  toSorted(compareFn?: (a: bigint, b: bigint) => number | bigint): BigInt64Array;
 
   with(index: number, value: number): BigInt64Array;
 }
@@ -567,7 +567,7 @@ interface BigUint64Array {
    * [11,2,22,1].sort((a, b) => a - b)
    * ```
    */
-  toSorted(compareFn?: (a: number, b: number) => number): BigUint64Array;
+  toSorted(compareFn?: (a: bigint, b: bigint) => number | bigint): BigUint64Array;
 
   with(index: number, value: number): BigUint64Array;
 }
