@@ -48,7 +48,7 @@ impl Default for BootstrapOptions {
       enable_testing_features: Default::default(),
       debug_flag: Default::default(),
       ts_version: Default::default(),
-      locale: "en-EN".to_string(),
+      locale: "en".to_string(),
       location: Default::default(),
       unstable: Default::default(),
       inspect: Default::default(),

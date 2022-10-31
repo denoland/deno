@@ -27,6 +27,7 @@ use crate::lockfile::Lockfile;
 use self::common::InnerNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
+use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
@@ -212,6 +213,14 @@ impl NpmPackageResolver {
     Ok(path)
   }
 
+  /// Attempts to get the package size in bytes.
+  pub fn package_size(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Result<u64, AnyError> {
+    self.inner.package_size(package_id)
+  }
+
   /// Gets if the provided specifier is in an npm package.
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
@@ -301,8 +310,12 @@ impl NpmPackageResolver {
       self.unstable,
       self.no_npm,
       self.local_node_modules_path.clone(),
-      Some(self.inner.snapshot()),
+      Some(self.snapshot()),
     )
+  }
+
+  pub fn snapshot(&self) -> NpmResolutionSnapshot {
+    self.inner.snapshot()
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {

@@ -814,6 +814,7 @@ dependencies = [
  "junction",
  "libc",
  "log",
+ "lsp-types",
  "mitata",
  "monch",
  "napi_sym",

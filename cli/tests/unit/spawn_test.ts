@@ -812,3 +812,20 @@ Deno.test(
     assertStringIncludes(stdoutText, "typescript");
   },
 );
+
+Deno.test(
+  { permissions: { read: true, run: true } },
+  async function spawnWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      await Deno.spawn(Deno.execPath(), {
+        args: ["eval", "console.log('hello world')"],
+      });
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
+  },
+);

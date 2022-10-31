@@ -119,6 +119,7 @@
     removeSignalListener: __bootstrap.signals.removeSignalListener,
     refTimer: __bootstrap.timers.refTimer,
     unrefTimer: __bootstrap.timers.unrefTimer,
+    osRelease: __bootstrap.os.osRelease,
     hostname: __bootstrap.os.hostname,
     consoleSize: __bootstrap.tty.consoleSize,
     Child: __bootstrap.spawn.Child,
@@ -129,7 +130,6 @@
 
   __bootstrap.denoNsUnstable = {
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
     gid: __bootstrap.os.gid,
