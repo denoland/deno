@@ -248,6 +248,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
 
@@ -441,6 +442,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+    self.js_runtime.maybe_init_inspector();
     self.js_runtime.inspector().borrow().create_local_session()
   }
 

@@ -1,6 +1,7 @@
 {
   "name": "@denotest/esm-import-cjs-default",
   "version": "1.0.0",
+  "main": "index.mjs",
   "dependencies": {
     "@denotest/cjs-default-export": "^1.0.0"
   }

@@ -3384,7 +3384,6 @@ async fn http2_request_url() {
 fn set_raw_should_not_panic_on_no_tty() {
   let output = util::deno_cmd()
     .arg("eval")
-    .arg("--unstable")
     .arg("Deno.stdin.setRaw(true)")
     // stdin set to piped so it certainly does not refer to TTY
     .stdin(std::process::Stdio::piped())
@@ -3458,6 +3457,12 @@ fn broken_stdout() {
 itest!(error_cause {
   args: "run run/error_cause.ts",
   output: "run/error_cause.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_cause_recursive_aggregate {
+  args: "run error_cause_recursive_aggregate.ts",
+  output: "error_cause_recursive_aggregate.ts.out",
   exit_code: 1,
 });
 

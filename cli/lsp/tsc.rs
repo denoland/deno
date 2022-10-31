@@ -2679,6 +2679,20 @@ fn op_is_cancelled(state: &mut OpState) -> bool {
 }
 
 #[op]
+fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+  let state = state.borrow::<State>();
+  match ModuleSpecifier::parse(&path) {
+    Ok(specifier) => state
+      .state_snapshot
+      .maybe_npm_resolver
+      .as_ref()
+      .map(|r| r.in_npm_package(&specifier))
+      .unwrap_or(false),
+    Err(_) => false,
+  }
+}
+
+#[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
@@ -2692,7 +2706,7 @@ fn op_load(
     Some(doc) => {
       json!({
         "data": doc.text(),
-        "scriptKind": crate::tsc::as_ts_script_kind(&doc.media_type()),
+        "scriptKind": crate::tsc::as_ts_script_kind(doc.media_type()),
         "version": state.script_version(&specifier),
       })
     }
@@ -2709,11 +2723,11 @@ fn op_resolve(
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
 
-  let result = if let Some(resolved) = state
-    .state_snapshot
-    .documents
-    .resolve(args.specifiers, &referrer)
-  {
+  let result = if let Some(resolved) = state.state_snapshot.documents.resolve(
+    args.specifiers,
+    &referrer,
+    state.state_snapshot.maybe_npm_resolver.as_ref(),
+  ) {
     Ok(
       resolved
         .into_iter()
@@ -2789,6 +2803,7 @@ fn init_extension(performance: Arc<Performance>) -> Extension {
     .ops(vec![
       op_exists::decl(),
       op_is_cancelled::decl(),
+      op_is_node_file::decl(),
       op_load::decl(),
       op_resolve::decl(),
       op_respond::decl(),
@@ -2994,7 +3009,7 @@ impl From<&config::WorkspaceSettings> for UserPreferences {
         (&inlay_hints.parameter_names.enabled).into(),
       ),
       include_inlay_parameter_name_hints_when_argument_matches_name: Some(
-        inlay_hints
+        !inlay_hints
           .parameter_names
           .suppress_when_argument_matches_name,
       ),
@@ -3005,9 +3020,7 @@ impl From<&config::WorkspaceSettings> for UserPreferences {
         inlay_hints.variable_types.enabled,
       ),
       include_inlay_variable_type_hints_when_type_matches_name: Some(
-        inlay_hints
-          .variable_types
-          .suppress_when_argument_matches_name,
+        !inlay_hints.variable_types.suppress_when_type_matches_name,
       ),
       include_inlay_property_declaration_type_hints: Some(
         inlay_hints.property_declaration_types.enabled,
@@ -3432,6 +3445,7 @@ mod tests {
   use super::*;
   use crate::http_cache::HttpCache;
   use crate::http_util::HeadersMap;
+  use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::text::LineIndex;
@@ -4290,5 +4304,28 @@ mod tests {
         }
       );
     }
+  }
+
+  #[test]
+  fn include_supress_inlay_hit_settings() {
+    let mut settings = WorkspaceSettings::default();
+    settings
+      .inlay_hints
+      .parameter_names
+      .suppress_when_argument_matches_name = true;
+    settings
+      .inlay_hints
+      .variable_types
+      .suppress_when_type_matches_name = true;
+    let user_preferences: UserPreferences = (&settings).into();
+    assert_eq!(
+      user_preferences.include_inlay_variable_type_hints_when_type_matches_name,
+      Some(false)
+    );
+    assert_eq!(
+      user_preferences
+        .include_inlay_parameter_name_hints_when_argument_matches_name,
+      Some(false)
+    );
   }
 }

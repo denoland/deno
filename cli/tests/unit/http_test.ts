@@ -16,6 +16,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
 
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
@@ -1290,6 +1291,11 @@ Deno.test(
   },
 );
 
+function tmpUnixSocketPath(): string {
+  const folder = Deno.makeTempDirSync();
+  return join(folder, "socket");
+}
+
 // https://github.com/denoland/deno/pull/13628
 Deno.test(
   {
@@ -1297,7 +1303,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function httpServerOnUnixSocket() {
-    const filePath = Deno.makeTempFileSync();
+    const filePath = tmpUnixSocketPath();
 
     let httpConn: Deno.HttpConn;
     const promise = (async () => {
@@ -2239,7 +2245,7 @@ Deno.test("upgradeHttp unix", {
   permissions: { read: true, write: true },
   ignore: Deno.build.os === "windows",
 }, async () => {
-  const filePath = Deno.makeTempFileSync();
+  const filePath = tmpUnixSocketPath();
   const promise = deferred();
 
   async function client() {
@@ -2435,7 +2441,7 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   async function httpServerWithoutExclusiveAccessToUnixSocket() {
-    const filePath = await Deno.makeTempFile();
+    const filePath = tmpUnixSocketPath();
     const listener = Deno.listen({ path: filePath, transport: "unix" });
 
     const [clientConn, serverConn] = await Promise.all([
@@ -2450,6 +2456,62 @@ Deno.test(
     clientConn.close();
     listener.close();
     await readPromise;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestResponseClone() {
+    const body = "deno".repeat(64 * 1024);
+    let httpConn: Deno.HttpConn;
+    const listener = Deno.listen({ port: 4501 });
+    const promise = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      const clone = request.clone();
+      const reader = clone.body!.getReader();
+
+      // get first chunk from branch2
+      const clonedChunks = [];
+      const { value, done } = await reader.read();
+      assert(!done);
+      clonedChunks.push(value);
+
+      // consume request after first chunk single read
+      // readAll should read correctly the rest of the body.
+      // firstChunk should be in the stream internal buffer
+      const body1 = await request.text();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        clonedChunks.push(value);
+      }
+      let offset = 0;
+      const body2 = new Uint8Array(body.length);
+      for (const chunk of clonedChunks) {
+        body2.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+
+      assertEquals(body1, body);
+      assertEquals(body1, new TextDecoder().decode(body2));
+      await respondWith(new Response(body));
+    })();
+
+    const response = await fetch("http://localhost:4501", {
+      body,
+      method: "POST",
+    });
+    const clone = response.clone();
+    assertEquals(await response.text(), await clone.text());
+
+    await promise;
+    httpConn!.close();
   },
 );
 

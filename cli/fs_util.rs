@@ -1,7 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::Context;
-use deno_core::error::{uri_error, AnyError};
+use deno_core::error::uri_error;
+use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
@@ -9,8 +10,11 @@ use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
 use std::fs::OpenOptions;
-use std::io::{Error, ErrorKind, Write};
-use std::path::{Path, PathBuf};
+use std::io::Error;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 pub fn atomic_write_file<T: AsRef<[u8]>>(
@@ -571,6 +575,20 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
   }
 
   result
+}
+
+/// Gets the total size (in bytes) of a directory.
+pub fn dir_size(path: &Path) -> std::io::Result<u64> {
+  let entries = std::fs::read_dir(path)?;
+  let mut total = 0;
+  for entry in entries {
+    let entry = entry?;
+    total += match entry.metadata()? {
+      data if data.is_dir() => dir_size(&entry.path())?,
+      data => data.len(),
+    };
+  }
+  Ok(total)
 }
 
 #[cfg(test)]

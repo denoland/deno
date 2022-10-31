@@ -582,6 +582,10 @@ fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+// TODO(bartlomieju): this test became flaky on macOS runner; it is unclear
+// if that's because of a bug in code or the runner itself. We should reenable
+// it once we upgrade to XL runners for macOS.
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn run_watch_external_watch_files() {
   let t = TempDir::new();

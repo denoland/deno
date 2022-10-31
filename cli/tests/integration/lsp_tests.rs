@@ -935,7 +935,7 @@ fn lsp_hover() {
           "language": "typescript",
           "value": "const Deno.args: string[]"
         },
-        "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]",
+        "Returns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n```\n\nThen `Deno.args` will contain:\n\n```\n[ \"/etc/passwd\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is the\n[`std/flags`](https://deno.land/std/flags) module as part of the Deno\nstandard library.",
         "\n\n*@category* - Runtime Environment",
       ],
       "range": {
@@ -3347,6 +3347,37 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
+fn lsp_code_actions_deno_cache_npm() {
+  let mut session = TestSession::from_file("initialize_params.json");
+  let diagnostics = session.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
+    }
+  }));
+  assert_eq!(
+    diagnostics.with_source("deno"),
+    load_fixture_as("code_actions/cache_npm/diagnostics.json")
+  );
+
+  let (maybe_res, maybe_err) = session
+    .client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_actions/cache_npm/cache_action.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_actions/cache_npm/cache_response.json"))
+  );
+  session.shutdown_and_exit();
+}
+
+#[test]
 fn lsp_code_actions_imports() {
   let mut session = TestSession::from_file("initialize_params.json");
   session.did_open(json!({
@@ -4044,6 +4075,169 @@ fn lsp_completions_no_snippet() {
   } else {
     panic!("unexpected completion response");
   }
+}
+
+#[test]
+fn lsp_completions_npm() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import cjsDefault from 'npm:@denotest/cjs-default-export';import chalk from 'npm:chalk';\n\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "npm:@denotest/cjs-default-export",
+          },
+          {
+            "uri": "npm:chalk",
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+
+  // check importing a cjs default import
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 2,
+                "character": 0
+              }
+            },
+            "text": "cjsDefault."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  read_diagnostics(&mut client);
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 11
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(list.items.len(), 3);
+    assert!(list.items.iter().any(|i| i.label == "default"));
+    assert!(list.items.iter().any(|i| i.label == "MyClass"));
+  } else {
+    panic!("unexpected response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      load_fixture("completions/npm/resolve_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("completions/npm/resolve_response.json"))
+  );
+
+  // now check chalk, which is esm
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 3
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 2,
+                "character": 11
+              }
+            },
+            "text": "chalk."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  read_diagnostics(&mut client);
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 2,
+          "character": 6
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "."
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert!(list.items.iter().any(|i| i.label == "green"));
+    assert!(list.items.iter().any(|i| i.label == "red"));
+  } else {
+    panic!("unexpected response");
+  }
+
+  shutdown(&mut client);
 }
 
 #[test]

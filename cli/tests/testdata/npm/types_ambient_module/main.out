@@ -1,0 +1,21 @@
+error: TS2551 [ERROR]: Property 'Test2' does not exist on type 'typeof import("@denotest/types-ambient")'. Did you mean 'Test'?
+console.log(import1.Test2); // should error
+                    ~~~~~
+    at file:///[WILDCARD]/types_ambient_module/main.ts:5:21
+
+    'Test' is declared here.
+      class Test {
+            ~~~~
+        at file:///[WILDCARD]/@denotest/types-ambient/1.0.0/index.d.ts:7:9
+
+TS2551 [ERROR]: Property 'Test2' does not exist on type 'typeof import("@denotest/types-ambient")'. Did you mean 'Test'?
+console.log(import2.Test2); // should error
+                    ~~~~~
+    at file:///[WILDCARD]/types_ambient_module/main.ts:7:21
+
+    'Test' is declared here.
+      class Test {
+            ~~~~
+        at file:///[WILDCARD]/@denotest/types-ambient/1.0.0/index.d.ts:7:9
+
+Found 2 errors.
