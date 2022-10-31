@@ -348,7 +348,6 @@ impl CliMainWorker {
 
   /// Run tests declared with `Deno.test()`. Test events will be dispatched
   /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
   pub async fn run_tests(
     &mut self,
     shuffle: &Option<u64>,
@@ -368,7 +367,6 @@ impl CliMainWorker {
 
   /// Run benches declared with `Deno.bench()`. Bench events will be dispatched
   /// by calling ops which are currently only implemented in the CLI crate.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
   pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
     let promise = {
       let scope = &mut self.worker.js_runtime.handle_scope();
@@ -383,7 +381,6 @@ impl CliMainWorker {
 
   /// Enable `Deno.test()`. If this isn't called before executing user code,
   /// `Deno.test()` calls will noop.
-  // TODO(nayeemrmn): Move testing ops to deno_runtime and redesign/unhide.
   pub fn enable_test(&mut self) {
     let scope = &mut self.worker.js_runtime.handle_scope();
     let cb = self.js_enable_test_callback.open(scope);
@@ -393,7 +390,6 @@ impl CliMainWorker {
 
   /// Enable `Deno.bench()`. If this isn't called before executing user code,
   /// `Deno.bench()` calls will noop.
-  // TODO(nayeemrmn): Move benchmark ops to deno_runtime and redesign/unhide.
   pub fn enable_bench(&mut self) {
     let scope = &mut self.worker.js_runtime.handle_scope();
     let cb = self.js_enable_bench_callback.open(scope);
@@ -537,12 +533,11 @@ pub async fn create_main_worker(
     js_enable_test_callback,
     js_enable_bench_callback,
   ) = {
-    let scope = &mut worker.js_runtime.handle_scope();
     (
-      grab_cb(scope, "Deno[Deno.internal].testing.runTests"),
-      grab_cb(scope, "Deno[Deno.internal].testing.runBenchmarks"),
-      grab_cb(scope, "Deno[Deno.internal].testing.enableTest"),
-      grab_cb(scope, "Deno[Deno.internal].testing.enableBench"),
+      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.runTests").unwrap().try_into().unwrap(),
+      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.runBenchmarks").unwrap().try_into().unwrap(),
+      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.enableTest").unwrap().try_into().unwrap(),
+      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.enableBench").unwrap().try_into().unwrap(),
     )
   };
 
