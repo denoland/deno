@@ -729,7 +729,7 @@ Deno.test(
 const child = await Deno.spawnChild(Deno.execPath(), {
   cwd: Deno.args[0],
   stdout: "piped",
-  args: ["run", "-A", Deno.args[1]],
+  args: ["run", "-A", "--unstable", Deno.args[1]],
 });
 const readable = child.stdout.pipeThrough(new TextDecoderStream());
 const reader = readable.getReader();
@@ -768,7 +768,7 @@ setInterval(() => {
     // child process gets unrefed.
     const { success, stdout, stderr } = await Deno.spawn(Deno.execPath(), {
       cwd,
-      args: ["run", "-A", programFile, cwd, childProgramFile],
+      args: ["run", "-A", "--unstable", programFile, cwd, childProgramFile],
     });
 
     assert(success);
