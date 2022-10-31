@@ -59,7 +59,7 @@ interface Array<T> {
    * @param deleteCount The number of elements to remove.
    * @returns An array containing the elements that were deleted.
    */
-  toSpliced(start: number, deleteCount?: number): any[];
+  toSpliced(start: number, deleteCount?: number): T[];
   /**
    * Copies and removes elements from an array and, if necessary, inserts new elements in their place, returning the deleted elements.
    * @param start The zero-based location in the array from which to start removing elements.
@@ -67,9 +67,9 @@ interface Array<T> {
    * @param items Elements to insert into the array in place of the deleted elements.
    * @returns An array containing the elements that were deleted.
    */
-  toSpliced(start: number, deleteCount: number, ...items: any[]): any[];
+  toSpliced<F>(start: number, deleteCount: number, ...items: F[]): (F | T)[];
 
-  with(index: number, value: any): any[];
+  with<F>(index: number, value: F): (F | T)[];
  }
 
 interface ReadonlyArray<T> {
@@ -124,9 +124,9 @@ interface ReadonlyArray<T> {
    * @param items Elements to insert into the array in place of the deleted elements.
    * @returns An array containing the elements that were deleted.
    */
-  toSpliced(start: number, deleteCount: number, ...items: any[]): any[];
+  toSpliced<F>(start: number, deleteCount: number, ...items: F[]): (F | T)[];
 
-  with(index: number, value: any): any[];
+  with<F>(index: number, value: F): (F | T)[];
 }
 
 interface Int8Array {
