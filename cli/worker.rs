@@ -11,7 +11,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
@@ -398,15 +397,6 @@ impl CliMainWorker {
   }
 }
 
-fn grab_cb(
-  scope: &mut v8::HandleScope,
-  path: &str,
-) -> v8::Global<v8::Function> {
-  let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
-    .unwrap_or_else(|| panic!("{} must be defined", path));
-  v8::Global::new(scope, cb)
-}
-
 pub async fn create_main_worker(
   ps: &ProcState,
   main_module: ModuleSpecifier,
@@ -533,11 +523,49 @@ pub async fn create_main_worker(
     js_enable_test_callback,
     js_enable_bench_callback,
   ) = {
+    let a = worker
+      .js_runtime
+      .execute_script(
+        &located_script_name!(),
+        "Deno[Deno.internal].testing.runTests",
+      )
+      .unwrap();
+    let b = worker
+      .js_runtime
+      .execute_script(
+        &located_script_name!(),
+        "Deno[Deno.internal].testing.runBenchmarks",
+      )
+      .unwrap();
+    let c = worker
+      .js_runtime
+      .execute_script(
+        &located_script_name!(),
+        "Deno[Deno.internal].testing.enableTest",
+      )
+      .unwrap();
+    let d = worker
+      .js_runtime
+      .execute_script(
+        &located_script_name!(),
+        "Deno[Deno.internal].testing.enableBench",
+      )
+      .unwrap();
+
+    let scope = &mut worker.js_runtime.handle_scope();
+    let a: v8::Local<v8::Function> =
+      v8::Local::new(scope, a).try_into().unwrap();
+    let b: v8::Local<v8::Function> =
+      v8::Local::new(scope, b).try_into().unwrap();
+    let c: v8::Local<v8::Function> =
+      v8::Local::new(scope, c).try_into().unwrap();
+    let d: v8::Local<v8::Function> =
+      v8::Local::new(scope, d).try_into().unwrap();
     (
-      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.runTests").unwrap().try_into().unwrap(),
-      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.runBenchmarks").unwrap().try_into().unwrap(),
-      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.enableTest").unwrap().try_into().unwrap(),
-      worker.js_runtime.execute_script(&located_script_name!(), "Deno[Deno.internal].testing.enableBench").unwrap().try_into().unwrap(),
+      v8::Global::new(scope, a),
+      v8::Global::new(scope, b),
+      v8::Global::new(scope, c),
+      v8::Global::new(scope, d),
     )
   };
 
