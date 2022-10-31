@@ -435,7 +435,6 @@ interface Float32Array {
    */
   findIndexLast(predicate: (value: number, index: number, obj: Float32Array) => boolean, thisArg?: any): number;
 
-
   /** Copies and reverses the elements in an array.*/
   toReversed(): Float32Array;
 
@@ -516,7 +515,6 @@ interface BigInt64Array {
    */
   findIndexLast(predicate: (value: bigint, index: number, obj: BigInt64Array) => boolean, thisArg?: any): bigint;
 
-
   /** Copies and reverses the elements in an array.*/
   toReversed(): BigInt64Array;
 
@@ -556,7 +554,6 @@ interface BigUint64Array {
    * predicate. If it is not provided, undefined is used instead.
    */
   findIndexLast(predicate: (value: bigint, index: number, obj: BigUint64Array) => boolean, thisArg?: any): bigint;
-
 
   /** Copies and reverses the elements in an array.*/
   toReversed(): BigUint64Array;
