@@ -168,9 +168,7 @@ impl ProcState {
       Some(progress_bar.clone()),
     )?;
 
-    let lockfile = cli_options
-      .resolve_lock_file()?
-      .map(|f| Arc::new(Mutex::new(f)));
+    let lockfile = cli_options.maybe_lock_file();
     let maybe_import_map_specifier =
       cli_options.resolve_import_map_specifier()?;
 

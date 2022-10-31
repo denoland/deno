@@ -15,9 +15,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::ConfigFile;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
+use crate::Flags;
 
 #[derive(Debug)]
 pub struct LockfileError(String);
@@ -81,6 +83,22 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
+  pub fn discover(
+    flags: &Flags,
+    _maybe_config_file: Option<&ConfigFile>,
+  ) -> Result<Option<Lockfile>, AnyError> {
+    // TODO(bartlomieju): handle autodiscovery next to configuration file
+    let filename = match flags.lock {
+      Some(ref lock) => PathBuf::from(lock),
+      None => {
+        return Ok(None);
+      }
+    };
+
+    let lockfile = Self::new(filename, flags.lock_write)?;
+    Ok(Some(lockfile))
+  }
+
   pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
     let content = if write {
