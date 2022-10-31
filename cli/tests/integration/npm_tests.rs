@@ -733,26 +733,51 @@ itest!(compile_errors {
   http_server: true,
 });
 
-itest!(info_chalk {
+itest!(info_chalk_display {
   args: "info --quiet --unstable npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main.info.out",
+  output: "npm/cjs_with_deps/main_info.out",
   exit_code: 0,
   envs: env_vars(),
   http_server: true,
 });
 
-itest!(info_chalk_node_modules_dir {
+itest!(info_chalk_display_node_modules_dir {
   args: "info --quiet --unstable --node-modules-dir $TESTDATA/npm/cjs_with_deps/main.js",
-  output: "npm/cjs_with_deps/main.info.out",
+  output: "npm/cjs_with_deps/main_info.out",
   exit_code: 0,
   envs: env_vars(),
   http_server: true,
   temp_cwd: true,
 });
 
-itest!(info_cli_chalk {
+itest!(info_chalk_json {
+  args: "info --quiet --unstable --json npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_chalk_json_node_modules_dir {
+  args: "info --quiet --unstable --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
+  output: "npm/cjs_with_deps/main_info_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
+itest!(info_cli_chalk_display {
   args: "info --quiet --unstable npm:chalk@4",
-  output: "npm/deno_info_chalk.out",
+  output: "npm/info/chalk.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_cli_chalk_json {
+  args: "info --quiet --unstable --json npm:chalk@4",
+  output: "npm/info/chalk_json.out",
   exit_code: 0,
   envs: env_vars(),
   http_server: true,

@@ -77,7 +77,8 @@ pub struct LockfileContent {
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
-  pub write: bool,
+  pub overwrite: bool,
+  pub has_content_changed: bool,
   pub content: LockfileContent,
   pub filename: PathBuf,
 }
@@ -85,54 +86,93 @@ pub struct Lockfile {
 impl Lockfile {
   pub fn discover(
     flags: &Flags,
-    _maybe_config_file: Option<&ConfigFile>,
+    maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
     // TODO(bartlomieju): handle autodiscovery next to configuration file
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
-      None => {
-        return Ok(None);
-      }
+      None => match maybe_config_file {
+        Some(config_file) => {
+          if config_file.specifier.scheme() == "file" {
+            let mut path = config_file.specifier.to_file_path().unwrap();
+            path.set_file_name("deno.lock");
+            path
+          } else {
+            return Ok(None);
+          }
+        }
+        None => return Ok(None),
+      },
     };
 
     let lockfile = Self::new(filename, flags.lock_write)?;
     Ok(Some(lockfile))
   }
 
-  pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
+  pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
-    let content = if write {
-      LockfileContent {
+    if overwrite {
+      let content = LockfileContent {
         version: "2".to_string(),
         remote: BTreeMap::new(),
         npm: NpmContent::default(),
-      }
-    } else {
-      let s = std::fs::read_to_string(&filename).with_context(|| {
-        format!("Unable to read lockfile: {}", filename.display())
-      })?;
-      let value: serde_json::Value = serde_json::from_str(&s)
-        .context("Unable to parse contents of the lockfile")?;
-      let version = value.get("version").and_then(|v| v.as_str());
-      if version == Some("2") {
-        serde_json::from_value::<LockfileContent>(value)
-          .context("Unable to parse lockfile")?
-      } else {
-        // If there's no version field, we assume that user is using the old
-        // version of the lockfile. We'll migrate it in-place into v2 and it
-        // will be writte in v2 if user uses `--lock-write` flag.
-        let remote: BTreeMap<String, String> =
-          serde_json::from_value(value).context("Unable to parse lockfile")?;
-        LockfileContent {
-          version: "2".to_string(),
-          remote,
-          npm: NpmContent::default(),
+      };
+
+      return Ok(Lockfile {
+        overwrite,
+        has_content_changed: false,
+        content,
+        filename,
+      });
+    }
+
+    let result = match std::fs::read_to_string(&filename) {
+      Ok(content) => Ok(content),
+      Err(e) => {
+        if e.kind() == std::io::ErrorKind::NotFound {
+          let content = LockfileContent {
+            version: "2".to_string(),
+            remote: BTreeMap::new(),
+            npm: NpmContent::default(),
+          };
+
+          return Ok(Lockfile {
+            overwrite,
+            has_content_changed: false,
+            content,
+            filename,
+          });
+        } else {
+          Err(e)
         }
       }
     };
 
+    let s = result.with_context(|| {
+      format!("Unable to read lockfile: {}", filename.display())
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&s)
+      .context("Unable to parse contents of the lockfile")?;
+    let version = value.get("version").and_then(|v| v.as_str());
+    let content = if version == Some("2") {
+      serde_json::from_value::<LockfileContent>(value)
+        .context("Unable to parse lockfile")?
+    } else {
+      // If there's no version field, we assume that user is using the old
+      // version of the lockfile. We'll migrate it in-place into v2 and it
+      // will be writte in v2 if user uses `--lock-write` flag.
+      let remote: BTreeMap<String, String> =
+        serde_json::from_value(value).context("Unable to parse lockfile")?;
+      LockfileContent {
+        version: "2".to_string(),
+        remote,
+        npm: NpmContent::default(),
+      }
+    };
+
     Ok(Lockfile {
-      write,
+      overwrite,
+      has_content_changed: false,
       content,
       filename,
     })
@@ -140,7 +180,7 @@ impl Lockfile {
 
   // Synchronize lock file to disk - noop if --lock-write file is not specified.
   pub fn write(&self) -> Result<(), AnyError> {
-    if !self.write {
+    if !self.has_content_changed && !self.overwrite {
       return Ok(());
     }
 
@@ -166,12 +206,12 @@ impl Lockfile {
     specifier: &str,
     code: &str,
   ) -> bool {
-    if self.write {
+    if self.overwrite {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
       true
     } else {
-      self.check(specifier, code)
+      self.check_or_insert(specifier, code)
     }
   }
 
@@ -179,18 +219,18 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
-    if self.write {
+    if self.overwrite {
       // In case --lock-write is specified check always passes
-      self.insert_npm_package(package);
+      self.insert_npm(package);
       Ok(())
     } else {
-      self.check_npm_package(package)
+      self.check_or_insert_npm(package)
     }
   }
 
-  /// Checks the given module is included.
-  /// Returns Ok(true) if check passed.
-  fn check(&mut self, specifier: &str, code: &str) -> bool {
+  /// Checks the given module is included, if so verify the checksum. If module
+  /// is not included, insert it.
+  fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
     if specifier.starts_with("file:") {
       return true;
     }
@@ -198,7 +238,8 @@ impl Lockfile {
       let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
     } else {
-      false
+      self.insert(specifier, code);
+      true
     }
   }
 
@@ -208,9 +249,10 @@ impl Lockfile {
     }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.content.remote.insert(specifier.to_string(), checksum);
+    self.has_content_changed = true;
   }
 
-  fn check_npm_package(
+  fn check_or_insert_npm(
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
@@ -229,12 +271,14 @@ impl Lockfile {
           package.id, integrity, package_info.integrity
         )));
       }
+    } else {
+      self.insert_npm(package);
     }
 
     Ok(())
   }
 
-  fn insert_npm_package(&mut self, package: &NpmResolutionPackage) {
+  fn insert_npm(&mut self, package: &NpmResolutionPackage) {
     let dependencies = package
       .dependencies
       .iter()
@@ -253,6 +297,7 @@ impl Lockfile {
         dependencies,
       },
     );
+    self.has_content_changed = true;
   }
 
   pub fn insert_npm_specifier(
@@ -260,12 +305,11 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) {
-    if self.write {
-      self.content.npm.specifiers.insert(
-        package_req.to_string(),
-        format!("{}@{}", package_req.name, version),
-      );
-    }
+    self.content.npm.specifiers.insert(
+      package_req.to_string(),
+      format!("{}@{}", package_req.name, version),
+    );
+    self.has_content_changed = true;
   }
 }
 
@@ -308,8 +352,12 @@ pub fn as_maybe_locker(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::npm::NpmPackageId;
+  use crate::npm::NpmPackageVersionDistInfo;
+  use crate::npm::NpmVersion;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use std::collections::HashMap;
   use std::fs::File;
   use std::io::prelude::*;
   use std::io::Write;
@@ -327,7 +375,16 @@ mod tests {
       },
       "npm": {
         "specifiers": {},
-        "packages": {}
+        "packages": {
+          "nanoid@3.3.4": {
+            "integrity": "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==",
+            "dependencies": {}
+          },
+          "picocolors@1.0.0": {
+            "integrity": "sha512-foobar",
+            "dependencies": {}
+          },
+        }
       }
     });
 
@@ -442,7 +499,7 @@ mod tests {
   }
 
   #[test]
-  fn check_or_insert_lockfile_false() {
+  fn check_or_insert_lockfile() {
     let temp_dir = TempDir::new();
     let file_path = setup(&temp_dir);
 
@@ -461,8 +518,86 @@ mod tests {
 
     let check_false = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
-      "This is new Source code",
+      "Here is some NEW source code",
     );
     assert!(!check_false);
+
+    // Not present in lockfile yet, should be inserted and check passed.
+    let check_true = lockfile.check_or_insert_remote(
+      "https://deno.land/std@0.71.0/http/file_server.ts",
+      "This is new Source code",
+    );
+    assert!(check_true);
+  }
+
+  #[test]
+  fn check_or_insert_lockfile_npm() {
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
+
+    let mut lockfile = Lockfile::new(file_path, false).unwrap();
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "nanoid".to_string(),
+        version: NpmVersion::parse("3.3.4").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_ok.is_ok());
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "picocolors".to_string(),
+        version: NpmVersion::parse("1.0.0").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    // Integrity is borked in the loaded lockfile
+    let check_err = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_err.is_err());
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "source-map-js".to_string(),
+        version: NpmVersion::parse("1.0.2").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    // Not present in lockfile yet, should be inserted and check passed.
+    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_ok.is_ok());
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "source-map-js".to_string(),
+        version: NpmVersion::parse("1.0.2").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
+        integrity: Some("sha512-foobar".to_string()),
+      },
+      dependencies: HashMap::new(),
+    };
+    // Now present in lockfile, should file due to borked integrity
+    let check_err = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_err.is_err());
   }
 }
