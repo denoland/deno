@@ -539,10 +539,10 @@ pub async fn create_main_worker(
   ) = {
     let scope = &mut worker.js_runtime.handle_scope();
     (
-      grab_cb(scope, "__bootstrap.testing.runTests"),
-      grab_cb(scope, "__bootstrap.testing.runBenchmarks"),
-      grab_cb(scope, "__bootstrap.testing.enableTest"),
-      grab_cb(scope, "__bootstrap.testing.enableBench"),
+      grab_cb(scope, "Deno[Deno.internal].testing.runTests"),
+      grab_cb(scope, "Deno[Deno.internal].testing.runBenchmarks"),
+      grab_cb(scope, "Deno[Deno.internal].testing.enableTest"),
+      grab_cb(scope, "Deno[Deno.internal].testing.enableBench"),
     )
   };
 
