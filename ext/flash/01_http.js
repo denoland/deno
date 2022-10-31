@@ -34,6 +34,7 @@
     PromisePrototypeThen,
     SafePromiseAll,
     TypedArrayPrototypeSubarray,
+    ArrayPrototypePush,
     TypeError,
     Uint8Array,
     Uint8ArrayPrototype,
@@ -318,14 +319,17 @@
         respBody,
         length,
       );
-      promises.push(writeFixedResponse(
-        serverId,
-        i,
-        responseStr,
-        length,
-        !ws, // Don't close socket if there is a deferred websocket upgrade.
-        respondFast,
-      ));
+      ArrayPrototypePush(
+        promises,
+        writeFixedResponse(
+          serverId,
+          i,
+          responseStr,
+          length,
+          !ws, // Don't close socket if there is a deferred websocket upgrade.
+          respondFast,
+        ),
+      );
     }
 
     if (!ws) {
@@ -374,20 +378,23 @@
         const reader = respBody.getReader();
         const { value, done } = await reader.read();
         // Best case: sends headers + first chunk in a single go.
-        promises.push(writeFixedResponse(
-          serverId,
-          i,
-          http1Response(
-            method,
-            innerResp.status ?? 200,
-            innerResp.headerList,
+        ArrayPrototypePush(
+          promises,
+          writeFixedResponse(
+            serverId,
+            i,
+            http1Response(
+              method,
+              innerResp.status ?? 200,
+              innerResp.headerList,
+              respBody.byteLength,
+              null,
+            ),
             respBody.byteLength,
-            null,
+            false,
+            respondFast,
           ),
-          respBody.byteLength,
-          false,
-          respondFast,
-        ));
+        );
         await respondChunked(
           i,
           value,
