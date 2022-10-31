@@ -249,13 +249,11 @@ impl Lockfile {
     package_req: &NpmPackageReq,
     version: String,
   ) {
-    if self.write {
-      self.content.npm.specifiers.insert(
-        package_req.to_string(),
-        format!("{}@{}", package_req.name, version),
-      );
-      self.has_content_changed = true;
-    }
+    self.content.npm.specifiers.insert(
+      package_req.to_string(),
+      format!("{}@{}", package_req.name, version),
+    );
+    self.has_content_changed = true;
   }
 }
 
