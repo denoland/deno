@@ -247,11 +247,6 @@ impl ProcState {
         .resolve_local_node_modules_folder()
         .with_context(|| "Resolving local node_modules folder.")?,
     );
-    eprintln!(
-      "lockfile {} {}",
-      maybe_lockfile.is_some(),
-      std::process::id()
-    );
     if let Some(lockfile) = maybe_lockfile.clone() {
       npm_resolver.add_lockfile(lockfile).await?;
     }

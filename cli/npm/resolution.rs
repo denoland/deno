@@ -745,7 +745,6 @@ impl NpmResolution {
     lockfile: &mut Lockfile,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), AnyError> {
-    eprintln!("locking!");
     for (package_req, version) in snapshot.package_reqs.iter() {
       lockfile.insert_npm_specifier(package_req, version.to_string());
     }
