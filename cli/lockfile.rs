@@ -290,8 +290,12 @@ pub fn as_maybe_locker(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::npm::NpmPackageId;
+  use crate::npm::NpmPackageVersionDistInfo;
+  use crate::npm::NpmVersion;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use std::collections::HashMap;
   use std::fs::File;
   use std::io::prelude::*;
   use std::io::Write;
@@ -309,7 +313,16 @@ mod tests {
       },
       "npm": {
         "specifiers": {},
-        "packages": {}
+        "packages": {
+          "nanoid@3.3.4": {
+            "integrity": "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==",
+            "dependencies": {}
+          },
+          "picocolors@1.0.0": {
+            "integrity": "sha512-foobar",
+            "dependencies": {}
+          },
+        }
       }
     });
 
@@ -424,7 +437,7 @@ mod tests {
   }
 
   #[test]
-  fn check_or_insert_lockfile_false() {
+  fn check_or_insert_lockfile() {
     let temp_dir = TempDir::new();
     let file_path = setup(&temp_dir);
 
@@ -441,10 +454,66 @@ mod tests {
     );
     assert!(check_true);
 
-    let check_false = lockfile.check_or_insert_remote(
+    // Not present in lockfile yet, should be inserted and check passed.
+    let check_true = lockfile.check_or_insert_remote(
       "https://deno.land/std@0.71.0/textproto/mod.ts",
       "This is new Source code",
     );
-    assert!(!check_false);
+    assert!(check_true);
+  }
+
+  #[test]
+  fn check_or_insert_lockfile_npm() {
+    let temp_dir = TempDir::new();
+    let file_path = setup(&temp_dir);
+
+    let mut lockfile = Lockfile::new(file_path, false).unwrap();
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "nanoid".to_string(),
+        version: NpmVersion::parse("3.3.4").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_ok.is_ok());
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "picocolors".to_string(),
+        version: NpmVersion::parse("1.0.0").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    // Integrity is borked in the loaded lockfile
+    let check_err = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_err.is_err());
+
+    let npm_package = NpmResolutionPackage {
+      id: NpmPackageId {
+        name: "source-map-js".to_string(),
+        version: NpmVersion::parse("1.0.2").unwrap(),
+      },
+      dist: NpmPackageVersionDistInfo {
+        tarball: "foo".to_string(), 
+        shasum: "foo".to_string(), 
+        integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
+      },
+      dependencies: HashMap::new(),
+    };
+    // Not present in lockfile yet, should be inserted and check passed.
+    let check_ok = lockfile.check_or_insert_npm_package(&npm_package);
+    assert!(check_ok.is_ok());
   }
 }
