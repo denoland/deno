@@ -362,6 +362,7 @@ async fn bench_specifier(
       ps.options.unstable(),
     )],
     Default::default(),
+    true,
   )
   .await?;
 

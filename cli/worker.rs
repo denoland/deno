@@ -42,10 +42,10 @@ pub struct CliMainWorker {
   worker: MainWorker,
   ps: ProcState,
 
-  js_run_tests_callback: v8::Global<v8::Function>,
-  js_run_benchmarks_callback: v8::Global<v8::Function>,
-  js_enable_test_callback: v8::Global<v8::Function>,
-  js_enable_bench_callback: v8::Global<v8::Function>,
+  js_run_tests_callback: Option<v8::Global<v8::Function>>,
+  js_run_benchmarks_callback: Option<v8::Global<v8::Function>>,
+  js_enable_test_callback: Option<v8::Global<v8::Function>>,
+  js_enable_bench_callback: Option<v8::Global<v8::Function>>,
 }
 
 impl CliMainWorker {
@@ -353,7 +353,7 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     let promise = {
       let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self.js_run_tests_callback.open(scope);
+      let cb = self.js_run_tests_callback.as_ref().unwrap().open(scope);
       let this = v8::undefined(scope).into();
       let options =
         serde_v8::to_v8(scope, json!({ "shuffle": shuffle })).unwrap();
@@ -369,7 +369,11 @@ impl CliMainWorker {
   pub async fn run_benchmarks(&mut self) -> Result<(), AnyError> {
     let promise = {
       let scope = &mut self.worker.js_runtime.handle_scope();
-      let cb = self.js_run_benchmarks_callback.open(scope);
+      let cb = self
+        .js_run_benchmarks_callback
+        .as_ref()
+        .unwrap()
+        .open(scope);
       let this = v8::undefined(scope).into();
       let promise = cb.call(scope, this, &[]).unwrap();
       v8::Global::new(scope, promise)
@@ -382,7 +386,7 @@ impl CliMainWorker {
   /// `Deno.test()` calls will noop.
   pub fn enable_test(&mut self) {
     let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_test_callback.open(scope);
+    let cb = self.js_enable_test_callback.as_ref().unwrap().open(scope);
     let this = v8::undefined(scope).into();
     cb.call(scope, this, &[]).unwrap();
   }
@@ -391,7 +395,7 @@ impl CliMainWorker {
   /// `Deno.bench()` calls will noop.
   pub fn enable_bench(&mut self) {
     let scope = &mut self.worker.js_runtime.handle_scope();
-    let cb = self.js_enable_bench_callback.open(scope);
+    let cb = self.js_enable_bench_callback.as_ref().unwrap().open(scope);
     let this = v8::undefined(scope).into();
     cb.call(scope, this, &[]).unwrap();
   }
@@ -403,6 +407,7 @@ pub async fn create_main_worker(
   permissions: Permissions,
   mut custom_extensions: Vec<Extension>,
   stdio: deno_runtime::ops::io::Stdio,
+  bench_or_test: bool,
 ) -> Result<CliMainWorker, AnyError> {
   let (main_module, is_main_cjs) = if let Ok(package_ref) =
     NpmPackageReference::from_specifier(&main_module)
@@ -522,7 +527,7 @@ pub async fn create_main_worker(
     js_run_benchmarks_callback,
     js_enable_test_callback,
     js_enable_bench_callback,
-  ) = {
+  ) = if bench_or_test {
     let a = worker
       .js_runtime
       .execute_script(
@@ -562,11 +567,13 @@ pub async fn create_main_worker(
     let d: v8::Local<v8::Function> =
       v8::Local::new(scope, d).try_into().unwrap();
     (
-      v8::Global::new(scope, a),
-      v8::Global::new(scope, b),
-      v8::Global::new(scope, c),
-      v8::Global::new(scope, d),
+      Some(v8::Global::new(scope, a)),
+      Some(v8::Global::new(scope, b)),
+      Some(v8::Global::new(scope, c)),
+      Some(v8::Global::new(scope, d)),
     )
+  } else {
+    (None, None, None, None)
   };
 
   Ok(CliMainWorker {
