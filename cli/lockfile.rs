@@ -75,16 +75,16 @@ pub struct LockfileContent {
 
 #[derive(Debug, Clone)]
 pub struct Lockfile {
-  pub write: bool,
+  pub overwrite: bool,
   pub has_content_changed: bool,
   pub content: LockfileContent,
   pub filename: PathBuf,
 }
 
 impl Lockfile {
-  pub fn new(filename: PathBuf, write: bool) -> Result<Lockfile, AnyError> {
+  pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
-    let content = if write {
+    let content = if overwrite {
       LockfileContent {
         version: "2".to_string(),
         remote: BTreeMap::new(),
@@ -115,7 +115,7 @@ impl Lockfile {
     };
 
     Ok(Lockfile {
-      write,
+      overwrite,
       has_content_changed: false,
       content,
       filename,
@@ -150,7 +150,7 @@ impl Lockfile {
     specifier: &str,
     code: &str,
   ) -> bool {
-    if self.write {
+    if self.overwrite {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
       true
@@ -163,7 +163,7 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
-    if self.write {
+    if self.overwrite {
       // In case --lock-write is specified check always passes
       self.insert_npm(package);
       Ok(())
