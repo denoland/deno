@@ -423,10 +423,10 @@ impl TcpListener {
       let seconds = dur.as_secs().try_into().unwrap_or(u32::MAX);
       // SAFETY: libc call.
       let rc = unsafe {
-        c::setsockopt(
+        libc::setsockopt(
           unsafe_borrow_mut(&self.inner).as_raw_fd(),
-          c::IPPROTO_TCP,
-          c::TCP_DEFER_ACCEPT,
+          libc::IPPROTO_TCP,
+          libc::TCP_DEFER_ACCEPT,
           &seconds as *const _ as *const _,
           std::mem::size_of_val(&seconds) as u32,
         )
