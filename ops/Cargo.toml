@@ -17,6 +17,7 @@ proc-macro2 = "1"
 quote = "1"
 regex = "1.6.0"
 syn = { version = "1", features = ["full", "extra-traits"] }
+pmutil = "0.5.3"
 
 [dev-dependencies]
 deno_core = { path = "../core" }

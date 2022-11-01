@@ -20,14 +20,6 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   tts.dump().into()
 }
 
-/// Shortcut for `Quote::new_call_site().quote_with(smart_quote!( $tokens ))`
-#[macro_export]
-macro_rules! q {
-    ( $($tokens:tt)* ) => {{
-        $crate::Quote::new_call_site().quote_with($crate::smart_quote!( $($tokens)* ))
-    }};
-}
-
 /// Blocks emitted by the macro, in order.
 ///
 /// ```no_run,rust

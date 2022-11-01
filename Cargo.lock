@@ -1166,6 +1166,7 @@ version = "0.34.0"
 dependencies = [
  "deno_core",
  "once_cell",
+ "pmutil",
  "proc-macro-crate",
  "proc-macro2 1.0.43",
  "quote 1.0.21",
