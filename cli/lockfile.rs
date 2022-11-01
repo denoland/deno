@@ -393,9 +393,9 @@ mod tests {
   }
 
   #[test]
-  fn new_nonexistent_lockfile() {
+  fn create_lockfile_for_nonexistent_path() {
     let file_path = PathBuf::from("nonexistent_lock_file.json");
-    assert!(Lockfile::new(file_path, false).is_err());
+    assert!(Lockfile::new(file_path, false).is_ok());
   }
 
   #[test]
