@@ -165,6 +165,7 @@ mod test {
     let package_id = NpmPackageId {
       name: "package".to_string(),
       version: NpmVersion::parse("1.0.0").unwrap(),
+      peer_dependencies: Vec::new(),
     };
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";

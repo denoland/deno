@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
@@ -24,6 +25,7 @@ use crate::http_cache::CACHE_PERM;
 use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
+use super::resolution::NpmVersionMatcher;
 use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
@@ -36,10 +38,45 @@ pub struct NpmPackageInfo {
   pub dist_tags: HashMap<String, String>,
 }
 
+#[derive(Eq, PartialEq)]
+pub enum NpmDependencyEntryKind {
+  Dep,
+  Peer,
+  OptionalPeer,
+}
+
+#[derive(Eq, PartialEq)]
 pub struct NpmDependencyEntry {
   pub bare_specifier: String,
   pub name: String,
   pub version_req: NpmVersionReq,
+  pub kind: NpmDependencyEntryKind,
+}
+
+impl PartialOrd for NpmDependencyEntry {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for NpmDependencyEntry {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    // sort the dependencies alphabetically by name then by version descending
+    match self.name.cmp(&other.name) {
+      // sort by newest to oldest
+      Ordering::Equal => other
+        .version_req
+        .version_text()
+        .cmp(&self.version_req.version_text()),
+      ordering => ordering,
+    }
+  }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct NpmPeerDependencyMeta {
+  #[serde(default)]
+  optional: bool,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -50,14 +87,19 @@ pub struct NpmPackageVersionInfo {
   // package and version (ex. `"typescript-3.0.1": "npm:typescript@3.0.1"`).
   #[serde(default)]
   pub dependencies: HashMap<String, String>,
+  #[serde(default)]
+  pub peerDependencies: HashMap<String, String>,
+  #[serde(default)]
+  pub peerDependenciesMeta: HashMap<String, NpmPeerDependencyMeta>,
 }
 
 impl NpmPackageVersionInfo {
   pub fn dependencies_as_entries(
     &self,
   ) -> Result<Vec<NpmDependencyEntry>, AnyError> {
-    fn entry_as_bare_specifier_and_reference(
+    fn parse_dep_entry(
       entry: (&String, &String),
+      kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
       let bare_specifier = entry.0.clone();
       let (name, version_req) =
@@ -81,14 +123,28 @@ impl NpmPackageVersionInfo {
         bare_specifier,
         name,
         version_req,
+        kind,
       })
     }
 
-    self
-      .dependencies
-      .iter()
-      .map(entry_as_bare_specifier_and_reference)
-      .collect::<Result<Vec<_>, AnyError>>()
+    let mut result =
+      Vec::with_capacity(self.dependencies.len() + self.peerDependencies.len());
+    for entry in &self.dependencies {
+      result.push(parse_dep_entry(entry, NpmDependencyEntryKind::Dep)?);
+    }
+    for entry in &self.peerDependencies {
+      let is_optional = self
+        .peerDependenciesMeta
+        .get(entry.0)
+        .map(|d| d.optional)
+        .unwrap_or(false);
+      let kind = match is_optional {
+        true => NpmDependencyEntryKind::OptionalPeer,
+        false => NpmDependencyEntryKind::Peer,
+      };
+      result.push(parse_dep_entry(entry, kind)?);
+    }
+    Ok(result)
   }
 }
 
