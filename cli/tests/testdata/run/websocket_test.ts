@@ -196,7 +196,7 @@ Deno.test("echo blob with binaryType arraybuffer", async () => {
   ws.onopen = () => ws.send(blob);
   ws.onmessage = (e) => {
     blob.arrayBuffer().then((expected) => {
-      assertEquals(e.data, expected);
+      assertEquals(e.data.buffer, expected);
     });
     ws.close();
   };
@@ -232,7 +232,7 @@ Deno.test("echo uint8array with binaryType arraybuffer", async () => {
   ws.onerror = () => fail();
   ws.onopen = () => ws.send(uint);
   ws.onmessage = (e) => {
-    assertEquals(e.data, uint.buffer);
+    assertEquals(e.data.buffer, uint.buffer);
     ws.close();
   };
   ws.onclose = () => {
@@ -267,7 +267,7 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
   ws.onerror = () => fail();
   ws.onopen = () => ws.send(buffer);
   ws.onmessage = (e) => {
-    assertEquals(e.data, buffer);
+    assertEquals(e.data.buffer, buffer);
     ws.close();
   };
   ws.onclose = () => {
