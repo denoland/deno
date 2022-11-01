@@ -56,9 +56,9 @@ pub fn os_release() -> String {
   }
   #[cfg(target_vendor = "apple")]
   {
-    let mut s = [0u8; 20];
+    let mut s = [0u8; 256];
     let mut mib = [libc::CTL_KERN, libc::KERN_OSRELEASE];
-    // 20 is enough.
+    // 256 is enough.
     let mut len = s.len();
     // SAFETY: `sysctl` is thread-safe.
     // `s` is only accessed if sysctl() succeeds and agrees with the `len` set
