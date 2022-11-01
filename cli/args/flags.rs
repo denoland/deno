@@ -2150,6 +2150,7 @@ fn lock_arg<'a>() -> Arg<'a> {
     .help("Check the specified lock file. If not value is provided, defaults to deno.lock in the current working directory.")
     .takes_value(true)
     .min_values(0)
+    .max_values(1)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -5357,6 +5358,26 @@ mod tests {
         }),
         lock_write: true,
         lock: Some(PathBuf::from("./deno.lock")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--lock",
+      "lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("lock.json")),
         ..Flags::default()
       }
     );

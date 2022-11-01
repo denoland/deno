@@ -609,12 +609,6 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-itest!(lock_write_requires_lock {
-  args: "run --lock-write some_file.ts",
-  output: "run/lock_write_requires_lock.out",
-  exit_code: 1,
-});
-
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
