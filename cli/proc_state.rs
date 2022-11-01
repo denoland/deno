@@ -471,7 +471,6 @@ impl ProcState {
     }
 
     // any updates to the lockfile should be updated now
-    eprintln!("writing a lockfile");
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
       g.write()?;
