@@ -741,7 +741,7 @@ impl NpmResolution {
         let parent = NodeParent::Node(node.id.clone());
         for child_id in &node.children {
           let mut child = (**self.packages.get(child_id).unwrap()).borrow_mut();
-          child.parents.remove(&node.id);
+          child.parents.remove(&parent);
           if child.parents.is_empty() {
             self.forget_orphan(&mut child);
           }
