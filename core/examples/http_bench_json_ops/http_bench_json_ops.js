@@ -31,7 +31,7 @@ async function serve(rid) {
         await Deno.core.writeAll(rid, responseBuf);
       }
     }
-  } catch (e) {
+  } catch {
     // pass
   }
   Deno.core.close(rid);
