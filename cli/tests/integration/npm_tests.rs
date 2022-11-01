@@ -783,6 +783,60 @@ itest!(info_cli_chalk_json {
   http_server: true,
 });
 
+#[test]
+fn auto_discover_lock_file() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  std::fs::write(temp_dir.path().join("deno.json"), "{ \"tasks\": {} }")
+    .unwrap();
+
+  // write a lock file with borked integrity
+  let lock_file_content = r#"{
+    "version": "2",
+    "remote": {},
+    "npm": {
+      "specifiers": { "cowsay@1.5.0": "cowsay@1.5.0" },
+      "packages": {
+        "cowsay@1.5.0": {
+          "integrity": "foobar",
+          "dependencies": {
+            "get-stdin": "get-stdin@8.0.0",
+            "string-width": "string-width@2.1.1",
+            "strip-final-newline": "strip-final-newline@2.0.0",
+            "yargs": "yargs@15.4.1"
+          }
+        }
+      }
+    }
+  }"#;
+  std::fs::write(temp_dir.path().join("deno.lock"), lock_file_content).unwrap();
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("-A")
+    .arg("npm:cowsay@1.5.0")
+    .arg("Hello")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.status.code(), Some(10));
+
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(
+    stderr.contains("Integrity check failed for npm package: \"cowsay@1.5.0\"")
+  );
+}
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),

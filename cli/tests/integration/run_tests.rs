@@ -3634,3 +3634,10 @@ fn websocket_server_idletimeout() {
 
   assert!(child.wait().unwrap().success());
 }
+
+itest!(auto_discover_lockfile {
+  args: "run run/auto_discover_lockfile/main.ts",
+  output: "run/auto_discover_lockfile/main.out",
+  http_server: true,
+  exit_code: 10,
+});

@@ -305,7 +305,6 @@ impl ProcState {
         npm_package_reqs.push(package_ref.req);
       }
     }
-
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -321,6 +320,13 @@ impl ProcState {
           self.options.type_check_mode() != TypeCheckMode::None,
           false,
         ) {
+          // TODO(bartlomieju): this is strange... ideally there should be only
+          // one codepath in `prepare_module_load` so we don't forget things
+          // like writing a lockfile. Figure a way to refactor this function.
+          if let Some(ref lockfile) = self.lockfile {
+            let g = lockfile.lock();
+            g.write()?;
+          }
           return result;
         }
       }
@@ -465,6 +471,7 @@ impl ProcState {
     }
 
     // any updates to the lockfile should be updated now
+    eprintln!("writing a lockfile");
     if let Some(ref lockfile) = self.lockfile {
       let g = lockfile.lock();
       g.write()?;
