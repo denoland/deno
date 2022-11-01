@@ -84,8 +84,6 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::ModuleSpecifier;
 use deno_runtime::colors;
@@ -97,113 +95,11 @@ use log::info;
 use npm::NpmPackageReference;
 use std::env;
 use std::io::Read;
-use std::io::Write;
 use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use worker::create_main_worker;
-
-pub fn write_to_stdout_ignore_sigpipe(
-  bytes: &[u8],
-) -> Result<(), std::io::Error> {
-  use std::io::ErrorKind;
-
-  match std::io::stdout().write_all(bytes) {
-    Ok(()) => Ok(()),
-    Err(e) => match e.kind() {
-      ErrorKind::BrokenPipe => Ok(()),
-      _ => Err(e),
-    },
-  }
-}
-
-pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
-where
-  T: ?Sized + serde::ser::Serialize,
-{
-  let mut writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(&mut writer, value)?;
-  writeln!(&mut writer)?;
-  Ok(())
-}
-
-fn print_cache_info(
-  state: &ProcState,
-  json: bool,
-  location: Option<&deno_core::url::Url>,
-) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root;
-  let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache =
-    &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
-  let mut origin_dir = state.dir.root.join("location_data");
-
-  if let Some(location) = &location {
-    origin_dir =
-      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
-  }
-
-  let local_storage_dir = origin_dir.join("local_storage");
-
-  if json {
-    let mut output = json!({
-      "denoDir": deno_dir,
-      "modulesCache": modules_cache,
-      "npmCache": npm_cache,
-      "typescriptCache": typescript_cache,
-      "registryCache": registry_cache,
-      "originStorage": origin_dir,
-    });
-
-    if location.is_some() {
-      output["localStorage"] = serde_json::to_value(local_storage_dir)?;
-    }
-
-    write_json_to_stdout(&output)
-  } else {
-    println!(
-      "{} {}",
-      colors::bold("DENO_DIR location:"),
-      deno_dir.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Remote modules cache:"),
-      modules_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("npm modules cache:"),
-      npm_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Emitted modules cache:"),
-      typescript_cache.display()
-    );
-    println!(
-      "{} {}",
-      colors::bold("Language server registries cache:"),
-      registry_cache.display(),
-    );
-    println!(
-      "{} {}",
-      colors::bold("Origin storage:"),
-      origin_dir.display()
-    );
-    if location.is_some() {
-      println!(
-        "{} {}",
-        colors::bold("Local Storage:"),
-        local_storage_dir.display(),
-      );
-    }
-    Ok(())
-  }
-}
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = vec![
@@ -314,22 +210,7 @@ async fn info_command(
   flags: Flags,
   info_flags: InfoFlags,
 ) -> Result<i32, AnyError> {
-  let ps = ProcState::build(flags).await?;
-  if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier)?;
-    let graph = ps
-      .create_graph(vec![(specifier, deno_graph::ModuleKind::Esm)])
-      .await?;
-
-    if info_flags.json {
-      write_json_to_stdout(&json!(graph))?;
-    } else {
-      write_to_stdout_ignore_sigpipe(graph.to_string().as_bytes())?;
-    }
-  } else {
-    // If it was just "deno info" print location of caches and exit
-    print_cache_info(&ps, info_flags.json, ps.options.location_flag())?;
-  }
+  tools::info::info(flags, info_flags).await?;
   Ok(0)
 }
 
@@ -410,17 +291,6 @@ async fn load_and_type_check(
 
   for file in files {
     let specifier = resolve_url_or_path(file)?;
-
-    // TODO(bartlomieju): in the future (after all relevant deno subcommands
-    // have support for npm: specifiers), it would be good to unify this code
-    // in `ProcState::prepare_module_load`.
-    if let Ok(package_ref) = NpmPackageReference::from_specifier(&specifier) {
-      ps.npm_resolver
-        .add_package_reqs(vec![package_ref.req.clone()])
-        .await?;
-      ps.prepare_node_std_graph().await?;
-      continue;
-    }
 
     ps.prepare_module_load(
       vec![specifier],
@@ -926,13 +796,13 @@ async fn completions_command(
   _flags: Flags,
   completions_flags: CompletionsFlags,
 ) -> Result<i32, AnyError> {
-  write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
+  display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)?;
   Ok(0)
 }
 
 async fn types_command(flags: Flags) -> Result<i32, AnyError> {
   let types = get_types(flags.unstable);
-  write_to_stdout_ignore_sigpipe(types.as_bytes())?;
+  display::write_to_stdout_ignore_sigpipe(types.as_bytes())?;
   Ok(0)
 }
 

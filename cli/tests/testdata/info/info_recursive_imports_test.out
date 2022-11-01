@@ -1,6 +1,7 @@
 local: [WILDCARD]info_recursive_imports_test.ts
 type: TypeScript
-dependencies: 4 unique (total [WILDCARD])
+dependencies: 4 unique
+size: [WILDCARD]
 
 file://[WILDCARD]/info_recursive_imports_test.ts ([WILDCARD])
 └─┬ file://[WILDCARD]/recursive_imports/A.ts ([WILDCARD])

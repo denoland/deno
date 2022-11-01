@@ -13,7 +13,8 @@
     String,
     TypeError,
     Uint8Array,
-    PromiseAll,
+    PromisePrototypeThen,
+    SafePromiseAll,
     SymbolFor,
   } = window.__bootstrap.primordials;
   const {
@@ -155,7 +156,7 @@
 
       const waitPromise = core.opAsync("op_spawn_wait", this.#rid);
       this.#waitPromiseId = waitPromise[promiseIdSymbol];
-      this.#status = waitPromise.then((res) => {
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
         this.#rid = null;
         signal?.[remove](onAbort);
         return res;
@@ -179,7 +180,7 @@
         );
       }
 
-      const [status, stdout, stderr] = await PromiseAll([
+      const [status, stdout, stderr] = await SafePromiseAll([
         this.#status,
         collectOutput(this.#stdout),
         collectOutput(this.#stderr),

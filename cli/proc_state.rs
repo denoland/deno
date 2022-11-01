@@ -61,6 +61,8 @@ use log::warn;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -93,6 +95,7 @@ pub struct Inner {
   pub npm_resolver: NpmPackageResolver,
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
+  node_std_graph_prepared: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -190,8 +193,6 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    // FIXME(bartlomieju): `NodeEsmResolver` is not aware of JSX resolver
-    // created below
     let maybe_import_map_resolver =
       maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_jsx_resolver = cli_options
@@ -235,7 +236,8 @@ impl ProcState {
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let maybe_lockfile = lockfile.as_ref().filter(|l| !l.lock().write).cloned();
+    let maybe_lockfile =
+      lockfile.as_ref().filter(|l| !l.lock().overwrite).cloned();
     let mut npm_resolver = NpmPackageResolver::new(
       npm_cache.clone(),
       api,
@@ -280,6 +282,7 @@ impl ProcState {
       npm_resolver,
       cjs_resolutions: Default::default(),
       progress_bar,
+      node_std_graph_prepared: AtomicBool::new(false),
     })))
   }
 
@@ -297,12 +300,20 @@ impl ProcState {
     reload_on_watch: bool,
   ) -> Result<(), AnyError> {
     let _pb_clear_guard = self.progress_bar.clear_guard();
+    let mut npm_package_reqs = vec![];
+
+    for root in &roots {
+      if let Ok(package_ref) = NpmPackageReference::from_specifier(root) {
+        npm_package_reqs.push(package_ref.req);
+      }
+    }
+
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
       .collect::<Vec<_>>();
 
-    if !reload_on_watch {
+    if !reload_on_watch && npm_package_reqs.is_empty() {
       let graph_data = self.graph_data.read();
       if self.options.type_check_mode() == TypeCheckMode::None
         || graph_data.is_type_checked(&roots, &lib)
@@ -397,7 +408,7 @@ impl ProcState {
       graph_data.entries().map(|(s, _)| s).cloned().collect()
     };
 
-    let npm_package_references = {
+    {
       let mut graph_data = self.graph_data.write();
       graph_data.add_graph(&graph, reload_on_watch);
       let check_js = self.options.check_js();
@@ -408,14 +419,11 @@ impl ProcState {
           check_js,
         )
         .unwrap()?;
-      graph_data.npm_package_reqs()
+      npm_package_reqs.extend(graph_data.npm_package_reqs());
     };
 
-    if !npm_package_references.is_empty() {
-      self
-        .npm_resolver
-        .add_package_reqs(npm_package_references)
-        .await?;
+    if !npm_package_reqs.is_empty() {
+      self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
     }
 
@@ -468,13 +476,16 @@ impl ProcState {
   }
 
   /// Add the builtin node modules to the graph data.
-  // FIXME(bartlomieju): appears this function can be called more than once
-  // if we have npm imports
   pub async fn prepare_node_std_graph(&self) -> Result<(), AnyError> {
+    if self.node_std_graph_prepared.load(Ordering::Relaxed) {
+      return Ok(());
+    }
+
     let node_std_graph = self
       .create_graph(vec![(node::MODULE_ALL_URL.clone(), ModuleKind::Esm)])
       .await?;
     self.graph_data.write().add_graph(&node_std_graph, false);
+    self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
   }
 

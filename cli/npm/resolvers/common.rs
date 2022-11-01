@@ -15,6 +15,7 @@ use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 
@@ -35,6 +36,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
+
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
   fn has_packages(&self) -> bool;
 
