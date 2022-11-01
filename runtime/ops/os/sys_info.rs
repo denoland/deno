@@ -9,8 +9,10 @@ pub fn loadavg() -> LoadAvg {
     use libc::SI_LOAD_SHIFT;
 
     let mut info = std::mem::MaybeUninit::uninit();
+    // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
     let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
     if res == 0 {
+      // SAFETY: `sysinfo` returns 0 on success, and `info` is initialized.
       let info = unsafe { info.assume_init() };
       (
         info.loads[0] as f64 / (1 << SI_LOAD_SHIFT) as f64,
@@ -56,10 +58,11 @@ pub fn os_release() -> String {
   {
     let mut s = [0u8; 20];
     let mut mib = [libc::CTL_KERN, libc::KERN_OSRELEASE];
-    let mut len = s.len(); // 20 is enough.
-                           // SAFETY: `sysctl` is thread-safe.
-                           // `s` is only accessed if sysctl() succeeds and agrees with the `len` set
-                           // by sysctl().
+    // 20 is enough.
+    let mut len = s.len();
+    // SAFETY: `sysctl` is thread-safe.
+    // `s` is only accessed if sysctl() succeeds and agrees with the `len` set
+    // by sysctl().
     if unsafe {
       libc::sysctl(
         mib.as_mut_ptr(),
@@ -84,15 +87,18 @@ pub fn os_release() -> String {
     use winapi::um::winnt::RTL_OSVERSIONINFOEXW;
 
     let mut version_info: RTL_OSVERSIONINFOEXW =
-      unsafe { std::mem::MaybeUninit::zeroed().assume_init() };
-
+      std::mem::MaybeUninit::zeroed();
     version_info.dwOSVersionInfoSize =
       std::mem::size_of::<RTL_OSVERSIONINFOEXW>() as u32;
+    // SAFETY: `version_info` is pointer to a valid `RTL_OSVERSIONINFOEXW` struct and
+    // dwOSVersionInfoSize  is set to the size of RTL_OSVERSIONINFOEXW.
     if !NT_SUCCESS(unsafe {
       RtlGetVersion(&mut version_info as *mut RTL_OSVERSIONINFOEXW as *mut _)
     }) {
       String::from("")
     } else {
+      // SAFETY: we assume that RtlGetVersion() initializes the fields.
+      let version_info = unsafe { version_info.assume_init() };
       format!(
         "{}.{}.{}",
         version_info.dwMajorVersion,
@@ -128,6 +134,8 @@ pub fn hostname() -> String {
     let namelen = 256;
     let mut name: Vec<u16> = vec![0u16; namelen];
     let err =
+      // SAFETY: length of wide string is 256 chars or less. 
+      // https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostnamew
       unsafe { GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int) };
 
     if err == 0 {
@@ -167,8 +175,10 @@ pub fn mem_info() -> Option<MemInfo> {
   #[cfg(target_os = "linux")]
   {
     let mut info = std::mem::MaybeUninit::uninit();
+    // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
     let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
     if res == 0 {
+      // SAFETY: `sysinfo` initializes the struct.
       let info = unsafe { info.assume_init() };
       let mem_unit = info.mem_unit as u64;
       mem_info.swap_total = info.totalswap * mem_unit;
@@ -183,6 +193,9 @@ pub fn mem_info() -> Option<MemInfo> {
     let mut mib: [i32; 2] = [0, 0];
     mib[0] = libc::CTL_HW;
     mib[1] = libc::HW_MEMSIZE;
+    // SAFETY:
+    //  - We assume that `mach_host_self` always returns a valid value.
+    //  - sysconf returns a system constant.
     unsafe {
       let mut size = std::mem::size_of::<u64>();
       libc::sysctl(
@@ -193,14 +206,12 @@ pub fn mem_info() -> Option<MemInfo> {
         std::ptr::null_mut(),
         0,
       );
-    }
-    mem_info.total /= 1024;
+      mem_info.total /= 1024;
 
-    let mut xs: libc::xsw_usage =
-      unsafe { std::mem::zeroed::<libc::xsw_usage>() };
-    mib[0] = libc::CTL_VM;
-    mib[1] = libc::VM_SWAPUSAGE;
-    unsafe {
+      let mut xs: libc::xsw_usage = std::mem::zeroed::<libc::xsw_usage>();
+      mib[0] = libc::CTL_VM;
+      mib[1] = libc::VM_SWAPUSAGE;
+
       let mut size = std::mem::size_of::<libc::xsw_usage>();
       libc::sysctl(
         mib.as_mut_ptr(),
@@ -210,34 +221,35 @@ pub fn mem_info() -> Option<MemInfo> {
         std::ptr::null_mut(),
         0,
       );
-    }
-    mem_info.swap_total = xs.xsu_total;
-    mem_info.swap_free = xs.xsu_avail;
 
-    let mut count: u32 = libc::HOST_VM_INFO64_COUNT as _;
-    let mut stat = unsafe { std::mem::zeroed::<libc::vm_statistics64>() };
-    // SAFETY: We assume that `mach_host_self` always returns a valid value.
-    if unsafe {
-      libc::host_statistics64(
+      mem_info.swap_total = xs.xsu_total;
+      mem_info.swap_free = xs.xsu_avail;
+
+      let mut count: u32 = libc::HOST_VM_INFO64_COUNT as _;
+      let mut stat = unsafe { std::mem::zeroed::<libc::vm_statistics64>() };
+      if libc::host_statistics64(
         // TODO(@littledivy): Put this in a once_cell.
         libc::mach_host_self(),
         libc::HOST_VM_INFO64,
         &mut stat as *mut libc::vm_statistics64 as *mut _,
         &mut count,
-      )
-    } == libc::KERN_SUCCESS
-    {
-      // TODO(@littledivy): Put this in a once_cell
-      let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-      mem_info.available =
-        (stat.free_count as u64 + stat.inactive_count as u64) * page_size
-          / 1024;
-      mem_info.free = (stat.free_count as u64 - stat.speculative_count as u64)
-        * page_size
-        / 1024;
+      ) == libc::KERN_SUCCESS
+      {
+        // TODO(@littledivy): Put this in a once_cell
+        let page_size = libc::sysconf(libc::_SC_PAGESIZE) as u64;
+        mem_info.available =
+          (stat.free_count as u64 + stat.inactive_count as u64) * page_size
+            / 1024;
+        mem_info.free =
+          (stat.free_count as u64 - stat.speculative_count as u64) * page_size
+            / 1024;
+      }
     }
   }
   #[cfg(target_family = "windows")]
+  // SAFETY:
+  //   - `mem_status` is a valid pointer to a `libc::MEMORYSTATUSEX` struct.
+  //   - `dwLength` is set to the size of the struct.
   unsafe {
     use std::mem;
     use winapi::shared::minwindef;
