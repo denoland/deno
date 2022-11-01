@@ -56,10 +56,10 @@ pub fn os_release() -> String {
   {
     let mut s = [0u8; 20];
     let mut mib = [libc::CTL_KERN, libc::KERN_OSRELEASE];
-    let mut len = 20;
-    // SAFETY: `sysctl` is thread-safe.
-    // `s` is only accessed if sysctl() succeeds and agrees with the `len` set
-    // by sysctl().
+    let mut len = s.len(); // 20 is enough.
+                           // SAFETY: `sysctl` is thread-safe.
+                           // `s` is only accessed if sysctl() succeeds and agrees with the `len` set
+                           // by sysctl().
     if unsafe {
       libc::sysctl(
         mib.as_mut_ptr(),
@@ -126,7 +126,7 @@ pub fn hostname() -> String {
     use winapi::um::winsock2::GetHostNameW;
 
     let namelen = 256;
-    let mut name: Vec<u16> = std::iter::repeat(0).take(namelen).collect();
+    let mut name: Vec<u16> = vec![0u16; namelen];
     let err =
       unsafe { GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int) };
 
