@@ -1,104 +1,55 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use attrs::Attributes;
 use core::panic;
 use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
-use proc_macro2::Span;
-use proc_macro2::TokenStream as TokenStream2;
-use proc_macro_crate::crate_name;
-use proc_macro_crate::FoundCrate;
-use quote::format_ident;
-use quote::quote;
-use quote::ToTokens;
+use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::{format_ident, quote, ToTokens};
 use regex::Regex;
 use std::collections::HashMap;
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
-use syn::FnArg;
-use syn::GenericParam;
-use syn::Ident;
+use syn::{
+  parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
+  GenericParam, ItemFn, LifetimeDef, Lifetime,
+};
+
+mod attrs;
+mod deno;
 
 #[cfg(test)]
 mod tests;
 
-// Identifier to the `deno_core` crate.
-//
-// If macro called in deno_core, `crate` is used.
-// If macro called outside deno_core, `deno_core` OR the renamed
-// version from Cargo.toml is used.
-fn core_import() -> TokenStream2 {
-  let found_crate =
-    crate_name("deno_core").expect("deno_core not present in `Cargo.toml`");
+const SCOPE_LIFETIME: &str = "'scope";
 
-  match found_crate {
-    FoundCrate::Itself => {
-      // TODO(@littledivy): This won't work for `deno_core` examples
-      // since `crate` does not refer to `deno_core`.
-      // examples must re-export deno_core to make this work
-      // until Span inspection APIs are stabalized.
-      //
-      // https://github.com/rust-lang/rust/issues/54725
-      quote!(crate)
-    }
-    FoundCrate::Name(name) => {
-      let ident = Ident::new(&name, Span::call_site());
-      quote!(#ident)
-    }
-  }
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-struct MacroArgs {
-  is_unstable: bool,
-  is_v8: bool,
-  must_be_fast: bool,
-  deferred: bool,
-}
-
-impl syn::parse::Parse for MacroArgs {
-  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-    let vars =
-      syn::punctuated::Punctuated::<Ident, syn::Token![,]>::parse_terminated(
-        input,
-      )?;
-    let vars: Vec<_> = vars.iter().map(Ident::to_string).collect();
-    let vars: Vec<_> = vars.iter().map(String::as_str).collect();
-    for var in vars.iter() {
-      if !["unstable", "v8", "fast", "deferred"].contains(var) {
-        return Err(syn::Error::new(
-          input.span(),
-          "Ops expect #[op] or #[op(unstable)]",
-        ));
-      }
-    }
-    Ok(Self {
-      is_unstable: vars.contains(&"unstable"),
-      is_v8: vars.contains(&"v8"),
-      must_be_fast: vars.contains(&"fast"),
-      deferred: vars.contains(&"deferred"),
-    })
+/// Add the 'scope lifetime to the function signature.
+fn add_scope_lifetime(
+  func: &mut ItemFn,
+) {
+  let span = Span::call_site();
+  let lifetime = LifetimeDef::new(Lifetime::new(SCOPE_LIFETIME, span));
+  let generics = &mut func.sig.generics; 
+  if !generics.lifetimes().any(|def| *def == lifetime) {
+    generics.params.push(GenericParam::Lifetime(lifetime));
   }
 }
 
 #[proc_macro_attribute]
 pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
-  let margs = syn::parse_macro_input!(attr as MacroArgs);
-  let MacroArgs {
+  let margs = parse_macro_input!(attr as Attributes);
+  let Attributes {
     is_unstable,
     is_v8,
     must_be_fast,
     deferred,
   } = margs;
-  let func = syn::parse::<syn::ItemFn>(item).expect("expected a function");
+
+  let mut func = parse::<ItemFn>(item).expect("expected a function");
+  add_scope_lifetime(&mut func);
+
+  let core = deno::import();
+
   let name = &func.sig.ident;
-  let mut generics = func.sig.generics.clone();
-  let scope_lifetime =
-    syn::LifetimeDef::new(syn::Lifetime::new("'scope", Span::call_site()));
-  if !generics.lifetimes().any(|def| *def == scope_lifetime) {
-    generics
-      .params
-      .push(syn::GenericParam::Lifetime(scope_lifetime));
-  }
+  let generics = &func.sig.generics;
   let type_params = exclude_lifetime_params(&func.sig.generics.params);
   let where_clause = &func.sig.generics.where_clause;
 
@@ -109,7 +60,6 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
     func
   };
 
-  let core = core_import();
 
   let asyncness = func.sig.asyncness.is_some();
   let is_async = asyncness || is_future(&func.sig.output);
@@ -179,11 +129,11 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
 fn codegen_v8_async(
   core: &TokenStream2,
   f: &syn::ItemFn,
-  margs: MacroArgs,
+  margs: Attributes,
   asyncness: bool,
   deferred: bool,
 ) -> (TokenStream2, usize) {
-  let MacroArgs { is_v8, .. } = margs;
+  let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
     .inputs
@@ -518,10 +468,10 @@ fn codegen_fast_impl(
 fn codegen_v8_sync(
   core: &TokenStream2,
   f: &syn::ItemFn,
-  margs: MacroArgs,
+  margs: Attributes,
   has_fallible_fast_call: bool,
 ) -> (TokenStream2, usize) {
-  let MacroArgs { is_v8, .. } = margs;
+  let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
     .inputs

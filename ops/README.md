@@ -1,5 +1,7 @@
 # deno_ops
 
+Author: [Divy Srivastava](https://github.com/littledivy)
+
 `proc_macro` for generating highly optimized V8 functions from Deno ops.
 
 ```rust
