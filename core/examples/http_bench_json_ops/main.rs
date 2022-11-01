@@ -59,9 +59,7 @@ impl Resource for TcpStream {
 
 impl From<polloi::TcpStream> for TcpStream {
   fn from(inner: polloi::TcpStream) -> Self {
-    Self {
-      inner: inner.into(),
-    }
+    Self { inner }
   }
 }
 
@@ -84,7 +82,7 @@ fn create_js_runtime() -> JsRuntime {
 fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();
   let rt = state.borrow::<Rc<polloi::Runtime>>();
-  let inner = polloi::TcpListener::bind(&rt, addr)?;
+  let inner = polloi::TcpListener::bind(rt, addr)?;
   let listener = TcpListener { inner };
   let rid = state.resource_table.add(listener);
   Ok(rid)

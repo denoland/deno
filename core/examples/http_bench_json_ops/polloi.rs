@@ -1,7 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 #![allow(dead_code)]
-#![allow(clippy::all)]
 
 use std::cell::UnsafeCell;
 use std::future::poll_fn;
@@ -622,8 +621,8 @@ impl tokio::io::AsyncRead for TcpStream {
     cx: &mut Context,
     buf: &mut tokio::io::ReadBuf,
   ) -> Poll<io::Result<()>> {
-    // SAFETY: we are careful not to leak |unfilled|
     let unfilled =
+      // SAFETY: we are careful not to leak |unfilled|
       unsafe { &mut *(buf.unfilled_mut() as *mut [_] as *mut [u8]) };
     if let Ready(n) = self.try_read(cx, unfilled)? {
       // SAFETY: initialized by system call.
