@@ -730,6 +730,7 @@
     const stream = webidl.createBranded(ReadableStream);
     stream[promiseIdSymbol] = undefined;
     stream[_isUnref] = false;
+    stream[_resourceBackingUnrefable] = { rid, autoClose: true };
     const underlyingSource = {
       type: "bytes",
       async pull(controller) {
@@ -767,8 +768,14 @@
     return stream;
   }
 
+  function readableStreamUnrefable(stream) {
+    return _isUnref in stream;
+  }
+
   function readableStreamForRidUnrefableRef(stream) {
-    if (!(_isUnref in stream)) throw new TypeError("Not an unrefable stream");
+    if (!readableStreamUnrefable(stream)) {
+      throw new TypeError("Not an unrefable stream");
+    }
     stream[_isUnref] = false;
     if (stream[promiseIdSymbol] !== undefined) {
       core.refOp(stream[promiseIdSymbol]);
@@ -776,7 +783,9 @@
   }
 
   function readableStreamForRidUnrefableUnref(stream) {
-    if (!(_isUnref in stream)) throw new TypeError("Not an unrefable stream");
+    if (!readableStreamUnrefable(stream)) {
+      throw new TypeError("Not an unrefable stream");
+    }
     stream[_isUnref] = true;
     if (stream[promiseIdSymbol] !== undefined) {
       core.unrefOp(stream[promiseIdSymbol]);
@@ -787,15 +796,25 @@
     return stream[_resourceBacking];
   }
 
+  function getReadableStreamResourceBackingUnrefable(stream) {
+    return stream[_resourceBackingUnrefable];
+  }
+
   async function readableStreamCollectIntoUint8Array(stream) {
-    const resourceBacking = getReadableStreamResourceBacking(stream);
+    const resourceBacking = getReadableStreamResourceBacking(stream) ||
+      getReadableStreamResourceBackingUnrefable(stream);
     const reader = acquireReadableStreamDefaultReader(stream);
 
     if (resourceBacking) {
       // fast path, read whole body in a single op call
       try {
         readableStreamDisturb(stream);
-        const buf = await core.opAsync("op_read_all", resourceBacking.rid);
+        const promise = core.opAsync("op_read_all", resourceBacking.rid);
+        if (readableStreamUnrefable(stream)) {
+          const promiseId = stream[promiseIdSymbol] = promise[promiseIdSymbol];
+          if (stream[_isUnref]) core.unrefOp(promiseId);
+        }
+        const buf = await promise;
         readableStreamThrowIfErrored(stream);
         readableStreamClose(stream);
         return buf;
@@ -4585,6 +4604,7 @@
   }
 
   const _resourceBacking = Symbol("[[resourceBacking]]");
+  const _resourceBackingUnrefable = Symbol("[[resourceBackingUnrefable]]");
   /** @template R */
   class ReadableStream {
     /** @type {ReadableStreamDefaultController | ReadableByteStreamController} */
