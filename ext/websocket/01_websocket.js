@@ -434,7 +434,7 @@
             if (this.binaryType === "blob") {
               data = new Blob([value]);
             } else {
-              data = value;
+              data = value.buffer;
             }
 
             const event = new MessageEvent("message", {
