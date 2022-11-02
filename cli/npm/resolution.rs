@@ -372,36 +372,45 @@ impl NpmResolutionSnapshot {
     lockfile: Arc<Mutex<Lockfile>>,
     api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
-    let mut package_reqs = HashMap::new();
-    let mut packages_by_name: HashMap<String, Vec<NpmVersion>> = HashMap::new();
-    let mut packages = HashMap::new();
+    let mut package_reqs: HashMap<NpmPackageReq, NpmVersion>;
+    let mut packages_by_name: HashMap<String, Vec<NpmVersion>>;
+    let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
 
     {
       let lockfile = lockfile.lock();
 
+      // pre-allocate collections
+      package_reqs =
+        HashMap::with_capacity(lockfile.content.npm.specifiers.len());
+      packages = HashMap::with_capacity(lockfile.content.npm.packages.len());
+      packages_by_name =
+        HashMap::with_capacity(lockfile.content.npm.packages.len()); // close enough
+      let mut verify_ids =
+        HashSet::with_capacity(lockfile.content.npm.packages.len());
+
+      // collect the specifiers to version mappings
       for (key, value) in &lockfile.content.npm.specifiers {
         let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
           .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
         let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
         package_reqs.insert(reference.req, package_id.version.clone());
+        verify_ids.insert(package_id.clone());
       }
 
+      // then the packages
       for (key, value) in &lockfile.content.npm.packages {
         let package_id = NpmPackageId::deserialize_from_lock_file(key)?;
         let mut dependencies = HashMap::default();
 
-        for (name, specifier) in &value.dependencies {
-          dependencies.insert(
-            name.to_string(),
-            NpmPackageId::deserialize_from_lock_file(specifier)?,
-          );
-        }
+        packages_by_name
+          .entry(package_id.name.to_string())
+          .or_default()
+          .push(package_id.version.clone());
 
-        for (name, id) in &dependencies {
-          packages_by_name
-            .entry(name.to_string())
-            .or_default()
-            .push(id.version.clone());
+        for (name, specifier) in &value.dependencies {
+          let dep_id = NpmPackageId::deserialize_from_lock_file(specifier)?;
+          dependencies.insert(name.to_string(), dep_id.clone());
+          verify_ids.insert(dep_id);
         }
 
         let package = NpmResolutionPackage {
@@ -415,32 +424,49 @@ impl NpmResolutionSnapshot {
           dependencies,
         };
 
-        packages.insert(package_id.clone(), package);
+        packages.insert(package_id, package);
+      }
+
+      // verify that all these ids exist in packages
+      for id in &verify_ids {
+        if !packages.contains_key(id) {
+          bail!(
+            "the lockfile ({}) is corrupt. You can recreate it with --lock-write",
+            lockfile.filename.display(),
+          );
+        }
       }
     }
 
     let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
 
-    for package_id in packages.keys() {
-      let package_id = package_id.clone();
+    // cache the package names in parallel in the registry api
+    for package_name in packages_by_name.keys() {
+      let package_name = package_name.clone();
       let api = api.clone();
       unresolved_tasks.push(tokio::task::spawn(async move {
-        let info = api.package_info(&package_id.name).await?;
-        Result::<_, AnyError>::Ok((package_id, info))
+        api.package_info(&package_name).await?;
+        Result::<_, AnyError>::Ok(())
       }));
     }
     for result in futures::future::join_all(unresolved_tasks).await {
-      let (package_id, info) = result??;
+      result??;
+    }
 
-      let version_and_info = get_resolved_package_version_and_info(
-        &package_id.name,
-        &NpmVersionReq::parse(&package_id.version.to_string()).unwrap(),
-        info,
-        None,
-      )?;
-
-      let package = packages.get_mut(&package_id).unwrap();
-      package.dist = version_and_info.info.dist;
+    // ensure the dist is set for each package
+    for package in packages.values_mut() {
+      // this will read from the memory cache now
+      let package_info = api.package_info(&package.id.name).await?;
+      let version_info = match package_info
+        .versions
+        .get(&package.id.version.to_string())
+      {
+        Some(version_info) => version_info,
+        None => {
+          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.id);
+        }
+      };
+      package.dist = version_info.dist.clone();
     }
 
     Ok(Self {

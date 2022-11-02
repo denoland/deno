@@ -791,7 +791,7 @@ fn lock_file_missing_top_level_package() {
   let temp_dir = util::TempDir::new();
 
   // write empty config file
-  std::fs::write(temp_dir.path().join("deno.json"), "{}").unwrap();
+  temp_dir.write("deno.json", "{}");
 
   // Lock file that is automatically picked up has been intentionally broken,
   // by removing "cowsay" package from it. This test ensures that npm resolver
@@ -967,17 +967,20 @@ fn lock_file_missing_top_level_package() {
     }
   }
   "#;
-  std::fs::write(temp_dir.path().join("deno.lock"), lock_file_content).unwrap();
+  temp_dir.write("deno.lock", lock_file_content);
   let main_contents = r#"
   import cowsay from "npm:cowsay";
   console.log(cowsay);
   "#;
-  std::fs::write(temp_dir.path().join("main.ts"), main_contents).unwrap();
+  temp_dir.write("main.ts", main_contents);
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
     .arg("--unstable")
+    .arg("--quiet")
+    .arg("--lock")
+    .arg("deno.lock")
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars())
@@ -986,11 +989,12 @@ fn lock_file_missing_top_level_package() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
+  assert!(!output.status.success());
 
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert!(
-    stdout.contains("{ say: [Function], think: [Function], list: [Function] }")
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert_eq!(
+    stderr,
+    "error: the lockfile (deno.lock) is corrupt. You can recreate it with --lock-write\n"
   );
 }
 
