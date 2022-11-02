@@ -64,6 +64,9 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::rc::Rc;
+use std::cell::RefCell;
+use deno_core::OpState;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -96,6 +99,7 @@ pub struct Inner {
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
   node_std_graph_prepared: AtomicBool,
+  enabled_unstable: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -281,6 +285,7 @@ impl ProcState {
       cjs_resolutions: Default::default(),
       progress_bar,
       node_std_graph_prepared: AtomicBool::new(false),
+      enabled_unstable: AtomicBool::new(false),
     })))
   }
 
@@ -288,6 +293,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
   pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
@@ -296,6 +302,7 @@ impl ProcState {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
+    maybe_op_state: Option<Rc<RefCell<OpState>>>,
   ) -> Result<(), AnyError> {
     let _pb_clear_guard = self.progress_bar.clear_guard();
     let mut npm_package_reqs = vec![];
@@ -423,6 +430,9 @@ impl ProcState {
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
+      if let Some(op_state) = maybe_op_state.clone() {
+        self.enable_unstable_apis_for_node_compat(&mut op_state.borrow_mut());
+      }
     }
 
     drop(_pb_clear_guard);
@@ -487,6 +497,15 @@ impl ProcState {
     self.graph_data.write().add_graph(&node_std_graph, false);
     self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
+  }
+
+  pub fn enable_unstable_apis_for_node_compat(&self, op_state: &mut OpState) {
+    if self.enabled_unstable.load(Ordering::Relaxed) {
+      return;
+    }
+
+    deno_runtime::deno_flash::enable_unstable(op_state);
+    self.enabled_unstable.store(true, Ordering::Relaxed);
   }
 
   fn handle_node_resolve_result(

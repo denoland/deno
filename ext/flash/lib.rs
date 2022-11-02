@@ -1515,3 +1515,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     })
     .build()
 }
+
+pub fn enable_unstable(op_state: &mut OpState) {
+  op_state.put(Unstable(true));
+}
