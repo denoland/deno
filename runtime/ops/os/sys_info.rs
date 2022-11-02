@@ -92,7 +92,9 @@ pub fn os_release() -> String {
       std::mem::size_of::<RTL_OSVERSIONINFOEXW>() as u32;
     // SAFETY: `version_info` is pointer to a valid `RTL_OSVERSIONINFOEXW` struct and
     // dwOSVersionInfoSize  is set to the size of RTL_OSVERSIONINFOEXW.
-    if !NT_SUCCESS(unsafe { RtlGetVersion(version_info.as_mut_ptr()) }) {
+    if !NT_SUCCESS(unsafe {
+      RtlGetVersion(version_info.as_mut_ptr() as *mut _)
+    }) {
       String::from("")
     } else {
       // SAFETY: we assume that RtlGetVersion() initializes the fields.
