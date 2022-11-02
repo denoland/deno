@@ -26,6 +26,7 @@ use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
 use super::resolution::NpmVersionMatcher;
+use super::semver::NpmVersion;
 use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
@@ -219,6 +220,16 @@ impl NpmRegistryApi {
       Some(package_info) => Ok(package_info),
       None => bail!("npm package '{}' does not exist", name),
     }
+  }
+
+  pub async fn package_version_info(
+    &self,
+    name: &str,
+    version: &NpmVersion,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    // todo(dsherret): this could be optimized to not clone the entire package info
+    let mut package_info = self.package_info(name).await?;
+    Ok(package_info.versions.remove(&version.to_string()))
   }
 
   pub async fn maybe_package_info(

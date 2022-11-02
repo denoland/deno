@@ -278,15 +278,7 @@ impl NpmResolutionSnapshot {
     req: &NpmPackageReq,
   ) -> Result<&NpmResolutionPackage, AnyError> {
     match self.package_reqs.get(req) {
-      Some(version) => Ok(
-        self
-          .packages
-          .get(&NpmPackageId {
-            name: req.name.clone(),
-            version: version.clone(),
-          })
-          .unwrap(),
-      ),
+      Some(id) => Ok(self.packages.get(id).unwrap()),
       None => bail!("could not find npm package directory for '{}'", req),
     }
   }
@@ -294,11 +286,8 @@ impl NpmResolutionSnapshot {
   pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
     self
       .package_reqs
-      .iter()
-      .map(|(req, version)| NpmPackageId {
-        name: req.name.clone(),
-        version: version.clone(),
-      })
+      .values()
+      .cloned()
       .collect::<HashSet<_>>()
       .into_iter()
       .collect::<Vec<_>>()
@@ -384,7 +373,7 @@ impl NpmResolutionSnapshot {
     lockfile: Arc<Mutex<Lockfile>>,
     api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
-    let mut package_reqs: HashMap<NpmPackageReq, NpmVersion>;
+    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
     let mut packages_by_name: HashMap<String, Vec<NpmVersion>>;
     let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
 
@@ -405,7 +394,7 @@ impl NpmResolutionSnapshot {
         let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
           .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
         let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
-        package_reqs.insert(reference.req, package_id.version.clone());
+        package_reqs.insert(reference.req, package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
@@ -468,17 +457,16 @@ impl NpmResolutionSnapshot {
     // ensure the dist is set for each package
     for package in packages.values_mut() {
       // this will read from the memory cache now
-      let package_info = api.package_info(&package.id.name).await?;
-      let version_info = match package_info
-        .versions
-        .get(&package.id.version.to_string())
+      let version_info = match api
+        .package_version_info(&package.id.name, &package.id.version)
+        .await?
       {
         Some(version_info) => version_info,
         None => {
           bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.id);
         }
       };
-      package.dist = version_info.dist.clone();
+      package.dist = version_info.dist;
     }
 
     Ok(Self {
@@ -565,11 +553,12 @@ impl NpmResolution {
   async fn add_package_reqs_to_snapshot(
     &self,
     mut package_reqs: Vec<NpmPackageReq>,
-    mut snapshot: NpmResolutionSnapshot,
+    snapshot: NpmResolutionSnapshot,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::default();
     graph.fill_with_snapshot(&snapshot);
+    drop(snapshot); // todo: remove
 
     // multiple packages are resolved in alphabetical order
     package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -614,7 +603,7 @@ impl NpmResolution {
 
     resolver.resolve_pending().await?;
 
-    Ok(snapshot)
+    graph.into_snapshot(&self.api).await
   }
 
   pub fn resolve_package_from_id(
@@ -682,8 +671,8 @@ enum NodeParent {
 
 struct Node {
   pub id: NpmPackageId,
-  pub parents: HashSet<NodeParent>,
-  pub children: HashSet<NpmPackageId>,
+  pub parents: HashMap<String, NodeParent>,
+  pub children: HashMap<String, NpmPackageId>,
   pub unresolved_peers: Vec<NpmDependencyEntry>,
 }
 
@@ -721,10 +710,10 @@ impl Graph {
   pub fn fill_with_snapshot(&mut self, snapshot: &NpmResolutionSnapshot) {
     for (package_req, id) in &snapshot.package_reqs {
       let node = self.fill_for_id_with_snapshot(id, snapshot);
-      (*node)
-        .borrow_mut()
-        .parents
-        .insert(NodeParent::Req(package_req.clone()));
+      (*node).borrow_mut().parents.insert(
+        package_req.to_string(),
+        NodeParent::Req(package_req.clone()),
+      );
       self.package_reqs.insert(package_req.clone(), id.clone());
     }
   }
@@ -738,7 +727,7 @@ impl Graph {
     let node = self.get_or_create_for_id(id).1;
     for (name, child_id) in resolution.dependencies {
       let child_node = self.fill_for_id_with_snapshot(&child_id, snapshot);
-      self.set_child_parent_node(&child_node, &id);
+      self.set_child_parent_node(&name, &child_node, &id);
     }
     node
   }
@@ -755,9 +744,9 @@ impl Graph {
     assert_eq!(node.parents.len(), 0);
     self.packages.remove(&node.id);
     let parent = NodeParent::Node(node.id.clone());
-    for child_id in &node.children {
+    for (specifier, child_id) in &node.children {
       let mut child = (**self.packages.get(child_id).unwrap()).borrow_mut();
-      child.parents.remove(&parent);
+      child.parents.remove(specifier);
       if child.parents.is_empty() {
         self.forget_orphan(&mut child);
       }
@@ -766,14 +755,57 @@ impl Graph {
 
   pub fn set_child_parent_node(
     &mut self,
+    specifier: &str,
     child: &Rc<RefCell<Node>>,
     parent_id: &NpmPackageId,
   ) {
     let mut child = (**child).borrow_mut();
     let mut parent = (**self.packages.get(parent_id).unwrap()).borrow_mut();
     debug_assert_ne!(parent.id, child.id);
-    parent.children.insert(child.id.clone());
-    child.parents.insert(NodeParent::Node(parent.id.clone()));
+    parent
+      .children
+      .insert(specifier.to_string(), child.id.clone());
+    child
+      .parents
+      .insert(specifier.to_string(), NodeParent::Node(parent.id.clone()));
+  }
+
+  pub async fn into_snapshot(
+    self,
+    api: &NpmRegistryApi,
+  ) -> Result<NpmResolutionSnapshot, AnyError> {
+    let mut packages = HashMap::with_capacity(self.packages.len());
+    for (id, node) in self.packages {
+      let node = node.borrow();
+      assert_eq!(node.unresolved_peers.len(), 0);
+      packages.insert(
+        id.clone(),
+        NpmResolutionPackage {
+          dist: api
+            .package_version_info(&id.name, &id.version)
+            .await?
+            .unwrap()
+            .dist,
+          dependencies: node.children,
+          id,
+        },
+      )
+    }
+    Ok(NpmResolutionSnapshot {
+      package_reqs: self.package_reqs,
+      package_versions_by_name: self
+        .packages_by_name
+        .into_iter()
+        .map(|(name, ids)| {
+          let mut versions =
+            ids.into_iter().map(|id| id.version).collect::<Vec<_>>();
+          versions.sort();
+          versions.dedup();
+          (name, versions)
+        })
+        .collect::<HashMap<_, _>>(),
+      packages,
+    })
   }
 }
 
@@ -782,7 +814,7 @@ struct GraphDependencyResolver<'a> {
   api: &'a NpmRegistryApi,
   pending_dependencies: VecDeque<(NpmPackageId, Vec<NpmDependencyEntry>)>,
   pending_peer_dependencies:
-    VecDeque<(NpmPackageId, NpmDependencyEntry, NpmPackageInfo)>,
+    VecDeque<((String, NpmPackageId), NpmDependencyEntry, NpmPackageInfo)>,
 }
 
 impl<'a> GraphDependencyResolver<'a> {
@@ -855,10 +887,10 @@ impl<'a> GraphDependencyResolver<'a> {
       peer_dependencies: Vec::new(),
     };
     let node = self.graph.get_or_create_for_id(&id).1;
-    (*node)
-      .borrow_mut()
-      .parents
-      .insert(NodeParent::Req(package_req.clone()));
+    (*node).borrow_mut().parents.insert(
+      package_req.to_string(),
+      NodeParent::Req(package_req.clone()),
+    );
 
     let dependencies = version_and_info
       .info
@@ -871,24 +903,25 @@ impl<'a> GraphDependencyResolver<'a> {
 
   fn analyze_dependency(
     &mut self,
-    name: &str,
-    version_matcher: &impl NpmVersionMatcher,
+    entry: &NpmDependencyEntry,
     package_info: NpmPackageInfo,
     parent_id: &NpmPackageId,
   ) -> Result<(), AnyError> {
     let version_and_info = self.resolve_best_package_version_and_info(
-      name,
-      version_matcher,
+      &entry.name,
+      &entry.version_req,
       package_info,
     )?;
 
     let id = NpmPackageId {
-      name: name.to_string(),
+      name: entry.name.clone(),
       version: version_and_info.version.clone(),
       peer_dependencies: Vec::new(),
     };
     let (created, node) = self.graph.get_or_create_for_id(&id);
-    self.graph.set_child_parent_node(&node, &parent_id);
+    self
+      .graph
+      .set_child_parent_node(&entry.bare_specifier, &node, &parent_id);
 
     if created {
       // inspect the dependencies of the package
@@ -896,7 +929,7 @@ impl<'a> GraphDependencyResolver<'a> {
         .info
         .dependencies_as_entries()
         .with_context(|| {
-          format!("npm package: {}@{}", name, version_and_info.version)
+          format!("npm package: {}@{}", &entry.name, version_and_info.version)
         })?;
 
       self.pending_dependencies.push_back((id, dependencies));
@@ -944,25 +977,21 @@ impl<'a> GraphDependencyResolver<'a> {
             NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
           ) {
             self.pending_peer_dependencies.push_back((
-              parent_id.clone(),
+              (dep.bare_specifier.clone(), parent_id.clone()),
               dep,
               package_info,
             ));
           } else {
-            self.analyze_dependency(
-              &dep.name,
-              &dep.version_req,
-              package_info,
-              &parent_id,
-            )?;
+            self.analyze_dependency(&dep, package_info, &parent_id)?;
           }
         }
       }
 
-      if let Some((parent_id, peer_dep, peer_package_info)) =
+      if let Some(((specifier, parent_id), peer_dep, peer_package_info)) =
         self.pending_peer_dependencies.pop_front()
       {
         self.resolve_peer_dep(
+          &specifier,
           &parent_id,
           &peer_dep,
           peer_package_info,
@@ -977,28 +1006,29 @@ impl<'a> GraphDependencyResolver<'a> {
 
   fn resolve_peer_dep(
     &mut self,
+    specifier: &str,
     child_id: &NpmPackageId,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: NpmPackageInfo,
-    mut path: Vec<NpmPackageId>,
+    mut path: Vec<(String, NpmPackageId)>,
   ) -> Result<(), AnyError> {
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional
     let parents = self.graph.borrow_node(&child_id).parents.clone();
-    path.push(child_id.clone());
-    for parent in parents {
-      let children_ids = match &parent {
+    path.push((specifier.to_string(), child_id.clone()));
+    for (specifier, parent) in parents {
+      let children = match &parent {
         NodeParent::Node(parent_node_id) => {
           self.graph.borrow_node(parent_node_id).children.clone()
         }
         NodeParent::Req(req) => self
           .graph
           .package_reqs
-          .values()
-          .cloned()
-          .collect::<HashSet<_>>(),
+          .iter()
+          .map(|(req, id)| (req.to_string(), id.clone()))
+          .collect::<HashMap<_, _>>(),
       };
-      for child_id in children_ids {
+      for (child_specifier, child_id) in children {
         if child_id.name == peer_dep.name
           && peer_dep.version_req.satisfies(&child_id.version)
         {
@@ -1006,13 +1036,19 @@ impl<'a> GraphDependencyResolver<'a> {
           match &parent {
             NodeParent::Node(node_id) => {
               let parents = self.graph.borrow_node(node_id).parents.clone();
-              self.set_new_peer_dep(parents, node_id, &child_id, path);
+              self.set_new_peer_dep(
+                parents, &specifier, node_id, &child_id, path,
+              );
               return Ok(());
             }
             NodeParent::Req(req) => {
               let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
               self.set_new_peer_dep(
-                HashSet::from([NodeParent::Req(req.clone())]),
+                HashMap::from([(
+                  req.to_string(),
+                  NodeParent::Req(req.clone()),
+                )]),
+                &specifier,
                 &old_id,
                 &child_id,
                 path,
@@ -1027,22 +1063,18 @@ impl<'a> GraphDependencyResolver<'a> {
     // at this point it means we didn't find anything by searching the ancestor siblings,
     // so we need to resolve based on the package info
     if !peer_dep.kind.is_optional() {
-      self.analyze_dependency(
-        &peer_dep.name,
-        &peer_dep.version_req,
-        peer_package_info,
-        &child_id,
-      )?;
+      self.analyze_dependency(&peer_dep, peer_package_info, &child_id)?;
     }
     Ok(())
   }
 
   fn set_new_peer_dep(
     &mut self,
-    previous_parents: HashSet<NodeParent>,
+    previous_parents: HashMap<String, NodeParent>,
+    specifier: &str,
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
-    path: Vec<NpmPackageId>,
+    path: Vec<(String, NpmPackageId)>,
   ) {
     let old_id = node_id;
     let mut new_id = old_id.clone();
@@ -1050,7 +1082,7 @@ impl<'a> GraphDependencyResolver<'a> {
     // remove the previous parents from the old node
     let old_node_children = {
       let old_node = self.graph.borrow_node_mut(old_id);
-      for previous_parent in &previous_parents {
+      for previous_parent in previous_parents.keys() {
         old_node.parents.remove(previous_parent);
       }
       old_node.children.clone()
@@ -1062,39 +1094,39 @@ impl<'a> GraphDependencyResolver<'a> {
     // and this node to point at those parents
     {
       let new_node = (*new_node).borrow_mut();
-      for parent in previous_parents {
+      for (specifier, parent) in previous_parents {
         match &parent {
           NodeParent::Node(parent_id) => {
             let mut parent =
               (**self.graph.packages.get(parent_id).unwrap()).borrow_mut();
-            parent.children.remove(&old_id);
-            parent.children.insert(new_id.clone());
+            parent.children.insert(specifier.clone(), new_id.clone());
           }
           NodeParent::Req(req) => {
             self.graph.package_reqs.insert(req.clone(), new_id.clone());
           }
         }
-        new_node.parents.insert(parent);
+        new_node.parents.insert(specifier, parent);
       }
 
       // now add the previous children to this node
       new_node.children.extend(old_node_children);
     }
 
-    for child_id in old_node_children {
+    for (specifier, child_id) in old_node_children {
       self
         .graph
         .borrow_node_mut(&child_id)
         .parents
-        .insert(NodeParent::Node(new_id.clone()));
+        .insert(specifier, NodeParent::Node(new_id.clone()));
     }
 
     if created {
       // continue going down the path
       let maybe_next_node = path.pop();
-      if let Some(next_node_id) = path.pop() {
+      if let Some((next_specifier, next_node_id)) = path.pop() {
         self.set_new_peer_dep(
-          HashSet::from([NodeParent::Node(new_id)]),
+          HashMap::from([(specifier.to_string(), NodeParent::Node(new_id))]),
+          &next_specifier,
           &next_node_id,
           peer_dep_id,
           path,
