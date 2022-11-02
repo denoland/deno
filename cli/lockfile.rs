@@ -557,6 +557,7 @@ mod tests {
       id: NpmPackageId {
         name: "nanoid".to_string(),
         version: NpmVersion::parse("3.3.4").unwrap(),
+        peer_dependencies: Vec::new(),
       },
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
@@ -572,6 +573,7 @@ mod tests {
       id: NpmPackageId {
         name: "picocolors".to_string(),
         version: NpmVersion::parse("1.0.0").unwrap(),
+        peer_dependencies: Vec::new(),
       },
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
@@ -588,6 +590,7 @@ mod tests {
       id: NpmPackageId {
         name: "source-map-js".to_string(),
         version: NpmVersion::parse("1.0.2").unwrap(),
+        peer_dependencies: Vec::new(),
       },
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
@@ -604,6 +607,7 @@ mod tests {
       id: NpmPackageId {
         name: "source-map-js".to_string(),
         version: NpmVersion::parse("1.0.2").unwrap(),
+        peer_dependencies: Vec::new(),
       },
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),

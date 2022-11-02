@@ -1,12 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::Ref;
-use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::rc::Rc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -15,6 +11,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::MutexGuard;
 use deno_core::parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
@@ -184,19 +181,38 @@ impl NpmPackageId {
   }
 
   pub fn as_serializable_name(&self) -> String {
-    self.as_serialize_name_with_level(1)
+    self.as_serialize_name_with_level(0)
   }
 
   fn as_serialize_name_with_level(&self, level: usize) -> String {
-    let mut result = format!("{}@{}", self.name, self.version);
+    fn encode_level(level: usize) -> String {
+      // This level will always be max 2 characters.
+      // npm packages aren't allowed to start with a number
+      if level <= 1 {
+        "_".repeat(level)
+      } else {
+        // ex. 3 -> _3
+        format!("_{}", level)
+      }
+    }
+
+    let mut result = format!(
+      "{}@{}",
+      if level == 0 {
+        self.name.to_string()
+      } else {
+        self.name.replace("/", "+")
+      },
+      self.version
+    );
     for peer in &self.peer_dependencies {
-      result.push_str(&"_".repeat(level));
+      result.push_str(&encode_level(level + 1));
       result.push_str(&peer.as_serialize_name_with_level(level + 1));
     }
     result
   }
 
-  pub fn deserialize_serializable_name(id: &str) -> Result<Self, AnyError> {
+  pub fn deserialize_name(id: &str) -> Result<Self, AnyError> {
     use monch::*;
 
     fn parse_name(input: &str) -> ParseResult<&str> {
@@ -228,12 +244,29 @@ impl NpmPackageId {
       }
     }
 
+    fn parse_next_char_as_u32<'a>(input: &str) -> ParseResult<u32> {
+      let (input, c) = next_char(input)?;
+      match c.to_digit(10) {
+        Some(d) => Ok((input, d)),
+        None => ParseError::backtrace(),
+      }
+    }
+
     fn parse_level_at_level<'a>(
       level: usize,
     ) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
       fn parse_level(input: &str) -> ParseResult<usize> {
-        let parsed_level = input.chars().take_while(|c| *c == '_').count();
-        Ok((&input[parsed_level..], parsed_level))
+        let (input, _) = ch('_')(input)?;
+        let (input, maybe_underscore) = maybe(ch('_'))(input)?;
+        if maybe_underscore.is_some() {
+          return Ok((input, 2));
+        }
+        let (input, maybe_number) = maybe(parse_next_char_as_u32)(input)?;
+        if let Some(value) = maybe_number {
+          Ok((input, value as usize))
+        } else {
+          Ok((input, 1))
+        }
       }
 
       move |input| {
@@ -261,6 +294,11 @@ impl NpmPackageId {
     ) -> impl Fn(&'a str) -> ParseResult<'a, NpmPackageId> {
       move |input| {
         let (input, (name, version)) = parse_name_and_version(input)?;
+        let name = if level > 0 {
+          name.replace("+", "/")
+        } else {
+          name
+        };
         let (input, peer_dependencies) =
           parse_peers_at_level(level + 1)(input)?;
         Ok((
@@ -274,6 +312,7 @@ impl NpmPackageId {
       }
     }
 
+    // todo(THIS PR): move this someone re-usable
     crate::npm::semver::errors::with_failure_handling(parse_id_at_level(0))(id)
       .with_context(|| format!("Invalid npm package id '{}'.", id))
   }
@@ -461,14 +500,14 @@ impl NpmResolutionSnapshot {
       for (key, value) in &lockfile.content.npm.specifiers {
         let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
           .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
-        let package_id = NpmPackageId::deserialize_serializable_name(value)?;
+        let package_id = NpmPackageId::deserialize_name(value)?;
         package_reqs.insert(reference.req, package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
       // then the packages
       for (key, value) in &lockfile.content.npm.packages {
-        let package_id = NpmPackageId::deserialize_serializable_name(key)?;
+        let package_id = NpmPackageId::deserialize_name(key)?;
         let mut dependencies = HashMap::default();
 
         packages_by_name
@@ -477,7 +516,7 @@ impl NpmResolutionSnapshot {
           .push(package_id.clone());
 
         for (name, specifier) in &value.dependencies {
-          let dep_id = NpmPackageId::deserialize_serializable_name(specifier)?;
+          let dep_id = NpmPackageId::deserialize_name(specifier)?;
           dependencies.insert(name.to_string(), dep_id.clone());
           verify_ids.insert(dep_id);
         }
@@ -748,18 +787,21 @@ struct Node {
 struct Graph {
   package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
   packages_by_name: HashMap<String, Vec<NpmPackageId>>,
-  packages: HashMap<NpmPackageId, Rc<RefCell<Node>>>,
+  // Ideally this would be Rc<RefCell<Node>>, but we need to use a Mutex
+  // because the lsp requires Send and this code is executed in the lsp.
+  // Would be nice if the lsp wasn't Send.
+  packages: HashMap<NpmPackageId, Arc<Mutex<Node>>>,
 }
 
 impl Graph {
   pub fn get_or_create_for_id(
     &mut self,
     id: &NpmPackageId,
-  ) -> (bool, Rc<RefCell<Node>>) {
+  ) -> (bool, Arc<Mutex<Node>>) {
     if let Some(node) = self.packages.get(id) {
       (false, node.clone())
     } else {
-      let node = Rc::new(RefCell::new(Node {
+      let node = Arc::new(Mutex::new(Node {
         id: id.clone(),
         parents: Default::default(),
         children: Default::default(),
@@ -778,7 +820,7 @@ impl Graph {
   pub fn fill_with_snapshot(&mut self, snapshot: &NpmResolutionSnapshot) {
     for (package_req, id) in &snapshot.package_reqs {
       let node = self.fill_for_id_with_snapshot(id, snapshot);
-      (*node).borrow_mut().parents.insert(
+      (*node).lock().parents.insert(
         package_req.to_string(),
         NodeParent::Req(package_req.clone()),
       );
@@ -790,33 +832,31 @@ impl Graph {
     &mut self,
     id: &NpmPackageId,
     snapshot: &NpmResolutionSnapshot,
-  ) -> Rc<RefCell<Node>> {
+  ) -> Arc<Mutex<Node>> {
     let resolution = snapshot.packages.get(id).unwrap();
     let node = self.get_or_create_for_id(id).1;
-    for (name, child_id) in resolution.dependencies {
+    for (name, child_id) in &resolution.dependencies {
       let child_node = self.fill_for_id_with_snapshot(&child_id, snapshot);
       self.set_child_parent_node(&name, &child_node, &id);
     }
     node
   }
 
-  fn borrow_node(&self, id: &NpmPackageId) -> Ref<Node> {
-    (**self.packages.get(id).unwrap()).borrow()
+  fn borrow_node(&self, id: &NpmPackageId) -> MutexGuard<Node> {
+    (**self.packages.get(id).unwrap()).lock()
   }
 
-  fn borrow_node_mut(&self, id: &NpmPackageId) -> RefMut<Node> {
-    (**self.packages.get(id).unwrap()).borrow_mut()
-  }
-
-  fn forget_orphan(&mut self, node: &mut Node) {
-    assert_eq!(node.parents.len(), 0);
-    self.packages.remove(&node.id);
-    let parent = NodeParent::Node(node.id.clone());
-    for (specifier, child_id) in &node.children {
-      let mut child = (**self.packages.get(child_id).unwrap()).borrow_mut();
-      child.parents.remove(specifier);
-      if child.parents.is_empty() {
-        self.forget_orphan(&mut child);
+  fn forget_orphan(&mut self, node_id: &NpmPackageId) {
+    if let Some(node) = self.packages.remove(node_id) {
+      let node = (*node).lock();
+      assert_eq!(node.parents.len(), 0);
+      for (specifier, child_id) in &node.children {
+        let mut child = (**self.packages.get(child_id).unwrap()).lock();
+        child.parents.remove(specifier);
+        if child.parents.is_empty() {
+          drop(child); // stop borrowing from self
+          self.forget_orphan(&child_id);
+        }
       }
     }
   }
@@ -824,11 +864,11 @@ impl Graph {
   pub fn set_child_parent_node(
     &mut self,
     specifier: &str,
-    child: &Rc<RefCell<Node>>,
+    child: &Arc<Mutex<Node>>,
     parent_id: &NpmPackageId,
   ) {
-    let mut child = (**child).borrow_mut();
-    let mut parent = (**self.packages.get(parent_id).unwrap()).borrow_mut();
+    let mut child = (**child).lock();
+    let mut parent = (**self.packages.get(parent_id).unwrap()).lock();
     debug_assert_ne!(parent.id, child.id);
     parent
       .children
@@ -844,16 +884,17 @@ impl Graph {
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     let mut packages = HashMap::with_capacity(self.packages.len());
     for (id, node) in self.packages {
-      let node = node.borrow();
+      let dist = api
+        .package_version_info(&id.name, &id.version)
+        .await?
+        .unwrap()
+        .dist;
+      let node = node.lock();
       assert_eq!(node.unresolved_peers.len(), 0);
       packages.insert(
         id.clone(),
         NpmResolutionPackage {
-          dist: api
-            .package_version_info(&id.name, &id.version)
-            .await?
-            .unwrap()
-            .dist,
+          dist,
           dependencies: node.children.clone(),
           id,
         },
@@ -945,7 +986,7 @@ impl<'a> GraphDependencyResolver<'a> {
       peer_dependencies: Vec::new(),
     };
     let node = self.graph.get_or_create_for_id(&id).1;
-    (*node).borrow_mut().parents.insert(
+    (*node).lock().parents.insert(
       package_req.to_string(),
       NodeParent::Req(package_req.clone()),
     );
@@ -1055,8 +1096,6 @@ impl<'a> GraphDependencyResolver<'a> {
           peer_package_info,
           vec![],
         )?;
-        // peer_dep.version_req.satisfies(version)
-        //parent_node.borrow_mut().
       }
     }
     Ok(())
@@ -1079,13 +1118,15 @@ impl<'a> GraphDependencyResolver<'a> {
         NodeParent::Node(parent_node_id) => {
           self.graph.borrow_node(parent_node_id).children.clone()
         }
-        NodeParent::Req(req) => self
+        NodeParent::Req(parent_req) => self
           .graph
           .package_reqs
           .iter()
+          .filter(|(req, _)| *req == parent_req)
           .map(|(req, id)| (req.to_string(), id.clone()))
           .collect::<HashMap<_, _>>(),
       };
+      // todo(THIS PR): don't we need to use the specifier here?
       for (child_specifier, child_id) in children {
         if child_id.name == peer_dep.name
           && peer_dep.version_req.satisfies(&child_id.version)
@@ -1132,14 +1173,14 @@ impl<'a> GraphDependencyResolver<'a> {
     specifier: &str,
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
-    path: Vec<(String, NpmPackageId)>,
+    mut path: Vec<(String, NpmPackageId)>,
   ) {
     let old_id = node_id;
     let mut new_id = old_id.clone();
     new_id.peer_dependencies.push(peer_dep_id.clone());
     // remove the previous parents from the old node
     let old_node_children = {
-      let old_node = self.graph.borrow_node_mut(old_id);
+      let mut old_node = self.graph.borrow_node(old_id);
       for previous_parent in previous_parents.keys() {
         old_node.parents.remove(previous_parent);
       }
@@ -1151,12 +1192,12 @@ impl<'a> GraphDependencyResolver<'a> {
     // update the previous parent to point to the new node
     // and this node to point at those parents
     {
-      let new_node = (*new_node).borrow_mut();
+      let mut new_node = (*new_node).lock();
       for (specifier, parent) in previous_parents {
         match &parent {
           NodeParent::Node(parent_id) => {
             let mut parent =
-              (**self.graph.packages.get(parent_id).unwrap()).borrow_mut();
+              (**self.graph.packages.get(parent_id).unwrap()).lock();
             parent.children.insert(specifier.clone(), new_id.clone());
           }
           NodeParent::Req(req) => {
@@ -1167,20 +1208,19 @@ impl<'a> GraphDependencyResolver<'a> {
       }
 
       // now add the previous children to this node
-      new_node.children.extend(old_node_children);
+      new_node.children.extend(old_node_children.clone());
     }
 
     for (specifier, child_id) in old_node_children {
       self
         .graph
-        .borrow_node_mut(&child_id)
+        .borrow_node(&child_id)
         .parents
         .insert(specifier, NodeParent::Node(new_id.clone()));
     }
 
     if created {
       // continue going down the path
-      let maybe_next_node = path.pop();
       if let Some((next_specifier, next_node_id)) = path.pop() {
         self.set_new_peer_dep(
           HashMap::from([(specifier.to_string(), NodeParent::Node(new_id))]),
@@ -1194,9 +1234,10 @@ impl<'a> GraphDependencyResolver<'a> {
 
     // forget the old node at this point if it has no parents
     {
-      let old_node = self.graph.borrow_node_mut(old_id);
+      let old_node = self.graph.borrow_node(old_id);
       if old_node.parents.is_empty() {
-        self.graph.forget_orphan(&mut old_node);
+        drop(old_node); // stop borrowing
+        self.graph.forget_orphan(old_id);
       }
     }
   }

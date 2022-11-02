@@ -87,6 +87,7 @@ pub struct NpmPeerDependencyMeta {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -95,9 +96,9 @@ pub struct NpmPackageVersionInfo {
   #[serde(default)]
   pub dependencies: HashMap<String, String>,
   #[serde(default)]
-  pub peerDependencies: HashMap<String, String>,
+  pub peer_dependencies: HashMap<String, String>,
   #[serde(default)]
-  pub peerDependenciesMeta: HashMap<String, NpmPeerDependencyMeta>,
+  pub peer_dependencies_meta: HashMap<String, NpmPeerDependencyMeta>,
 }
 
 impl NpmPackageVersionInfo {
@@ -134,14 +135,15 @@ impl NpmPackageVersionInfo {
       })
     }
 
-    let mut result =
-      Vec::with_capacity(self.dependencies.len() + self.peerDependencies.len());
+    let mut result = Vec::with_capacity(
+      self.dependencies.len() + self.peer_dependencies.len(),
+    );
     for entry in &self.dependencies {
       result.push(parse_dep_entry(entry, NpmDependencyEntryKind::Dep)?);
     }
-    for entry in &self.peerDependencies {
+    for entry in &self.peer_dependencies {
       let is_optional = self
-        .peerDependenciesMeta
+        .peer_dependencies_meta
         .get(entry.0)
         .map(|d| d.optional)
         .unwrap_or(false);
