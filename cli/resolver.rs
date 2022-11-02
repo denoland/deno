@@ -24,18 +24,19 @@ impl CliResolver {
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
   ) -> Option<Self> {
-    if maybe_jsx_import_source_config.is_some() || maybe_import_map.is_some() {
-      Some(Self {
-        maybe_import_map,
-        maybe_default_jsx_import_source: maybe_jsx_import_source_config
-          .as_ref()
-          .and_then(|c| c.default_specifier.clone()),
-        maybe_jsx_import_source_module: maybe_jsx_import_source_config
-          .map(|c| c.module),
-      })
-    } else {
-      None
-    }
+    // if maybe_jsx_import_source_config.is_some() || maybe_import_map.is_some() {
+
+    // } else {
+    //   None
+    // }
+    Some(Self {
+      maybe_import_map,
+      maybe_default_jsx_import_source: maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_specifier.clone()),
+      maybe_jsx_import_source_module: maybe_jsx_import_source_config
+        .map(|c| c.module),
+    })
   }
 
   pub fn with_import_map(import_map: Arc<ImportMap>) -> Self {
