@@ -1,5 +1,10 @@
 /// Optimizer for #[op]
 use crate::Op;
+use phf::phf_map;
+use proc_macro2::TokenStream;
+use quote::{quote, ToTokens};
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use syn::{
   punctuated::Punctuated, token::Colon2, AngleBracketedGenericArguments, FnArg,
   GenericArgument, ItemFn, Path, PathArguments, PathSegment, ReturnType,
@@ -7,10 +12,26 @@ use syn::{
 };
 
 #[derive(Debug)]
-enum BailoutReason {
+pub(crate) enum BailoutReason {
   FastAsync,
   MustBeSingleSegment,
   Other(&'static str),
+}
+
+impl ToTokens for BailoutReason {
+  fn to_tokens(&self, tokens: &mut TokenStream) {
+    match self {
+      BailoutReason::FastAsync => {
+        tokens.extend(quote! { "fast async calls are not supported" });
+      }
+      BailoutReason::MustBeSingleSegment => {
+        unreachable!("error not recovered");
+      }
+      BailoutReason::Other(reason) => {
+        tokens.extend(quote! { #reason });
+      }
+    }
+  }
 }
 
 #[derive(Debug, PartialEq)]
@@ -50,9 +71,27 @@ struct Transform {
   index: usize,
 }
 
-#[derive(Debug, PartialEq)]
+static FAST_SCALAR: phf::Map<&'static str, FastValue> = phf_map! {
+  "u32" => FastValue::U32,
+  "i32" => FastValue::I32,
+  "u64" => FastValue::U64,
+  "i64" => FastValue::I64,
+  "f32" => FastValue::F32,
+  "f64" => FastValue::F64,
+  "bool" => FastValue::Bool,
+  "ResourceId" => FastValue::U32,
+};
+
+#[derive(Debug, PartialEq, Clone)]
 enum FastValue {
   Void,
+  U32,
+  I32,
+  U64,
+  I64,
+  F32,
+  F64,
+  Bool,
 }
 
 impl Default for FastValue {
@@ -61,8 +100,8 @@ impl Default for FastValue {
   }
 }
 
-#[derive(Default, Debug, PartialEq)]
-struct Optimizer {
+#[derive(Default, PartialEq)]
+pub(crate) struct Optimizer {
   returns_result: bool,
 
   has_ref_opstate: bool,
@@ -75,6 +114,24 @@ struct Optimizer {
   fast_parameters: Vec<FastValue>,
 
   transforms: Vec<Transform>,
+}
+
+impl Debug for Optimizer {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    writeln!(f, "=== Optimizer Dump ===")?;
+    writeln!(f, "returns_result: {}", self.returns_result)?;
+    writeln!(f, "has_ref_opstate: {}", self.has_ref_opstate)?;
+    writeln!(f, "has_rc_opstate: {}", self.has_rc_opstate)?;
+    writeln!(
+      f,
+      "has_fast_callback_option: {}",
+      self.has_fast_callback_option
+    )?;
+    writeln!(f, "fast_result: {:?}", self.fast_result)?;
+    writeln!(f, "fast_parameters: {:?}", self.fast_parameters)?;
+    writeln!(f, "transforms: {:?}", self.transforms)?;
+    Ok(())
+  }
 }
 
 impl Optimizer {
@@ -124,13 +181,39 @@ impl Optimizer {
           } if ident == "Result" => {
             self.returns_result = true;
 
-            // Is `T` a FastValue?
-            if let PathArguments::AngleBracketed(ref bracketed) = arguments {}
+            if let PathArguments::AngleBracketed(
+              AngleBracketedGenericArguments { args, .. },
+            ) = arguments
+            {
+              match args.last() {
+                Some(GenericArgument::Type(Type::Path(TypePath {
+                  path: Path { segments, .. },
+                  ..
+                }))) => {
+                  let segment = single_segment(segments)?;
+                  match segment {
+                    // Is `T` a scalar FastValue?
+                    PathSegment { ident, .. } => {
+                      if let Some(val) =
+                        FAST_SCALAR.get(ident.to_string().as_str())
+                      {
+                        self.fast_result = Some(val.clone());
+                      }
+                    }
+                  }
+                }
+                _ => {}
+              }
+            }
+          }
+          // Is `T` a scalar FastValue?
+          PathSegment { ident, .. } => {
+            if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
+              self.fast_result = Some(val.clone());
+            }
           }
           // T
-          _ => {
-            // Is `T` a scalar FastValue?
-          }
+          _ => {}
         };
       }
       _ => {}
@@ -188,9 +271,9 @@ impl Optimizer {
                         let segment = single_segment(segments)?;
                         match segment {
                           // Is `T` a FastApiCallbackOption?
-                          PathSegment {
-                            ident, arguments, ..
-                          } if ident == "FastApiCallbackOption" => {
+                          PathSegment { ident, .. }
+                            if ident == "FastApiCallbackOption" =>
+                          {
                             self.has_fast_callback_option = true;
                           }
                           _ => {}
@@ -219,9 +302,7 @@ impl Optimizer {
                     let segment = single_segment(segments)?;
                     match segment {
                       // -> Rc<RefCell<T>>
-                      PathSegment {
-                        ident, arguments, ..
-                      } if ident == "RefCell" => {
+                      PathSegment { ident, .. } if ident == "RefCell" => {
                         if let PathArguments::AngleBracketed(
                           AngleBracketedGenericArguments { args, .. },
                         ) = arguments
@@ -236,9 +317,9 @@ impl Optimizer {
                             ))) => {
                               let segment = single_segment(segments)?;
                               match segment {
-                                PathSegment {
-                                  ident, arguments, ..
-                                } if ident == "OpState" => {
+                                PathSegment { ident, .. }
+                                  if ident == "OpState" =>
+                                {
                                   self.has_rc_opstate = true;
                                 }
                                 _ => {}
@@ -256,16 +337,11 @@ impl Optimizer {
               }
             }
             // Is `T` a fast scalar?
-            PathSegment {
-              ident, arguments, ..
-            } if matches!(
-              ident.to_string().as_str(),
-              "u32" | "u64" | "i32" | "i64" | "f32" | "f64" | "bool"
-            ) =>
-            {
-              self.fast_parameters.push(FastValue::default());
+            PathSegment { ident, .. } => {
+              if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
+                self.fast_parameters.push(val.clone());
+              }
             }
-            _ => {}
           };
         }
         // &mut T
@@ -279,9 +355,7 @@ impl Optimizer {
             let segment = single_segment(segments)?;
             match segment {
               // Is `T` a OpState?
-              PathSegment {
-                ident, arguments, ..
-              } if ident == "OpState" => {
+              PathSegment { ident, .. } if ident == "OpState" => {
                 self.has_ref_opstate = true;
               }
               _ => {}
@@ -297,15 +371,11 @@ impl Optimizer {
               let is_mut_ref = mutability.is_some();
               match segment {
                 // Is `T` a u8?
-                PathSegment {
-                  ident, arguments, ..
-                } if ident == "u8" => {
+                PathSegment { ident, .. } if ident == "u8" => {
                   self.transforms.push(Transform::slice_u8(index, is_mut_ref));
                 }
                 // Is `T` a u32?
-                PathSegment {
-                  ident, arguments, ..
-                } if ident == "u32" => {
+                PathSegment { ident, .. } if ident == "u32" => {
                   self
                     .transforms
                     .push(Transform::slice_u32(index, is_mut_ref));
@@ -353,6 +423,7 @@ mod tests {
   use super::*;
   use crate::attrs::Attributes;
   use crate::Op;
+  use std::path::PathBuf;
   use syn::parse_quote;
 
   #[test]
@@ -379,27 +450,28 @@ mod tests {
     assert_eq!(optimizer, expected);
   }
 
-  #[test]
-  fn test_analyzer1() {
-    test_optimizer(
-      parse_quote!(
-        fn foo(state: &mut OpState, a: u32, b: u32) -> u32 {
-          a + b
-        }
-      ),
-      Attributes {
-        must_be_fast: true,
-        ..Default::default()
-      },
-      Optimizer {
-        has_ref_opstate: true,
-        has_rc_opstate: false,
-        fast_result: None,
-        has_fast_callback_option: false,
-        returns_result: false,
-        fast_parameters: vec![FastValue::default(), FastValue::default()],
-        transforms: vec![],
-      },
-    );
+  #[testing::fixture("optimizer_tests/**/*.rs")]
+  fn test_analyzer(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+    let expected = std::fs::read_to_string(input.with_extension("expected"))
+      .expect("Failed to read expected file");
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let mut op = Op::new(item, Default::default());
+    let mut optimizer = Optimizer::new();
+    optimizer.analyze(&mut op).expect("Optimizer failed");
+
+    if update_expected {
+      std::fs::write(
+        input.with_extension("expected"),
+        format!("{:#?}", optimizer),
+      )
+      .expect("Failed to write expected file");
+    } else {
+      assert_eq!(format!("{:#?}", optimizer), expected);
+    }
   }
 }

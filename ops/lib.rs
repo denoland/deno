@@ -2,6 +2,7 @@
 
 use attrs::Attributes;
 use core::panic;
+use optimizer::{Optimizer, BailoutReason};
 use once_cell::sync::Lazy;
 use pmutil::{q, ToTokensExt};
 use proc_macro::TokenStream;
@@ -74,6 +75,12 @@ impl Op {
   }
 
   fn gen(mut self) -> TokenStream2 {
+    let mut optimizer = Optimizer::new();
+    match optimizer.analyze(&mut self) {
+      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
+      Err(err) => return quote!(compile_error!(#err);).into(),
+    };
+
     let Self {
       core,
       item,
@@ -114,18 +121,18 @@ impl Op {
       #[doc=#docline]
       #[doc="you can include in a `deno_core::Extension`."]
       pub struct #name;
-  
+
       #[doc(hidden)]
       impl #name {
         pub fn name() -> &'static str {
           stringify!(#name)
         }
-  
+
         pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
           use #core::v8::MapFnTo;
           Self::v8_func::<#type_params>.map_fn_to()
         }
-  
+
         pub fn decl #generics () -> #core::OpDecl #where_clause {
           #core::OpDecl {
             name: Self::name(),
@@ -138,11 +145,11 @@ impl Op {
             argc: #argc,
           }
         }
-  
+
         #[inline]
         #[allow(clippy::too_many_arguments)]
         #orig
-  
+
         pub fn v8_func #generics (
           scope: &mut #core::v8::HandleScope<'scope>,
           args: #core::v8::FunctionCallbackArguments,
@@ -151,7 +158,7 @@ impl Op {
           #v8_body
         }
       }
-  
+
       #fast_impl
     }.into()
   }
