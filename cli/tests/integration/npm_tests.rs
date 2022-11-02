@@ -1006,37 +1006,31 @@ fn auto_discover_lock_file() {
   let temp_dir = util::TempDir::new();
 
   // write empty config file
-  std::fs::write(temp_dir.path().join("deno.json"), "{ \"tasks\": {} }")
-    .unwrap();
+  temp_dir.write("deno.json", "{}");
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
     "version": "2",
     "remote": {},
     "npm": {
-      "specifiers": { "cowsay@1.5.0": "cowsay@1.5.0" },
+      "specifiers": { "@denotest/bin": "@denotest/bin@1.0.0" },
       "packages": {
-        "cowsay@1.5.0": {
-          "integrity": "foobar",
-          "dependencies": {
-            "get-stdin": "get-stdin@8.0.0",
-            "string-width": "string-width@2.1.1",
-            "strip-final-newline": "strip-final-newline@2.0.0",
-            "yargs": "yargs@15.4.1"
-          }
+        "@denotest/bin@1.0.0": {
+          "integrity": "sha512-foobar",
+          "dependencies": {}
         }
       }
     }
   }"#;
-  std::fs::write(temp_dir.path().join("deno.lock"), lock_file_content).unwrap();
+  temp_dir.write("deno.lock", lock_file_content);
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
     .arg("--unstable")
     .arg("-A")
-    .arg("npm:cowsay@1.5.0")
-    .arg("Hello")
+    .arg("npm:@denotest/bin/cli-esm")
+    .arg("test")
     .envs(env_vars())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -1047,9 +1041,9 @@ fn auto_discover_lock_file() {
   assert_eq!(output.status.code(), Some(10));
 
   let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(
-    stderr.contains("Integrity check failed for npm package: \"cowsay@1.5.0\"")
-  );
+  assert!(stderr.contains(
+    "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
+  ));
 }
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
