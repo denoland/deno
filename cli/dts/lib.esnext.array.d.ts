@@ -69,6 +69,11 @@ interface Array<T> {
    */
   toSpliced<F>(start: number, deleteCount: number, ...items: F[]): (F | T)[];
 
+  /**
+   * Copies and replaces the element at the given index with the provided value.
+   * @param index The zero-based location in the array for which to replace an element.
+   * @param value Element to insert into the array in place of the replaced element.
+   */
   with<F>(index: number, value: F): (F | T)[];
  }
 
@@ -116,7 +121,7 @@ interface ReadonlyArray<T> {
    * @param deleteCount The number of elements to remove.
    * @returns An array containing the elements that were deleted.
    */
-  toSpliced(start: number, deleteCount?: number): any[];
+  toSpliced(start: number, deleteCount?: number): T[];
   /**
    * Copies and removes elements from an array and, if necessary, inserts new elements in their place, returning the deleted elements.
    * @param start The zero-based location in the array from which to start removing elements.
@@ -126,6 +131,11 @@ interface ReadonlyArray<T> {
    */
   toSpliced<F>(start: number, deleteCount: number, ...items: F[]): (F | T)[];
 
+  /**
+   * Copies and replaces the element at the given index with the provided value.
+   * @param index The zero-based location in the array for which to replace an element.
+   * @param value Element to insert into the array in place of the replaced element.
+   */
   with<F>(index: number, value: F): (F | T)[];
 }
 
