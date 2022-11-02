@@ -7,22 +7,44 @@ use syn::{
   ItemStruct, Path, PathArguments, PathSegment, Token, Type, TypePath,
   Visibility,
 };
+use pmutil::{q, Quote};
 
 pub(crate) fn generate(
   optimizer: &mut Optimizer,
   item_fn: &ItemFn,
 ) -> Result<TokenStream, ()> {
-  /// impl <A> fast_api::FastFunction for T <A> where A: B {
-  ///   fn function(&self) -> *const ::std::ffi::c_void  {
-  ///     f as *const ::std::ffi::c_void
-  ///   }
-  ///   fn args(&self) -> &'static [fast_api::Type] {
-  ///     &[ CType::T, CType::U ]
-  ///   }
-  ///   fn return_type(&self) -> fast_api::CType {
-  ///     CType::T
-  ///   }
-  /// }
+  let ident = item_fn.sig.ident.clone();
+  let mut segments = Punctuated::new();
+  segments.push_value(PathSegment {
+    ident: ident.clone(),
+    arguments: PathArguments::None,
+  });
+
+  // struct T <A> {
+  //   _phantom: ::std::marker::PhantomData<A>,
+  // }
+  let fast_ty: Quote = q! (
+    Vars {
+      Type: &ident,
+    }, 
+    {
+      struct Type {
+        _phantom: ::std::marker::PhantomData<()>,
+      }
+    }
+  );
+
+  // impl <A> fast_api::FastFunction for T <A> where A: B {
+  //   fn function(&self) -> *const ::std::ffi::c_void  {
+  //     f as *const ::std::ffi::c_void
+  //   }
+  //   fn args(&self) -> &'static [fast_api::Type] {
+  //     &[ CType::T, CType::U ]
+  //   }
+  //   fn return_type(&self) -> fast_api::CType {
+  //     CType::T
+  //   }
+  // }
   let item: ItemImpl = ItemImpl {
     attrs: vec![],
     defaultness: None,
@@ -41,21 +63,19 @@ pub(crate) fn generate(
     items: vec![],
   };
 
-  /// struct T <A> {
-  ///   _phantom: ::std::marker::PhantomData<A>,
-  /// }
-  let fast_ty: ItemStruct = parse_quote! {
-    struct #ident {
-      _phantom: ::std::marker::PhantomData<()>,
+  let fast_fn = q!(
+    Vars {
+      op_name: &ident,
+    },
+    {
+      fn op_name(_: v8::Local<v8::Object>)  {
+           
+      }
     }
-  };
+  );
 
-  let ident = Ident::new("FastCall", Span::call_site());
-  let mut segments = Punctuated::new();
-  segments.push_value(PathSegment {
-    ident: ident.clone(),
-    arguments: PathArguments::None,
-  });
+  let mut tts = q!({});
+  tts.push_tokens(&fast_ty);
 
   Ok(quote! {})
 }
