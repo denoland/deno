@@ -2,8 +2,8 @@
 
 use attrs::Attributes;
 use core::panic;
-use optimizer::{Optimizer, BailoutReason};
 use once_cell::sync::Lazy;
+use optimizer::{BailoutReason, Optimizer};
 use pmutil::{q, ToTokensExt};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -17,6 +17,7 @@ use syn::{
 
 mod attrs;
 mod deno;
+mod fast_call;
 mod optimizer;
 
 #[cfg(test)]

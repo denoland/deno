@@ -66,7 +66,7 @@ impl Transform {
 }
 
 #[derive(Debug, PartialEq)]
-struct Transform {
+pub(crate) struct Transform {
   kind: TransformKind,
   index: usize,
 }
@@ -83,7 +83,7 @@ static FAST_SCALAR: phf::Map<&'static str, FastValue> = phf_map! {
 };
 
 #[derive(Debug, PartialEq, Clone)]
-enum FastValue {
+pub(crate) enum FastValue {
   Void,
   U32,
   I32,
@@ -102,18 +102,18 @@ impl Default for FastValue {
 
 #[derive(Default, PartialEq)]
 pub(crate) struct Optimizer {
-  returns_result: bool,
+  pub(crate) returns_result: bool,
 
-  has_ref_opstate: bool,
+  pub(crate) has_ref_opstate: bool,
 
-  has_rc_opstate: bool,
+  pub(crate) has_rc_opstate: bool,
 
-  has_fast_callback_option: bool,
+  pub(crate) has_fast_callback_option: bool,
 
-  fast_result: Option<FastValue>,
-  fast_parameters: Vec<FastValue>,
+  pub(crate) fast_result: Option<FastValue>,
+  pub(crate) fast_parameters: Vec<FastValue>,
 
-  transforms: Vec<Transform>,
+  pub(crate) transforms: Vec<Transform>,
 }
 
 impl Debug for Optimizer {
