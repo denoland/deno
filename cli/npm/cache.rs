@@ -153,6 +153,7 @@ impl ReadonlyNpmCache {
     // examples:
     // * chalk/5.0.1/
     // * @types/chalk/5.0.1/
+    // * some-package/5.0.1_peer-dep-name@0.1.0/
     let is_scoped_package = relative_url.starts_with('@');
     let mut parts = relative_url
       .split('/')

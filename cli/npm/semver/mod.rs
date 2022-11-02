@@ -20,7 +20,7 @@ use self::range::VersionRangeSet;
 use self::range::XRange;
 pub use self::specifier::SpecifierVersionReq;
 
-mod errors;
+pub mod errors;
 mod range;
 mod specifier;
 

@@ -267,7 +267,7 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
-    let specifier = package.id.serialize_for_lock_file();
+    let specifier = package.id.as_serializable_name();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
       let integrity = package
         .dist
@@ -298,7 +298,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
     let dependencies = package
       .dependencies
       .iter()
-      .map(|(name, id)| (name.to_string(), id.serialize_for_lock_file()))
+      .map(|(name, id)| (name.to_string(), id.as_serializable_name()))
       .collect::<BTreeMap<String, String>>();
 
     let integrity = package
@@ -307,7 +307,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .as_ref()
       .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
-      package.id.serialize_for_lock_file(),
+      package.id.as_serializable_name(),
       NpmPackageInfo {
         integrity: integrity.to_string(),
         dependencies,
@@ -559,8 +559,8 @@ mod tests {
         version: NpmVersion::parse("3.3.4").unwrap(),
       },
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==".to_string())
       },
       dependencies: HashMap::new(),
@@ -574,8 +574,8 @@ mod tests {
         version: NpmVersion::parse("1.0.0").unwrap(),
       },
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-1fygroTLlHu66zi26VoTDv8yRgm0Fccecssto+MhsZ0D/DGW2sm8E8AjW7NU5VVTRt5GxbeZ5qBuJr+HyLYkjQ==".to_string())
       },
       dependencies: HashMap::new(),
@@ -590,8 +590,8 @@ mod tests {
         version: NpmVersion::parse("1.0.2").unwrap(),
       },
       dist: NpmPackageVersionDistInfo {
-        tarball: "foo".to_string(), 
-        shasum: "foo".to_string(), 
+        tarball: "foo".to_string(),
+        shasum: "foo".to_string(),
         integrity: Some("sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==".to_string())
       },
       dependencies: HashMap::new(),

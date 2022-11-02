@@ -6,6 +6,8 @@ use monch::ParseError;
 use monch::ParseErrorFailure;
 use monch::ParseResult;
 
+// todo(THIS PR): open an issue in monch about these
+
 pub fn with_failure_handling<'a, T>(
   combinator: impl Fn(&'a str) -> ParseResult<T>,
 ) -> impl Fn(&'a str) -> Result<T, AnyError> {

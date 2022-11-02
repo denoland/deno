@@ -1,10 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::BorrowMut;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -185,26 +183,99 @@ impl NpmPackageId {
     }
   }
 
-  pub fn serialize_for_lock_file(&self) -> String {
-    if !self.peer_dependencies.is_empty() {
-      todo!();
-    }
-    format!("{}@{}", self.name, self.version)
+  pub fn as_serializable_name(&self) -> String {
+    self.as_serialize_name_with_level(1)
   }
 
-  pub fn deserialize_from_lock_file(id: &str) -> Result<Self, AnyError> {
-    let reference = NpmPackageReference::from_str(&format!("npm:{}", id))
-      .with_context(|| {
-        format!("Unable to deserialize npm package reference: {}", id)
-      })?;
-    let version =
-      NpmVersion::parse(&reference.req.version_req.unwrap().to_string())
-        .unwrap();
-    Ok(Self {
-      name: reference.req.name,
-      version,
-      peer_dependencies: Vec::new(), // todo
-    })
+  fn as_serialize_name_with_level(&self, level: usize) -> String {
+    let mut result = format!("{}@{}", self.name, self.version);
+    for peer in &self.peer_dependencies {
+      result.push_str(&"_".repeat(level));
+      result.push_str(&peer.as_serialize_name_with_level(level + 1));
+    }
+    result
+  }
+
+  pub fn deserialize_serializable_name(id: &str) -> Result<Self, AnyError> {
+    use monch::*;
+
+    fn parse_name(input: &str) -> ParseResult<&str> {
+      if_not_empty(substring(move |input| {
+        for (pos, c) in input.char_indices() {
+          // first character might be a scope, so skip it
+          if pos > 0 && c == '@' {
+            return Ok((&input[pos..], ()));
+          }
+        }
+        ParseError::backtrace()
+      }))(input)
+    }
+
+    fn parse_version(input: &str) -> ParseResult<&str> {
+      if_not_empty(substring(skip_while(|c| c != '_')))(input)
+    }
+
+    fn parse_name_and_version(
+      input: &str,
+    ) -> ParseResult<(String, NpmVersion)> {
+      let (input, name) = parse_name(input)?;
+      let (input, _) = ch('@')(input)?;
+      let at_version_input = input;
+      let (input, version) = parse_version(input)?;
+      match NpmVersion::parse(version) {
+        Ok(version) => Ok((input, (name.to_string(), version))),
+        Err(err) => ParseError::fail(at_version_input, format!("{:#}", err)),
+      }
+    }
+
+    fn parse_level_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
+      fn parse_level(input: &str) -> ParseResult<usize> {
+        let parsed_level = input.chars().take_while(|c| *c == '_').count();
+        Ok((&input[parsed_level..], parsed_level))
+      }
+
+      move |input| {
+        let (input, parsed_level) = parse_level(input)?;
+        if parsed_level == level {
+          Ok((input, ()))
+        } else {
+          ParseError::backtrace()
+        }
+      }
+    }
+
+    fn parse_peers_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<NpmPackageId>> {
+      // todo(THIS PR): open an issue in monch for 'many_while'
+      many_till(
+        parse_id_at_level(level),
+        check_not(parse_level_at_level(level)),
+      )
+    }
+
+    fn parse_id_at_level<'a>(
+      level: usize,
+    ) -> impl Fn(&'a str) -> ParseResult<'a, NpmPackageId> {
+      move |input| {
+        let (input, (name, version)) = parse_name_and_version(input)?;
+        let (input, peer_dependencies) =
+          parse_peers_at_level(level + 1)(input)?;
+        Ok((
+          input,
+          NpmPackageId {
+            name,
+            version,
+            peer_dependencies,
+          },
+        ))
+      }
+    }
+
+    crate::npm::semver::errors::with_failure_handling(parse_id_at_level(0))(id)
+      .with_context(|| format!("Invalid npm package id '{}'.", id))
   }
 }
 
@@ -227,7 +298,7 @@ pub struct NpmResolutionPackage {
 pub struct NpmResolutionSnapshot {
   #[serde(with = "map_to_vec")]
   package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
-  package_versions_by_name: HashMap<String, Vec<NpmVersion>>,
+  packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
@@ -323,11 +394,7 @@ impl NpmResolutionSnapshot {
           version_req: None,
         };
 
-        if let Some(version) = self.resolve_best_package_version(name_, &req) {
-          let id = NpmPackageId {
-            name: name_.to_string(),
-            version,
-          };
+        if let Some(id) = self.resolve_best_package_id(name_, &req) {
           if let Some(pkg) = self.packages.get(&id) {
             return Ok(pkg);
           }
@@ -347,26 +414,27 @@ impl NpmResolutionSnapshot {
     self.packages.values().cloned().collect()
   }
 
-  pub fn resolve_best_package_version(
+  pub fn resolve_best_package_id(
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-  ) -> Option<NpmVersion> {
-    let mut maybe_best_version: Option<&NpmVersion> = None;
-    if let Some(versions) = self.package_versions_by_name.get(name) {
-      for version in versions {
-        if version_matcher.matches(version) {
-          let is_best_version = maybe_best_version
+  ) -> Option<NpmPackageId> {
+    // todo(THIS PR): this is not correct because some ids will be better than others
+    let mut maybe_best_id: Option<&NpmPackageId> = None;
+    if let Some(ids) = self.packages_by_name.get(name) {
+      for id in ids {
+        if version_matcher.matches(&id.version) {
+          let is_best_version = maybe_best_id
             .as_ref()
-            .map(|best_version| (*best_version).cmp(version).is_lt())
+            .map(|best_id| best_id.version.cmp(&id.version).is_lt())
             .unwrap_or(true);
           if is_best_version {
-            maybe_best_version = Some(version);
+            maybe_best_id = Some(id);
           }
         }
       }
     }
-    maybe_best_version.cloned()
+    maybe_best_id.cloned()
   }
 
   pub async fn from_lockfile(
@@ -374,7 +442,7 @@ impl NpmResolutionSnapshot {
     api: &NpmRegistryApi,
   ) -> Result<Self, AnyError> {
     let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
-    let mut packages_by_name: HashMap<String, Vec<NpmVersion>>;
+    let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;
     let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
 
     {
@@ -393,23 +461,23 @@ impl NpmResolutionSnapshot {
       for (key, value) in &lockfile.content.npm.specifiers {
         let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
           .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
-        let package_id = NpmPackageId::deserialize_from_lock_file(value)?;
+        let package_id = NpmPackageId::deserialize_serializable_name(value)?;
         package_reqs.insert(reference.req, package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
       // then the packages
       for (key, value) in &lockfile.content.npm.packages {
-        let package_id = NpmPackageId::deserialize_from_lock_file(key)?;
+        let package_id = NpmPackageId::deserialize_serializable_name(key)?;
         let mut dependencies = HashMap::default();
 
         packages_by_name
           .entry(package_id.name.to_string())
           .or_default()
-          .push(package_id.version.clone());
+          .push(package_id.clone());
 
         for (name, specifier) in &value.dependencies {
-          let dep_id = NpmPackageId::deserialize_from_lock_file(specifier)?;
+          let dep_id = NpmPackageId::deserialize_serializable_name(specifier)?;
           dependencies.insert(name.to_string(), dep_id.clone());
           verify_ids.insert(dep_id);
         }
@@ -471,7 +539,7 @@ impl NpmResolutionSnapshot {
 
     Ok(Self {
       package_reqs,
-      package_versions_by_name: packages_by_name,
+      packages_by_name,
       packages,
     })
   }
@@ -786,24 +854,14 @@ impl Graph {
             .await?
             .unwrap()
             .dist,
-          dependencies: node.children,
+          dependencies: node.children.clone(),
           id,
         },
-      )
+      );
     }
     Ok(NpmResolutionSnapshot {
       package_reqs: self.package_reqs,
-      package_versions_by_name: self
-        .packages_by_name
-        .into_iter()
-        .map(|(name, ids)| {
-          let mut versions =
-            ids.into_iter().map(|id| id.version).collect::<Vec<_>>();
-          versions.sort();
-          versions.dedup();
-          (name, versions)
-        })
-        .collect::<HashMap<_, _>>(),
+      packages_by_name: self.packages_by_name,
       packages,
     })
   }
