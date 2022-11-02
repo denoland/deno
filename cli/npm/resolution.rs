@@ -431,7 +431,7 @@ impl NpmResolutionSnapshot {
       for id in &verify_ids {
         if !packages.contains_key(id) {
           bail!(
-            "the lockfile ({}) is corrupt. Recreate it or run again with --no-lock",
+            "the lockfile ({}) is corrupt. You can recreate it with --lock-write",
             lockfile.filename.display(),
           );
         }

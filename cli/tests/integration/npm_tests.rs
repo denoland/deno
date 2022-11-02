@@ -994,7 +994,7 @@ fn lock_file_missing_top_level_package() {
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(
     stderr,
-    "error: the lockfile (deno.lock) is corrupt. Recreate it or run again with --no-lock\n"
+    "error: the lockfile (deno.lock) is corrupt. You can recreate it with --lock-write\n"
   );
 }
 
