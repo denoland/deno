@@ -3,18 +3,22 @@ use crate::Op;
 use syn::{
   punctuated::Punctuated, token::Colon2, AngleBracketedGenericArguments, FnArg,
   GenericArgument, ItemFn, Path, PathArguments, PathSegment, ReturnType,
-  Signature, Type, TypePath, TypeReference,
+  Signature, Type, TypePath, TypeReference, TypeSlice,
 };
 
+#[derive(Debug)]
 enum BailoutReason {
   FastAsync,
   MustBeSingleSegment,
   Other(&'static str),
 }
 
+#[derive(Debug, PartialEq)]
 enum TransformKind {
   // serde_v8::Value
   V8Value,
+  SliceU32(bool),
+  SliceU8(bool),
 }
 
 impl Transform {
@@ -24,13 +28,29 @@ impl Transform {
       index,
     }
   }
+
+  fn slice_u32(index: usize, is_mut: bool) -> Self {
+    Transform {
+      kind: TransformKind::SliceU32(is_mut),
+      index,
+    }
+  }
+
+  fn slice_u8(index: usize, is_mut: bool) -> Self {
+    Transform {
+      kind: TransformKind::SliceU8(is_mut),
+      index,
+    }
+  }
 }
 
+#[derive(Debug, PartialEq)]
 struct Transform {
   kind: TransformKind,
   index: usize,
 }
 
+#[derive(Debug, PartialEq)]
 enum FastValue {
   Void,
 }
@@ -41,7 +61,7 @@ impl Default for FastValue {
   }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq)]
 struct Optimizer {
   returns_result: bool,
 
@@ -235,11 +255,23 @@ impl Optimizer {
                 }
               }
             }
+            // Is `T` a fast scalar?
+            PathSegment {
+              ident, arguments, ..
+            } if matches!(
+              ident.to_string().as_str(),
+              "u32" | "u64" | "i32" | "i64" | "f32" | "f64" | "bool"
+            ) =>
+            {
+              self.fast_parameters.push(FastValue::default());
+            }
             _ => {}
           };
         }
         // &mut T
-        Type::Reference(TypeReference { elem, .. }) => match &**elem {
+        Type::Reference(TypeReference {
+          elem, mutability, ..
+        }) => match &**elem {
           Type::Path(TypePath {
             path: Path { segments, .. },
             ..
@@ -255,19 +287,40 @@ impl Optimizer {
               _ => {}
             }
           }
+          // &mut [T]
+          Type::Slice(TypeSlice { elem, .. }) => match &**elem {
+            Type::Path(TypePath {
+              path: Path { segments, .. },
+              ..
+            }) => {
+              let segment = single_segment(&segments)?;
+              let is_mut_ref = mutability.is_some();
+              match segment {
+                // Is `T` a u8?
+                PathSegment {
+                  ident, arguments, ..
+                } if ident == "u8" => {
+                  self.transforms.push(Transform::slice_u8(index, is_mut_ref));
+                }
+                // Is `T` a u32?
+                PathSegment {
+                  ident, arguments, ..
+                } if ident == "u32" => {
+                  self
+                    .transforms
+                    .push(Transform::slice_u32(index, is_mut_ref));
+                }
+                _ => {}
+              }
+            }
+            _ => {}
+          },
           _ => {}
         },
         _ => {}
       },
       _ => {}
     };
-
-    // Is a scalar FastValue?
-
-    // Is a sequence FastValue?
-
-    // Is &mut [u8] or &mut [u32]?
-
     Ok(())
   }
 }
@@ -292,5 +345,61 @@ fn double_segment(
     (Some(first), Some(last)) => Ok([first, last]),
     // Caller ensures that there are only two segments.
     _ => unreachable!(),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::attrs::Attributes;
+  use crate::Op;
+  use syn::parse_quote;
+
+  #[test]
+  fn test_single_segment() {
+    let segments = parse_quote!(foo);
+    assert!(single_segment(&segments).is_ok());
+
+    let segments = parse_quote!(foo::bar);
+    assert!(single_segment(&segments).is_err());
+  }
+
+  #[test]
+  fn test_double_segment() {
+    let segments = parse_quote!(foo::bar);
+    assert!(double_segment(&segments).is_ok());
+    assert_eq!(double_segment(&segments).unwrap()[0].ident, "foo");
+    assert_eq!(double_segment(&segments).unwrap()[1].ident, "bar");
+  }
+
+  fn test_optimizer(item: ItemFn, attributes: Attributes, expected: Optimizer) {
+    let mut op = Op::new(item, attributes);
+    let mut optimizer = Optimizer::new();
+    optimizer.analyze(&mut op).expect("Optimizer failed");
+    assert_eq!(optimizer, expected);
+  }
+
+  #[test]
+  fn test_analyzer1() {
+    test_optimizer(
+      parse_quote!(
+        fn foo(state: &mut OpState, a: u32, b: u32) -> u32 {
+          a + b
+        }
+      ),
+      Attributes {
+        must_be_fast: true,
+        ..Default::default()
+      },
+      Optimizer {
+        has_ref_opstate: true,
+        has_rc_opstate: false,
+        fast_result: None,
+        has_fast_callback_option: false,
+        returns_result: false,
+        fast_parameters: vec![FastValue::default(), FastValue::default()],
+        transforms: vec![],
+      },
+    );
   }
 }
