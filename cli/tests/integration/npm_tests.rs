@@ -752,7 +752,8 @@ itest!(info_chalk_json {
 });
 
 itest!(info_chalk_json_node_modules_dir {
-  args: "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
+  args:
+    "info --quiet --node-modules-dir --json $TESTDATA/npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main_info_json.out",
   exit_code: 0,
   envs: env_vars(),
