@@ -362,7 +362,7 @@ async fn create_graph_and_maybe_check(
   let maybe_imports = ps.options.to_maybe_imports()?;
   let maybe_jsx_config = ps.options.to_maybe_jsx_import_source_config();
   let maybe_cli_resolver =
-    if maybe_jsx_config.is_some() && ps.maybe_import_map.is_some() {
+    if maybe_jsx_config.is_some() || ps.maybe_import_map.is_some() {
       Some(CliResolver::new(
         maybe_jsx_config,
         ps.maybe_import_map.clone(),

@@ -195,7 +195,7 @@ impl ProcState {
 
     let maybe_jsx_config = cli_options.to_maybe_jsx_import_source_config();
     let maybe_cli_resolver =
-      if maybe_jsx_config.is_some() && maybe_import_map.is_some() {
+      if maybe_jsx_config.is_some() || maybe_import_map.is_some() {
         Some(CliResolver::new(maybe_jsx_config, maybe_import_map.clone()))
       } else {
         None
@@ -626,7 +626,7 @@ impl ProcState {
     let maybe_jsx_config = self.options.to_maybe_jsx_import_source_config();
 
     let maybe_cli_resolver =
-      if maybe_jsx_config.is_some() && self.maybe_import_map.is_some() {
+      if maybe_jsx_config.is_some() || self.maybe_import_map.is_some() {
         Some(CliResolver::new(
           maybe_jsx_config,
           self.maybe_import_map.clone(),
