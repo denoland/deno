@@ -1,6 +1,9 @@
 /// Optimizer for #[op]
 use crate::Op;
-use syn::{ItemFn, ReturnType, Signature, TypePath, Path, Type, PathSegment, PathArguments};
+use syn::{
+  FnArg, ItemFn, Path, PathArguments, PathSegment, ReturnType, Signature, Type,
+  TypePath,
+};
 
 enum BailoutReason {
   FastAsync,
@@ -9,13 +12,13 @@ enum BailoutReason {
 }
 
 enum FastValue {
-    Void,
+  Void,
 }
 
 impl Default for FastValue {
-    fn default() -> Self {
-        Self::Void
-    }
+  fn default() -> Self {
+    Self::Void
+  }
 }
 
 #[derive(Default)]
@@ -36,7 +39,10 @@ impl Optimizer {
       return Err(BailoutReason::FastAsync);
     }
 
-    match &op.item.sig {
+    let sig = &op.item.sig;
+
+    // Analyze return type
+    match &sig {
       Signature {
         output: ReturnType::Default,
         ..
@@ -47,33 +53,69 @@ impl Optimizer {
       } => self.analyze_return_type(ty)?,
     };
 
+    // Analyze parameters
+    for (index, param) in sig.inputs.iter().enumerate() {
+      self.analyze_param_type(index, param)?;
+    }
+
     Ok(())
   }
 
   fn analyze_return_type(&mut self, ty: &Type) -> Result<(), BailoutReason> {
     match ty {
-        Type::Path(TypePath { path: Path { segments, .. }, .. }) => {
-          if segments.len() != 1 {
-            return Err(BailoutReason::MustBeSingleSegment);             
-          }
-
-          let segment = match segments.last() {
-            Some(segment) => segment,
-            None => return Err(BailoutReason::MustBeSingleSegment),
-          };
-
-          match segment {
-            PathSegment { ident, arguments, .. } if ident == "Result" => {
-                self.returns_result = true;
-                if let PathArguments::AngleBracketed(ref bracketed) = arguments {
-                    
-                }
-            }
-            _ => {}
-          };
+      Type::Path(TypePath {
+        path: Path { segments, .. },
+        ..
+      }) => {
+        if segments.len() != 1 {
+          return Err(BailoutReason::MustBeSingleSegment);
         }
-        _ => {},
+
+        let segment = match segments.last() {
+          Some(segment) => segment,
+          None => return Err(BailoutReason::MustBeSingleSegment),
+        };
+
+        match segment {
+          // Result<T, E>
+          PathSegment {
+            ident, arguments, ..
+          } if ident == "Result" => {
+            self.returns_result = true;
+
+            // Is `T` a FastValue?
+            if let PathArguments::AngleBracketed(ref bracketed) = arguments {}
+          }
+          // T
+          _ => {
+            // Is `T` a scalar FastValue?
+          }
+        };
+      }
+      _ => {}
     };
+
+    Ok(())
+  }
+
+  fn analyze_param_type(
+    &mut self,
+    index: usize,
+    arg: &FnArg,
+  ) -> Result<(), BailoutReason> {
+    // Is FastApiCallbackOption?
+
+    // Is &mut OpState?
+
+    // Is Rc<RefCell<OpState>>?
+
+    // Is serde_v8::Value?
+
+    // Is a scalar FastValue?
+
+    // Is a sequence FastValue?
+
+    // Is &mut [u8] or &mut [u32]?
 
     Ok(())
   }
