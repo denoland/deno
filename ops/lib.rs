@@ -11,11 +11,12 @@ use regex::Regex;
 use std::collections::HashMap;
 use syn::{
   parse, parse_macro_input, punctuated::Punctuated, token::Comma, FnArg,
-  GenericParam, ItemFn, LifetimeDef, Lifetime, Ident,
+  GenericParam, Ident, ItemFn, Lifetime, LifetimeDef,
 };
 
 mod attrs;
 mod deno;
+mod optimizer;
 
 #[cfg(test)]
 mod tests;
@@ -23,12 +24,10 @@ mod tests;
 const SCOPE_LIFETIME: &str = "'scope";
 
 /// Add the 'scope lifetime to the function signature.
-fn add_scope_lifetime(
-  func: &mut ItemFn,
-) {
+fn add_scope_lifetime(func: &mut ItemFn) {
   let span = Span::call_site();
   let lifetime = LifetimeDef::new(Lifetime::new(SCOPE_LIFETIME, span));
-  let generics = &mut func.sig.generics; 
+  let generics = &mut func.sig.generics;
   if !generics.lifetimes().any(|def| *def == lifetime) {
     generics.params.push(GenericParam::Lifetime(lifetime));
   }
@@ -41,6 +40,7 @@ struct Op {
   ///   - `async fn`
   ///   - returns a Future
   is_async: bool,
+  type_params: Punctuated<GenericParam, Comma>,
   // optimizer: Optimizer,
   core: TokenStream2,
   attrs: Attributes,
@@ -60,11 +60,13 @@ impl Op {
     orig.sig.ident = Ident::new("call", Span::call_site());
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
+    let type_params = exclude_lifetime_params(&item.sig.generics.params);
     let core = deno::import();
 
     Self {
       orig,
       item,
+      type_params,
       is_async,
       core,
       attrs,
@@ -78,10 +80,10 @@ impl Op {
       is_async,
       orig,
       attrs,
+      type_params,
     } = self;
     let name = &item.sig.ident;
     let generics = &item.sig.generics;
-    let type_params = exclude_lifetime_params(&item.sig.generics.params);
     let where_clause = &item.sig.generics.where_clause;
 
     // First generate fast call bindings to opt-in to error handling in slow call
@@ -89,7 +91,13 @@ impl Op {
       codegen_fast_impl(&core, &item, name, is_async, attrs.must_be_fast);
 
     let (v8_body, argc) = if is_async {
-      codegen_v8_async(&core, &item, attrs, item.sig.asyncness.is_some(), attrs.deferred)
+      codegen_v8_async(
+        &core,
+        &item,
+        attrs,
+        item.sig.asyncness.is_some(),
+        attrs.deferred,
+      )
     } else {
       codegen_v8_sync(&core, &item, attrs, has_fallible_fast_call)
     };
