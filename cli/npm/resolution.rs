@@ -379,7 +379,7 @@ impl NpmResolutionSnapshot {
     {
       let lockfile = lockfile.lock();
 
-      // pre-allocate hashmaps
+      // pre-allocate collections
       package_reqs =
         HashMap::with_capacity(lockfile.content.npm.specifiers.len());
       packages = HashMap::with_capacity(lockfile.content.npm.packages.len());
