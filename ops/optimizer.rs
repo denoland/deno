@@ -25,6 +25,8 @@ impl Default for FastValue {
 struct Optimizer {
   returns_result: bool,
 
+  has_fast_callback_option: bool,
+
   fast_result: Option<FastValue>,
   fast_parameters: Vec<FastValue>,
 }
@@ -103,8 +105,35 @@ impl Optimizer {
     index: usize,
     arg: &FnArg,
   ) -> Result<(), BailoutReason> {
-    // Is FastApiCallbackOption?
+    
+    match arg {
+      FnArg::Typed(typed) => match &*typed.ty {
+        Type::Path(TypePath {
+          path: Path { segments, .. },
+          ..
+        }) => {
+          if segments.len() != 1 {
+            return Err(BailoutReason::MustBeSingleSegment);
+          }
 
+          let segment = match segments.last() {
+            Some(segment) => segment,
+            None => return Err(BailoutReason::MustBeSingleSegment),
+          };
+
+          match segment {
+            // Is Option<&mut FastApiCallbackOption>
+            PathSegment {
+              ident, arguments, ..
+            } if ident == "Option" => {
+              
+            }
+            _ => {}
+          };
+        }
+        _ => {}
+      },
+    };
     // Is &mut OpState?
 
     // Is Rc<RefCell<OpState>>?
