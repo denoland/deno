@@ -20,17 +20,21 @@ pub struct CliResolver {
 }
 
 impl CliResolver {
-  pub fn new(
+  pub fn maybe_new(
     maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
     maybe_import_map: Option<Arc<ImportMap>>,
-  ) -> Self {
-    Self {
-      maybe_import_map,
-      maybe_default_jsx_import_source: maybe_jsx_import_source_config
-        .as_ref()
-        .and_then(|c| c.default_specifier.clone()),
-      maybe_jsx_import_source_module: maybe_jsx_import_source_config
-        .map(|c| c.module),
+  ) -> Option<Self> {
+    if maybe_jsx_import_source_config.is_some() || maybe_import_map.is_some() {
+      Some(Self {
+        maybe_import_map,
+        maybe_default_jsx_import_source: maybe_jsx_import_source_config
+          .as_ref()
+          .and_then(|c| c.default_specifier.clone()),
+        maybe_jsx_import_source_module: maybe_jsx_import_source_config
+          .map(|c| c.module),
+      })
+    } else {
+      None
     }
   }
 

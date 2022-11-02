@@ -1048,10 +1048,8 @@ impl Documents {
     // TODO(@kitsonk) update resolved dependencies?
     let maybe_jsx_config =
       maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
-    if maybe_jsx_config.is_some() || maybe_import_map.is_some() {
-      self.maybe_resolver =
-        Some(CliResolver::new(maybe_jsx_config, maybe_import_map));
-    }
+    self.maybe_resolver =
+      CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())

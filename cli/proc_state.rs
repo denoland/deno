@@ -193,13 +193,10 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_jsx_config = cli_options.to_maybe_jsx_import_source_config();
-    let maybe_cli_resolver =
-      if maybe_jsx_config.is_some() || maybe_import_map.is_some() {
-        Some(CliResolver::new(maybe_jsx_config, maybe_import_map.clone()))
-      } else {
-        None
-      };
+    let maybe_cli_resolver = CliResolver::maybe_new(
+      cli_options.to_maybe_jsx_import_source_config(),
+      maybe_import_map.clone(),
+    );
     let maybe_resolver = maybe_cli_resolver.map(Arc::new);
 
     let maybe_file_watcher_reporter =
@@ -623,17 +620,11 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_jsx_config = self.options.to_maybe_jsx_import_source_config();
 
-    let maybe_cli_resolver =
-      if maybe_jsx_config.is_some() || self.maybe_import_map.is_some() {
-        Some(CliResolver::new(
-          maybe_jsx_config,
-          self.maybe_import_map.clone(),
-        ))
-      } else {
-        None
-      };
+    let maybe_cli_resolver = CliResolver::maybe_new(
+      self.options.to_maybe_jsx_import_source_config(),
+      self.maybe_import_map.clone(),
+    );
     let maybe_graph_resolver =
       maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
     let analyzer = self.parsed_source_cache.as_analyzer();
