@@ -998,6 +998,54 @@ fn lock_file_missing_top_level_package() {
   );
 }
 
+#[test]
+fn auto_discover_lock_file() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+
+  // write a lock file with borked integrity
+  let lock_file_content = r#"{
+    "version": "2",
+    "remote": {},
+    "npm": {
+      "specifiers": { "@denotest/bin": "@denotest/bin@1.0.0" },
+      "packages": {
+        "@denotest/bin@1.0.0": {
+          "integrity": "sha512-foobar",
+          "dependencies": {}
+        }
+      }
+    }
+  }"#;
+  temp_dir.write("deno.lock", lock_file_content);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("-A")
+    .arg("npm:@denotest/bin/cli-esm")
+    .arg("test")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(!output.status.success());
+  assert_eq!(output.status.code(), Some(10));
+
+  let stderr = String::from_utf8(output.stderr).unwrap();
+  assert!(stderr.contains(
+    "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
+  ));
+}
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),

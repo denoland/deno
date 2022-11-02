@@ -168,9 +168,7 @@ impl ProcState {
       Some(progress_bar.clone()),
     )?;
 
-    let lockfile = cli_options
-      .resolve_lock_file()?
-      .map(|f| Arc::new(Mutex::new(f)));
+    let lockfile = cli_options.maybe_lock_file();
     let maybe_import_map_specifier =
       cli_options.resolve_import_map_specifier()?;
 
@@ -296,7 +294,6 @@ impl ProcState {
         npm_package_reqs.push(package_ref.req);
       }
     }
-
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -312,6 +309,13 @@ impl ProcState {
           self.options.type_check_mode() != TypeCheckMode::None,
           false,
         ) {
+          // TODO(bartlomieju): this is strange... ideally there should be only
+          // one codepath in `prepare_module_load` so we don't forget things
+          // like writing a lockfile. Figure a way to refactor this function.
+          if let Some(ref lockfile) = self.lockfile {
+            let g = lockfile.lock();
+            g.write()?;
+          }
           return result;
         }
       }

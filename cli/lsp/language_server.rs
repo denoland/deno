@@ -2916,6 +2916,8 @@ impl Inner {
         ..Default::default()
       },
       self.maybe_config_file.clone(),
+      // TODO(#16510): add support for lockfile
+      None,
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
