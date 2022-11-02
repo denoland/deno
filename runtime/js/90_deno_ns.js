@@ -148,6 +148,7 @@
     spawnChild: __bootstrap.spawn.spawnChild,
     spawn: __bootstrap.spawn.spawn,
     spawnSync: __bootstrap.spawn.spawnSync,
+    command: __bootstrap.spawn.command,
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,

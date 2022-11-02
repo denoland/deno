@@ -285,10 +285,116 @@
     };
   }
 
+  function command(command, options = {}) {
+    return new Command(illegalConstructorKey, command, options);
+  }
+
+  class Command {
+    #command;
+    #options;
+
+    #child;
+
+    #outputted;
+
+    constructor(key = null, command, options) {
+      this.#command = command;
+      this.#options = options;
+    }
+
+    output() {
+      if (this.#child) {
+        throw new TypeError("Was spawned");
+      }
+
+      this.#outputted = true;
+
+      return spawn(this.#command, this.#options);
+    }
+
+    outputSync() {
+      if (this.#child) {
+        throw new TypeError("Was spawned");
+      }
+      if (this.#outputted) {
+        throw new TypeError("output() was called");
+      }
+
+      return spawnSync(this.#command, this.#options);
+    }
+
+    spawn() {
+      if (this.#child) {
+        throw new TypeError("Already spawned");
+      }
+      if (this.#outputted) {
+        throw new TypeError("output() was called");
+      }
+
+      this.#child = spawnChild(this.#command, this.#options);
+    }
+
+    get stdin() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stdin;
+    }
+
+    get stdout() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stdout;
+    }
+
+    get stderr() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.stderr;
+    }
+
+    get status() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      return this.#child.status;
+    }
+
+    kill(signo = "SIGTERM") {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+      this.#child.kill(signo);
+    }
+
+    ref() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      this.#child.ref();
+    }
+
+    unref() {
+      if (!this.#child) {
+        throw new TypeError("Wasn't spawned");
+      }
+
+      this.#child.unref();
+    }
+  }
+
   window.__bootstrap.spawn = {
     Child,
     spawnChild,
     spawn,
     spawnSync,
+    command,
   };
 })(this);
