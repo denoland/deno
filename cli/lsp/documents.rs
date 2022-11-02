@@ -708,7 +708,7 @@ pub struct Documents {
   imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
-  resolver: CliResolver,
+  maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
   npm_reqs: HashSet<NpmPackageReq>,
   /// Resolves a specifier to its final redirected to specifier.
@@ -724,7 +724,7 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       imports: Default::default(),
-      resolver: CliResolver::default(),
+      maybe_resolver: None,
       npm_reqs: HashSet::new(),
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
@@ -1046,10 +1046,12 @@ impl Documents {
     maybe_config_file: Option<&ConfigFile>,
   ) {
     // TODO(@kitsonk) update resolved dependencies?
-    self.resolver = CliResolver::new(
-      maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config()),
-      maybe_import_map,
-    );
+    let maybe_jsx_config =
+      maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
+    if maybe_jsx_config.is_some() || maybe_import_map.is_some() {
+      self.maybe_resolver =
+        Some(CliResolver::new(maybe_jsx_config, maybe_import_map));
+    }
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1121,7 +1123,7 @@ impl Documents {
   }
 
   fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
-    Some(self.resolver.as_graph_resolver())
+    self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver())
   }
 
   fn resolve_dependency(

@@ -48,6 +48,7 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::source::Resolver;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -87,7 +88,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
+  maybe_resolver: Option<Arc<CliResolver>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -192,11 +193,14 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let cli_resolver = CliResolver::new(
-      cli_options.to_maybe_jsx_import_source_config(),
-      maybe_import_map.clone(),
-    );
-    let resolver = Arc::new(cli_resolver);
+    let maybe_jsx_config = cli_options.to_maybe_jsx_import_source_config();
+    let maybe_cli_resolver =
+      if maybe_jsx_config.is_some() && maybe_import_map.is_some() {
+        Some(CliResolver::new(maybe_jsx_config, maybe_import_map.clone()))
+      } else {
+        None
+      };
+    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -263,7 +267,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       parsed_source_cache,
-      maybe_resolver: Some(resolver),
+      maybe_resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
       npm_cache,
@@ -323,12 +327,8 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
+    let maybe_resolver =
+      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -559,13 +559,7 @@ impl ProcState {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
 
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
-    if let Some(resolver) = &maybe_resolver {
+    if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
@@ -629,10 +623,19 @@ impl ProcState {
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
-    let cli_resolver = CliResolver::new(
-      self.options.to_maybe_jsx_import_source_config(),
-      self.maybe_import_map.clone(),
-    );
+    let maybe_jsx_config = self.options.to_maybe_jsx_import_source_config();
+
+    let maybe_cli_resolver =
+      if maybe_jsx_config.is_some() && self.maybe_import_map.is_some() {
+        Some(CliResolver::new(
+          maybe_jsx_config,
+          self.maybe_import_map.clone(),
+        ))
+      } else {
+        None
+      };
+    let maybe_graph_resolver =
+      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let graph = create_graph(
@@ -641,7 +644,7 @@ impl ProcState {
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: Some(cli_resolver.as_graph_resolver()),
+        resolver: maybe_graph_resolver,
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,

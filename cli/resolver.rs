@@ -34,6 +34,10 @@ impl CliResolver {
     }
   }
 
+  pub fn with_import_map(import_map: Arc<ImportMap>) -> Self {
+    Self::new(None, Some(import_map))
+  }
+
   pub fn as_graph_resolver(&self) -> &dyn Resolver {
     self
   }

@@ -360,10 +360,18 @@ async fn create_graph_and_maybe_check(
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let cli_resolver = CliResolver::new(
-    ps.options.to_maybe_jsx_import_source_config(),
-    ps.maybe_import_map.clone(),
-  );
+  let maybe_jsx_config = ps.options.to_maybe_jsx_import_source_config();
+  let maybe_cli_resolver =
+    if maybe_jsx_config.is_some() && ps.maybe_import_map.is_some() {
+      Some(CliResolver::new(
+        maybe_jsx_config,
+        ps.maybe_import_map.clone(),
+      ))
+    } else {
+      None
+    };
+  let maybe_graph_resolver =
+    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
@@ -372,7 +380,7 @@ async fn create_graph_and_maybe_check(
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: Some(cli_resolver.as_graph_resolver()),
+        resolver: maybe_graph_resolver,
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
