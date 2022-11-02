@@ -1,5 +1,6 @@
 /// Code generation for V8 fast calls.
 use crate::optimizer::Optimizer;
+use pmutil::{q, Quote};
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
@@ -7,7 +8,6 @@ use syn::{
   ItemStruct, Path, PathArguments, PathSegment, Token, Type, TypePath,
   Visibility,
 };
-use pmutil::{q, Quote};
 
 pub(crate) fn generate(
   optimizer: &mut Optimizer,
@@ -23,16 +23,11 @@ pub(crate) fn generate(
   // struct T <A> {
   //   _phantom: ::std::marker::PhantomData<A>,
   // }
-  let fast_ty: Quote = q! (
-    Vars {
-      Type: &ident,
-    }, 
-    {
-      struct Type {
-        _phantom: ::std::marker::PhantomData<()>,
-      }
+  let fast_ty: Quote = q!(Vars { Type: &ident }, {
+    struct Type {
+      _phantom: ::std::marker::PhantomData<()>,
     }
-  );
+  });
 
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
@@ -63,16 +58,9 @@ pub(crate) fn generate(
     items: vec![],
   };
 
-  let fast_fn = q!(
-    Vars {
-      op_name: &ident,
-    },
-    {
-      fn op_name(_: v8::Local<v8::Object>)  {
-           
-      }
-    }
-  );
+  let fast_fn = q!(Vars { op_name: &ident }, {
+    fn op_name(_: v8::Local<v8::Object>) {}
+  });
 
   let mut tts = q!({});
   tts.push_tokens(&fast_ty);
