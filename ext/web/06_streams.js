@@ -35,7 +35,6 @@
     ObjectPrototypeIsPrototypeOf,
     ObjectSetPrototypeOf,
     Promise,
-    PromiseAll,
     PromisePrototypeCatch,
     PromisePrototypeThen,
     PromiseReject,
@@ -43,6 +42,7 @@
     queueMicrotask,
     RangeError,
     ReflectHas,
+    SafePromiseAll,
     SharedArrayBuffer,
     Symbol,
     SymbolAsyncIterator,
@@ -2302,7 +2302,8 @@
           });
         }
         shutdownWithAction(
-          () => PromiseAll(ArrayPrototypeMap(actions, (action) => action())),
+          () =>
+            SafePromiseAll(ArrayPrototypeMap(actions, (action) => action())),
           true,
           error,
         );
