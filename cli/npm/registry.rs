@@ -45,6 +45,12 @@ pub enum NpmDependencyEntryKind {
   OptionalPeer,
 }
 
+impl NpmDependencyEntryKind {
+  pub fn is_optional(&self) -> bool {
+    matches!(self, NpmDependencyEntryKind::OptionalPeer)
+  }
+}
+
 #[derive(Eq, PartialEq)]
 pub struct NpmDependencyEntry {
   pub bare_specifier: String,
