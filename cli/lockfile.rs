@@ -146,20 +146,34 @@ impl Lockfile {
     };
 
     let s = result.with_context(|| {
-      format!("Unable to read lockfile: {}", filename.display())
+      format!("Unable to read lockfile: \"{}\"", filename.display())
     })?;
-    let value: serde_json::Value = serde_json::from_str(&s)
-      .context("Unable to parse contents of the lockfile")?;
+    let value: serde_json::Value =
+      serde_json::from_str(&s).with_context(|| {
+        format!(
+          "Unable to parse contents of the lockfile \"{}\"",
+          filename.display()
+        )
+      })?;
     let version = value.get("version").and_then(|v| v.as_str());
     let content = if version == Some("2") {
-      serde_json::from_value::<LockfileContent>(value)
-        .context("Unable to parse lockfile")?
+      serde_json::from_value::<LockfileContent>(value).with_context(|| {
+        format!(
+          "Unable to parse contents of the lockfile \"{}\"",
+          filename.display()
+        )
+      })?
     } else {
       // If there's no version field, we assume that user is using the old
       // version of the lockfile. We'll migrate it in-place into v2 and it
       // will be writte in v2 if user uses `--lock-write` flag.
-      let remote: BTreeMap<String, String> =
-        serde_json::from_value(value).context("Unable to parse lockfile")?;
+      let remote: BTreeMap<String, String> = serde_json::from_value(value)
+        .with_context(|| {
+          format!(
+            "Unable to parse contents of the lockfile \"{}\"",
+            filename.display()
+          )
+        })?;
       LockfileContent {
         version: "2".to_string(),
         remote,
@@ -262,10 +276,15 @@ impl Lockfile {
         .unwrap_or(&package.dist.shasum);
       if &package_info.integrity != integrity {
         return Err(LockfileError(format!(
-          "Integrity check failed for npm package: \"{}\".
-  Cache has \"{}\" and lockfile has \"{}\".
-  Use \"--lock-write\" flag to update the lockfile.",
-          package.id, integrity, package_info.integrity
+          "Integrity check failed for npm package: \"{}\". Unable to verify that the package
+is the same as when the lockfile was generated.
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
+          package.id, self.filename.display()
         )));
       }
     } else {
