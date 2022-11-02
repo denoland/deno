@@ -15,9 +15,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::ConfigFile;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
+use crate::Flags;
 
 #[derive(Debug)]
 pub struct LockfileError(String);
@@ -73,6 +75,16 @@ pub struct LockfileContent {
   pub npm: NpmContent,
 }
 
+impl LockfileContent {
+  fn empty() -> Self {
+    Self {
+      version: "2".to_string(),
+      remote: BTreeMap::new(),
+      npm: NpmContent::default(),
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   pub overwrite: bool,
@@ -82,35 +94,90 @@ pub struct Lockfile {
 }
 
 impl Lockfile {
+  pub fn discover(
+    flags: &Flags,
+    maybe_config_file: Option<&ConfigFile>,
+  ) -> Result<Option<Lockfile>, AnyError> {
+    let filename = match flags.lock {
+      Some(ref lock) => PathBuf::from(lock),
+      None => match maybe_config_file {
+        Some(config_file) => {
+          if config_file.specifier.scheme() == "file" {
+            let mut path = config_file.specifier.to_file_path().unwrap();
+            path.set_file_name("deno.lock");
+            path
+          } else {
+            return Ok(None);
+          }
+        }
+        None => return Ok(None),
+      },
+    };
+
+    let lockfile = Self::new(filename, flags.lock_write)?;
+    Ok(Some(lockfile))
+  }
+
   pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
-    let content = if overwrite {
+    if overwrite {
+      return Ok(Lockfile {
+        overwrite,
+        has_content_changed: false,
+        content: LockfileContent::empty(),
+        filename,
+      });
+    }
+
+    let result = match std::fs::read_to_string(&filename) {
+      Ok(content) => Ok(content),
+      Err(e) => {
+        if e.kind() == std::io::ErrorKind::NotFound {
+          return Ok(Lockfile {
+            overwrite,
+            has_content_changed: false,
+            content: LockfileContent::empty(),
+            filename,
+          });
+        } else {
+          Err(e)
+        }
+      }
+    };
+
+    let s = result.with_context(|| {
+      format!("Unable to read lockfile: \"{}\"", filename.display())
+    })?;
+    let value: serde_json::Value =
+      serde_json::from_str(&s).with_context(|| {
+        format!(
+          "Unable to parse contents of the lockfile \"{}\"",
+          filename.display()
+        )
+      })?;
+    let version = value.get("version").and_then(|v| v.as_str());
+    let content = if version == Some("2") {
+      serde_json::from_value::<LockfileContent>(value).with_context(|| {
+        format!(
+          "Unable to parse contents of the lockfile \"{}\"",
+          filename.display()
+        )
+      })?
+    } else {
+      // If there's no version field, we assume that user is using the old
+      // version of the lockfile. We'll migrate it in-place into v2 and it
+      // will be writte in v2 if user uses `--lock-write` flag.
+      let remote: BTreeMap<String, String> = serde_json::from_value(value)
+        .with_context(|| {
+          format!(
+            "Unable to parse contents of the lockfile \"{}\"",
+            filename.display()
+          )
+        })?;
       LockfileContent {
         version: "2".to_string(),
-        remote: BTreeMap::new(),
+        remote,
         npm: NpmContent::default(),
-      }
-    } else {
-      let s = std::fs::read_to_string(&filename).with_context(|| {
-        format!("Unable to read lockfile: {}", filename.display())
-      })?;
-      let value: serde_json::Value = serde_json::from_str(&s)
-        .context("Unable to parse contents of the lockfile")?;
-      let version = value.get("version").and_then(|v| v.as_str());
-      if version == Some("2") {
-        serde_json::from_value::<LockfileContent>(value)
-          .context("Unable to parse lockfile")?
-      } else {
-        // If there's no version field, we assume that user is using the old
-        // version of the lockfile. We'll migrate it in-place into v2 and it
-        // will be writte in v2 if user uses `--lock-write` flag.
-        let remote: BTreeMap<String, String> =
-          serde_json::from_value(value).context("Unable to parse lockfile")?;
-        LockfileContent {
-          version: "2".to_string(),
-          remote,
-          npm: NpmContent::default(),
-        }
       }
     };
 
@@ -209,10 +276,15 @@ impl Lockfile {
         .unwrap_or(&package.dist.shasum);
       if &package_info.integrity != integrity {
         return Err(LockfileError(format!(
-          "Integrity check failed for npm package: \"{}\".
-  Cache has \"{}\" and lockfile has \"{}\".
-  Use \"--lock-write\" flag to update the lockfile.",
-          package.id, integrity, package_info.integrity
+          "Integrity check failed for npm package: \"{}\". Unable to verify that the package
+is the same as when the lockfile was generated.
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
+          package.id, self.filename.display()
         )));
       }
     } else {
@@ -338,9 +410,9 @@ mod tests {
   }
 
   #[test]
-  fn new_nonexistent_lockfile() {
+  fn create_lockfile_for_nonexistent_path() {
     let file_path = PathBuf::from("nonexistent_lock_file.json");
-    assert!(Lockfile::new(file_path, false).is_err());
+    assert!(Lockfile::new(file_path, false).is_ok());
   }
 
   #[test]

@@ -70,8 +70,7 @@ use crate::file_watcher::ResolutionResult;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid;
 use crate::proc_state::ProcState;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use args::CliOptions;
@@ -361,19 +360,12 @@ async fn create_graph_and_maybe_check(
   );
   let maybe_locker = lockfile::as_maybe_locker(ps.lockfile.clone());
   let maybe_imports = ps.options.to_maybe_imports()?;
-  let maybe_import_map_resolver =
-    ps.maybe_import_map.clone().map(ImportMapResolver::new);
-  let maybe_jsx_resolver = ps
-    .options
-    .to_maybe_jsx_import_source_config()
-    .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
-  let maybe_resolver = if maybe_jsx_resolver.is_some() {
-    maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-  } else {
-    maybe_import_map_resolver
-      .as_ref()
-      .map(|im| im.as_resolver())
-  };
+  let maybe_cli_resolver = CliResolver::maybe_new(
+    ps.options.to_maybe_jsx_import_source_config(),
+    ps.maybe_import_map.clone(),
+  );
+  let maybe_graph_resolver =
+    maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
   let analyzer = ps.parsed_source_cache.as_analyzer();
   let graph = Arc::new(
     deno_graph::create_graph(
@@ -382,7 +374,7 @@ async fn create_graph_and_maybe_check(
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_resolver,
+        resolver: maybe_graph_resolver,
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
