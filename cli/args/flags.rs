@@ -2147,7 +2147,7 @@ fn lock_arg<'a>() -> Arg<'a> {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file. If not value is provided, defaults to deno.lock in the current working directory.")
+    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .takes_value(true)
     .min_values(0)
     .max_values(1)

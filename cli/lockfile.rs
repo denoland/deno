@@ -75,6 +75,16 @@ pub struct LockfileContent {
   pub npm: NpmContent,
 }
 
+impl LockfileContent {
+  fn empty() -> Self {
+    Self {
+      version: "2".to_string(),
+      remote: BTreeMap::new(),
+      npm: NpmContent::default(),
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct Lockfile {
   pub overwrite: bool,
@@ -111,16 +121,10 @@ impl Lockfile {
   pub fn new(filename: PathBuf, overwrite: bool) -> Result<Lockfile, AnyError> {
     // Writing a lock file always uses the new format.
     if overwrite {
-      let content = LockfileContent {
-        version: "2".to_string(),
-        remote: BTreeMap::new(),
-        npm: NpmContent::default(),
-      };
-
       return Ok(Lockfile {
         overwrite,
         has_content_changed: false,
-        content,
+        content: LockfileContent::empty(),
         filename,
       });
     }
@@ -129,16 +133,10 @@ impl Lockfile {
       Ok(content) => Ok(content),
       Err(e) => {
         if e.kind() == std::io::ErrorKind::NotFound {
-          let content = LockfileContent {
-            version: "2".to_string(),
-            remote: BTreeMap::new(),
-            npm: NpmContent::default(),
-          };
-
           return Ok(Lockfile {
             overwrite,
             has_content_changed: false,
-            content,
+            content: LockfileContent::empty(),
             filename,
           });
         } else {
