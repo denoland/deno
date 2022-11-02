@@ -86,7 +86,8 @@ pub fn os_release() -> String {
     use winapi::shared::ntdef::NT_SUCCESS;
     use winapi::um::winnt::RTL_OSVERSIONINFOEXW;
 
-    let mut version_info = std::mem::MaybeUninit::zeroed();
+    let mut version_info =
+      std::mem::MaybeUninit::<RTL_OSVERSIONINFOEXW>::uninit();
     (*version_info.as_mut_ptr()).dwOSVersionInfoSize =
       std::mem::size_of::<RTL_OSVERSIONINFOEXW>() as u32;
     // SAFETY: `version_info` is pointer to a valid `RTL_OSVERSIONINFOEXW` struct and
