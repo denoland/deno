@@ -8,22 +8,25 @@ https://github.com/denoland/deno_install
 
 ### 1.27.1 / 2022.11.03
 
-- fix(cli/dts): add typings for Change Array by copy proposal (#16499)
-- Reland "perf(core): generate inlined wrappers for async ops" (#16455)
 - feat(core): support creating snapshots from existing snapshots (#14744)
+- feat(unstable): support npm specifiers in `deno info` for display text output
+  only (#16470)
+- feat(unstable/lock): autodiscovery of lockfile (#16498)
+- feat(unstable/lock): require --unstable flag to auto discover lockfile
+  (#16524)
 - feat(unstable/npm): `deno info --json` support for npm specifiers (#16472)
-- feat: support npm specifiers in `deno info` for display text output only
-  (#16470)
+- fix: change default locale value (#16463)
+- fix: finish stabilizing Deno.osRelease() (#16447)
+- fix: update env to sys permission in jsdoc for Deno.osRelease (#16483)
+- fix(cli/dts): add typings for Change Array by copy proposal (#16499)
 - fix(core): fix APIs not to be affected by `Promise.prototype.then`
   modification (#16326)
 - fix(ext/crypto): fix HMAC jwk import "use" check (#16465)
 - fix(ext/websocket): make try_send ops infallible (#16454)
-- fix(lock): Additive lock file (#16500)
 - fix(lock): add --no-lock flag to disable auto discovery of lock file (#16526)
-- fix(lock): autodiscovery of lockfile (#16498)
-- fix(lock): require --unstable flag to auto discover lockfile (#16524)
-- fix(lockfile): error if a referenced package id doesn't exist in list of
-  packages (#16509)
+- fix(lock): Additive lock file (#16500)
+- fix(lock): error if a referenced package id doesn't exist in list of packages
+  (#16509)
 - fix(lsp): add ServerCapabilities::encoding (#16444)
 - fix(lsp): correct `parameterNames.suppressWhenArgumentMatchesName` and
   `variableTypes.suppressWhenTypeMatchesName` (#16469)
@@ -34,10 +37,6 @@ https://github.com/denoland/deno_install
 - fix(tools): show correct upgrade command for upgrading canary (#16486)
 - fix(upgrade): don't prompt if latest version is older than current binary
   (#16464)
-- fix: change default locale value (#16463)
-- fix: finish stabilizing Deno.osRelease() (#16447)
-- fix: update env to sys permission in jsdoc for Deno.osRelease (#16483)
-- revert 9ea0ce61981aa09851c3d1e0a2b7dbd7f7a392f5 (#16501)
 
 ### 1.27.0 / 2022.10.27
 
