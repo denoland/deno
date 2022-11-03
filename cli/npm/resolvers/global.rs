@@ -23,7 +23,7 @@ use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
@@ -39,7 +39,7 @@ pub struct GlobalNpmPackageResolver {
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();

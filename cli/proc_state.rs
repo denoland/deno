@@ -26,7 +26,7 @@ use crate::node::NodeResolution;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 use crate::progress_bar::ProgressBar;
 use crate::resolver::CliResolver;
 use crate::tools::check;
@@ -211,13 +211,13 @@ impl ProcState {
     let emit_cache = EmitCache::new(dir.gen_cache.clone());
     let parsed_source_cache =
       ParsedSourceCache::new(Some(dir.dep_analysis_db_file_path()));
-    let registry_url = NpmRegistryApi::default_url();
+    let registry_url = RealNpmRegistryApi::default_url();
     let npm_cache = NpmCache::from_deno_dir(
       &dir,
       cli_options.cache_setting(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
+    let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cli_options.cache_setting(),

@@ -16,9 +16,9 @@ use crate::npm::registry::NpmDependencyEntry;
 use crate::npm::registry::NpmDependencyEntryKind;
 use crate::npm::registry::NpmPackageInfo;
 use crate::npm::registry::NpmPackageVersionInfo;
-use crate::npm::registry::NpmRegistryApi;
 use crate::npm::semver::NpmVersion;
 use crate::npm::semver::NpmVersionReq;
+use crate::npm::NpmRegistryApi;
 
 use super::snapshot::NpmResolutionSnapshot;
 use super::NpmPackageId;
@@ -141,7 +141,7 @@ impl Graph {
 
   pub async fn into_snapshot(
     self,
-    api: &NpmRegistryApi,
+    api: &impl NpmRegistryApi,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     let mut packages = HashMap::with_capacity(self.packages.len());
     for (id, node) in self.packages {
@@ -169,16 +169,18 @@ impl Graph {
   }
 }
 
-pub struct GraphDependencyResolver<'a> {
+pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   graph: &'a mut Graph,
-  api: &'a NpmRegistryApi,
+  api: &'a TNpmRegistryApi,
   pending_dependencies: VecDeque<(NpmPackageId, Vec<NpmDependencyEntry>)>,
   pending_peer_dependencies:
     VecDeque<((String, NpmPackageId), NpmDependencyEntry, NpmPackageInfo)>,
 }
 
-impl<'a> GraphDependencyResolver<'a> {
-  pub fn new(graph: &'a mut Graph, api: &'a NpmRegistryApi) -> Self {
+impl<'a, TNpmRegistryApi: NpmRegistryApi>
+  GraphDependencyResolver<'a, TNpmRegistryApi>
+{
+  pub fn new(graph: &'a mut Graph, api: &'a TNpmRegistryApi) -> Self {
     Self {
       graph,
       api,

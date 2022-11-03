@@ -11,6 +11,8 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::BoxFuture;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -165,16 +167,49 @@ pub struct NpmPackageVersionDistInfo {
   pub integrity: Option<String>,
 }
 
-#[derive(Clone)]
-pub struct NpmRegistryApi {
-  base_url: Url,
-  cache: NpmCache,
-  mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
-  cache_setting: CacheSetting,
-  progress_bar: ProgressBar,
+pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
+  fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>>;
+
+  fn package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<NpmPackageInfo, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    async move {
+      let maybe_package_info = api.maybe_package_info(&name).await?;
+      match maybe_package_info {
+        Some(package_info) => Ok(package_info),
+        None => bail!("npm package '{}' does not exist", name),
+      }
+    }
+    .boxed()
+  }
+
+  fn package_version_info(
+    &self,
+    name: &str,
+    version: &NpmVersion,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    let version = version.to_string();
+    async move {
+      // todo(dsherret): this could be optimized to not clone the entire package info
+      let mut package_info = api.package_info(&name).await?;
+      Ok(package_info.versions.remove(&version))
+    }
+    .boxed()
+  }
 }
 
-impl NpmRegistryApi {
+#[derive(Clone)]
+pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
+
+impl RealNpmRegistryApi {
   pub fn default_url() -> Url {
     let env_var_name = "DENO_NPM_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
@@ -200,40 +235,40 @@ impl NpmRegistryApi {
     cache_setting: CacheSetting,
     progress_bar: ProgressBar,
   ) -> Self {
-    Self {
+    Self(Arc::new(RealNpmRegistryApiInner {
       base_url,
       cache,
       mem_cache: Default::default(),
       cache_setting,
       progress_bar,
-    }
+    }))
   }
 
   pub fn base_url(&self) -> &Url {
-    &self.base_url
+    &self.0.base_url
   }
+}
 
-  pub async fn package_info(
+impl NpmRegistryApi for RealNpmRegistryApi {
+  fn maybe_package_info(
     &self,
     name: &str,
-  ) -> Result<NpmPackageInfo, AnyError> {
-    let maybe_package_info = self.maybe_package_info(name).await?;
-    match maybe_package_info {
-      Some(package_info) => Ok(package_info),
-      None => bail!("npm package '{}' does not exist", name),
-    }
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    async move { api.0.maybe_package_info(&name).await }.boxed()
   }
+}
 
-  pub async fn package_version_info(
-    &self,
-    name: &str,
-    version: &NpmVersion,
-  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
-    // todo(dsherret): this could be optimized to not clone the entire package info
-    let mut package_info = self.package_info(name).await?;
-    Ok(package_info.versions.remove(&version.to_string()))
-  }
+struct RealNpmRegistryApiInner {
+  base_url: Url,
+  cache: NpmCache,
+  mem_cache: Mutex<HashMap<String, Option<NpmPackageInfo>>>,
+  cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
+}
 
+impl RealNpmRegistryApiInner {
   pub async fn maybe_package_info(
     &self,
     name: &str,

@@ -15,6 +15,7 @@ use serde::Serialize;
 use crate::lockfile::Lockfile;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
+use crate::npm::registry::RealNpmRegistryApi;
 
 use super::NpmPackageId;
 use super::NpmPackageReference;
@@ -167,7 +168,7 @@ impl NpmResolutionSnapshot {
 
   pub async fn from_lockfile(
     lockfile: Arc<Mutex<Lockfile>>,
-    api: &NpmRegistryApi,
+    api: &RealNpmRegistryApi,
   ) -> Result<Self, AnyError> {
     let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
     let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;

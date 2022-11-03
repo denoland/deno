@@ -102,6 +102,7 @@ impl ReadonlyNpmCache {
       //    packages.
       // 2. We can figure out the package id from the path. This is used
       //    in resolve_package_id_from_specifier
+      // Maybe consider only supporting this if people use --node-modules-dir
       todo!("deno currently doesn't support npm package names that are not all lowercase");
     }
     // ensure backslashes are used on windows

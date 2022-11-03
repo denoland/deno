@@ -29,7 +29,7 @@ use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
@@ -48,7 +48,7 @@ pub struct LocalNpmPackageResolver {
 impl LocalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     node_modules_folder: PathBuf,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {

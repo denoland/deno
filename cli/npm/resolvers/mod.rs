@@ -29,8 +29,8 @@ use self::local::LocalNpmPackageResolver;
 use super::NpmCache;
 use super::NpmPackageId;
 use super::NpmPackageReq;
-use super::NpmRegistryApi;
 use super::NpmResolutionSnapshot;
+use super::RealNpmRegistryApi;
 
 const RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
@@ -71,7 +71,7 @@ pub struct NpmPackageResolver {
   no_npm: bool,
   inner: Arc<dyn InnerNpmPackageResolver>,
   local_node_modules_path: Option<PathBuf>,
-  api: NpmRegistryApi,
+  api: RealNpmRegistryApi,
   cache: NpmCache,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
@@ -90,7 +90,7 @@ impl std::fmt::Debug for NpmPackageResolver {
 impl NpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,
@@ -133,7 +133,7 @@ impl NpmPackageResolver {
 
   fn new_with_maybe_snapshot(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     unstable: bool,
     no_npm: bool,
     local_node_modules_path: Option<PathBuf>,

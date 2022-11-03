@@ -19,9 +19,10 @@ use self::graph::GraphDependencyResolver;
 
 use super::cache::should_sync_download;
 use super::registry::NpmPackageVersionDistInfo;
-use super::registry::NpmRegistryApi;
+use super::registry::RealNpmRegistryApi;
 use super::semver::NpmVersion;
 use super::semver::SpecifierVersionReq;
+use super::NpmRegistryApi;
 
 mod graph;
 mod snapshot;
@@ -313,7 +314,7 @@ pub struct NpmResolutionPackage {
 }
 
 pub struct NpmResolution {
-  api: NpmRegistryApi,
+  api: RealNpmRegistryApi,
   snapshot: RwLock<NpmResolutionSnapshot>,
   update_sempahore: tokio::sync::Semaphore,
 }
@@ -329,7 +330,7 @@ impl std::fmt::Debug for NpmResolution {
 
 impl NpmResolution {
   pub fn new(
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     Self {
