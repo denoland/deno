@@ -33,7 +33,7 @@ use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
@@ -159,7 +159,7 @@ impl NpmPackageVersionInfo {
   }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
@@ -198,7 +198,8 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
     let name = name.to_string();
     let version = version.to_string();
     async move {
-      // todo(dsherret): this could be optimized to not clone the entire package info
+      // todo(dsherret): this could be optimized to not clone the
+      // entire package info in the case of the RealNpmRegistryApi
       let mut package_info = api.package_info(&name).await?;
       Ok(package_info.versions.remove(&version))
     }
@@ -439,5 +440,102 @@ impl RealNpmRegistryApiInner {
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
     let name_folder_path = self.cache.package_name_folder(name, &self.base_url);
     name_folder_path.join("registry.json")
+  }
+}
+
+/// Note: This test struct is not thread safe for setup
+/// purposes. Construct everything on the same thread.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub struct TestNpmRegistryApi {
+  package_infos: Arc<Mutex<HashMap<String, NpmPackageInfo>>>,
+}
+
+#[cfg(test)]
+impl TestNpmRegistryApi {
+  pub fn add_package_info(&self, name: &str, info: NpmPackageInfo) {
+    let previous = self.package_infos.lock().insert(name.to_string(), info);
+    assert!(previous.is_none());
+  }
+
+  pub fn ensure_package(&self, name: &str) {
+    if !self.package_infos.lock().contains_key(name) {
+      self.add_package_info(
+        name,
+        NpmPackageInfo {
+          name: name.to_string(),
+          ..Default::default()
+        },
+      );
+    }
+  }
+
+  pub fn ensure_package_version(&self, name: &str, version: &str) {
+    self.ensure_package(name);
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(name).unwrap();
+    if !info.versions.contains_key(version) {
+      info.versions.insert(
+        version.to_string(),
+        NpmPackageVersionInfo {
+          version: version.to_string(),
+          ..Default::default()
+        },
+      );
+    }
+  }
+
+  pub fn add_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+  }
+
+  pub fn add_peer_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .peer_dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+  }
+
+  pub fn add_optional_peer_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .peer_dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+    version.peer_dependencies_meta.insert(
+      package_to.0.to_string(),
+      NpmPeerDependencyMeta { optional: true },
+    );
+  }
+}
+
+#[cfg(test)]
+impl NpmRegistryApi for TestNpmRegistryApi {
+  fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+    let result = self.package_infos.lock().get(name).cloned();
+    Box::pin(deno_core::futures::future::ready(Ok(result)))
   }
 }
