@@ -250,7 +250,7 @@ impl Optimizer {
               AngleBracketedGenericArguments { args, .. },
             ) = arguments
             {
-              match args.last() {
+              match args.first() {
                 Some(GenericArgument::Type(Type::Path(TypePath {
                   path: Path { segments, .. },
                   ..

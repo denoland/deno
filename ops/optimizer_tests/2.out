@@ -28,4 +28,12 @@ fn foo(
     };
     let state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
     let result = foo::call(state, a, b);
+    match result {
+        Ok(result) => result,
+        Err(err) => {
+            state.last_fast_op_error.replace(err);
+            opts.fallback = true;
+            Default::default()
+        }
+    }
 }

@@ -33,35 +33,6 @@ pub(crate) fn generate(
     }
   });
 
-  // impl <A> fast_api::FastFunction for T <A> where A: B {
-  //   fn function(&self) -> *const ::std::ffi::c_void  {
-  //     f as *const ::std::ffi::c_void
-  //   }
-  //   fn args(&self) -> &'static [fast_api::Type] {
-  //     &[ CType::T, CType::U ]
-  //   }
-  //   fn return_type(&self) -> fast_api::CType {
-  //     CType::T
-  //   }
-  // }
-  let item: ItemImpl = ItemImpl {
-    attrs: vec![],
-    defaultness: None,
-    unsafety: None,
-    impl_token: Default::default(),
-    generics: Default::default(),
-    trait_: None,
-    self_ty: Box::new(Type::Path(TypePath {
-      qself: None,
-      path: Path {
-        leading_colon: None,
-        segments,
-      },
-    })),
-    brace_token: Default::default(),
-    items: vec![],
-  };
-
   let mut inputs = item_fn.sig.inputs.clone();
   let mut transforms = q!({});
   // Apply parameter transforms
@@ -97,10 +68,10 @@ pub(crate) fn generate(
     let op_state = idents.first().expect("This whole thing is broken");
 
     // Dark arts 🪄 ✨
-    // 
+    //
     // - V8 calling convention guarantees that the callback options pointer is non-null.
     // - `data` union is always initialized as the `v8::Local<v8::Value>` variant.
-    // - deno_core guarantees that `data` is a v8 External pointing to an OpCtx for the 
+    // - deno_core guarantees that `data` is a v8 External pointing to an OpCtx for the
     //   isolate's lifetime.
     let prelude = q!(Vars { op_state }, {
       let opts: &mut v8::fast_api::FastApiCallbackOptions =
@@ -145,14 +116,62 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { op_name: &ident, inputs, idents, transforms, output },
+    Vars { op_name: &ident, inputs, idents, transforms, output_transforms, output: &output },
     {
       fn op_name(_: v8::Local<v8::Object>, inputs) -> output {
         transforms
         let result = op_name::call(idents);
+        output_transforms
       }
     }
   );
+
+  let output_variant = q_fast_ty_variant(&output_ty);
+  
+  // impl <A> fast_api::FastFunction for T <A> where A: B {
+  //   fn function(&self) -> *const ::std::ffi::c_void  {
+  //     f as *const ::std::ffi::c_void
+  //   }
+  //   fn args(&self) -> &'static [fast_api::Type] {
+  //     &[ CType::T, CType::U ]
+  //   }
+  //   fn return_type(&self) -> fast_api::CType {
+  //     CType::T
+  //   }
+  // }
+  let item: ItemImpl = ItemImpl {
+    attrs: vec![],
+    defaultness: None,
+    unsafety: None,
+    impl_token: Default::default(),
+    generics: Default::default(),
+    trait_: None,
+    self_ty: Box::new(Type::Path(TypePath {
+      qself: None,
+      path: Path {
+        leading_colon: None,
+        segments,
+      },
+    })),
+    brace_token: Default::default(),
+    items: vec![
+      parse_quote! {
+        fn function(&self) -> *const ::std::ffi::c_void {
+          op_name as *const ::std::ffi::c_void
+        }
+      },
+      parse_quote! {
+        fn args(&self) -> &'static [v8::fast_api::Type] {
+          &[  ]
+        }
+      },
+      parse_quote! {
+        fn return_type(&self) -> v8::fast_api::CType {
+          v8::fast_api::CType::#output_variant
+        }
+      },
+    ]
+  };
 
   let mut tts = q!({});
   tts.push_tokens(&fast_ty);
@@ -173,6 +192,20 @@ fn q_fast_ty(v: &FastValue) -> Quote {
     F32 => q!({ f32 }),
     F64 => q!({ f64 }),
     Bool => q!({ bool }),
+  }
+}
+
+/// Quote fast value type's variant.
+fn q_fast_ty_variant(v: &FastValue) -> Quote {
+  match v {
+    Void => q!({ Void }),
+    U32 => q!({ U32 }),
+    I32 => q!({ I32 }),
+    U64 => q!({ U64 }),
+    I64 => q!({ I64 }),
+    F32 => q!({ F32 }),
+    F64 => q!({ F64 }),
+    Bool => q!({ Bool }),
   }
 }
 
