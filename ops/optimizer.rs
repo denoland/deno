@@ -200,6 +200,10 @@ impl Optimizer {
     Default::default()
   }
 
+  pub(crate) const fn has_opstate(&self) -> bool {
+    self.has_ref_opstate || self.has_rc_opstate || self.returns_result
+  }
+
   pub(crate) fn analyze(&mut self, op: &mut Op) -> Result<(), BailoutReason> {
     if op.is_async && op.attrs.must_be_fast {
       return Err(BailoutReason::FastAsync);

@@ -1,3 +1,4 @@
+use crate::optimizer::FastValue;
 /// Code generation for V8 fast calls.
 use crate::optimizer::Optimizer;
 use pmutil::{q, Quote, ToTokensExt};
@@ -13,6 +14,9 @@ pub(crate) fn generate(
   optimizer: &mut Optimizer,
   item_fn: &ItemFn,
 ) -> Result<TokenStream, ()> {
+  // TODO(@littledivy): Use `let..else` on 1.65.0
+  let output_ty = optimizer.fast_result.as_ref().ok_or(())?;
+
   let ident = item_fn.sig.ident.clone();
   let mut segments = Punctuated::new();
   segments.push_value(PathSegment {
@@ -80,16 +84,53 @@ pub(crate) fn generate(
     .collect::<Punctuated<_, Comma>>();
 
   // Apply *hard* optimizer hints.
-  if optimizer.has_fast_callback_option {
+  if optimizer.has_fast_callback_option || optimizer.has_opstate() {
     inputs.push(parse_quote! {
       fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions
     });
   }
 
-  let output = match &item_fn.sig.output {
-    syn::ReturnType::Default => quote! { () },
-    syn::ReturnType::Type(_, ty) => quote! { #ty },
-  };
+  let mut output_transforms = q!({});
+
+  if optimizer.has_opstate() {
+    // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
+    let op_state = idents.first().expect("This whole thing is broken");
+
+    // Dark arts 🪄 ✨
+    // 
+    // - V8 calling convention guarantees that the callback options pointer is non-null.
+    // - `data` union is always initialized as the `v8::Local<v8::Value>` variant.
+    // - deno_core guarantees that `data` is a v8 External pointing to an OpCtx for the 
+    //   isolate's lifetime.
+    let prelude = q!(Vars { op_state }, {
+      let opts: &mut v8::fast_api::FastApiCallbackOptions =
+        unsafe { &mut *fast_api_callback_options };
+      let data = unsafe { opts.data.data };
+      let ctx = unsafe {
+        &*(v8::Local::<v8::External>::cast(data).value() as *const _ops::OpCtx)
+      };
+      let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
+    });
+
+    transforms.push_tokens(&prelude);
+
+    if optimizer.returns_result {
+      let result_wrap = q!(Vars { op_state }, {
+        match result {
+          Ok(result) => result,
+          Err(err) => {
+            op_state.last_fast_op_error.replace(err);
+            opts.fallback = true;
+            Default::default()
+          }
+        }
+      });
+
+      output_transforms.push_tokens(&result_wrap);
+    }
+  }
+
+  let output = q_fast_ty(&output_ty);
 
   // Generate the function body.
   //
@@ -104,9 +145,9 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { op_name: &ident, inputs, idents, transforms },
+    Vars { op_name: &ident, inputs, idents, transforms, output },
     {
-      fn op_name(_: v8::Local<v8::Object>, inputs) {
+      fn op_name(_: v8::Local<v8::Object>, inputs) -> output {
         transforms
         let result = op_name::call(idents);
       }
@@ -119,6 +160,20 @@ pub(crate) fn generate(
   tts.push_tokens(&fast_fn);
 
   Ok(tts.dump().into())
+}
+
+/// Quote fast value type.
+fn q_fast_ty(v: &FastValue) -> Quote {
+  match v {
+    Void => q!({ () }),
+    U32 => q!({ u32 }),
+    I32 => q!({ i32 }),
+    U64 => q!({ u64 }),
+    I64 => q!({ i64 }),
+    F32 => q!({ f32 }),
+    F64 => q!({ f64 }),
+    Bool => q!({ bool }),
+  }
 }
 
 #[cfg(test)]
