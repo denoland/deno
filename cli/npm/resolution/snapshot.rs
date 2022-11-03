@@ -1,0 +1,302 @@
+// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::parking_lot::Mutex;
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::lockfile::Lockfile;
+use crate::npm::registry::NpmPackageVersionDistInfo;
+use crate::npm::registry::NpmRegistryApi;
+
+use super::NpmPackageId;
+use super::NpmPackageReference;
+use super::NpmPackageReq;
+use super::NpmResolutionPackage;
+use super::NpmVersionMatcher;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NpmResolutionSnapshot {
+  #[serde(with = "map_to_vec")]
+  pub(super) package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
+  #[serde(with = "map_to_vec")]
+  pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+}
+
+// This is done so the maps with non-string keys get serialized and deserialized as vectors.
+// Adapted from: https://github.com/serde-rs/serde/issues/936#issuecomment-302281792
+mod map_to_vec {
+  use std::collections::HashMap;
+
+  use serde::de::Deserialize;
+  use serde::de::Deserializer;
+  use serde::ser::Serializer;
+  use serde::Serialize;
+
+  pub fn serialize<S, K: Serialize, V: Serialize>(
+    map: &HashMap<K, V>,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.collect_seq(map.iter())
+  }
+
+  pub fn deserialize<
+    'de,
+    D,
+    K: Deserialize<'de> + Eq + std::hash::Hash,
+    V: Deserialize<'de>,
+  >(
+    deserializer: D,
+  ) -> Result<HashMap<K, V>, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let mut map = HashMap::new();
+    for (key, value) in Vec::<(K, V)>::deserialize(deserializer)? {
+      map.insert(key, value);
+    }
+    Ok(map)
+  }
+}
+
+impl NpmResolutionSnapshot {
+  /// Resolve a node package from a deno module.
+  pub fn resolve_package_from_deno_module(
+    &self,
+    req: &NpmPackageReq,
+  ) -> Result<&NpmResolutionPackage, AnyError> {
+    match self.package_reqs.get(req) {
+      Some(id) => Ok(self.packages.get(id).unwrap()),
+      None => bail!("could not find npm package directory for '{}'", req),
+    }
+  }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .package_reqs
+      .values()
+      .cloned()
+      .collect::<HashSet<_>>()
+      .into_iter()
+      .collect::<Vec<_>>()
+  }
+
+  pub fn package_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<&NpmResolutionPackage> {
+    self.packages.get(id)
+  }
+
+  pub fn resolve_package_from_package(
+    &self,
+    name: &str,
+    referrer: &NpmPackageId,
+  ) -> Result<&NpmResolutionPackage, AnyError> {
+    match self.packages.get(referrer) {
+      Some(referrer_package) => {
+        let name_ = name_without_path(name);
+        if let Some(id) = referrer_package.dependencies.get(name_) {
+          return Ok(self.packages.get(id).unwrap());
+        }
+
+        if referrer_package.id.name == name_ {
+          return Ok(referrer_package);
+        }
+
+        // TODO(bartlomieju): this should use a reverse lookup table in the
+        // snapshot instead of resolving best version again.
+        let req = NpmPackageReq {
+          name: name_.to_string(),
+          version_req: None,
+        };
+
+        if let Some(id) = self.resolve_best_package_id(name_, &req) {
+          if let Some(pkg) = self.packages.get(&id) {
+            return Ok(pkg);
+          }
+        }
+
+        bail!(
+          "could not find npm package '{}' referenced by '{}'",
+          name,
+          referrer
+        )
+      }
+      None => bail!("could not find referrer npm package '{}'", referrer),
+    }
+  }
+
+  pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
+    self.packages.values().cloned().collect()
+  }
+
+  pub fn resolve_best_package_id(
+    &self,
+    name: &str,
+    version_matcher: &impl NpmVersionMatcher,
+  ) -> Option<NpmPackageId> {
+    // todo(THIS PR): this is not correct because some ids will be better than others
+    let mut maybe_best_id: Option<&NpmPackageId> = None;
+    if let Some(ids) = self.packages_by_name.get(name) {
+      for id in ids {
+        if version_matcher.matches(&id.version) {
+          let is_best_version = maybe_best_id
+            .as_ref()
+            .map(|best_id| best_id.version.cmp(&id.version).is_lt())
+            .unwrap_or(true);
+          if is_best_version {
+            maybe_best_id = Some(id);
+          }
+        }
+      }
+    }
+    maybe_best_id.cloned()
+  }
+
+  pub async fn from_lockfile(
+    lockfile: Arc<Mutex<Lockfile>>,
+    api: &NpmRegistryApi,
+  ) -> Result<Self, AnyError> {
+    let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
+    let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;
+    let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
+
+    {
+      let lockfile = lockfile.lock();
+
+      // pre-allocate collections
+      package_reqs =
+        HashMap::with_capacity(lockfile.content.npm.specifiers.len());
+      packages = HashMap::with_capacity(lockfile.content.npm.packages.len());
+      packages_by_name =
+        HashMap::with_capacity(lockfile.content.npm.packages.len()); // close enough
+      let mut verify_ids =
+        HashSet::with_capacity(lockfile.content.npm.packages.len());
+
+      // collect the specifiers to version mappings
+      for (key, value) in &lockfile.content.npm.specifiers {
+        let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
+          .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
+        let package_id = NpmPackageId::deserialize_name(value)?;
+        package_reqs.insert(reference.req, package_id.clone());
+        verify_ids.insert(package_id.clone());
+      }
+
+      // then the packages
+      for (key, value) in &lockfile.content.npm.packages {
+        let package_id = NpmPackageId::deserialize_name(key)?;
+        let mut dependencies = HashMap::default();
+
+        packages_by_name
+          .entry(package_id.name.to_string())
+          .or_default()
+          .push(package_id.clone());
+
+        for (name, specifier) in &value.dependencies {
+          let dep_id = NpmPackageId::deserialize_name(specifier)?;
+          dependencies.insert(name.to_string(), dep_id.clone());
+          verify_ids.insert(dep_id);
+        }
+
+        let package = NpmResolutionPackage {
+          id: package_id.clone(),
+          // temporary dummy value
+          dist: NpmPackageVersionDistInfo {
+            tarball: "foobar".to_string(),
+            shasum: "foobar".to_string(),
+            integrity: Some("foobar".to_string()),
+          },
+          dependencies,
+        };
+
+        packages.insert(package_id, package);
+      }
+
+      // verify that all these ids exist in packages
+      for id in &verify_ids {
+        if !packages.contains_key(id) {
+          bail!(
+            "the lockfile ({}) is corrupt. You can recreate it with --lock-write",
+            lockfile.filename.display(),
+          );
+        }
+      }
+    }
+
+    let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
+
+    // cache the package names in parallel in the registry api
+    for package_name in packages_by_name.keys() {
+      let package_name = package_name.clone();
+      let api = api.clone();
+      unresolved_tasks.push(tokio::task::spawn(async move {
+        api.package_info(&package_name).await?;
+        Result::<_, AnyError>::Ok(())
+      }));
+    }
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??;
+    }
+
+    // ensure the dist is set for each package
+    for package in packages.values_mut() {
+      // this will read from the memory cache now
+      let version_info = match api
+        .package_version_info(&package.id.name, &package.id.version)
+        .await?
+      {
+        Some(version_info) => version_info,
+        None => {
+          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.id);
+        }
+      };
+      package.dist = version_info.dist;
+    }
+
+    Ok(Self {
+      package_reqs,
+      packages_by_name,
+      packages,
+    })
+  }
+}
+
+fn name_without_path(name: &str) -> &str {
+  let mut search_start_index = 0;
+  if name.starts_with('@') {
+    if let Some(slash_index) = name.find('/') {
+      search_start_index = slash_index + 1;
+    }
+  }
+  if let Some(slash_index) = &name[search_start_index..].find('/') {
+    // get the name up until the path slash
+    &name[0..search_start_index + slash_index]
+  } else {
+    name
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_name_without_path() {
+    assert_eq!(name_without_path("foo"), "foo");
+    assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
+    assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
+    assert_eq!(name_without_path("@hello"), "@hello");
+  }
+}
