@@ -58,6 +58,34 @@ pub(crate) fn generate(
     items: vec![],
   };
 
+  let mut inputs = item_fn.sig.inputs.clone();
+  let mut transforms = q!({});
+  // Apply parameter transforms
+  for (input, transform) in inputs.iter_mut().zip(optimizer.transforms.iter()) {
+    let quo: Quote = transform.apply_for_fast_call(input);
+    transforms.push_tokens(&quo);
+  }
+
+  // Collect idents to be passed into function call, we can now freely
+  // modify the inputs.
+  let idents = inputs
+    .iter()
+    .map(|input| match input {
+      syn::FnArg::Typed(pat_type) => match &*pat_type.pat {
+        syn::Pat::Ident(pat_ident) => pat_ident.ident.clone(),
+        _ => panic!("unexpected pattern"),
+      },
+      _ => panic!("unexpected argument"),
+    })
+    .collect::<Vec<_>>();
+
+  // Apply *hard* optimizer hints.
+  if optimizer.has_fast_callback_option {
+    inputs.push(parse_quote! {
+      fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions
+    });
+  }
+
   let fast_fn = q!(Vars { op_name: &ident }, {
     fn op_name(_: v8::Local<v8::Object>) {}
   });

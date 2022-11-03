@@ -71,6 +71,66 @@ pub(crate) struct Transform {
   index: usize,
 }
 
+use pmutil::{q, Quote};
+use syn::{parse_quote, PatType};
+
+impl Transform {
+  pub(crate) fn apply_for_fast_call(&self, input: &mut FnArg) -> Quote {
+    let (mut ty, ident) = match input {
+      FnArg::Typed(PatType {
+        ref mut ty,
+        ref pat,
+        ..
+      }) => {
+        let ident = match &**pat {
+          syn::Pat::Ident(ident) => &ident.ident,
+          _ => unreachable!("error not recovered"),
+        };
+        (ty, ident)
+      }
+      _ => unreachable!("error not recovered"),
+    };
+
+    match &self.kind {
+      // serde_v8::Value
+      TransformKind::V8Value => {
+        *ty = parse_quote! { v8::Local<v8::Value> };
+        q!(Vars { var: &ident }, {
+          let var = serde_v8::Value {
+            v8_value: var,
+          };
+        })
+      }
+      // &[u32]
+      TransformKind::SliceU32(_) => {
+        *ty = parse_quote! { *const FastApiTypedArray<u32> };
+        q!(Vars { var: &ident }, {
+          let var = match unsafe { &* var }.get_storage_if_aligned() {
+            Some(v) => v,
+            None => {
+              unsafe { &mut* fast_api_callback_options }.fallback = true;
+              return Default::default();
+            },
+          };
+        })
+      }
+      // &[u8]
+      TransformKind::SliceU8(_) => {
+        *ty = parse_quote! { *const FastApiTypedArray<u8> };
+        q!(Vars { var: &ident }, {
+          let var = match unsafe { &* var }.get_storage_if_aligned() {
+            Some(v) => v,
+            None => {
+              unsafe { &mut* fast_api_callback_options }.fallback = true;
+              return Default::default();
+            },
+          };
+        })
+      }
+    }
+  }
+}
+
 static FAST_SCALAR: phf::Map<&'static str, FastValue> = phf_map! {
   "u32" => FastValue::U32,
   "i32" => FastValue::I32,
