@@ -131,15 +131,26 @@ pub fn hostname() -> String {
   #[cfg(target_family = "windows")]
   {
     use std::ffi::OsString;
+    use std::mem;
     use std::os::windows::ffi::OsStringExt;
+    use winapi::share::minwindef::MAKEWORD;
     use winapi::um::winsock2::GetHostNameW;
+    use winapi::um::winsock2::WSAStartup;
 
     let namelen = 256;
     let mut name: Vec<u16> = vec![0u16; namelen];
-    let err =
-      // SAFETY: length of wide string is 256 chars or less. 
+    let err = unsafe {
+      let mut data = mem::zeroed();
+      // Start winsock to make `GetHostNameW` work correctly
+      // https://github.com/retep998/winapi-rs/issues/296
+      let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
+      if wsa_startup_result != 0 {
+        panic!("Failed to start winsocket");
+      }
+      // SAFETY: length of wide string is 256 chars or less.
       // https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostnamew
-      unsafe { GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int) };
+      GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int)
+    };
 
     if err == 0 {
       // TODO(@littledivy): Probably not the most efficient way.
