@@ -98,6 +98,10 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
+    if flags.no_lock {
+      return Ok(None);
+    }
+
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match maybe_config_file {
