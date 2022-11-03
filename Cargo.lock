@@ -985,9 +985,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.47.0"
+version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac723296e702a7b7df0ad785148617bf79eb1e73b5bf124b5c789e7c10c58f8d"
+checksum = "4579ca3065430cafaff3e3b9b4871410f2558450935f9f577098ec9d6cf81eca"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1211,12 +1211,12 @@ dependencies = [
  "netif",
  "nix",
  "notify",
+ "ntapi",
  "once_cell",
  "regex",
  "ring",
  "serde",
  "signal-hook-registry",
- "sys-info",
  "termcolor",
  "test_util",
  "tokio",
@@ -2906,6 +2906,15 @@ dependencies = [
  "libc",
  "mio",
  "walkdir",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "ntapi"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc51db7b362b205941f71232e56c625156eb9a929f8cf74a428fd5bc094a4afc"
+dependencies = [
  "winapi 0.3.9",
 ]
 
@@ -4655,16 +4664,6 @@ dependencies = [
  "quote 1.0.21",
  "syn 1.0.99",
  "unicode-xid 0.2.4",
-]
-
-[[package]]
-name = "sys-info"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b3a0d0aba8bf96a0e1ddfdc352fc53b3df7f39318c71854910c3c4b024ae52c"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]

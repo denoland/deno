@@ -6,7 +6,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::ops;
 use crate::proc_state::ProcState;
 use crate::version;
-use crate::ImportMapResolver;
+use crate::CliResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
@@ -125,7 +125,7 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
 
 struct EmbeddedModuleLoader {
   eszip: eszip::EszipV2,
-  maybe_import_map_resolver: Option<ImportMapResolver>,
+  maybe_import_map_resolver: Option<CliResolver>,
 }
 
 impl ModuleLoader for EmbeddedModuleLoader {
@@ -231,7 +231,7 @@ pub async fn run(
     eszip,
     maybe_import_map_resolver: metadata.maybe_import_map.map(
       |(base, source)| {
-        ImportMapResolver::new(Arc::new(
+        CliResolver::with_import_map(Arc::new(
           parse_from_json(&base, &source).unwrap().import_map,
         ))
       },

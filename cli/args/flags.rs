@@ -458,7 +458,9 @@ impl Flags {
       Some(files.clone())
     } else if let Run(RunFlags { script }) = &self.subcommand {
       if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
-        if module_specifier.scheme() == "file" {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
           if let Ok(p) = module_specifier.to_file_path() {
             Some(vec![p])
           } else {
@@ -2145,16 +2147,17 @@ fn lock_arg<'a>() -> Arg<'a> {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file")
+    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .takes_value(true)
+    .min_values(0)
+    .max_values(1)
     .value_hint(ValueHint::FilePath)
 }
 
 fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
-    .requires("lock")
-    .help("Write lock file (use with --lock)")
+    .help("Force overwriting the lock file.")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -3098,7 +3101,11 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
 fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("lock") {
-    let lockfile = matches.value_of("lock").unwrap();
+    let lockfile = if let Some(path) = matches.value_of("lock") {
+      path
+    } else {
+      "./deno.lock"
+    };
     flags.lock = Some(PathBuf::from(lockfile));
   }
 }
@@ -5332,6 +5339,57 @@ mod tests {
         }),
         lock_write: true,
         lock: Some(PathBuf::from("lock.json")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock",
+      "--lock-write",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("./deno.lock")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--lock",
+      "lock.json",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
+        lock: Some(PathBuf::from("lock.json")),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "run", "--lock-write", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        lock_write: true,
         ..Flags::default()
       }
     );
