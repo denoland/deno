@@ -144,17 +144,15 @@ pub fn hostname() -> String {
 
     let namelen = 256;
     let mut name: Vec<u16> = vec![0u16; namelen];
-
     // Start winsock to make `GetHostNameW` work correctly
     // https://github.com/retep998/winapi-rs/issues/296
-    let wsa_startup_err = WINSOCKET_INIT.call_once(|| unsafe {
+    WINSOCKET_INIT.call_once(|| unsafe {
       let mut data = mem::zeroed();
-      WSAStartup(MAKEWORD(2, 2), &mut data)
+      let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
+      if wsa_startup_result != 0 {
+        panic!("Failed to start winsocket");
+      }
     });
-    if wsa_startup_err != 0 {
-      return String::from("");
-    }
-
     let err =
       // SAFETY: length of wide string is 256 chars or less.
       // https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostnamew
