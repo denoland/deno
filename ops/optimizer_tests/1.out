@@ -1,1 +1,7 @@
-struct foo { _phantom : :: std :: marker :: PhantomData < () > , }
+struct foo {
+    _phantom: ::std::marker::PhantomData<()>,
+}
+impl foo {}
+fn foo(_: v8::Local<v8::Object>, state: &mut OpState, a: u32, b: u32) {
+    let result = foo::call(state, a, b);
+}

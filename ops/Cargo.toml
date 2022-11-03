@@ -24,3 +24,4 @@ phf = { version = "0.11", features = ["macros"] }
 deno_core = { path = "../core" }
 trybuild = "1.0.61"
 testing = "0.15.1"
+prettyplease = "0.1.21"

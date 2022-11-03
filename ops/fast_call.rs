@@ -86,6 +86,23 @@ pub(crate) fn generate(
     });
   }
 
+  let output = match &item_fn.sig.output {
+    syn::ReturnType::Default => quote! { () },
+    syn::ReturnType::Type(_, ty) => quote! { #ty },
+  };
+
+  // Generate the function body.
+  //
+  // fn f <S> (_: Local<Object>, a: T, b: U) -> R {
+  //   /* Transforms */
+  //   let a = a.into();
+  //   let b = b.into();
+  //
+  //   let r = op::call(a, b);
+  //
+  //   /* Return transform */
+  //   r.into()
+  // }
   let fast_fn = q!(
     Vars { op_name: &ident, inputs, idents, transforms },
     {
@@ -98,6 +115,8 @@ pub(crate) fn generate(
 
   let mut tts = q!({});
   tts.push_tokens(&fast_ty);
+  tts.push_tokens(&item);
+  tts.push_tokens(&fast_fn);
 
   Ok(tts.dump().into())
 }
@@ -124,6 +143,9 @@ mod tests {
     optimizer.analyze(&mut op).expect("Optimizer failed");
 
     let actual = generate(&mut optimizer, &op.item).unwrap();
+    // Validate syntax tree.
+    let tree = syn::parse2(actual).unwrap();
+    let actual = prettyplease::unparse(&tree);
     if update_expected {
       std::fs::write(input.with_extension("out"), actual.to_string())
         .expect("Failed to write expected file");

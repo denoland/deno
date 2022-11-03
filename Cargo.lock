@@ -1232,6 +1232,7 @@ dependencies = [
  "once_cell",
  "phf 0.11.1",
  "pmutil",
+ "prettyplease",
  "proc-macro-crate",
  "proc-macro2 1.0.43",
  "quote 1.0.21",
@@ -3482,6 +3483,16 @@ dependencies = [
  "diff",
  "output_vt100",
  "yansi",
+]
+
+[[package]]
+name = "prettyplease"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c142c0e46b57171fe0c528bee8c5b7569e80f0c17e377cd0e30ea57dbc11bb51"
+dependencies = [
+ "proc-macro2 1.0.43",
+ "syn 1.0.99",
 ]
 
 [[package]]
