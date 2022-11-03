@@ -1,6 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 #[cfg(target_family = "windows")]
-use std::sync::{Once, ONCE_INIT};
+use std::sync::Once;
 
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
@@ -115,7 +115,7 @@ pub fn os_release() -> String {
 }
 
 #[cfg(target_family = "windows")]
-static WINSOCKET_INIT: Once = ONCE_INIT;
+static WINSOCKET_INIT: Once = Once::new();
 
 pub fn hostname() -> String {
   #[cfg(target_family = "unix")]
@@ -146,7 +146,7 @@ pub fn hostname() -> String {
     let mut name: Vec<u16> = vec![0u16; namelen];
     // Start winsock to make `GetHostNameW` work correctly
     // https://github.com/retep998/winapi-rs/issues/296
-    WINSOCKET_INIT.doit(|| unsafe {
+    WINSOCKET_INIT.call_once(|| unsafe {
       let mut data = mem::zeroed();
       let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
       if wsa_startup_result != 0 {
