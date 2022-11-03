@@ -1,12 +1,12 @@
 /// Code generation for V8 fast calls.
 use crate::optimizer::Optimizer;
-use pmutil::{q, Quote};
+use pmutil::{q, Quote, ToTokensExt};
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
-  parse_quote, punctuated::Punctuated, Fields, Ident, ItemFn, ItemImpl,
-  ItemStruct, Path, PathArguments, PathSegment, Token, Type, TypePath,
-  Visibility,
+  parse_quote, punctuated::Punctuated, token::Comma, Fields, Ident, ItemFn,
+  ItemImpl, ItemStruct, Path, PathArguments, PathSegment, Token, Type,
+  TypePath, Visibility,
 };
 
 pub(crate) fn generate(
@@ -77,7 +77,7 @@ pub(crate) fn generate(
       },
       _ => panic!("unexpected argument"),
     })
-    .collect::<Vec<_>>();
+    .collect::<Punctuated<_, Comma>>();
 
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option {
@@ -86,17 +86,49 @@ pub(crate) fn generate(
     });
   }
 
-  let fast_fn = q!(Vars { op_name: &ident }, {
-    fn op_name(_: v8::Local<v8::Object>) {}
-  });
+  let fast_fn = q!(
+    Vars { op_name: &ident, inputs, idents, transforms },
+    {
+      fn op_name(_: v8::Local<v8::Object>, inputs) {
+        transforms
+        let result = op_name::call(idents);
+      }
+    }
+  );
 
   let mut tts = q!({});
   tts.push_tokens(&fast_ty);
 
-  Ok(quote! {})
+  Ok(tts.dump().into())
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::attrs::Attributes;
+  use crate::Op;
+  use std::path::PathBuf;
+
+  #[testing::fixture("optimizer_tests/**/*.rs")]
+  fn test_fast_call_codegen(input: PathBuf) {
+    let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+
+    let source =
+      std::fs::read_to_string(&input).expect("Failed to read test file");
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected file");
+
+    let item = syn::parse_str(&source).expect("Failed to parse test file");
+    let mut op = Op::new(item, Default::default());
+    let mut optimizer = Optimizer::new();
+    optimizer.analyze(&mut op).expect("Optimizer failed");
+
+    let actual = generate(&mut optimizer, &op.item).unwrap();
+    if update_expected {
+      std::fs::write(input.with_extension("out"), actual.to_string())
+        .expect("Failed to write expected file");
+    } else {
+      assert_eq!(actual.to_string(), expected);
+    }
+  }
 }

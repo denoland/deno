@@ -95,35 +95,36 @@ impl Transform {
       // serde_v8::Value
       TransformKind::V8Value => {
         *ty = parse_quote! { v8::Local<v8::Value> };
+
         q!(Vars { var: &ident }, {
-          let var = serde_v8::Value {
-            v8_value: var,
-          };
+          let var = serde_v8::Value { v8_value: var };
         })
       }
       // &[u32]
       TransformKind::SliceU32(_) => {
         *ty = parse_quote! { *const FastApiTypedArray<u32> };
+
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &* var }.get_storage_if_aligned() {
+          let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
-              unsafe { &mut* fast_api_callback_options }.fallback = true;
+              unsafe { &mut *fast_api_callback_options }.fallback = true;
               return Default::default();
-            },
+            }
           };
         })
       }
       // &[u8]
       TransformKind::SliceU8(_) => {
         *ty = parse_quote! { *const FastApiTypedArray<u8> };
+
         q!(Vars { var: &ident }, {
-          let var = match unsafe { &* var }.get_storage_if_aligned() {
+          let var = match unsafe { &*var }.get_storage_if_aligned() {
             Some(v) => v,
             None => {
-              unsafe { &mut* fast_api_callback_options }.fallback = true;
+              unsafe { &mut *fast_api_callback_options }.fallback = true;
               return Default::default();
-            },
+            }
           };
         })
       }
