@@ -185,17 +185,6 @@ impl NpmPackageId {
   }
 
   fn as_serialize_name_with_level(&self, level: usize) -> String {
-    fn encode_level(level: usize) -> String {
-      // This level will always be max 2 characters.
-      // npm packages aren't allowed to start with a number
-      if level <= 1 {
-        "_".repeat(level)
-      } else {
-        // ex. 3 -> _3
-        format!("_{}", level)
-      }
-    }
-
     let mut result = format!(
       "{}@{}",
       if level == 0 {
@@ -206,7 +195,10 @@ impl NpmPackageId {
       self.version
     );
     for peer in &self.peer_dependencies {
-      result.push_str(&encode_level(level + 1));
+      // unfortunately we can't do something like `_3` when
+      // this gets deep because npm package names can start
+      // with a number
+      result.push_str(&"_".repeat(level + 1));
       result.push_str(&peer.as_serialize_name_with_level(level + 1));
     }
     result
@@ -244,29 +236,12 @@ impl NpmPackageId {
       }
     }
 
-    fn parse_next_char_as_u32<'a>(input: &str) -> ParseResult<u32> {
-      let (input, c) = next_char(input)?;
-      match c.to_digit(10) {
-        Some(d) => Ok((input, d)),
-        None => ParseError::backtrace(),
-      }
-    }
-
     fn parse_level_at_level<'a>(
       level: usize,
     ) -> impl Fn(&'a str) -> ParseResult<'a, ()> {
       fn parse_level(input: &str) -> ParseResult<usize> {
-        let (input, _) = ch('_')(input)?;
-        let (input, maybe_underscore) = maybe(ch('_'))(input)?;
-        if maybe_underscore.is_some() {
-          return Ok((input, 2));
-        }
-        let (input, maybe_number) = maybe(parse_next_char_as_u32)(input)?;
-        if let Some(value) = maybe_number {
-          Ok((input, value as usize))
-        } else {
-          Ok((input, 1))
-        }
+        let level = input.chars().take_while(|c| *c == '_').count();
+        Ok((&input[level..], level))
       }
 
       move |input| {
@@ -282,11 +257,16 @@ impl NpmPackageId {
     fn parse_peers_at_level<'a>(
       level: usize,
     ) -> impl Fn(&'a str) -> ParseResult<'a, Vec<NpmPackageId>> {
-      // todo(THIS PR): open an issue in monch for 'many_while'
-      many_till(
-        parse_id_at_level(level),
-        check_not(parse_level_at_level(level)),
-      )
+      move |mut input| {
+        let mut peers = Vec::new();
+        while let Ok((level_input, _)) = parse_level_at_level(level)(input) {
+          input = level_input;
+          let peer_result = parse_id_at_level(level)(input)?;
+          input = peer_result.0;
+          peers.push(peer_result.1);
+        }
+        Ok((input, peers))
+      }
     }
 
     fn parse_id_at_level<'a>(
@@ -770,12 +750,13 @@ impl NpmResolution {
     Ok(())
   }
 }
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum NodeParent {
   Req(NpmPackageReq),
   Node(NpmPackageId),
 }
 
+#[derive(Debug)]
 struct Node {
   pub id: NpmPackageId,
   pub parents: HashMap<String, NodeParent>,
@@ -783,7 +764,7 @@ struct Node {
   pub unresolved_peers: Vec<NpmDependencyEntry>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Graph {
   package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
   packages_by_name: HashMap<String, Vec<NpmPackageId>>,
@@ -887,7 +868,7 @@ impl Graph {
       let dist = api
         .package_version_info(&id.name, &id.version)
         .await?
-        .unwrap()
+        .unwrap() // todo(THIS PR): don't unwrap here
         .dist;
       let node = node.lock();
       assert_eq!(node.unresolved_peers.len(), 0);
@@ -990,6 +971,10 @@ impl<'a> GraphDependencyResolver<'a> {
       package_req.to_string(),
       NodeParent::Req(package_req.clone()),
     );
+    self
+      .graph
+      .package_reqs
+      .insert(package_req.clone(), id.clone());
 
     let dependencies = version_and_info
       .info
@@ -1071,17 +1056,18 @@ impl<'a> GraphDependencyResolver<'a> {
         for dep in deps {
           let package_info = self.api.package_info(&dep.name).await?;
 
-          if matches!(
-            dep.kind,
-            NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer
-          ) {
-            self.pending_peer_dependencies.push_back((
-              (dep.bare_specifier.clone(), parent_id.clone()),
-              dep,
-              package_info,
-            ));
-          } else {
-            self.analyze_dependency(&dep, package_info, &parent_id)?;
+          match dep.kind {
+            NpmDependencyEntryKind::Dep => {
+              self.analyze_dependency(&dep, package_info, &parent_id)?;
+            }
+            NpmDependencyEntryKind::Peer
+            | NpmDependencyEntryKind::OptionalPeer => {
+              self.pending_peer_dependencies.push_back((
+                (dep.bare_specifier.clone(), parent_id.clone()),
+                dep,
+                package_info,
+              ));
+            }
           }
         }
       }
@@ -1509,5 +1495,43 @@ mod tests {
       None,
     );
     assert_eq!(result.unwrap().version.to_string(), "1.0.0-alpha");
+  }
+
+  #[test]
+  fn serialize_npm_package_id() {
+    let id = NpmPackageId {
+      name: "pkg-a".to_string(),
+      version: NpmVersion::parse("1.2.3").unwrap(),
+      peer_dependencies: vec![
+        NpmPackageId {
+          name: "pkg-b".to_string(),
+          version: NpmVersion::parse("3.2.1").unwrap(),
+          peer_dependencies: vec![
+            NpmPackageId {
+              name: "pkg-c".to_string(),
+              version: NpmVersion::parse("1.3.2").unwrap(),
+              peer_dependencies: vec![],
+            },
+            NpmPackageId {
+              name: "pkg-d".to_string(),
+              version: NpmVersion::parse("2.3.4").unwrap(),
+              peer_dependencies: vec![],
+            },
+          ],
+        },
+        NpmPackageId {
+          name: "pkg-e".to_string(),
+          version: NpmVersion::parse("2.3.1").unwrap(),
+          peer_dependencies: vec![NpmPackageId {
+            name: "pkg-f".to_string(),
+            version: NpmVersion::parse("2.3.1").unwrap(),
+            peer_dependencies: vec![],
+          }],
+        },
+      ],
+    };
+    let serialized = id.as_serializable_name();
+    assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
+    assert_eq!(NpmPackageId::deserialize_name(&serialized).unwrap(), id);
   }
 }

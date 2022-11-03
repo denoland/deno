@@ -82,9 +82,13 @@ impl ReadonlyNpmCache {
     id: &NpmPackageId,
     registry_url: &Url,
   ) -> PathBuf {
-    self
-      .package_name_folder(&id.name, registry_url)
-      .join(id.as_serializable_name().strip_prefix(&id.name).unwrap())
+    self.package_name_folder(&id.name, registry_url).join(
+      id.as_serializable_name()
+        .strip_prefix(&id.name)
+        .unwrap()
+        .strip_prefix("@")
+        .unwrap(),
+    )
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
