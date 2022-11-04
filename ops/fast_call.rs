@@ -359,7 +359,6 @@ fn exclude_lifetime_params(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::attrs::Attributes;
   use crate::Op;
   use std::path::PathBuf;
 
@@ -374,7 +373,7 @@ mod tests {
     let item = syn::parse_str(&source).expect("Failed to parse test file");
     let mut op = Op::new(item, Default::default());
     let mut optimizer = Optimizer::new();
-    if let Err(e) = optimizer.analyze(&mut op) {
+    if optimizer.analyze(&mut op).is_err() {
       // Tested by optimizer::test tests.
       return;
     }

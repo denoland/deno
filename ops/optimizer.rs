@@ -286,11 +286,13 @@ impl Optimizer {
                         FAST_SCALAR.get(ident.to_string().as_str())
                       {
                         self.fast_result = Some(val.clone());
+                      } else {
+                        return Err(BailoutReason::FastUnsupportedParamType);
                       }
                     }
                   }
                 }
-                _ => {}
+                _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
             }
           }
@@ -298,11 +300,13 @@ impl Optimizer {
           PathSegment { ident, .. } => {
             if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
               self.fast_result = Some(val.clone());
+            } else {
+              return Err(BailoutReason::FastUnsupportedParamType);
             }
           }
         };
       }
-      _ => {}
+      _ => return Err(BailoutReason::FastUnsupportedParamType),
     };
 
     Ok(())
@@ -411,17 +415,25 @@ impl Optimizer {
                                 {
                                   self.has_rc_opstate = true;
                                 }
-                                _ => {}
+                                _ => {
+                                  return Err(
+                                    BailoutReason::FastUnsupportedParamType,
+                                  )
+                                }
                               }
                             }
-                            _ => {}
+                            _ => {
+                              return Err(
+                                BailoutReason::FastUnsupportedParamType,
+                              )
+                            }
                           }
                         }
                       }
-                      _ => {}
+                      _ => return Err(BailoutReason::FastUnsupportedParamType),
                     }
                   }
-                  _ => {}
+                  _ => return Err(BailoutReason::FastUnsupportedParamType),
                 }
               }
             }
@@ -429,6 +441,8 @@ impl Optimizer {
             PathSegment { ident, .. } => {
               if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
                 self.fast_parameters.push(val.clone());
+              } else {
+                return Err(BailoutReason::FastUnsupportedParamType);
               }
             }
           };
@@ -447,7 +461,7 @@ impl Optimizer {
               PathSegment { ident, .. } if ident == "OpState" => {
                 self.has_ref_opstate = true;
               }
-              _ => {}
+              _ => return Err(BailoutReason::FastUnsupportedParamType),
             }
           }
           // &mut [T]
@@ -475,16 +489,16 @@ impl Optimizer {
                     .insert(index, Transform::slice_u32(index, is_mut_ref))
                     .is_none());
                 }
-                _ => {}
+                _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
             }
-            _ => {}
+            _ => return Err(BailoutReason::FastUnsupportedParamType),
           },
-          _ => {}
+          _ => return Err(BailoutReason::FastUnsupportedParamType),
         },
-        _ => {}
+        _ => return Err(BailoutReason::FastUnsupportedParamType),
       },
-      _ => {}
+      _ => return Err(BailoutReason::FastUnsupportedParamType),
     };
     Ok(())
   }
@@ -516,10 +530,9 @@ fn double_segment(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::attrs::Attributes;
   use crate::Op;
   use std::path::PathBuf;
-  use syn::{parse_quote, ItemFn};
+  use syn::parse_quote;
 
   #[test]
   fn test_single_segment() {
@@ -536,13 +549,6 @@ mod tests {
     assert!(double_segment(&segments).is_ok());
     assert_eq!(double_segment(&segments).unwrap()[0].ident, "foo");
     assert_eq!(double_segment(&segments).unwrap()[1].ident, "bar");
-  }
-
-  fn test_optimizer(item: ItemFn, attributes: Attributes, expected: Optimizer) {
-    let mut op = Op::new(item, attributes);
-    let mut optimizer = Optimizer::new();
-    optimizer.analyze(&mut op).expect("Optimizer failed");
-    assert_eq!(optimizer, expected);
   }
 
   #[testing::fixture("optimizer_tests/**/*.rs")]
