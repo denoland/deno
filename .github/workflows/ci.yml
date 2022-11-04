@@ -226,7 +226,7 @@ jobs:
           fi
 
       - name: Cache Cargo home
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
           path: |
