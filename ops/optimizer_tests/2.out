@@ -1,24 +1,26 @@
-struct foo {
+struct foo_fast {
     _phantom: ::std::marker::PhantomData<()>,
 }
-impl foo {
+impl foo_fast {
     fn function(&self) -> *const ::std::ffi::c_void {
-        op_name as *const ::std::ffi::c_void
+        foo_fast_fn as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [v8::fast_api::Type] {
-        &[Void, Void]
+        use deno_core::v8::fast_api::Type::*;
+        &[Void, Void, Void, FastApiCallbackOptions]
     }
     fn return_type(&self) -> v8::fast_api::CType {
-        v8::fast_api::CType::Void
+        deno_core::v8::fast_api::CType::Void
     }
 }
-fn foo<'scope>(
-    _: v8::Local<v8::Object>,
+fn foo_fast_fn<'scope>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
     state: &mut OpState,
     a: u32,
     b: u32,
-    fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> () {
+    use deno_core::v8;
     let opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
         &mut *fast_api_callback_options
     };

@@ -78,7 +78,9 @@ impl Op {
   fn gen(mut self) -> TokenStream2 {
     let mut optimizer = Optimizer::new();
     match optimizer.analyze(&mut self) {
-      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
+      Ok(_)
+      | Err(BailoutReason::MustBeSingleSegment)
+      | Err(BailoutReason::FastUnsupportedParamType) => {}
       Err(err) => return quote!(compile_error!(#err);).into(),
     };
 
@@ -97,6 +99,14 @@ impl Op {
     // First generate fast call bindings to opt-in to error handling in slow call
     let (has_fallible_fast_call, fast_impl, fast_field) =
       codegen_fast_impl(&core, &item, name, is_async, attrs.must_be_fast);
+
+    let fast_call::FastImplItems {
+      impl_and_fn,
+      decl,
+      active,
+    } = fast_call::generate(&core, &mut optimizer, &item);
+
+    let has_fallible_fast_call = active && optimizer.returns_result;
 
     let (v8_body, argc) = if is_async {
       codegen_v8_async(

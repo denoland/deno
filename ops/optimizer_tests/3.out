@@ -1,25 +1,27 @@
-struct op_foo<SP> {
+struct op_foo_fast<SP> {
     _phantom: ::std::marker::PhantomData<SP>,
 }
-impl op_foo {
+impl op_foo_fast {
     fn function(&self) -> *const ::std::ffi::c_void {
-        op_name as *const ::std::ffi::c_void
+        op_foo_fast_fn::<SP> as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [v8::fast_api::Type] {
-        &[]
+        use deno_core::v8::fast_api::Type::*;
+        &[Void, FastApiCallbackOptions]
     }
     fn return_type(&self) -> v8::fast_api::CType {
-        v8::fast_api::CType::Void
+        deno_core::v8::fast_api::CType::Void
     }
 }
-fn op_foo<'scope, SP>(
-    _: v8::Local<v8::Object>,
+fn op_foo_fast_fn<'scope, SP>(
+    _: deno_core::v8::Local<deno_core::v8::Object>,
     state: &mut OpState,
-    fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions,
+    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> ()
 where
     SP: SomePermission + 'static,
 {
+    use deno_core::v8;
     let opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
         &mut *fast_api_callback_options
     };

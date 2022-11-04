@@ -10,17 +10,43 @@ use syn::{
   PathSegment, Token, Type, TypePath, Visibility,
 };
 
+pub(crate) struct FastImplItems {
+  pub(crate) impl_and_fn: TokenStream,
+  pub(crate) decl: TokenStream,
+  pub(crate) active: bool,
+}
+
 pub(crate) fn generate(
+  core: &TokenStream,
   optimizer: &mut Optimizer,
   item_fn: &ItemFn,
-) -> Result<TokenStream, ()> {
+) -> FastImplItems {
   // TODO(@littledivy): Use `let..else` on 1.65.0
-  let output_ty = optimizer.fast_result.as_ref().ok_or(())?;
+  let output_ty = match &optimizer.fast_result {
+    Some(ty) => ty,
+    None => {
+      return FastImplItems {
+        impl_and_fn: TokenStream::new(),
+        decl: TokenStream::new(),
+        active: false,
+      }
+    }
+  };
 
+  // We've got 3 idents.
+  //
+  // - op_foo, the public op declaration contains the user function.
+  // - op_foo_fast, the fast call type.
+  // - op_foo_fast_fn, the fast call function.
   let ident = item_fn.sig.ident.clone();
+  let fast_ident = Ident::new(&format!("{}_fast", ident), Span::call_site());
+  let fast_fn_ident =
+    Ident::new(&format!("{}_fast_fn", ident), Span::call_site());
+
+  // This goes in the FastFunction impl block.
   let mut segments = Punctuated::new();
   segments.push_value(PathSegment {
-    ident: ident.clone(),
+    ident: fast_ident.clone(),
     arguments: PathArguments::None,
   });
 
@@ -28,16 +54,23 @@ pub(crate) fn generate(
   let generics = &item_fn.sig.generics;
   let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+  // struct op_foo_fast <T, U> { ... }
   let struct_generics = exclude_lifetime_params(&generics.params);
+  // std::marker::PhantomData <A>
   let phantom_generics: Quote = match struct_generics {
     Some(ref params) => q!(Vars { params }, { params }),
     None => q!({ <()> }),
+  };
+  // op_foo_fast_fn :: <T>
+  let caller_generics: Quote = match struct_generics {
+    Some(ref params) => q!(Vars { params }, { ::params }),
+    None => q!({}),
   };
 
   // struct T <A> {
   //   _phantom: ::std::marker::PhantomData<A>,
   // }
-  let fast_ty: Quote = q!(Vars { Type: &ident, generics: &struct_generics, phantom_generics }, {
+  let fast_ty: Quote = q!(Vars { Type: &fast_ident, generics: &struct_generics, phantom_generics }, {
     struct Type generics {
       _phantom: ::std::marker::PhantomData phantom_generics,
     }
@@ -64,18 +97,30 @@ pub(crate) fn generate(
     })
     .collect::<Punctuated<_, Comma>>();
 
+  let mut input_variants = optimizer
+    .fast_parameters
+    .iter()
+    .map(q_fast_ty_variant)
+    .collect::<Punctuated<_, Comma>>();
+
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option || optimizer.has_opstate() {
     inputs.push(parse_quote! {
-      fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions
+      fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
     });
+
+    input_variants.push(q!({ FastApiCallbackOptions }));
   }
 
   let mut output_transforms = q!({});
 
   if optimizer.has_opstate() {
     // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
-    let op_state = idents.first().expect("This whole thing is broken");
+    let op_state = match idents.first() {
+      Some(ident) => ident.clone(),
+      // fn op_foo() -> Result<...>
+      None => Ident::new("op_state", Span::call_site()),
+    };
 
     // Dark arts 🪄 ✨
     //
@@ -83,15 +128,21 @@ pub(crate) fn generate(
     // - `data` union is always initialized as the `v8::Local<v8::Value>` variant.
     // - deno_core guarantees that `data` is a v8 External pointing to an OpCtx for the
     //   isolate's lifetime.
-    let prelude = q!(Vars { op_state }, {
-      let opts: &mut v8::fast_api::FastApiCallbackOptions =
-        unsafe { &mut *fast_api_callback_options };
-      let data = unsafe { opts.data.data };
-      let ctx = unsafe {
-        &*(v8::Local::<v8::External>::cast(data).value() as *const _ops::OpCtx)
-      };
-      let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
-    });
+    let prelude = q!(
+      Vars {
+        op_state: &op_state
+      },
+      {
+        let opts: &mut v8::fast_api::FastApiCallbackOptions =
+          unsafe { &mut *fast_api_callback_options };
+        let data = unsafe { opts.data.data };
+        let ctx = unsafe {
+          &*(v8::Local::<v8::External>::cast(data).value()
+            as *const _ops::OpCtx)
+        };
+        let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
+      }
+    );
 
     transforms.push_tokens(&prelude);
 
@@ -138,9 +189,10 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { op_name: &ident, inputs, generics, where_clause, idents, transforms, output_transforms, output: &output },
+    Vars { core, op_name_fast: &fast_fn_ident, op_name: &ident, inputs, generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
-      fn op_name generics (_: v8::Local<v8::Object>, inputs) -> output where_clause {
+      fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, inputs) -> output where_clause {
+        use core::v8;
         transforms
         let result = op_name::call(idents);
         output_transforms
@@ -149,11 +201,6 @@ pub(crate) fn generate(
   );
 
   let output_variant = q_fast_ty_variant(&output_ty);
-  let input_variants = optimizer
-    .fast_parameters
-    .iter()
-    .map(q_fast_ty_variant)
-    .collect::<Punctuated<_, Comma>>();
 
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
@@ -184,17 +231,18 @@ pub(crate) fn generate(
     items: vec![
       parse_quote! {
         fn function(&self) -> *const ::std::ffi::c_void {
-          op_name as *const ::std::ffi::c_void
+          #fast_fn_ident #caller_generics as *const ::std::ffi::c_void
         }
       },
       parse_quote! {
         fn args(&self) -> &'static [v8::fast_api::Type] {
+          use #core::v8::fast_api::Type::*;
           &[ #input_variants ]
         }
       },
       parse_quote! {
         fn return_type(&self) -> v8::fast_api::CType {
-          v8::fast_api::CType::#output_variant
+          #core::v8::fast_api::CType::#output_variant
         }
       },
     ],
@@ -205,7 +253,19 @@ pub(crate) fn generate(
   tts.push_tokens(&item);
   tts.push_tokens(&fast_fn);
 
-  Ok(tts.dump().into())
+  let impl_and_fn = tts.dump().into();
+  let decl = q!(
+    Vars { fast_ident,  caller_generics },
+    {
+      Some(Box::new(fast_ident caller_generics { _phantom: ::std::marker::PhantomData }))
+    }
+  ).dump().into();
+
+  FastImplItems {
+    impl_and_fn,
+    decl,
+    active: true,
+  }
 }
 
 /// Quote fast value type.
@@ -219,6 +279,7 @@ fn q_fast_ty(v: &FastValue) -> Quote {
     F32 => q!({ f32 }),
     F64 => q!({ f64 }),
     Bool => q!({ bool }),
+    V8Value => q!({ v8::Local<v8::Value> }),
   }
 }
 
@@ -233,6 +294,7 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     F32 => q!({ F32 }),
     F64 => q!({ F64 }),
     Bool => q!({ Bool }),
+    V8Value => q!({ V8Value }),
   }
 }
 
@@ -269,18 +331,26 @@ mod tests {
   #[testing::fixture("optimizer_tests/**/*.rs")]
   fn test_fast_call_codegen(input: PathBuf) {
     let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
+    let core = crate::deno::import();
 
     let source =
       std::fs::read_to_string(&input).expect("Failed to read test file");
-    let expected = std::fs::read_to_string(input.with_extension("out"))
-      .expect("Failed to read expected file");
 
     let item = syn::parse_str(&source).expect("Failed to parse test file");
     let mut op = Op::new(item, Default::default());
     let mut optimizer = Optimizer::new();
-    optimizer.analyze(&mut op).expect("Optimizer failed");
+    if let Err(e) = optimizer.analyze(&mut op) {
+      // Tested by optimizer::test tests.
+      return;
+    }
 
-    let actual = generate(&mut optimizer, &op.item).unwrap();
+    let expected = std::fs::read_to_string(input.with_extension("out"))
+      .expect("Failed to read expected file");
+
+    let FastImplItems {
+      impl_and_fn: actual,
+      ..
+    } = generate(&core, &mut optimizer, &op.item);
     // Validate syntax tree.
     let tree = syn::parse2(actual).unwrap();
     let actual = prettyplease::unparse(&tree);

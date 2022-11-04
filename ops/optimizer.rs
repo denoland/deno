@@ -13,8 +13,11 @@ use syn::{
 
 #[derive(Debug)]
 pub(crate) enum BailoutReason {
-  FastAsync,
+  // Recoverable errors
   MustBeSingleSegment,
+  FastUnsupportedParamType,
+
+  FastAsync,
   Other(&'static str),
 }
 
@@ -24,7 +27,8 @@ impl ToTokens for BailoutReason {
       BailoutReason::FastAsync => {
         tokens.extend(quote! { "fast async calls are not supported" });
       }
-      BailoutReason::MustBeSingleSegment => {
+      BailoutReason::MustBeSingleSegment
+      | BailoutReason::FastUnsupportedParamType => {
         unreachable!("error not recovered");
       }
       BailoutReason::Other(reason) => {
@@ -153,6 +157,7 @@ pub(crate) enum FastValue {
   F32,
   F64,
   Bool,
+  V8Value,
 }
 
 impl Default for FastValue {
@@ -222,6 +227,9 @@ impl Optimizer {
         ..
       } => self.analyze_return_type(ty)?,
     };
+
+    // The reciever, which we don't actually care about.
+    self.fast_parameters.push(FastValue::V8Value);
 
     // Analyze parameters
     for (index, param) in sig.inputs.iter().enumerate() {
@@ -305,7 +313,7 @@ impl Optimizer {
             {
               self.transforms.push(Transform::serde_v8_value(index));
             }
-            _ => unreachable!(),
+            _ => return Err(BailoutReason::FastUnsupportedParamType),
           }
         }
         Type::Path(TypePath {
@@ -527,7 +535,16 @@ mod tests {
     let item = syn::parse_str(&source).expect("Failed to parse test file");
     let mut op = Op::new(item, Default::default());
     let mut optimizer = Optimizer::new();
-    optimizer.analyze(&mut op).expect("Optimizer failed");
+    if let Err(e) = optimizer.analyze(&mut op) {
+      let e_str = format!("{:?}", e);
+      if update_expected {
+        std::fs::write(input.with_extension("expected"), e_str)
+          .expect("Failed to write expected file");
+      } else {
+        assert_eq!(e_str, expected);
+      }
+      return;
+    }
 
     if update_expected {
       std::fs::write(
