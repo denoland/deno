@@ -665,8 +665,10 @@
       }, 1000);
     }
 
-    await listenPromise;
-    await PromisePrototypeCatch(server.serve(), console.error);
+    await SafePromiseAll([
+      listenPromise,
+      PromisePrototypeCatch(server.serve(), console.error),
+    ]);
   }
 
   function createRequestBodyStream(serverId, token) {
