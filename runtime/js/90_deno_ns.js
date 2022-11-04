@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const __bootstrap = window.__bootstrap;
+
   __bootstrap.denoNs = {
     metrics: core.metrics,
     test: __bootstrap.testing.test,
@@ -151,5 +152,20 @@
     serve: __bootstrap.flash.serve,
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+  };
+
+  const nodeUnstable = {
+    Child: __bootstrap.spawn.Child,
+    spawnChild: __bootstrap.spawn.spawnChild,
+    spawn: __bootstrap.spawn.spawn,
+    spawnSync: __bootstrap.spawn.spawnSync,
+    serve: __bootstrap.flash.serve,
+    upgradeHttp: __bootstrap.http.upgradeHttp,
+    upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+  };
+
+  window.__bootstrap.internals = {
+    ...window.__bootstrap.internals ?? {},
+    nodeUnstable,
   };
 })(this);
