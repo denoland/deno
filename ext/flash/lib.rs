@@ -884,6 +884,7 @@ const SERVER_TOKEN: Token = Token(0);
 // Token reserved for the thread close signal.
 const WAKER_TOKEN: Token = Token(1);
 
+#[allow(clippy::too_many_arguments)]
 fn run_server(
   tx: mpsc::Sender<Request>,
   listening_tx: mpsc::Sender<Result<u16, std::io::Error>>,
