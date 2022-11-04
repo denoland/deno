@@ -78,7 +78,7 @@ impl Op {
       Ok(_)
       | Err(BailoutReason::MustBeSingleSegment)
       | Err(BailoutReason::FastUnsupportedParamType) => {}
-      Err(err) => return quote!(compile_error!(#err);).into(),
+      Err(err) => return quote!(compile_error!(#err);),
     };
 
     let Self {
@@ -165,7 +165,7 @@ impl Op {
       }
 
       #impl_and_fn
-    }.into()
+    }
   }
 }
 

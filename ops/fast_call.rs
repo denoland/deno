@@ -99,7 +99,7 @@ pub(crate) fn generate(
   // Apply parameter transforms
   for (index, input) in inputs.iter_mut().enumerate() {
     if let Some(transform) = optimizer.transforms.get(&index) {
-      let quo: Quote = transform.apply_for_fast_call(&core, input);
+      let quo: Quote = transform.apply_for_fast_call(core, input);
       transforms.push_tokens(&quo);
     }
   }
@@ -202,7 +202,7 @@ pub(crate) fn generate(
     output_transforms.push_tokens(&default_output);
   }
 
-  let output = q_fast_ty(&output_ty);
+  let output = q_fast_ty(output_ty);
   // Generate the function body.
   //
   // fn f <S> (_: Local<Object>, a: T, b: U) -> R {
@@ -229,7 +229,7 @@ pub(crate) fn generate(
     }
   );
 
-  let output_variant = q_fast_ty_variant(&output_ty);
+  let output_variant = q_fast_ty_variant(output_ty);
   let mut generics: Generics = parse_quote! { #impl_generics };
   generics.where_clause = where_clause.cloned();
 
@@ -288,13 +288,13 @@ pub(crate) fn generate(
   tts.push_tokens(&item);
   tts.push_tokens(&fast_fn);
 
-  let impl_and_fn = tts.dump().into();
+  let impl_and_fn = tts.dump();
   let decl = q!(
     Vars { fast_ident, caller_generics },
     {
       Some(Box::new(fast_ident caller_generics { _phantom: ::std::marker::PhantomData }))
     }
-  ).dump().into();
+  ).dump();
 
   FastImplItems {
     impl_and_fn,
@@ -338,10 +338,7 @@ fn exclude_lifetime_params(
 ) -> Option<Generics> {
   let params = generic_params
     .iter()
-    .filter(|t| match t {
-      GenericParam::Lifetime(_) => false,
-      _ => true,
-    })
+    .filter(|t| !matches!(t, GenericParam::Lifetime(_)))
     .cloned()
     .collect::<Punctuated<GenericParam, Comma>>();
   if params.is_empty() {

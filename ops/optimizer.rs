@@ -278,18 +278,13 @@ impl Optimizer {
                   path: Path { segments, .. },
                   ..
                 }))) => {
-                  let segment = single_segment(segments)?;
-                  match segment {
-                    // Is `T` a scalar FastValue?
-                    PathSegment { ident, .. } => {
-                      if let Some(val) =
-                        FAST_SCALAR.get(ident.to_string().as_str())
-                      {
-                        self.fast_result = Some(val.clone());
-                      } else {
-                        return Err(BailoutReason::FastUnsupportedParamType);
-                      }
-                    }
+                  let PathSegment { ident, .. } = single_segment(segments)?;
+                  // Is `T` a scalar FastValue?
+                  if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str())
+                  {
+                    self.fast_result = Some(val.clone());
+                  } else {
+                    return Err(BailoutReason::FastUnsupportedParamType);
                   }
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
@@ -351,31 +346,27 @@ impl Optimizer {
                 AngleBracketedGenericArguments { args, .. },
               ) = arguments
               {
-                match args.last() {
-                  // -> Option<&mut T>
-                  Some(GenericArgument::Type(Type::Reference(
-                    TypeReference { elem, .. },
-                  ))) => {
-                    match &**elem {
-                      Type::Path(TypePath {
-                        path: Path { segments, .. },
-                        ..
-                      }) => {
-                        let segment = single_segment(segments)?;
-                        match segment {
-                          // Is `T` a FastApiCallbackOption?
-                          PathSegment { ident, .. }
-                            if ident == "FastApiCallbackOption" =>
-                          {
-                            self.has_fast_callback_option = true;
-                          }
-                          _ => {}
-                        }
+                // -> Option<&mut T>
+                if let Some(GenericArgument::Type(Type::Reference(
+                  TypeReference { elem, .. },
+                ))) = args.last()
+                {
+                  if let Type::Path(TypePath {
+                    path: Path { segments, .. },
+                    ..
+                  }) = &**elem
+                  {
+                    let segment = single_segment(segments)?;
+                    match segment {
+                      // Is `T` a FastApiCallbackOption?
+                      PathSegment { ident, .. }
+                        if ident == "FastApiCallbackOption" =>
+                      {
+                        self.has_fast_callback_option = true;
                       }
                       _ => {}
                     }
                   }
-                  _ => {}
                 }
               }
             }
@@ -470,7 +461,7 @@ impl Optimizer {
               path: Path { segments, .. },
               ..
             }) => {
-              let segment = single_segment(&segments)?;
+              let segment = single_segment(segments)?;
               let is_mut_ref = mutability.is_some();
               match segment {
                 // Is `T` a u8?
