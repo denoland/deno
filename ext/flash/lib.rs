@@ -1215,6 +1215,7 @@ fn run_server(
   Ok(())
 }
 
+#[inline]
 fn listen(
   addr: SocketAddr,
   reuseport: bool,
