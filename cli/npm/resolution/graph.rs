@@ -479,29 +479,22 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     for (specifier, grand_parents) in
       self.graph.borrow_node(&parent_id).parents.clone()
     {
+      let mut path = path.clone();
+      path.push(specifier.clone());
       for grand_parent in grand_parents {
-        pending_ancestors.push_back((
-          specifier.clone(),
-          grand_parent,
-          path.clone(),
-        ));
+        pending_ancestors.push_back((grand_parent, path.clone()));
       }
     }
 
-    while let Some((specifier, ancestor, path)) = pending_ancestors.pop_front()
-    {
+    while let Some((ancestor, path)) = pending_ancestors.pop_front() {
       let children = match &ancestor {
         NodeParent::Node(ancestor_node_id) => {
           let ancestor = self.graph.borrow_node(ancestor_node_id);
-          let mut new_path = path.clone();
-          new_path.push(specifier.to_string());
           for (specifier, parents) in &ancestor.parents {
+            let mut new_path = path.clone();
+            new_path.push(specifier.to_string());
             for parent in parents {
-              pending_ancestors.push_back((
-                specifier.clone(),
-                parent.clone(),
-                new_path.clone(),
-              ));
+              pending_ancestors.push_back((parent.clone(), new_path.clone()));
             }
           }
           ancestor.children.clone()
@@ -532,6 +525,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             }
             NodeParent::Req(req) => {
               let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
+              // todo: should refactor all this code to have a node for everything, but an id
+              // that could be `Root` or `NpmPackageId` maybe?
+              let mut path = path;
+              path.pop(); // this path will be at the root, but there's no "node" for that
               return Ok(Some(self.set_new_peer_dep(
                 HashMap::from([(
                   req.to_string(),
@@ -617,6 +614,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     // continue going down the path
     if let Some(next_specifier) = path.pop() {
+      eprintln!(
+        "Next specifier: {}, peer dep id: {}",
+        next_specifier,
+        peer_dep_id.as_serializable_name()
+      );
       if path.is_empty() {
         // this means we're at the peer dependency now
         assert!(!old_node_children.contains_key(&next_specifier));
@@ -905,6 +907,98 @@ mod test {
                 "package-c@3.0.0_package-peer@4.0.0"
               )
               .unwrap(),
+            ),
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-b@2.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+          )])
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-c@3.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+          )])
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+          dist: Default::default(),
+          dependencies: Default::default(),
+        },
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_with_peer_deps_ancestor_sibling_not_top_tree() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-0", "1.1.1");
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.ensure_package_version("package-c", "3.0.0");
+    api.ensure_package_version("package-peer", "4.0.0");
+    api.ensure_package_version("package-peer", "4.1.0");
+    api.add_dependency(("package-0", "1.1.1"), ("package-a", "1"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "^2"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-c", "^3"));
+    // the peer dependency is specified here as a sibling of "a" and "b"
+    // so it should resolve to 4.0.0 instead of 4.1.0
+    api.add_dependency(("package-a", "1.0.0"), ("package-peer", "4.0.0"));
+    api.add_peer_dependency(("package-b", "2.0.0"), ("package-peer", "4"));
+    api.add_peer_dependency(("package-c", "3.0.0"), ("package-peer", "*"));
+
+    let packages =
+      run_resolver_and_get_output(api, vec!["npm:package-0@1.1.1"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-0@1.1.1").unwrap(),
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::deserialize_name(
+              "package-a@1.0.0_package-peer@4.0.0"
+            )
+            .unwrap(),
+          ),]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-a@1.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dependencies: HashMap::from([
+            (
+              "package-b".to_string(),
+              NpmPackageId::deserialize_name(
+                "package-b@2.0.0_package-peer@4.0.0"
+              )
+              .unwrap(),
+            ),
+            (
+              "package-c".to_string(),
+              NpmPackageId::deserialize_name(
+                "package-c@3.0.0_package-peer@4.0.0"
+              )
+              .unwrap(),
+            ),
+            (
+              "package-peer".to_string(),
+              NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
             ),
           ]),
           dist: Default::default(),
