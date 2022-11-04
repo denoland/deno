@@ -21,13 +21,21 @@ pub(crate) fn generate(
   optimizer: &mut Optimizer,
   item_fn: &ItemFn,
 ) -> FastImplItems {
+  if !optimizer.fast_compatible {
+    return FastImplItems {
+      impl_and_fn: TokenStream::new(),
+      decl: quote! { None },
+      active: false,
+    };
+  }
+
   // TODO(@littledivy): Use `let..else` on 1.65.0
   let output_ty = match &optimizer.fast_result {
     Some(ty) => ty,
     None => {
       return FastImplItems {
         impl_and_fn: TokenStream::new(),
-        decl: TokenStream::new(),
+        decl: quote! { None },
         active: false,
       }
     }
@@ -42,13 +50,6 @@ pub(crate) fn generate(
   let fast_ident = Ident::new(&format!("{}_fast", ident), Span::call_site());
   let fast_fn_ident =
     Ident::new(&format!("{}_fast_fn", ident), Span::call_site());
-
-  // This goes in the FastFunction impl block.
-  let mut segments = Punctuated::new();
-  segments.push_value(PathSegment {
-    ident: fast_ident.clone(),
-    arguments: PathArguments::None,
-  });
 
   // Deal with generics.
   let generics = &item_fn.sig.generics;
@@ -67,6 +68,21 @@ pub(crate) fn generate(
     None => q!({}),
   };
 
+  // This goes in the FastFunction impl block.
+  let mut segments = Punctuated::new();
+  {
+    let mut arguments = PathArguments::None;
+    if let Some(ref struct_generics) = struct_generics {
+      arguments = PathArguments::AngleBracketed(parse_quote! {
+        #struct_generics
+      });
+    }
+    segments.push_value(PathSegment {
+      ident: fast_ident.clone(),
+      arguments,
+    });
+  }
+
   // struct T <A> {
   //   _phantom: ::std::marker::PhantomData<A>,
   // }
@@ -78,9 +94,12 @@ pub(crate) fn generate(
 
   let mut inputs = item_fn.sig.inputs.clone();
   let mut transforms = q!({});
+  
+  // Retain only *pure* parameters.
+  
   // Apply parameter transforms
   for (input, transform) in inputs.iter_mut().zip(optimizer.transforms.iter()) {
-    let quo: Quote = transform.apply_for_fast_call(input);
+    let quo: Quote = transform.apply_for_fast_call(&core, input);
     transforms.push_tokens(&quo);
   }
 
@@ -104,22 +123,22 @@ pub(crate) fn generate(
     .collect::<Punctuated<_, Comma>>();
 
   // Apply *hard* optimizer hints.
-  if optimizer.has_fast_callback_option || optimizer.has_opstate() {
+  if optimizer.has_fast_callback_option || optimizer.needs_opstate() {
     inputs.push(parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
     });
 
-    input_variants.push(q!({ FastApiCallbackOptions }));
+    input_variants.push(q!({ CallbackOptions }));
   }
 
   let mut output_transforms = q!({});
 
-  if optimizer.has_opstate() {
+  if optimizer.needs_opstate() {
     // Grab the op_state identifier, the first one. ¯\_(ツ)_/¯
     let op_state = match idents.first() {
-      Some(ident) => ident.clone(),
+      Some(ident) if optimizer.has_opstate_in_parameters() => ident.clone(),
       // fn op_foo() -> Result<...>
-      None => Ident::new("op_state", Span::call_site()),
+      _ => Ident::new("op_state", Span::call_site()),
     };
 
     // Dark arts 🪄 ✨
@@ -133,14 +152,13 @@ pub(crate) fn generate(
         op_state: &op_state
       },
       {
-        let opts: &mut v8::fast_api::FastApiCallbackOptions =
+        let __opts: &mut v8::fast_api::FastApiCallbackOptions =
           unsafe { &mut *fast_api_callback_options };
-        let data = unsafe { opts.data.data };
-        let ctx = unsafe {
-          &*(v8::Local::<v8::External>::cast(data).value()
+        let __ctx = unsafe {
+          &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
             as *const _ops::OpCtx)
         };
-        let op_state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
+        let op_state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
       }
     );
 
@@ -160,22 +178,23 @@ pub(crate) fn generate(
           Ok(result) => result,
           Err(err) => {
             op_state.last_fast_op_error.replace(err);
-            opts.fallback = true;
+            __opts.fallback = true;
             Default::default()
           }
         }
       });
 
       output_transforms.push_tokens(&result_wrap);
-    } else {
-      let default_output = q!({ result });
-
-      output_transforms.push_tokens(&default_output);
     }
   }
 
-  let output = q_fast_ty(&output_ty);
+  if !optimizer.returns_result {
+    let default_output = q!({ result });
 
+    output_transforms.push_tokens(&default_output);
+  }
+
+  let output = q_fast_ty(&output_ty);
   // Generate the function body.
   //
   // fn f <S> (_: Local<Object>, a: T, b: U) -> R {
@@ -189,19 +208,22 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { core, op_name_fast: &fast_fn_ident, op_name: &ident, inputs, generics, where_clause, idents, transforms, output_transforms, output: &output },
+    Vars { core, op_name_fast: &fast_fn_ident, op_name: &ident, inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
       fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, inputs) -> output where_clause {
         use core::v8;
+        use core::_ops;
         transforms
-        let result = op_name::call(idents);
+        let result = op_name::call call_generics (idents);
         output_transforms
       }
     }
   );
 
   let output_variant = q_fast_ty_variant(&output_ty);
-
+  let mut generics: Generics = parse_quote! { #impl_generics };
+  generics.where_clause = where_clause.cloned();
+  
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
   //     f as *const ::std::ffi::c_void
@@ -218,8 +240,12 @@ pub(crate) fn generate(
     defaultness: None,
     unsafety: None,
     impl_token: Default::default(),
-    generics: Default::default(),
-    trait_: None,
+    generics,
+    trait_: Some((
+      None,
+      parse_quote!(#core::v8::fast_api::FastFunction),
+      Default::default(),
+    )),
     self_ty: Box::new(Type::Path(TypePath {
       qself: None,
       path: Path {
@@ -235,13 +261,13 @@ pub(crate) fn generate(
         }
       },
       parse_quote! {
-        fn args(&self) -> &'static [v8::fast_api::Type] {
+        fn args(&self) -> &'static [#core::v8::fast_api::Type] {
           use #core::v8::fast_api::Type::*;
           &[ #input_variants ]
         }
       },
       parse_quote! {
-        fn return_type(&self) -> v8::fast_api::CType {
+        fn return_type(&self) -> #core::v8::fast_api::CType {
           #core::v8::fast_api::CType::#output_variant
         }
       },
@@ -255,7 +281,7 @@ pub(crate) fn generate(
 
   let impl_and_fn = tts.dump().into();
   let decl = q!(
-    Vars { fast_ident,  caller_generics },
+    Vars { fast_ident, caller_generics },
     {
       Some(Box::new(fast_ident caller_generics { _phantom: ::std::marker::PhantomData }))
     }
@@ -271,30 +297,30 @@ pub(crate) fn generate(
 /// Quote fast value type.
 fn q_fast_ty(v: &FastValue) -> Quote {
   match v {
-    Void => q!({ () }),
-    U32 => q!({ u32 }),
-    I32 => q!({ i32 }),
-    U64 => q!({ u64 }),
-    I64 => q!({ i64 }),
-    F32 => q!({ f32 }),
-    F64 => q!({ f64 }),
-    Bool => q!({ bool }),
-    V8Value => q!({ v8::Local<v8::Value> }),
+    FastValue::Void => q!({ () }),
+    FastValue::U32 => q!({ u32 }),
+    FastValue::I32 => q!({ i32 }),
+    FastValue::U64 => q!({ u64 }),
+    FastValue::I64 => q!({ i64 }),
+    FastValue::F32 => q!({ f32 }),
+    FastValue::F64 => q!({ f64 }),
+    FastValue::Bool => q!({ bool }),
+    FastValue::V8Value => q!({ v8::Local<v8::Value> }),
   }
 }
 
 /// Quote fast value type's variant.
 fn q_fast_ty_variant(v: &FastValue) -> Quote {
   match v {
-    Void => q!({ Void }),
-    U32 => q!({ U32 }),
-    I32 => q!({ I32 }),
-    U64 => q!({ U64 }),
-    I64 => q!({ I64 }),
-    F32 => q!({ F32 }),
-    F64 => q!({ F64 }),
-    Bool => q!({ Bool }),
-    V8Value => q!({ V8Value }),
+    FastValue::Void => q!({ Void }),
+    FastValue::U32 => q!({ Uint32 }),
+    FastValue::I32 => q!({ Int32 }),
+    FastValue::U64 => q!({ Uint64 }),
+    FastValue::I64 => q!({ Int64 }),
+    FastValue::F32 => q!({ Float32 }),
+    FastValue::F64 => q!({ Float64 }),
+    FastValue::Bool => q!({ Bool }),
+    FastValue::V8Value => q!({ V8Value }),
   }
 }
 
