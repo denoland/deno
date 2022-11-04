@@ -15,7 +15,6 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_set_exit_code_fast {
 }
 fn op_set_exit_code_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    state: &mut OpState,
     code: i32,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> () {

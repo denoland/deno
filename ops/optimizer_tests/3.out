@@ -18,7 +18,6 @@ where
 }
 fn op_foo_fast_fn<'scope, SP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    state: &mut OpState,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> ()
 where

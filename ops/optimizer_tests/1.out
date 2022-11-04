@@ -15,7 +15,6 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for foo_fast {
 }
 fn foo_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    state: &mut OpState,
     a: u32,
     b: u32,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,

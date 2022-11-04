@@ -92,11 +92,11 @@ pub(crate) fn generate(
     }
   });
 
+  // Original inputs.
   let mut inputs = item_fn.sig.inputs.clone();
   let mut transforms = q!({});
-  
-  // Retain only *pure* parameters.
-  
+  let mut pre_transforms = q!({});
+
   // Apply parameter transforms
   for (input, transform) in inputs.iter_mut().zip(optimizer.transforms.iter()) {
     let quo: Quote = transform.apply_for_fast_call(&core, input);
@@ -116,6 +116,13 @@ pub(crate) fn generate(
     })
     .collect::<Punctuated<_, Comma>>();
 
+  // Retain only *pure* parameters.
+  let mut fast_fn_inputs = if optimizer.has_opstate_in_parameters() {
+    inputs.iter().skip(1).cloned().collect()
+  } else {
+    inputs.clone()
+  };
+
   let mut input_variants = optimizer
     .fast_parameters
     .iter()
@@ -124,7 +131,7 @@ pub(crate) fn generate(
 
   // Apply *hard* optimizer hints.
   if optimizer.has_fast_callback_option || optimizer.needs_opstate() {
-    inputs.push(parse_quote! {
+    fast_fn_inputs.push(parse_quote! {
       fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions
     });
 
@@ -162,7 +169,7 @@ pub(crate) fn generate(
       }
     );
 
-    transforms.push_tokens(&prelude);
+    pre_transforms.push_tokens(&prelude);
 
     if optimizer.returns_result {
       // Magic fallback 🪄
@@ -208,11 +215,12 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { core, op_name_fast: &fast_fn_ident, op_name: &ident, inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
+    Vars { core, pre_transforms, op_name_fast: &fast_fn_ident, op_name: &ident, fast_fn_inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
-      fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, inputs) -> output where_clause {
+      fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output where_clause {
         use core::v8;
         use core::_ops;
+        pre_transforms
         transforms
         let result = op_name::call call_generics (idents);
         output_transforms

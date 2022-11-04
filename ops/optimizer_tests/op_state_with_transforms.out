@@ -1,24 +1,29 @@
-struct foo_fast {
-    _phantom: ::std::marker::PhantomData<()>,
+struct op_now_fast<TP> {
+    _phantom: ::std::marker::PhantomData<TP>,
 }
-impl<'scope> deno_core::v8::fast_api::FastFunction for foo_fast {
+impl<'scope, TP> deno_core::v8::fast_api::FastFunction for op_now_fast<TP>
+where
+    TP: TimersPermission + 'static,
+{
     fn function(&self) -> *const ::std::ffi::c_void {
-        foo_fast_fn as *const ::std::ffi::c_void
+        op_now_fast_fn::<TP> as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
-        &[V8Value, Uint32, Uint32, CallbackOptions]
+        &[V8Value, CallbackOptions]
     }
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Uint32
+        deno_core::v8::fast_api::CType::Void
     }
 }
-fn foo_fast_fn<'scope>(
+fn op_now_fast_fn<'scope, TP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    a: u32,
-    b: u32,
+    buf: &mut [u8],
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> u32 {
+) -> ()
+where
+    TP: TimersPermission + 'static,
+{
     use deno_core::v8;
     use deno_core::_ops;
     let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
@@ -29,13 +34,13 @@ fn foo_fast_fn<'scope>(
             as *const _ops::OpCtx)
     };
     let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let result = foo::call(state, a, b);
-    match result {
-        Ok(result) => result,
-        Err(err) => {
-            state.last_fast_op_error.replace(err);
-            __opts.fallback = true;
-            Default::default()
+    let state = match unsafe { &*state }.get_storage_if_aligned() {
+        Some(v) => v,
+        None => {
+            unsafe { &mut *fast_api_callback_options }.fallback = true;
+            return Default::default();
         }
-    }
+    };
+    let result = op_now::call::<TP>(state, buf);
+    result
 }
