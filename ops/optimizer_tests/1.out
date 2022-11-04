@@ -6,13 +6,13 @@ impl foo {
         op_name as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [v8::fast_api::Type] {
-        &[]
+        &[Void, Void]
     }
     fn return_type(&self) -> v8::fast_api::CType {
         v8::fast_api::CType::Void
     }
 }
-fn foo(
+fn foo<'scope>(
     _: v8::Local<v8::Object>,
     state: &mut OpState,
     a: u32,
@@ -28,4 +28,5 @@ fn foo(
     };
     let state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
     let result = foo::call(state, a, b);
+    result
 }

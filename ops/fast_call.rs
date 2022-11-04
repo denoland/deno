@@ -1,13 +1,13 @@
-use crate::optimizer::FastValue;
 /// Code generation for V8 fast calls.
+use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;
 use pmutil::{q, Quote, ToTokensExt};
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
-  parse_quote, punctuated::Punctuated, token::Comma, Fields, Ident, ItemFn,
-  ItemImpl, ItemStruct, Path, PathArguments, PathSegment, Token, Type,
-  TypePath, Visibility,
+  parse_quote, punctuated::Punctuated, token::Comma, Fields, GenericParam,
+  Generics, Ident, ItemFn, ItemImpl, ItemStruct, Path, PathArguments,
+  PathSegment, Token, Type, TypePath, Visibility,
 };
 
 pub(crate) fn generate(
@@ -24,12 +24,22 @@ pub(crate) fn generate(
     arguments: PathArguments::None,
   });
 
+  // Deal with generics.
+  let generics = &item_fn.sig.generics;
+  let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+  let struct_generics = exclude_lifetime_params(&generics.params);
+  let phantom_generics: Quote = match struct_generics {
+    Some(ref params) => q!(Vars { params }, { params }),
+    None => q!({ <()> }),
+  };
+
   // struct T <A> {
   //   _phantom: ::std::marker::PhantomData<A>,
   // }
-  let fast_ty: Quote = q!(Vars { Type: &ident }, {
-    struct Type {
-      _phantom: ::std::marker::PhantomData<()>,
+  let fast_ty: Quote = q!(Vars { Type: &ident, generics: &struct_generics, phantom_generics }, {
+    struct Type generics {
+      _phantom: ::std::marker::PhantomData phantom_generics,
     }
   });
 
@@ -106,6 +116,10 @@ pub(crate) fn generate(
       });
 
       output_transforms.push_tokens(&result_wrap);
+    } else {
+      let default_output = q!({ result });
+
+      output_transforms.push_tokens(&default_output);
     }
   }
 
@@ -124,9 +138,9 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { op_name: &ident, inputs, idents, transforms, output_transforms, output: &output },
+    Vars { op_name: &ident, inputs, generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
-      fn op_name(_: v8::Local<v8::Object>, inputs) -> output {
+      fn op_name generics (_: v8::Local<v8::Object>, inputs) -> output where_clause {
         transforms
         let result = op_name::call(idents);
         output_transforms
@@ -135,9 +149,11 @@ pub(crate) fn generate(
   );
 
   let output_variant = q_fast_ty_variant(&output_ty);
-
-  let generics = &f.sig.generics;
-  let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+  let input_variants = optimizer
+    .fast_parameters
+    .iter()
+    .map(q_fast_ty_variant)
+    .collect::<Punctuated<_, Comma>>();
 
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
@@ -173,7 +189,7 @@ pub(crate) fn generate(
       },
       parse_quote! {
         fn args(&self) -> &'static [v8::fast_api::Type] {
-          &[  ]
+          &[ #input_variants ]
         }
       },
       parse_quote! {
@@ -218,6 +234,29 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     F64 => q!({ F64 }),
     Bool => q!({ Bool }),
   }
+}
+
+fn exclude_lifetime_params(
+  generic_params: &Punctuated<GenericParam, Comma>,
+) -> Option<Generics> {
+  let params = generic_params
+    .iter()
+    .filter(|t| match t {
+      GenericParam::Lifetime(_) => false,
+      _ => true,
+    })
+    .cloned()
+    .collect::<Punctuated<GenericParam, Comma>>();
+  if params.is_empty() {
+    // <()>
+    return None;
+  }
+  Some(Generics {
+    lt_token: Some(Default::default()),
+    params,
+    gt_token: Some(Default::default()),
+    where_clause: None,
+  })
 }
 
 #[cfg(test)]

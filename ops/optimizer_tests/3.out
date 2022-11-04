@@ -1,24 +1,25 @@
-struct foo {
-    _phantom: ::std::marker::PhantomData<()>,
+struct op_foo<SP> {
+    _phantom: ::std::marker::PhantomData<SP>,
 }
-impl foo {
+impl op_foo {
     fn function(&self) -> *const ::std::ffi::c_void {
         op_name as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [v8::fast_api::Type] {
-        &[Void, Void]
+        &[]
     }
     fn return_type(&self) -> v8::fast_api::CType {
         v8::fast_api::CType::Void
     }
 }
-fn foo<'scope>(
+fn op_foo<'scope, SP>(
     _: v8::Local<v8::Object>,
     state: &mut OpState,
-    a: u32,
-    b: u32,
     fast_api_callback_options: *mut v8::fast_api::FastApiCallbackOptions,
-) -> () {
+) -> ()
+where
+    SP: SomePermission + 'static,
+{
     let opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
         &mut *fast_api_callback_options
     };
@@ -27,13 +28,6 @@ fn foo<'scope>(
         &*(v8::Local::<v8::External>::cast(data).value() as *const _ops::OpCtx)
     };
     let state = &mut std::cell::RefCell::borrow_mut(&ctx.state);
-    let result = foo::call(state, a, b);
-    match result {
-        Ok(result) => result,
-        Err(err) => {
-            state.last_fast_op_error.replace(err);
-            opts.fallback = true;
-            Default::default()
-        }
-    }
+    let result = op_foo::call(state);
+    result
 }
