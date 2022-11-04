@@ -44,7 +44,7 @@ struct Node {
 impl Node {
   pub fn add_parent(&mut self, specifier: String, parent: NodeParent) {
     eprintln!(
-      "ADDING parent {}: {} {} {}",
+      "ADDING parent to {}: {} {} {}",
       self.id.as_serializable_name(),
       specifier,
       match &parent {
@@ -56,16 +56,16 @@ impl Node {
     self.parents.entry(specifier).or_default().insert(parent);
   }
 
-  pub fn remove_parent(&mut self, specifier: &String, parent: &NodeParent) {
+  pub fn remove_parent(&mut self, specifier: &str, parent: &NodeParent) {
     eprintln!(
-      "REMOVING parent {}: {} {} {}",
+      "REMOVING parent from {}: {} {} {}",
       self.id.as_serializable_name(),
       specifier,
       match parent {
         NodeParent::Node(n) => n.as_serializable_name(),
         NodeParent::Req(req) => req.to_string(),
       },
-      self.parents.entry(specifier.clone()).or_default().len(),
+      self.parents.entry(specifier.to_string()).or_default().len(),
     );
     if let Some(parents) = self.parents.get_mut(specifier) {
       parents.remove(parent);
@@ -167,6 +167,7 @@ impl Graph {
       for (specifier, child_id) in &node.children {
         let mut child = self.borrow_node(child_id);
         child.remove_parent(specifier, &parent);
+        eprintln!("CHILD PARENTS: {:?}", child.parents);
         if child.parents.is_empty() {
           drop(child); // stop borrowing from self
           self.forget_orphan(&child_id);
@@ -209,6 +210,31 @@ impl Graph {
       .insert(specifier.to_string(), child.id.clone());
     child
       .add_parent(specifier.to_string(), NodeParent::Node(parent.id.clone()));
+  }
+
+  fn remove_child_parent(
+    &mut self,
+    specifier: &str,
+    child_id: &NpmPackageId,
+    parent: &NodeParent,
+  ) {
+    match parent {
+      NodeParent::Node(parent_id) => {
+        eprintln!("PARENT: {}", parent_id.as_serializable_name());
+        eprintln!("SPECIFIER: {}", specifier);
+        let mut node = self.borrow_node(parent_id);
+        if let Some(removed_child_id) = node.children.remove(specifier) {
+          assert_eq!(removed_child_id, *child_id);
+        }
+      }
+      NodeParent::Req(req) => {
+        assert_eq!(req.to_string(), specifier);
+        if let Some(removed_child_id) = self.package_reqs.remove(req) {
+          assert_eq!(removed_child_id, *child_id);
+        }
+      }
+    }
+    self.borrow_node(child_id).remove_parent(specifier, parent);
   }
 
   pub async fn into_snapshot(
@@ -500,9 +526,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           match &ancestor {
             NodeParent::Node(node_id) => {
               let parents = self.graph.borrow_node(node_id).parents.clone();
-              return Ok(Some(self.set_new_peer_dep(
-                parents, &specifier, node_id, &child_id, path,
-              )));
+              return Ok(Some(
+                self.set_new_peer_dep(parents, node_id, &child_id, path),
+              ));
             }
             NodeParent::Req(req) => {
               let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
@@ -511,7 +537,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                   req.to_string(),
                   HashSet::from([NodeParent::Req(req.clone())]),
                 )]),
-                &specifier,
                 &old_id,
                 &child_id,
                 path,
@@ -535,86 +560,93 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn set_new_peer_dep(
     &mut self,
     previous_parents: HashMap<String, HashSet<NodeParent>>,
-    specifier: &str,
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
     mut path: Vec<String>,
   ) -> NpmPackageId {
+    eprintln!("PREVIOUS PARENTS: {:?}", previous_parents);
     let old_id = node_id;
-    if old_id.peer_dependencies.contains(peer_dep_id) {
-      // the parent has already resolved to using this peer dependency
-      // via some other path, so we don't need to update its ids,
-      // but instead only make a link to it
-      let node = self.graph.get_or_create_for_id(peer_dep_id).1;
-      self.graph.set_child_parent_node(&specifier, &node, &old_id);
-      return old_id.clone();
-    }
+    let (new_id, old_node_children) =
+      if old_id.peer_dependencies.contains(peer_dep_id) {
+        // the parent has already resolved to using this peer dependency
+        // via some other path, so we don't need to update its ids,
+        // but instead only make a link to it
+        (
+          old_id.clone(),
+          self.graph.borrow_node(old_id).children.clone(),
+        )
+      } else {
+        let mut new_id = old_id.clone();
+        new_id.peer_dependencies.push(peer_dep_id.clone());
+        eprintln!("NEW ID: {}", new_id.as_serializable_name());
+        eprintln!("PATH: {:?}", path);
+        // remove the previous parents from the old node
+        let old_node_children = {
+          for (specifier, parents) in &previous_parents {
+            for parent in parents {
+              self.graph.remove_child_parent(&specifier, old_id, parent);
+            }
+          }
+          // This should never have elements because the bottom of the
+          // tree should be the only place that has any
+          let old_node = self.graph.borrow_node(old_id);
+          assert!(old_node.unresolved_deps.is_empty());
+          old_node.children.clone()
+        };
 
-    let mut new_id = old_id.clone();
-    new_id.peer_dependencies.push(peer_dep_id.clone());
-    eprintln!("NEW ID: {}", new_id.as_serializable_name());
-    eprintln!("PATH: {:?}", path);
-    // remove the previous parents from the old node
-    let old_node_children = {
-      let mut old_node = self.graph.borrow_node(old_id);
-      for (specifier, parents) in &previous_parents {
-        for parent in parents {
-          old_node.remove_parent(specifier, parent);
+        let (_, new_node) = self.graph.get_or_create_for_id(&new_id);
+
+        // update the previous parent to point to the new node
+        // and this node to point at those parents
+        for (specifier, parents) in previous_parents {
+          for parent in parents {
+            self.graph.set_child_parent(&specifier, &new_node, &parent);
+          }
         }
-      }
-      // This should never have elements because we should always
-      // be at the bottom of the tree when evaluating dependencies
-      assert!(old_node.unresolved_deps.is_empty());
-      old_node.children.clone()
-    };
 
-    let (created, new_node) = self.graph.get_or_create_for_id(&new_id);
-
-    // update the previous parent to point to the new node
-    // and this node to point at those parents
-    for (specifier, parents) in previous_parents {
-      for parent in parents {
-        self.graph.set_child_parent(&specifier, &new_node, &parent);
-      }
-    }
-
-    // now add the previous children to this node
-    let new_id_as_parent = NodeParent::Node(new_id.clone());
-    for (specifier, child_id) in &old_node_children {
-      let child = self.graph.packages.get(child_id).unwrap().clone();
-      self
-        .graph
-        .set_child_parent(&specifier, &child, &new_id_as_parent);
-    }
-
-    if created {
-      // continue going down the path
-      if let Some(next_specifier) = path.pop() {
-        if path.is_empty() {
-          // this means we're at the peer dependency now
-          assert!(!old_node_children.contains_key(&next_specifier));
-          let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
+        // now add the previous children to this node
+        let new_id_as_parent = NodeParent::Node(new_id.clone());
+        for (specifier, child_id) in &old_node_children {
+          let child = self.graph.packages.get(child_id).unwrap().clone();
           self
             .graph
-            .set_child_parent_node(&next_specifier, &node, &new_id);
-        } else {
-          let next_node_id = old_node_children.get(&next_specifier).unwrap();
-          self.set_new_peer_dep(
-            HashMap::from([(
-              specifier.to_string(),
-              HashSet::from([NodeParent::Node(new_id.clone())]),
-            )]),
-            &next_specifier,
-            &next_node_id,
-            peer_dep_id,
-            path,
-          );
+            .set_child_parent(&specifier, &child, &new_id_as_parent);
         }
+        (new_id, old_node_children)
+      };
+
+    // continue going down the path
+    if let Some(next_specifier) = path.pop() {
+      if path.is_empty() {
+        // this means we're at the peer dependency now
+        assert!(!old_node_children.contains_key(&next_specifier));
+        let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
+        self
+          .graph
+          .set_child_parent_node(&next_specifier, &node, &new_id);
+      } else {
+        let next_node_id = old_node_children.get(&next_specifier).unwrap();
+        // if new_id != *old_id {
+        //   self.graph.remove_child_parent_node(
+        //     &next_specifier,
+        //     next_node_id,
+        //     old_id,
+        //   );
+        // }
+        self.set_new_peer_dep(
+          HashMap::from([(
+            next_specifier.to_string(),
+            HashSet::from([NodeParent::Node(new_id.clone())]),
+          )]),
+          &next_node_id,
+          peer_dep_id,
+          path,
+        );
       }
     }
 
     // forget the old node at this point if it has no parents
-    {
+    if new_id != *old_id {
       let old_node = self.graph.borrow_node(old_id);
       if old_node.parents.is_empty() {
         drop(old_node); // stop borrowing
