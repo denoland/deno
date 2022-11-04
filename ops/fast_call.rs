@@ -86,6 +86,14 @@ pub(crate) fn generate(
     transforms.push_tokens(&prelude);
 
     if optimizer.returns_result {
+      // Magic fallback 🪄
+      //
+      // If Result<T, E> is Ok(T), return T as fast value.
+      //
+      // Err(E) gets put into `last_fast_op_error` slot and
+      //
+      // V8 calls the slow path so we can take the slot
+      // value and throw.
       let result_wrap = q!(Vars { op_state }, {
         match result {
           Ok(result) => result,
@@ -127,7 +135,10 @@ pub(crate) fn generate(
   );
 
   let output_variant = q_fast_ty_variant(&output_ty);
-  
+
+  let generics = &f.sig.generics;
+  let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
   //     f as *const ::std::ffi::c_void
@@ -170,7 +181,7 @@ pub(crate) fn generate(
           v8::fast_api::CType::#output_variant
         }
       },
-    ]
+    ],
   };
 
   let mut tts = q!({});
