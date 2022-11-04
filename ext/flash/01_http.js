@@ -28,7 +28,6 @@
   const {
     Function,
     ObjectPrototypeIsPrototypeOf,
-    PromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
