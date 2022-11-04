@@ -3,12 +3,13 @@ use crate::Op;
 use phf::phf_map;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use syn::{
   punctuated::Punctuated, token::Colon2, AngleBracketedGenericArguments, FnArg,
-  GenericArgument, ItemFn, Path, PathArguments, PathSegment, ReturnType,
-  Signature, Type, TypePath, TypeReference, TypeSlice,
+  GenericArgument, Path, PathArguments, PathSegment, ReturnType, Signature,
+  Type, TypePath, TypeReference, TypeSlice,
 };
 
 #[derive(Debug)]
@@ -18,7 +19,6 @@ pub(crate) enum BailoutReason {
   FastUnsupportedParamType,
 
   FastAsync,
-  Other(&'static str),
 }
 
 impl ToTokens for BailoutReason {
@@ -30,9 +30,6 @@ impl ToTokens for BailoutReason {
       BailoutReason::MustBeSingleSegment
       | BailoutReason::FastUnsupportedParamType => {
         unreachable!("error not recovered");
-      }
-      BailoutReason::Other(reason) => {
-        tokens.extend(quote! { #reason });
       }
     }
   }
@@ -79,8 +76,12 @@ use pmutil::{q, Quote};
 use syn::{parse_quote, PatType};
 
 impl Transform {
-  pub(crate) fn apply_for_fast_call(&self, core: &TokenStream, input: &mut FnArg) -> Quote {
-    let (mut ty, ident) = match input {
+  pub(crate) fn apply_for_fast_call(
+    &self,
+    core: &TokenStream,
+    input: &mut FnArg,
+  ) -> Quote {
+    let (ty, ident) = match input {
       FnArg::Typed(PatType {
         ref mut ty,
         ref pat,
@@ -106,7 +107,8 @@ impl Transform {
       }
       // &[u32]
       TransformKind::SliceU32(_) => {
-        *ty = parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
@@ -120,7 +122,8 @@ impl Transform {
       }
       // &[u8]
       TransformKind::SliceU8(_) => {
-        *ty = parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
+        *ty =
+          parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
@@ -179,7 +182,7 @@ pub(crate) struct Optimizer {
   pub(crate) fast_result: Option<FastValue>,
   pub(crate) fast_parameters: Vec<FastValue>,
 
-  pub(crate) transforms: Vec<Transform>,
+  pub(crate) transforms: HashMap<usize, Transform>,
   pub(crate) fast_compatible: bool,
 }
 
@@ -297,8 +300,6 @@ impl Optimizer {
               self.fast_result = Some(val.clone());
             }
           }
-          // T
-          _ => {}
         };
       }
       _ => {}
@@ -323,7 +324,10 @@ impl Optimizer {
             [PathSegment { ident: first, .. }, PathSegment { ident: last, .. }]
               if first == "serde_v8" && last == "Value" =>
             {
-              self.transforms.push(Transform::serde_v8_value(index));
+              assert!(self
+                .transforms
+                .insert(index, Transform::serde_v8_value(index))
+                .is_none());
             }
             _ => return Err(BailoutReason::FastUnsupportedParamType),
           }
@@ -458,14 +462,18 @@ impl Optimizer {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
                   self.has_fast_callback_option = true;
-                  self.transforms.push(Transform::slice_u8(index, is_mut_ref));
+                  assert!(self
+                    .transforms
+                    .insert(index, Transform::slice_u8(index, is_mut_ref))
+                    .is_none());
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
                   self.has_fast_callback_option = true;
-                  self
+                  assert!(self
                     .transforms
-                    .push(Transform::slice_u32(index, is_mut_ref));
+                    .insert(index, Transform::slice_u32(index, is_mut_ref))
+                    .is_none());
                 }
                 _ => {}
               }
@@ -511,7 +519,7 @@ mod tests {
   use crate::attrs::Attributes;
   use crate::Op;
   use std::path::PathBuf;
-  use syn::parse_quote;
+  use syn::{parse_quote, ItemFn};
 
   #[test]
   fn test_single_segment() {

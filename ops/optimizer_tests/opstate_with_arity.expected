@@ -5,4 +5,4 @@ has_rc_opstate: false
 has_fast_callback_option: false
 fast_result: Some(I64)
 fast_parameters: [V8Value, I64, I64, I64, I64]
-transforms: []
+transforms: {}

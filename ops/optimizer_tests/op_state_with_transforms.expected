@@ -5,4 +5,4 @@ has_rc_opstate: false
 has_fast_callback_option: true
 fast_result: Some(Void)
 fast_parameters: [V8Value]
-transforms: [Transform { kind: SliceU8(true), index: 1 }]
+transforms: {1: Transform { kind: SliceU8(true), index: 1 }}

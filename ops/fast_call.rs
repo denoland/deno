@@ -3,11 +3,10 @@ use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;
 use pmutil::{q, Quote, ToTokensExt};
 use proc_macro2::{Span, TokenStream};
-use quote::{quote, ToTokens};
+use quote::quote;
 use syn::{
-  parse_quote, punctuated::Punctuated, token::Comma, Fields, GenericParam,
-  Generics, Ident, ItemFn, ItemImpl, ItemStruct, Path, PathArguments,
-  PathSegment, Token, Type, TypePath, Visibility,
+  parse_quote, punctuated::Punctuated, token::Comma, GenericParam, Generics,
+  Ident, ItemFn, ItemImpl, Path, PathArguments, PathSegment, Type, TypePath,
 };
 
 pub(crate) struct FastImplItems {
@@ -53,7 +52,7 @@ pub(crate) fn generate(
 
   // Deal with generics.
   let generics = &item_fn.sig.generics;
-  let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+  let (impl_generics, _, where_clause) = generics.split_for_impl();
 
   // struct op_foo_fast <T, U> { ... }
   let struct_generics = exclude_lifetime_params(&generics.params);
@@ -98,9 +97,11 @@ pub(crate) fn generate(
   let mut pre_transforms = q!({});
 
   // Apply parameter transforms
-  for (input, transform) in inputs.iter_mut().zip(optimizer.transforms.iter()) {
-    let quo: Quote = transform.apply_for_fast_call(&core, input);
-    transforms.push_tokens(&quo);
+  for (index, input) in inputs.iter_mut().enumerate() {
+    if let Some(transform) = optimizer.transforms.get(&index) {
+      let quo: Quote = transform.apply_for_fast_call(&core, input);
+      transforms.push_tokens(&quo);
+    }
   }
 
   // Collect idents to be passed into function call, we can now freely
@@ -162,8 +163,8 @@ pub(crate) fn generate(
         let __opts: &mut v8::fast_api::FastApiCallbackOptions =
           unsafe { &mut *fast_api_callback_options };
         let __ctx = unsafe {
-          &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
-            as *const _ops::OpCtx)
+          &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data })
+            .value() as *const _ops::OpCtx)
         };
         let op_state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
       }
@@ -231,7 +232,7 @@ pub(crate) fn generate(
   let output_variant = q_fast_ty_variant(&output_ty);
   let mut generics: Generics = parse_quote! { #impl_generics };
   generics.where_clause = where_clause.cloned();
-  
+
   // impl <A> fast_api::FastFunction for T <A> where A: B {
   //   fn function(&self) -> *const ::std::ffi::c_void  {
   //     f as *const ::std::ffi::c_void

@@ -18,7 +18,7 @@ where
 }
 fn op_now_fast_fn<'scope, TP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    buf: &mut [u8],
+    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
 ) -> ()
 where
@@ -34,7 +34,7 @@ where
             as *const _ops::OpCtx)
     };
     let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let state = match unsafe { &*state }.get_storage_if_aligned() {
+    let buf = match unsafe { &*buf }.get_storage_if_aligned() {
         Some(v) => v,
         None => {
             unsafe { &mut *fast_api_callback_options }.fallback = true;
