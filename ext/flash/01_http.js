@@ -483,9 +483,9 @@
 
     const serverId = core.ops.op_flash_serve(listenOpts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
-    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
+    const listenPromise = core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
       onListen({ hostname: listenOpts.hostname, port });
-    }).catch(() => {});
+    });
     const finishedPromise = serverPromise.catch(() => {});
 
     const server = {
@@ -635,6 +635,7 @@
       }, 1000);
     }
 
+    await listenPromise;
     await server.serve().catch(console.error);
   }
 
