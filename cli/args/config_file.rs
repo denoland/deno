@@ -342,6 +342,7 @@ impl FilesConfig {
 struct SerializedLintConfig {
   pub rules: LintRulesConfig,
   pub files: SerializedFilesConfig,
+  pub report: Option<String>,
 }
 
 impl SerializedLintConfig {
@@ -352,6 +353,7 @@ impl SerializedLintConfig {
     Ok(LintConfig {
       rules: self.rules,
       files: self.files.into_resolved(config_file_specifier)?,
+      report: self.report,
     })
   }
 }
@@ -360,6 +362,7 @@ impl SerializedLintConfig {
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
+  pub report: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

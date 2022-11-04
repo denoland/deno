@@ -12,6 +12,7 @@ declare global {
     var normalizePath: (path: string) => string;
     interface SourceFile {
       version?: string;
+      fileName: string;
     }
 
     interface CompilerHost {
@@ -24,6 +25,12 @@ declare global {
     }
 
     var performance: Performance;
+
+    namespace deno {
+      function setIsNodeSourceFileCallback(
+        callback: (sourceFile: SourceFile) => boolean,
+      );
+    }
   }
 
   namespace ts {

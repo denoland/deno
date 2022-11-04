@@ -249,6 +249,15 @@
               "uniqueItems": true
             }
           }
+        },
+        "report": {
+          "default": "pretty",
+          "enum": [
+            "pretty",
+            "json",
+            "compact"
+          ],
+          "description": "The default report format to use when linting"
         }
       }
     },

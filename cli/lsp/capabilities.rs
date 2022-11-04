@@ -142,5 +142,6 @@ pub fn server_capabilities(
       "testingApi":true,
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
+    position_encoding: None,
   }
 }

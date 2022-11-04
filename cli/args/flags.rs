@@ -506,7 +506,7 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (defaults to $HOME/.deno/bin)
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
-    DENO_NO_UPDATE_CHECK Set to disable checking if newer Deno version is 
+    DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
@@ -1212,6 +1212,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(no_config_arg())
     .arg(config_arg())
     .arg(import_map_arg())
+    .arg(local_npm_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -2512,6 +2513,7 @@ fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
+  local_npm_args_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.value_of("file").map(|f| f.to_string()),

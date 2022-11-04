@@ -6,6 +6,71 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.27.0 / 2022.10.27
+
+- feat(core): enable --harmony-change-array-by-copy V8 flag (#16429)
+- feat(cli): check for updates in background (#15974)
+- feat(cli): show error cause recursion information (#16384)
+- feat(ext/ffi): Make op_ffi_ptr_of fast (#16297)
+- feat(ext/net): add reuseAddress option for UDP (#13849)
+- feat(ext/net): reusePort for TCP on Linux (#16398)
+- feat(ext/web): use ArrayBuffer.was_detached() (#16307)
+- feat(lint): add a report lint config setting (#16045)
+- feat(runtime): make kill signal optional (#16299)
+- feat(task): remove warning about being unstable (#16281)
+- feat(task): support `sleep` suffixes (#16425)
+- feat(unstable/npm): initial type checking of npm specifiers (#16332)
+- feat(unstable/task): fail task on async command failure (#16301)
+- feat(update): prompt for new version once per day (#16375)
+- feat(upgrade): check if user has write access to deno exe (#16378)
+- feat: Add new lockfile format (#16349)
+- feat: Stabilize Deno.consoleSize() API (#15933)
+- feat: Stabilize Deno.osRelease() API (#15973)
+- feat: Stabilize Deno.stdin.setRaw() (#16399)
+- feat: introduce navigator.language (#12322)
+- feat: stabilize Deno.futime() and Deno.futimeSync() (#16415)
+- feat: stabilize Deno.loadavg() (#16412)
+- feat: stabilize Deno.utime() and Deno.utimeSync() (#16421)
+- feat: support inlay hints (#16287)
+- fix(build) assume a custom compiler will support --export-dynamic-symbol-list
+  linker flag. (#16387)
+- fix(cli): Fixed bug where the progress bar did not clear (#16401)
+- fix(cli): do not log update checker when log level is quiet (#16433)
+- fix(compile): show an error when using npm specifiers (#16430)
+- fix(core) Include causes when converting anyhow errors to JS exceptions
+  (#16397)
+- fix(ext/fetch): fix `size_hint` on response body resource (#16254)
+- fix(ext/ffi): Use BufferSource for FFI buffer types (#16355)
+- fix(ext/ffi): Use PointerValue in UnsafePointerView and UnsafeFnPointer types
+  (#16354)
+- fix(ext/net): don't remove sockets on unix listen (#16394)
+- fix(ext/net): return an error from `startTls` and `serveHttp` if the original
+  connection is captured elsewhere (#16242)
+- fix(lsp): allow caching deps in non-saved files (#16353)
+- fix(lsp): regression - error when removing file (#16388)
+- fix(npm): add support for npm packages in lock files (#15938)
+- fix(typescript): allow synthetic default imports when using
+  `ModuleKind.ESNext` (#16438)
+- fix(upgrade): Added error message when using canary option with M1 (#16382)
+- fix(upgrade): put prompt date in the past when creating a file (#16380)
+- fix: listenTlsWithReuseAddr test (#16420)
+- fix: move generated napi symbols to cli/ (#16330)
+- fix: upgrade swc_ecma_parser to 0.122.19 - deno_ast 0.20 (#16406)
+- perf(core): avoid creating global handles in `op_queue_microtask` (#16359)
+- perf(core): avoid isolate slots for ModuleMap (#16409)
+- perf(core): do not drive JsInspector by default (#16410)
+- perf(core): don't access isolate slots for JsRuntimeState (#16376)
+- perf(ext/ffi): Fast UnsafePointerView read functions (#16351)
+- perf(ext/flash): optimize path response streams (#16284)
+- perf(ext/streams): fast path when consuming body of tee'd stream (#16329)
+- perf(ext/web): add op_encode_binary_string (#16352)
+- perf(ext/web): optimize transferArrayBuffer (#16294)
+- perf(ext/web/encoding): avoid copy in decode (#16364)
+- perf(ext/websocket): optimize `op_ws_next_event` (#16325)
+- perf(ext/websocket): optimize socket.send (#16320)
+- perf(serde_v8): `serde_v8::StringOrBuffer` return JS ArrayBuffer instead of
+  Uint8Array (#16360)
+
 ### 1.26.2 / 2022.10.17
 
 - feat(core): Reorder extension initialization (#16136)

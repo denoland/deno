@@ -5,6 +5,7 @@ pub mod check;
 pub mod coverage;
 pub mod doc;
 pub mod fmt;
+pub mod info;
 pub mod init;
 pub mod installer;
 pub mod lint;

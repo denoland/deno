@@ -13,4 +13,5 @@ pub use resolution::NpmPackageId;
 pub use resolution::NpmPackageReference;
 pub use resolution::NpmPackageReq;
 pub use resolution::NpmResolutionPackage;
+pub use resolution::NpmResolutionSnapshot;
 pub use resolvers::NpmPackageResolver;
