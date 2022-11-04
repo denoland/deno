@@ -1,25 +1,26 @@
-struct foo_fast {
+struct op_add_4_fast {
     _phantom: ::std::marker::PhantomData<()>,
 }
-impl<'scope> deno_core::v8::fast_api::FastFunction for foo_fast {
+impl<'scope> deno_core::v8::fast_api::FastFunction for op_add_4_fast {
     fn function(&self) -> *const ::std::ffi::c_void {
-        foo_fast_fn as *const ::std::ffi::c_void
+        op_add_4_fast_fn as *const ::std::ffi::c_void
     }
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
-        &[V8Value, Uint32, Uint32, CallbackOptions]
+        &[V8Value, Int64, Int64, Int64, Int64, CallbackOptions]
     }
     fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Uint32
+        deno_core::v8::fast_api::CType::Int64
     }
 }
-fn foo_fast_fn<'scope>(
+fn op_add_4_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    state: &mut OpState,
-    a: u32,
-    b: u32,
+    x1: i64,
+    x2: i64,
+    x3: i64,
+    x4: i64,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> u32 {
+) -> i64 {
     use deno_core::v8;
     use deno_core::_ops;
     let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
@@ -29,12 +30,12 @@ fn foo_fast_fn<'scope>(
         &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
             as *const _ops::OpCtx)
     };
-    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let result = foo::call(state, a, b);
+    let op_state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+    let result = op_add_4::call(x1, x2, x3, x4);
     match result {
         Ok(result) => result,
         Err(err) => {
-            state.last_fast_op_error.replace(err);
+            op_state.last_fast_op_error.replace(err);
             __opts.fallback = true;
             Default::default()
         }

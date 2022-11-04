@@ -97,9 +97,6 @@ impl Op {
     let where_clause = &item.sig.generics.where_clause;
 
     // First generate fast call bindings to opt-in to error handling in slow call
-    let (has_fallible_fast_call, fast_impl, fast_field) =
-      codegen_fast_impl(&core, &item, name, is_async, attrs.must_be_fast);
-
     let fast_call::FastImplItems {
       impl_and_fn,
       decl,
@@ -149,7 +146,7 @@ impl Op {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
             enabled: true,
-            fast_fn: #fast_field,
+            fast_fn: #decl,
             is_async: #is_async,
             is_unstable: #is_unstable,
             is_v8: #is_v8,
@@ -170,7 +167,7 @@ impl Op {
         }
       }
 
-      #fast_impl
+      #impl_and_fn
     }.into()
   }
 }
@@ -293,233 +290,6 @@ fn opstate_arg(arg: &FnArg) -> Option<TokenStream2> {
     }
     _ => None,
   }
-}
-
-fn codegen_fast_impl(
-  core: &TokenStream2,
-  f: &syn::ItemFn,
-  name: &syn::Ident,
-  is_async: bool,
-  must_be_fast: bool,
-) -> (bool, TokenStream2, TokenStream2) {
-  if is_async {
-    if must_be_fast {
-      panic!("async op cannot be a fast api. enforced by #[op(fast)]")
-    }
-    return (false, quote! {}, quote! { None });
-  }
-  let fast_info = can_be_fast_api(core, f);
-  if must_be_fast && fast_info.is_none() {
-    panic!("op cannot be a fast api. enforced by #[op(fast)]")
-  }
-  if !is_async {
-    if let Some(FastApiSyn {
-      args,
-      ret,
-      use_op_state,
-      use_fast_cb_opts,
-      v8_values,
-      returns_result,
-      slices,
-    }) = fast_info
-    {
-      let offset = if use_op_state { 1 } else { 0 };
-      let mut inputs = f
-        .sig
-        .inputs
-        .iter()
-        .skip(offset)
-        .enumerate()
-        .map(|(idx, arg)| {
-          let ident = match arg {
-            FnArg::Receiver(_) => unreachable!(),
-            FnArg::Typed(t) => match &*t.pat {
-              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
-              _ => unreachable!(),
-            },
-          };
-          if let Some(ty) = slices.get(&(idx + offset)) {
-            return quote! { #ident: *const #core::v8::fast_api::FastApiTypedArray< #ty > };
-          }
-          if use_fast_cb_opts && idx + offset == f.sig.inputs.len() - 1 {
-            return quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions };
-          }
-          if v8_values.contains(&idx) {
-            return quote! { #ident: #core::v8::Local < #core::v8::Value > };
-          }
-          quote!(#arg)
-        })
-        .collect::<Vec<_>>();
-      if (!slices.is_empty() || use_op_state || returns_result)
-        && !use_fast_cb_opts
-      {
-        inputs.push(quote! { fast_api_callback_options: *mut #core::v8::fast_api::FastApiCallbackOptions });
-      }
-      let input_idents = f
-        .sig
-        .inputs
-        .iter()
-        .enumerate()
-        .map(|(idx, a)| {
-          let ident = match a {
-            FnArg::Receiver(_) => unreachable!(),
-            FnArg::Typed(t) => match &*t.pat {
-              syn::Pat::Ident(i) => format_ident!("{}", i.ident),
-              _ => unreachable!(),
-            },
-          };
-          if slices.get(&idx).is_some() {
-            return quote! {
-              match unsafe { &* #ident }.get_storage_if_aligned() {
-                Some(s) => s,
-                None => {
-                  unsafe { &mut * fast_api_callback_options }.fallback = true;
-                  return Default::default();
-                },
-              }
-            };
-          }
-          if use_fast_cb_opts && idx == f.sig.inputs.len() - 1 {
-            return quote! { Some(unsafe { &mut * fast_api_callback_options }) };
-          }
-          if v8_values.contains(&idx) {
-            return quote! {
-              #core::serde_v8::Value {
-                v8_value: #ident,
-              }
-            };
-          }
-          quote! { #ident }
-        })
-        .collect::<Vec<_>>();
-      let generics = &f.sig.generics;
-      let (impl_generics, ty_generics, where_clause) =
-        generics.split_for_impl();
-      let type_params = exclude_lifetime_params(&f.sig.generics.params);
-      let (trampoline, raw_block) = if is_async {
-        // TODO(@littledivy): Fast async calls.
-        (
-          quote! {
-            fn func(recv: #core::v8::Local<#core::v8::Object>, __promise_id: u32, #(#inputs),*) {
-              // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-              let opts: &#core::v8::fast_api::FastApiCallbackOptions = unsafe { &*fast_api_callback_options };
-              // SAFETY: data union is always created as the `v8::Local<v8::Value>` version
-              let data = unsafe { opts.data.data };
-              // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
-              let ctx = unsafe {
-                &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
-                as *const #core::_ops::OpCtx)
-              };
-              let op_id = ctx.op_id;
-              #core::_ops::queue_async_op(scope, async move {
-                let result = Self::call(#args);
-                (__promise_id, __op_id, #core::_ops::OpResult::Ok(result))
-              });
-            }
-            func as *const _
-          },
-          quote! {},
-        )
-      } else {
-        let output = if returns_result {
-          get_fast_result_return_type(&f.sig.output)
-        } else {
-          let output = &f.sig.output;
-          quote! { #output }
-        };
-        let func_name = format_ident!("func_{}", name);
-        let op_state_name = if use_op_state {
-          input_idents.first().unwrap().clone()
-        } else {
-          quote! { op_state }
-        };
-        let recv_decl = if use_op_state || returns_result {
-          quote! {
-            // SAFETY: V8 calling convention guarantees that the callback options pointer is non-null.
-            let opts: &mut #core::v8::fast_api::FastApiCallbackOptions = unsafe { &mut *fast_api_callback_options };
-            // SAFETY: data union is always created as the `v8::Local<v8::Value>` version.
-            let data = unsafe { opts.data.data };
-            // SAFETY: #core guarantees data is a v8 External pointing to an OpCtx for the isolates lifetime
-            let ctx = unsafe {
-              &*(#core::v8::Local::<#core::v8::External>::cast(data).value()
-              as *const #core::_ops::OpCtx)
-            };
-            let #op_state_name = &mut std::cell::RefCell::borrow_mut(&ctx.state);
-          }
-        } else {
-          quote! {}
-        };
-
-        let result_handling = if returns_result {
-          quote! {
-            match result {
-              Ok(result) => {
-                result
-              },
-              Err(err) => {
-                #op_state_name.last_fast_op_error.replace(err);
-                opts.fallback = true;
-                Default::default()
-              },
-            }
-          }
-        } else {
-          quote! { result }
-        };
-
-        (
-          quote! {
-            fn #func_name #generics (_recv: #core::v8::Local<#core::v8::Object>, #(#inputs),*) #output #where_clause {
-              #recv_decl
-              let result = #name::call::<#type_params>(#(#input_idents),*);
-              #result_handling
-            }
-          },
-          quote! {
-            #func_name::<#type_params> as *const _
-          },
-        )
-      };
-
-      let fast_struct = format_ident!("fast_{}", name);
-      let (type_params, ty_generics, struct_generics) =
-        if type_params.is_empty() {
-          (quote! { () }, quote! {}, quote! {})
-        } else {
-          (
-            quote! { #type_params },
-            quote! { #ty_generics },
-            quote! { ::<#type_params> },
-          )
-        };
-      return (
-        returns_result,
-        quote! {
-          #[allow(non_camel_case_types)]
-          #[doc(hidden)]
-          struct #fast_struct #ty_generics {
-            _phantom: ::std::marker::PhantomData<#type_params>,
-          }
-          #trampoline
-          impl #impl_generics #core::v8::fast_api::FastFunction for #fast_struct #ty_generics #where_clause {
-            fn function(&self) -> *const ::std::ffi::c_void  {
-              #raw_block
-            }
-            fn args(&self) -> &'static [#core::v8::fast_api::Type] {
-              &[ #args ]
-            }
-            fn return_type(&self) -> #core::v8::fast_api::CType {
-              #ret
-            }
-          }
-        },
-        quote! { Some(Box::new(#fast_struct #struct_generics { _phantom: ::std::marker::PhantomData })) },
-      );
-    }
-  }
-
-  // Default impl to satisfy generic bounds for non-fast ops
-  (false, quote! {}, quote! { None })
 }
 
 /// Generate the body of a v8 func for a sync op

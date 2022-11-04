@@ -79,7 +79,7 @@ use pmutil::{q, Quote};
 use syn::{parse_quote, PatType};
 
 impl Transform {
-  pub(crate) fn apply_for_fast_call(&self, input: &mut FnArg) -> Quote {
+  pub(crate) fn apply_for_fast_call(&self, core: &TokenStream, input: &mut FnArg) -> Quote {
     let (mut ty, ident) = match input {
       FnArg::Typed(PatType {
         ref mut ty,
@@ -98,7 +98,7 @@ impl Transform {
     match &self.kind {
       // serde_v8::Value
       TransformKind::V8Value => {
-        *ty = parse_quote! { v8::Local<v8::Value> };
+        *ty = parse_quote! { #core::v8::Local<v8::Value> };
 
         q!(Vars { var: &ident }, {
           let var = serde_v8::Value { v8_value: var };
@@ -106,7 +106,7 @@ impl Transform {
       }
       // &[u32]
       TransformKind::SliceU32(_) => {
-        *ty = parse_quote! { *const FastApiTypedArray<u32> };
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u32> };
 
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
@@ -120,7 +120,7 @@ impl Transform {
       }
       // &[u8]
       TransformKind::SliceU8(_) => {
-        *ty = parse_quote! { *const FastApiTypedArray<u8> };
+        *ty = parse_quote! { *const #core::v8::fast_api::FastApiTypedArray<u8> };
 
         q!(Vars { var: &ident }, {
           let var = match unsafe { &*var }.get_storage_if_aligned() {
@@ -180,6 +180,7 @@ pub(crate) struct Optimizer {
   pub(crate) fast_parameters: Vec<FastValue>,
 
   pub(crate) transforms: Vec<Transform>,
+  pub(crate) fast_compatible: bool,
 }
 
 impl Debug for Optimizer {
@@ -205,15 +206,26 @@ impl Optimizer {
     Default::default()
   }
 
-  pub(crate) const fn has_opstate(&self) -> bool {
+  pub(crate) const fn has_opstate_in_parameters(&self) -> bool {
+    self.has_ref_opstate || self.has_rc_opstate
+  }
+
+  pub(crate) const fn needs_opstate(&self) -> bool {
     self.has_ref_opstate || self.has_rc_opstate || self.returns_result
   }
 
   pub(crate) fn analyze(&mut self, op: &mut Op) -> Result<(), BailoutReason> {
     if op.is_async && op.attrs.must_be_fast {
+      self.fast_compatible = false;
       return Err(BailoutReason::FastAsync);
     }
 
+    if op.attrs.is_v8 || op.is_async {
+      self.fast_compatible = false;
+      return Ok(());
+    }
+
+    self.fast_compatible = true;
     let sig = &op.item.sig;
 
     // Analyze return type
@@ -445,10 +457,12 @@ impl Optimizer {
               match segment {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
+                  self.has_fast_callback_option = true;
                   self.transforms.push(Transform::slice_u8(index, is_mut_ref));
                 }
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
+                  self.has_fast_callback_option = true;
                   self
                     .transforms
                     .push(Transform::slice_u32(index, is_mut_ref));
