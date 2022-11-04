@@ -29,10 +29,14 @@ use super::NpmVersionMatcher;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum NodeParent {
+  /// These are top of the graph npm package requirements
+  /// as specified in Deno code.
   Req(NpmPackageReq),
+  /// A reference to another node, which is a resolved package.
   Node(NpmPackageId),
 }
 
+/// A resolved package in the resolution graph.
 #[derive(Debug)]
 struct Node {
   pub id: NpmPackageId,
@@ -525,10 +529,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             }
             NodeParent::Req(req) => {
               let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
-              // todo: should refactor all this code to have a node for everything, but an id
-              // that could be `Root` or `NpmPackageId` maybe?
               let mut path = path;
-              path.pop(); // this path will be at the root, but there's no "node" for that
+              path.pop(); // go back down one level
               return Ok(Some(self.set_new_peer_dep(
                 HashMap::from([(
                   req.to_string(),
@@ -1086,6 +1088,141 @@ mod test {
         },
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name("package-peer@4.1.0").unwrap(),
+          dist: Default::default(),
+          dependencies: Default::default(),
+        },
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_with_optional_peer_dep_not_resolved() {
+    // in this case, the peer dependency is not found in the tree
+    // so it's auto-resolved based on the registry
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.ensure_package_version("package-c", "3.0.0");
+    api.ensure_package_version("package-peer", "4.0.0");
+    api.ensure_package_version("package-peer", "4.1.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "^2"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-c", "^3"));
+    api.add_optional_peer_dependency(
+      ("package-b", "2.0.0"),
+      ("package-peer", "4"),
+    );
+    api.add_optional_peer_dependency(
+      ("package-c", "3.0.0"),
+      ("package-peer", "*"),
+    );
+
+    let packages =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-a@1.0.0").unwrap(),
+          dependencies: HashMap::from([
+            (
+              "package-b".to_string(),
+              NpmPackageId::deserialize_name("package-b@2.0.0").unwrap(),
+            ),
+            (
+              "package-c".to_string(),
+              NpmPackageId::deserialize_name("package-c@3.0.0").unwrap(),
+            ),
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-b@2.0.0").unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::new(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-c@3.0.0").unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::new(),
+        },
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_with_optional_peer_found() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.ensure_package_version("package-c", "3.0.0");
+    api.ensure_package_version("package-peer", "4.0.0");
+    api.ensure_package_version("package-peer", "4.1.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "^2"));
+    api.add_dependency(("package-a", "1.0.0"), ("package-c", "^3"));
+    api.add_optional_peer_dependency(
+      ("package-b", "2.0.0"),
+      ("package-peer", "4"),
+    );
+    api.add_optional_peer_dependency(
+      ("package-c", "3.0.0"),
+      ("package-peer", "*"),
+    );
+
+    let packages = run_resolver_and_get_output(
+      api,
+      vec!["npm:package-a@1", "npm:package-peer@4.0.0"],
+    )
+    .await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-a@1.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dependencies: HashMap::from([
+            (
+              "package-b".to_string(),
+              NpmPackageId::deserialize_name(
+                "package-b@2.0.0_package-peer@4.0.0"
+              )
+              .unwrap(),
+            ),
+            (
+              "package-c".to_string(),
+              NpmPackageId::deserialize_name(
+                "package-c@3.0.0_package-peer@4.0.0"
+              )
+              .unwrap(),
+            ),
+          ]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-b@2.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+          )])
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name(
+            "package-c@3.0.0_package-peer@4.0.0"
+          )
+          .unwrap(),
+          dist: Default::default(),
+          dependencies: HashMap::from([(
+            "package-peer".to_string(),
+            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+          )])
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
           dist: Default::default(),
           dependencies: Default::default(),
         },
