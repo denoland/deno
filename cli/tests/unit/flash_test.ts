@@ -2227,6 +2227,32 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function serveWithPromisePrototypeThenOverride() {
+    const originalThen = Promise.prototype.then;
+    try {
+      Promise.prototype.then = () => {
+        throw new Error();
+      };
+      const ac = new AbortController();
+      const listeningPromise = deferred();
+      const server = Deno.serve({
+        handler: (_req) => new Response("ok"),
+        hostname: "localhost",
+        port: 4501,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        onError: createOnErrorCb(ac),
+      });
+      ac.abort();
+      await server;
+    } finally {
+      Promise.prototype.then = originalThen;
+    }
+  },
+);
+
 // https://github.com/denoland/deno/issues/15549
 Deno.test(
   { permissions: { net: true } },

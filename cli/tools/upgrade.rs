@@ -180,6 +180,10 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           "{} ",
           colors::green("A new canary release of Deno is available.")
         );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+        );
       } else {
         eprint!(
           "{} {} → {} ",
@@ -187,11 +191,11 @@ pub fn check_for_upgrades(cache_dir: PathBuf) {
           colors::cyan(version::deno()),
           colors::cyan(upgrade_version)
         );
+        eprintln!(
+          "{}",
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
       }
-      eprintln!(
-        "{}",
-        colors::italic_gray("Run `deno upgrade` to install it.")
-      );
 
       update_checker.store_prompted();
     }

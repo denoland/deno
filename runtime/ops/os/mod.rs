@@ -9,9 +9,10 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::{op, ExtensionBuilder};
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
+
+mod sys_info;
 
 fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
   builder.ops(vec![
@@ -164,10 +165,7 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
     .borrow_mut::<Permissions>()
     .sys
     .check("loadavg", Some("Deno.loadavg()"))?;
-  match sys_info::loadavg() {
-    Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
-    Err(_) => Ok((0.0, 0.0, 0.0)),
-  }
+  Ok(sys_info::loadavg())
 }
 
 #[op]
@@ -176,8 +174,7 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
     .borrow_mut::<Permissions>()
     .sys
     .check("hostname", Some("Deno.hostname()"))?;
-  let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
-  Ok(hostname)
+  Ok(sys_info::hostname())
 }
 
 #[op]
@@ -186,8 +183,7 @@ fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
     .borrow_mut::<Permissions>()
     .sys
     .check("osRelease", Some("Deno.osRelease()"))?;
-  let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
-  Ok(release)
+  Ok(sys_info::os_release())
 }
 
 #[op]
@@ -246,40 +242,16 @@ impl From<netif::Interface> for NetworkInterface {
   }
 }
 
-// Copied from sys-info/lib.rs (then tweaked)
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MemInfo {
-  pub total: u64,
-  pub free: u64,
-  pub available: u64,
-  pub buffers: u64,
-  pub cached: u64,
-  pub swap_total: u64,
-  pub swap_free: u64,
-}
-
 #[op]
 fn op_system_memory_info(
   state: &mut OpState,
-) -> Result<Option<MemInfo>, AnyError> {
+) -> Result<Option<sys_info::MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
   state
     .borrow_mut::<Permissions>()
     .sys
     .check("systemMemoryInfo", Some("Deno.systemMemoryInfo()"))?;
-  match sys_info::mem_info() {
-    Ok(info) => Ok(Some(MemInfo {
-      total: info.total,
-      free: info.free,
-      available: info.avail,
-      buffers: info.buffers,
-      cached: info.cached,
-      swap_total: info.swap_total,
-      swap_free: info.swap_free,
-    })),
-    Err(_) => Ok(None),
-  }
+  Ok(sys_info::mem_info())
 }
 
 #[cfg(not(windows))]
