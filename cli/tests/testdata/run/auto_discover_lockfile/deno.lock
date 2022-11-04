@@ -1,0 +1,7 @@
+{
+  "version": "2",
+  "remote": {
+    "http://localhost:4545/subdir/mod2.ts": "cae1d3e9f3c38cd415ff52dff854be8f3d17d35f8d7b3d285e813fb0f6393a2f",
+    "http://localhost:4545/subdir/print_hello.ts": "foobar"
+  }
+}
