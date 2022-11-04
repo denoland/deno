@@ -80,10 +80,7 @@ impl Drop for FlashContext {
   fn drop(&mut self) {
     // Signal each server instance to shutdown.
     for (_, server) in self.servers.drain() {
-      let waker = server.waker.lock().unwrap().take();
-      if let Some(waker) = waker {
-        let _ = waker.wake();
-      }
+      let _ = server.waker.wake();
     }
   }
 }
@@ -96,7 +93,7 @@ pub struct ServerContext {
   next_token: u32,
   listening_rx: Option<mpsc::Receiver<Result<u16, std::io::Error>>>,
   cancel_handle: Rc<CancelHandle>,
-  waker: Arc<Mutex<Option<Waker>>>,
+  waker: Arc<Waker>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -464,10 +461,7 @@ fn op_flash_drive_server(
 fn op_flash_close_server(state: &mut OpState, server_id: u32) {
   let flash_ctx = state.borrow_mut::<FlashContext>();
   let ctx = flash_ctx.servers.remove(&server_id).unwrap();
-  let waker = ctx.waker.lock().unwrap().take();
-  if let Some(waker) = waker {
-    let _ = waker.wake();
-  }
+  let _ = ctx.waker.wake();
 }
 
 #[op]
@@ -897,7 +891,13 @@ fn run_server(
   maybe_cert: Option<String>,
   maybe_key: Option<String>,
   reuseport: bool,
-  waker: Arc<Mutex<Option<Waker>>>,
+  mut poll: Poll,
+  // We put a waker as an unused argument here as it needs to be alive both in
+  // the flash thread and in the main thread (otherwise the notification would
+  // not be caught by the event loop on Linux).
+  // See the comment in mio's example:
+  // https://docs.rs/mio/0.8.4/x86_64-unknown-linux-gnu/mio/struct.Waker.html#examples
+  _waker: Arc<Waker>,
 ) -> Result<(), AnyError> {
   let mut listener = match listen(addr, reuseport) {
     Ok(listener) => listener,
@@ -909,12 +909,6 @@ fn run_server(
     }
   };
 
-  let mut poll = Poll::new()?;
-  // Register close signal.
-  waker
-    .lock()
-    .unwrap()
-    .replace(Waker::new(poll.registry(), WAKER_TOKEN).unwrap());
   // Register server.
   poll
     .registry()
@@ -1286,7 +1280,9 @@ where
     .ok_or_else(|| generic_error("No resolved address found"))?;
   let (tx, rx) = mpsc::channel(100);
   let (listening_tx, listening_rx) = mpsc::channel(1);
-  let waker = Arc::new(Mutex::new(None));
+
+  let poll = Poll::new()?;
+  let waker = Arc::new(Waker::new(poll.registry(), WAKER_TOKEN).unwrap());
   let ctx = ServerContext {
     _addr: addr,
     tx,
@@ -1309,6 +1305,7 @@ where
       maybe_cert,
       maybe_key,
       reuseport,
+      poll,
       waker,
     )
   });
