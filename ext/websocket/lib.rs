@@ -20,7 +20,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use http::header::HeaderName;
@@ -562,23 +561,11 @@ pub enum NextEventResponse {
   Closed,
 }
 
-#[repr(u32)]
-enum NextEventKind {
-  String = 0,
-  Binary = 1,
-  Close = 2,
-  Ping = 3,
-  Pong = 4,
-  Error = 5,
-  Closed = 6,
-}
-
-#[op(deferred)]
+#[op]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  kind_out: &mut [u32],
-) -> Result<Option<StringOrBuffer>, AnyError> {
+) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -586,45 +573,28 @@ pub async fn op_ws_next_event(
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;
-  let (kind, value) = match val {
-    Some(Ok(Message::Text(text))) => (
-      NextEventKind::String as u32,
-      Some(StringOrBuffer::String(text)),
-    ),
-    Some(Ok(Message::Binary(data))) => (
-      NextEventKind::Binary as u32,
-      Some(StringOrBuffer::Buffer(data.into())),
-    ),
-    Some(Ok(Message::Close(Some(frame)))) => {
-      let code: u16 = frame.code.into();
-      kind_out[1] = code as u32;
-      (
-        NextEventKind::Close as u32,
-        Some(StringOrBuffer::String(frame.reason.to_string())),
-      )
-    }
-    Some(Ok(Message::Close(None))) => {
-      kind_out[1] = 1005;
-      (
-        NextEventKind::Close as u32,
-        Some(StringOrBuffer::String(String::new())),
-      )
-    }
-    Some(Ok(Message::Ping(_))) => (NextEventKind::Ping as u32, None),
-    Some(Ok(Message::Pong(_))) => (NextEventKind::Pong as u32, None),
-    Some(Err(e)) => (
-      NextEventKind::Error as u32,
-      Some(StringOrBuffer::String(e.to_string())),
-    ),
+  let res = match val {
+    Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
+    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
+    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
+      code: frame.code.into(),
+      reason: frame.reason.to_string(),
+    },
+    Some(Ok(Message::Close(None))) => NextEventResponse::Close {
+      code: 1005,
+      reason: String::new(),
+    },
+    Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
+    Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
+    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
       // No message was received, presumably the socket closed while we waited.
       // Try close the stream, ignoring any errors, and report closed status to JavaScript.
       let _ = state.borrow_mut().resource_table.close(rid);
-      (NextEventKind::Closed as u32, None)
+      NextEventResponse::Closed
     }
   };
-  kind_out[0] = kind as u32;
-  Ok(value)
+  Ok(res)
 }
 
 pub fn init<P: WebSocketPermissions + 'static>(
