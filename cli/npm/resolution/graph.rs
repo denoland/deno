@@ -365,7 +365,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   ) -> Result<(), AnyError> {
     let node = self.resolve_node_from_info(
       &entry.name,
-      &entry.version_req,
+      match entry.kind {
+        NpmDependencyEntryKind::Dep => &entry.version_req,
+        // when resolving a peer dependency as a dependency, it should
+        // use the "dependencies" entry version requirement if it exists
+        NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
+          &entry
+            .peer_dep_version_req
+            .as_ref()
+            .unwrap_or(&entry.version_req)
+        }
+      },
       package_info,
     )?;
     self.graph.set_child_parent(
@@ -1477,7 +1487,7 @@ mod test {
           dependencies: HashMap::from([(
             "package-peer-b".to_string(),
             NpmPackageId::deserialize_name("package-peer-b@5.4.1").unwrap(),
-          ),])
+          )])
         },
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name("package-peer-b@5.4.1").unwrap(),

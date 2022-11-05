@@ -56,10 +56,14 @@ impl NpmDependencyEntryKind {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct NpmDependencyEntry {
+  pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
   pub name: String,
   pub version_req: NpmVersionReq,
-  pub kind: NpmDependencyEntryKind,
+  /// When the dependency is also marked as a peer dependency,
+  /// use this entry to resolve the dependency when it can't
+  /// be resolved as a peer dependency.
+  pub peer_dep_version_req: Option<NpmVersionReq>,
 }
 
 impl PartialOrd for NpmDependencyEntry {
@@ -130,19 +134,17 @@ impl NpmPackageVersionInfo {
           )
         })?;
       Ok(NpmDependencyEntry {
+        kind,
         bare_specifier,
         name,
         version_req,
-        kind,
+        peer_dep_version_req: None,
       })
     }
 
-    let mut result = Vec::with_capacity(
+    let mut result = HashMap::with_capacity(
       self.dependencies.len() + self.peer_dependencies.len(),
     );
-    for entry in &self.dependencies {
-      result.push(parse_dep_entry(entry, NpmDependencyEntryKind::Dep)?);
-    }
     for entry in &self.peer_dependencies {
       let is_optional = self
         .peer_dependencies_meta
@@ -153,9 +155,21 @@ impl NpmPackageVersionInfo {
         true => NpmDependencyEntryKind::OptionalPeer,
         false => NpmDependencyEntryKind::Peer,
       };
-      result.push(parse_dep_entry(entry, kind)?);
+      let entry = parse_dep_entry(entry, kind)?;
+      result.insert(entry.bare_specifier.clone(), entry);
     }
-    Ok(result)
+    for entry in &self.dependencies {
+      let entry = parse_dep_entry(entry, NpmDependencyEntryKind::Dep)?;
+      // people may define a dependency as a peer dependency as well,
+      // so in those cases, attempt to resolve as a peer dependency,
+      // but then use this dependency version requirement otherwise
+      if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
+        peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+      } else {
+        result.insert(entry.bare_specifier.clone(), entry);
+      }
+    }
+    Ok(result.into_values().collect())
   }
 }
 
