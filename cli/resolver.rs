@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
@@ -65,7 +66,7 @@ impl Resolver for CliResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> ResolveResponse {
-    if let Some(import_map) = &self.maybe_import_map {
+    let r = if let Some(import_map) = &self.maybe_import_map {
       match import_map.resolve(specifier, referrer) {
         Ok(resolved_specifier) => {
           ResolveResponse::Specifier(resolved_specifier)
@@ -77,6 +78,25 @@ impl Resolver for CliResolver {
         Ok(specifier) => ResolveResponse::Specifier(specifier),
         Err(err) => ResolveResponse::Err(err.into()),
       }
+    };
+
+    match r {
+      ResolveResponse::Specifier(specifier) => {
+        let referrer_scheme = referrer.scheme();
+        let specifier_scheme = specifier.scheme();
+        if referrer_scheme == "https" && specifier_scheme == "http" {
+          let msg = format!("Modules imported via https are not allowed to import http modules.\n  Importing: {}", specifier.as_str());
+          ResolveResponse::Err(generic_error(msg))
+        } else if matches!(referrer_scheme, "https" | "http")
+          && !matches!(specifier_scheme, "https" | "http" | "npm")
+        {
+          let msg = format!("Remote modules are not allowed to import local modules. Consider using a dynamic import instead.\n  Importing: {}", specifier.as_str());
+          ResolveResponse::Err(generic_error(msg))
+        } else {
+          ResolveResponse::Specifier(specifier)
+        }
+      }
+      r => r,
     }
   }
 }
