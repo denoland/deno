@@ -825,7 +825,7 @@ mod test {
   }
 
   #[tokio::test]
-  async fn test_should_not_prompt_if_current_cli_version_have_changed() {
+  async fn test_should_not_prompt_if_current_cli_version_has_changed() {
     let env = TestUpdateCheckerEnvironment::new();
     let file_content = CheckVersionFile {
       last_prompt: env
@@ -837,8 +837,8 @@ mod test {
     }
     .serialize();
     env.write_check_file(&file_content);
-    // simulate a user update
-    env.set_current_version("1.26.2");
+    // simulate an upgrade done to a canary version
+    env.set_current_version("61fbfabe440f1cfffa7b8d17426ffdece4d430d0");
     let checker = UpdateChecker::new(env);
     assert_eq!(checker.should_prompt(), None);
   }
