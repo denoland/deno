@@ -86,7 +86,7 @@ impl ReadonlyNpmCache {
       id.as_serializable_name()
         .strip_prefix(&id.name)
         .unwrap()
-        .strip_prefix("@")
+        .strip_prefix('@')
         .unwrap(),
     )
   }

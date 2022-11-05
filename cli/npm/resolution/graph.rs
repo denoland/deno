@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use log::debug;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::registry::NpmDependencyEntry;
@@ -93,42 +94,13 @@ struct Node {
 
 impl Node {
   pub fn add_parent(&mut self, specifier: String, parent: NodeParent) {
-    eprintln!(
-      "ADDING parent to {}: {} {} {}",
-      self.id.as_serializable_name(),
-      specifier,
-      match &parent {
-        NodeParent::Node(n) => n.as_serializable_name(),
-        NodeParent::Req(req) => req.to_string(),
-      },
-      self.parents.entry(specifier.clone()).or_default().len(),
-    );
-    if self.id.as_serializable_name() == "package-a@1.0.0"
-      && match &parent {
-        NodeParent::Node(n) => n.as_serializable_name(),
-        NodeParent::Req(req) => req.to_string(),
-      } == "package-b@2.0.0_package-a@1.0.0"
-    {
-      panic!("STOP");
-    }
     self.parents.entry(specifier).or_default().insert(parent);
   }
 
   pub fn remove_parent(&mut self, specifier: &str, parent: &NodeParent) {
-    eprintln!(
-      "REMOVING parent from {}: {} {} {}",
-      self.id.as_serializable_name(),
-      specifier,
-      match parent {
-        NodeParent::Node(n) => n.as_serializable_name(),
-        NodeParent::Req(req) => req.to_string(),
-      },
-      self.parents.entry(specifier.to_string()).or_default().len(),
-    );
     if let Some(parents) = self.parents.get_mut(specifier) {
       parents.remove(parent);
       if parents.is_empty() {
-        drop(parents);
         self.parents.remove(specifier);
       }
     }
@@ -192,8 +164,8 @@ impl Graph {
     let resolution = snapshot.packages.get(id).unwrap();
     let node = self.get_or_create_for_id(id).1;
     for (name, child_id) in &resolution.dependencies {
-      let child_node = self.fill_for_id_with_snapshot(&child_id, snapshot);
-      self.set_child_parent_node(&name, &child_node, &id);
+      let child_node = self.fill_for_id_with_snapshot(child_id, snapshot);
+      self.set_child_parent_node(name, &child_node, id);
     }
     node
   }
@@ -210,25 +182,15 @@ impl Graph {
 
   fn forget_orphan(&mut self, node_id: &NpmPackageId) {
     if let Some(node) = self.packages.remove(node_id) {
-      eprintln!(
-        "REMAINING: {:?}",
-        self
-          .packages
-          .values()
-          .map(|n| n.lock().id.as_serializable_name())
-          .collect::<Vec<_>>()
-      );
       let node = (*node).lock();
-      eprintln!("FORGOT: {}", node.id.as_serializable_name());
       assert_eq!(node.parents.len(), 0);
       let parent = NodeParent::Node(node.id.clone());
       for (specifier, child_id) in &node.children {
         let mut child = self.borrow_node(child_id);
         child.remove_parent(specifier, &parent);
-        eprintln!("CHILD PARENTS: {:?}", child.parents);
         if child.parents.is_empty() {
           drop(child); // stop borrowing from self
-          self.forget_orphan(&child_id);
+          self.forget_orphan(child_id);
         }
       }
     }
@@ -242,7 +204,7 @@ impl Graph {
   ) {
     match parent {
       NodeParent::Node(parent_id) => {
-        self.set_child_parent_node(&specifier, &child, &parent_id);
+        self.set_child_parent_node(specifier, child, parent_id);
       }
       NodeParent::Req(package_req) => {
         let mut node = (*child).lock();
@@ -278,8 +240,6 @@ impl Graph {
   ) {
     match parent {
       NodeParent::Node(parent_id) => {
-        eprintln!("PARENT: {}", parent_id.as_serializable_name());
-        eprintln!("SPECIFIER: {}", specifier);
         let mut node = self.borrow_node(parent_id);
         if let Some(removed_child_id) = node.children.remove(specifier) {
           assert_eq!(removed_child_id, *child_id);
@@ -392,7 +352,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     maybe_best_version.cloned()
   }
 
-  pub fn add_npm_package_req(
+  pub fn add_package_req(
     &mut self,
     package_req: &NpmPackageReq,
     package_info: NpmPackageInfo,
@@ -427,7 +387,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         // when resolving a peer dependency as a dependency, it should
         // use the "dependencies" entry version requirement if it exists
         NpmDependencyEntryKind::Peer | NpmDependencyEntryKind::OptionalPeer => {
-          &entry
+          entry
             .peer_dep_version_req
             .as_ref()
             .unwrap_or(&entry.version_req)
@@ -462,9 +422,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       version: version_and_info.version.clone(),
       peer_dependencies: Vec::new(),
     };
+    debug!(
+      "Resolved {}@{} to {}",
+      name,
+      version_matcher.version_text(),
+      id
+    );
     let (created, node) = self.graph.get_or_create_for_id(&id);
     if created {
-      eprintln!("RESOLVED: {}", id.as_serializable_name());
       let mut node = (*node).lock();
       let mut deps = version_and_info
         .info
@@ -518,15 +483,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         for dep in deps.iter() {
           let package_info = self.api.package_info(&dep.name).await?;
 
-          eprintln!(
-            "-- DEPENDENCY: {} ({})",
-            dep.name,
-            parent_id.as_serializable_name()
-          );
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
               self.analyze_dependency(
-                &dep,
+                dep,
                 package_info,
                 &parent_id,
                 &visited_versions,
@@ -534,20 +494,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             }
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
-              eprintln!("ANALYZING PEER DEP: {}", dep.name);
               let maybe_new_parent_id = self.resolve_peer_dep(
                 &dep.bare_specifier,
                 &parent_id,
-                &dep,
+                dep,
                 package_info,
                 &visited_versions,
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
-                eprintln!(
-                  "NEW PARENT ID: {} -> {}",
-                  parent_id.as_serializable_name(),
-                  new_parent_id.as_serializable_name()
-                );
                 assert_eq!(
                   (&new_parent_id.name, &new_parent_id.version),
                   (&parent_id.name, &parent_id.version)
@@ -584,16 +538,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       None
     }
 
-    eprintln!("[resolve_peer_dep]: Specifier: {}", specifier);
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional.
     let mut pending_ancestors = VecDeque::new(); // go up the tree by depth
     let path = GraphPath::default().with_step(specifier, parent_id);
-    eprintln!("[resolve_peer_dep]: Path: {:?}", path.specifiers);
 
     // skip over the current node
     for (specifier, grand_parents) in
-      self.graph.borrow_node(&parent_id).parents.clone()
+      self.graph.borrow_node(parent_id).parents.clone()
     {
       let path = path.with_specifier(specifier);
       for grand_parent in grand_parents {
@@ -640,7 +592,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           if let Some(child_id) =
             find_matching_child(peer_dep, self.graph.package_reqs.values())
           {
-            let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
+            let old_id = self.graph.package_reqs.get(req).unwrap().clone();
             let mut path = path.specifiers;
             path.pop(); // go back down one level
             return Ok(Some(self.set_new_peer_dep(
@@ -663,10 +615,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // other dependency when not optional
     if !peer_dep.kind.is_optional() {
       self.analyze_dependency(
-        &peer_dep,
+        peer_dep,
         peer_package_info,
-        &parent_id,
-        &visited_ancestor_versions,
+        parent_id,
+        visited_ancestor_versions,
       )?;
     }
 
@@ -681,7 +633,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     mut path: Vec<String>,
     visited_ancestor_versions: &VisitedVersions,
   ) -> NpmPackageId {
-    eprintln!("PREVIOUS PARENTS: {:?}", previous_parents);
     let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
     let (new_id, old_node_children) =
@@ -702,13 +653,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           peer_dep_id = Cow::Owned(new_id.clone());
         }
 
-        eprintln!("NEW ID: {}", new_id.as_serializable_name());
-        eprintln!("PATH: {:?}", path);
         // remove the previous parents from the old node
         let old_node_children = {
           for (specifier, parents) in &previous_parents {
             for parent in parents {
-              self.graph.remove_child_parent(&specifier, old_id, parent);
+              self.graph.remove_child_parent(specifier, old_id, parent);
             }
           }
           let old_node = self.graph.borrow_node(old_id);
@@ -731,7 +680,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           let child = self.graph.packages.get(child_id).unwrap().clone();
           self
             .graph
-            .set_child_parent(&specifier, &child, &new_id_as_parent);
+            .set_child_parent(specifier, &child, &new_id_as_parent);
         }
         (new_id, old_node_children)
       };
@@ -741,13 +690,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     // continue going down the path
     if let Some(next_specifier) = path.pop() {
-      eprintln!(
-        "Next specifier: {}, peer dep id: {}",
-        next_specifier,
-        peer_dep_id.as_serializable_name()
-      );
       if path.is_empty() {
         // this means we're at the peer dependency now
+        debug!(
+          "Resolved peer dependency for {} in {} to {}",
+          &next_specifier, &new_id, &peer_dep_id,
+        );
         assert!(!old_node_children.contains_key(&next_specifier));
         let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
         self
@@ -763,7 +711,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             next_specifier.to_string(),
             HashSet::from([NodeParent::Node(new_id.clone())]),
           )]),
-          &next_node_id,
+          next_node_id,
           &peer_dep_id,
           path,
           visited_ancestor_versions,
@@ -773,20 +721,14 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     // forget the old node at this point if it has no parents
     if new_id != *old_id {
-      eprintln!(
-        "CHANGING ID: {} -> {}",
-        old_id.as_serializable_name(),
-        new_id.as_serializable_name()
-      );
       let old_node = self.graph.borrow_node(old_id);
-      eprintln!("OLD PARENTS: {:?}", old_node.parents);
       if old_node.parents.is_empty() {
         drop(old_node); // stop borrowing
         self.graph.forget_orphan(old_id);
       }
     }
 
-    return bottom_parent_id;
+    bottom_parent_id
   }
 }
 
@@ -1734,7 +1676,7 @@ mod test {
     for req in reqs {
       let req = NpmPackageReference::from_str(req).unwrap().req;
       resolver
-        .add_npm_package_req(&req, api.package_info(&req.name).await.unwrap())
+        .add_package_req(&req, api.package_info(&req.name).await.unwrap())
         .unwrap();
     }
 

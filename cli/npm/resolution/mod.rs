@@ -190,7 +190,7 @@ impl NpmPackageId {
       if level == 0 {
         self.name.to_string()
       } else {
-        self.name.replace("/", "+")
+        self.name.replace('/', "+")
       },
       self.version
     );
@@ -275,7 +275,7 @@ impl NpmPackageId {
       move |input| {
         let (input, (name, version)) = parse_name_and_version(input)?;
         let name = if level > 0 {
-          name.replace("+", "/")
+          name.replace('+', "/")
         } else {
           name
         };
@@ -394,7 +394,6 @@ impl NpmResolution {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::default();
     graph.fill_with_snapshot(&snapshot);
-    drop(snapshot); // todo: remove
 
     // multiple packages are resolved in alphabetical order
     package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -429,7 +428,7 @@ impl NpmResolution {
 
     for result in futures::future::join_all(unresolved_tasks).await {
       let (package_req, info) = result??;
-      resolver.add_npm_package_req(&package_req, info)?;
+      resolver.add_package_req(&package_req, info)?;
     }
 
     resolver.resolve_pending().await?;
