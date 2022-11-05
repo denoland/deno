@@ -51,4 +51,4 @@ Download http://localhost:4545/npm/registry/y18n/y18n-4.0.3.tgz
 Download http://localhost:4545/npm/registry/yargs/yargs-15.4.1.tgz
 Download http://localhost:4545/npm/registry/yargs-parser/yargs-parser-18.1.3.tgz
 start server on :8000
-{ _: [ "serve" ], port: 8000, "$0": "/Users/ib/dev/deno/target/debug/deno" }
+{ _: [ "serve" ], port: 8000, "$0": "[WILDCARD]deno" }
