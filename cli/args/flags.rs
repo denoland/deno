@@ -317,6 +317,7 @@ pub struct Flags {
   pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_remote: bool,
+  pub no_lock: bool,
   pub no_npm: bool,
   pub no_prompt: bool,
   pub reload: bool,
@@ -1772,6 +1773,7 @@ fn compile_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -1786,6 +1788,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
+    .arg(no_lock_arg())
     .arg(ca_file_arg())
 }
 
@@ -2158,6 +2161,14 @@ fn lock_write_arg<'a>() -> Arg<'a> {
   Arg::new("lock-write")
     .long("lock-write")
     .help("Force overwriting the lock file.")
+}
+
+fn no_lock_arg<'a>() -> Arg<'a> {
+  Arg::new("no-lock")
+    .long("no-lock")
+    .help("Disable auto discovery of the lock file.")
+    .conflicts_with("lock")
+    .conflicts_with("lock-write")
 }
 
 static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
@@ -3096,6 +3107,9 @@ fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   lock_arg_parse(flags, matches);
   if matches.is_present("lock-write") {
     flags.lock_write = true;
+  }
+  if matches.is_present("no-lock") {
+    flags.no_lock = true;
   }
 }
 
@@ -5343,6 +5357,18 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "run", "--no-lock", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        no_lock: true,
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "run",
@@ -5393,6 +5419,19 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r =
+      flags_from_vec(svec!["deno", "run", "--lock", "--no-lock", "script.ts"]);
+    assert!(r.is_err(),);
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--lock-write",
+      "--no-lock",
+      "script.ts"
+    ]);
+    assert!(r.is_err(),);
   }
 
   #[test]
