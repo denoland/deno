@@ -215,7 +215,6 @@ async fn fetch_and_store_latest_version<
 >(
   env: &TEnvironment,
 ) {
-  let current_version = env.current_version().to_string();
   // Fetch latest version or commit hash from server.
   let latest_version = match env.latest_version().await {
     Ok(latest_version) => latest_version,
@@ -229,7 +228,7 @@ async fn fetch_and_store_latest_version<
         .current_time()
         .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
       last_checked: env.current_time(),
-      current_version,
+      current_version: env.current_version().to_string(),
       latest_version,
     }
     .serialize(),
@@ -822,6 +821,25 @@ mod test {
 
     // since currently running version is newer than latest available (eg. CDN
     // propagation might be delated) we should not prompt
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[tokio::test]
+  async fn test_should_not_prompt_if_current_cli_version_have_changed() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+      current_version: "1.25.0".to_string(),
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    // simulate a user update
+    env.set_current_version("1.26.2");
+    let checker = UpdateChecker::new(env);
     assert_eq!(checker.should_prompt(), None);
   }
 }
