@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -40,8 +41,9 @@ impl VisitedVersions {
   }
 
   fn id_as_key(id: &NpmPackageId) -> String {
-    // we only key on name and version, and ignore the peer dependency
-    // information because the peer dependency data could change above and below us, but the names and versions won't
+    // we only key on name and version in the id and not peer dependencies
+    // because the peer dependencies could change above and below us,
+    // but the names and versions won't
     format!("{}@{}", id.name, id.version)
   }
 }
@@ -101,6 +103,14 @@ impl Node {
       },
       self.parents.entry(specifier.clone()).or_default().len(),
     );
+    if self.id.as_serializable_name() == "package-a@1.0.0"
+      && match &parent {
+        NodeParent::Node(n) => n.as_serializable_name(),
+        NodeParent::Req(req) => req.to_string(),
+      } == "package-b@2.0.0_package-a@1.0.0"
+    {
+      panic!("STOP");
+    }
     self.parents.entry(specifier).or_default().insert(parent);
   }
 
@@ -672,9 +682,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     visited_ancestor_versions: &VisitedVersions,
   ) -> NpmPackageId {
     eprintln!("PREVIOUS PARENTS: {:?}", previous_parents);
+    let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
     let (new_id, old_node_children) =
-      if old_id.peer_dependencies.contains(peer_dep_id) {
+      if old_id.peer_dependencies.contains(&peer_dep_id) {
         // the parent has already resolved to using this peer dependency
         // via some other path, so we don't need to update its ids,
         // but instead only make a link to it
@@ -684,7 +695,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         )
       } else {
         let mut new_id = old_id.clone();
-        new_id.peer_dependencies.push(peer_dep_id.clone());
+        new_id.peer_dependencies.push(peer_dep_id.as_ref().clone());
+
+        // this will happen for circular dependencies
+        if *old_id == *peer_dep_id {
+          peer_dep_id = Cow::Owned(new_id.clone());
+        }
+
         eprintln!("NEW ID: {}", new_id.as_serializable_name());
         eprintln!("PATH: {:?}", path);
         // remove the previous parents from the old node
@@ -747,7 +764,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             HashSet::from([NodeParent::Node(new_id.clone())]),
           )]),
           &next_node_id,
-          peer_dep_id,
+          &peer_dep_id,
           path,
           visited_ancestor_versions,
         );
@@ -1425,7 +1442,7 @@ mod test {
     );
     assert_eq!(
       package_reqs,
-      vec![("package-0@1.0".to_string(), "package-a@1.0.0".to_string())]
+      vec![("package-0@1.0".to_string(), "package-0@1.0.0".to_string())]
     );
   }
 
@@ -1677,14 +1694,18 @@ mod test {
             .unwrap(),
           dependencies: HashMap::from([(
             "package-b".to_string(),
-            NpmPackageId::deserialize_name("package-b@2.0.0_package-a@1.0.0")
-              .unwrap(),
+            NpmPackageId::deserialize_name(
+              "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
+            )
+            .unwrap(),
           )]),
           dist: Default::default(),
         },
         NpmResolutionPackage {
-          id: NpmPackageId::deserialize_name("package-b@2.0.0_package-a@1.0.0")
-            .unwrap(),
+          id: NpmPackageId::deserialize_name(
+            "package-b@2.0.0_package-a@1.0.0__package-a@1.0.0"
+          )
+          .unwrap(),
           dependencies: HashMap::from([(
             "package-a".to_string(),
             NpmPackageId::deserialize_name("package-a@1.0.0_package-a@1.0.0")
@@ -1694,7 +1715,13 @@ mod test {
         },
       ]
     );
-    assert_eq!(package_reqs, vec![]);
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "package-a@1.0".to_string(),
+        "package-a@1.0.0_package-a@1.0.0".to_string()
+      )]
+    );
   }
 
   async fn run_resolver_and_get_output(
