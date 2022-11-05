@@ -344,12 +344,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     package_info: NpmPackageInfo,
   ) -> Result<(), AnyError> {
     let node = self.resolve_node_from_info(
-      &package_req.to_string(),
       &package_req.name,
       package_req,
       package_info,
-      &NodeParent::Req(package_req.clone()),
     )?;
+    self.graph.set_child_parent(
+      &package_req.to_string(),
+      &node,
+      &NodeParent::Req(package_req.clone()),
+    );
     self.pending_unresolved_nodes.push_back(node);
     Ok(())
   }
@@ -361,23 +364,24 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_id: &NpmPackageId,
   ) -> Result<(), AnyError> {
     let node = self.resolve_node_from_info(
-      &entry.bare_specifier,
       &entry.name,
       &entry.version_req,
       package_info,
-      &NodeParent::Node(parent_id.clone()),
     )?;
+    self.graph.set_child_parent(
+      &entry.bare_specifier,
+      &node,
+      &NodeParent::Node(parent_id.clone()),
+    );
     self.pending_unresolved_nodes.push_back(node);
     Ok(())
   }
 
   fn resolve_node_from_info(
     &mut self,
-    specifier: &str,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
     package_info: NpmPackageInfo,
-    parent: &NodeParent,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
     let version_and_info = self.resolve_best_package_version_and_info(
       name,
@@ -403,7 +407,6 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       node.deps = Arc::new(deps);
     }
 
-    self.graph.set_child_parent(&specifier, &node, &parent);
     Ok(node)
   }
 
@@ -460,6 +463,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 vec![],
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
+                eprintln!(
+                  "NEW PARENT ID: {} -> {}",
+                  parent_id.as_serializable_name(),
+                  new_parent_id.as_serializable_name()
+                );
+                assert_eq!(
+                  (&new_parent_id.name, &new_parent_id.version),
+                  (&parent_id.name, &parent_id.version)
+                );
                 parent_id = new_parent_id;
               }
             }
@@ -615,6 +627,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         (new_id, old_node_children)
       };
 
+    // this is the parent id found at the bottom of the path
+    let mut bottom_parent_id = new_id.clone();
+
     // continue going down the path
     if let Some(next_specifier) = path.pop() {
       eprintln!(
@@ -632,7 +647,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .set_child_parent_node(&next_specifier, &node, &new_id);
       } else {
         let next_node_id = old_node_children.get(&next_specifier).unwrap();
-        self.set_new_peer_dep(
+        bottom_parent_id = self.set_new_peer_dep(
           HashMap::from([(
             next_specifier.to_string(),
             HashSet::from([NodeParent::Node(new_id.clone())]),
@@ -659,7 +674,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
     }
 
-    return new_id;
+    return bottom_parent_id;
   }
 }
 
@@ -1420,24 +1435,30 @@ mod test {
         },
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name(
-            "package-b@2.0.0_package-peer@4.0.0"
+            "package-b@2.0.0_package-peer-a@4.0.0"
           )
           .unwrap(),
           dist: Default::default(),
-          dependencies: HashMap::from([(
-            "package-peer".to_string(),
-            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
-          )])
+          dependencies: HashMap::from([
+            (
+              "package-peer-a".to_string(),
+              NpmPackageId::deserialize_name("package-peer-a@4.0.0").unwrap(),
+            ),
+            (
+              "package-peer-c".to_string(),
+              NpmPackageId::deserialize_name("package-peer-c@6.2.0").unwrap(),
+            )
+          ])
         },
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name(
-            "package-c@3.0.0_package-peer@4.0.0"
+            "package-c@3.0.0_package-peer-a@4.0.0"
           )
           .unwrap(),
           dist: Default::default(),
           dependencies: HashMap::from([(
-            "package-peer".to_string(),
-            NpmPackageId::deserialize_name("package-peer@4.0.0").unwrap(),
+            "package-peer-a".to_string(),
+            NpmPackageId::deserialize_name("package-peer-a@4.0.0").unwrap(),
           )])
         },
         NpmResolutionPackage {
@@ -1453,7 +1474,10 @@ mod test {
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name("package-peer-a@4.0.0").unwrap(),
           dist: Default::default(),
-          dependencies: Default::default(),
+          dependencies: HashMap::from([(
+            "package-peer-b".to_string(),
+            NpmPackageId::deserialize_name("package-peer-b@5.4.1").unwrap(),
+          ),])
         },
         NpmResolutionPackage {
           id: NpmPackageId::deserialize_name("package-peer-b@5.4.1").unwrap(),
