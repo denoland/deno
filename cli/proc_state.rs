@@ -88,7 +88,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<CliResolver>>,
+  resolver: Arc<CliResolver>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -191,11 +191,10 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let resolver = Arc::new(CliResolver::new(
       cli_options.to_maybe_jsx_import_source_config(),
       maybe_import_map.clone(),
-    );
-    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
+    ));
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -262,7 +261,7 @@ impl ProcState {
       shared_array_buffer_store,
       compiled_wasm_module_store,
       parsed_source_cache,
-      maybe_resolver,
+      resolver,
       maybe_file_watcher_reporter,
       node_analysis_cache,
       npm_cache,
@@ -328,8 +327,7 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver =
-      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
+    let maybe_resolver = Some(self.resolver.as_graph_resolver());
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -560,12 +558,7 @@ impl ProcState {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
 
-    if let Some(resolver) = &self.maybe_resolver {
-      resolver.resolve(specifier, &referrer).to_result()
-    } else {
-      deno_core::resolve_import(specifier, referrer.as_str())
-        .map_err(|err| err.into())
-    }
+    self.resolver.resolve(specifier, &referrer).to_result()
   }
 
   pub fn cache_module_emits(&self) -> Result<(), AnyError> {
@@ -625,12 +618,10 @@ impl ProcState {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
 
-    let maybe_cli_resolver = CliResolver::maybe_new(
+    let cli_resolver = CliResolver::new(
       self.options.to_maybe_jsx_import_source_config(),
       self.maybe_import_map.clone(),
     );
-    let maybe_graph_resolver =
-      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let graph = create_graph(
@@ -639,7 +630,7 @@ impl ProcState {
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_graph_resolver,
+        resolver: Some(cli_resolver.as_graph_resolver()),
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
