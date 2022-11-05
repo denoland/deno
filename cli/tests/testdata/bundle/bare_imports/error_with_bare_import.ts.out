@@ -1,2 +1,2 @@
-[WILDCARD]error: Relative import path "foo" not prefixed with / or ./ or ../
+[WILDCARD]error: Relative import path "foo" not prefixed with / or ./ or ../ from "[WILDCARD]testdata/bundle/bare_imports/error_with_bare_import.ts"
     at file:///[WILDCARD]/error_with_bare_import.ts:[WILDCARD]
