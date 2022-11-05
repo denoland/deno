@@ -84,6 +84,7 @@ impl Resolver for CliResolver {
           ResolveResponse::Err(generic_error(msg))
         } else if matches!(referrer_scheme, "https" | "http")
           && !matches!(specifier_scheme, "https" | "http" | "npm")
+          && self.maybe_import_map.is_none()
         {
           let msg = format!("Remote modules are not allowed to import local modules. Consider using a dynamic import instead.\n  Importing: {}", specifier.as_str());
           ResolveResponse::Err(generic_error(msg))
