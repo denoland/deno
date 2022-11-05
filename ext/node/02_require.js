@@ -401,6 +401,15 @@
 
   Module._resolveLookupPaths = function (request, parent) {
     const paths = [];
+
+    if (core.ops.op_require_is_request_relative(request) && parent?.filename) {
+      ArrayPrototypePush(
+        paths,
+        core.ops.op_require_path_dirname(parent.filename),
+      );
+      return paths;
+    }
+
     if (parent?.filename && parent.filename.length > 0) {
       const denoDirPath = core.ops.op_require_resolve_deno_dir(
         request,
