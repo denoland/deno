@@ -27,6 +27,50 @@ use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
 
+#[derive(Default, Clone)]
+pub struct VisitedVersions(HashSet<String>);
+
+impl VisitedVersions {
+  pub fn add(&mut self, id: &NpmPackageId) -> bool {
+    self.0.insert(Self::id_as_key(id))
+  }
+
+  pub fn has_visited(&self, id: &NpmPackageId) -> bool {
+    self.0.contains(&Self::id_as_key(id))
+  }
+
+  fn id_as_key(id: &NpmPackageId) -> String {
+    // we only key on name and version, and ignore the peer dependency
+    // information because the peer dependency data could change above and below us, but the names and versions won't
+    format!("{}@{}", id.name, id.version)
+  }
+}
+
+#[derive(Default, Clone)]
+pub struct GraphPath {
+  visited_versions: VisitedVersions,
+  specifiers: Vec<String>,
+}
+
+impl GraphPath {
+  pub fn with_step(&self, specifier: &str, id: &NpmPackageId) -> GraphPath {
+    let mut copy = self.clone();
+    assert!(copy.visited_versions.add(id));
+    copy.specifiers.push(specifier.to_string());
+    copy
+  }
+
+  pub fn with_specifier(&self, specifier: String) -> GraphPath {
+    let mut copy = self.clone();
+    copy.specifiers.push(specifier);
+    copy
+  }
+
+  pub fn has_visited_version(&self, id: &NpmPackageId) -> bool {
+    self.visited_versions.has_visited(id)
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum NodeParent {
   /// These are top of the graph npm package requirements
@@ -208,7 +252,7 @@ impl Graph {
   ) {
     let mut child = (*child).lock();
     let mut parent = (**self.packages.get(parent_id).unwrap()).lock();
-    debug_assert_ne!(parent.id, child.id);
+    assert_ne!(parent.id, child.id);
     parent
       .children
       .insert(specifier.to_string(), child.id.clone());
@@ -273,7 +317,7 @@ impl Graph {
 pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   graph: &'a mut Graph,
   api: &'a TNpmRegistryApi,
-  pending_unresolved_nodes: VecDeque<Arc<Mutex<Node>>>,
+  pending_unresolved_nodes: VecDeque<(VisitedVersions, Arc<Mutex<Node>>)>,
 }
 
 impl<'a, TNpmRegistryApi: NpmRegistryApi>
@@ -353,7 +397,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &node,
       &NodeParent::Req(package_req.clone()),
     );
-    self.pending_unresolved_nodes.push_back(node);
+    self
+      .pending_unresolved_nodes
+      .push_back((VisitedVersions::default(), node));
     Ok(())
   }
 
@@ -362,6 +408,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     entry: &NpmDependencyEntry,
     package_info: NpmPackageInfo,
     parent_id: &NpmPackageId,
+    visited_versions: &VisitedVersions,
   ) -> Result<(), AnyError> {
     let node = self.resolve_node_from_info(
       &entry.name,
@@ -383,7 +430,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &node,
       &NodeParent::Node(parent_id.clone()),
     );
-    self.pending_unresolved_nodes.push_back(node);
+    self
+      .pending_unresolved_nodes
+      .push_back((visited_versions.clone(), node));
     Ok(())
   }
 
@@ -423,11 +472,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
     while !self.pending_unresolved_nodes.is_empty() {
       // now go down through the dependencies by tree depth
-      while let Some(parent_node) = self.pending_unresolved_nodes.pop_front() {
+      while let Some((mut visited_versions, parent_node)) =
+        self.pending_unresolved_nodes.pop_front()
+      {
         let (mut parent_id, deps) = {
           let parent_node = parent_node.lock();
           (parent_node.id.clone(), parent_node.deps.clone())
         };
+
+        if !visited_versions.add(&parent_id) {
+          continue; // circular
+        }
 
         // cache all the dependencies' registry infos in parallel if should
         if !should_sync_download() {
@@ -460,7 +515,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           );
           match dep.kind {
             NpmDependencyEntryKind::Dep => {
-              self.analyze_dependency(&dep, package_info, &parent_id)?;
+              self.analyze_dependency(
+                &dep,
+                package_info,
+                &parent_id,
+                &visited_versions,
+              )?;
             }
             NpmDependencyEntryKind::Peer
             | NpmDependencyEntryKind::OptionalPeer => {
@@ -470,7 +530,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 &parent_id,
                 &dep,
                 package_info,
-                vec![],
+                &visited_versions,
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
                 eprintln!(
@@ -498,75 +558,91 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_id: &NpmPackageId,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: NpmPackageInfo,
-    mut path: Vec<String>,
+    visited_ancestor_versions: &VisitedVersions,
   ) -> Result<Option<NpmPackageId>, AnyError> {
+    fn find_matching_child<'a>(
+      peer_dep: &NpmDependencyEntry,
+      children: impl Iterator<Item = &'a NpmPackageId>,
+    ) -> Option<NpmPackageId> {
+      for child_id in children {
+        if child_id.name == peer_dep.name
+          && peer_dep.version_req.satisfies(&child_id.version)
+        {
+          return Some(child_id.clone());
+        }
+      }
+      None
+    }
+
     eprintln!("[resolve_peer_dep]: Specifier: {}", specifier);
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional.
     let mut pending_ancestors = VecDeque::new(); // go up the tree by depth
-    path.push(specifier.to_string());
-    eprintln!("[resolve_peer_dep]: Path: {:?}", path);
+    let path = GraphPath::default().with_step(specifier, parent_id);
+    eprintln!("[resolve_peer_dep]: Path: {:?}", path.specifiers);
+
+    // skip over the current node
     for (specifier, grand_parents) in
       self.graph.borrow_node(&parent_id).parents.clone()
     {
-      let mut path = path.clone();
-      path.push(specifier.clone());
+      let path = path.with_specifier(specifier);
       for grand_parent in grand_parents {
         pending_ancestors.push_back((grand_parent, path.clone()));
       }
     }
 
     while let Some((ancestor, path)) = pending_ancestors.pop_front() {
-      let children = match &ancestor {
+      match &ancestor {
         NodeParent::Node(ancestor_node_id) => {
-          let ancestor = self.graph.borrow_node(ancestor_node_id);
-          for (specifier, parents) in &ancestor.parents {
-            let mut new_path = path.clone();
-            new_path.push(specifier.to_string());
-            for parent in parents {
-              pending_ancestors.push_back((parent.clone(), new_path.clone()));
-            }
+          // we've gone in a full circle, so don't keep looking
+          if path.has_visited_version(ancestor_node_id) {
+            continue;
           }
-          ancestor.children.clone()
+
+          let maybe_peer_dep_id = if ancestor_node_id.name == peer_dep.name
+            && peer_dep.version_req.satisfies(&ancestor_node_id.version)
+          {
+            Some(ancestor_node_id.clone())
+          } else {
+            let ancestor = self.graph.borrow_node(ancestor_node_id);
+            for (specifier, parents) in &ancestor.parents {
+              let new_path = path.with_step(specifier, ancestor_node_id);
+              for parent in parents {
+                pending_ancestors.push_back((parent.clone(), new_path.clone()));
+              }
+            }
+            find_matching_child(peer_dep, ancestor.children.values())
+          };
+          if let Some(peer_dep_id) = maybe_peer_dep_id {
+            let parents =
+              self.graph.borrow_node(ancestor_node_id).parents.clone();
+            return Ok(Some(self.set_new_peer_dep(
+              parents,
+              ancestor_node_id,
+              &peer_dep_id,
+              path.specifiers,
+              visited_ancestor_versions,
+            )));
+          }
         }
-        NodeParent::Req(_) => {
+        NodeParent::Req(req) => {
           // in this case, the parent is the root so the children are all the package requirements
-          self
-            .graph
-            .package_reqs
-            .iter()
-            .map(|(req, id)| (req.to_string(), id.clone()))
-            .collect::<HashMap<_, _>>()
-        }
-      };
-      for child_id in children.values() {
-        if child_id.name == peer_dep.name
-          && peer_dep.version_req.satisfies(&child_id.version)
-        {
-          eprintln!("MATCHED: {}", child_id.as_serializable_name());
-          eprintln!("PATH: {:?}", path);
-          // go down the descendants creating a new path
-          match &ancestor {
-            NodeParent::Node(node_id) => {
-              let parents = self.graph.borrow_node(node_id).parents.clone();
-              return Ok(Some(
-                self.set_new_peer_dep(parents, node_id, &child_id, path),
-              ));
-            }
-            NodeParent::Req(req) => {
-              let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
-              let mut path = path;
-              path.pop(); // go back down one level
-              return Ok(Some(self.set_new_peer_dep(
-                HashMap::from([(
-                  req.to_string(),
-                  HashSet::from([NodeParent::Req(req.clone())]),
-                )]),
-                &old_id,
-                &child_id,
-                path,
-              )));
-            }
+          if let Some(child_id) =
+            find_matching_child(peer_dep, self.graph.package_reqs.values())
+          {
+            let old_id = self.graph.package_reqs.get(&req).unwrap().clone();
+            let mut path = path.specifiers;
+            path.pop(); // go back down one level
+            return Ok(Some(self.set_new_peer_dep(
+              HashMap::from([(
+                req.to_string(),
+                HashSet::from([NodeParent::Req(req.clone())]),
+              )]),
+              &old_id,
+              &child_id,
+              path,
+              visited_ancestor_versions,
+            )));
           }
         }
       }
@@ -576,7 +652,12 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // to resolve based on the package info and will treat this just like any
     // other dependency when not optional
     if !peer_dep.kind.is_optional() {
-      self.analyze_dependency(&peer_dep, peer_package_info, &parent_id)?;
+      self.analyze_dependency(
+        &peer_dep,
+        peer_package_info,
+        &parent_id,
+        &visited_ancestor_versions,
+      )?;
     }
 
     Ok(None)
@@ -588,6 +669,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
     mut path: Vec<String>,
+    visited_ancestor_versions: &VisitedVersions,
   ) -> NpmPackageId {
     eprintln!("PREVIOUS PARENTS: {:?}", previous_parents);
     let old_id = node_id;
@@ -651,7 +733,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         // this means we're at the peer dependency now
         assert!(!old_node_children.contains_key(&next_specifier));
         let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
-        self.pending_unresolved_nodes.push_back(node.clone());
+        self
+          .pending_unresolved_nodes
+          .push_back((visited_ancestor_versions.clone(), node.clone()));
         self
           .graph
           .set_child_parent_node(&next_specifier, &node, &new_id);
@@ -665,6 +749,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           &next_node_id,
           peer_dep_id,
           path,
+          visited_ancestor_versions,
         );
       }
     }
@@ -852,7 +937,7 @@ mod test {
     api.add_dependency(("package-a", "1.0.0"), ("package-c", "^0.1"));
     api.add_dependency(("package-c", "0.1.0"), ("package-d", "*"));
 
-    let packages =
+    let (packages, package_reqs) =
       run_resolver_and_get_output(api, vec!["npm:package-a@1"]).await;
     assert_eq!(
       packages,
@@ -891,6 +976,10 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1".to_string(), "package-a@1.0.0".to_string())]
+    );
   }
 
   #[tokio::test]
@@ -906,7 +995,7 @@ mod test {
     api.add_peer_dependency(("package-b", "2.0.0"), ("package-peer", "4"));
     api.add_peer_dependency(("package-c", "3.0.0"), ("package-peer", "*"));
 
-    let packages = run_resolver_and_get_output(
+    let (packages, package_reqs) = run_resolver_and_get_output(
       api,
       // the peer dependency is specified here at the top of the tree
       // so it should resolve to 4.0.0 instead of 4.1.0
@@ -968,6 +1057,19 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "package-a@1".to_string(),
+          "package-a@1.0.0_package-peer@4.0.0".to_string()
+        ),
+        (
+          "package-peer@4.0.0".to_string(),
+          "package-peer@4.0.0".to_string()
+        )
+      ]
+    );
   }
 
   #[tokio::test]
@@ -988,7 +1090,7 @@ mod test {
     api.add_peer_dependency(("package-b", "2.0.0"), ("package-peer", "4"));
     api.add_peer_dependency(("package-c", "3.0.0"), ("package-peer", "*"));
 
-    let packages =
+    let (packages, package_reqs) =
       run_resolver_and_get_output(api, vec!["npm:package-0@1.1.1"]).await;
     assert_eq!(
       packages,
@@ -1060,6 +1162,10 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![("package-0@1.1.1".to_string(), "package-0@1.1.1".to_string())]
+    );
   }
 
   #[tokio::test]
@@ -1077,7 +1183,7 @@ mod test {
     api.add_peer_dependency(("package-b", "2.0.0"), ("package-peer", "4"));
     api.add_peer_dependency(("package-c", "3.0.0"), ("package-peer", "*"));
 
-    let packages =
+    let (packages, package_reqs) =
       run_resolver_and_get_output(api, vec!["npm:package-a@1"]).await;
     assert_eq!(
       packages,
@@ -1119,6 +1225,10 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1".to_string(), "package-a@1.0.0".to_string())]
+    );
   }
 
   #[tokio::test]
@@ -1142,7 +1252,7 @@ mod test {
       ("package-peer", "*"),
     );
 
-    let packages =
+    let (packages, package_reqs) =
       run_resolver_and_get_output(api, vec!["npm:package-a@1"]).await;
     assert_eq!(
       packages,
@@ -1173,6 +1283,10 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1".to_string(), "package-a@1.0.0".to_string())]
+    );
   }
 
   #[tokio::test]
@@ -1194,7 +1308,7 @@ mod test {
       ("package-peer", "*"),
     );
 
-    let packages = run_resolver_and_get_output(
+    let (packages, package_reqs) = run_resolver_and_get_output(
       api,
       vec!["npm:package-a@1", "npm:package-peer@4.0.0"],
     )
@@ -1254,6 +1368,19 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "package-a@1".to_string(),
+          "package-a@1.0.0_package-peer@4.0.0".to_string()
+        ),
+        (
+          "package-peer@4.0.0".to_string(),
+          "package-peer@4.0.0".to_string()
+        )
+      ]
+    );
   }
 
   #[tokio::test]
@@ -1268,7 +1395,7 @@ mod test {
       ("package-peer-b", "3"),
     );
 
-    let packages =
+    let (packages, package_reqs) =
       run_resolver_and_get_output(api, vec!["npm:package-0@1.0"]).await;
     assert_eq!(
       packages,
@@ -1296,6 +1423,10 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![("package-0@1.0".to_string(), "package-a@1.0.0".to_string())]
+    );
   }
 
   #[tokio::test]
@@ -1311,7 +1442,7 @@ mod test {
       ("package-peer-b", "3"),
     );
 
-    let packages = run_resolver_and_get_output(
+    let (packages, package_reqs) = run_resolver_and_get_output(
       api,
       vec![
         "npm:package-0@1.0",
@@ -1361,6 +1492,24 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![
+        (
+          "package-0@1.0".to_string(),
+          "package-0@1.0.0_package-peer-a@2.0.0_package-peer-b@3.0.0"
+            .to_string()
+        ),
+        (
+          "package-peer-a@2".to_string(),
+          "package-peer-a@2.0.0_package-peer-b@3.0.0".to_string()
+        ),
+        (
+          "package-peer-b@3".to_string(),
+          "package-peer-b@3.0.0".to_string()
+        )
+      ]
+    );
   }
 
   #[tokio::test]
@@ -1393,7 +1542,7 @@ mod test {
       ("package-peer-b", "^5.4"), // will be auto-resolved
     );
 
-    let packages = run_resolver_and_get_output(
+    let (packages, package_reqs) = run_resolver_and_get_output(
       api,
       vec!["npm:package-0@1.1.1", "npm:package-e@3"],
     )
@@ -1501,12 +1650,57 @@ mod test {
         },
       ]
     );
+    assert_eq!(
+      package_reqs,
+      vec![
+        ("package-0@1.1.1".to_string(), "package-0@1.1.1".to_string()),
+        ("package-e@3".to_string(), "package-e@3.6.0".to_string()),
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_peer_deps_circular() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
+    api.add_peer_dependency(("package-b", "2.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-a@1.0.0_package-a@1.0.0")
+            .unwrap(),
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::deserialize_name("package-b@2.0.0_package-a@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-b@2.0.0_package-a@1.0.0")
+            .unwrap(),
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::deserialize_name("package-a@1.0.0_package-a@1.0.0")
+              .unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(package_reqs, vec![]);
   }
 
   async fn run_resolver_and_get_output(
     api: TestNpmRegistryApi,
     reqs: Vec<&str>,
-  ) -> Vec<NpmResolutionPackage> {
+  ) -> (Vec<NpmResolutionPackage>, Vec<(String, String)>) {
     let mut graph = Graph::default();
     let mut resolver = GraphDependencyResolver::new(&mut graph, &api);
 
@@ -1518,8 +1712,15 @@ mod test {
     }
 
     resolver.resolve_pending().await.unwrap();
-    let mut packages = graph.into_snapshot(&api).await.unwrap().all_packages();
+    let snapshot = graph.into_snapshot(&api).await.unwrap();
+    let mut packages = snapshot.all_packages();
     packages.sort_by(|a, b| a.id.cmp(&b.id));
-    packages
+    let mut package_reqs = snapshot
+      .package_reqs
+      .into_iter()
+      .map(|(a, b)| (a.to_string(), b.as_serializable_name()))
+      .collect::<Vec<_>>();
+    package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+    (packages, package_reqs)
   }
 }
