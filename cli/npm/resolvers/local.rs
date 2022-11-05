@@ -280,7 +280,7 @@ async fn sync_resolution_with_fs(
   for package in &all_packages {
     let folder_name = get_package_folder_name(&package.id);
     let folder_path = deno_local_registry_dir.join(&folder_name);
-    let initialized_file = folder_path.join("deno_initialized");
+    let initialized_file = folder_path.join(".initialized");
     if !initialized_file.exists() {
       let cache = cache.clone();
       let registry_url = registry_url.clone();

@@ -429,7 +429,7 @@ impl NpmResolution {
 
     for result in futures::future::join_all(unresolved_tasks).await {
       let (package_req, info) = result??;
-      resolver.resolve_npm_package_req(&package_req, info)?;
+      resolver.add_npm_package_req(&package_req, info)?;
     }
 
     resolver.resolve_pending().await?;
