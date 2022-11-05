@@ -30,7 +30,7 @@ use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
 
 #[derive(Default, Clone)]
-pub struct VisitedVersions(HashSet<String>);
+struct VisitedVersions(HashSet<String>);
 
 impl VisitedVersions {
   pub fn add(&mut self, id: &NpmPackageId) -> bool {
@@ -50,7 +50,7 @@ impl VisitedVersions {
 }
 
 #[derive(Default, Clone)]
-pub struct GraphPath {
+struct GraphPath {
   visited_versions: VisitedVersions,
   specifiers: Vec<String>,
 }
@@ -264,7 +264,7 @@ impl Graph {
       let dist = api
         .package_version_info(&id.name, &id.version)
         .await?
-        .unwrap() // todo(THIS PR): don't unwrap here
+        .unwrap()
         .dist;
       let node = node.lock();
       packages.insert(
@@ -276,6 +276,7 @@ impl Graph {
         },
       );
     }
+
     Ok(NpmResolutionSnapshot {
       package_reqs: self.package_reqs,
       packages_by_name: self.packages_by_name,
@@ -1663,6 +1664,43 @@ mod test {
         "package-a@1.0".to_string(),
         "package-a@1.0.0_package-a@1.0.0".to_string()
       )]
+    );
+  }
+
+  #[tokio::test]
+  async fn resolve_deps_circular() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "2.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
+    api.add_dependency(("package-b", "2.0.0"), ("package-a", "1"));
+
+    let (packages, package_reqs) =
+      run_resolver_and_get_output(api, vec!["npm:package-a@1.0"]).await;
+    assert_eq!(
+      packages,
+      vec![
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-a@1.0.0").unwrap(),
+          dependencies: HashMap::from([(
+            "package-b".to_string(),
+            NpmPackageId::deserialize_name("package-b@2.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+        NpmResolutionPackage {
+          id: NpmPackageId::deserialize_name("package-b@2.0.0").unwrap(),
+          dependencies: HashMap::from([(
+            "package-a".to_string(),
+            NpmPackageId::deserialize_name("package-a@1.0.0").unwrap(),
+          )]),
+          dist: Default::default(),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0".to_string(), "package-a@1.0.0".to_string())]
     );
   }
 
