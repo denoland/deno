@@ -185,6 +185,7 @@ impl NpmPackageId {
   }
 
   fn as_serialize_name_with_level(&self, level: usize) -> String {
+    // WARNING: This should not change because it's used in the lockfile
     let mut result = format!(
       "{}@{}",
       if level == 0 {

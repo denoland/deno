@@ -74,7 +74,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
-      .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
+      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)?;
     let pkg_result = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id);
@@ -105,9 +105,10 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self
-      .cache
-      .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
+    let pkg_id = self.cache.resolve_package_folder_id_from_specifier(
+      specifier,
+      &self.registry_url,
+    )?;
     Ok(self.package_folder(&pkg_id))
   }
 

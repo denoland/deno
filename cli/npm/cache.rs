@@ -19,8 +19,8 @@ use crate::fs_util;
 use crate::progress_bar::ProgressBar;
 
 use super::registry::NpmPackageVersionDistInfo;
+use super::semver::NpmVersion;
 use super::tarball::verify_and_extract_tarball;
-use super::NpmPackageId;
 
 /// For some of the tests, we want downloading of packages
 /// to be deterministic so that the output is always the same
@@ -28,7 +28,107 @@ pub fn should_sync_download() -> bool {
   std::env::var("DENO_UNSTABLE_NPM_SYNC_DOWNLOAD") == Ok("1".to_string())
 }
 
-pub const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
+const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
+
+pub fn with_folder_sync_lock(
+  package: (&str, &NpmVersion),
+  output_folder: &Path,
+  action: impl FnOnce() -> Result<(), AnyError>,
+) -> Result<(), AnyError> {
+  fn inner(
+    output_folder: &Path,
+    action: impl FnOnce() -> Result<(), AnyError>,
+  ) -> Result<(), AnyError> {
+    fs::create_dir_all(output_folder).with_context(|| {
+      format!("Error creating '{}'.", output_folder.display())
+    })?;
+
+    // This sync lock file is a way to ensure that partially created
+    // npm package directories aren't considered valid. This could maybe
+    // be a bit smarter in the future to not bother extracting here
+    // if another process has taken the lock in the past X seconds and
+    // wait for the other process to finish (it could try to create the
+    // file with `create_new(true)` then if it exists, check the metadata
+    // then wait until the other process finishes with a timeout), but
+    // for now this is good enough.
+    let sync_lock_path = output_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME);
+    match fs::OpenOptions::new()
+      .write(true)
+      .create(true)
+      .open(&sync_lock_path)
+    {
+      Ok(_) => {
+        action()?;
+        // extraction succeeded, so only now delete this file
+        let _ignore = std::fs::remove_file(&sync_lock_path);
+        Ok(())
+      }
+      Err(err) => {
+        bail!(
+          concat!(
+            "Error creating package sync lock file at '{}'. ",
+            "Maybe try manually deleting this folder.\n\n{:#}",
+          ),
+          output_folder.display(),
+          err
+        );
+      }
+    }
+  }
+
+  match inner(output_folder, action) {
+    Ok(()) => Ok(()),
+    Err(err) => {
+      if let Err(remove_err) = fs::remove_dir_all(&output_folder) {
+        if remove_err.kind() != std::io::ErrorKind::NotFound {
+          bail!(
+            concat!(
+              "Failed setting up package cache directory for {}@{}, then ",
+              "failed cleaning it up.\n\nOriginal error:\n\n{}\n\n",
+              "Remove error:\n\n{}\n\nPlease manually ",
+              "delete this folder or you will run into issues using this ",
+              "package in the future:\n\n{}"
+            ),
+            package.0,
+            package.1,
+            err,
+            remove_err,
+            output_folder.display(),
+          );
+        }
+      }
+      Err(err)
+    }
+  }
+}
+
+pub struct NpmPackageCacheFolderId {
+  pub name: String,
+  pub version: NpmVersion,
+  /// Peer dependency resolution may require us to have duplicate copies
+  /// of the same package.
+  pub copy_count: usize,
+}
+
+impl NpmPackageCacheFolderId {
+  pub fn with_no_count(&self) -> Self {
+    Self {
+      name: self.name.clone(),
+      version: self.version.clone(),
+      copy_count: 0,
+    }
+  }
+}
+
+impl std::fmt::Display for NpmPackageCacheFolderId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}@{}", self.name, self.version)?;
+    if self.copy_count > 0 {
+      write!(f, "_{}", self.copy_count)?;
+    }
+    Ok(())
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct ReadonlyNpmCache {
@@ -79,15 +179,15 @@ impl ReadonlyNpmCache {
 
   pub fn package_folder(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
     self.package_name_folder(&id.name, registry_url).join(
-      id.as_serializable_name()
-        .strip_prefix(&id.name)
-        .unwrap()
-        .strip_prefix('@')
-        .unwrap(),
+      if id.copy_count == 0 {
+        id.version.to_string()
+      } else {
+        format!("{}_{}", id.version.to_string(), id.copy_count)
+      },
     )
   }
 
@@ -118,23 +218,24 @@ impl ReadonlyNpmCache {
       .join(fs_util::root_url_to_safe_local_dirname(registry_url))
   }
 
-  pub fn resolve_package_id_from_specifier(
+  pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageId, AnyError> {
-    match self.maybe_resolve_package_id_from_specifier(specifier, registry_url)
+  ) -> Result<NpmPackageCacheFolderId, AnyError> {
+    match self
+      .maybe_resolve_package_folder_id_from_specifier(specifier, registry_url)
     {
       Some(id) => Ok(id),
       None => bail!("could not find npm package for '{}'", specifier),
     }
   }
 
-  fn maybe_resolve_package_id_from_specifier(
+  fn maybe_resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Option<NpmPackageId> {
+  ) -> Option<NpmPackageCacheFolderId> {
     let registry_root_dir = self
       .root_dir_url
       .join(&format!(
@@ -153,7 +254,7 @@ impl ReadonlyNpmCache {
     // examples:
     // * chalk/5.0.1/
     // * @types/chalk/5.0.1/
-    // * some-package/5.0.1_peer-dep-name@0.1.0/
+    // * some-package/5.0.1_1/ -- where the `_1` (/_\d+/) is a copy of the folder for peer deps
     let is_scoped_package = relative_url.starts_with('@');
     let mut parts = relative_url
       .split('/')
@@ -164,10 +265,19 @@ impl ReadonlyNpmCache {
     if parts.len() < 2 {
       return None;
     }
-    let version_part = parts.pop().unwrap(); // this could also contain the peer dep id info
+    let version_part = parts.pop().unwrap();
     let name = parts.join("/");
-    let full_name = format!("{}@{}", name, version_part);
-    NpmPackageId::deserialize_name(&full_name).ok()
+    let (version, copy_count) =
+      if let Some((version, copy_count)) = version_part.split_once('_') {
+        (version, copy_count.parse::<usize>().ok()?)
+      } else {
+        (version_part, 0)
+      };
+    Some(NpmPackageCacheFolderId {
+      name: name.to_string(),
+      version: NpmVersion::parse(version).ok()?,
+      copy_count,
+    })
   }
 
   pub fn get_cache_location(&self) -> PathBuf {
@@ -202,7 +312,7 @@ impl NpmCache {
 
   pub async fn ensure_package(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageCacheFolderId,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
@@ -214,10 +324,11 @@ impl NpmCache {
 
   async fn ensure_package_inner(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageCacheFolderId,
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
+    // todo(THIS PR): callers should cache the non count version first
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
@@ -235,6 +346,21 @@ impl NpmCache {
         )
       )
       );
+    }
+
+    // This package is a copy of the original package for peer dependency purposes.
+    if id.copy_count > 0 {
+      // it's assumed that the main package folder will exist here
+      let main_package_folder = self
+        .readonly
+        .package_folder(&id.with_no_count(), registry_url);
+      // todo(THIS PR): use hard linking instead of copying
+      with_folder_sync_lock(
+        (id.name.as_str(), &id.version),
+        &package_folder,
+        || fs_util::copy_dir_recursive(&main_package_folder, &package_folder),
+      )?;
+      return Ok(());
     }
 
     let _guard = self.progress_bar.update(&dist.tarball);
@@ -256,35 +382,18 @@ impl NpmCache {
     } else {
       let bytes = response.bytes().await?;
 
-      match verify_and_extract_tarball(id, &bytes, dist, &package_folder) {
-        Ok(()) => Ok(()),
-        Err(err) => {
-          if let Err(remove_err) = fs::remove_dir_all(&package_folder) {
-            if remove_err.kind() != std::io::ErrorKind::NotFound {
-              bail!(
-                concat!(
-                  "Failed verifying and extracting npm tarball for {}, then ",
-                  "failed cleaning up package cache folder.\n\nOriginal ",
-                  "error:\n\n{}\n\nRemove error:\n\n{}\n\nPlease manually ",
-                  "delete this folder or you will run into issues using this ",
-                  "package in the future:\n\n{}"
-                ),
-                id,
-                err,
-                remove_err,
-                package_folder.display(),
-              );
-            }
-          }
-          Err(err)
-        }
-      }
+      verify_and_extract_tarball(
+        (id.name.as_str(), &id.version),
+        &bytes,
+        dist,
+        &package_folder,
+      )
     }
   }
 
   pub fn package_folder(
     &self,
-    id: &NpmPackageId,
+    id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
     self.readonly.package_folder(id, registry_url)
@@ -298,14 +407,14 @@ impl NpmCache {
     self.readonly.registry_folder(registry_url)
   }
 
-  pub fn resolve_package_id_from_specifier(
+  pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageId, AnyError> {
+  ) -> Result<NpmPackageCacheFolderId, AnyError> {
     self
       .readonly
-      .resolve_package_id_from_specifier(specifier, registry_url)
+      .resolve_package_folder_id_from_specifier(specifier, registry_url)
   }
 }
 
@@ -314,8 +423,8 @@ mod test {
   use deno_core::url::Url;
 
   use super::ReadonlyNpmCache;
+  use crate::npm::cache::NpmPackageCacheFolderId;
   use crate::npm::semver::NpmVersion;
-  use crate::npm::NpmPackageId;
 
   #[test]
   fn should_get_lowercase_package_folder() {
@@ -325,10 +434,10 @@ mod test {
 
     assert_eq!(
       cache.package_folder(
-        &NpmPackageId {
+        &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
-          peer_dependencies: Vec::new(),
+          copy_count: 0,
         },
         &registry_url,
       ),
@@ -340,21 +449,17 @@ mod test {
 
     assert_eq!(
       cache.package_folder(
-        &NpmPackageId {
+        &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
-          peer_dependencies: vec![NpmPackageId {
-            name: "other".to_string(),
-            version: NpmVersion::parse("3.2.1").unwrap(),
-            peer_dependencies: Vec::new()
-          }],
+          copy_count: 1,
         },
         &registry_url,
       ),
       root_dir
         .join("registry.npmjs.org")
         .join("json")
-        .join("1.2.5_other@3.2.1"),
+        .join("1.2.5_1"),
     );
   }
 }

@@ -51,6 +51,7 @@ impl VisitedVersions {
 
 #[derive(Default, Clone)]
 struct GraphPath {
+  // todo(THIS PR): investigate if this should use a singly linked list too
   visited_versions: VisitedVersions,
   // todo(THIS PR): switch to a singly linked list here
   specifiers: Vec<String>,
