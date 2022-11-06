@@ -30,6 +30,8 @@ pub struct NpmResolutionSnapshot {
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  #[serde(with = "map_to_vec")]
+  pub(super) packages_to_copy_index: HashMap<NpmPackageId, usize>,
 }
 
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
@@ -173,6 +175,7 @@ impl NpmResolutionSnapshot {
     let mut package_reqs: HashMap<NpmPackageReq, NpmPackageId>;
     let mut packages_by_name: HashMap<String, Vec<NpmPackageId>>;
     let mut packages: HashMap<NpmPackageId, NpmResolutionPackage>;
+    let mut copy_indexes_builder: SnapshotPackageCopyIndexesBuilder;
 
     {
       let lockfile = lockfile.lock();
@@ -180,11 +183,12 @@ impl NpmResolutionSnapshot {
       // pre-allocate collections
       package_reqs =
         HashMap::with_capacity(lockfile.content.npm.specifiers.len());
-      packages = HashMap::with_capacity(lockfile.content.npm.packages.len());
-      packages_by_name =
-        HashMap::with_capacity(lockfile.content.npm.packages.len()); // close enough
-      let mut verify_ids =
-        HashSet::with_capacity(lockfile.content.npm.packages.len());
+      let packages_len = lockfile.content.npm.packages.len();
+      packages = HashMap::with_capacity(packages_len);
+      packages_by_name = HashMap::with_capacity(packages_len); // close enough
+      copy_indexes_builder =
+        SnapshotPackageCopyIndexesBuilder::with_capacity(packages_len);
+      let mut verify_ids = HashSet::with_capacity(packages_len);
 
       // collect the specifiers to version mappings
       for (key, value) in &lockfile.content.npm.specifiers {
@@ -198,6 +202,11 @@ impl NpmResolutionSnapshot {
       // then the packages
       for (key, value) in &lockfile.content.npm.packages {
         let package_id = NpmPackageId::deserialize_name(key)?;
+
+        // Update the package copy index
+        copy_indexes_builder.add_package(&package_id);
+
+        // collect the dependencies
         let mut dependencies = HashMap::default();
 
         packages_by_name
@@ -270,7 +279,63 @@ impl NpmResolutionSnapshot {
       package_reqs,
       packages_by_name,
       packages,
+      packages_to_copy_index: copy_indexes_builder.into_map(),
     })
+  }
+}
+
+pub struct SnapshotPackageCopyIndexesBuilder {
+  packages_to_copy_index: HashMap<NpmPackageId, usize>,
+  package_name_version_to_copy_count: HashMap<(String, String), usize>,
+}
+
+impl SnapshotPackageCopyIndexesBuilder {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self {
+      packages_to_copy_index: HashMap::with_capacity(capacity),
+      package_name_version_to_copy_count: HashMap::with_capacity(capacity), // close enough
+    }
+  }
+
+  pub fn from_map_with_capacity(
+    packages_to_copy_index: HashMap<NpmPackageId, usize>,
+    capacity: usize,
+  ) -> Self {
+    let mut package_name_version_to_copy_count =
+      HashMap::with_capacity(capacity); // close enough
+    if capacity > packages_to_copy_index.len() {
+      packages_to_copy_index.reserve(capacity - packages_to_copy_index.len());
+    }
+
+    for (id, index) in &packages_to_copy_index {
+      let entry = package_name_version_to_copy_count
+        .entry((id.name.to_string(), id.version.to_string()))
+        .or_insert(0);
+      if *entry < *index {
+        *entry = *index;
+      }
+    }
+    Self {
+      packages_to_copy_index,
+      package_name_version_to_copy_count,
+    }
+  }
+
+  pub fn into_map(self) -> HashMap<NpmPackageId, usize> {
+    self.packages_to_copy_index
+  }
+
+  pub fn add_package(&mut self, id: &NpmPackageId) {
+    if !self.packages_to_copy_index.contains_key(id) {
+      let index = *self
+        .package_name_version_to_copy_count
+        .entry((id.name.to_string(), id.version.to_string()))
+        .and_modify(|count| {
+          *count += 1;
+        })
+        .or_insert(0);
+      self.packages_to_copy_index.insert(id.clone(), index);
+    }
   }
 }
 

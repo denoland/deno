@@ -139,25 +139,25 @@ mod test {
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "test")
+      verify_tarball_integrity(package, &Vec::new(), "test")
         .unwrap_err()
         .to_string(),
       "Not implemented integrity kind for package@1.0.0: test",
     );
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "sha1-test")
+      verify_tarball_integrity(package, &Vec::new(), "sha1-test")
         .unwrap_err()
         .to_string(),
       "Not implemented hash function for package@1.0.0: sha1",
     );
     assert_eq!(
-      verify_tarball_integrity(&package, &Vec::new(), "sha512-test")
+      verify_tarball_integrity(package, &Vec::new(), "sha512-test")
         .unwrap_err()
         .to_string(),
       format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {}", actual_checksum),
     );
     assert!(verify_tarball_integrity(
-      &package,
+      package,
       &Vec::new(),
       &format!("sha512-{}", actual_checksum)
     )

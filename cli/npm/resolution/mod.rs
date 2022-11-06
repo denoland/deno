@@ -393,8 +393,7 @@ impl NpmResolution {
     snapshot: NpmResolutionSnapshot,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
     // convert the snapshot to a traversable graph
-    let mut graph = Graph::default();
-    graph.fill_with_snapshot(&snapshot);
+    let mut graph = Graph::from_snapshot(snapshot);
 
     // multiple packages are resolved in alphabetical order
     package_reqs.sort_by(|a, b| a.name.cmp(&b.name));

@@ -24,6 +24,7 @@ use crate::npm::semver::NpmVersionReq;
 use crate::npm::NpmRegistryApi;
 
 use super::snapshot::NpmResolutionSnapshot;
+use super::snapshot::SnapshotPackageCopyIndexesBuilder;
 use super::NpmPackageId;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
@@ -113,26 +114,48 @@ impl Node {
 pub struct Graph {
   package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
   packages_by_name: HashMap<String, Vec<NpmPackageId>>,
-  // Ideally this would be Rc<RefCell<Node>>, but we need to use a Mutex
+  // Ideally this value would be Rc<RefCell<Node>>, but we need to use a Mutex
   // because the lsp requires Send and this code is executed in the lsp.
   // Would be nice if the lsp wasn't Send.
   packages: HashMap<NpmPackageId, Arc<Mutex<Node>>>,
+  // This will be set when creating from a snapshot, then
+  // inform the final snapshot creation.
+  packages_to_copy_index: HashMap<NpmPackageId, usize>,
 }
 
 impl Graph {
-  pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
-    self.package_reqs.contains_key(req)
-  }
+  pub fn from_snapshot(snapshot: NpmResolutionSnapshot) -> Self {
+    fn fill_for_id(
+      graph: &mut Graph,
+      id: &NpmPackageId,
+      packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
+    ) -> Arc<Mutex<Node>> {
+      let resolution = packages.get(id).unwrap();
+      let node = graph.get_or_create_for_id(id).1;
+      for (name, child_id) in &resolution.dependencies {
+        let child_node = fill_for_id(graph, child_id, packages);
+        graph.set_child_parent_node(name, &child_node, id);
+      }
+      node
+    }
 
-  pub fn fill_with_snapshot(&mut self, snapshot: &NpmResolutionSnapshot) {
+    let mut graph = Self {
+      packages_to_copy_index: snapshot.packages_to_copy_index,
+      ..Default::default()
+    };
     for (package_req, id) in &snapshot.package_reqs {
-      let node = self.fill_for_id_with_snapshot(id, snapshot);
+      let node = fill_for_id(&mut graph, id, &snapshot.packages);
       (*node).lock().add_parent(
         package_req.to_string(),
         NodeParent::Req(package_req.clone()),
       );
-      self.package_reqs.insert(package_req.clone(), id.clone());
+      graph.package_reqs.insert(package_req.clone(), id.clone());
     }
+    graph
+  }
+
+  pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
+    self.package_reqs.contains_key(req)
   }
 
   fn get_or_create_for_id(
@@ -156,20 +179,6 @@ impl Graph {
       self.packages.insert(id.clone(), node.clone());
       (true, node)
     }
-  }
-
-  fn fill_for_id_with_snapshot(
-    &mut self,
-    id: &NpmPackageId,
-    snapshot: &NpmResolutionSnapshot,
-  ) -> Arc<Mutex<Node>> {
-    let resolution = snapshot.packages.get(id).unwrap();
-    let node = self.get_or_create_for_id(id).1;
-    for (name, child_id) in &resolution.dependencies {
-      let child_node = self.fill_for_id_with_snapshot(child_id, snapshot);
-      self.set_child_parent_node(name, &child_node, id);
-    }
-    node
   }
 
   fn borrow_node(&self, id: &NpmPackageId) -> MutexGuard<Node> {
@@ -261,8 +270,15 @@ impl Graph {
     self,
     api: &impl NpmRegistryApi,
   ) -> Result<NpmResolutionSnapshot, AnyError> {
+    let mut copy_index_builder =
+      SnapshotPackageCopyIndexesBuilder::from_map_with_capacity(
+        self.packages_to_copy_index,
+        self.packages.len(),
+      );
+
     let mut packages = HashMap::with_capacity(self.packages.len());
     for (id, node) in self.packages {
+      copy_index_builder.add_package(&id);
       let dist = api
         .package_version_info(&id.name, &id.version)
         .await?
@@ -283,6 +299,7 @@ impl Graph {
       package_reqs: self.package_reqs,
       packages_by_name: self.packages_by_name,
       packages,
+      packages_to_copy_index: copy_index_builder.into_map(),
     })
   }
 }

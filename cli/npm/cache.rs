@@ -107,7 +107,7 @@ pub struct NpmPackageCacheFolderId {
   pub version: NpmVersion,
   /// Peer dependency resolution may require us to have duplicate copies
   /// of the same package.
-  pub copy_count: usize,
+  pub copy_index: usize,
 }
 
 impl NpmPackageCacheFolderId {
@@ -115,7 +115,7 @@ impl NpmPackageCacheFolderId {
     Self {
       name: self.name.clone(),
       version: self.version.clone(),
-      copy_count: 0,
+      copy_index: 0,
     }
   }
 }
@@ -123,8 +123,8 @@ impl NpmPackageCacheFolderId {
 impl std::fmt::Display for NpmPackageCacheFolderId {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}@{}", self.name, self.version)?;
-    if self.copy_count > 0 {
-      write!(f, "_{}", self.copy_count)?;
+    if self.copy_index > 0 {
+      write!(f, "_{}", self.copy_index)?;
     }
     Ok(())
   }
@@ -183,10 +183,10 @@ impl ReadonlyNpmCache {
     registry_url: &Url,
   ) -> PathBuf {
     self.package_name_folder(&id.name, registry_url).join(
-      if id.copy_count == 0 {
+      if id.copy_index == 0 {
         id.version.to_string()
       } else {
-        format!("{}_{}", id.version.to_string(), id.copy_count)
+        format!("{}_{}", id.version.to_string(), id.copy_index)
       },
     )
   }
@@ -267,7 +267,7 @@ impl ReadonlyNpmCache {
     }
     let version_part = parts.pop().unwrap();
     let name = parts.join("/");
-    let (version, copy_count) =
+    let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
         (version, copy_count.parse::<usize>().ok()?)
       } else {
@@ -276,7 +276,7 @@ impl ReadonlyNpmCache {
     Some(NpmPackageCacheFolderId {
       name: name.to_string(),
       version: NpmVersion::parse(version).ok()?,
-      copy_count,
+      copy_index,
     })
   }
 
@@ -328,7 +328,7 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    // todo(THIS PR): callers should cache the non count version first
+    // todo(THIS PR): callers should cache the 0-indexed version first
     let package_folder = self.readonly.package_folder(id, registry_url);
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
@@ -349,8 +349,10 @@ impl NpmCache {
     }
 
     // This package is a copy of the original package for peer dependency purposes.
-    if id.copy_count > 0 {
-      // it's assumed that the main package folder will exist here
+    if id.copy_index > 0 {
+      // This code assumes that the main package folder will exist here and that
+      // should be enforced at a higher level to prevent contention between multiple
+      // threads on the cache folder.
       let main_package_folder = self
         .readonly
         .package_folder(&id.with_no_count(), registry_url);
@@ -437,7 +439,7 @@ mod test {
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
-          copy_count: 0,
+          copy_index: 0,
         },
         &registry_url,
       ),
@@ -452,7 +454,7 @@ mod test {
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
-          copy_count: 1,
+          copy_index: 1,
         },
         &registry_url,
       ),
