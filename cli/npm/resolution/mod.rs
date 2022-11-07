@@ -182,11 +182,11 @@ impl NpmPackageId {
     }
   }
 
-  pub fn as_serializable_name(&self) -> String {
-    self.as_serialize_name_with_level(0)
+  pub fn as_serialized(&self) -> String {
+    self.as_serialized_with_level(0)
   }
 
-  fn as_serialize_name_with_level(&self, level: usize) -> String {
+  fn as_serialized_with_level(&self, level: usize) -> String {
     // WARNING: This should not change because it's used in the lockfile
     let mut result = format!(
       "{}@{}",
@@ -202,12 +202,12 @@ impl NpmPackageId {
       // this gets deep because npm package names can start
       // with a number
       result.push_str(&"_".repeat(level + 1));
-      result.push_str(&peer.as_serialize_name_with_level(level + 1));
+      result.push_str(&peer.as_serialized_with_level(level + 1));
     }
     result
   }
 
-  pub fn deserialize_name(id: &str) -> Result<Self, AnyError> {
+  pub fn from_serialized(id: &str) -> Result<Self, AnyError> {
     use monch::*;
 
     fn parse_name(input: &str) -> ParseResult<&str> {
@@ -662,8 +662,8 @@ mod tests {
         },
       ],
     };
-    let serialized = id.as_serializable_name();
+    let serialized = id.as_serialized();
     assert_eq!(serialized, "pkg-a@1.2.3_pkg-b@3.2.1__pkg-c@1.3.2__pkg-d@2.3.4_pkg-e@2.3.1__pkg-f@2.3.1");
-    assert_eq!(NpmPackageId::deserialize_name(&serialized).unwrap(), id);
+    assert_eq!(NpmPackageId::from_serialized(&serialized).unwrap(), id);
   }
 }

@@ -267,7 +267,7 @@ impl Lockfile {
     &mut self,
     package: &NpmResolutionPackage,
   ) -> Result<(), LockfileError> {
-    let specifier = package.id.as_serializable_name();
+    let specifier = package.id.as_serialized();
     if let Some(package_info) = self.content.npm.packages.get(&specifier) {
       let integrity = package
         .dist
@@ -298,7 +298,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
     let dependencies = package
       .dependencies
       .iter()
-      .map(|(name, id)| (name.to_string(), id.as_serializable_name()))
+      .map(|(name, id)| (name.to_string(), id.as_serialized()))
       .collect::<BTreeMap<String, String>>();
 
     let integrity = package
@@ -307,7 +307,7 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
       .as_ref()
       .unwrap_or(&package.dist.shasum);
     self.content.npm.packages.insert(
-      package.id.as_serializable_name(),
+      package.id.as_serialized(),
       NpmPackageInfo {
         integrity: integrity.to_string(),
         dependencies,
