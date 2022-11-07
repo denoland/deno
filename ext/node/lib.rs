@@ -441,7 +441,7 @@ fn op_require_path_dirname(
   if let Some(parent) = p.parent() {
     Ok(parent.to_string_lossy().to_string())
   } else {
-    return Err(generic_error("Path doesn't have a parent"));
+    Err(generic_error("Path doesn't have a parent"))
   }
 }
 
@@ -455,7 +455,7 @@ fn op_require_path_basename(
   if let Some(path) = p.file_name() {
     Ok(path.to_string_lossy().to_string())
   } else {
-    return Err(generic_error("Path doesn't have a file name"));
+    Err(generic_error("Path doesn't have a file name"))
   }
 }
 
