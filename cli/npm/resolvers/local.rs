@@ -349,8 +349,7 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.name,
       );
-      // todo(THIS PR): hard link instead
-      fs_util::copy_dir_recursive(&source_path, &package_path)?;
+      fs_util::hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }

@@ -406,11 +406,15 @@ impl NpmCache {
     let original_package_folder = self
       .readonly
       .package_folder_for_name_and_version(&id.name, &id.version, registry_url);
-    // todo(THIS PR): use hard linking instead of copying
     with_folder_sync_lock(
       (id.name.as_str(), &id.version),
       &package_folder,
-      || fs_util::copy_dir_recursive(&original_package_folder, &package_folder),
+      || {
+        fs_util::hard_link_dir_recursive(
+          &original_package_folder,
+          &package_folder,
+        )
+      },
     )?;
     Ok(())
   }

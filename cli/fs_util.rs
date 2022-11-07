@@ -357,6 +357,39 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+/// Hardlinks the files in one directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn hard_link_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(&to)
+    .with_context(|| format!("Creating {}", to.display()))?;
+  let read_dir = std::fs::read_dir(&from)
+    .with_context(|| format!("Reading {}", from.display()))?;
+
+  for entry in read_dir {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      hard_link_dir_recursive(&new_from, &new_to).with_context(|| {
+        format!("Dir {} to {}", new_from.display(), new_to.display())
+      })?;
+    } else if file_type.is_file() {
+      std::fs::hard_link(&new_from, &new_to).with_context(|| {
+        format!(
+          "Hard linking {} to {}",
+          new_from.display(),
+          new_to.display()
+        )
+      })?;
+    }
+  }
+
+  Ok(())
+}
+
 pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), AnyError> {
   let err_mapper = |err: Error| {
     Error::new(

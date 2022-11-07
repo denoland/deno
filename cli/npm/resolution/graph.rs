@@ -1800,119 +1800,122 @@ mod test {
 
   #[tokio::test]
   async fn resolve_peer_deps_multiple_copies() {
-    let api = TestNpmRegistryApi::default();
-    api.ensure_package_version("package-a", "1.0.0");
-    api.ensure_package_version("package-b", "2.0.0");
-    api.ensure_package_version("package-dep", "3.0.0");
-    api.ensure_package_version("package-peer", "4.0.0");
-    api.ensure_package_version("package-peer", "5.0.0");
-    api.add_dependency(("package-a", "1.0.0"), ("package-dep", "*"));
-    api.add_dependency(("package-a", "1.0.0"), ("package-peer", "4"));
-    api.add_dependency(("package-b", "2.0.0"), ("package-dep", "*"));
-    api.add_dependency(("package-b", "2.0.0"), ("package-peer", "5"));
-    api.add_peer_dependency(("package-dep", "3.0.0"), ("package-peer", "*"));
+    // repeat this a few times to have a higher probability of surfacing indeterminism
+    for _ in 0..3 {
+      let api = TestNpmRegistryApi::default();
+      api.ensure_package_version("package-a", "1.0.0");
+      api.ensure_package_version("package-b", "2.0.0");
+      api.ensure_package_version("package-dep", "3.0.0");
+      api.ensure_package_version("package-peer", "4.0.0");
+      api.ensure_package_version("package-peer", "5.0.0");
+      api.add_dependency(("package-a", "1.0.0"), ("package-dep", "*"));
+      api.add_dependency(("package-a", "1.0.0"), ("package-peer", "4"));
+      api.add_dependency(("package-b", "2.0.0"), ("package-dep", "*"));
+      api.add_dependency(("package-b", "2.0.0"), ("package-peer", "5"));
+      api.add_peer_dependency(("package-dep", "3.0.0"), ("package-peer", "*"));
 
-    let (packages, package_reqs) = run_resolver_and_get_output(
-      api,
-      vec!["npm:package-a@1", "npm:package-b@2"],
-    )
-    .await;
-    assert_eq!(
-      packages,
-      vec![
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-a@1.0.0_package-peer@4.0.0"
-          )
-          .unwrap(),
-          copy_index: 0,
-          dependencies: HashMap::from([
-            (
-              "package-dep".to_string(),
-              NpmPackageId::from_serialized(
-                "package-dep@3.0.0_package-peer@4.0.0"
-              )
-              .unwrap(),
-            ),
-            (
+      let (packages, package_reqs) = run_resolver_and_get_output(
+        api,
+        vec!["npm:package-a@1", "npm:package-b@2"],
+      )
+      .await;
+      assert_eq!(
+        packages,
+        vec![
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized(
+              "package-a@1.0.0_package-peer@4.0.0"
+            )
+            .unwrap(),
+            copy_index: 0,
+            dependencies: HashMap::from([
+              (
+                "package-dep".to_string(),
+                NpmPackageId::from_serialized(
+                  "package-dep@3.0.0_package-peer@4.0.0"
+                )
+                .unwrap(),
+              ),
+              (
+                "package-peer".to_string(),
+                NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
+              ),
+            ]),
+            dist: Default::default(),
+          },
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized(
+              "package-b@2.0.0_package-peer@5.0.0"
+            )
+            .unwrap(),
+            copy_index: 0,
+            dependencies: HashMap::from([
+              (
+                "package-dep".to_string(),
+                NpmPackageId::from_serialized(
+                  "package-dep@3.0.0_package-peer@5.0.0"
+                )
+                .unwrap(),
+              ),
+              (
+                "package-peer".to_string(),
+                NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
+              ),
+            ]),
+            dist: Default::default(),
+          },
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized(
+              "package-dep@3.0.0_package-peer@4.0.0"
+            )
+            .unwrap(),
+            copy_index: 0,
+            dependencies: HashMap::from([(
               "package-peer".to_string(),
               NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
-            ),
-          ]),
-          dist: Default::default(),
-        },
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-b@2.0.0_package-peer@5.0.0"
-          )
-          .unwrap(),
-          copy_index: 0,
-          dependencies: HashMap::from([
-            (
-              "package-dep".to_string(),
-              NpmPackageId::from_serialized(
-                "package-dep@3.0.0_package-peer@5.0.0"
-              )
-              .unwrap(),
-            ),
-            (
+            )]),
+            dist: Default::default(),
+          },
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized(
+              "package-dep@3.0.0_package-peer@5.0.0"
+            )
+            .unwrap(),
+            copy_index: 1,
+            dependencies: HashMap::from([(
               "package-peer".to_string(),
               NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
-            ),
-          ]),
-          dist: Default::default(),
-        },
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-dep@3.0.0_package-peer@4.0.0"
+            )]),
+            dist: Default::default(),
+          },
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
+            copy_index: 0,
+            dependencies: HashMap::new(),
+            dist: Default::default(),
+          },
+          NpmResolutionPackage {
+            id: NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
+            copy_index: 0,
+            dependencies: HashMap::new(),
+            dist: Default::default(),
+          },
+        ]
+      );
+      assert_eq!(
+        package_reqs,
+        vec![
+          (
+            "package-a@1".to_string(),
+            "package-a@1.0.0_package-peer@4.0.0".to_string()
+          ),
+          (
+            "package-b@2".to_string(),
+            "package-b@2.0.0_package-peer@5.0.0".to_string()
           )
-          .unwrap(),
-          copy_index: 0,
-          dependencies: HashMap::from([(
-            "package-peer".to_string(),
-            NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
-          )]),
-          dist: Default::default(),
-        },
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized(
-            "package-dep@3.0.0_package-peer@5.0.0"
-          )
-          .unwrap(),
-          copy_index: 1,
-          dependencies: HashMap::from([(
-            "package-peer".to_string(),
-            NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
-          )]),
-          dist: Default::default(),
-        },
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized("package-peer@4.0.0").unwrap(),
-          copy_index: 0,
-          dependencies: HashMap::new(),
-          dist: Default::default(),
-        },
-        NpmResolutionPackage {
-          id: NpmPackageId::from_serialized("package-peer@5.0.0").unwrap(),
-          copy_index: 0,
-          dependencies: HashMap::new(),
-          dist: Default::default(),
-        },
-      ]
-    );
-    assert_eq!(
-      package_reqs,
-      vec![
-        (
-          "package-a@1".to_string(),
-          "package-a@1.0.0_package-peer@4.0.0".to_string()
-        ),
-        (
-          "package-b@2".to_string(),
-          "package-b@2.0.0_package-peer@5.0.0".to_string()
-        )
-      ]
-    );
+        ]
+      );
+    }
   }
 
   async fn run_resolver_and_get_output(
