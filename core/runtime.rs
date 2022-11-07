@@ -777,24 +777,6 @@ impl JsRuntime {
     Self::grab(scope, global.into(), path)
   }
 
-  pub(crate) fn ensure_objs<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Object>,
-    path: &str,
-  ) -> Option<v8::Local<'s, v8::Object>> {
-    path.split('.').fold(Some(root), |p, k| {
-      let k = v8::String::new(scope, k)?.into();
-      match p?.get(scope, k) {
-        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
-        _ => {
-          let o = v8::Object::new(scope);
-          p?.set(scope, k, o.into());
-          Some(o)
-        }
-      }
-    })
-  }
-
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let scope = &mut self.handle_scope();
