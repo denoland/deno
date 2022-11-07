@@ -133,6 +133,14 @@ impl std::fmt::Display for NpmPackageReq {
   }
 }
 
+impl NpmPackageReq {
+  pub fn from_str(text: &str) -> Result<Self, AnyError> {
+    // probably should do something more targetted in the future
+    let reference = NpmPackageReference::from_str(&format!("npm:{}", text))?;
+    Ok(reference.req)
+  }
+}
+
 impl NpmVersionMatcher for NpmPackageReq {
   fn tag(&self) -> Option<&str> {
     match &self.version_req {

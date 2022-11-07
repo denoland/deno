@@ -1,6 +1,8 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -77,11 +79,11 @@ impl GraphPath {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 enum NodeParent {
   /// These are top of the graph npm package requirements
   /// as specified in Deno code.
-  Req(NpmPackageReq),
+  Req,
   /// A reference to another node, which is a resolved package.
   Node(NpmPackageId),
 }
@@ -90,8 +92,10 @@ enum NodeParent {
 #[derive(Debug)]
 struct Node {
   pub id: NpmPackageId,
-  pub parents: HashMap<String, HashSet<NodeParent>>,
-  pub children: HashMap<String, NpmPackageId>,
+  // Use BTreeMap and BTreeSet in order to create determinism
+  // when going up and down the tree
+  pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
+  pub children: BTreeMap<String, NpmPackageId>,
   pub deps: Arc<Vec<NpmDependencyEntry>>,
 }
 
@@ -112,7 +116,7 @@ impl Node {
 
 #[derive(Debug, Default)]
 pub struct Graph {
-  package_reqs: HashMap<NpmPackageReq, NpmPackageId>,
+  package_reqs: HashMap<String, NpmPackageId>,
   packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   // Ideally this value would be Rc<RefCell<Node>>, but we need to use a Mutex
   // because the lsp requires Send and this code is executed in the lsp.
@@ -151,17 +155,17 @@ impl Graph {
     };
     for (package_req, id) in &snapshot.package_reqs {
       let node = fill_for_id(&mut graph, id, &snapshot.packages);
-      (*node).lock().add_parent(
-        package_req.to_string(),
-        NodeParent::Req(package_req.clone()),
-      );
-      graph.package_reqs.insert(package_req.clone(), id.clone());
+      let package_req_text = package_req.to_string();
+      (*node)
+        .lock()
+        .add_parent(package_req_text.clone(), NodeParent::Req);
+      graph.package_reqs.insert(package_req_text, id.clone());
     }
     graph
   }
 
   pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
-    self.package_reqs.contains_key(req)
+    self.package_reqs.contains_key(&req.to_string())
   }
 
   fn get_or_create_for_id(
@@ -230,12 +234,12 @@ impl Graph {
       NodeParent::Node(parent_id) => {
         self.set_child_parent_node(specifier, child, parent_id);
       }
-      NodeParent::Req(package_req) => {
+      NodeParent::Req => {
         let mut node = (*child).lock();
         node.add_parent(specifier.to_string(), parent.clone());
         self
           .package_reqs
-          .insert(package_req.clone(), node.id.clone());
+          .insert(specifier.to_string(), node.id.clone());
       }
     }
   }
@@ -269,9 +273,8 @@ impl Graph {
           assert_eq!(removed_child_id, *child_id);
         }
       }
-      NodeParent::Req(req) => {
-        assert_eq!(req.to_string(), specifier);
-        if let Some(removed_child_id) = self.package_reqs.remove(req) {
+      NodeParent::Req => {
+        if let Some(removed_child_id) = self.package_reqs.remove(specifier) {
           assert_eq!(removed_child_id, *child_id);
         }
       }
@@ -314,13 +317,23 @@ impl Graph {
           copy_index: copy_index_resolver.resolve(&id),
           id,
           dist,
-          dependencies: node.children.clone(),
+          dependencies: node
+            .children
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
         },
       );
     }
 
     Ok(NpmResolutionSnapshot {
-      package_reqs: self.package_reqs,
+      package_reqs: self
+        .package_reqs
+        .into_iter()
+        .map(|(specifier, id)| {
+          (NpmPackageReq::from_str(&specifier).unwrap(), id)
+        })
+        .collect(),
       packages_by_name: self.packages_by_name,
       packages,
     })
@@ -408,7 +421,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     self.graph.set_child_parent(
       &package_req.to_string(),
       &node,
-      &NodeParent::Req(package_req.clone()),
+      &NodeParent::Req,
     );
     self
       .pending_unresolved_nodes
@@ -630,19 +643,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             )));
           }
         }
-        NodeParent::Req(req) => {
+        NodeParent::Req => {
           // in this case, the parent is the root so the children are all the package requirements
           if let Some(child_id) =
             find_matching_child(peer_dep, self.graph.package_reqs.values())
           {
-            let old_id = self.graph.package_reqs.get(req).unwrap().clone();
             let mut path = path.specifiers;
-            path.pop(); // go back down one level
+            let specifier = path.pop().unwrap(); // go back down one level
+            let old_id =
+              self.graph.package_reqs.get(&specifier).unwrap().clone();
             return Ok(Some(self.set_new_peer_dep(
-              HashMap::from([(
-                req.to_string(),
-                HashSet::from([NodeParent::Req(req.clone())]),
-              )]),
+              BTreeMap::from([(specifier, BTreeSet::from([NodeParent::Req]))]),
               &old_id,
               &child_id,
               path,
@@ -670,7 +681,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   fn set_new_peer_dep(
     &mut self,
-    previous_parents: HashMap<String, HashSet<NodeParent>>,
+    previous_parents: BTreeMap<String, BTreeSet<NodeParent>>,
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
     mut path: Vec<String>,
@@ -750,9 +761,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       } else {
         let next_node_id = old_node_children.get(&next_specifier).unwrap();
         bottom_parent_id = self.set_new_peer_dep(
-          HashMap::from([(
+          BTreeMap::from([(
             next_specifier.to_string(),
-            HashSet::from([NodeParent::Node(new_id.clone())]),
+            BTreeSet::from([NodeParent::Node(new_id.clone())]),
           )]),
           next_node_id,
           &peer_dep_id,

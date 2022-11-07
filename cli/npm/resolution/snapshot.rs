@@ -20,7 +20,6 @@ use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
 
 use super::NpmPackageId;
-use super::NpmPackageReference;
 use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
@@ -242,10 +241,10 @@ impl NpmResolutionSnapshot {
 
       // collect the specifiers to version mappings
       for (key, value) in &lockfile.content.npm.specifiers {
-        let reference = NpmPackageReference::from_str(&format!("npm:{}", key))
+        let package_req = NpmPackageReq::from_str(key)
           .with_context(|| format!("Unable to parse npm specifier: {}", key))?;
         let package_id = NpmPackageId::from_serialized(value)?;
-        package_reqs.insert(reference.req, package_id.clone());
+        package_reqs.insert(package_req, package_id.clone());
         verify_ids.insert(package_id.clone());
       }
 
