@@ -199,7 +199,8 @@ impl NpmResolutionSnapshot {
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
   ) -> Option<NpmPackageId> {
-    // todo(THIS PR): this is not correct because some ids will be better than others
+    // todo(dsherret): this is not exactly correct because some ids
+    // will be better than others due to peer dependencies
     let mut maybe_best_id: Option<&NpmPackageId> = None;
     if let Some(ids) = self.packages_by_name.get(name) {
       for id in ids {

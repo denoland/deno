@@ -217,7 +217,8 @@ impl ReadonlyNpmCache {
       //    packages.
       // 2. We can figure out the package id from the path. This is used
       //    in resolve_package_id_from_specifier
-      // Maybe consider only supporting this if people use --node-modules-dir
+      // Probably use a hash of the package name at `npm/-/<hash>` then create
+      // a mapping for these package names.
       todo!("deno currently doesn't support npm package names that are not all lowercase");
     }
     // ensure backslashes are used on windows
@@ -345,7 +346,6 @@ impl NpmCache {
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
-    // todo(THIS PR): callers should cache the 0-indexed version first
     let package_folder = self.readonly.package_folder_for_name_and_version(
       package.0,
       package.1,

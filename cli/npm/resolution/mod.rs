@@ -295,8 +295,7 @@ impl NpmPackageId {
       }
     }
 
-    // todo(THIS PR): move this someone re-usable
-    crate::npm::semver::errors::with_failure_handling(parse_id_at_level(0))(id)
+    with_failure_handling(parse_id_at_level(0))(id)
       .with_context(|| format!("Invalid npm package id '{}'.", id))
   }
 }
