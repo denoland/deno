@@ -144,7 +144,7 @@ impl NpmResolutionSnapshot {
         anyhow!("could not find referrer npm package '{}'", referrer)
       })?;
 
-    let name = name_without_path(&name);
+    let name = name_without_path(name);
     if let Some(id) = referrer_package.dependencies.get(name) {
       return Ok(self.packages.get(id).unwrap());
     }

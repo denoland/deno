@@ -191,7 +191,7 @@ impl ReadonlyNpmCache {
     } else {
       self
         .package_name_folder(&id.name, registry_url)
-        .join(format!("{}_{}", id.version.to_string(), id.copy_index))
+        .join(format!("{}_{}", id.version, id.copy_index))
     }
   }
 
@@ -289,7 +289,7 @@ impl ReadonlyNpmCache {
         (version_part, 0)
       };
     Some(NpmPackageCacheFolderId {
-      name: name.to_string(),
+      name,
       version: NpmVersion::parse(version).ok()?,
       copy_index,
     })
@@ -355,7 +355,7 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(&package.0)
+      && self.cache_setting.should_use_for_npm_package(package.0)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -408,11 +408,11 @@ impl NpmCache {
       .package_folder_for_name_and_version(&id.name, &id.version, registry_url);
     // todo(THIS PR): use hard linking instead of copying
     with_folder_sync_lock(
-      (&id.name.as_str(), &id.version),
+      (id.name.as_str(), &id.version),
       &package_folder,
       || fs_util::copy_dir_recursive(&original_package_folder, &package_folder),
     )?;
-    return Ok(());
+    Ok(())
   }
 
   pub fn package_folder_for_id(
