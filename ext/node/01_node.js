@@ -100,6 +100,7 @@
     nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
     nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
     nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+    nodeGlobals.console = nativeModuleExports["console"];
     nodeGlobals.global = nodeGlobalThis;
     nodeGlobals.process = nativeModuleExports["process"];
     nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;

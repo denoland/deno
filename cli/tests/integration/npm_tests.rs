@@ -641,6 +641,14 @@ itest!(node_modules_dir_with_deps {
   temp_cwd: true,
 });
 
+itest!(node_modules_dir_yargs {
+  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
+  output: "npm/cjs_yargs/main.out",
+  envs: env_vars(),
+  http_server: true,
+  temp_cwd: true,
+});
+
 #[test]
 fn node_modules_dir_cache() {
   let _server = http_server();

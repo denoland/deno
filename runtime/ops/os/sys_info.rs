@@ -1,4 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+#[cfg(target_family = "windows")]
+use std::sync::Once;
 
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
@@ -112,6 +114,9 @@ pub fn os_release() -> String {
   }
 }
 
+#[cfg(target_family = "windows")]
+static WINSOCKET_INIT: Once = Once::new();
+
 pub fn hostname() -> String {
   #[cfg(target_family = "unix")]
   // SAFETY: `sysconf` returns a system constant.
@@ -131,13 +136,25 @@ pub fn hostname() -> String {
   #[cfg(target_family = "windows")]
   {
     use std::ffi::OsString;
+    use std::mem;
     use std::os::windows::ffi::OsStringExt;
+    use winapi::shared::minwindef::MAKEWORD;
     use winapi::um::winsock2::GetHostNameW;
+    use winapi::um::winsock2::WSAStartup;
 
     let namelen = 256;
     let mut name: Vec<u16> = vec![0u16; namelen];
+    // Start winsock to make `GetHostNameW` work correctly
+    // https://github.com/retep998/winapi-rs/issues/296
+    WINSOCKET_INIT.call_once(|| unsafe {
+      let mut data = mem::zeroed();
+      let wsa_startup_result = WSAStartup(MAKEWORD(2, 2), &mut data);
+      if wsa_startup_result != 0 {
+        panic!("Failed to start winsocket");
+      }
+    });
     let err =
-      // SAFETY: length of wide string is 256 chars or less. 
+      // SAFETY: length of wide string is 256 chars or less.
       // https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostnamew
       unsafe { GetHostNameW(name.as_mut_ptr(), namelen as libc::c_int) };
 

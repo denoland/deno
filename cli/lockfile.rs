@@ -99,9 +99,13 @@ impl Lockfile {
     flags: &Flags,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<Lockfile>, AnyError> {
+    if flags.no_lock {
+      return Ok(None);
+    }
+
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
-      None => match maybe_config_file {
+      None if flags.unstable => match maybe_config_file {
         Some(config_file) => {
           if config_file.specifier.scheme() == "file" {
             let mut path = config_file.specifier.to_file_path().unwrap();
@@ -113,6 +117,7 @@ impl Lockfile {
         }
         None => return Ok(None),
       },
+      None => return Ok(None),
     };
 
     let lockfile = Self::new(filename, flags.lock_write)?;

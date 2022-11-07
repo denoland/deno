@@ -94,12 +94,12 @@ jobs:
           deno-version: v1.x
 
       - name: Install Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
 
       - name: Install Node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
           node-version: 17
 
@@ -226,7 +226,7 @@ jobs:
           fi
 
       - name: Cache Cargo home
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
           path: |
