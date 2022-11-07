@@ -32,6 +32,7 @@ use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::RealNpmRegistryApi;
 
+use super::common::cache_packages;
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
 
@@ -240,6 +241,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
 async fn sync_resolver_with_fs(
   resolver: &LocalNpmPackageResolver,
 ) -> Result<(), AnyError> {
+  cache_packages_to_global_cache(&resolver).await?;
   sync_resolution_with_fs(
     &resolver.resolution.snapshot(),
     &resolver.cache,
@@ -496,4 +498,16 @@ fn get_next_node_modules_ancestor(mut path: &Path) -> &Path {
       return path;
     }
   }
+}
+
+async fn cache_packages_to_global_cache(
+  resolver: &LocalNpmPackageResolver,
+) -> Result<(), AnyError> {
+  let packages = resolver.resolution.all_packages_partitioned().packages;
+
+  // only cache the non-copy packages in the global cache since
+  // there's no need for them when using a local node_modules
+  cache_packages(packages, &resolver.cache, &resolver.registry_url).await?;
+
+  Ok(())
 }

@@ -1076,10 +1076,13 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let output = deno.wait_with_output().unwrap();
   assert!(output.status.success());
 
-  let expected_output =
+  let expected_initial_output =
     std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
 
-  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+  assert_eq!(
+    String::from_utf8(output.stderr).unwrap(),
+    expected_initial_output
+  );
 
   assert!(temp_dir.path().join("deno.lock").exists());
   let grandchild_path = deno_dir
@@ -1194,6 +1197,28 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     String::from_utf8(output.stderr).unwrap(),
     expected_reload_output
   );
+
+  // now ensure it works with reloading and no lockfile
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--no-lock")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8(output.stderr).unwrap(),
+    expected_initial_output,
+  );
+  assert!(output.status.success());
 }
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
