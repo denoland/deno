@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -13,6 +14,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::lockfile::Lockfile;
+use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
 use crate::npm::registry::RealNpmRegistryApi;
@@ -23,6 +25,21 @@ use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
 
+/// Packages partitioned by if they are "copy" packages or not. Copy
+/// packages are used for peer dependencies.
+pub struct NpmPackagesPartitioned {
+  pub packages: Vec<NpmResolutionPackage>,
+  pub copy_packages: Vec<NpmResolutionPackage>,
+}
+
+impl NpmPackagesPartitioned {
+  pub fn into_all(self) -> Vec<NpmResolutionPackage> {
+    let mut packages = self.packages;
+    packages.extend(self.copy_packages);
+    packages
+  }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NpmResolutionSnapshot {
   #[serde(with = "map_to_vec")]
@@ -30,8 +47,6 @@ pub struct NpmResolutionSnapshot {
   pub(super) packages_by_name: HashMap<String, Vec<NpmPackageId>>,
   #[serde(with = "map_to_vec")]
   pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
-  #[serde(with = "map_to_vec")]
-  pub(super) packages_to_copy_index: HashMap<NpmPackageId, usize>,
 }
 
 // This is done so the maps with non-string keys get serialized and deserialized as vectors.
@@ -105,44 +120,78 @@ impl NpmResolutionSnapshot {
   pub fn resolve_package_from_package(
     &self,
     name: &str,
-    referrer: &NpmPackageId,
+    referrer: &NpmPackageCacheFolderId,
   ) -> Result<&NpmResolutionPackage, AnyError> {
-    match self.packages.get(referrer) {
-      Some(referrer_package) => {
-        let name_ = name_without_path(name);
-        if let Some(id) = referrer_package.dependencies.get(name_) {
-          return Ok(self.packages.get(id).unwrap());
-        }
+    // todo(dsherret): do we need an additional hashmap to get this quickly?
+    let referrer_package = self
+      .packages_by_name
+      .get(&referrer.name)
+      .and_then(|packages| {
+        packages
+          .iter()
+          .filter(|p| p.version == referrer.version)
+          .filter_map(|id| {
+            let package = self.packages.get(id)?;
+            if package.copy_index == referrer.copy_index {
+              Some(package)
+            } else {
+              None
+            }
+          })
+          .next()
+      })
+      .ok_or_else(|| {
+        anyhow!("could not find referrer npm package '{}'", referrer)
+      })?;
 
-        if referrer_package.id.name == name_ {
-          return Ok(referrer_package);
-        }
-
-        // TODO(bartlomieju): this should use a reverse lookup table in the
-        // snapshot instead of resolving best version again.
-        let req = NpmPackageReq {
-          name: name_.to_string(),
-          version_req: None,
-        };
-
-        if let Some(id) = self.resolve_best_package_id(name_, &req) {
-          if let Some(pkg) = self.packages.get(&id) {
-            return Ok(pkg);
-          }
-        }
-
-        bail!(
-          "could not find npm package '{}' referenced by '{}'",
-          name,
-          referrer
-        )
-      }
-      None => bail!("could not find referrer npm package '{}'", referrer),
+    let name = name_without_path(&name);
+    if let Some(id) = referrer_package.dependencies.get(name) {
+      return Ok(self.packages.get(id).unwrap());
     }
+
+    if referrer_package.id.name == name {
+      return Ok(referrer_package);
+    }
+
+    // TODO(bartlomieju): this should use a reverse lookup table in the
+    // snapshot instead of resolving best version again.
+    let req = NpmPackageReq {
+      name: name.to_string(),
+      version_req: None,
+    };
+
+    if let Some(id) = self.resolve_best_package_id(name, &req) {
+      if let Some(pkg) = self.packages.get(&id) {
+        return Ok(pkg);
+      }
+    }
+
+    bail!(
+      "could not find npm package '{}' referenced by '{}'",
+      name,
+      referrer
+    )
   }
 
   pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
     self.packages.values().cloned().collect()
+  }
+
+  pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
+    let mut packages = self.all_packages();
+    let mut copy_packages = Vec::with_capacity(packages.len() / 2); // at most 1 copy for every package
+
+    // partition out any packages that are "copy" packages
+    for i in (0..packages.len()).rev() {
+      if packages[i].copy_index > 0 {
+        copy_packages.push(packages.swap_remove(i));
+      }
+    }
+
+    NpmPackagesPartitioned {
+      packages,
+      copy_packages,
+    }
   }
 
   pub fn resolve_best_package_id(
@@ -203,9 +252,6 @@ impl NpmResolutionSnapshot {
       for (key, value) in &lockfile.content.npm.packages {
         let package_id = NpmPackageId::deserialize_name(key)?;
 
-        // Update the package copy index
-        copy_indexes_builder.add_package(&package_id);
-
         // collect the dependencies
         let mut dependencies = HashMap::default();
 
@@ -222,6 +268,7 @@ impl NpmResolutionSnapshot {
 
         let package = NpmResolutionPackage {
           id: package_id.clone(),
+          copy_index: copy_indexes_builder.add_package(&package_id),
           // temporary dummy value
           dist: NpmPackageVersionDistInfo {
             tarball: "foobar".to_string(),
@@ -279,7 +326,6 @@ impl NpmResolutionSnapshot {
       package_reqs,
       packages_by_name,
       packages,
-      packages_to_copy_index: copy_indexes_builder.into_map(),
     })
   }
 }
@@ -298,7 +344,7 @@ impl SnapshotPackageCopyIndexesBuilder {
   }
 
   pub fn from_map_with_capacity(
-    packages_to_copy_index: HashMap<NpmPackageId, usize>,
+    mut packages_to_copy_index: HashMap<NpmPackageId, usize>,
     capacity: usize,
   ) -> Self {
     let mut package_name_version_to_copy_count =
@@ -321,12 +367,10 @@ impl SnapshotPackageCopyIndexesBuilder {
     }
   }
 
-  pub fn into_map(self) -> HashMap<NpmPackageId, usize> {
-    self.packages_to_copy_index
-  }
-
-  pub fn add_package(&mut self, id: &NpmPackageId) {
-    if !self.packages_to_copy_index.contains_key(id) {
+  pub fn add_package(&mut self, id: &NpmPackageId) -> usize {
+    if let Some(index) = self.packages_to_copy_index.get(id) {
+      *index
+    } else {
       let index = *self
         .package_name_version_to_copy_count
         .entry((id.name.to_string(), id.version.to_string()))
@@ -335,6 +379,7 @@ impl SnapshotPackageCopyIndexesBuilder {
         })
         .or_insert(0);
       self.packages_to_copy_index.insert(id.clone(), index);
+      index
     }
   }
 }

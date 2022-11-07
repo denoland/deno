@@ -16,8 +16,10 @@ use serde::Serialize;
 use crate::lockfile::Lockfile;
 
 use self::graph::GraphDependencyResolver;
+use self::snapshot::NpmPackagesPartitioned;
 
 use super::cache::should_sync_download;
+use super::cache::NpmPackageCacheFolderId;
 use super::registry::NpmPackageVersionDistInfo;
 use super::registry::RealNpmRegistryApi;
 use super::semver::NpmVersion;
@@ -308,10 +310,25 @@ impl std::fmt::Display for NpmPackageId {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmResolutionPackage {
   pub id: NpmPackageId,
+  /// The peer dependency resolution can differ for the same
+  /// package (name and version) depending on where it is in
+  /// the resolution tree. This copy index indicates which
+  /// copy of the package this is.
+  pub copy_index: usize,
   pub dist: NpmPackageVersionDistInfo,
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
   pub dependencies: HashMap<String, NpmPackageId>,
+}
+
+impl NpmResolutionPackage {
+  pub fn get_package_cache_folder_id(&self) -> NpmPackageCacheFolderId {
+    NpmPackageCacheFolderId {
+      name: self.id.name.clone(),
+      version: self.id.version.clone(),
+      copy_index: self.copy_index,
+    }
+  }
 }
 
 pub struct NpmResolution {
@@ -443,10 +460,21 @@ impl NpmResolution {
     self.snapshot.read().package_from_id(id).cloned()
   }
 
+  pub fn resolve_package_cache_folder_id_from_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Option<NpmPackageCacheFolderId> {
+    self
+      .snapshot
+      .read()
+      .package_from_id(id)
+      .map(|p| p.get_package_cache_folder_id())
+  }
+
   pub fn resolve_package_from_package(
     &self,
     name: &str,
-    referrer: &NpmPackageId,
+    referrer: &NpmPackageCacheFolderId,
   ) -> Result<NpmResolutionPackage, AnyError> {
     self
       .snapshot
@@ -469,6 +497,10 @@ impl NpmResolution {
 
   pub fn all_packages(&self) -> Vec<NpmResolutionPackage> {
     self.snapshot.read().all_packages()
+  }
+
+  pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
+    self.snapshot.read().all_packages_partitioned()
   }
 
   pub fn has_packages(&self) -> bool {

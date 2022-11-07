@@ -559,6 +559,7 @@ mod tests {
         version: NpmVersion::parse("3.3.4").unwrap(),
         peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
         shasum: "foo".to_string(),
@@ -575,6 +576,7 @@ mod tests {
         version: NpmVersion::parse("1.0.0").unwrap(),
         peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
         shasum: "foo".to_string(),
@@ -592,6 +594,7 @@ mod tests {
         version: NpmVersion::parse("1.0.2").unwrap(),
         peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
         shasum: "foo".to_string(),
@@ -609,6 +612,7 @@ mod tests {
         version: NpmVersion::parse("1.0.2").unwrap(),
         peer_dependencies: Vec::new(),
       },
+      copy_index: 0,
       dist: NpmPackageVersionDistInfo {
         tarball: "foo".to_string(),
         shasum: "foo".to_string(),

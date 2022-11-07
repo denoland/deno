@@ -24,6 +24,7 @@ use tokio::task::JoinHandle;
 use crate::fs_util;
 use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
+use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
@@ -255,8 +256,13 @@ async fn sync_resolution_with_fs(
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
-  fn get_package_folder_name(package_id: &NpmPackageId) -> String {
-    package_id.to_string().replace('/', "+")
+  fn get_package_folder_name(id: &NpmPackageCacheFolderId) -> String {
+    let copy_str = if id.copy_index == 0 {
+      "".to_string()
+    } else {
+      format!("_{}", id.copy_index)
+    };
+    format!("{}@{}{}", id.name, id.version, copy_str).replace('/', "+")
   }
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
@@ -269,16 +275,17 @@ async fn sync_resolution_with_fs(
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_id>/node_modules/<package_name>
   let sync_download = should_sync_download();
-  let mut all_packages = snapshot.all_packages();
+  let mut package_partitions = snapshot.all_packages_partitioned();
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    all_packages.sort_by(|a, b| a.id.cmp(&b.id));
+    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
-    Vec::with_capacity(all_packages.len());
-  for package in &all_packages {
-    let folder_name = get_package_folder_name(&package.id);
+    Vec::with_capacity(package_partitions.packages.len());
+  for package in &package_partitions.packages {
+    let folder_name =
+      get_package_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
     let initialized_file = folder_path.join(".initialized");
     if !initialized_file.exists() {
@@ -287,14 +294,22 @@ async fn sync_resolution_with_fs(
       let package = package.clone();
       let handle = tokio::task::spawn(async move {
         cache
-          .ensure_package(&package.id, &package.dist, &registry_url)
+          .ensure_package(
+            (&package.id.name, &package.id.version),
+            &package.dist,
+            &registry_url,
+          )
           .await?;
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.id.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-        let cache_folder = cache.package_folder(&package.id, &registry_url);
+        let cache_folder = cache.package_folder_for_name_and_version(
+          &package.id.name,
+          &package.id.version,
+          &registry_url,
+        );
         // for now copy, but in the future consider hard linking
         fs_util::copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
@@ -314,16 +329,51 @@ async fn sync_resolution_with_fs(
     result??; // surface the first error
   }
 
-  // 2. Symlink all the dependencies into the .deno directory.
+  // 2. Create any "copy" packages, which are used for peer dependencies
+  for package in &package_partitions.copy_packages {
+    let package_cache_folder_id = package.get_package_cache_folder_id();
+    let destination_path = deno_local_registry_dir
+      .join(&get_package_folder_name(&package_cache_folder_id));
+    let initialized_file = destination_path.join(".initialized");
+    if !initialized_file.exists() {
+      let sub_node_modules = destination_path.join("node_modules");
+      let package_path = join_package_name(&sub_node_modules, &package.id.name);
+      fs::create_dir_all(&package_path).with_context(|| {
+        format!("Creating '{}'", destination_path.display())
+      })?;
+      let source_path = join_package_name(
+        &deno_local_registry_dir
+          .join(&get_package_folder_name(
+            &package_cache_folder_id.with_no_count(),
+          ))
+          .join("node_modules"),
+        &package.id.name,
+      );
+      // todo(THIS PR): hard link instead
+      fs_util::copy_dir_recursive(&source_path, &package_path)?;
+      // write out a file that indicates this folder has been initialized
+      fs::write(initialized_file, "")?;
+    }
+  }
+
+  let all_packages = package_partitions.into_all();
+
+  // 3. Symlink all the dependencies into the .deno directory.
   //
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
     let sub_node_modules = deno_local_registry_dir
-      .join(&get_package_folder_name(&package.id))
+      .join(&get_package_folder_name(
+        &package.get_package_cache_folder_id(),
+      ))
       .join("node_modules");
     for (name, dep_id) in &package.dependencies {
-      let dep_folder_name = get_package_folder_name(dep_id);
+      let dep_cache_folder_id = snapshot
+        .package_from_id(dep_id)
+        .unwrap()
+        .get_package_cache_folder_id();
+      let dep_folder_name = get_package_folder_name(&dep_cache_folder_id);
       let dep_folder_path = join_package_name(
         &deno_local_registry_dir
           .join(dep_folder_name)
@@ -337,7 +387,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 3. Create all the packages in the node_modules folder, which are symlinks.
+  // 4. Create all the packages in the node_modules folder, which are symlinks.
   //
   // Symlink node_modules/<package_name> to
   // node_modules/.deno/<package_id>/node_modules/<package_name>
@@ -357,19 +407,22 @@ async fn sync_resolution_with_fs(
     } else {
       continue; // skip, already handled
     };
-    let local_registry_package_path = deno_local_registry_dir
-      .join(&get_package_folder_name(&package_id))
-      .join("node_modules")
-      .join(&package_id.name);
+    let package = snapshot.package_from_id(&package_id).unwrap();
+    let local_registry_package_path = join_package_name(
+      &deno_local_registry_dir
+        .join(&get_package_folder_name(
+          &package.get_package_cache_folder_id(),
+        ))
+        .join("node_modules"),
+      &package_id.name,
+    );
 
     symlink_package_dir(
       &local_registry_package_path,
       &join_package_name(root_node_modules_dir_path, &root_folder_name),
     )?;
-    if let Some(package) = snapshot.package_from_id(&package_id) {
-      for id in package.dependencies.values() {
-        pending_packages.push_back((id.clone(), false));
-      }
+    for id in package.dependencies.values() {
+      pending_packages.push_back((id.clone(), false));
     }
   }
 

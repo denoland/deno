@@ -177,18 +177,33 @@ impl ReadonlyNpmCache {
     Self::new(dir.root.join("npm"))
   }
 
-  pub fn package_folder(
+  pub fn package_folder_for_id(
     &self,
     id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
-    self.package_name_folder(&id.name, registry_url).join(
-      if id.copy_index == 0 {
-        id.version.to_string()
-      } else {
-        format!("{}_{}", id.version.to_string(), id.copy_index)
-      },
-    )
+    if id.copy_index == 0 {
+      self.package_folder_for_name_and_version(
+        &id.name,
+        &id.version,
+        registry_url,
+      )
+    } else {
+      self
+        .package_name_folder(&id.name, registry_url)
+        .join(format!("{}_{}", id.version.to_string(), id.copy_index))
+    }
+  }
+
+  pub fn package_folder_for_name_and_version(
+    &self,
+    name: &str,
+    version: &NpmVersion,
+    registry_url: &Url,
+  ) -> PathBuf {
+    self
+      .package_name_folder(name, registry_url)
+      .join(version.to_string())
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -312,29 +327,35 @@ impl NpmCache {
 
   pub async fn ensure_package(
     &self,
-    id: &NpmPackageCacheFolderId,
+    package: (&str, &NpmVersion),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(id, dist, registry_url)
+      .ensure_package_inner(package, dist, registry_url)
       .await
-      .with_context(|| format!("Failed caching npm package '{}'.", id))
+      .with_context(|| {
+        format!("Failed caching npm package '{}@{}'.", package.0, package.1)
+      })
   }
 
   async fn ensure_package_inner(
     &self,
-    id: &NpmPackageCacheFolderId,
+    package: (&str, &NpmVersion),
     dist: &NpmPackageVersionDistInfo,
     registry_url: &Url,
   ) -> Result<(), AnyError> {
     // todo(THIS PR): callers should cache the 0-indexed version first
-    let package_folder = self.readonly.package_folder(id, registry_url);
+    let package_folder = self.readonly.package_folder_for_name_and_version(
+      package.0,
+      package.1,
+      registry_url,
+    );
     if package_folder.exists()
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(&id.name)
+      && self.cache_setting.should_use_for_npm_package(&package.0)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
@@ -342,27 +363,10 @@ impl NpmCache {
         "NotCached",
         format!(
           "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          id.name
+          &package.0
         )
       )
       );
-    }
-
-    // This package is a copy of the original package for peer dependency purposes.
-    if id.copy_index > 0 {
-      // This code assumes that the main package folder will exist here and that
-      // should be enforced at a higher level to prevent contention between multiple
-      // threads on the cache folder.
-      let main_package_folder = self
-        .readonly
-        .package_folder(&id.with_no_count(), registry_url);
-      // todo(THIS PR): use hard linking instead of copying
-      with_folder_sync_lock(
-        (id.name.as_str(), &id.version),
-        &package_folder,
-        || fs_util::copy_dir_recursive(&main_package_folder, &package_folder),
-      )?;
-      return Ok(());
     }
 
     let _guard = self.progress_bar.update(&dist.tarball);
@@ -384,21 +388,52 @@ impl NpmCache {
     } else {
       let bytes = response.bytes().await?;
 
-      verify_and_extract_tarball(
-        (id.name.as_str(), &id.version),
-        &bytes,
-        dist,
-        &package_folder,
-      )
+      verify_and_extract_tarball(package, &bytes, dist, &package_folder)
     }
   }
 
-  pub fn package_folder(
+  /// Ensures a copy of the package exists in the global cache.
+  ///
+  /// This assumes that the original package folder being hard linked
+  /// from exists before this is called.
+  pub fn ensure_copy_package(
+    &self,
+    id: &NpmPackageCacheFolderId,
+    registry_url: &Url,
+  ) -> Result<(), AnyError> {
+    assert_ne!(id.copy_index, 0);
+    let package_folder = self.readonly.package_folder_for_id(id, registry_url);
+    let original_package_folder = self
+      .readonly
+      .package_folder_for_name_and_version(&id.name, &id.version, registry_url);
+    // todo(THIS PR): use hard linking instead of copying
+    with_folder_sync_lock(
+      (&id.name.as_str(), &id.version),
+      &package_folder,
+      || fs_util::copy_dir_recursive(&original_package_folder, &package_folder),
+    )?;
+    return Ok(());
+  }
+
+  pub fn package_folder_for_id(
     &self,
     id: &NpmPackageCacheFolderId,
     registry_url: &Url,
   ) -> PathBuf {
-    self.readonly.package_folder(id, registry_url)
+    self.readonly.package_folder_for_id(id, registry_url)
+  }
+
+  pub fn package_folder_for_name_and_version(
+    &self,
+    name: &str,
+    version: &NpmVersion,
+    registry_url: &Url,
+  ) -> PathBuf {
+    self.readonly.package_folder_for_name_and_version(
+      name,
+      version,
+      registry_url,
+    )
   }
 
   pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
@@ -435,7 +470,7 @@ mod test {
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
 
     assert_eq!(
-      cache.package_folder(
+      cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
@@ -450,7 +485,7 @@ mod test {
     );
 
     assert_eq!(
-      cache.package_folder(
+      cache.package_folder_for_id(
         &NpmPackageCacheFolderId {
           name: "json".to_string(),
           version: NpmVersion::parse("1.2.5").unwrap(),
