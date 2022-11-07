@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -33,49 +32,71 @@ use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
 
 #[derive(Default, Clone)]
-struct VisitedVersions(HashSet<String>);
+struct VisitedVersionsPath {
+  previous_node: Option<Arc<VisitedVersionsPath>>,
+  visited_version: (String, NpmVersion),
+}
 
-impl VisitedVersions {
-  pub fn add(&mut self, id: &NpmPackageId) -> bool {
-    self.0.insert(Self::id_as_key(id))
+impl VisitedVersionsPath {
+  pub fn new(id: &NpmPackageId) -> Arc<Self> {
+    Arc::new(Self {
+      previous_node: None,
+      visited_version: Self::id_as_name_and_version(id),
+    })
   }
 
-  pub fn has_visited(&self, id: &NpmPackageId) -> bool {
-    self.0.contains(&Self::id_as_key(id))
+  pub fn with_parent(
+    self: &Arc<VisitedVersionsPath>,
+    parent: &NodeParent,
+  ) -> Option<Arc<Self>> {
+    match parent {
+      NodeParent::Node(id) => self.with_id(id),
+      NodeParent::Req => Some(self.clone()),
+    }
   }
 
-  fn id_as_key(id: &NpmPackageId) -> String {
-    // we only key on name and version in the id and not peer dependencies
-    // because the peer dependencies could change above and below us,
-    // but the names and versions won't
-    format!("{}@{}", id.name, id.version)
+  pub fn with_id(
+    self: &Arc<VisitedVersionsPath>,
+    id: &NpmPackageId,
+  ) -> Option<Arc<Self>> {
+    if self.has_visited(id) {
+      None
+    } else {
+      Some(Arc::new(Self {
+        previous_node: Some(self.clone()),
+        visited_version: Self::id_as_name_and_version(id),
+      }))
+    }
+  }
+
+  pub fn has_visited(self: &Arc<Self>, id: &NpmPackageId) -> bool {
+    let mut maybe_next_node = Some(self);
+    let name_and_version = Self::id_as_name_and_version(id);
+    while let Some(next_node) = maybe_next_node {
+      if next_node.visited_version == name_and_version {
+        return true;
+      }
+      maybe_next_node = next_node.previous_node.as_ref();
+    }
+    false
+  }
+
+  fn id_as_name_and_version(id: &NpmPackageId) -> (String, NpmVersion) {
+    (id.name.clone(), id.version.clone())
   }
 }
 
 #[derive(Default, Clone)]
 struct GraphPath {
-  // todo(THIS PR): investigate if this should use a singly linked list too
-  visited_versions: VisitedVersions,
   // todo(THIS PR): switch to a singly linked list here
   specifiers: Vec<String>,
 }
 
 impl GraphPath {
-  pub fn with_step(&self, specifier: &str, id: &NpmPackageId) -> GraphPath {
-    let mut copy = self.clone();
-    assert!(copy.visited_versions.add(id));
-    copy.specifiers.push(specifier.to_string());
-    copy
-  }
-
   pub fn with_specifier(&self, specifier: String) -> GraphPath {
     let mut copy = self.clone();
     copy.specifiers.push(specifier);
     copy
-  }
-
-  pub fn has_visited_version(&self, id: &NpmPackageId) -> bool {
-    self.visited_versions.has_visited(id)
   }
 }
 
@@ -343,7 +364,8 @@ impl Graph {
 pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   graph: &'a mut Graph,
   api: &'a TNpmRegistryApi,
-  pending_unresolved_nodes: VecDeque<(VisitedVersions, Arc<Mutex<Node>>)>,
+  pending_unresolved_nodes:
+    VecDeque<(Arc<VisitedVersionsPath>, Arc<Mutex<Node>>)>,
 }
 
 impl<'a, TNpmRegistryApi: NpmRegistryApi>
@@ -423,9 +445,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &node,
       &NodeParent::Req,
     );
-    self
-      .pending_unresolved_nodes
-      .push_back((VisitedVersions::default(), node));
+    self.try_add_pending_unresolved_node(None, &node);
     Ok(())
   }
 
@@ -434,7 +454,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     entry: &NpmDependencyEntry,
     package_info: NpmPackageInfo,
     parent_id: &NpmPackageId,
-    visited_versions: &VisitedVersions,
+    visited_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<(), AnyError> {
     let node = self.resolve_node_from_info(
       &entry.name,
@@ -456,10 +476,28 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &node,
       &NodeParent::Node(parent_id.clone()),
     );
+    self.try_add_pending_unresolved_node(Some(&visited_versions), &node);
+    Ok(())
+  }
+
+  fn try_add_pending_unresolved_node(
+    &mut self,
+    maybe_previous_visited_versions: Option<&Arc<VisitedVersionsPath>>,
+    node: &Arc<Mutex<Node>>,
+  ) {
+    let node_id = node.lock().id.clone();
+    let visited_versions = match maybe_previous_visited_versions {
+      Some(previous_visited_versions) => {
+        match previous_visited_versions.with_id(&node_id) {
+          Some(visited_versions) => visited_versions,
+          None => return, // circular, don't visit this node
+        }
+      }
+      None => VisitedVersionsPath::new(&node_id),
+    };
     self
       .pending_unresolved_nodes
-      .push_back((visited_versions.clone(), node));
-    Ok(())
+      .push_back((visited_versions, node.clone()));
   }
 
   fn resolve_node_from_info(
@@ -503,17 +541,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   pub async fn resolve_pending(&mut self) -> Result<(), AnyError> {
     while !self.pending_unresolved_nodes.is_empty() {
       // now go down through the dependencies by tree depth
-      while let Some((mut visited_versions, parent_node)) =
+      while let Some((visited_versions, parent_node)) =
         self.pending_unresolved_nodes.pop_front()
       {
         let (mut parent_id, deps) = {
           let parent_node = parent_node.lock();
           (parent_node.id.clone(), parent_node.deps.clone())
         };
-
-        if !visited_versions.add(&parent_id) {
-          continue; // circular
-        }
 
         // cache all the dependencies' registry infos in parallel if should
         if !should_sync_download() {
@@ -578,7 +612,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     parent_id: &NpmPackageId,
     peer_dep: &NpmDependencyEntry,
     peer_package_info: NpmPackageInfo,
-    visited_ancestor_versions: &VisitedVersions,
+    visited_ancestor_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<Option<NpmPackageId>, AnyError> {
     fn find_matching_child<'a>(
       peer_dep: &NpmDependencyEntry,
@@ -597,7 +631,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // Peer dependencies are resolved based on its ancestors' siblings.
     // If not found, then it resolves based on the version requirement if non-optional.
     let mut pending_ancestors = VecDeque::new(); // go up the tree by depth
-    let path = GraphPath::default().with_step(specifier, parent_id);
+    let path = GraphPath::default().with_specifier(specifier.to_string());
+    let visited_versions = VisitedVersionsPath::new(parent_id);
 
     // skip over the current node
     for (specifier, grand_parents) in
@@ -605,18 +640,23 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     {
       let path = path.with_specifier(specifier);
       for grand_parent in grand_parents {
-        pending_ancestors.push_back((grand_parent, path.clone()));
+        if let Some(visited_versions) =
+          visited_versions.with_parent(&grand_parent)
+        {
+          pending_ancestors.push_back((
+            grand_parent,
+            path.clone(),
+            visited_versions,
+          ));
+        }
       }
     }
 
-    while let Some((ancestor, path)) = pending_ancestors.pop_front() {
+    while let Some((ancestor, path, visited_versions)) =
+      pending_ancestors.pop_front()
+    {
       match &ancestor {
         NodeParent::Node(ancestor_node_id) => {
-          // we've gone in a full circle, so don't keep looking
-          if path.has_visited_version(ancestor_node_id) {
-            continue;
-          }
-
           let maybe_peer_dep_id = if ancestor_node_id.name == peer_dep.name
             && peer_dep.version_req.satisfies(&ancestor_node_id.version)
           {
@@ -624,9 +664,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           } else {
             let ancestor = self.graph.borrow_node(ancestor_node_id);
             for (specifier, parents) in &ancestor.parents {
-              let new_path = path.with_step(specifier, ancestor_node_id);
+              let new_path = path.with_specifier(specifier.clone());
               for parent in parents {
-                pending_ancestors.push_back((parent.clone(), new_path.clone()));
+                if let Some(visited_versions) =
+                  visited_versions.with_parent(parent)
+                {
+                  pending_ancestors.push_back((
+                    parent.clone(),
+                    new_path.clone(),
+                    visited_versions,
+                  ));
+                }
               }
             }
             find_matching_child(peer_dep, ancestor.children.values())
@@ -685,7 +733,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     node_id: &NpmPackageId,
     peer_dep_id: &NpmPackageId,
     mut path: Vec<String>,
-    visited_ancestor_versions: &VisitedVersions,
+    visited_ancestor_versions: &Arc<VisitedVersionsPath>,
   ) -> NpmPackageId {
     let mut peer_dep_id = Cow::Borrowed(peer_dep_id);
     let old_id = node_id;
@@ -752,9 +800,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         );
         assert!(!old_node_children.contains_key(&next_specifier));
         let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
-        self
-          .pending_unresolved_nodes
-          .push_back((visited_ancestor_versions.clone(), node.clone()));
+        self.try_add_pending_unresolved_node(
+          Some(&visited_ancestor_versions),
+          &node,
+        );
         self
           .graph
           .set_child_parent_node(&next_specifier, &node, &new_id);
