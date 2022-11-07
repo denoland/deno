@@ -994,7 +994,7 @@ fn lock_file_missing_top_level_package() {
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(
     stderr,
-    "error: the lockfile (deno.lock) is corrupt. You can recreate it with --lock-write\n"
+    "error: failed reading lockfile 'deno.lock'\n\nCaused by:\n    the lockfile is corrupt. You can recreate it with --lock-write\n"
   );
 }
 
@@ -1044,6 +1044,156 @@ fn auto_discover_lock_file() {
   assert!(stderr.contains(
     "Integrity check failed for npm package: \"@denotest/bin@1.0.0\""
   ));
+}
+
+#[test]
+fn peer_deps_with_copied_folders_and_lockfile() {
+  let _server = http_server();
+
+  let deno_dir = util::new_deno_dir();
+  let temp_dir = util::TempDir::new();
+
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
+  let test_folder_path = test_util::testdata_path()
+    .join("npm")
+    .join("peer_deps_with_copied_folders");
+  let main_contents =
+    std::fs::read_to_string(test_folder_path.join("main.ts")).unwrap();
+  temp_dir.write("./main.ts", main_contents);
+
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+
+  let expected_output =
+    std::fs::read_to_string(test_folder_path.join("main.out")).unwrap();
+
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), expected_output);
+
+  assert!(temp_dir.path().join("deno.lock").exists());
+  let grandchild_path = deno_dir
+    .path()
+    .join("npm")
+    .join("localhost_4545")
+    .join("npm")
+    .join("registry")
+    .join("@denotest")
+    .join("peer-dep-test-grandchild");
+  assert!(grandchild_path.join("1.0.0").exists());
+  assert!(grandchild_path.join("1.0.0_1").exists()); // copy folder, which is hardlinked
+
+  // run again
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(output.status.success());
+
+  // Ensure it works with reloading. This output will be slightly different
+  // because resolution has already occurred due to the lockfile.
+  let expected_reload_output =
+    std::fs::read_to_string(test_folder_path.join("main_reload.out")).unwrap();
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert_eq!(
+    String::from_utf8(output.stderr).unwrap(),
+    expected_reload_output
+  );
+  assert!(output.status.success());
+
+  // now run with local node modules
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+
+  let deno_folder = temp_dir.path().join("node_modules").join(".deno");
+  assert!(deno_folder
+    .join("@denotest+peer-dep-test-grandchild@1.0.0")
+    .exists());
+  assert!(deno_folder
+    .join("@denotest+peer-dep-test-grandchild@1.0.0_1")
+    .exists()); // copy folder
+
+  // now again run with local node modules
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+
+  // now ensure it works with reloading
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--node-modules-dir")
+    .arg("--reload")
+    .arg("-A")
+    .arg("main.ts")
+    .envs(env_vars())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  assert!(output.status.success());
+  assert_eq!(
+    String::from_utf8(output.stderr).unwrap(),
+    expected_reload_output
+  );
 }
 
 fn env_vars_no_sync_download() -> Vec<(String, String)> {

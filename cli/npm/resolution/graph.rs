@@ -34,7 +34,7 @@ use super::NpmVersionMatcher;
 /// A memory efficient path of visited name and versions in the graph
 /// which is used to detect cycles.
 ///
-/// Note(dsherret): although this is definitely more memory efficient
+/// note(dsherret): although this is definitely more memory efficient
 /// than a HashSet, I haven't done any tests about whether this is
 /// faster in practice.
 #[derive(Default, Clone)]

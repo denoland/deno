@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::ConfigFile;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 use crate::tools::fmt::format_json;
@@ -40,7 +41,7 @@ pub struct NpmPackageInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct NpmContent {
-  /// Mapping between requests for npm packages and resolved specifiers, eg.
+  /// Mapping between requests for npm packages and resolved packages, eg.
   /// {
   ///   "chalk": "chalk@5.0.0"
   ///   "react@17": "react@17.0.1"
@@ -319,12 +320,13 @@ Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
   pub fn insert_npm_specifier(
     &mut self,
     package_req: &NpmPackageReq,
-    version: String,
+    package_id: &NpmPackageId,
   ) {
-    self.content.npm.specifiers.insert(
-      package_req.to_string(),
-      format!("{}@{}", package_req.name, version),
-    );
+    self
+      .content
+      .npm
+      .specifiers
+      .insert(package_req.to_string(), package_id.as_serialized());
     self.has_content_changed = true;
   }
 }

@@ -403,6 +403,16 @@ impl NpmCache {
   ) -> Result<(), AnyError> {
     assert_ne!(id.copy_index, 0);
     let package_folder = self.readonly.package_folder_for_id(id, registry_url);
+
+    if package_folder.exists()
+      // if this file exists, then the package didn't successfully extract
+      // the first time, or another process is currently extracting the zip file
+      && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
+      && self.cache_setting.should_use_for_npm_package(&id.name)
+    {
+      return Ok(());
+    }
+
     let original_package_folder = self
       .readonly
       .package_folder_for_name_and_version(&id.name, &id.version, registry_url);

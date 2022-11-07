@@ -523,8 +523,8 @@ impl NpmResolution {
     lockfile: &mut Lockfile,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), AnyError> {
-    for (package_req, version) in snapshot.package_reqs.iter() {
-      lockfile.insert_npm_specifier(package_req, version.to_string());
+    for (package_req, package_id) in snapshot.package_reqs.iter() {
+      lockfile.insert_npm_specifier(package_req, package_id);
     }
     for package in self.all_packages() {
       lockfile.check_or_insert_npm_package(&package)?;

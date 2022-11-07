@@ -14,6 +14,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::lockfile::Lockfile;
+use crate::npm::cache::should_sync_download;
 use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::registry::NpmPackageVersionDistInfo;
 use crate::npm::registry::NpmRegistryApi;
@@ -285,8 +286,7 @@ impl NpmResolutionSnapshot {
       for id in &verify_ids {
         if !packages.contains_key(id) {
           bail!(
-            "the lockfile ({}) is corrupt. You can recreate it with --lock-write",
-            lockfile.filename.display(),
+            "the lockfile is corrupt. You can recreate it with --lock-write"
           );
         }
       }
@@ -295,13 +295,22 @@ impl NpmResolutionSnapshot {
     let mut unresolved_tasks = Vec::with_capacity(packages_by_name.len());
 
     // cache the package names in parallel in the registry api
-    for package_name in packages_by_name.keys() {
-      let package_name = package_name.clone();
-      let api = api.clone();
-      unresolved_tasks.push(tokio::task::spawn(async move {
-        api.package_info(&package_name).await?;
-        Result::<_, AnyError>::Ok(())
-      }));
+    // unless synchronous download should occur
+    if should_sync_download() {
+      let mut package_names = packages_by_name.keys().collect::<Vec<_>>();
+      package_names.sort();
+      for package_name in package_names {
+        api.package_info(package_name).await?;
+      }
+    } else {
+      for package_name in packages_by_name.keys() {
+        let package_name = package_name.clone();
+        let api = api.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          api.package_info(&package_name).await?;
+          Result::<_, AnyError>::Ok(())
+        }));
+      }
     }
     for result in futures::future::join_all(unresolved_tasks).await {
       result??;

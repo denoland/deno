@@ -6,6 +6,7 @@ mod local;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -112,7 +113,14 @@ impl NpmPackageResolver {
     lockfile: Arc<Mutex<Lockfile>>,
   ) -> Result<(), AnyError> {
     let snapshot =
-      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api).await?;
+      NpmResolutionSnapshot::from_lockfile(lockfile.clone(), &self.api)
+        .await
+        .with_context(|| {
+          format!(
+            "failed reading lockfile '{}'",
+            lockfile.lock().filename.display()
+          )
+        })?;
     self.maybe_lockfile = Some(lockfile);
     if let Some(node_modules_folder) = &self.local_node_modules_path {
       self.inner = Arc::new(LocalNpmPackageResolver::new(
