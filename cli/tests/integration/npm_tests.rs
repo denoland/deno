@@ -1147,8 +1147,8 @@ fn peer_deps_with_copied_folders_and_lockfile() {
     .spawn()
     .unwrap();
   let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
   assert_eq!(String::from_utf8(output.stderr).unwrap(), "1\n2\n");
+  assert!(output.status.success());
 
   let deno_folder = temp_dir.path().join("node_modules").join(".deno");
   assert!(deno_folder

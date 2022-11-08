@@ -109,9 +109,9 @@ impl NpmPackageReference {
 impl std::fmt::Display for NpmPackageReference {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     if let Some(sub_path) = &self.sub_path {
-      write!(f, "{}/{}", self.req, sub_path)
+      write!(f, "npm:{}/{}", self.req, sub_path)
     } else {
-      write!(f, "{}", self.req)
+      write!(f, "npm:{}", self.req)
     }
   }
 }
