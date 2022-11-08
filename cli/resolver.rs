@@ -4,71 +4,59 @@ use deno_core::resolve_import;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolveResponse;
 use deno_graph::source::Resolver;
+use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use import_map::ImportMap;
 use std::sync::Arc;
 
 use crate::args::config_file::JsxImportSourceConfig;
 
-/// Wraps an import map to be used when building a deno_graph module graph.
-/// This is done to avoid having `import_map` be a direct dependency of
-/// `deno_graph`.
-#[derive(Debug, Clone)]
-pub struct ImportMapResolver(Arc<ImportMap>);
+/// A resolver that takes care of resolution, taking into account loaded
+/// import map, JSX settings.
+#[derive(Debug, Clone, Default)]
+pub struct CliResolver {
+  maybe_import_map: Option<Arc<ImportMap>>,
+  maybe_default_jsx_import_source: Option<String>,
+  maybe_jsx_import_source_module: Option<String>,
+}
 
-impl ImportMapResolver {
-  pub fn new(import_map: Arc<ImportMap>) -> Self {
-    Self(import_map)
+impl CliResolver {
+  pub fn maybe_new(
+    maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
+    maybe_import_map: Option<Arc<ImportMap>>,
+  ) -> Option<Self> {
+    if maybe_jsx_import_source_config.is_some() || maybe_import_map.is_some() {
+      Some(Self {
+        maybe_import_map,
+        maybe_default_jsx_import_source: maybe_jsx_import_source_config
+          .as_ref()
+          .and_then(|c| c.default_specifier.clone()),
+        maybe_jsx_import_source_module: maybe_jsx_import_source_config
+          .map(|c| c.module),
+      })
+    } else {
+      None
+    }
   }
 
-  pub fn as_resolver(&self) -> &dyn Resolver {
+  pub fn with_import_map(import_map: Arc<ImportMap>) -> Self {
+    Self::maybe_new(None, Some(import_map)).unwrap()
+  }
+
+  pub fn as_graph_resolver(&self) -> &dyn Resolver {
     self
   }
 }
 
-impl Resolver for ImportMapResolver {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> ResolveResponse {
-    match self.0.resolve(specifier, referrer) {
-      Ok(resolved_specifier) => ResolveResponse::Specifier(resolved_specifier),
-      Err(err) => ResolveResponse::Err(err.into()),
-    }
-  }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct JsxResolver {
-  default_jsx_import_source: Option<String>,
-  jsx_import_source_module: String,
-  maybe_import_map_resolver: Option<ImportMapResolver>,
-}
-
-impl JsxResolver {
-  pub fn new(
-    jsx_import_source_config: JsxImportSourceConfig,
-    maybe_import_map_resolver: Option<ImportMapResolver>,
-  ) -> Self {
-    Self {
-      default_jsx_import_source: jsx_import_source_config.default_specifier,
-      jsx_import_source_module: jsx_import_source_config.module,
-      maybe_import_map_resolver,
-    }
-  }
-
-  pub fn as_resolver(&self) -> &dyn Resolver {
-    self
-  }
-}
-
-impl Resolver for JsxResolver {
+impl Resolver for CliResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
-    self.default_jsx_import_source.clone()
+    self.maybe_default_jsx_import_source.clone()
   }
 
   fn jsx_import_source_module(&self) -> &str {
-    self.jsx_import_source_module.as_str()
+    self
+      .maybe_jsx_import_source_module
+      .as_deref()
+      .unwrap_or(DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }
 
   fn resolve(
@@ -76,12 +64,18 @@ impl Resolver for JsxResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> ResolveResponse {
-    self.maybe_import_map_resolver.as_ref().map_or_else(
-      || match resolve_import(specifier, referrer.as_str()) {
+    if let Some(import_map) = &self.maybe_import_map {
+      match import_map.resolve(specifier, referrer) {
+        Ok(resolved_specifier) => {
+          ResolveResponse::Specifier(resolved_specifier)
+        }
+        Err(err) => ResolveResponse::Err(err.into()),
+      }
+    } else {
+      match resolve_import(specifier, referrer.as_str()) {
         Ok(specifier) => ResolveResponse::Specifier(specifier),
         Err(err) => ResolveResponse::Err(err.into()),
-      },
-      |r| r.resolve(specifier, referrer),
-    )
+      }
+    }
   }
 }

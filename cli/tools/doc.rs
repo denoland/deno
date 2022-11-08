@@ -3,11 +3,11 @@
 use crate::args::DocFlags;
 use crate::args::Flags;
 use crate::colors;
+use crate::display::write_json_to_stdout;
+use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::file_fetcher::File;
 use crate::get_types;
 use crate::proc_state::ProcState;
-use crate::write_json_to_stdout;
-use crate::write_to_stdout_ignore_sigpipe;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
