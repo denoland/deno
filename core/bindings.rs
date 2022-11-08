@@ -110,7 +110,7 @@ pub fn initialize_context<'s>(
   // extensions may provide ops that aren't part of the snapshot.
   if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
-    let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
+    let ops_obj = JsRuntime::eval::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
     if snapshot_options != SnapshotOptions::CreateFromExisting {
