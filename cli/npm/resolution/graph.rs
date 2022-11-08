@@ -132,6 +132,8 @@ enum NodeParent {
 #[derive(Debug)]
 struct Node {
   pub id: NpmPackageId,
+  /// If the node was forgotten due to having no parents.
+  pub forgotten: bool,
   // Use BTreeMap and BTreeSet in order to create determinism
   // when going up and down the tree
   pub parents: BTreeMap<String, BTreeSet<NodeParent>>,
@@ -177,10 +179,10 @@ impl Graph {
       let resolution = packages.get(id).unwrap();
       let (created, node) = graph.get_or_create_for_id(id);
       if created {
-      for (name, child_id) in &resolution.dependencies {
-        let child_node = fill_for_id(graph, child_id, packages);
-        graph.set_child_parent_node(name, &child_node, id);
-      }
+        for (name, child_id) in &resolution.dependencies {
+          let child_node = fill_for_id(graph, child_id, packages);
+          graph.set_child_parent_node(name, &child_node, id);
+        }
       }
       node
     }
@@ -219,6 +221,7 @@ impl Graph {
     } else {
       let node = Arc::new(Mutex::new(Node {
         id: id.clone(),
+        forgotten: false,
         parents: Default::default(),
         children: Default::default(),
         deps: Default::default(),
@@ -242,7 +245,8 @@ impl Graph {
 
   fn forget_orphan(&mut self, node_id: &NpmPackageId) {
     if let Some(node) = self.packages.remove(node_id) {
-      let node = (*node).lock();
+      let mut node = (*node).lock();
+      node.forgotten = true;
       assert_eq!(node.parents.len(), 0);
 
       // Remove the id from the list of packages by name.
@@ -548,7 +552,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       "Resolved {}@{} to {}",
       name,
       version_matcher.version_text(),
-      id
+      id.as_serialized()
     );
     let (created, node) = self.graph.get_or_create_for_id(&id);
     if created {
@@ -556,7 +560,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       let mut deps = version_and_info
         .info
         .dependencies_as_entries()
-        .with_context(|| format!("npm package: {}", id))?;
+        .with_context(|| format!("npm package: {}", id.display()))?;
       // Ensure name alphabetical and then version descending
       // so these are resolved in that order
       deps.sort();
@@ -574,6 +578,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       {
         let (mut parent_id, deps) = {
           let parent_node = parent_node.lock();
+          if parent_node.forgotten {
+            // todo(dsherret): we should try to reproduce this scenario and write a test
+            continue;
+          }
           (parent_node.id.clone(), parent_node.deps.clone())
         };
 
@@ -836,7 +844,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       // this means we're at the peer dependency now
       debug!(
         "Resolved peer dependency for {} in {} to {}",
-        next_specifier, &new_id, &peer_dep_id,
+        next_specifier,
+        &new_id.as_serialized(),
+        &peer_dep_id.as_serialized(),
       );
       assert!(!old_node_children.contains_key(next_specifier));
       let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
@@ -948,7 +958,7 @@ fn get_resolved_package_version_and_info(
       pkg_name,
       version_matcher.version_text(),
       match parent {
-        Some(id) => format!(" as specified in {}", id),
+        Some(id) => format!(" as specified in {}", id.display()),
         None => String::new(),
       }
     ),

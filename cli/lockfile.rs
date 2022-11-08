@@ -290,7 +290,7 @@ This could be caused by:
   * the source itself may be corrupt
 
 Use \"--lock-write\" flag to regenerate the lockfile at \"{}\".",
-          package.id, self.filename.display()
+          package.id.display(), self.filename.display()
         )));
       }
     } else {

@@ -306,11 +306,11 @@ impl NpmPackageId {
     with_failure_handling(parse_id_at_level(0))(id)
       .with_context(|| format!("Invalid npm package id '{}'.", id))
   }
-}
 
-impl std::fmt::Display for NpmPackageId {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}@{}", self.name, self.version)
+  pub fn display(&self) -> String {
+    // Don't implement std::fmt::Display because we don't
+    // want this to be used by accident in certain scenarios.
+    format!("{}@{}", self.name, self.version)
   }
 }
 

@@ -115,7 +115,7 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
     // it might be at the full path if there are duplicate names
     let fully_resolved_folder_path = join_package_name(
       &self.root_node_modules_path,
-      &resolved_package.id.to_string(),
+      &resolved_package.id.as_serialized(),
     );
     Ok(if fully_resolved_folder_path.exists() {
       fully_resolved_folder_path
@@ -186,11 +186,14 @@ impl InnerNpmPackageResolver for LocalNpmPackageResolver {
         &self
           .root_node_modules_path
           .join(".deno")
-          .join(package.id.to_string())
+          .join(package.id.as_serialized())
           .join("node_modules")
           .join(package.id.name),
       )?),
-      None => bail!("Could not find package folder for '{}'", package_id),
+      None => bail!(
+        "Could not find package folder for '{}'",
+        package_id.as_serialized()
+      ),
     }
   }
 
@@ -404,7 +407,7 @@ async fn sync_resolution_with_fs(
     let root_folder_name = if found_names.insert(package_id.name.clone()) {
       package_id.name.clone()
     } else if is_top_level {
-      package_id.to_string()
+      package_id.display()
     } else {
       continue; // skip, already handled
     };

@@ -25,10 +25,14 @@ use super::NpmPackageReq;
 use super::NpmResolutionPackage;
 use super::NpmVersionMatcher;
 
-/// Packages partitioned by if they are "copy" packages or not. Copy
-/// packages are used for peer dependencies.
+/// Packages partitioned by if they are "copy" packages or not.
 pub struct NpmPackagesPartitioned {
   pub packages: Vec<NpmResolutionPackage>,
+  /// Since peer dependency resolution occurs based on ancestors and ancestor
+  /// siblings, this may sometimes cause the same package (name and version)
+  /// to have different dependencies based on where it appears in the tree.
+  /// For these packages, we create a "copy package" or duplicate of the package
+  /// whose dependencies are that of where in the tree they've resolved to.
   pub copy_packages: Vec<NpmResolutionPackage>,
 }
 
@@ -325,7 +329,7 @@ impl NpmResolutionSnapshot {
       {
         Some(version_info) => version_info,
         None => {
-          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.id);
+          bail!("could not find '{}' specified in the lockfile. Maybe try again with --reload", package.id.display());
         }
       };
       package.dist = version_info.dist;

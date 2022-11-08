@@ -1213,6 +1213,23 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   assert!(output.status.success());
 }
 
+itest!(info_peer_deps {
+  args: "info --quiet --unstable npm/peer_deps_with_copied_folders/main.ts",
+  output: "npm/peer_deps_with_copied_folders/main_info.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
+itest!(info_peer_deps_json {
+  args:
+    "info --quiet --unstable --json npm/peer_deps_with_copied_folders/main.ts",
+  output: "npm/peer_deps_with_copied_folders/main_info_json.out",
+  exit_code: 0,
+  envs: env_vars(),
+  http_server: true,
+});
+
 fn env_vars_no_sync_download() -> Vec<(String, String)> {
   vec![
     ("DENO_NODE_COMPAT_URL".to_string(), util::std_file_url()),
