@@ -686,6 +686,12 @@ itest!(lock_v2_check_err2 {
   http_server: true,
 });
 
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
+  http_server: true,
+});
+
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
   output: "run/mts_dmts_mjs.out",

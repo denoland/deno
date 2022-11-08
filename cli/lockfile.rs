@@ -222,6 +222,9 @@ impl Lockfile {
     specifier: &str,
     code: &str,
   ) -> bool {
+    if !(specifier.starts_with("http:") || specifier.starts_with("https:")) {
+      return true;
+    }
     if self.overwrite {
       // In case --lock-write is specified check always passes
       self.insert(specifier, code);
@@ -247,9 +250,6 @@ impl Lockfile {
   /// Checks the given module is included, if so verify the checksum. If module
   /// is not included, insert it.
   fn check_or_insert(&mut self, specifier: &str, code: &str) -> bool {
-    if specifier.starts_with("file:") {
-      return true;
-    }
     if let Some(lockfile_checksum) = self.content.remote.get(specifier) {
       let compiled_checksum = crate::checksum::gen(&[code.as_bytes()]);
       lockfile_checksum == &compiled_checksum
@@ -260,9 +260,6 @@ impl Lockfile {
   }
 
   fn insert(&mut self, specifier: &str, code: &str) {
-    if specifier.starts_with("file:") {
-      return;
-    }
     let checksum = crate::checksum::gen(&[code.as_bytes()]);
     self.content.remote.insert(specifier.to_string(), checksum);
     self.has_content_changed = true;
