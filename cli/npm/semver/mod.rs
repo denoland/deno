@@ -11,7 +11,6 @@ use serde::Serialize;
 
 use crate::npm::resolution::NpmVersionMatcher;
 
-use self::errors::with_failure_handling;
 use self::range::Partial;
 use self::range::VersionBoundKind;
 use self::range::VersionRange;
@@ -20,7 +19,6 @@ use self::range::VersionRangeSet;
 use self::range::XRange;
 pub use self::specifier::SpecifierVersionReq;
 
-mod errors;
 mod range;
 mod specifier;
 
