@@ -175,10 +175,12 @@ impl Graph {
       packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
     ) -> Arc<Mutex<Node>> {
       let resolution = packages.get(id).unwrap();
-      let node = graph.get_or_create_for_id(id).1;
+      let (created, node) = graph.get_or_create_for_id(id);
+      if created {
       for (name, child_id) in &resolution.dependencies {
         let child_node = fill_for_id(graph, child_id, packages);
         graph.set_child_parent_node(name, &child_node, id);
+      }
       }
       node
     }
