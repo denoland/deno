@@ -291,7 +291,14 @@ impl Graph {
     parent_id: &NpmPackageId,
   ) {
     let mut child = (*child).lock();
-    let mut parent = (**self.packages.get(parent_id).unwrap()).lock();
+    let mut parent = (**self.packages.get(parent_id).unwrap_or_else(|| {
+      panic!(
+        "could not find {} in list of packages when setting child {}",
+        parent_id.as_serialized(),
+        child.id.as_serialized()
+      )
+    }))
+    .lock();
     assert_ne!(parent.id, child.id);
     parent
       .children
