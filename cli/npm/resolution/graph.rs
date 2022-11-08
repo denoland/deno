@@ -495,7 +495,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &node,
       &NodeParent::Node(parent_id.clone()),
     );
-    self.try_add_pending_unresolved_node(Some(&visited_versions), &node);
+    self.try_add_pending_unresolved_node(Some(visited_versions), &node);
     Ok(())
   }
 
@@ -723,7 +723,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               BTreeMap::from([(specifier, BTreeSet::from([NodeParent::Req]))]),
               &old_id,
               &child_id,
-              &path,
+              path,
               visited_ancestor_versions,
             )));
           }
@@ -832,7 +832,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       assert!(!old_node_children.contains_key(next_specifier));
       let node = self.graph.get_or_create_for_id(&peer_dep_id).1;
       self.try_add_pending_unresolved_node(
-        Some(&visited_ancestor_versions),
+        Some(visited_ancestor_versions),
         &node,
       );
       self
