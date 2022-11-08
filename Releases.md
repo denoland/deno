@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.27.2 / 2022.11.08
+
+- feat(unstable/npm): support peer dependencies (#16561)
+- fix(ext/http): flush chunk when streaming resource (#16536)
+- fix(lock): only store integrities for http: and https: imports (#16558)
+- fix(npm): fix CJS resolution with local node_modules dir (#16547)
+- fix(upgrade): don't prompt if current version has changed (#16542)
+
 ### 1.27.1 / 2022.11.03
 
 - feat(core): support creating snapshots from existing snapshots (#14744)
