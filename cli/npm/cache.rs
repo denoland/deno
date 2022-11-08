@@ -340,6 +340,10 @@ impl NpmCache {
       })
   }
 
+  pub fn should_use_cache_for_npm_package(&self, package_name: &str) -> bool {
+    self.cache_setting.should_use_for_npm_package(package_name)
+  }
+
   async fn ensure_package_inner(
     &self,
     package: (&str, &NpmVersion),
@@ -355,7 +359,7 @@ impl NpmCache {
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
       && !package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME).exists()
-      && self.cache_setting.should_use_for_npm_package(package.0)
+      && self.should_use_cache_for_npm_package(package.0)
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {
