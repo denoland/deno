@@ -157,10 +157,8 @@ fn add_npm_packages_to_json(
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
-          module.insert(
-            "npmPackage".to_string(),
-            format!("{}", pkg.id.as_serialized()).into(),
-          );
+          module
+            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
           // change the "kind" to be "npm"
           module.insert("kind".to_string(), "npm".into());
         }
@@ -193,7 +191,7 @@ fn add_npm_packages_to_json(
                 {
                   dep.insert(
                     "npmPackage".to_string(),
-                    format!("{}", pkg.id.as_serialized()).into(),
+                    pkg.id.as_serialized().into(),
                   );
                 }
               }
@@ -215,11 +213,11 @@ fn add_npm_packages_to_json(
     deps.sort();
     let deps = deps
       .into_iter()
-      .map(|id| serde_json::Value::String(format!("{}", id.as_serialized())))
+      .map(|id| serde_json::Value::String(id.as_serialized()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
 
-    json_packages.insert(format!("{}", pkg.id.as_serialized()), kv.into());
+    json_packages.insert(pkg.id.as_serialized(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
