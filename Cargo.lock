@@ -1227,9 +1227,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.7.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a275d3f78e828b4adddf20a472d9ac1927ac311aac48dca869bb8653d5a4a0b9"
+checksum = "e8ad1e1002ecf8bafcb9b968bf19856ba4fe0e6c0c73b3404565bb29b15aae2c"
 dependencies = [
  "anyhow",
  "futures",
@@ -2803,9 +2803,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.2.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5e2e282addadb529bb31700f7d184797382fa2eb18384986aad78d117eaf0c4"
+checksum = "f13de1c3edc9a5b9dc3a1029f56e9ab3eba34640010aff4fc01044c42ef67afa"
 
 [[package]]
 name = "naga"
