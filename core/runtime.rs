@@ -745,64 +745,28 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grab a Global handle to a v8 value returned by the expression
-  pub(crate) fn grab<'s, T>(
+  pub fn eval<'s, T>(
     scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Value>,
-    path: &str,
+    code: &str,
   ) -> Option<v8::Local<'s, T>>
   where
     v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
   {
-    path
-      .split('.')
-      .fold(Some(root), |p, k| {
-        let p = v8::Local::<v8::Object>::try_from(p?).ok()?;
-        let k = v8::String::new(scope, k)?;
-        p.get(scope, k.into())
-      })?
-      .try_into()
-      .ok()
-  }
-
-  pub fn grab_global<'s, T>(
-    scope: &mut v8::HandleScope<'s>,
-    path: &str,
-  ) -> Option<v8::Local<'s, T>>
-  where
-    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>, Error = v8::DataError>,
-  {
-    let context = scope.get_current_context();
-    let global = context.global(scope);
-    Self::grab(scope, global.into(), path)
-  }
-
-  pub(crate) fn ensure_objs<'s>(
-    scope: &mut v8::HandleScope<'s>,
-    root: v8::Local<'s, v8::Object>,
-    path: &str,
-  ) -> Option<v8::Local<'s, v8::Object>> {
-    path.split('.').fold(Some(root), |p, k| {
-      let k = v8::String::new(scope, k)?.into();
-      match p?.get(scope, k) {
-        Some(v) if !v.is_null_or_undefined() => v.try_into().ok(),
-        _ => {
-          let o = v8::Object::new(scope);
-          p?.set(scope, k, o.into());
-          Some(o)
-        }
-      }
-    })
+    let scope = &mut v8::EscapableHandleScope::new(scope);
+    let source = v8::String::new(scope, code).unwrap();
+    let script = v8::Script::compile(scope, source, None).unwrap();
+    let v = script.run(scope)?;
+    scope.escape(v).try_into().ok()
   }
 
   /// Grabs a reference to core.js' opresolve & syncOpsCache()
   fn init_cbs(&mut self) {
     let scope = &mut self.handle_scope();
     let recv_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
+      Self::eval::<v8::Function>(scope, "Deno.core.opresolve").unwrap();
     let recv_cb = v8::Global::new(scope, recv_cb);
     let build_custom_error_cb =
-      Self::grab_global::<v8::Function>(scope, "Deno.core.buildCustomError")
+      Self::eval::<v8::Function>(scope, "Deno.core.buildCustomError")
         .expect("Deno.core.buildCustomError is undefined in the realm");
     let build_custom_error_cb = v8::Global::new(scope, build_custom_error_cb);
     // Put global handles in state
@@ -854,7 +818,7 @@ impl JsRuntime {
     // TODO(@AaronO): make ops stable across snapshots
     {
       let scope = &mut self.handle_scope();
-      let o = Self::grab_global::<v8::Object>(scope, "Deno.core.ops").unwrap();
+      let o = Self::eval::<v8::Object>(scope, "Deno.core.ops").unwrap();
       let names = o.get_own_property_names(scope, Default::default()).unwrap();
       for i in 0..names.length() {
         let key = names.get_index(scope, i).unwrap();
