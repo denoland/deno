@@ -110,7 +110,7 @@ pub fn initialize_context<'s>(
   // extensions may provide ops that aren't part of the snapshot.
   if snapshot_options.loaded() {
     // Grab the Deno.core.ops object & init it
-    let ops_obj = JsRuntime::grab_global::<v8::Object>(scope, "Deno.core.ops")
+    let ops_obj = JsRuntime::eval::<v8::Object>(scope, "Deno.core.ops")
       .expect("Deno.core.ops to exist");
     initialize_ops(scope, ops_obj, op_ctxs, snapshot_options);
     if snapshot_options != SnapshotOptions::CreateFromExisting {
@@ -120,13 +120,22 @@ pub fn initialize_context<'s>(
   }
 
   // global.Deno = { core: { } };
-  let core_val = JsRuntime::ensure_objs(scope, global, "Deno.core").unwrap();
+  let deno_obj = v8::Object::new(scope);
+  let deno_str = v8::String::new(scope, "Deno").unwrap();
+  global.set(scope, deno_str.into(), deno_obj.into());
+
+  let core_obj = v8::Object::new(scope);
+  let core_str = v8::String::new(scope, "core").unwrap();
+  deno_obj.set(scope, core_str.into(), core_obj.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "callConsole", call_console);
+  set_func(scope, core_obj, "callConsole", call_console);
 
   // Bind functions to Deno.core.ops.*
-  let ops_obj = JsRuntime::ensure_objs(scope, global, "Deno.core.ops").unwrap();
+  let ops_obj = v8::Object::new(scope);
+  let ops_str = v8::String::new(scope, "ops").unwrap();
+  core_obj.set(scope, ops_str.into(), ops_obj.into());
+
   if !snapshot_options.will_snapshot() {
     initialize_async_ops_info(scope, ops_obj, op_ctxs);
   }
