@@ -386,10 +386,10 @@ mod tests {
     let tree = syn::parse2(actual).unwrap();
     let actual = prettyplease::unparse(&tree);
     if update_expected {
-      std::fs::write(input.with_extension("out"), actual.to_string())
+      std::fs::write(input.with_extension("out"), actual)
         .expect("Failed to write expected file");
     } else {
-      assert_eq!(actual.to_string(), expected);
+      assert_eq!(actual, expected);
     }
   }
 }
