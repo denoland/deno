@@ -208,6 +208,18 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { run: [Deno.execPath()], read: true } },
+  // See https://github.com/denoland/deno/issues/16527
+  async function hostnameWithoutOtherNetworkUsages() {
+    const { stdout } = await Deno.spawn(Deno.execPath(), {
+      args: ["eval", "-p", "Deno.hostname()"],
+    });
+    const hostname = new TextDecoder().decode(stdout).trim();
+    assert(hostname.length > 0);
+  },
+);
+
 Deno.test({ permissions: { sys: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();

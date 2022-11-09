@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::normalize_path;
@@ -431,17 +432,31 @@ fn op_require_path_resolve(state: &mut OpState, parts: Vec<String>) -> String {
 }
 
 #[op]
-fn op_require_path_dirname(state: &mut OpState, request: String) -> String {
+fn op_require_path_dirname(
+  state: &mut OpState,
+  request: String,
+) -> Result<String, AnyError> {
   check_unstable(state);
   let p = PathBuf::from(request);
-  p.parent().unwrap().to_string_lossy().to_string()
+  if let Some(parent) = p.parent() {
+    Ok(parent.to_string_lossy().to_string())
+  } else {
+    Err(generic_error("Path doesn't have a parent"))
+  }
 }
 
 #[op]
-fn op_require_path_basename(state: &mut OpState, request: String) -> String {
+fn op_require_path_basename(
+  state: &mut OpState,
+  request: String,
+) -> Result<String, AnyError> {
   check_unstable(state);
   let p = PathBuf::from(request);
-  p.file_name().unwrap().to_string_lossy().to_string()
+  if let Some(path) = p.file_name() {
+    Ok(path.to_string_lossy().to_string())
+  } else {
+    Err(generic_error("Path doesn't have a file name"))
+  }
 }
 
 #[op]
@@ -551,10 +566,14 @@ pub fn op_require_as_file_path(
   file_or_url: String,
 ) -> String {
   check_unstable(state);
-  match Url::parse(&file_or_url) {
-    Ok(url) => url.to_file_path().unwrap().to_string_lossy().to_string(),
-    Err(_) => file_or_url,
+
+  if let Ok(url) = Url::parse(&file_or_url) {
+    if let Ok(p) = url.to_file_path() {
+      return p.to_string_lossy().to_string();
+    }
   }
+
+  file_or_url
 }
 
 #[op]

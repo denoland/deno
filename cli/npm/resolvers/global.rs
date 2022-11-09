@@ -23,7 +23,7 @@ use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 
 use super::common::ensure_registry_read_permission;
 use super::common::InnerNpmPackageResolver;
@@ -39,7 +39,7 @@ pub struct GlobalNpmPackageResolver {
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCache,
-    api: NpmRegistryApi,
+    api: RealNpmRegistryApi,
     initial_snapshot: Option<NpmResolutionSnapshot>,
   ) -> Self {
     let registry_url = api.base_url().to_owned();
@@ -53,7 +53,13 @@ impl GlobalNpmPackageResolver {
   }
 
   fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
-    self.cache.package_folder(id, &self.registry_url)
+    let folder_id = self
+      .resolution
+      .resolve_package_cache_folder_id_from_id(id)
+      .unwrap();
+    self
+      .cache
+      .package_folder_for_id(&folder_id, &self.registry_url)
   }
 }
 
@@ -74,7 +80,7 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let referrer_pkg_id = self
       .cache
-      .resolve_package_id_from_specifier(referrer, &self.registry_url)?;
+      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)?;
     let pkg_result = self
       .resolution
       .resolve_package_from_package(name, &referrer_pkg_id);
@@ -105,10 +111,15 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    let pkg_id = self
-      .cache
-      .resolve_package_id_from_specifier(specifier, &self.registry_url)?;
-    Ok(self.package_folder(&pkg_id))
+    let pkg_folder_id = self.cache.resolve_package_folder_id_from_specifier(
+      specifier,
+      &self.registry_url,
+    )?;
+    Ok(
+      self
+        .cache
+        .package_folder_for_id(&pkg_folder_id, &self.registry_url),
+    )
   }
 
   fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError> {
@@ -162,10 +173,22 @@ impl InnerNpmPackageResolver for GlobalNpmPackageResolver {
 async fn cache_packages_in_resolver(
   resolver: &GlobalNpmPackageResolver,
 ) -> Result<(), AnyError> {
+  let package_partitions = resolver.resolution.all_packages_partitioned();
+
   cache_packages(
-    resolver.resolution.all_packages(),
+    package_partitions.packages,
     &resolver.cache,
     &resolver.registry_url,
   )
-  .await
+  .await?;
+
+  // create the copy package folders
+  for copy in package_partitions.copy_packages {
+    resolver.cache.ensure_copy_package(
+      &copy.get_package_cache_folder_id(),
+      &resolver.registry_url,
+    )?;
+  }
+
+  Ok(())
 }
