@@ -23,7 +23,7 @@ impl Parse for Attributes {
       if !["unstable", "v8", "fast", "deferred"].contains(var) {
         return Err(Error::new(
           input.span(),
-          "Ops expect #[op] or #[op(unstable)]",
+          "invalid attribute, expected one of: unstable, v8, fast, deferred",
         ));
       }
     }
