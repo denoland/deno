@@ -151,6 +151,16 @@ fn get_fast_scalar(s: &str) -> Option<FastValue> {
   }
 }
 
+fn can_return_fast(v: &FastValue) -> bool {
+  !matches!(
+    v,
+    FastValue::U64
+      | FastValue::I64
+      | FastValue::Uint8Array
+      | FastValue::Uint32Array
+  )
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum FastValue {
   Void,
@@ -285,10 +295,14 @@ impl Optimizer {
                   // Is `T` a scalar FastValue?
                   if let Some(val) = get_fast_scalar(ident.to_string().as_str())
                   {
-                    self.fast_result = Some(val);
-                  } else {
-                    return Err(BailoutReason::FastUnsupportedParamType);
+                    if can_return_fast(&val) {
+                      self.fast_result = Some(val);
+                      return Ok(());
+                    }
                   }
+
+                  self.fast_compatible = false;
+                  return Err(BailoutReason::FastUnsupportedParamType);
                 }
                 _ => return Err(BailoutReason::FastUnsupportedParamType),
               }
@@ -298,9 +312,11 @@ impl Optimizer {
           PathSegment { ident, .. } => {
             if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
               self.fast_result = Some(val);
-            } else {
-              return Err(BailoutReason::FastUnsupportedParamType);
+              return Ok(());
             }
+
+            self.fast_compatible = false;
+            return Err(BailoutReason::FastUnsupportedParamType);
           }
         };
       }
