@@ -332,6 +332,43 @@ declare namespace Deno {
    */
   export function loadavg(): number[];
 
+  /**
+   * The information for a network interface returned from a call to
+   * {@linkcode Deno.networkInterfaces}.
+   *
+   * @category Network
+   */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name. */
+    name: string;
+    /** The IP protocol version. */
+    family: "IPv4" | "IPv6";
+    /** The IP address bound to the interface. */
+    address: string;
+    /** The netmask applied to the interface. */
+    netmask: string;
+    /** The IPv6 scope id or `null`. */
+    scopeid: number | null;
+    /** The CIDR range. */
+    cidr: string;
+    /** The MAC address. */
+    mac: string;
+  }
+
+  /**
+   * Returns an array of the network interface information.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Network
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * When the value is `true`, the Deno CLI will attempt to not send color codes

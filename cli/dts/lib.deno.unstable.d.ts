@@ -316,45 +316,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * The information for a network interface returned from a call to
-   * {@linkcode Deno.networkInterfaces}.
-   *
-   * @category Network
-   */
-  export interface NetworkInterfaceInfo {
-    /** The network interface name. */
-    name: string;
-    /** The IP protocol version. */
-    family: "IPv4" | "IPv6";
-    /** The IP address bound to the interface. */
-    address: string;
-    /** The netmask applied to the interface. */
-    netmask: string;
-    /** The IPv6 scope id or `null`. */
-    scopeid: number | null;
-    /** The CIDR range. */
-    cidr: string;
-    /** The MAC address. */
-    mac: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns an array of the network interface information.
-   *
-   * ```ts
-   * console.log(Deno.networkInterfaces());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Network
-   */
-  export function networkInterfaces(): NetworkInterfaceInfo[];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the user id of the Deno process on POSIX platforms. Returns `null`
    * on Windows.
    *
