@@ -2515,6 +2515,83 @@ Deno.test(
   },
 );
 
+Deno.test({
+  name: "http server compresses and flushes each chunk of a streamed resource",
+  permissions: { net: true, run: true },
+  async fn() {
+    const hostname = "localhost";
+    const port = 4501;
+    const port2 = 4502;
+
+    const encoder = new TextEncoder();
+    const listener = Deno.listen({ hostname, port });
+    const listener2 = Deno.listen({ hostname, port: port2 });
+
+    let httpConn: Deno.HttpConn;
+    async function server() {
+      const tcpConn = await listener.accept();
+      httpConn = Deno.serveHttp(tcpConn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { request, respondWith } = e;
+      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      const resp = await fetch(`http://${hostname}:${port2}/`);
+      await respondWith(resp);
+      listener.close();
+    }
+
+    const ts = new TransformStream();
+    const writer = ts.writable.getWriter();
+    writer.write(encoder.encode("hello"));
+
+    let httpConn2: Deno.HttpConn;
+    async function server2() {
+      const tcpConn = await listener2.accept();
+      httpConn2 = Deno.serveHttp(tcpConn);
+      const e = await httpConn2.nextRequest();
+      assert(e);
+      await e.respondWith(
+        new Response(ts.readable, {
+          headers: { "Content-Type": "text/plain" },
+        }),
+      );
+      listener2.close();
+    }
+
+    async function client() {
+      const url = `http://${hostname}:${port}/`;
+      const args = [
+        "--request",
+        "GET",
+        "--url",
+        url,
+        "--header",
+        "Accept-Encoding: gzip, deflate, br",
+        "--no-buffer",
+      ];
+      const proc = Deno.spawnChild("curl", { args, stderr: "null" });
+      const stdout = proc.stdout
+        .pipeThrough(new DecompressionStream("gzip"))
+        .pipeThrough(new TextDecoderStream());
+      let body = "";
+      for await (const chunk of stdout) {
+        body += chunk;
+        if (body === "hello") {
+          writer.write(encoder.encode(" world"));
+          writer.close();
+        }
+      }
+      assertEquals(body, "hello world");
+      const status = await proc.status;
+      assert(status.success);
+    }
+
+    await Promise.all([server(), server2(), client()]);
+    httpConn!.close();
+    httpConn2!.close();
+  },
+});
+
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6
   const tp = new TextProtoReader(r);

@@ -157,7 +157,8 @@ fn add_npm_packages_to_json(
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
-          module.insert("npmPackage".to_string(), format!("{}", pkg.id).into());
+          module
+            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
           // change the "kind" to be "npm"
           module.insert("kind".to_string(), "npm".into());
         }
@@ -190,7 +191,7 @@ fn add_npm_packages_to_json(
                 {
                   dep.insert(
                     "npmPackage".to_string(),
-                    format!("{}", pkg.id).into(),
+                    pkg.id.as_serialized().into(),
                   );
                 }
               }
@@ -212,11 +213,11 @@ fn add_npm_packages_to_json(
     deps.sort();
     let deps = deps
       .into_iter()
-      .map(|id| serde_json::Value::String(format!("{}", id)))
+      .map(|id| serde_json::Value::String(id.as_serialized()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
 
-    json_packages.insert(format!("{}", &pkg.id), kv.into());
+    json_packages.insert(pkg.id.as_serialized(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -504,7 +505,7 @@ impl<'a> GraphDisplayContext<'a> {
         None => Specifier(module.specifier.clone()),
       };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.to_string(),
+      Package(package) => package.id.as_serialized(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -572,11 +573,14 @@ impl<'a> GraphDisplayContext<'a> {
     for dep_id in deps.into_iter() {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
-      let mut child =
-        TreeNode::from_text(format!("npm:{} {}", dep_id, size_str));
+      let mut child = TreeNode::from_text(format!(
+        "npm:{} {}",
+        dep_id.as_serialized(),
+        size_str
+      ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          if self.seen.contains(&package.id.to_string()) {
+          if self.seen.contains(&package.id.as_serialized()) {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {
             let package = package.clone();
