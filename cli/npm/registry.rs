@@ -1,5 +1,6 @@
 // Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
@@ -10,6 +11,8 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::BoxFuture;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -24,11 +27,13 @@ use crate::http_cache::CACHE_PERM;
 use crate::progress_bar::ProgressBar;
 
 use super::cache::NpmCache;
+use super::resolution::NpmVersionMatcher;
+use super::semver::NpmVersion;
 use super::semver::NpmVersionReq;
 
 // npm registry docs: https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct NpmPackageInfo {
   pub name: String,
   pub versions: HashMap<String, NpmPackageVersionInfo>,
@@ -36,13 +41,59 @@ pub struct NpmPackageInfo {
   pub dist_tags: HashMap<String, String>,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum NpmDependencyEntryKind {
+  Dep,
+  Peer,
+  OptionalPeer,
+}
+
+impl NpmDependencyEntryKind {
+  pub fn is_optional(&self) -> bool {
+    matches!(self, NpmDependencyEntryKind::OptionalPeer)
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct NpmDependencyEntry {
+  pub kind: NpmDependencyEntryKind,
   pub bare_specifier: String,
   pub name: String,
   pub version_req: NpmVersionReq,
+  /// When the dependency is also marked as a peer dependency,
+  /// use this entry to resolve the dependency when it can't
+  /// be resolved as a peer dependency.
+  pub peer_dep_version_req: Option<NpmVersionReq>,
+}
+
+impl PartialOrd for NpmDependencyEntry {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for NpmDependencyEntry {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    // sort the dependencies alphabetically by name then by version descending
+    match self.name.cmp(&other.name) {
+      // sort by newest to oldest
+      Ordering::Equal => other
+        .version_req
+        .version_text()
+        .cmp(&self.version_req.version_text()),
+      ordering => ordering,
+    }
+  }
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct NpmPeerDependencyMeta {
+  #[serde(default)]
+  optional: bool,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: String,
   pub dist: NpmPackageVersionDistInfo,
@@ -50,14 +101,19 @@ pub struct NpmPackageVersionInfo {
   // package and version (ex. `"typescript-3.0.1": "npm:typescript@3.0.1"`).
   #[serde(default)]
   pub dependencies: HashMap<String, String>,
+  #[serde(default)]
+  pub peer_dependencies: HashMap<String, String>,
+  #[serde(default)]
+  pub peer_dependencies_meta: HashMap<String, NpmPeerDependencyMeta>,
 }
 
 impl NpmPackageVersionInfo {
   pub fn dependencies_as_entries(
     &self,
   ) -> Result<Vec<NpmDependencyEntry>, AnyError> {
-    fn entry_as_bare_specifier_and_reference(
+    fn parse_dep_entry(
       entry: (&String, &String),
+      kind: NpmDependencyEntryKind,
     ) -> Result<NpmDependencyEntry, AnyError> {
       let bare_specifier = entry.0.clone();
       let (name, version_req) =
@@ -78,21 +134,46 @@ impl NpmPackageVersionInfo {
           )
         })?;
       Ok(NpmDependencyEntry {
+        kind,
         bare_specifier,
         name,
         version_req,
+        peer_dep_version_req: None,
       })
     }
 
-    self
-      .dependencies
-      .iter()
-      .map(entry_as_bare_specifier_and_reference)
-      .collect::<Result<Vec<_>, AnyError>>()
+    let mut result = HashMap::with_capacity(
+      self.dependencies.len() + self.peer_dependencies.len(),
+    );
+    for entry in &self.peer_dependencies {
+      let is_optional = self
+        .peer_dependencies_meta
+        .get(entry.0)
+        .map(|d| d.optional)
+        .unwrap_or(false);
+      let kind = match is_optional {
+        true => NpmDependencyEntryKind::OptionalPeer,
+        false => NpmDependencyEntryKind::Peer,
+      };
+      let entry = parse_dep_entry(entry, kind)?;
+      result.insert(entry.bare_specifier.clone(), entry);
+    }
+    for entry in &self.dependencies {
+      let entry = parse_dep_entry(entry, NpmDependencyEntryKind::Dep)?;
+      // people may define a dependency as a peer dependency as well,
+      // so in those cases, attempt to resolve as a peer dependency,
+      // but then use this dependency version requirement otherwise
+      if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
+        peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+      } else {
+        result.insert(entry.bare_specifier.clone(), entry);
+      }
+    }
+    Ok(result.into_values().collect())
   }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NpmPackageVersionDistInfo {
   /// URL to the tarball.
   pub tarball: String,
@@ -100,16 +181,50 @@ pub struct NpmPackageVersionDistInfo {
   pub integrity: Option<String>,
 }
 
-#[derive(Clone)]
-pub struct NpmRegistryApi {
-  base_url: Url,
-  cache: NpmCache,
-  mem_cache: Arc<Mutex<HashMap<String, Option<NpmPackageInfo>>>>,
-  cache_setting: CacheSetting,
-  progress_bar: ProgressBar,
+pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
+  fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>>;
+
+  fn package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<NpmPackageInfo, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    async move {
+      let maybe_package_info = api.maybe_package_info(&name).await?;
+      match maybe_package_info {
+        Some(package_info) => Ok(package_info),
+        None => bail!("npm package '{}' does not exist", name),
+      }
+    }
+    .boxed()
+  }
+
+  fn package_version_info(
+    &self,
+    name: &str,
+    version: &NpmVersion,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageVersionInfo>, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    let version = version.to_string();
+    async move {
+      // todo(dsherret): this could be optimized to not clone the
+      // entire package info in the case of the RealNpmRegistryApi
+      let mut package_info = api.package_info(&name).await?;
+      Ok(package_info.versions.remove(&version))
+    }
+    .boxed()
+  }
 }
 
-impl NpmRegistryApi {
+#[derive(Clone)]
+pub struct RealNpmRegistryApi(Arc<RealNpmRegistryApiInner>);
+
+impl RealNpmRegistryApi {
   pub fn default_url() -> Url {
     let env_var_name = "DENO_NPM_REGISTRY";
     if let Ok(registry_url) = std::env::var(env_var_name) {
@@ -135,30 +250,40 @@ impl NpmRegistryApi {
     cache_setting: CacheSetting,
     progress_bar: ProgressBar,
   ) -> Self {
-    Self {
+    Self(Arc::new(RealNpmRegistryApiInner {
       base_url,
       cache,
       mem_cache: Default::default(),
       cache_setting,
       progress_bar,
-    }
+    }))
   }
 
   pub fn base_url(&self) -> &Url {
-    &self.base_url
+    &self.0.base_url
   }
+}
 
-  pub async fn package_info(
+impl NpmRegistryApi for RealNpmRegistryApi {
+  fn maybe_package_info(
     &self,
     name: &str,
-  ) -> Result<NpmPackageInfo, AnyError> {
-    let maybe_package_info = self.maybe_package_info(name).await?;
-    match maybe_package_info {
-      Some(package_info) => Ok(package_info),
-      None => bail!("npm package '{}' does not exist", name),
-    }
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+    let api = self.clone();
+    let name = name.to_string();
+    async move { api.0.maybe_package_info(&name).await }.boxed()
   }
+}
 
+struct RealNpmRegistryApiInner {
+  base_url: Url,
+  cache: NpmCache,
+  mem_cache: Mutex<HashMap<String, Option<NpmPackageInfo>>>,
+  cache_setting: CacheSetting,
+  progress_bar: ProgressBar,
+}
+
+impl RealNpmRegistryApiInner {
   pub async fn maybe_package_info(
     &self,
     name: &str,
@@ -329,5 +454,102 @@ impl NpmRegistryApi {
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
     let name_folder_path = self.cache.package_name_folder(name, &self.base_url);
     name_folder_path.join("registry.json")
+  }
+}
+
+/// Note: This test struct is not thread safe for setup
+/// purposes. Construct everything on the same thread.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub struct TestNpmRegistryApi {
+  package_infos: Arc<Mutex<HashMap<String, NpmPackageInfo>>>,
+}
+
+#[cfg(test)]
+impl TestNpmRegistryApi {
+  pub fn add_package_info(&self, name: &str, info: NpmPackageInfo) {
+    let previous = self.package_infos.lock().insert(name.to_string(), info);
+    assert!(previous.is_none());
+  }
+
+  pub fn ensure_package(&self, name: &str) {
+    if !self.package_infos.lock().contains_key(name) {
+      self.add_package_info(
+        name,
+        NpmPackageInfo {
+          name: name.to_string(),
+          ..Default::default()
+        },
+      );
+    }
+  }
+
+  pub fn ensure_package_version(&self, name: &str, version: &str) {
+    self.ensure_package(name);
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(name).unwrap();
+    if !info.versions.contains_key(version) {
+      info.versions.insert(
+        version.to_string(),
+        NpmPackageVersionInfo {
+          version: version.to_string(),
+          ..Default::default()
+        },
+      );
+    }
+  }
+
+  pub fn add_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+  }
+
+  pub fn add_peer_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .peer_dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+  }
+
+  pub fn add_optional_peer_dependency(
+    &self,
+    package_from: (&str, &str),
+    package_to: (&str, &str),
+  ) {
+    let mut infos = self.package_infos.lock();
+    let info = infos.get_mut(package_from.0).unwrap();
+    let version = info.versions.get_mut(package_from.1).unwrap();
+    version
+      .peer_dependencies
+      .insert(package_to.0.to_string(), package_to.1.to_string());
+    version.peer_dependencies_meta.insert(
+      package_to.0.to_string(),
+      NpmPeerDependencyMeta { optional: true },
+    );
+  }
+}
+
+#[cfg(test)]
+impl NpmRegistryApi for TestNpmRegistryApi {
+  fn maybe_package_info(
+    &self,
+    name: &str,
+  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+    let result = self.package_infos.lock().get(name).cloned();
+    Box::pin(deno_core::futures::future::ready(Ok(result)))
   }
 }

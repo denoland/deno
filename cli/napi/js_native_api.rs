@@ -1798,9 +1798,7 @@ fn napi_is_detached_arraybuffer(
 ) -> Result {
   let value = transmute::<napi_value, v8::Local<v8::Value>>(value);
   let _ab = v8::Local::<v8::ArrayBuffer>::try_from(value).unwrap();
-  // TODO: what is API for checking if ArrayBuffer is detached?
-  // there's only is_detachable I could find.
-  *result = false;
+  *result = _ab.was_detached();
   Ok(())
 }
 
