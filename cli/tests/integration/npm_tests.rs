@@ -17,7 +17,6 @@ itest!(esm_module {
 itest!(esm_module_eval {
   args_vec: vec![
     "eval",
-    "--unstable",
     "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
   ],
   output: "npm/esm/main.out",
@@ -263,7 +262,6 @@ fn parallel_downloading() {
     vec![
       "run",
       "--allow-read",
-      "--unstable",
       "--allow-env",
       "npm/cjs_with_deps/main.js",
     ],
@@ -284,7 +282,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/cached_only_after_first_run/main1.ts")
@@ -304,7 +301,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -328,7 +324,6 @@ fn cached_only_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--cached-only")
@@ -357,7 +352,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/reload/main.ts")
@@ -377,7 +371,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload")
@@ -398,7 +391,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:")
@@ -419,7 +411,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:chalk")
@@ -440,7 +431,6 @@ fn reload_flag() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--reload=npm:foobar")
@@ -468,7 +458,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -492,7 +481,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("npm/no_npm_after_first_run/main1.ts")
@@ -512,7 +500,6 @@ fn no_npm_after_first_run() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--no-npm")
@@ -543,7 +530,6 @@ fn deno_run_cjs_module() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--allow-write")
@@ -651,7 +637,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("cache")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg(util::testdata_path().join("npm/dual_cjs_esm/main.ts"))
@@ -687,7 +672,6 @@ fn node_modules_dir_cache() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(deno_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--quiet")
     .arg("-A")
@@ -979,7 +963,6 @@ fn lock_file_missing_top_level_package() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--quiet")
     .arg("--lock")
     .arg("deno.lock")
@@ -1208,7 +1191,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
 }
 
 itest!(info_peer_deps {
-  args: "info --quiet --unstable npm/peer_deps_with_copied_folders/main.ts",
+  args: "info --quiet npm/peer_deps_with_copied_folders/main.ts",
   output: "npm/peer_deps_with_copied_folders/main_info.out",
   exit_code: 0,
   envs: env_vars(),
@@ -1216,8 +1199,7 @@ itest!(info_peer_deps {
 });
 
 itest!(info_peer_deps_json {
-  args:
-    "info --quiet --unstable --json npm/peer_deps_with_copied_folders/main.ts",
+  args: "info --quiet --json npm/peer_deps_with_copied_folders/main.ts",
   output: "npm/peer_deps_with_copied_folders/main_info_json.out",
   exit_code: 0,
   envs: env_vars(),
