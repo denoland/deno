@@ -153,7 +153,7 @@ pub(crate) fn generate(
   //
   // Optimizer has already set it in the fast parameter variant list.
   if optimizer.is_async {
-    if fast_fn_inputs.len() == 0 {
+    if fast_fn_inputs.is_empty() {
       fast_fn_inputs.push(parse_quote! { __promise_id: i32 });
     } else {
       fast_fn_inputs.insert(0, parse_quote! { __promise_id: i32 });
