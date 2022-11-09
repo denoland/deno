@@ -124,12 +124,12 @@
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
     consoleSize: __bootstrap.tty.consoleSize,
+    gid: __bootstrap.os.gid,
+    uid: __bootstrap.os.uid,
   };
 
   __bootstrap.denoNsUnstable = {
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    gid: __bootstrap.os.gid,
-    uid: __bootstrap.os.uid,
     listenDatagram: __bootstrap.net.listenDatagram,
     umask: __bootstrap.fs.umask,
     HttpClient: __bootstrap.fetch.HttpClient,

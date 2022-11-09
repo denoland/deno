@@ -271,38 +271,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Returns the user id of the Deno process on POSIX platforms. Returns `null`
-   * on Windows.
-   *
-   * ```ts
-   * console.log(Deno.uid());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function uid(): number | null;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Returns the group id of the process on POSIX platforms. Returns `null` on
-   * Windows.
-   *
-   * ```ts
-   * console.log(Deno.gid());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function gid(): number | null;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * All plain number types for interfacing with foreign functions.
    *
    * @category FFI

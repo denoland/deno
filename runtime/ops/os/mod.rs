@@ -255,7 +255,6 @@ fn op_system_memory_info(
 #[cfg(not(windows))]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -270,7 +269,6 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.gid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -281,7 +279,6 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(not(windows))]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys
@@ -296,7 +293,6 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 #[cfg(windows)]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
-  super::check_unstable(state, "Deno.uid");
   state
     .borrow_mut::<Permissions>()
     .sys
