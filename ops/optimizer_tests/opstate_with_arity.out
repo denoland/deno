@@ -13,7 +13,6 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_add_4_fast {
         deno_core::v8::fast_api::CType::Int64
     }
 }
-#[allow(clippy::extra_unused_lifetimes)]
 fn op_add_4_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     x1: i64,

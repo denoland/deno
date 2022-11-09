@@ -16,7 +16,6 @@ where
         deno_core::v8::fast_api::CType::Void
     }
 }
-#[allow(clippy::extra_unused_lifetimes)]
 fn op_now_fast_fn<'scope, TP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,

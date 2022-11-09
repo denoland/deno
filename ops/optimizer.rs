@@ -283,7 +283,7 @@ impl Optimizer {
                   // Is `T` a scalar FastValue?
                   if let Some(val) = get_fast_scalar(ident.to_string().as_str())
                   {
-                    self.fast_result = Some(val.clone());
+                    self.fast_result = Some(val);
                   } else {
                     return Err(BailoutReason::FastUnsupportedParamType);
                   }
@@ -295,7 +295,7 @@ impl Optimizer {
           // Is `T` a scalar FastValue?
           PathSegment { ident, .. } => {
             if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
-              self.fast_result = Some(val.clone());
+              self.fast_result = Some(val);
             } else {
               return Err(BailoutReason::FastUnsupportedParamType);
             }
@@ -433,7 +433,7 @@ impl Optimizer {
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
-                self.fast_parameters.push(val.clone());
+                self.fast_parameters.push(val);
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
               }

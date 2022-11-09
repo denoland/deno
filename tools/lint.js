@@ -112,7 +112,15 @@ async function clippy() {
   }
 
   const { success } = await Deno.spawn("cargo", {
-    args: [...cmd, "--", "-D", "warnings"],
+    args: [
+      ...cmd,
+      "--",
+      "-D",
+      "warnings",
+      "-A",
+      // https://github.com/rust-lang/rust-clippy/issues/407
+      "clippy::extra_unused_lifetimes",
+    ],
     stdout: "inherit",
     stderr: "inherit",
   });
