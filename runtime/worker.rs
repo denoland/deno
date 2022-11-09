@@ -101,7 +101,7 @@ fn grab_cb(
   scope: &mut v8::HandleScope,
   path: &str,
 ) -> v8::Global<v8::Function> {
-  let cb = JsRuntime::grab_global::<v8::Function>(scope, path)
+  let cb = JsRuntime::eval::<v8::Function>(scope, path)
     .unwrap_or_else(|| panic!("{} must be defined", path));
   v8::Global::new(scope, cb)
 }
