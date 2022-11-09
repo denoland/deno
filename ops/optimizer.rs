@@ -323,6 +323,7 @@ impl Optimizer {
             [PathSegment { ident: first, .. }, PathSegment { ident: last, .. }]
               if first == "serde_v8" && last == "Value" =>
             {
+              self.fast_parameters.push(FastValue::V8Value);
               assert!(self
                 .transforms
                 .insert(index, Transform::serde_v8_value(index))

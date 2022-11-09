@@ -13,6 +13,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_fallback_fast {
         deno_core::v8::fast_api::CType::Void
     }
 }
+#[allow(clippy::extra_unused_lifetimes)]
 fn op_fallback_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     options: Option<&mut FastApiCallbackOptions>,

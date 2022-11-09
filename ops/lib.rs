@@ -75,9 +75,10 @@ impl Op {
   fn gen(mut self) -> TokenStream2 {
     let mut optimizer = Optimizer::new();
     match optimizer.analyze(&mut self) {
-      Ok(_)
-      | Err(BailoutReason::MustBeSingleSegment)
-      | Err(BailoutReason::FastUnsupportedParamType) => {}
+      Ok(_) | Err(BailoutReason::MustBeSingleSegment) => {}
+      Err(BailoutReason::FastUnsupportedParamType) => {
+        optimizer.fast_compatible = false;
+      }
       Err(err) => return quote!(compile_error!(#err);),
     };
 
