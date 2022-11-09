@@ -162,6 +162,8 @@ pub(crate) enum FastValue {
   F64,
   Bool,
   V8Value,
+  Uint8Array,
+  Uint32Array,
 }
 
 impl Default for FastValue {
@@ -469,6 +471,7 @@ impl Optimizer {
                 // Is `T` a u8?
                 PathSegment { ident, .. } if ident == "u8" => {
                   self.has_fast_callback_option = true;
+                  self.fast_parameters.push(FastValue::Uint8Array);
                   assert!(self
                     .transforms
                     .insert(index, Transform::slice_u8(index, is_mut_ref))
@@ -477,6 +480,7 @@ impl Optimizer {
                 // Is `T` a u32?
                 PathSegment { ident, .. } if ident == "u32" => {
                   self.has_fast_callback_option = true;
+                  self.fast_parameters.push(FastValue::Uint32Array);
                   assert!(self
                     .transforms
                     .insert(index, Transform::slice_u32(index, is_mut_ref))
