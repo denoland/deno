@@ -6,7 +6,6 @@ use monch::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::errors::with_failure_handling;
 use super::range::Partial;
 use super::range::VersionRange;
 use super::range::XRange;

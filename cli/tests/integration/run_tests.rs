@@ -609,12 +609,6 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-itest!(lock_write_requires_lock {
-  args: "run --lock-write some_file.ts",
-  output: "run/lock_write_requires_lock.out",
-  exit_code: 1,
-});
-
 // TODO(bartlomieju): remove --unstable once Deno.spawn is stabilized
 itest!(lock_write_fetch {
   args:
@@ -689,6 +683,12 @@ itest!(lock_v2_check_err2 {
   args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
   output: "run/lock_v2_check_err2.out",
   exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_only_http_and_https {
+  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
+  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -3634,3 +3634,17 @@ fn websocket_server_idletimeout() {
 
   assert!(child.wait().unwrap().success());
 }
+
+itest!(auto_discover_lockfile {
+  args: "run --unstable run/auto_discover_lockfile/main.ts",
+  output: "run/auto_discover_lockfile/main.out",
+  http_server: true,
+  exit_code: 10,
+});
+
+itest!(no_lock_flag {
+  args: "run --no-lock run/no_lock_flag/main.ts",
+  output: "run/no_lock_flag/main.out",
+  http_server: true,
+  exit_code: 0,
+});

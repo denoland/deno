@@ -333,6 +333,43 @@ declare namespace Deno {
   export function loadavg(): number[];
 
   /**
+   * The information for a network interface returned from a call to
+   * {@linkcode Deno.networkInterfaces}.
+   *
+   * @category Network
+   */
+  export interface NetworkInterfaceInfo {
+    /** The network interface name. */
+    name: string;
+    /** The IP protocol version. */
+    family: "IPv4" | "IPv6";
+    /** The IP address bound to the interface. */
+    address: string;
+    /** The netmask applied to the interface. */
+    netmask: string;
+    /** The IPv6 scope id or `null`. */
+    scopeid: number | null;
+    /** The CIDR range. */
+    cidr: string;
+    /** The MAC address. */
+    mac: string;
+  }
+
+  /**
+   * Returns an array of the network interface information.
+   *
+   * ```ts
+   * console.log(Deno.networkInterfaces());
+   * ```
+   *
+   * Requires `allow-sys` permission.
+   *
+   * @tags allow-sys
+   * @category Network
+   */
+  export function networkInterfaces(): NetworkInterfaceInfo[];
+
+  /**
    * Displays the total amount of free and used physical and swap memory in the
    * system, as well as the buffers and caches used by the kernel.
    *
@@ -394,11 +431,11 @@ declare namespace Deno {
    * console.log(Deno.osRelease());
    * ```
    *
-   * Requires `allow-env` permission.
+   * Requires `allow-sys` permission.
    * Under consideration to possibly move to Deno.build or Deno.versions and if
    * it should depend sys-info, which may not be desirable.
    *
-   * @tags allow-env
+   * @tags allow-sys
    * @category Runtime Environment
    */
   export function osRelease(): string;

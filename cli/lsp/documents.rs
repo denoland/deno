@@ -19,8 +19,7 @@ use crate::node::NodeResolutionMode;
 use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmPackageResolver;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::resolver::CliResolver;
 use crate::text_encoding;
 
 use deno_ast::MediaType;
@@ -707,10 +706,9 @@ pub struct Documents {
   /// Any imports to the context supplied by configuration files. This is like
   /// the imports into the a module graph in CLI.
   imports: Arc<HashMap<ModuleSpecifier, GraphImport>>,
-  /// The optional import map that should be used when resolving dependencies.
-  maybe_import_map: Option<ImportMapResolver>,
-  /// The optional JSX resolver, which is used when JSX imports are configured.
-  maybe_jsx_resolver: Option<JsxResolver>,
+  /// A resolver that takes into account currently loaded import map and JSX
+  /// settings.
+  maybe_resolver: Option<CliResolver>,
   /// The npm package requirements.
   npm_reqs: HashSet<NpmPackageReq>,
   /// Resolves a specifier to its final redirected to specifier.
@@ -726,8 +724,7 @@ impl Documents {
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
       imports: Default::default(),
-      maybe_import_map: None,
-      maybe_jsx_resolver: None,
+      maybe_resolver: None,
       npm_reqs: HashSet::new(),
       specifier_resolver: Arc::new(SpecifierResolver::new(location)),
     }
@@ -1049,11 +1046,10 @@ impl Documents {
     maybe_config_file: Option<&ConfigFile>,
   ) {
     // TODO(@kitsonk) update resolved dependencies?
-    self.maybe_import_map = maybe_import_map.map(ImportMapResolver::new);
-    self.maybe_jsx_resolver = maybe_config_file.and_then(|cf| {
-      cf.to_maybe_jsx_import_source_config()
-        .map(|cfg| JsxResolver::new(cfg, self.maybe_import_map.clone()))
-    });
+    let maybe_jsx_config =
+      maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
+    self.maybe_resolver =
+      CliResolver::maybe_new(maybe_jsx_config, maybe_import_map);
     self.imports = Arc::new(
       if let Some(Ok(Some(imports))) =
         maybe_config_file.map(|cf| cf.to_maybe_imports())
@@ -1125,11 +1121,7 @@ impl Documents {
   }
 
   fn get_maybe_resolver(&self) -> Option<&dyn deno_graph::source::Resolver> {
-    if self.maybe_jsx_resolver.is_some() {
-      self.maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      self.maybe_import_map.as_ref().map(|im| im.as_resolver())
-    }
+    self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver())
   }
 
   fn resolve_dependency(

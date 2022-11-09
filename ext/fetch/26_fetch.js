@@ -529,14 +529,15 @@
         // 2.6.
         // Rather than consuming the body as an ArrayBuffer, this passes each
         // chunk to the feed as soon as it's available.
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            ops.op_wasm_streaming_feed(rid, chunk);
-          }
-        })().then(
+        PromisePrototypeThen(
+          (async () => {
+            const reader = res.body.getReader();
+            while (true) {
+              const { value: chunk, done } = await reader.read();
+              if (done) break;
+              ops.op_wasm_streaming_feed(rid, chunk);
+            }
+          })(),
           // 2.7
           () => core.close(rid),
           // 2.8

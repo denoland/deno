@@ -71,7 +71,7 @@ use crate::fs_util;
 use crate::graph_util::graph_valid;
 use crate::npm::NpmCache;
 use crate::npm::NpmPackageResolver;
-use crate::npm::NpmRegistryApi;
+use crate::npm::RealNpmRegistryApi;
 use crate::proc_state::import_map_from_text;
 use crate::proc_state::ProcState;
 use crate::progress_bar::ProgressBar;
@@ -258,7 +258,7 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let registry_url = NpmRegistryApi::default_url();
+    let registry_url = RealNpmRegistryApi::default_url();
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
@@ -270,7 +270,7 @@ impl Inner {
       cache_setting.clone(),
       progress_bar.clone(),
     );
-    let api = NpmRegistryApi::new(
+    let api = RealNpmRegistryApi::new(
       registry_url,
       npm_cache.clone(),
       cache_setting,
@@ -2916,6 +2916,8 @@ impl Inner {
         ..Default::default()
       },
       self.maybe_config_file.clone(),
+      // TODO(#16510): add support for lockfile
+      None,
     );
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 

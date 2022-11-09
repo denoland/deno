@@ -15,6 +15,7 @@ use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
 use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageId;
 use crate::npm::NpmPackageReq;
 use crate::npm::NpmResolutionPackage;
 
@@ -35,6 +36,8 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
+
+  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
 
   fn has_packages(&self) -> bool;
 
@@ -67,13 +70,19 @@ pub async fn cache_packages(
     // and we want the output to be deterministic
     packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
+
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
+    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = tokio::task::spawn(async move {
       cache
-        .ensure_package(&package.id, &package.dist, &registry_url)
+        .ensure_package(
+          (package.id.name.as_str(), &package.id.version),
+          &package.dist,
+          &registry_url,
+        )
         .await
     });
     if sync_download {

@@ -29,11 +29,13 @@
   const {
     Function,
     ObjectPrototypeIsPrototypeOf,
-    PromiseAll,
+    Promise,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    SafePromiseAll,
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
-    Promise,
     Uint8ArrayPrototype,
   } = window.__bootstrap.primordials;
 
@@ -342,32 +344,33 @@
           }
           const reader = respBody.getReader(); // Aquire JS lock.
           try {
-            core.opAsync(
-              "op_flash_write_resource",
-              http1Response(
-                method,
-                innerResp.status ?? 200,
-                innerResp.headerList,
-                0, // Content-Length will be set by the op.
-                null,
-                true,
+            PromisePrototypeThen(
+              core.opAsync(
+                "op_flash_write_resource",
+                http1Response(
+                  method,
+                  innerResp.status ?? 200,
+                  innerResp.headerList,
+                  0, // Content-Length will be set by the op.
+                  null,
+                  true,
+                ),
+                serverId,
+                i,
+                resourceBacking.rid,
+                resourceBacking.autoClose,
               ),
-              serverId,
-              i,
-              resourceBacking.rid,
-              resourceBacking.autoClose,
-            ).then(() => {
-              // Release JS lock.
-              readableStreamClose(respBody);
-            });
+              () => {
+                // Release JS lock.
+                readableStreamClose(respBody);
+              },
+            );
           } catch (error) {
             await reader.cancel(error);
             throw error;
           }
         } else {
           const reader = respBody.getReader();
-          const { value, done } = await reader.read();
-          // Best case: sends headers + first chunk in a single go.
           writeFixedResponse(
             serverId,
             i,
@@ -382,21 +385,14 @@
             false,
             respondFast,
           );
-          await respondChunked(
-            i,
-            value,
-            done,
-          );
-          if (!done) {
-            while (true) {
-              const chunk = await reader.read();
-              await respondChunked(
-                i,
-                chunk.value,
-                chunk.done,
-              );
-              if (chunk.done) break;
-            }
+          while (true) {
+            const { value, done } = await reader.read();
+            await respondChunked(
+              i,
+              value,
+              done,
+            );
+            if (done) break;
           }
         }
       }
@@ -486,10 +482,16 @@
     const serverId = core.ops.op_flash_serve(listenOpts);
     const serverPromise = core.opAsync("op_flash_drive_server", serverId);
 
-    core.opAsync("op_flash_wait_for_listening", serverId).then((port) => {
-      onListen({ hostname: listenOpts.hostname, port });
-    }).catch(() => {});
-    const finishedPromise = serverPromise.catch(() => {});
+    PromisePrototypeCatch(
+      PromisePrototypeThen(
+        core.opAsync("op_flash_wait_for_listening", serverId),
+        (port) => {
+          onListen({ hostname: listenOpts.hostname, port });
+        },
+      ),
+      () => {},
+    );
+    const finishedPromise = PromisePrototypeCatch(serverPromise, () => {});
 
     const server = {
       id: serverId,
@@ -554,7 +556,27 @@
             let resp;
             try {
               resp = handler(req);
-              if (resp instanceof Promise || typeof resp?.then === "function") {
+              if (resp instanceof Promise) {
+                PromisePrototypeCatch(
+                  PromisePrototypeThen(
+                    resp,
+                    (resp) =>
+                      handleResponse(
+                        req,
+                        resp,
+                        body,
+                        hasBody,
+                        method,
+                        serverId,
+                        i,
+                        respondFast,
+                        respondChunked,
+                      ),
+                  ),
+                  onError,
+                );
+                continue;
+              } else if (typeof resp?.then === "function") {
                 resp.then((resp) =>
                   handleResponse(
                     req,
@@ -595,28 +617,19 @@
 
     signal?.addEventListener("abort", () => {
       clearInterval(dateInterval);
-      server.close().then(() => {}, () => {});
+      PromisePrototypeThen(server.close(), () => {}, () => {});
     }, {
       once: true,
     });
 
     function respondChunked(token, chunk, shutdown) {
-      const nwritten = core.ops.op_try_flash_respond_chuncked(
+      return core.opAsync(
+        "op_flash_respond_chuncked",
         serverId,
         token,
-        chunk ?? new Uint8Array(),
+        chunk,
         shutdown,
       );
-      if (nwritten > 0) {
-        return core.opAsync(
-          "op_flash_respond_chuncked",
-          serverId,
-          token,
-          chunk,
-          shutdown,
-          nwritten,
-        );
-      }
     }
 
     const fastOp = prepareFastCalls();
@@ -638,8 +651,8 @@
       }, 1000);
     }
 
-    await PromiseAll([
-      server.serve().catch(console.error),
+    await SafePromiseAll([
+      PromisePrototypeCatch(server.serve(), console.error),
       serverPromise,
     ]);
   }
