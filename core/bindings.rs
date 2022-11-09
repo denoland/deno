@@ -154,7 +154,7 @@ fn initialize_ops(
 
     // If this is a fast op, we don't want it to be in the snapshot.
     // Only initialize once snapshot is loaded.
-    if ctx.decl.fast_fn.is_some() && snapshot_options.loaded() {
+    if ctx.decl.fast_fn.is_some() {
       set_func_raw(
         scope,
         ops_obj,
@@ -214,7 +214,8 @@ pub fn set_func_raw(
       // TODO(@littledivy): Support fast api overloads in ops.
       builder.build_fast(scope, &**fast_function, None)
     } else {
-      builder.build(scope)
+      builder.build_fast(scope, &**fast_function, None)
+      // builder.build(scope)
     }
   } else {
     builder.build(scope)

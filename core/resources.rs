@@ -23,7 +23,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 /// Returned by resource read/write/shutdown methods
-pub type AsyncResult<T> = Pin<Box<dyn Future<Output = Result<T, Error>>>>;
+pub type AsyncResult<'s, T> =
+  Pin<Box<dyn Future<Output = Result<T, Error>> + 's>>;
 
 /// Resources are Rust objects that are attached to a [deno_core::JsRuntime].
 /// They are identified in JS by a numeric ID (the resource ID, or rid).
@@ -88,7 +89,7 @@ pub trait Resource: Any + 'static {
   ///
   /// If a readable can provide an optimized path for BYOBs, it should also
   /// implement `read_byob()`.
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+  fn read<'s>(self: Rc<Self>, limit: usize) -> AsyncResult<'s, BufView> {
     _ = limit;
     Box::pin(futures::future::err(not_supported()))
   }
@@ -102,10 +103,10 @@ pub trait Resource: Any + 'static {
   /// will call `read()` and then copy the data into the provided buffer. For
   /// readable resources that can provide an optimized path for BYOBs, it is
   /// strongly recommended to override this method.
-  fn read_byob(
+  fn read_byob<'s>(
     self: Rc<Self>,
-    mut buf: BufMutView,
-  ) -> AsyncResult<(usize, BufMutView)> {
+    mut buf: BufMutView<'s>,
+  ) -> AsyncResult<(usize, BufMutView<'s>)> {
     Box::pin(async move {
       let read = self.read(buf.len()).await?;
       let nread = read.len();
@@ -121,7 +122,7 @@ pub trait Resource: Any + 'static {
   ///
   /// If this method is not implemented, the default implementation will error
   /// with a "not supported" error.
-  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+  fn write<'s>(self: Rc<Self>, buf: BufView) -> AsyncResult<'s, WriteOutcome> {
     _ = buf;
     Box::pin(futures::future::err(not_supported()))
   }
@@ -133,7 +134,7 @@ pub trait Resource: Any + 'static {
   /// By default this method will call `write()` repeatedly until the entire
   /// chunk is written. Resources that can write the entire chunk in a single
   /// operation using an optimized path should override this method.
-  fn write_all(self: Rc<Self>, view: BufView) -> AsyncResult<()> {
+  fn write_all<'s>(self: Rc<Self>, view: BufView) -> AsyncResult<'s, ()> {
     Box::pin(async move {
       let mut view = view;
       let this = self;
@@ -159,7 +160,7 @@ pub trait Resource: Any + 'static {
   ///
   /// If this method is not implemented, the default implementation will error
   /// with a "not supported" error.
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
     Box::pin(futures::future::err(not_supported()))
   }
 
@@ -355,7 +356,10 @@ impl ResourceTable {
 #[macro_export]
 macro_rules! impl_readable_byob {
   () => {
-    fn read(self: Rc<Self>, limit: usize) -> AsyncResult<$crate::BufView> {
+    fn read<'s>(
+      self: Rc<Self>,
+      limit: usize,
+    ) -> AsyncResult<'s, $crate::BufView> {
       Box::pin(async move {
         let mut vec = vec![0; limit];
         let nread = self.read(&mut vec).await?;
@@ -367,10 +371,10 @@ macro_rules! impl_readable_byob {
       })
     }
 
-    fn read_byob(
+    fn read_byob<'s>(
       self: Rc<Self>,
-      mut buf: $crate::BufMutView,
-    ) -> AsyncResult<(usize, $crate::BufMutView)> {
+      mut buf: $crate::BufMutView<'s>,
+    ) -> AsyncResult<'s, (usize, $crate::BufMutView)> {
       Box::pin(async move {
         let nread = self.read(buf.as_mut()).await?;
         Ok((nread, buf))
@@ -382,10 +386,10 @@ macro_rules! impl_readable_byob {
 #[macro_export]
 macro_rules! impl_writable {
   (__write) => {
-    fn write(
+    fn write<'s>(
       self: Rc<Self>,
       view: $crate::BufView,
-    ) -> AsyncResult<$crate::WriteOutcome> {
+    ) -> AsyncResult<'s, $crate::WriteOutcome> {
       Box::pin(async move {
         let nwritten = self.write(&view).await?;
         Ok($crate::WriteOutcome::Partial { nwritten, view })
@@ -393,7 +397,10 @@ macro_rules! impl_writable {
     }
   };
   (__write_all) => {
-    fn write_all(self: Rc<Self>, view: $crate::BufView) -> AsyncResult<()> {
+    fn write_all<'s>(
+      self: Rc<Self>,
+      view: $crate::BufView,
+    ) -> AsyncResult<'s, ()> {
       Box::pin(async move {
         self.write_all(&view).await?;
         Ok(())

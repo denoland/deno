@@ -68,7 +68,7 @@ fn op_add(a: i32, b: i32) -> i32 {
 #[op(fast)]
 pub fn op_void_sync() {}
 
-#[op]
+#[op(fast)]
 pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
@@ -162,18 +162,18 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
-#[op]
+#[op(fast)]
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: &mut [u8],
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
-  let view = BufMutView::from(buf);
+  let view = BufMutView::from_slice(buf);
   resource.read_byob(view).await.map(|(n, _)| n as u32)
 }
 
-#[op]
+#[op(fast)]
 async fn op_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

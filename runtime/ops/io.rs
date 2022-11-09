@@ -272,7 +272,7 @@ impl Resource for ChildStdinResource {
 
   deno_core::impl_writable!();
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
     Box::pin(self.shutdown())
   }
 }
@@ -518,14 +518,15 @@ impl StdFileResource {
     result
   }
 
-  async fn read_byob(
+  async fn read_byob<'s>(
     self: Rc<Self>,
-    mut buf: BufMutView,
+    buf: BufMutView<'s>,
   ) -> Result<(usize, BufMutView), AnyError> {
+    let mut buf = buf.to_vec();
     self
       .with_inner_blocking_task(move |inner| {
         let nread = inner.read(&mut buf)?;
-        Ok((nread, buf))
+        Ok((nread, buf.into()))
       })
       .await
   }
@@ -634,7 +635,10 @@ impl Resource for StdFileResource {
     self.name.as_str().into()
   }
 
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<deno_core::BufView> {
+  fn read<'s>(
+    self: Rc<Self>,
+    limit: usize,
+  ) -> AsyncResult<'s, deno_core::BufView> {
     Box::pin(async move {
       let vec = vec![0; limit];
       let buf = BufMutView::from(vec);
@@ -647,10 +651,10 @@ impl Resource for StdFileResource {
     })
   }
 
-  fn read_byob(
+  fn read_byob<'s>(
     self: Rc<Self>,
-    buf: deno_core::BufMutView,
-  ) -> AsyncResult<(usize, deno_core::BufMutView)> {
+    buf: deno_core::BufMutView<'s>,
+  ) -> AsyncResult<'s, (usize, deno_core::BufMutView)> {
     Box::pin(self.read_byob(buf))
   }
 

@@ -385,7 +385,7 @@ impl Resource for CachePutResource {
 
   deno_core::impl_writable!();
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
     Box::pin(self.shutdown())
   }
 }

@@ -468,7 +468,7 @@ impl Resource for FetchRequestBodyResource {
     "fetchRequestBody".into()
   }
 
-  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+  fn write<'s>(self: Rc<Self>, buf: BufView) -> AsyncResult<'s, WriteOutcome> {
     Box::pin(async move {
       let bytes: bytes::Bytes = buf.into();
       let nwritten = bytes.len();
@@ -500,7 +500,7 @@ impl Resource for FetchResponseBodyResource {
     "fetchResponseBody".into()
   }
 
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
+  fn read<'s>(self: Rc<Self>, limit: usize) -> AsyncResult<'s, BufView> {
     Box::pin(async move {
       let reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
 

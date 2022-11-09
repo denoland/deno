@@ -2195,6 +2195,22 @@ impl JsRealm {
 }
 
 #[inline]
+pub fn queue_fast_async_op(
+  ctx: &OpCtx,
+  op: impl Future<Output = (PromiseId, OpId, OpResult)> + 'static,
+) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // atleast 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
+  let mut state = runtime_state.borrow_mut();
+  state.pending_ops.push(OpCall::lazy(op));
+  state.have_unpolled_ops = true;
+}
+
+#[inline]
 pub fn queue_async_op(
   ctx: &OpCtx,
   scope: &mut v8::HandleScope,
