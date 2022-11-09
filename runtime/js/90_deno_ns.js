@@ -121,13 +121,13 @@
     unrefTimer: __bootstrap.timers.unrefTimer,
     osRelease: __bootstrap.os.osRelease,
     hostname: __bootstrap.os.hostname,
+    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     networkInterfaces: __bootstrap.os.networkInterfaces,
     consoleSize: __bootstrap.tty.consoleSize,
   };
 
   __bootstrap.denoNsUnstable = {
     DiagnosticCategory: __bootstrap.diagnostics.DiagnosticCategory,
-    systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
     gid: __bootstrap.os.gid,
     uid: __bootstrap.os.uid,
     listenDatagram: __bootstrap.net.listenDatagram,

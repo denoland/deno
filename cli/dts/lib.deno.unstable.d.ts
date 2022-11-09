@@ -271,51 +271,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Displays the total amount of free and used physical and swap memory in the
-   * system, as well as the buffers and caches used by the kernel.
-   *
-   * This is similar to the `free` command in Linux
-   *
-   * ```ts
-   * console.log(Deno.systemMemoryInfo());
-   * ```
-   *
-   * Requires `allow-sys` permission.
-   *
-   * @tags allow-sys
-   * @category Runtime Environment
-   */
-  export function systemMemoryInfo(): SystemMemoryInfo;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Information returned from a call to {@linkcode Deno.systemMemoryInfo}.
-   *
-   * @category Runtime Environment
-   */
-  export interface SystemMemoryInfo {
-    /** Total installed memory in bytes. */
-    total: number;
-    /** Unused memory in bytes. */
-    free: number;
-    /** Estimation of how much memory, in bytes, is available for starting new
-     * applications, without swapping. Unlike the data provided by the cache or
-     * free fields, this field takes into account page cache and also that not
-     * all reclaimable memory will be reclaimed due to items being in use.
-     */
-    available: number;
-    /** Memory used by kernel buffers. */
-    buffers: number;
-    /** Memory used by the page cache and slabs. */
-    cached: number;
-    /** Total swap memory. */
-    swapTotal: number;
-    /** Unused swap memory. */
-    swapFree: number;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Returns the user id of the Deno process on POSIX platforms. Returns `null`
    * on Windows.
    *
