@@ -1,15 +1,16 @@
 /// Optimizer for #[op]
 use crate::Op;
-use phf::phf_map;
+use pmutil::{q, Quote};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use syn::{
-  punctuated::Punctuated, token::Colon2, AngleBracketedGenericArguments, FnArg,
-  GenericArgument, Path, PathArguments, PathSegment, ReturnType, Signature,
-  Type, TypePath, TypeReference, TypeSlice,
+  parse_quote, punctuated::Punctuated, token::Colon2,
+  AngleBracketedGenericArguments, FnArg, GenericArgument, PatType, Path,
+  PathArguments, PathSegment, ReturnType, Signature, Type, TypePath,
+  TypeReference, TypeSlice,
 };
 
 #[derive(Debug)]
@@ -71,9 +72,6 @@ pub(crate) struct Transform {
   kind: TransformKind,
   index: usize,
 }
-
-use pmutil::{q, Quote};
-use syn::{parse_quote, PatType};
 
 impl Transform {
   pub(crate) fn apply_for_fast_call(
@@ -139,16 +137,19 @@ impl Transform {
   }
 }
 
-static FAST_SCALAR: phf::Map<&'static str, FastValue> = phf_map! {
-  "u32" => FastValue::U32,
-  "i32" => FastValue::I32,
-  "u64" => FastValue::U64,
-  "i64" => FastValue::I64,
-  "f32" => FastValue::F32,
-  "f64" => FastValue::F64,
-  "bool" => FastValue::Bool,
-  "ResourceId" => FastValue::U32,
-};
+fn get_fast_scalar(s: &str) -> Option<FastValue> {
+  match s {
+    "u32" => Some(FastValue::U32),
+    "i32" => Some(FastValue::I32),
+    "u64" => Some(FastValue::U64),
+    "i64" => Some(FastValue::I64),
+    "f32" => Some(FastValue::F32),
+    "f64" => Some(FastValue::F64),
+    "bool" => Some(FastValue::Bool),
+    "ResourceId" => Some(FastValue::U32),
+    _ => None,
+  }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum FastValue {
@@ -280,7 +281,7 @@ impl Optimizer {
                 }))) => {
                   let PathSegment { ident, .. } = single_segment(segments)?;
                   // Is `T` a scalar FastValue?
-                  if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str())
+                  if let Some(val) = get_fast_scalar(ident.to_string().as_str())
                   {
                     self.fast_result = Some(val.clone());
                   } else {
@@ -293,7 +294,7 @@ impl Optimizer {
           }
           // Is `T` a scalar FastValue?
           PathSegment { ident, .. } => {
-            if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
+            if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
               self.fast_result = Some(val.clone());
             } else {
               return Err(BailoutReason::FastUnsupportedParamType);
@@ -431,7 +432,7 @@ impl Optimizer {
             }
             // Is `T` a fast scalar?
             PathSegment { ident, .. } => {
-              if let Some(val) = FAST_SCALAR.get(ident.to_string().as_str()) {
+              if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val.clone());
               } else {
                 return Err(BailoutReason::FastUnsupportedParamType);
