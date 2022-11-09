@@ -7,6 +7,7 @@ impl<'scope> deno_core::v8::fast_api::FastFunction for op_fallback_fast {
     }
     fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
         use deno_core::v8::fast_api::Type::*;
+        use deno_core::v8::fast_api::CType;
         &[V8Value]
     }
     fn return_type(&self) -> deno_core::v8::fast_api::CType {

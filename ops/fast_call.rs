@@ -272,6 +272,7 @@ pub(crate) fn generate(
       parse_quote! {
         fn args(&self) -> &'static [#core::v8::fast_api::Type] {
           use #core::v8::fast_api::Type::*;
+          use #core::v8::fast_api::CType;
           &[ #input_variants ]
         }
       },
@@ -331,8 +332,8 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     FastValue::F64 => q!({ Float64 }),
     FastValue::Bool => q!({ Bool }),
     FastValue::V8Value => q!({ V8Value }),
-    FastValue::Uint8Array => q!({ TypedArray(Uint8) }),
-    FastValue::Uint32Array => q!({ TypedArray(Uint32) }),
+    FastValue::Uint8Array => q!({ TypedArray(CType::Uint8) }),
+    FastValue::Uint32Array => q!({ TypedArray(CType::Uint32) }),
   }
 }
 
