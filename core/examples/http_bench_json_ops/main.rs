@@ -10,16 +10,19 @@ use std::cell::RefCell;
 use std::env;
 use std::net::SocketAddr;
 use std::rc::Rc;
-
-mod polloi;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 // This is a hack to make the `#[op]` macro work with
 // deno_core examples.
 // You can remove this:
 use deno_core::*;
 
+// Note: a `tokio::net::TcpListener` doesn't need to be wrapped in a cell,
+// because it only supports one op (`accept`) which does not require a mutable
+// reference to the listener.
 struct TcpListener {
-  inner: polloi::TcpListener,
+  inner: tokio::net::TcpListener,
 }
 
 impl TcpListener {
@@ -29,25 +32,42 @@ impl TcpListener {
   }
 }
 
-impl Resource for TcpListener {}
+impl Resource for TcpListener {
+  fn close(self: Rc<Self>) {}
+}
+
+impl TryFrom<std::net::TcpListener> for TcpListener {
+  type Error = std::io::Error;
+  fn try_from(
+    std_listener: std::net::TcpListener,
+  ) -> Result<Self, Self::Error> {
+    tokio::net::TcpListener::try_from(std_listener).map(|tokio_listener| Self {
+      inner: tokio_listener,
+    })
+  }
+}
 
 struct TcpStream {
-  inner: polloi::TcpStream,
+  rd: RefCell<tokio::net::tcp::OwnedReadHalf>,
+  wr: RefCell<tokio::net::tcp::OwnedWriteHalf>,
 }
 
 impl TcpStream {
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
-    let nread = self.inner.read(data).await?;
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {      
+    let mut rd = self.rd.borrow_mut();
+    let nread = rd.read(data).await?;
     Ok(nread)
   }
 
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    let nwritten = self.inner.write(data).await?;
+    let mut wr = self.wr.borrow_mut();
+    let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
   fn try_write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    let nwritten = self.inner.try_write(data)?;
+    let wr = self.wr.borrow();
+    let nwritten = wr.try_write(data)?;
     Ok(nwritten)
   }
 }
@@ -55,11 +75,17 @@ impl TcpStream {
 impl Resource for TcpStream {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {}
 }
 
-impl From<polloi::TcpStream> for TcpStream {
-  fn from(inner: polloi::TcpStream) -> Self {
-    Self { inner }
+impl From<tokio::net::TcpStream> for TcpStream {
+  fn from(s: tokio::net::TcpStream) -> Self {
+    let (rd, wr) = s.into_split();
+    Self {
+      rd: rd.into(),
+      wr: wr.into(),
+    }
   }
 }
 
@@ -81,9 +107,9 @@ fn create_js_runtime() -> JsRuntime {
 #[op]
 fn op_listen(state: &mut OpState) -> Result<ResourceId, Error> {
   let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();
-  let rt = state.borrow::<Rc<polloi::Runtime>>();
-  let inner = polloi::TcpListener::bind(rt, addr)?;
-  let listener = TcpListener { inner };
+  let std_listener = std::net::TcpListener::bind(&addr)?;
+  std_listener.set_nonblocking(true)?;
+  let listener = TcpListener::try_from(std_listener)?;
   let rid = state.resource_table.add(listener);
   Ok(rid)
 }
@@ -113,13 +139,12 @@ fn main() {
   // NOTE: `--help` arg will display V8 help and exit
   deno_core::v8_set_flags(env::args().collect());
 
-  let rt = polloi::Runtime::new().expect("new runtime");
   let mut js_runtime = create_js_runtime();
-  {
-    let state = js_runtime.op_state();
-    state.borrow_mut().put(rt.clone());
-  }
-  rt.block_on(async move {
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .build()
+    .unwrap();
+  let future = async move {
     js_runtime
       .execute_script(
         "http_bench_json_ops.js",
@@ -127,6 +152,6 @@ fn main() {
       )
       .unwrap();
     js_runtime.run_event_loop(false).await
-  })
-  .unwrap();
+  };
+  runtime.block_on(future).unwrap();
 }
