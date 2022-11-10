@@ -103,8 +103,6 @@ pub trait Resource: Any + 'static {
   /// will call `read()` and then copy the data into the provided buffer. For
   /// readable resources that can provide an optimized path for BYOBs, it is
   /// strongly recommended to override this method.
-  #[allow(clippy::needless_lifetimes)]
-  // False postive lint: https://github.com/rust-lang/rust-clippy/issues/7271
   fn read_byob<'s>(
     self: Rc<Self>,
     mut buf: BufMutView<'s>,
