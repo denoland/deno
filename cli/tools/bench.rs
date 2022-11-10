@@ -337,7 +337,6 @@ async fn check_specifiers(
     Permissions::allow_all(),
     permissions,
     true,
-    None,
   )
   .await?;
 

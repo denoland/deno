@@ -253,7 +253,6 @@ impl ModuleLoader for CliModuleLoader {
         root_permissions,
         dynamic_permissions,
         false,
-        Some(op_state),
       )
       .await
     }

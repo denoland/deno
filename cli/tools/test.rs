@@ -953,7 +953,6 @@ pub async fn check_specifiers(
       Permissions::allow_all(),
       permissions.clone(),
       false,
-      None,
     )
     .await?;
   }
@@ -976,7 +975,6 @@ pub async fn check_specifiers(
     Permissions::allow_all(),
     permissions,
     true,
-    None,
   )
   .await?;
 

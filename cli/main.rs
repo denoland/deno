@@ -298,7 +298,6 @@ async fn load_and_type_check(
       Permissions::allow_all(),
       Permissions::allow_all(),
       false,
-      None,
     )
     .await?;
   }

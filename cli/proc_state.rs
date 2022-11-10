@@ -43,7 +43,6 @@ use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::ModuleSpecifier;
-use deno_core::OpState;
 use deno_core::SharedArrayBufferStore;
 use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
@@ -59,11 +58,9 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 use import_map::ImportMap;
 use log::warn;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -99,7 +96,6 @@ pub struct Inner {
   pub cjs_resolutions: Mutex<HashSet<ModuleSpecifier>>,
   progress_bar: ProgressBar,
   node_std_graph_prepared: AtomicBool,
-  enabled_unstable: AtomicBool,
 }
 
 impl Deref for ProcState {
@@ -271,7 +267,6 @@ impl ProcState {
       cjs_resolutions: Default::default(),
       progress_bar,
       node_std_graph_prepared: AtomicBool::new(false),
-      enabled_unstable: AtomicBool::new(false),
     })))
   }
 
@@ -288,7 +283,6 @@ impl ProcState {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
     reload_on_watch: bool,
-    maybe_op_state: Option<Rc<RefCell<OpState>>>,
   ) -> Result<(), AnyError> {
     let _pb_clear_guard = self.progress_bar.clear_guard();
     let mut npm_package_reqs = vec![];
@@ -418,9 +412,6 @@ impl ProcState {
     if !npm_package_reqs.is_empty() {
       self.npm_resolver.add_package_reqs(npm_package_reqs).await?;
       self.prepare_node_std_graph().await?;
-      if let Some(op_state) = maybe_op_state.clone() {
-        self.enable_unstable_apis_for_node_compat(&mut op_state.borrow_mut());
-      }
     }
 
     drop(_pb_clear_guard);
@@ -483,16 +474,6 @@ impl ProcState {
     self.graph_data.write().add_graph(&node_std_graph, false);
     self.node_std_graph_prepared.store(true, Ordering::Relaxed);
     Ok(())
-  }
-
-  pub fn enable_unstable_apis_for_node_compat(&self, op_state: &mut OpState) {
-    if self.enabled_unstable.load(Ordering::Relaxed) {
-      return;
-    }
-
-    deno_runtime::deno_flash::enable_unstable(op_state);
-    op_state.put(deno_runtime::ops::UnstableChecker { unstable: true });
-    self.enabled_unstable.store(true, Ordering::Relaxed);
   }
 
   fn handle_node_resolve_result(

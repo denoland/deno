@@ -61,12 +61,6 @@ impl CliMainWorker {
 
     if self.is_main_cjs {
       self.ps.prepare_node_std_graph().await?;
-      {
-        let op_state = self.worker.js_runtime.op_state();
-        self
-          .ps
-          .enable_unstable_apis_for_node_compat(&mut op_state.borrow_mut());
-      }
       self.initialize_main_module_for_node().await?;
       node::load_cjs_module_from_ext_node(
         &mut self.worker.js_runtime,
@@ -289,12 +283,6 @@ impl CliMainWorker {
   ) -> Result<(), AnyError> {
     if self.ps.npm_resolver.has_packages() {
       self.ps.prepare_node_std_graph().await?;
-      {
-        let op_state = self.worker.js_runtime.op_state();
-        self
-          .ps
-          .enable_unstable_apis_for_node_compat(&mut op_state.borrow_mut());
-      }
     }
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.evaluate_module_possibly_with_npm(id).await
@@ -319,12 +307,6 @@ impl CliMainWorker {
 
   async fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
     self.ps.prepare_node_std_graph().await?;
-    {
-      let op_state = self.worker.js_runtime.op_state();
-      self
-        .ps
-        .enable_unstable_apis_for_node_compat(&mut op_state.borrow_mut());
-    }
     node::initialize_runtime(&mut self.worker.js_runtime).await?;
     if let DenoSubcommand::Run(flags) = self.ps.options.sub_command() {
       if let Ok(pkg_ref) = NpmPackageReference::from_str(&flags.script) {
