@@ -1234,7 +1234,7 @@ where
 }
 
 #[op]
-fn op_unstable_node_flash_serve<P>(
+fn op_node_unstable_flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError>
@@ -1466,7 +1466,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       op_flash_serve::decl::<P>(),
-      op_unstable_node_flash_serve::decl::<P>(),
+      op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),
