@@ -32,6 +32,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
+use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -1972,10 +1973,13 @@ impl JsRuntime {
   // Send finished responses to JS
   fn resolve_async_ops(&mut self, cx: &mut Context) -> Result<(), Error> {
     let isolate = self.v8_isolate.as_mut().unwrap();
-
-    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
-    let global_realm = self.state.borrow().global_realm.clone().unwrap();
-    let scope = &mut global_realm.handle_scope(isolate);
+    let scope = &mut self
+      .state
+      .borrow()
+      .global_realm
+      .as_ref()
+      .unwrap()
+      .handle_scope(isolate);
 
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
@@ -1984,7 +1988,10 @@ impl JsRuntime {
     // which contains a value OR an error, encoded as a tuple.
     // This batch is received in JS via the special `arguments` variable
     // and then each tuple is used to resolve or reject promises
-    let mut args: Vec<v8::Local<v8::Value>> = vec![];
+    //
+    // This can handle 16 promises (32 / 2) futures in a single batch without heap
+    // allocations.
+    let mut args: SmallVec<[v8::Local<v8::Value>; 32]> = SmallVec::new();
 
     // Now handle actual ops.
     {
@@ -2010,6 +2017,7 @@ impl JsRuntime {
       return Ok(());
     }
 
+    let js_recv_cb_handle = self.state.borrow().js_recv_cb.clone().unwrap();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let js_recv_cb = js_recv_cb_handle.open(tc_scope);
     let this = v8::undefined(tc_scope).into();

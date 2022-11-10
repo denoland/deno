@@ -572,7 +572,7 @@ mod tests {
     assert_eq!(double_segment(&segments).unwrap()[1].ident, "bar");
   }
 
-  #[testing::fixture("optimizer_tests/**/*.rs")]
+  #[testing_macros::fixture("optimizer_tests/**/*.rs")]
   fn test_analyzer(input: PathBuf) {
     let update_expected = std::env::var("UPDATE_EXPECTED").is_ok();
 
