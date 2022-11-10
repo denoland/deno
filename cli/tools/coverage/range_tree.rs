@@ -71,6 +71,7 @@ impl<'rt> RangeTree<'rt> {
     (rta.alloc(left), rta.alloc(right))
   }
 
+  #[allow(clippy::only_used_in_recursion)]
   pub fn normalize<'a>(
     rta: &'a RangeTreeArena<'a>,
     tree: &'a mut RangeTree<'a>,

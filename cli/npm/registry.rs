@@ -391,7 +391,7 @@ impl RealNpmRegistryApiInner {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    std::fs::create_dir_all(&file_cache_path.parent().unwrap())?;
+    std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
     fs_util::atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }

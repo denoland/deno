@@ -210,7 +210,7 @@ impl BenchReporter for ConsoleReporter {
           println!();
         }
 
-        if None == self.group || group != self.group.as_ref().unwrap() {
+        if self.group.is_none() || group != self.group.as_ref().unwrap() {
           self.report_group_summary();
         }
 

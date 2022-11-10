@@ -39,7 +39,7 @@ fn create_snapshot(
   }
 
   let snapshot = js_runtime.snapshot();
-  let snapshot_slice: &[u8] = &*snapshot;
+  let snapshot_slice: &[u8] = &snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
 
   let compressed_snapshot_with_size = {
@@ -64,7 +64,7 @@ fn create_snapshot(
     compressed_snapshot_with_size.len()
   );
 
-  std::fs::write(&snapshot_path, compressed_snapshot_with_size).unwrap();
+  std::fs::write(snapshot_path, compressed_snapshot_with_size).unwrap();
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 

@@ -877,7 +877,7 @@ mod tests {
     assert!(result.is_ok(), "Could not parse path: \"{}\"", path);
     let (re, _) = result.unwrap();
     for (fixture, expected) in fixtures {
-      let result = re.find(*fixture);
+      let result = re.find(fixture);
       assert!(
         result.is_ok(),
         "Find failure for path \"{}\" and fixture \"{}\"",

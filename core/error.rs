@@ -242,7 +242,7 @@ impl JsError {
         serde_v8::from_v8(scope, exception.into()).unwrap_or_default();
       // Get the message by formatting error.name and error.message.
       let name = e.name.clone().unwrap_or_else(|| "Error".to_string());
-      let message_prop = e.message.clone().unwrap_or_else(|| "".to_string());
+      let message_prop = e.message.clone().unwrap_or_default();
       let exception_message = exception_message.unwrap_or_else(|| {
         if !name.is_empty() && !message_prop.is_empty() {
           format!("Uncaught {}: {}", name, message_prop)
