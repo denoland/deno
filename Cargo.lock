@@ -772,7 +772,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "data-url",
- "deno_ast",
+ "deno_ast 0.21.0",
  "deno_bench_util",
  "deno_broadcast_channel",
  "deno_cache",
@@ -866,6 +866,36 @@ dependencies = [
  "dprint-swc-ext",
  "serde",
  "swc_atoms",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_codegen",
+ "swc_ecma_codegen_macros",
+ "swc_ecma_loader",
+ "swc_ecma_parser",
+ "swc_ecma_transforms_base",
+ "swc_ecma_transforms_classes",
+ "swc_ecma_transforms_macros",
+ "swc_ecma_transforms_proposal",
+ "swc_ecma_transforms_react",
+ "swc_ecma_transforms_typescript",
+ "swc_ecma_utils",
+ "swc_ecma_visit",
+ "text_lines",
+ "url",
+]
+
+[[package]]
+name = "deno_ast"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e95105b29938cac5c987017a3c3d245776d71de77838658e5abe917ad75b1929"
+dependencies = [
+ "anyhow",
+ "base64",
+ "data-url",
+ "dprint-swc-ext",
+ "serde",
+ "swc_atoms",
  "swc_bundler",
  "swc_common",
  "swc_ecma_ast",
@@ -931,7 +961,7 @@ version = "0.158.0"
 dependencies = [
  "anyhow",
  "bytes",
- "deno_ast",
+ "deno_ast 0.20.0",
  "deno_ops",
  "futures",
  "indexmap",
@@ -943,6 +973,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_v8",
+ "smallvec",
  "sourcemap",
  "tokio",
  "url",
@@ -985,12 +1016,12 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.48.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4579ca3065430cafaff3e3b9b4871410f2558450935f9f577098ec9d6cf81eca"
+checksum = "1e931d1563eb790b350742ee522f8a8693e00affc9814c4ecaf0de8fc13e0dd2"
 dependencies = [
  "cfg-if",
- "deno_ast",
+ "deno_ast 0.21.0",
  "deno_graph",
  "futures",
  "import_map",
@@ -1003,13 +1034,13 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ce29673aec15b00c836e26d7770046a13abf5a7f1bf1c92562aa424454a2986"
+checksum = "7be76420d8eaac9d82295eb51cb2c0aebd326d305a2ecbeab6582343fb1b743c"
 dependencies = [
  "anyhow",
  "base64",
- "deno_ast",
+ "deno_ast 0.21.0",
  "deno_graph",
  "futures",
  "parking_lot 0.11.2",
@@ -1066,14 +1097,14 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.37.1"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "349417e459d6ad06c8f502d49a6bef7288bc8c5cedde0d3bb1e60fcaf27ca5f8"
+checksum = "65eb6b2223b71a759b12bc21ee35842193d3703157950d1411c0243239f072eb"
 dependencies = [
  "anyhow",
  "cfg-if",
  "data-url",
- "deno_ast",
+ "deno_ast 0.21.0",
  "futures",
  "lazy_static",
  "parking_lot 0.12.1",
@@ -1082,7 +1113,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sourcemap",
- "termcolor",
  "url",
 ]
 
@@ -1112,12 +1142,12 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.34.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09b635fe0fc58cda4049d41f2efd9fcc8315ded8d36ace739fdf62a155d27f45"
+checksum = "1d2c4e416322d10531eb0ebc6f3fa355380e4d25bbcd4109e3edd0b0aa71ed77"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.21.0",
  "derive_more",
  "if_chain",
  "log",
@@ -1166,11 +1196,14 @@ version = "0.36.0"
 dependencies = [
  "deno_core",
  "once_cell",
+ "pmutil",
+ "prettyplease",
  "proc-macro-crate",
  "proc-macro2 1.0.43",
  "quote 1.0.21",
  "regex",
  "syn 1.0.99",
+ "testing_macros",
  "trybuild",
 ]
 
@@ -1460,12 +1493,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.76.0"
+version = "0.78.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "571de1f09a56b994f3dcc5a3886d16b0a387f34bdc3f74377d072205b13377a1"
+checksum = "f864163f7cff21d4ff2385d36d441ff30af73d77530d87c6c90510e39a69a4f5"
 dependencies = [
  "anyhow",
- "deno_ast",
+ "deno_ast 0.21.0",
  "dprint-core",
  "rustc-hash",
  "serde",
@@ -1661,13 +1694,13 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.29.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfaee993e46d7494b0d6e7222ad8411d493813780ec370972af8891434720d88"
+checksum = "1fdf9b31295c768c806cbc0d08d98868b4382684b002d216a16eb661bb8e8575"
 dependencies = [
  "anyhow",
  "base64",
- "deno_ast",
+ "deno_ast 0.21.0",
  "deno_graph",
  "futures",
  "serde",
@@ -3338,6 +3371,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c142c0e46b57171fe0c528bee8c5b7569e80f0c17e377cd0e30ea57dbc11bb51"
+dependencies = [
+ "proc-macro2 1.0.43",
+ "syn 1.0.99",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4757,6 +4800,23 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "testing_macros"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e74ff09d2d4d4b7ea140ff67eb7ed8fd35a708e2c327bcde5a25707d66840099"
+dependencies = [
+ "anyhow",
+ "glob",
+ "once_cell",
+ "pmutil",
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
+ "regex",
+ "relative-path",
+ "syn 1.0.99",
 ]
 
 [[package]]

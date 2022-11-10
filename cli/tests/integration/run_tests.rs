@@ -3636,7 +3636,7 @@ fn websocket_server_idletimeout() {
 }
 
 itest!(auto_discover_lockfile {
-  args: "run --unstable run/auto_discover_lockfile/main.ts",
+  args: "run run/auto_discover_lockfile/main.ts",
   output: "run/auto_discover_lockfile/main.out",
   http_server: true,
   exit_code: 10,
