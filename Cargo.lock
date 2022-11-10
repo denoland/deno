@@ -943,6 +943,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_v8",
+ "smallvec",
  "sourcemap",
  "tokio",
  "url",

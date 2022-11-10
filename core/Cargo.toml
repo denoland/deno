@@ -35,6 +35,7 @@ serde_v8 = { version = "0.69.0", path = "../serde_v8" }
 sourcemap = "6.1"
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 v8 = { version = "0.54.0", default-features = false }
+smallvec = "1.8"
 
 [[example]]
 name = "http_bench_json_ops"
