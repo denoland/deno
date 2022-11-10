@@ -28,8 +28,7 @@ use crate::npm::NpmPackageReference;
 use crate::npm::NpmPackageResolver;
 use crate::npm::NpmRegistryApi;
 use crate::progress_bar::ProgressBar;
-use crate::resolver::ImportMapResolver;
-use crate::resolver::JsxResolver;
+use crate::resolver::CliResolver;
 use crate::tools::check;
 
 use deno_ast::MediaType;
@@ -49,6 +48,7 @@ use deno_graph::create_graph;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::Loader;
+use deno_graph::source::Resolver;
 use deno_graph::ModuleKind;
 use deno_graph::Resolved;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -88,7 +88,7 @@ pub struct Inner {
   pub shared_array_buffer_store: SharedArrayBufferStore,
   pub compiled_wasm_module_store: CompiledWasmModuleStore,
   pub parsed_source_cache: ParsedSourceCache,
-  maybe_resolver: Option<Arc<dyn deno_graph::source::Resolver + Send + Sync>>,
+  maybe_resolver: Option<Arc<CliResolver>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   pub node_analysis_cache: NodeAnalysisCache,
   pub npm_cache: NpmCache,
@@ -168,9 +168,7 @@ impl ProcState {
       Some(progress_bar.clone()),
     )?;
 
-    let lockfile = cli_options
-      .resolve_lock_file()?
-      .map(|f| Arc::new(Mutex::new(f)));
+    let lockfile = cli_options.maybe_lock_file();
     let maybe_import_map_specifier =
       cli_options.resolve_import_map_specifier()?;
 
@@ -193,22 +191,11 @@ impl ProcState {
     let maybe_inspector_server =
       cli_options.resolve_inspector_server().map(Arc::new);
 
-    let maybe_import_map_resolver =
-      maybe_import_map.clone().map(ImportMapResolver::new);
-    let maybe_jsx_resolver = cli_options
-      .to_maybe_jsx_import_source_config()
-      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
-    let maybe_resolver: Option<
-      Arc<dyn deno_graph::source::Resolver + Send + Sync>,
-    > = if let Some(jsx_resolver) = maybe_jsx_resolver {
-      // the JSX resolver offloads to the import map if present, otherwise uses
-      // the default Deno explicit import resolution.
-      Some(Arc::new(jsx_resolver))
-    } else if let Some(import_map_resolver) = maybe_import_map_resolver {
-      Some(Arc::new(import_map_resolver))
-    } else {
-      None
-    };
+    let maybe_cli_resolver = CliResolver::maybe_new(
+      cli_options.to_maybe_jsx_import_source_config(),
+      maybe_import_map.clone(),
+    );
+    let maybe_resolver = maybe_cli_resolver.map(Arc::new);
 
     let maybe_file_watcher_reporter =
       maybe_sender.map(|sender| FileWatcherReporter {
@@ -307,7 +294,6 @@ impl ProcState {
         npm_package_reqs.push(package_ref.req);
       }
     }
-
     let roots = roots
       .into_iter()
       .map(|s| (s, ModuleKind::Esm))
@@ -323,6 +309,13 @@ impl ProcState {
           self.options.type_check_mode() != TypeCheckMode::None,
           false,
         ) {
+          // TODO(bartlomieju): this is strange... ideally there should be only
+          // one codepath in `prepare_module_load` so we don't forget things
+          // like writing a lockfile. Figure a way to refactor this function.
+          if let Some(ref lockfile) = self.lockfile {
+            let g = lockfile.lock();
+            g.write()?;
+          }
           return result;
         }
       }
@@ -335,12 +328,8 @@ impl ProcState {
     );
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
+    let maybe_resolver =
+      self.maybe_resolver.as_ref().map(|r| r.as_graph_resolver());
 
     struct ProcStateLoader<'a> {
       inner: &'a mut cache::FetchCacher,
@@ -571,13 +560,7 @@ impl ProcState {
       deno_core::resolve_url_or_path(referrer).unwrap()
     };
 
-    let maybe_resolver: Option<&dyn deno_graph::source::Resolver> =
-      if let Some(resolver) = &self.maybe_resolver {
-        Some(resolver.as_ref())
-      } else {
-        None
-      };
-    if let Some(resolver) = &maybe_resolver {
+    if let Some(resolver) = &self.maybe_resolver {
       resolver.resolve(specifier, &referrer).to_result()
     } else {
       deno_core::resolve_import(specifier, referrer.as_str())
@@ -640,20 +623,14 @@ impl ProcState {
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_locker = as_maybe_locker(self.lockfile.clone());
-    let maybe_import_map_resolver =
-      self.maybe_import_map.clone().map(ImportMapResolver::new);
     let maybe_imports = self.options.to_maybe_imports()?;
-    let maybe_jsx_resolver = self
-      .options
-      .to_maybe_jsx_import_source_config()
-      .map(|cfg| JsxResolver::new(cfg, maybe_import_map_resolver.clone()));
-    let maybe_resolver = if maybe_jsx_resolver.is_some() {
-      maybe_jsx_resolver.as_ref().map(|jr| jr.as_resolver())
-    } else {
-      maybe_import_map_resolver
-        .as_ref()
-        .map(|im| im.as_resolver())
-    };
+
+    let maybe_cli_resolver = CliResolver::maybe_new(
+      self.options.to_maybe_jsx_import_source_config(),
+      self.maybe_import_map.clone(),
+    );
+    let maybe_graph_resolver =
+      maybe_cli_resolver.as_ref().map(|r| r.as_graph_resolver());
     let analyzer = self.parsed_source_cache.as_analyzer();
 
     let graph = create_graph(
@@ -662,7 +639,7 @@ impl ProcState {
       deno_graph::GraphOptions {
         is_dynamic: false,
         imports: maybe_imports,
-        resolver: maybe_resolver,
+        resolver: maybe_graph_resolver,
         locker: maybe_locker,
         module_analyzer: Some(&*analyzer),
         reporter: None,
