@@ -155,12 +155,10 @@
   };
 
   const nodeUnstable = {
-    Child: __bootstrap.spawn.Child,
-    spawnChild: __bootstrap.spawn.spawnChild,
-    spawn: __bootstrap.spawn.spawn,
-    spawnSync: __bootstrap.spawn.spawnSync,
-    serve: __bootstrap.flash.serve,
-    upgradeHttp: __bootstrap.http.upgradeHttp,
+    spawnChild: __bootstrap.spawn.nodeUnstableSpawnChild,
+    spawn: __bootstrap.spawn.nodeUnstableSpawn,
+    spawnSync: __bootstrap.spawn.nodeUnstableSpawnSync,
+    serve: __bootstrap.flash.nodeUnstableServe,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
   };
 
