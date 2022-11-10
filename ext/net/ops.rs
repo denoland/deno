@@ -58,6 +58,8 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpDecl> {
     crate::ops_unix::op_net_listen_unix::decl::<P>(),
     #[cfg(unix)]
     crate::ops_unix::op_net_listen_unixpacket::decl::<P>(),
+    #[cfg(unix)]
+    crate::ops_unix::op_node_unstable_net_listen_unixpacket::decl::<P>(),
     op_net_recv_udp::decl(),
     #[cfg(unix)]
     crate::ops_unix::op_net_recv_unixpacket::decl(),

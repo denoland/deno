@@ -724,8 +724,7 @@
   }
 
   window.__bootstrap.flash = {
-    serve: createServe(core.ops.op_flash_serve),
-    nodeUnstableServe: createServe(core.ops.op_node_unstable_flash_serve),
+    createServe,
     upgradeHttpRaw,
   };
 })(this);

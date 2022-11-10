@@ -293,11 +293,8 @@
 
   window.__bootstrap.spawn = {
     Child,
-    spawnChild: createSpawnChild(ops.op_spawn_child),
-    spawn: createSpawn(ops.op_spawn_child),
-    spawnSync: createSpawnSync(ops.op_spawn_sync),
-    nodeUnstableSpawnChild: createSpawnChild(ops.op_node_unstable_spawn_child),
-    nodeUnstableSpawn: createSpawn(ops.op_node_unstable_spawn_child),
-    nodeUnstableSpawnSync: createSpawnSync(ops.op_node_unstable_spawn_sync),
+    createSpawn,
+    createSpawnChild,
+    createSpawnSync,
   };
 })(this);

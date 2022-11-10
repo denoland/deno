@@ -153,18 +153,4 @@
     upgradeHttp: __bootstrap.http.upgradeHttp,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
   };
-
-  const nodeUnstable = {
-    spawnChild: __bootstrap.spawn.nodeUnstableSpawnChild,
-    spawn: __bootstrap.spawn.nodeUnstableSpawn,
-    spawnSync: __bootstrap.spawn.nodeUnstableSpawnSync,
-    serve: __bootstrap.flash.nodeUnstableServe,
-    upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
-    listenDatagram: __bootstrap.net.nodeUnstableListenDatagram,
-  };
-
-  window.__bootstrap.internals = {
-    ...window.__bootstrap.internals ?? {},
-    nodeUnstable,
-  };
 })(this);

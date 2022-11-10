@@ -319,7 +319,7 @@
     }
   }
 
-  function createListenDataGraph(udpOpFn, unixOpFn) {
+  function createListenDatagram(udpOpFn, unixOpFn) {
     return function listenDatagram(args) {
       switch (args.transport) {
         case "udp": {
@@ -391,14 +391,7 @@
     TcpConn,
     UnixConn,
     listen,
-    listenDatagram: createListenDataGraph(
-      ops.op_net_listen_udp,
-      ops.op_net_listen_unixpacket,
-    ),
-    nodeUnstableListenDatagram: createListenDataGraph(
-      ops.op_node_unstable_net_listen_udp,
-      ops.op_node_unstable_net_listen_unixpacket,
-    ),
+    createListenDatagram,
     Listener,
     shutdown,
     Datagram,
