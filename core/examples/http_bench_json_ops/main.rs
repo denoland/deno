@@ -59,15 +59,15 @@ impl TcpStream {
     Ok(nread)
   }
 
+  #[allow(clippy::await_holding_refcell_ref)]
   async fn write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    #[allow(clippy::await_holding_refcell_ref)]
     let mut wr = self.wr.borrow_mut();
     let nwritten = wr.write(data).await?;
     Ok(nwritten)
   }
 
+  #[allow(clippy::await_holding_refcell_ref)]
   fn try_write(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
-    #[allow(clippy::await_holding_refcell_ref)]
     let wr = self.wr.borrow();
     let nwritten = wr.try_write(data)?;
     Ok(nwritten)
