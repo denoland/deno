@@ -53,7 +53,7 @@ struct TcpStream {
 }
 
 impl TcpStream {
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {      
+  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
     let mut rd = self.rd.borrow_mut();
     let nread = rd.read(data).await?;
     Ok(nread)
