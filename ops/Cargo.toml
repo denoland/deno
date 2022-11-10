@@ -12,6 +12,7 @@ proc-macro = true
 
 [dependencies]
 once_cell = "1.10.0"
+pmutil = "0.5.3"
 proc-macro-crate = "1.1.3"
 proc-macro2 = "1"
 quote = "1"
@@ -20,4 +21,6 @@ syn = { version = "1", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
 deno_core = { path = "../core" }
+prettyplease = "0.1.21"
+testing_macros = "0.2.7"
 trybuild = "1.0.61"
