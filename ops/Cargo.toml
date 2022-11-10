@@ -22,5 +22,5 @@ syn = { version = "1", features = ["full", "extra-traits"] }
 [dev-dependencies]
 deno_core = { path = "../core" }
 prettyplease = "0.1.21"
-testing = "0.31.10"
+testing_macros = "0.2.7"
 trybuild = "1.0.61"
