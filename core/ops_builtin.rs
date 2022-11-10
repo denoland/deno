@@ -68,7 +68,7 @@ fn op_add(a: i32, b: i32) -> i32 {
 #[op(fast)]
 pub fn op_void_sync() {}
 
-#[op(fast)]
+#[op]
 pub async fn op_void_async() {}
 
 /// Remove a resource from the resource table.
