@@ -319,30 +319,32 @@
     }
   }
 
-  function listenDatagram(args) {
-    switch (args.transport) {
-      case "udp": {
-        const [rid, addr] = ops.op_net_listen_udp(
-          {
-            hostname: args.hostname ?? "127.0.0.1",
-            port: args.port,
-          },
-          args.reuseAddress ?? false,
-        );
-        addr.transport = "udp";
-        return new Datagram(rid, addr);
+  function createListenDataGraph(udpOpFn, unixOpFn) {
+    return function listenDatagram(args) {
+      switch (args.transport) {
+        case "udp": {
+          const [rid, addr] = udpOpFn(
+            {
+              hostname: args.hostname ?? "127.0.0.1",
+              port: args.port,
+            },
+            args.reuseAddress ?? false,
+          );
+          addr.transport = "udp";
+          return new Datagram(rid, addr);
+        }
+        case "unixpacket": {
+          const [rid, path] = unixOpFn(args.path);
+          const addr = {
+            transport: "unixpacket",
+            path,
+          };
+          return new Datagram(rid, addr);
+        }
+        default:
+          throw new TypeError(`Unsupported transport: '${transport}'`);
       }
-      case "unixpacket": {
-        const [rid, path] = ops.op_net_listen_unixpacket(args.path);
-        const addr = {
-          transport: "unixpacket",
-          path,
-        };
-        return new Datagram(rid, addr);
-      }
-      default:
-        throw new TypeError(`Unsupported transport: '${transport}'`);
-    }
+    };
   }
 
   async function connect(args) {
@@ -389,7 +391,14 @@
     TcpConn,
     UnixConn,
     listen,
-    listenDatagram,
+    listenDatagram: createListenDataGraph(
+      ops.op_net_listen_udp,
+      ops.op_net_listen_unixpacket,
+    ),
+    nodeUnstableListenDatagram: createListenDataGraph(
+      ops.op_node_unstable_net_listen_udp,
+      ops.op_node_unstable_net_listen_unixpacket,
+    ),
     Listener,
     shutdown,
     Datagram,

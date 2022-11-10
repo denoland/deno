@@ -160,6 +160,7 @@
     spawnSync: __bootstrap.spawn.nodeUnstableSpawnSync,
     serve: __bootstrap.flash.nodeUnstableServe,
     upgradeHttpRaw: __bootstrap.flash.upgradeHttpRaw,
+    listenDatagram: __bootstrap.net.nodeUnstableListenDatagram,
   };
 
   window.__bootstrap.internals = {
