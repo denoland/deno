@@ -1166,11 +1166,14 @@ version = "0.36.0"
 dependencies = [
  "deno_core",
  "once_cell",
+ "pmutil",
+ "prettyplease",
  "proc-macro-crate",
  "proc-macro2 1.0.43",
  "quote 1.0.21",
  "regex",
  "syn 1.0.99",
+ "testing_macros",
  "trybuild",
 ]
 
@@ -3338,6 +3341,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c142c0e46b57171fe0c528bee8c5b7569e80f0c17e377cd0e30ea57dbc11bb51"
+dependencies = [
+ "proc-macro2 1.0.43",
+ "syn 1.0.99",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4757,6 +4770,23 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "testing_macros"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e74ff09d2d4d4b7ea140ff67eb7ed8fd35a708e2c327bcde5a25707d66840099"
+dependencies = [
+ "anyhow",
+ "glob",
+ "once_cell",
+ "pmutil",
+ "proc-macro2 1.0.43",
+ "quote 1.0.21",
+ "regex",
+ "relative-path",
+ "syn 1.0.99",
 ]
 
 [[package]]
