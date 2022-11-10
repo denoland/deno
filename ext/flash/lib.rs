@@ -1171,15 +1171,13 @@ pub fn resolve_addr_sync(
   Ok(result)
 }
 
-#[op]
-fn op_flash_serve<P>(
+fn flash_serve<P>(
   state: &mut OpState,
   opts: ListenOpts,
 ) -> Result<u32, AnyError>
 where
   P: FlashPermissions + 'static,
 {
-  check_unstable(state, "Deno.serve");
   state
     .borrow_mut::<P>()
     .check_net(&(&opts.hostname, Some(opts.port)), "Deno.serve()")?;
@@ -1221,6 +1219,29 @@ where
   flash_ctx.join_handles.insert(server_id, join_handle);
   flash_ctx.servers.insert(server_id, ctx);
   Ok(server_id)
+}
+
+#[op]
+fn op_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  check_unstable(state, "Deno.serve");
+  flash_serve::<P>(state, opts)
+}
+
+#[op]
+fn op_node_unstable_flash_serve<P>(
+  state: &mut OpState,
+  opts: ListenOpts,
+) -> Result<u32, AnyError>
+where
+  P: FlashPermissions + 'static,
+{
+  flash_serve::<P>(state, opts)
 }
 
 #[op]
@@ -1445,6 +1466,7 @@ pub fn init<P: FlashPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(vec![
       op_flash_serve::decl::<P>(),
+      op_node_unstable_flash_serve::decl::<P>(),
       op_flash_respond::decl(),
       op_flash_respond_async::decl(),
       op_flash_respond_chuncked::decl(),

@@ -103,7 +103,7 @@ itest!(dual_cjs_esm {
 });
 
 itest!(child_process_fork_test {
-  args: "run --unstable -A --quiet npm/child_process_fork_test/main.ts",
+  args: "run -A --quiet npm/child_process_fork_test/main.ts",
   output: "npm/child_process_fork_test/main.out",
   envs: env_vars(),
   http_server: true,
@@ -621,7 +621,7 @@ itest!(node_modules_dir_with_deps {
 });
 
 itest!(node_modules_dir_yargs {
-  args: "run --allow-read --allow-env --unstable --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
+  args: "run --allow-read --allow-env --node-modules-dir $TESTDATA/npm/cjs_yargs/main.js",
   output: "npm/cjs_yargs/main.out",
   envs: env_vars(),
   http_server: true,
@@ -1050,7 +1050,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars())
@@ -1082,7 +1081,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("-A")
     .arg("main.ts")
     .envs(env_vars())
@@ -1097,7 +1095,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--reload")
     .arg("-A")
     .arg("main.ts")
@@ -1114,7 +1111,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("-A")
     .arg("main.ts")
@@ -1139,7 +1135,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("-A")
     .arg("main.ts")
@@ -1156,7 +1151,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--reload")
     .arg("-A")
@@ -1174,7 +1168,6 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
     .current_dir(temp_dir.path())
     .arg("run")
-    .arg("--unstable")
     .arg("--node-modules-dir")
     .arg("--no-lock")
     .arg("--reload")

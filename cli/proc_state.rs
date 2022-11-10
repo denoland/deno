@@ -274,6 +274,7 @@ impl ProcState {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate `self.graph_data` in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
+  #[allow(clippy::too_many_arguments)]
   pub async fn prepare_module_load(
     &self,
     roots: Vec<ModuleSpecifier>,
