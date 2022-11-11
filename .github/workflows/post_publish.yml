@@ -6,7 +6,7 @@ jobs:
   update-dl-version:
     name: update dl.deno.land version
     runs-on: ubuntu-20.04
-    if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
+    if: github.repository == 'denoland/deno'
     steps:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v0
