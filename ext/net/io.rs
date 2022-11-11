@@ -99,7 +99,7 @@ impl Resource for TcpStreamResource {
     "tcpStream".into()
   }
 
-  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
   }
 
@@ -168,7 +168,7 @@ impl Resource for UnixStreamResource {
     "unixStream".into()
   }
 
-  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
   }
 

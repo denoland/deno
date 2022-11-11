@@ -272,7 +272,7 @@ impl Resource for ChildStdinResource {
 
   deno_core::impl_writable!();
 
-  fn shutdown<'s>(self: Rc<Self>) -> AsyncResult<'s, ()> {
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(self.shutdown())
   }
 }

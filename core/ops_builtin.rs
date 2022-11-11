@@ -162,7 +162,7 @@ pub fn op_wasm_streaming_set_url(
   Ok(())
 }
 
-#[op(fast)]
+#[op]
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -173,7 +173,7 @@ async fn op_read(
   resource.read_byob(view).await.map(|(n, _)| n as u32)
 }
 
-#[op(fast)]
+#[op]
 async fn op_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,

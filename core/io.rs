@@ -124,28 +124,23 @@ impl From<BufView> for bytes::Bytes {
 /// able to write it entirely.
 ///
 /// A `BufMutView` can be turned into a `BufView` by calling `BufMutView::into_view`.
-pub struct BufMutView<'s> {
-  inner: BufMutViewInner<'s>,
+pub struct BufMutView {
+  inner: BufMutViewInner,
   cursor: usize,
 }
 
-enum BufMutViewInner<'s> {
+enum BufMutViewInner {
   ZeroCopy(ZeroCopyBuf),
   Vec(Vec<u8>),
-  Slice(&'s mut [u8]),
 }
 
-impl<'s> BufMutView<'s> {
-  fn from_inner(inner: BufMutViewInner<'s>) -> Self {
+impl BufMutView {
+  fn from_inner(inner: BufMutViewInner) -> Self {
     Self { inner, cursor: 0 }
   }
 
   pub fn new(len: usize) -> Self {
     Self::from_inner(BufMutViewInner::Vec(vec![0; len]))
-  }
-
-  pub fn from_slice(slice: &'s mut [u8]) -> Self {
-    Self::from_inner(BufMutViewInner::Slice(slice))
   }
 
   /// Get the length of the buffer view. This is the length of the underlying
@@ -154,7 +149,6 @@ impl<'s> BufMutView<'s> {
     match &self.inner {
       BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.len() - self.cursor,
       BufMutViewInner::Vec(vec) => vec.len() - self.cursor,
-      BufMutViewInner::Slice(slice) => slice.len() - self.cursor,
     }
   }
 
@@ -182,7 +176,6 @@ impl<'s> BufMutView<'s> {
     let inner = match self.inner {
       BufMutViewInner::ZeroCopy(zero_copy) => BufViewInner::ZeroCopy(zero_copy),
       BufMutViewInner::Vec(vec) => BufViewInner::Vec(vec),
-      BufMutViewInner::Slice(_) => unimplemented!(),
     };
     BufView {
       inner,
@@ -200,7 +193,6 @@ impl<'s> BufMutView<'s> {
         panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
-      BufMutViewInner::Slice(slice) => slice.to_vec(),
     }
   }
 
@@ -210,7 +202,7 @@ impl<'s> BufMutView<'s> {
   /// `ZeroCopyBuf`.
   pub fn get_mut_vec(&mut self) -> &mut Vec<u8> {
     match &mut self.inner {
-      BufMutViewInner::ZeroCopy(_) | BufMutViewInner::Slice(_) => {
+      BufMutViewInner::ZeroCopy(_) => {
         panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
@@ -218,49 +210,47 @@ impl<'s> BufMutView<'s> {
   }
 }
 
-impl<'s> Deref for BufMutView<'s> {
+impl Deref for BufMutView {
   type Target = [u8];
 
   fn deref(&self) -> &[u8] {
     let buf = match &self.inner {
       BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref(),
       BufMutViewInner::Vec(vec) => vec.deref(),
-      BufMutViewInner::Slice(slice) => slice,
     };
     &buf[self.cursor..]
   }
 }
 
-impl<'s> DerefMut for BufMutView<'s> {
+impl DerefMut for BufMutView {
   fn deref_mut(&mut self) -> &mut [u8] {
     let buf = match &mut self.inner {
       BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref_mut(),
       BufMutViewInner::Vec(vec) => vec.deref_mut(),
-      BufMutViewInner::Slice(slice) => slice,
     };
     &mut buf[self.cursor..]
   }
 }
 
-impl<'s> AsRef<[u8]> for BufMutView<'s> {
+impl AsRef<[u8]> for BufMutView {
   fn as_ref(&self) -> &[u8] {
     self.deref()
   }
 }
 
-impl<'s> AsMut<[u8]> for BufMutView<'s> {
+impl AsMut<[u8]> for BufMutView {
   fn as_mut(&mut self) -> &mut [u8] {
     self.deref_mut()
   }
 }
 
-impl<'s> From<ZeroCopyBuf> for BufMutView<'s> {
+impl From<ZeroCopyBuf> for BufMutView {
   fn from(buf: ZeroCopyBuf) -> Self {
     Self::from_inner(BufMutViewInner::ZeroCopy(buf))
   }
 }
 
-impl<'s> From<Vec<u8>> for BufMutView<'s> {
+impl From<Vec<u8>> for BufMutView {
   fn from(buf: Vec<u8>) -> Self {
     Self::from_inner(BufMutViewInner::Vec(buf))
   }
