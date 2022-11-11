@@ -458,7 +458,7 @@ impl NpmResolution {
     let mut resolver = GraphDependencyResolver::new(&mut graph, &self.api);
 
     for package_req in package_reqs {
-      // avoid downloading the info if this is already in the graph
+      // avoid loading the info if this is already in the graph
       if !resolver.has_package_req(&package_req) {
         let info = self.api.package_info(&package_req.name).await?;
         resolver.add_package_req(&package_req, &info)?;
