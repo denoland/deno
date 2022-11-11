@@ -77,12 +77,6 @@ impl GraphData {
       self.graph_imports.push(graph_import.clone())
     }
 
-    // add the redirects
-    for (specifier, found) in &graph.redirects {
-      let module_entry = ModuleEntry::Redirect(found.clone());
-      self.modules.insert(specifier.clone(), module_entry);
-    }
-
     let mut has_npm_specifier_in_graph = false;
 
     for (specifier, result) in graph.specifiers() {
