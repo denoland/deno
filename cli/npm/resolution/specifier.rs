@@ -152,152 +152,54 @@ impl NpmVersionMatcher for NpmPackageReq {
   }
 }
 
-enum NpmSpecifierTreeNode {
-  Parent(NpmSpecifierTreeParentNode),
-  Leaf(NpmSpecifierTreeLeafNode),
-}
-
-impl NpmSpecifierTreeNode {
-  pub fn mut_to_leaf(&mut self) {
-    if let NpmSpecifierTreeNode::Parent(node) = self {
-      let node = std::mem::replace(
-        node,
-        NpmSpecifierTreeParentNode {
-          specifier: node.specifier.clone(),
-          dependencies: Default::default(),
-        },
-      );
-      *self = NpmSpecifierTreeNode::Leaf(node.into_leaf());
-    }
-  }
-}
-
-struct NpmSpecifierTreeParentNode {
-  specifier: ModuleSpecifier,
-  dependencies: HashMap<String, NpmSpecifierTreeNode>,
-}
-
-impl NpmSpecifierTreeParentNode {
-  pub fn into_leaf(self) -> NpmSpecifierTreeLeafNode {
-    fn fill_new_leaf(
-      deps: HashMap<String, NpmSpecifierTreeNode>,
-      new_leaf: &mut NpmSpecifierTreeLeafNode,
-    ) {
-      for node in deps.into_values() {
-        match node {
-          NpmSpecifierTreeNode::Parent(node) => {
-            fill_new_leaf(node.dependencies, new_leaf)
-          }
-          NpmSpecifierTreeNode::Leaf(leaf) => {
-            for dep in leaf.dependencies {
-              // don't insert if the dependency is found within the new leaf
-              if !dep.as_str().starts_with(new_leaf.specifier.as_str()) {
-                new_leaf.dependencies.insert(dep);
-              }
-            }
-            new_leaf.reqs.extend(leaf.reqs);
-          }
-        }
-      }
-    }
-
-    let mut new_leaf = NpmSpecifierTreeLeafNode {
-      specifier: self.specifier,
-      reqs: Default::default(),
-      dependencies: Default::default(),
-    };
-    fill_new_leaf(self.dependencies, &mut new_leaf);
-    new_leaf
-  }
-}
-
-struct NpmSpecifierTreeLeafNode {
-  specifier: ModuleSpecifier,
-  reqs: HashSet<NpmPackageReq>,
-  dependencies: HashSet<ModuleSpecifier>,
-}
-
-#[derive(Default)]
-struct NpmSpecifierTree {
-  root_nodes: HashMap<ModuleSpecifier, NpmSpecifierTreeNode>,
-}
-
-impl NpmSpecifierTree {
-  pub fn get_leaf(
-    &mut self,
-    specifier: &ModuleSpecifier,
-  ) -> &mut NpmSpecifierTreeLeafNode {
-    let root_specifier = {
-      let mut specifier = specifier.clone();
-      specifier.set_path("");
-      specifier
-    };
-    let root_node = self
-      .root_nodes
-      .entry(root_specifier.clone())
-      .or_insert_with(|| {
-        NpmSpecifierTreeNode::Parent(NpmSpecifierTreeParentNode {
-          specifier: root_specifier.clone(),
-          dependencies: Default::default(),
-        })
-      });
-    let mut current_node = root_node;
-    if !matches!(specifier.path(), "" | "/") {
-      let mut current_parts = Vec::new();
-      for part in specifier.path()[1..].split('/') {
-        current_parts.push(part);
-        match current_node {
-          NpmSpecifierTreeNode::Leaf(leaf) => return leaf,
-          NpmSpecifierTreeNode::Parent(node) => {
-            current_node = node
-              .dependencies
-              .entry(part.to_string())
-              .or_insert_with(|| {
-                NpmSpecifierTreeNode::Parent(NpmSpecifierTreeParentNode {
-                  specifier: {
-                    let mut specifier = specifier.clone();
-                    specifier.set_path(&current_parts.join("/"));
-                    specifier
-                  },
-                  dependencies: Default::default(),
-                })
-              });
-          }
-        }
-      }
-    }
-    current_node.mut_to_leaf();
-    match current_node {
-      NpmSpecifierTreeNode::Leaf(leaf) => leaf,
-      _ => unreachable!(),
-    }
-  }
-}
-
-/// Resolves the npm package requirements from the graph. The order returned
-/// is the order they should be resolved in.
+/// Resolves the npm package requirements from the graph attempting. The order
+/// returned is the order they should be resolved in.
+///
+/// This function will analyze the module graph for parent-most folder
+/// specifiers of all modules, then group npm specifiers together as found in
+/// those descendant modules and return them in the order found spreading out
+/// from the root of the graph.
+///
+/// For example, given the following module graph:
+///
+///   file:///dev/local_module_a/mod.ts
+///   ├── npm:package-a@1
+///   ├─┬ https://deno.land/x/module_d/mod.ts
+///   │ └─┬ https://deno.land/x/module_d/other.ts
+///   │   └── npm:package-a@3
+///   ├─┬ file:///dev/local_module_a/other.ts
+///   │ └── npm:package-b@2
+///   ├─┬ file:///dev/local_module_b/mod.ts
+///   │ └── npm:package-b@2
+///   └─┬ https://deno.land/x/module_a/mod.ts
+///     ├── npm:package-a@4
+///     ├── npm:package-c@5
+///     ├─┬ https://deno.land/x/module_c/sub_folder/mod.ts
+///     │ ├── https://deno.land/x/module_c/mod.ts
+///     │ ├─┬ https://deno.land/x/module_d/sub_folder/mod.ts
+///     │ │ └── npm:package-other@2
+///     │ └── npm:package-c@5
+///     └── https://deno.land/x/module_b/mod.ts
+///
+/// The graph above would be grouped down to the topmost specifier folders like
+/// so and npm specifiers under each path would be resolved for that group
+/// prioritizing file specifiers and sorting by end folder name alphabetically:
+///
+///   file:///dev/local_module_a/
+///   ├── file:///dev/local_module_b/
+///   ├─┬ https://deno.land/x/module_a/
+///   │ ├── https://deno.land/x/module_b/
+///   │ └─┬ https://deno.land/x/module_c/
+///   │   └── https://deno.land/x/module_d/
+///   └── https://deno.land/x/module_d/
+///
+/// Then it would resolve the npm specifiers in each of those groups according
+/// to that tree going by tree depth.
 pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
-  fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-    let mut parent_specifier = specifier.clone();
-    parent_specifier.set_query(None);
-    parent_specifier.set_fragment(None);
-    // remove the last path part, but keep the trailing slash
-    let mut path_parts = parent_specifier.path().split('/').collect::<Vec<_>>();
-    if path_parts[path_parts.len() - 1].is_empty() {
-      path_parts.pop();
-    }
-    let path_parts_len = path_parts.len(); // make borrow checker happy for some reason
-    if path_parts_len > 0 {
-      path_parts[path_parts_len - 1] = "";
-    }
-    parent_specifier.set_path(&path_parts.join("/"));
-    parent_specifier
-  }
-
   fn analyze_module(
     module: &deno_graph::Module,
     graph: &ModuleGraph,
-    specifier_graph: &mut NpmSpecifierTree,
+    specifier_graph: &mut SpecifierTree,
     seen: &mut HashSet<ModuleSpecifier>,
   ) {
     if !seen.insert(module.specifier.clone()) {
@@ -342,7 +244,7 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   }
 
   let mut seen = HashSet::new();
-  let mut specifier_graph = NpmSpecifierTree::default();
+  let mut specifier_graph = SpecifierTree::default();
   for (root, _) in graph.roots.iter() {
     if let Some(module) = graph.get(root) {
       analyze_module(module, graph, &mut specifier_graph, &mut seen);
@@ -352,73 +254,257 @@ pub fn resolve_npm_package_reqs(graph: &ModuleGraph) -> Vec<NpmPackageReq> {
   let mut seen = HashSet::new();
   let mut pending_specifiers = VecDeque::new();
   let mut result = Vec::new();
+
   for (specifier, _) in &graph.roots {
     match NpmPackageReference::from_specifier(specifier) {
       Ok(npm_ref) => result.push(npm_ref.req),
-      Err(_) => pending_specifiers.push_back(specifier.clone()),
+      Err(_) => {
+        pending_specifiers.push_back(get_parent_path_specifier(specifier))
+      }
     }
   }
+
   while let Some(specifier) = pending_specifiers.pop_front() {
     let leaf = specifier_graph.get_leaf(&specifier);
     if !seen.insert(leaf.specifier.clone()) {
       continue; // already seen
     }
+
     let reqs = std::mem::take(&mut leaf.reqs);
     let mut reqs = reqs.into_iter().collect::<Vec<_>>();
-    // todo(THIS PR): sort also by version
-    // The requirements for each batch should be sorted alphabetically
-    // in order to help create determinism.
-    reqs.sort_by(|a, b| a.name.cmp(&b.name));
+    reqs.sort_by(cmp_package_req);
     result.extend(reqs);
+
     let mut deps = std::mem::take(&mut leaf.dependencies)
       .into_iter()
       .collect::<Vec<_>>();
-    deps.sort_by(|a, b| {
-      fn order_folder_names_descending(
-        path_a: &str,
-        path_b: &str,
-      ) -> Option<Ordering> {
-        let path_a = path_a.trim_end_matches('/');
-        let path_b = path_b.trim_end_matches('/');
-        match path_a.rfind('/') {
-          Some(a_index) => match path_b.rfind('/') {
-            Some(b_index) => match path_a[a_index..].cmp(&path_b[b_index..]) {
-              Ordering::Equal => None,
-              ordering => Some(ordering),
-            },
-            None => None,
-          },
-          None => None,
-        }
-      }
+    deps.sort_by(cmp_folder_specifiers);
 
-      fn order_specifiers(
-        a: &ModuleSpecifier,
-        b: &ModuleSpecifier,
-      ) -> Ordering {
-        match order_folder_names_descending(a.path(), b.path()) {
-          Some(ordering) => ordering,
-          None => a.as_str().cmp(b.as_str()), // fallback to just comparing the entire url
-        }
-      }
-
-      if a.scheme() == "file" {
-        if b.scheme() == "file" {
-          order_specifiers(a, b)
-        } else {
-          Ordering::Less
-        }
-      } else if b.scheme() == "file" {
-        Ordering::Greater
-      } else {
-        order_specifiers(a, b)
-      }
-    });
     for dep in deps {
       pending_specifiers.push_back(dep);
     }
   }
+
   result
+}
+
+fn get_parent_path_specifier(specifier: &ModuleSpecifier) -> ModuleSpecifier {
+  let mut parent_specifier = specifier.clone();
+  parent_specifier.set_query(None);
+  parent_specifier.set_fragment(None);
+  // remove the last path part, but keep the trailing slash
+  let mut path_parts = parent_specifier.path().split('/').collect::<Vec<_>>();
+  if path_parts[path_parts.len() - 1].is_empty() {
+    path_parts.pop();
+  }
+  let path_parts_len = path_parts.len(); // make borrow checker happy for some reason
+  if path_parts_len > 0 {
+    path_parts[path_parts_len - 1] = "";
+  }
+  parent_specifier.set_path(&path_parts.join("/"));
+  parent_specifier
+}
+
+enum SpecifierTreeNode {
+  Parent(SpecifierTreeParentNode),
+  Leaf(SpecifierTreeLeafNode),
+}
+
+impl SpecifierTreeNode {
+  pub fn mut_to_leaf(&mut self) {
+    if let SpecifierTreeNode::Parent(node) = self {
+      let node = std::mem::replace(
+        node,
+        SpecifierTreeParentNode {
+          specifier: node.specifier.clone(),
+          dependencies: Default::default(),
+        },
+      );
+      *self = SpecifierTreeNode::Leaf(node.into_leaf());
+    }
+  }
+}
+
+struct SpecifierTreeParentNode {
+  specifier: ModuleSpecifier,
+  dependencies: HashMap<String, SpecifierTreeNode>,
+}
+
+impl SpecifierTreeParentNode {
+  pub fn into_leaf(self) -> SpecifierTreeLeafNode {
+    fn fill_new_leaf(
+      deps: HashMap<String, SpecifierTreeNode>,
+      new_leaf: &mut SpecifierTreeLeafNode,
+    ) {
+      for node in deps.into_values() {
+        match node {
+          SpecifierTreeNode::Parent(node) => {
+            fill_new_leaf(node.dependencies, new_leaf)
+          }
+          SpecifierTreeNode::Leaf(leaf) => {
+            for dep in leaf.dependencies {
+              // don't insert if the dependency is found within the new leaf
+              if !dep.as_str().starts_with(new_leaf.specifier.as_str()) {
+                new_leaf.dependencies.insert(dep);
+              }
+            }
+            new_leaf.reqs.extend(leaf.reqs);
+          }
+        }
+      }
+    }
+
+    let mut new_leaf = SpecifierTreeLeafNode {
+      specifier: self.specifier,
+      reqs: Default::default(),
+      dependencies: Default::default(),
+    };
+    fill_new_leaf(self.dependencies, &mut new_leaf);
+    new_leaf
+  }
+}
+
+struct SpecifierTreeLeafNode {
+  specifier: ModuleSpecifier,
+  reqs: HashSet<NpmPackageReq>,
+  dependencies: HashSet<ModuleSpecifier>,
+}
+
+#[derive(Default)]
+struct SpecifierTree {
+  root_nodes: HashMap<ModuleSpecifier, SpecifierTreeNode>,
+}
+
+impl SpecifierTree {
+  pub fn get_leaf(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> &mut SpecifierTreeLeafNode {
+    let root_specifier = {
+      let mut specifier = specifier.clone();
+      specifier.set_path("");
+      specifier
+    };
+    let root_node = self
+      .root_nodes
+      .entry(root_specifier.clone())
+      .or_insert_with(|| {
+        SpecifierTreeNode::Parent(SpecifierTreeParentNode {
+          specifier: root_specifier.clone(),
+          dependencies: Default::default(),
+        })
+      });
+    let mut current_node = root_node;
+    if !matches!(specifier.path(), "" | "/") {
+      let mut current_parts = Vec::new();
+      for part in specifier.path()[1..].split('/') {
+        current_parts.push(part);
+        match current_node {
+          SpecifierTreeNode::Leaf(leaf) => return leaf,
+          SpecifierTreeNode::Parent(node) => {
+            current_node = node
+              .dependencies
+              .entry(part.to_string())
+              .or_insert_with(|| {
+                SpecifierTreeNode::Parent(SpecifierTreeParentNode {
+                  specifier: {
+                    let mut specifier = specifier.clone();
+                    specifier.set_path(&current_parts.join("/"));
+                    specifier
+                  },
+                  dependencies: Default::default(),
+                })
+              });
+          }
+        }
+      }
+    }
+    current_node.mut_to_leaf();
+    match current_node {
+      SpecifierTreeNode::Leaf(leaf) => leaf,
+      _ => unreachable!(),
+    }
+  }
+}
+
+// prefer file: specifiers, then sort by folder name, then by specifier
+fn cmp_folder_specifiers(a: &ModuleSpecifier, b: &ModuleSpecifier) -> Ordering {
+  fn order_folder_name(path_a: &str, path_b: &str) -> Option<Ordering> {
+    let path_a = path_a.trim_end_matches('/');
+    let path_b = path_b.trim_end_matches('/');
+    match path_a.rfind('/') {
+      Some(a_index) => match path_b.rfind('/') {
+        Some(b_index) => match path_a[a_index..].cmp(&path_b[b_index..]) {
+          Ordering::Equal => None,
+          ordering => Some(ordering),
+        },
+        None => None,
+      },
+      None => None,
+    }
+  }
+
+  fn order_specifiers(a: &ModuleSpecifier, b: &ModuleSpecifier) -> Ordering {
+    match order_folder_name(a.path(), b.path()) {
+      Some(ordering) => ordering,
+      None => a.as_str().cmp(b.as_str()), // fallback to just comparing the entire url
+    }
+  }
+
+  if a.scheme() == "file" {
+    if b.scheme() == "file" {
+      order_specifiers(a, b)
+    } else {
+      Ordering::Less
+    }
+  } else if b.scheme() == "file" {
+    Ordering::Greater
+  } else {
+    order_specifiers(a, b)
+  }
+}
+
+// Sort the package requirements alphabetically then the version
+// requirement in a way that will lead to the least number of
+// duplicate packages (so sort None last since it's `*`), but
+// mostly to create some determinism around how these are resolved.
+fn cmp_package_req(a: &NpmPackageReq, b: &NpmPackageReq) -> Ordering {
+  fn cmp_specifier_version_req(
+    a: &SpecifierVersionReq,
+    b: &SpecifierVersionReq,
+  ) -> Ordering {
+    match a.tag() {
+      Some(a_tag) => match b.tag() {
+        Some(b_tag) => b_tag.cmp(a_tag), // sort descending
+        None => Ordering::Less,          // prefer a since tag
+      },
+      None => {
+        match b.tag() {
+          Some(_) => Ordering::Greater, // prefer b since tag
+          None => {
+            // At this point, just sort by text descending.
+            // We could maybe be a bit smarter here in the future.
+            b.to_string().cmp(&a.to_string())
+          }
+        }
+      }
+    }
+  }
+
+  match a.name.cmp(&b.name) {
+    Ordering::Equal => {
+      match &b.version_req {
+        Some(b_req) => {
+          match &a.version_req {
+            Some(a_req) => cmp_specifier_version_req(a_req, b_req),
+            None => Ordering::Greater, // prefer b, since a is *
+          }
+        }
+        None => Ordering::Less, // prefer a, since b is *
+      }
+    }
+    ordering => ordering,
+  }
 }
 
 #[cfg(test)]
@@ -521,6 +607,113 @@ mod tests {
         .unwrap()
         .to_string(),
       "Not a valid package: @package"
+    );
+  }
+
+  #[test]
+  fn sorting_folder_specifiers() {
+    fn cmp(a: &str, b: &str) -> Ordering {
+      let a = ModuleSpecifier::parse(a).unwrap();
+      let b = ModuleSpecifier::parse(b).unwrap();
+      cmp_folder_specifiers(&a, &b)
+    }
+
+    // prefer file urls
+    assert_eq!(
+      cmp("file:///test/", "https://deno.land/x/module/"),
+      Ordering::Less
+    );
+    assert_eq!(
+      cmp("https://deno.land/x/module/", "file:///test/"),
+      Ordering::Greater
+    );
+
+    // sort by folder name
+    assert_eq!(
+      cmp(
+        "https://deno.land/x/module_a/",
+        "https://deno.land/x/module_b/"
+      ),
+      Ordering::Less
+    );
+    assert_eq!(
+      cmp(
+        "https://deno.land/x/module_b/",
+        "https://deno.land/x/module_a/"
+      ),
+      Ordering::Greater
+    );
+    assert_eq!(
+      cmp(
+        "https://deno.land/x/module_a/",
+        "https://deno.land/std/module_b/"
+      ),
+      Ordering::Less
+    );
+    assert_eq!(
+      cmp(
+        "https://deno.land/std/module_b/",
+        "https://deno.land/x/module_a/"
+      ),
+      Ordering::Greater
+    );
+
+    // by specifier, since folder names match
+    assert_eq!(
+      cmp(
+        "https://deno.land/std/module_a/",
+        "https://deno.land/x/module_a/"
+      ),
+      Ordering::Less
+    );
+  }
+
+  #[test]
+  fn sorting_package_reqs() {
+    fn cmp_req(a: &str, b: &str) -> Ordering {
+      let a = NpmPackageReq::from_str(a).unwrap();
+      let b = NpmPackageReq::from_str(b).unwrap();
+      cmp_package_req(&a, &b)
+    }
+
+    // sort by name
+    assert_eq!(cmp_req("a", "b@1"), Ordering::Less);
+    assert_eq!(cmp_req("b@1", "a"), Ordering::Greater);
+    // prefer non-wildcard
+    assert_eq!(cmp_req("a", "a@1"), Ordering::Greater);
+    assert_eq!(cmp_req("a@1", "a"), Ordering::Less);
+    // prefer tag
+    assert_eq!(cmp_req("a@tag", "a"), Ordering::Less);
+    assert_eq!(cmp_req("a", "a@tag"), Ordering::Greater);
+    // sort tag descending
+    assert_eq!(cmp_req("a@latest-v1", "a@latest-v2"), Ordering::Greater);
+    assert_eq!(cmp_req("a@latest-v2", "a@latest-v1"), Ordering::Less);
+    // sort version req descending
+    assert_eq!(cmp_req("a@1", "a@2"), Ordering::Greater);
+    assert_eq!(cmp_req("a@2", "a@1"), Ordering::Less);
+  }
+
+  #[test]
+  fn test_get_parent_path_specifier() {
+    fn get(a: &str) -> String {
+      get_parent_path_specifier(&ModuleSpecifier::parse(a).unwrap()).to_string()
+    }
+
+    assert_eq!(get("https://deno.land/"), "https://deno.land/");
+    assert_eq!(get("https://deno.land"), "https://deno.land/");
+    assert_eq!(get("https://deno.land/test"), "https://deno.land/");
+    assert_eq!(get("https://deno.land/test/"), "https://deno.land/");
+    assert_eq!(
+      get("https://deno.land/test/other"),
+      "https://deno.land/test/"
+    );
+    assert_eq!(
+      get("https://deno.land/test/other/"),
+      "https://deno.land/test/"
+    );
+    assert_eq!(
+      get("https://deno.land/test/other/test?test#other"),
+      "https://deno.land/test/other/"
     );
   }
 }
