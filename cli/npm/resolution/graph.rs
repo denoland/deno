@@ -462,14 +462,15 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     maybe_best_version.cloned()
   }
 
+  pub fn has_package_req(&self, req: &NpmPackageReq) -> bool {
+    self.graph.has_package_req(req)
+  }
+
   pub fn add_package_req(
     &mut self,
     package_req: &NpmPackageReq,
     package_info: &NpmPackageInfo,
   ) -> Result<(), AnyError> {
-    if self.graph.has_package_req(package_req) {
-      return Ok(());
-    }
     let node = self.resolve_node_from_info(
       &package_req.name,
       package_req,
