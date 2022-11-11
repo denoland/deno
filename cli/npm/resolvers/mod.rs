@@ -259,6 +259,8 @@ impl NpmPackageResolver {
     if self.no_npm {
       let fmt_reqs = packages
         .iter()
+        .collect::<HashSet<_>>() // prevent duplicates
+        .iter()
         .map(|p| format!("\"{}\"", p))
         .collect::<Vec<_>>()
         .join(", ");

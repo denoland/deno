@@ -284,23 +284,23 @@ async fn check_command(
 
 async fn load_and_type_check(
   ps: &ProcState,
-  files: &Vec<String>,
+  files: &[String],
 ) -> Result<(), AnyError> {
   let lib = ps.options.ts_type_lib_window();
 
-  for file in files {
-    let specifier = resolve_url_or_path(file)?;
-
-    ps.prepare_module_load(
-      vec![specifier],
-      false,
-      lib,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-      false,
-    )
-    .await?;
-  }
+  let specifiers = files
+    .iter()
+    .map(|file| resolve_url_or_path(file))
+    .collect::<Result<Vec<_>, _>>()?;
+  ps.prepare_module_load(
+    specifiers,
+    false,
+    lib,
+    Permissions::allow_all(),
+    Permissions::allow_all(),
+    false,
+  )
+  .await?;
 
   Ok(())
 }

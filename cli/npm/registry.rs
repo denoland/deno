@@ -185,12 +185,12 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>>;
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>>;
 
   fn package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<NpmPackageInfo, AnyError>> {
+  ) -> BoxFuture<'static, Result<Arc<NpmPackageInfo>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
     async move {
@@ -212,13 +212,14 @@ pub trait NpmRegistryApi: Clone + Sync + Send + 'static {
     let name = name.to_string();
     let version = version.to_string();
     async move {
-      // todo(dsherret): this could be optimized to not clone the
-      // entire package info in the case of the RealNpmRegistryApi
-      let mut package_info = api.package_info(&name).await?;
-      Ok(package_info.versions.remove(&version))
+      let package_info = api.package_info(&name).await?;
+      Ok(package_info.versions.get(&version).cloned())
     }
     .boxed()
   }
+
+  /// Clears the internal memory cache.
+  fn clear_memory_cache(&self);
 }
 
 #[derive(Clone)]
@@ -268,17 +269,21 @@ impl NpmRegistryApi for RealNpmRegistryApi {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let api = self.clone();
     let name = name.to_string();
     async move { api.0.maybe_package_info(&name).await }.boxed()
+  }
+
+  fn clear_memory_cache(&self) {
+    self.0.mem_cache.lock().clear();
   }
 }
 
 struct RealNpmRegistryApiInner {
   base_url: Url,
   cache: NpmCache,
-  mem_cache: Mutex<HashMap<String, Option<NpmPackageInfo>>>,
+  mem_cache: Mutex<HashMap<String, Option<Arc<NpmPackageInfo>>>>,
   cache_setting: CacheSetting,
   progress_bar: ProgressBar,
 }
@@ -287,7 +292,7 @@ impl RealNpmRegistryApiInner {
   pub async fn maybe_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     let maybe_info = self.mem_cache.lock().get(name).cloned();
     if let Some(info) = maybe_info {
       Ok(info)
@@ -306,6 +311,7 @@ impl RealNpmRegistryApiInner {
           format!("Error getting response at {}", self.get_package_url(name))
         })?;
       }
+      let maybe_package_info = maybe_package_info.map(Arc::new);
 
       // Not worth the complexity to ensure multiple in-flight requests
       // for the same package only request once because with how this is
@@ -548,8 +554,12 @@ impl NpmRegistryApi for TestNpmRegistryApi {
   fn maybe_package_info(
     &self,
     name: &str,
-  ) -> BoxFuture<'static, Result<Option<NpmPackageInfo>, AnyError>> {
+  ) -> BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, AnyError>> {
     let result = self.package_infos.lock().get(name).cloned();
-    Box::pin(deno_core::futures::future::ready(Ok(result)))
+    Box::pin(deno_core::futures::future::ready(Ok(result.map(Arc::new))))
+  }
+
+  fn clear_memory_cache(&self) {
+    // do nothing for the test api
   }
 }
