@@ -422,42 +422,51 @@ impl NpmResolution {
     // multiple packages are resolved in alphabetical order
     package_reqs.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // go over the top level packages first, then down the
+    // go over the top level package names first, then down the
     // tree one level at a time through all the branches
     let mut unresolved_tasks = Vec::with_capacity(package_reqs.len());
-    for package_req in package_reqs {
-      if graph.has_package_req(&package_req) {
+    let mut resolving_package_names =
+      HashSet::with_capacity(package_reqs.len());
+    for package_req in &package_reqs {
+      if graph.has_package_req(package_req) {
         // skip analyzing this package, as there's already a matching top level package
         continue;
       }
+      if !resolving_package_names.insert(package_req.name.clone()) {
+        continue; // already resolving
+      }
 
-      // no existing best version, so resolve the current packages
-      let api = self.api.clone();
-      let maybe_info = if should_sync_download() {
+      // cache the package info up front in parallel
+      if should_sync_download() {
         // for deterministic test output
-        Some(api.package_info(&package_req.name).await)
+        self.api.package_info(&package_req.name).await?;
       } else {
-        None
+        let api = self.api.clone();
+        let package_name = package_req.name.clone();
+        unresolved_tasks.push(tokio::task::spawn(async move {
+          // This is ok to call because api will internally cache
+          // the package information in memory.
+          api.package_info(&package_name).await
+        }));
       };
-      unresolved_tasks.push(tokio::task::spawn(async move {
-        let info = match maybe_info {
-          Some(info) => info?,
-          None => api.package_info(&package_req.name).await?,
-        };
-        Result::<_, AnyError>::Ok((package_req, info))
-      }));
+    }
+
+    for result in futures::future::join_all(unresolved_tasks).await {
+      result??; // surface the first error
     }
 
     let mut resolver = GraphDependencyResolver::new(&mut graph, &self.api);
 
-    for result in futures::future::join_all(unresolved_tasks).await {
-      let (package_req, info) = result??;
-      resolver.add_package_req(&package_req, info)?;
+    for package_req in package_reqs {
+      let info = self.api.package_info(&package_req.name).await?;
+      resolver.add_package_req(&package_req, &info)?;
     }
 
     resolver.resolve_pending().await?;
 
-    graph.into_snapshot(&self.api).await
+    let result = graph.into_snapshot(&self.api).await;
+    self.api.clear_memory_cache();
+    result
   }
 
   pub fn resolve_package_from_id(

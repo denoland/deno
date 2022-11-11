@@ -415,7 +415,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-    package_info: NpmPackageInfo,
+    package_info: &NpmPackageInfo,
   ) -> Result<VersionAndInfo, AnyError> {
     if let Some(version) =
       self.resolve_best_package_version(name, version_matcher)
@@ -465,8 +465,11 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   pub fn add_package_req(
     &mut self,
     package_req: &NpmPackageReq,
-    package_info: NpmPackageInfo,
+    package_info: &NpmPackageInfo,
   ) -> Result<(), AnyError> {
+    if self.graph.has_package_req(package_req) {
+      return Ok(());
+    }
     let node = self.resolve_node_from_info(
       &package_req.name,
       package_req,
@@ -484,7 +487,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn analyze_dependency(
     &mut self,
     entry: &NpmDependencyEntry,
-    package_info: NpmPackageInfo,
+    package_info: &NpmPackageInfo,
     parent_id: &NpmPackageId,
     visited_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<(), AnyError> {
@@ -536,7 +539,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &mut self,
     name: &str,
     version_matcher: &impl NpmVersionMatcher,
-    package_info: NpmPackageInfo,
+    package_info: &NpmPackageInfo,
   ) -> Result<Arc<Mutex<Node>>, AnyError> {
     let version_and_info = self.resolve_best_package_version_and_info(
       name,
@@ -613,7 +616,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             NpmDependencyEntryKind::Dep => {
               self.analyze_dependency(
                 dep,
-                package_info,
+                &package_info,
                 &parent_id,
                 &visited_versions,
               )?;
@@ -624,7 +627,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
                 &dep.bare_specifier,
                 &parent_id,
                 dep,
-                package_info,
+                &package_info,
                 &visited_versions,
               )?;
               if let Some(new_parent_id) = maybe_new_parent_id {
@@ -647,7 +650,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     specifier: &str,
     parent_id: &NpmPackageId,
     peer_dep: &NpmDependencyEntry,
-    peer_package_info: NpmPackageInfo,
+    peer_package_info: &NpmPackageInfo,
     visited_ancestor_versions: &Arc<VisitedVersionsPath>,
   ) -> Result<Option<NpmPackageId>, AnyError> {
     fn find_matching_child<'a>(
@@ -881,7 +884,7 @@ struct VersionAndInfo {
 fn get_resolved_package_version_and_info(
   pkg_name: &str,
   version_matcher: &impl NpmVersionMatcher,
-  info: NpmPackageInfo,
+  info: &NpmPackageInfo,
   parent: Option<&NpmPackageId>,
 ) -> Result<VersionAndInfo, AnyError> {
   let mut maybe_best_version: Option<VersionAndInfo> = None;
@@ -922,7 +925,7 @@ fn get_resolved_package_version_and_info(
       bail!("Could not find dist-tag '{}'.", tag)
     }
   } else {
-    for (_, version_info) in info.versions.into_iter() {
+    for version_info in info.versions.values() {
       let version = NpmVersion::parse(&version_info.version)?;
       if version_matcher.matches(&version) {
         let is_best_version = maybe_best_version
@@ -932,7 +935,7 @@ fn get_resolved_package_version_and_info(
         if is_best_version {
           maybe_best_version = Some(VersionAndInfo {
             version,
-            info: version_info,
+            info: version_info.clone(),
           });
         }
       }
@@ -981,7 +984,7 @@ mod test {
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,
-      NpmPackageInfo {
+      &NpmPackageInfo {
         name: "test".to_string(),
         versions: HashMap::new(),
         dist_tags: HashMap::from([(
@@ -1001,7 +1004,7 @@ mod test {
     let result = get_resolved_package_version_and_info(
       "test",
       &package_ref.req,
-      NpmPackageInfo {
+      &NpmPackageInfo {
         name: "test".to_string(),
         versions: HashMap::from([
           ("0.1.0".to_string(), NpmPackageVersionInfo::default()),
@@ -2014,7 +2017,7 @@ mod test {
     for req in reqs {
       let req = NpmPackageReference::from_str(req).unwrap().req;
       resolver
-        .add_package_req(&req, api.package_info(&req.name).await.unwrap())
+        .add_package_req(&req, &api.package_info(&req.name).await.unwrap())
         .unwrap();
     }
 
